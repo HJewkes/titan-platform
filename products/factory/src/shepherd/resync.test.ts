@@ -21,10 +21,11 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { authorityGate } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { ORPHANED, failedOnlyOnMergeTree, resyncShepherd } from "./resync.js";
+import { ORPHANED, resyncShepherd, supersedeTransientGates, transientOnlyConditions } from "./resync.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { shepherdStoreRef } from "./store.js";
+import { TEST_BRIEF } from "../test-support/brief.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const SEED_LEASE_MS = 3_000;
@@ -222,7 +223,7 @@ function mergedThenRed(): WorkflowDefinition {
     ],
     run: async (ctx) => {
       await step(ctx, "merge:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -238,10 +239,10 @@ function approveThenMerge(): WorkflowDefinition {
       { id: "main-red", kind: "assisted" },
     ],
     run: async (ctx) => {
-      await ctx.assisted("approve-merge", "merge this head?");
+      await ctx.assisted("approve-merge", "merge this head?", { brief: TEST_BRIEF });
       await step(ctx, "merge:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
       await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
-      await ctx.assisted("main-red", "main went red after this merge");
+      await ctx.assisted("main-red", "main went red after this merge", { brief: TEST_BRIEF });
     },
   });
 }
@@ -355,7 +356,7 @@ describe("resyncShepherd", () => {
     w.fake.addPr({ headSha: HEAD });
     const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(runId);
-    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head" });
+    w.seed.gates.create({ id: gateId(runId, "sh-sent-back"), prompt: "sent back at an old head", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!);
 
@@ -372,7 +373,7 @@ describe("resyncShepherd", () => {
     merge(w.fake, 1);
     const failed = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "9", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
     await w.seed.runtime.wait(failed);
-    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back" });
+    w.seed.gates.create({ id: gateId(failed, "sh-sent-back"), prompt: "sent back", ...TEST_BRIEF });
 
     const report = await resyncShepherd(w.seed, w.routes.shepherd!, { dryRun: true });
 
@@ -540,6 +541,21 @@ function evidenceAt(head: string, unmet: object): object {
   return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
 }
 
+async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[]): Promise<FactoryHost> {
+  const server = await startFactoryServer({
+    dbPath: ":memory:",
+    workflows,
+    routes,
+    gatePollMs: 5,
+    port: 0,
+    logger: silentLogger,
+    github: { status: () => "ok", refresh: async () => undefined },
+    build: { sha: "test", behindMain: { status: () => 0, refresh: async () => undefined } },
+  });
+  cleanups.push(() => server.close());
+  return server.host;
+}
+
 interface AuthorityRun {
   host: FactoryHost;
   fake: FakeGitHub;
@@ -549,7 +565,7 @@ interface AuthorityRun {
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first review reads `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false } = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
@@ -559,8 +575,8 @@ async function authorityGated(unmet: object): Promise<AuthorityRun> {
   };
   const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
-  cleanups.push(() => host.close());
+  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)]) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  if (!serve) cleanups.push(() => host.close());
   fake.addPr({ headSha: REVIEWED });
   const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
@@ -592,12 +608,146 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
   });
 
-  it("leaves a gate at the PR head whose merge-tree-clean failure came with a second unmet condition", async () => {
-    const { host, services, runId } = await authorityGated({ mergeTreeClean: false, repoFrozen: true });
+  it("leaves a gate at the PR head whose merge-tree-clean failure came with a lasting unmet condition", async () => {
+    const { host, services, runId } = await authorityGated({ mergeTreeClean: false, verdict: { value: "MERGE", head: PUSHED } });
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("MRG-AU-RV unmet: verdict-merge-at-head, merge-tree-clean");
 
     const report = await resyncShepherd(host, services);
 
     expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("cancels a gate a freeze alone caused once the repo has thawed, and the run reviews the same head again and merges it", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: REVIEWED, condition: "transient-only" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("cancels a gate whose only unmet conditions were merge-tree-clean and a freeze that has thawed", async () => {
+    const { host, services, runId } = await authorityGated({ mergeTreeClean: false, repoFrozen: true });
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toMatchObject([{ runId, condition: "transient-only" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: merge-tree-clean and repo-not-frozen were the only unmet conditions at head ${REVIEWED}`);
+  });
+
+  it("leaves a gate a freeze caused while the repo is still frozen", async () => {
+    const { host, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    services.freeze!.get().freeze(REPO, fakeSha("red-main"));
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(reviewed).toEqual([REVIEWED]);
+  });
+
+  it("thaws a freeze whose main went green outside Shepherd, then cancels the gate it caused, and the run merges the same head", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    fake.refs.set("main", fakeSha("green-main"));
+    fake.setRuns(fakeSha("green-main"), [successRun("validate", 1), successRun("dag-check", 2)]);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(freezes.isFrozen(REPO)).toBe(false);
+    expect(report.superseded).toMatchObject([{ runId, condition: "transient-only" }]);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+  });
+
+  it("leaves a stale freeze and its gate in place on a dry run", async () => {
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    fake.refs.set("main", fakeSha("green-main"));
+    fake.setRuns(fakeSha("green-main"), [successRun("validate", 1), successRun("dag-check", 2)]);
+
+    const report = await resyncShepherd(host, services, { dryRun: true });
+
+    expect(freezes.isFrozen(REPO)).toBe(true);
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("cancels the gate a freeze caused on that freeze's own fix PR while the repo is still frozen, and the run merges the same head", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, "demo/1");
+    freezes.setFixer(REPO, episode, "impl-a");
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: REVIEWED, to: REVIEWED, condition: "transient-only" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+    expect(freezes.isFrozen(REPO)).toBe(true);
+  });
+
+  it.each([
+    ["another task's fix", "demo/2", "impl-a"],
+    ["its task's fix spawned as another fixer", "demo/1", "impl-b"],
+  ])("leaves the gate a freeze caused on a PR that is not %s while the repo is still frozen", async (_name, fixTask, fixer) => {
+    const { host, services, runId, reviewed } = await authorityGated({ repoFrozen: true });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, fixTask);
+    freezes.setFixer(REPO, episode, fixer);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    expect(reviewed).toEqual([REVIEWED]);
+  });
+
+  it("leaves the fix PR's gate when a lasting condition is unmet too", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true, verdict: { value: "MERGE", head: PUSHED } });
+    const freezes = services.freeze!.get();
+    const { episode } = freezes.freeze(REPO, fakeSha("red-main"));
+    freezes.setFixTask(REPO, episode, "demo/1");
+    freezes.setFixer(REPO, episode, "impl-a");
+
+    expect((await resyncShepherd(host, services)).superseded).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a thaw while serving supersedes the repo's gate a freeze caused, and the run merges the same head", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
+    expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("a thaw of another repo while serving leaves the gate with the owner", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true });
+    const freezes = services.freeze!.get();
+    freezes.freeze("octo/elsewhere", fakeSha("red-main"));
+
+    freezes.unfreeze("octo/elsewhere", fakeSha("green-main"));
+    await sleep(50, new AbortController().signal);
+
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a sweep scoped to another repo leaves the gate alone", async () => {
+    const { host, services, runId } = await authorityGated({ repoFrozen: true });
+
+    expect(await supersedeTransientGates(host, services, { repo: "octo/elsewhere" })).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
@@ -651,16 +801,66 @@ describe("which recorded gate decisions are authority/MRG-AU gates", () => {
   });
 });
 
-describe("failedOnlyOnMergeTree", () => {
+describe("transientOnlyConditions", () => {
   const GATES = "MRG-AU gates merge by automation";
 
   it.each([
-    ["merge-tree-clean is the review row's one unmet condition", `${GATES}; MRG-AU-RV unmet: merge-tree-clean; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean`, true],
-    ["a review-rules read closed and left only merge-tree-clean unmet", `${GATES}; MRG-AU-RV unmet: merge-tree-clean; read closed: review rules are unreadable: 502`, true],
-    ["a second condition is unmet on every row", `${GATES}; MRG-AU-RV unmet: merge-tree-clean, repo-not-frozen; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean, repo-not-frozen`, false],
-    ["merge-tree-clean held and another condition is unmet", `${GATES}; MRG-AU-RV unmet: required-contexts-green`, false],
-    ["the request was tainted", `${GATES}; MRG-AU-RV skipped: tainted is not false; MRG-AU-RC skipped: tainted is not false`, false],
-  ])("is %s: %s", (_case, reason, expected) => {
-    expect(failedOnlyOnMergeTree(reason)).toBe(expected);
+    ["merge-tree-clean is the review row's one unmet condition", `${GATES}; MRG-AU-RV unmet: merge-tree-clean; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean`, ["merge-tree-clean"]],
+    ["a review-rules read closed and left only merge-tree-clean unmet", `${GATES}; MRG-AU-RV unmet: merge-tree-clean; read closed: review rules are unreadable: 502`, ["merge-tree-clean"]],
+    ["a freeze is the review row's one unmet condition", `${GATES}; MRG-AU-RV unmet: repo-not-frozen; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, repo-not-frozen`, ["repo-not-frozen"]],
+    ["a freeze is the carry row's one unmet condition", `${GATES}; MRG-AU-RV unmet: verdict-merge-at-head, repo-not-frozen; MRG-AU-RC unmet: repo-not-frozen`, ["repo-not-frozen"]],
+    ["the review row missed only the merge tree and the freeze", `${GATES}; MRG-AU-RV unmet: merge-tree-clean, repo-not-frozen; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean, repo-not-frozen`, ["merge-tree-clean", "repo-not-frozen"]],
+    ["a lasting condition is unmet on every row", `${GATES}; MRG-AU-RV unmet: verdict-merge-at-head, repo-not-frozen; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, repo-not-frozen`, []],
+    ["merge-tree-clean held and another condition is unmet", `${GATES}; MRG-AU-RV unmet: required-contexts-green`, []],
+    ["the request was tainted", `${GATES}; MRG-AU-RV skipped: tainted is not false; MRG-AU-RC skipped: tainted is not false`, []],
+  ])("when %s: %s", (_case, reason, expected) => {
+    expect(transientOnlyConditions(reason)).toEqual(expected);
+  });
+});
+
+describe("resyncShepherd on an active review step", () => {
+  const MOVED = fakeSha("resync-moved-head");
+  /** The review starts a reviewer through `sh-review` at the head, the step a reboot leaves active. */
+  const REVIEWING = { ...PHASES, review: async (ctx: Parameters<typeof step>[0], request: { headSha: string }) => (await step(ctx, `sh-review:${request.headSha}`, {}, z.unknown()), PHASES.review(ctx, request)) };
+
+  async function twoReviews(): Promise<{ w: World; moved: string; current: string }> {
+    const w = world({ hangAt: "sh-review", workflows: [shepherdPrWorkflow(REVIEWING)] });
+    const moved = await stuckRun(w, 1, "sh-review");
+    const current = await stuckRun(w, 2, "sh-review");
+    w.fake.pushHead(1, MOVED);
+    return { w, moved, current };
+  }
+
+  function restarted(w: World, routes = w.freshRoutes()): FactoryHost {
+    const host = openFactoryHost({ dbPath: w.dbPath, workflows: w.workflows, routes, now: () => AFTER_LEASE, gatePollMs: 10 });
+    cleanups.push(() => host.close());
+    return host;
+  }
+
+  const activeIn = (host: FactoryHost, runId: string) => Object.keys(host.runtime.status(runId)!.activeSteps);
+
+  it("supersedes the review at a head its PR moved past, and keeps the review at the PR's current head", async () => {
+    const { w, moved, current } = await twoReviews();
+    const routes = w.freshRoutes();
+    const host = restarted(w, routes);
+
+    const report = await resyncShepherd(host, routes.shepherd!);
+
+    expect(report.supersededReviews).toEqual([{ runId: moved, stepId: `sh-review:${HEAD}`, from: HEAD, to: MOVED }]);
+    expect(activeIn(host, moved)).toEqual([]);
+    expect(host.runtime.status(moved)!.stepResults[`sh-review:${HEAD}:0`]?.output).toContain(`superseded: the pull request moved from head ${HEAD} to ${MOVED}`);
+    expect(activeIn(host, current)).toEqual([`sh-review:${HEAD}`]);
+  });
+
+  it("supersedes nothing when the PR head cannot be read", async () => {
+    const { w, moved } = await twoReviews();
+    const fresh = w.freshRoutes();
+    const shepherd = { ...fresh.shepherd!, port: { ...fresh.shepherd!.port, getPr: async () => Promise.reject(new Error("rate limited")) } };
+    const host = restarted(w, Object.assign([...fresh], { database: fresh.database, shepherd }));
+
+    const report = await resyncShepherd(host, shepherd);
+
+    expect(report.supersededReviews).toEqual([]);
+    expect(activeIn(host, moved)).toEqual([`sh-review:${HEAD}`]);
   });
 });

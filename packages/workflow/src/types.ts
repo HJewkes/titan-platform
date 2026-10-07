@@ -1,5 +1,5 @@
 import type { AuthorityRequest } from "@titan-design/authority";
-import type { GateRecord, GateResolver } from "@titan-design/hitl";
+import type { GateBrief, GateRecord, GateResolver } from "@titan-design/hitl";
 import type { ZodType } from "zod";
 
 export type WorkflowStatus = "running" | "paused" | "cancelling" | "recovery_required" | "completed" | "failed" | "cancelled";
@@ -104,6 +104,8 @@ export interface AssistedOptions {
    * `GATE_CANCELLED_SIGNAL` and its data carries the cancel `reason`, so the next call opens a fresh gate.
    */
   recordCancel?: boolean;
+  /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
+  brief?: GateBrief;
 }
 
 /** The signal of an `assisted` result whose gate was cancelled under `recordCancel`. */
@@ -116,6 +118,8 @@ export interface AuthorizeOptions {
   /** Shown to the owner when the table gates the action. */
   prompt?: string;
   expiresAt?: Date | string;
+  /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
+  brief?: GateBrief;
 }
 
 /** `allow` came straight from the table; `approved` means an owner answered the rule's gate. */
@@ -143,6 +147,11 @@ export interface WorkflowContext {
   expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[];
   /** How many times `stepId` has completed so far; loop guards read this. */
   iteration(stepId: string): number;
+  /**
+   * While the call just made was answered from the record, the step id the record holds next, so a workflow whose code
+   * changed since the record can follow the path the run already took; undefined once the run is live.
+   */
+  historyNext(): string | undefined;
   /** Aborts when the run is cancelled; pass it to anything long-running. */
   readonly signal: AbortSignal;
 }
@@ -215,7 +224,7 @@ export type WorkflowEvent =
   | { type: "step_retry"; runId: string; stepId: string; attempt: number; error: string }
   | { type: "step_failed"; runId: string; stepId: string; error: string }
   | { type: "workflow_recovery_required"; runId: string; stepId: string; evidence: string; gateId?: string }
-  | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string }
+  | { type: "gate_opened"; runId: string; stepId: string; gateId: string; prompt: string; summary?: string }
   | { type: "workflow_complete"; runId: string }
   | { type: "workflow_failed"; runId: string; error: string }
   | { type: "workflow_cancelled"; runId: string; reason: string };

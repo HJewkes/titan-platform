@@ -2,18 +2,13 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
-import { cognitiveComplexityOf } from "./cognitive-complexity.js";
+import { collectTypeDecls, propStatsOf } from "./analysis/prop-metrics.js";
+import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
+import { PY_FUNCTION_TYPES, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } from "./node-kinds.js";
 import { qualify, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
-
-const TS_FUNCTION_TYPES = new Set([
-  "function_declaration",
-  "method_definition",
-]);
-
-const PY_FUNCTION_TYPES = new Set(["function_definition"]);
 
 const TS_NESTING_TYPES = new Set([
   "if_statement",
@@ -68,6 +63,7 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "cognitive_sum",
   "max_nesting_depth",
   "jsx_depth_max",
+  "logic_cognitive_max",
   "class_count",
   "lcom4_max",
   ...EXCEPTION_METRIC_NAMES,
@@ -151,10 +147,19 @@ function metricsForFile(
   }
   const jsxDepthMax = Math.max(jsxDepthIn(file, file.tree.rootNode), ...stats.map((s) => s.jsxDepth));
   if (jsxDepthMax > 0) out.push({ nodeId, name: "jsx_depth_max", value: jsxDepthMax, unit: "count" });
+  out.push(...logicCognitiveMax(nodeId, stats));
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
   out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
   return out;
+}
+
+/** Max logic cognitive over the file's JSX-rendering functions; nothing when none renders JSX. */
+function logicCognitiveMax(nodeId: string, stats: readonly FunctionStats[]): GraphMetric[] {
+  const rendering = stats.filter((s) => s.jsxDepth > 0);
+  if (rendering.length === 0) return [];
+  const value = Math.max(...rendering.map((s) => s.logicCognitive));
+  return [{ nodeId, name: "logic_cognitive_max", value, unit: "count" }];
 }
 
 function countLoc(content: string): number {
@@ -164,28 +169,39 @@ function countLoc(content: string): number {
 function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   const stats: FunctionStats[] = [];
   const fnTypes =
-    file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
+    file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_DECL_TYPES;
   const lines = file.content.split("\n");
+  const types = file.language === "python" ? new Map<string, Node>() : collectTypeDecls(file.tree.rootNode);
   walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
     if (!fn) return;
+    const cognitive = cognitiveSplitOf(fn.body, file.language);
+    const jsxDepth = jsxDepthIn(file, fn.body);
     stats.push({
       name: fn.name === null ? null : qualify(scope, fn.name),
       cyclomatic: cyclomaticOf(fn.body, file.language),
-      cognitive: cognitiveComplexityOf(fn.body, file.language),
+      cognitive: cognitive.total,
+      markupCognitive: cognitive.markup,
+      logicCognitive: cognitive.total - cognitive.markup,
       nestingDepth: nestingDepthOf(fn.body, file.language, 0),
-      jsxDepth: jsxDepthIn(file, fn.body),
+      jsxDepth,
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
+      props: isComponent(fn.name, jsxDepth) ? propStatsOf(fn.node, types) : null,
       ...functionShapeStats(fn.node, fn.body, lines),
     });
   });
   return stats;
 }
 
+/** A component (C-97 S3) is a PascalCase function that renders JSX. */
+function isComponent(name: string | null, jsxDepth: number): boolean {
+  return jsxDepth > 0 && name !== null && /^[A-Z]/.test(name);
+}
+
 /**
  * A named, standalone function at this node, with its body and declared name —
  * or null. Covers declarations/methods (name on the node) and, crucially,
- * arrow / function-expression bound to a `const`/`let` (`export const foo =
+ * arrow, function or generator expression bound to a `const`/`let` (`export const foo =
  * () => {}`), where the name lives on the enclosing variable_declarator. Those
  * bindings were previously invisible to the analyzer (C-58) — a real complexity
  * under-count in an arrow-heavy codebase. Anonymous inline callbacks (parent is
@@ -200,10 +216,7 @@ function functionAt(
     const body = node.childForFieldName("body");
     return body ? { name: node.childForFieldName("name")?.text ?? null, body, node } : null;
   }
-  if (
-    (node.type === "arrow_function" || node.type === "function_expression") &&
-    node.parent?.type === "variable_declarator"
-  ) {
+  if (TS_BOUND_FUNCTION_TYPES.has(node.type) && node.parent?.type === "variable_declarator") {
     const body = node.childForFieldName("body");
     if (!body) return null;
     return { name: node.parent.childForFieldName("name")?.text ?? null, body, node };
@@ -214,7 +227,7 @@ function functionAt(
 /** JSX depth under `root`, stopping at each nested function `analyzeFunctions` scores on its own. Python has no JSX. */
 function jsxDepthIn(file: ParsedFile, root: Node): number {
   if (file.language === "python") return 0;
-  return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_TYPES) !== null);
+  return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_DECL_TYPES) !== null);
 }
 
 function nestingDepthOf(node: Node, language: string, depth: number): number {

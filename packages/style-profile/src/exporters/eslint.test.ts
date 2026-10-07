@@ -113,4 +113,14 @@ describe("generateEslintExport", () => {
     const file = generateEslintExport(profile);
     expect(file.content).not.toContain("low-rule");
   });
+
+  it("exports an info-tier import order as a warning rather than dropping it", () => {
+    const profile = makeProfile({
+      structure: {
+        importOrder: { convention: ["builtin", "external"], confidence: 0.5 },
+      },
+    });
+    const file = generateEslintExport(profile);
+    expect(file.content).toContain('"perfectionist/sort-imports": [\n      "warn"');
+  });
 });

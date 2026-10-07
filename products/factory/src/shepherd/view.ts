@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 import type { WakeInput, WakeStepResult } from "./wake.js";
@@ -97,15 +98,18 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-wake-implementer": "fixing",
   "sh-wake-fix-first": "fixing",
   "sh-repair": "fixing",
+  "sh-flake-check": "fixing",
   "await-new-head": "fixing",
   "sh-await-new-head": "fixing",
   "sh-park": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-late-verdict": "review",
+  "sh-correct-verdict": "review",
   "sh-release-preflight": "review",
   "sh-observe": "review",
   "sh-merge-evidence": "review",
+  "sh-publish-review": "review",
   "sh-carry": "review",
   "sh-carry-scope": "review",
   "sh-carry-seat": "review",
@@ -123,6 +127,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-main-ci": "post-merge",
   "sh-redeploy": "post-merge",
   "main-red": "post-merge",
+  "main-ci-timeout": "post-merge",
   "main-red-again": "post-merge",
   "main-frozen": "post-merge",
   "sh-unfreeze": "post-merge",
@@ -183,7 +188,29 @@ function nextAction(phase: Phase, headSha: string | null, gate: GateRecord | und
   if (gate) return `owner: resolve ${gateStep}`;
   if (phase === "merging" && behind) return `waiting for the merge train behind run ${behind.runId} (#${behind.pr})`;
   if (phase === "ci" && headSha) return `waiting for CI on ${headSha.slice(0, 7)}`;
-  return (phase === "review" && reviewWait(registration.repo, registration.pr)) || WAITING[phase];
+  return (phase === "review" && admissionWait(registration)) || WAITING[phase];
+}
+
+/** A review the spawn gate keeps waiting also says where it stands in the gate's queue. */
+function admissionWait({ repo, pr }: Registration): string | undefined {
+  const wait = reviewWait(repo, pr);
+  const position = spawnQueuePosition(repo, pr);
+  return wait && position ? `${wait}; waiting for a spawn slot, ${position}` : wait;
+}
+
+/**
+ * A held run's merge step polls the hold rather than merging, so its next action names the hold and the merging limit
+ * does not apply. The phase stays `merging` until CC-791: agent-chat's burndown rejects a status array with any phase
+ * it does not know. Only a hold satisfied at the run's own head lets the merge through.
+ */
+function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string | null): boolean {
+  const merging = run.currentStep !== null && stepIdMatches("merge", run.currentStep);
+  return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
+}
+
+function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | null): string {
+  const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
+  return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
 
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
@@ -241,10 +268,12 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
   return limit !== undefined && elapsed > limit ? `${Math.floor(elapsed / MINUTE)} min in ${phase}, over the ${limit / MINUTE} min limit` : undefined;
 }
 
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date): string | undefined {
+/** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
-  return streak >= MAX_NOT_STARTED_REVIEWS ? `${streak} review dispatches in a row started no reviewer` : overstayReason(phase, since, now);
+  if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
+  return holding ? undefined : overstayReason(phase, since, now);
 }
 
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
@@ -258,10 +287,12 @@ function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
-  const phase = runPhase(run, steps);
   const headSha = steps.map(headOf).filter((head) => head !== undefined).at(-1) ?? null;
+  const phase = runPhase(run, steps);
+  const held = heldView(registration);
+  const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now);
+  const stalled = stallReason(run, steps, phase, since, now, holding);
   return {
     repo: registration.repo,
     pr: registration.pr,
@@ -271,9 +302,9 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train),
+    nextAction: freezeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
-    held: heldView(registration),
+    held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
   };

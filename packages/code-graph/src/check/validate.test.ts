@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateRules } from "./validate.js";
+import { NODE_KINDS, NODE_ROLES } from "../types.js";
+import { ALL_ROLES } from "../roles.js";
 import type { CheckRule, LayeredDepsRule, MetricMaxRule, MetricProductMaxRule } from "./types.js";
 
 describe("validateRules", () => {
@@ -63,6 +65,24 @@ describe("validateRules", () => {
         ],
       }),
     ).toThrow(/unknown role/);
+  });
+
+  it.each(NODE_ROLES)("accepts role %s in excludeRoles", (role) => {
+    const rules = validateRules({
+      rules: [{ id: "r", type: "metric-max", metric: "loc", max: 1, excludeRoles: [role] }],
+    }) as MetricMaxRule[];
+    expect(rules[0]!.excludeRoles).toEqual([role]);
+  });
+
+  it("exposes the role list as ALL_ROLES", () => {
+    expect(ALL_ROLES).toBe(NODE_ROLES);
+  });
+
+  it.each(NODE_KINDS)("accepts node kind %s on a metric-outlier rule", (kind) => {
+    const rules = validateRules({
+      rules: [{ id: "r", type: "metric-outlier", metric: "loc", kind, percentile: 95 }],
+    });
+    expect(rules).toHaveLength(1);
   });
 
   it("rejects metric-product-max with fewer than 2 metrics or non-string entries", () => {
@@ -184,6 +204,9 @@ describe("validateRules", () => {
 
     expect(validateRules({ rules: [{ ...rule, except: ["b/ok.ts"] }] })[0]).toMatchObject({ except: ["b/ok.ts"] });
     expect(() => validateRules({ rules: [{ ...rule, except: "b/ok.ts" }] })).toThrow("r: except must be an array of strings");
+    expect(() => validateRules({ rules: [{ ...rule, except: ["b/ok.ts", ""] }] })).toThrow(
+      "r: each except entry must be a non-empty string",
+    );
   });
 
   it("rejects a metric rule kind outside NodeKind", () => {

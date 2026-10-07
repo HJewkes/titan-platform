@@ -30,7 +30,25 @@ describe("LedgerRowSchema reading a v1 precedent row", () => {
       route: null,
       prediction: null,
       unclaimed: false,
+      covers: null,
+      bulk_from: null,
     });
+  });
+
+  it("demotes a free-text amend that adds plural defaults to bulk", () => {
+    const row = LedgerRowSchema.parse(
+      v1Row({ recommended: "Ship today (recommended)", answer: "Ship today; accept the 6 defaults", pick_type: "free_text" }),
+    );
+
+    expect(row).toMatchObject({ outcome: "bulk", covers: 6 });
+  });
+
+  it("demotes a recommended pick whose own wording accepts plural defaults", () => {
+    const row = LedgerRowSchema.parse(
+      v1Row({ recommended: "Accept the 6 defaults (recommended)", answer: "Accept the 6 defaults", pick_type: "recommended" }),
+    );
+
+    expect(row).toMatchObject({ outcome: "bulk", covers: 6 });
   });
 
   it("keeps a rejected v1 row out of scoring", () => {
@@ -72,6 +90,13 @@ describe("LedgerRowSchema reading a v2 row", () => {
 
     expect(row).toMatchObject({ v: 2, outcome: "accept", answered_by: "decider", route: "decider" });
     expect(row.locator).toEqual({ path: "/var/example/events.db", msgId: "msg-42" });
+    expect(row.covers).toBeNull();
+  });
+
+  it("keeps a stored bulk row and its count on re-read", () => {
+    const row = LedgerRowSchema.parse({ ...v2, outcome: "bulk", covers: 3 });
+
+    expect(LedgerRowSchema.parse(row)).toMatchObject({ outcome: "bulk", covers: 3 });
   });
 
   it("rejects an outcome outside the vocabulary", () => {

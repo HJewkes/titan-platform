@@ -74,10 +74,11 @@ function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation)
   return `run ${runId} ${phase}: policy says ${decision.outcome} (${decision.reason}); ${held ? `held: ${held.reason}; ` : ""}${waiting}\n`;
 }
 
-function formatResync({ dryRun, ended, orphanGates, superseded }: ResyncReport): string {
+function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [] }: ResyncReport): string {
   const verb = dryRun ? "would end" : "ended";
   const runs = ended.map(({ runId, reason }) => `run ${runId.slice(0, 8)} ${verb}: ${reason}`);
   const gates = superseded.map(({ runId, from, to, condition }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its gate (${condition}): head ${from} -> ${to}`);
+  const reviews = supersededReviews.map(({ runId, stepId, to }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its review step ${stepId}: head moved to ${to}`);
   const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} stale gate(s)`;
-  return `${[...runs, ...gates, summary].join("\n")}\n`;
+  return `${[...runs, ...gates, ...reviews, summary].join("\n")}\n`;
 }

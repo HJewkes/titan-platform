@@ -1,6 +1,8 @@
 import { promises as fs, readdirSync, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isMissing } from './absent.js';
+import { expandHome } from './expand-home.js';
 
 export interface DiscoveredTranscript {
   /** The project directory name Claude Code derives from the session's cwd. */
@@ -58,7 +60,7 @@ function toDisplayPath(absolutePath: string): string {
  * `transcripts.path` and need to touch the file it names.
  */
 export function toAbsolutePath(displayPath: string): string {
-  return displayPath.startsWith('~/') ? path.join(os.homedir(), displayPath.slice(2)) : displayPath;
+  return expandHome(displayPath);
 }
 
 /**
@@ -75,8 +77,9 @@ async function discoverSubagents(
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
   }
 
   const found: DiscoveredTranscript[] = [];
@@ -107,8 +110,9 @@ export async function discoverTranscripts(
   let projectDirs: string[];
   try {
     projectDirs = await fs.readdir(root);
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissing(error)) return [];
+    throw error;
   }
 
   const found: DiscoveredTranscript[] = [];
@@ -116,8 +120,9 @@ export async function discoverTranscripts(
     let entries: Dirent[];
     try {
       entries = await fs.readdir(path.join(root, projectDir), { withFileTypes: true });
-    } catch {
-      continue;
+    } catch (error) {
+      if (isMissing(error)) continue;
+      throw error;
     }
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.isDirectory()) {
@@ -150,8 +155,9 @@ function rootFor(configDir: string): TranscriptRoot {
 function hasProjectsDir(configDir: string): boolean {
   try {
     return statSync(path.join(configDir, 'projects')).isDirectory();
-  } catch {
-    return false;
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw error;
   }
 }
 
@@ -174,8 +180,9 @@ export function claudeTranscriptRoots(env: NodeJS.ProcessEnv = process.env): Tra
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
-  } catch {
-    return roots;
+  } catch (error) {
+    if (isMissing(error)) return roots;
+    throw error;
   }
 
   for (const profile of profiles) {

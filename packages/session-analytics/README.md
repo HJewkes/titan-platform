@@ -63,6 +63,11 @@ priceRequest(
 - `buildEpisodes(input, "worker-v1" | "coordinator-v1")` (pure), `readEpisodeInput`,
   `writeEpisodes(graph, sessionIds)` and `assignmentCount(rows)` — provisional episode
   segmentation, written through session-graph's `replaceEpisodes`.
+- `staleEpisodeSessions(db, ids?)` — the sessions `writeEpisodes` would change, most recently
+  active first: see "Stale episodes" below.
+- `blockedFlowReport(input)`, `livenessReport(input)`, `reviewFillReport(db, window)` and the
+  parsers under them (`parseVerdict`, `parseDenials`, `parseSeatJournal`, `parseBrokerLog`) —
+  agent-chat operations reports; see "Blocked flow", "Liveness" and "Review fill" below.
 - `initiativeFromCwd(cwd)`, `sessionInitiative(tasks, cwd)` — a session's initiative from its
   task edges, falling back to the `cf_analyze.py` cwd rule.
 - `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
@@ -210,6 +215,73 @@ text form.
 
 The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
 session's previous request on the same thread, which may fall before the window.
+
+## Stale episodes
+
+`staleEpisodeSessions(db, ids?)` answers which sessions need `writeEpisodes` again. A session
+is stale when its class has a heuristic and its last main-thread request in `request_dedup` is
+later than the last episode stored for that heuristic, or none is stored. It chooses the
+heuristic through the same `readSessionContexts` and `classifySession` step as
+`writeEpisodes`, so the two never disagree about a session. Headless sessions and sessions
+with no main-thread request are never stale. `ids` limits the answer to those sessions; the
+result is ordered by last request, newest first.
+
+```ts
+for (const sessionId of staleEpisodeSessions(graph.db).slice(0, 200)) writeEpisodes(graph, [sessionId]);
+```
+
+## Blocked flow
+
+`blockedFlowReport(input)` answers where merges and dispatches stall across the agent-chat
+seats. It gives the wait from a reviewer's MERGE verdict to the merge per repo, the PRs still
+open with a MERGE verdict, the auto-mode classifier denials by reason, action and seat, and the
+minutes a seat sat with free implementer slots, with the reason its journal gave. `renderBlockedFlowText` prints
+it and `blockedFlowSchema` is its zod schema.
+
+It is pure and opens nothing. The caller reads four sources and passes the records:
+
+| Input | From | Parser |
+|---|---|---|
+| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` reads the block with session-read's gate parser (full 40-hex head, `owner/name#n` PR; null otherwise, which the caller counts in `unparsedVerdicts`); the caller adds the row's id, time, target seat and sender |
+| `pulls` | `gh api repos/<owner>/<repo>/pulls/<n>`, one per PR a verdict names | none; map `.state`, `.merged_at`, `.head.sha` |
+| `denials` | each seat's transcript JSONL | `parseDenials(lines, seat)`, which joins each refusal to the tool call it refused |
+| `journals` | each seat's dated journal file | `parseSeatJournal(text, seat, date, utcOffsetMin)` reads `HH:MM` lines with `impl <used>/<cap>` and `No dispatch: <reason>` |
+
+`BLOCKED_FLOW_SOURCES` names the command and field behind each section, so a number in the
+report can be checked by hand. `asOf` is the moment waits are measured to, `window` clips every
+section, `splitAt` splits the wait by verdict time, and `seats` keeps only those seats.
+
+## Liveness
+
+`livenessReport(input)` answers which agents went quiet without saying so: seats dark past
+`DARK_MIN` minutes, routed messages that missed their recipient, agents that exited without a
+report to their spawner (by spawn profile), and agents stuck on a permission prompt past
+`PROMPT_STALE_MIN` minutes. Broker findings cite their broker.log line numbers and prompt
+findings their `events.db` row.
+`renderLivenessText` prints it and `livenessSchema` is its zod schema.
+
+It is pure and opens nothing. The caller passes:
+
+- `broker`: agent-chat's `broker.log` lines through `parseBrokerLog(lines)`, which keeps each
+  JSON entry with its 1-based line number and skips the rest.
+- `spawns`: the `agent_spawned` rows of `events.db`, as `SpawnRecord`s (agent id, name,
+  profile).
+- `lastEvents`: each actor's newest `events.db` row before `asOf`, as `LastEventRecord`s, with
+  any resolution or exit row that follows it.
+
+`LIVENESS_SOURCES` holds the grep and sqlite commands that re-read each section.
+`parseTeleportEvents(lines)`, under "Handoff threshold", reads the teleport lines of the same
+broker log.
+
+## Review fill
+
+`reviewFillReport(db, window)` answers whether a reviewer's verdicts get worse as its context
+fills. It reads the session graph's `pr_review`, `tool_call` and `request` tables, which the
+miner fills from transcripts. Each chat verdict is placed in the context band of the request
+that sent it, per model, and an approve counts as an error when the same PR later got
+`changes_requested`. A GitHub-surface review has no issuing request in the graph and counts in
+`unfilled`. It takes an open graph connection, never a path, and does not call `gh`.
+`reviewFillSchema` is its zod schema.
 
 ## Things that will bite you
 

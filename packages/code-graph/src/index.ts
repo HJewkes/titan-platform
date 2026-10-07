@@ -11,6 +11,7 @@ export type {
   NodeRole,
   SnapshotRow,
 } from "./types.js";
+export { NODE_KINDS, NODE_ROLES } from "./types.js";
 
 export type { SnapshotInsert } from "./store.js";
 export { CodeGraphStore, openCodeGraph } from "./store.js";
@@ -51,7 +52,10 @@ export { hashContent, readSourceFiles, structuralSignature } from "./incremental
 export { walkSourceFiles } from "./file-walk.js";
 export { collectDeclaredNames, collectDeclaredSpans, type LineSpan } from "./declared-names.js";
 export { edgeWeight, pruneDanglingReferences, resolveBarrelEdges } from "./barrel-resolve.js";
-export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints } from "./roles.js";
+export { ALL_ROLES, annotateRoles, classifyRole, computeRoleHints, loadRoleGlobs } from "./roles.js";
+export { UNIMPORTED_ROLES } from "./unimported-roles.js";
+export type { AnnotateRolesOptions, RoleHints } from "./roles.js";
+export type { RoleGlobs } from "./role-globs.js";
 export { isGeneratedByHeuristic, isGeneratedFile, loadGeneratedPatterns } from "./generated.js";
 export { canonicalEdgeKind, canonicalMetricName, canonicalRole } from "./aliases.js";
 export {
@@ -72,7 +76,8 @@ export { computeMetrics } from "./metrics.js";
 export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
 export { SYMBOL_METRIC_NAMES } from "./symbol-metrics.js";
 export { EXCEPTION_METRIC_NAMES } from "./analysis/exception-handling.js";
-export { buildIndexerMetrics } from "./index-metrics.js";
+export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js";
+export type { AssembledIndexerMetrics } from "./index-metrics.js";
 export { computeDeadCodeMetrics, DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 export { computeGrowthRiskMetrics, GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 export type { LinkMethod, LinkTestsOptions, TestSourceLink } from "./analysis/test-linker.js";
@@ -255,6 +260,7 @@ export type {
   MetricMinRule,
   MetricOutlierRule,
   MetricProductMaxRule,
+  NoImportCyclesRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./check/types.js";

@@ -6,8 +6,8 @@ on:
   pull_request:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -26,7 +26,21 @@ jobs:
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm lint
+      # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
+      # It only orders files, so a miss leaves the step as it was and a hit never skips a test.
+      - name: Restore vitest results
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules/.vite/vitest
+          key: vitest-results-${{ runner.os }}-${{ github.sha }}
+          restore-keys: vitest-results-${{ runner.os }}-
       - run: pnpm test
+      - name: Save vitest results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules/.vite/vitest
+          key: vitest-results-${{ runner.os }}-${{ github.sha }}
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
@@ -93,7 +107,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # prepare also builds it but swallows a failure; this step fails loudly.
-      - run: pnpm --filter @titan-design/egress-scan run build
+      - run: pnpm --filter @titan-design/egress-scan... run build
       # The PR head sha, not the merge ref, so GitHub's synthetic merge commit is not scanned. CI has no term list.
       - name: Scan the pushed commits
         env:

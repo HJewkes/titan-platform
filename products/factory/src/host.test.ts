@@ -32,7 +32,8 @@ const approval = defineWorkflow({
     { id: "ship", kind: "dispatch" },
   ],
   run: async (ctx) => {
-    await ctx.assisted("approve-publish", "Publish the draft?", { schema: z.object({ approve: z.literal(true) }) });
+    const brief = { summary: "Publish the draft? Nothing else is waiting on it.", evidenceRef: "$ git log -1" };
+    await ctx.assisted("approve-publish", "Publish the draft?", { schema: z.object({ approve: z.literal(true) }), brief });
     await ctx.dispatch("ship", "ship");
   },
 });
@@ -195,7 +196,34 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+  });
+});
+
+describe("gate briefs", () => {
+  const bare = defineWorkflow({
+    name: "bare",
+    steps: [{ id: "approve-publish", kind: "assisted" }],
+    run: async (ctx) => void (await ctx.assisted("approve-publish", "Publish the draft?")),
+  });
+
+  it("the factory host refuses a gate with no brief", async () => {
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [bare], routes: [], gatePollMs: 10 });
+    const runId = host.runtime.start("bare");
+
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("failed"));
+    expect(host.runtime.status(runId)?.error).toMatch(/brief is invalid: summary is required; evidenceRef is required/);
+    expect(host.gates.listPending()).toEqual([]);
+    host.close();
+  });
+
+  it("stores a gate's brief beside its prompt", async () => {
+    const dbPath = dbFile();
+    const runId = await pausedRun(dbPath);
+
+    const gate = gateAt(dbPath, `${runId}/approve-publish`);
+
+    expect(gate).toMatchObject({ summary: "Publish the draft? Nothing else is waiting on it.", evidenceRef: "$ git log -1" });
   });
 });
 

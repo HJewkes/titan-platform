@@ -3,18 +3,19 @@ import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
+import { approveMergeDecision, stuckBehindDecision } from "../gate-brief.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
+import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-export { MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -60,13 +61,15 @@ export interface LandOptions {
   policy: GatePolicy;
   /** Evidence the allowing caller vouches for, stored beside the policy trace in the `merge-policy` step. */
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
+  /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
+  reviewedMerge?: (headSha: string) => boolean;
 }
 
 export type LandOutcome =
   /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit. */
   | { kind: "merged"; headSha: string; mergeSha: string | null }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
 export interface LandDeps {
   port: GitHubPort;
@@ -95,6 +98,8 @@ interface UpdateResult {
   skipped?: string;
   /** GitHub refused the update because the base does not merge into the head; the head is unchanged. */
   conflict?: boolean;
+  /** GitHub accepted the update but the head never moved, even after the bounded re-reads and re-sends. */
+  unmoved?: boolean;
 }
 
 interface LandState {
@@ -153,13 +158,15 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   const refresh = ci.baseMoved === true;
   if (!refresh && budgetSpent(state.bound, ci.readAt)) {
     const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
-    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema: StuckBehindAnswer });
-    if (StuckBehindAnswer.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
+    const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
+    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
+    if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
     resetBound(state.bound);
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
+  if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
@@ -178,20 +185,15 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   return undefined;
 }
 
-function approveMergeAnswer(headSha: string) {
-  return z.object({ decision: z.enum(["merge", "abandon"]), headSha: z.literal(headSha) });
-}
-
-const StuckBehindAnswer = z.object({ decision: z.enum(["retry", "abandon"]) });
-
 /** The payload must name the head shown, so an approval can never carry over to a head the human did not see. */
 async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
   const decision = await decideMerge(ctx, input, ci, state, options);
   if (decision.outcome === "deny") return stopped("merge-denied", ci.headSha, decision.reason);
   if (decision.outcome === "allow") return void trust(state, ci.headSha, "policy");
-  const schema = approveMergeAnswer(ci.headSha);
+  const reviewedMerge = options.reviewedMerge?.(ci.headSha) ?? false;
+  const { schema, brief } = approveMergeDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, reason: decision.reason, reviewedMerge });
   const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
-  const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema })).data);
+  const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
   if (!answer.success) throw new Error(`approve-merge answer does not approve head ${ci.headSha}: ${answer.error.message}`);
   if (answer.data.decision === "abandon") return stopped("abandoned", ci.headSha, "a human declined the merge");
   trust(state, ci.headSha, "human");
@@ -283,6 +285,8 @@ export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, wri
 async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
   const { port, snapshot: reads } = deps;
   const clock = deadline(timing);
+  const startedAt = timing.now();
+  let backlog = false;
   const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
   const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
@@ -292,10 +296,16 @@ async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal:
       if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
       if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
+      backlog = snapshot.backlog === true;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);
+      backlog = false;
     }
-    if (clock.expired()) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
+    if (clock.expired()) {
+      const ceilingMs = timing.timeoutMs * CI_BACKLOG_CEILING_FACTOR;
+      if (!backlog) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
+      if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${last}`);
+    }
     await clock.sleep(timing.pollMs, signal);
   }
 }
@@ -306,26 +316,37 @@ interface UpdateInput {
   expectedHeadSha: string;
 }
 
+/** GitHub's update-branch sometimes never moves the head on the first write; each re-send follows a fresh read of the PR. */
+const UPDATE_RESENDS = 2;
+
 /** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
 async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
-  const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
-  if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
-  if (!write.done && write.skipped !== "head-moved") {
-    const pr = await port.getPr(input.repo, input.pr);
-    return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
+  for (let resend = 0; ; resend++) {
+    const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
+    if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
+    if (!write.done && write.skipped !== "head-moved") {
+      const pr = await port.getPr(input.repo, input.pr);
+      return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
+    }
+    const headSha = await waitForHeadChange(port, input, timing, signal);
+    if (headSha !== undefined) return movedHead(port, input, headSha, write.done ? undefined : write.skipped);
+    if (resend === UPDATE_RESENDS) return { headSha: input.expectedHeadSha, own: false, unmoved: true };
   }
-  const headSha = await waitForHeadChange(port, input, timing, signal);
-  const commit = await port.getCommit(input.repo, headSha);
-  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
-  return { headSha, own, ...(write.done ? {} : { skipped: write.skipped }) };
 }
 
-async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string> {
+async function movedHead(port: GitHubPort, input: UpdateInput, headSha: string, skipped: string | undefined): Promise<UpdateResult> {
+  const commit = await port.getCommit(input.repo, headSha);
+  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
+  return { headSha, own, ...(skipped === undefined ? {} : { skipped }) };
+}
+
+/** The head that replaced the expected one, or undefined when the wait ran out with it unmoved. */
+async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string | undefined> {
   const clock = deadline(timing);
   for (;;) {
     const pr = await port.getPr(input.repo, input.pr);
     if (pr.headSha !== input.expectedHeadSha) return pr.headSha;
-    if (clock.expired()) throw new Error(`update-branch: head still ${input.expectedHeadSha} after ${timing.timeoutMs} ms`);
+    if (clock.expired()) return undefined;
     await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
 }

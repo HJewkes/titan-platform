@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FormattingExtractor } from "./formatting.js";
+import { parseEditorConfig } from "./formatting-config.js";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,6 +63,13 @@ describe("FormattingExtractor", () => {
       );
       expect(sizeObs).toBeDefined();
       expect(sizeObs!.value).toBe(2);
+    });
+
+    it("does not read a non-JSON prettier config even when its text is JSON", async () => {
+      const observations = await extractor.extractFromConfig(
+        path.resolve(CONFIGS, ".prettierrc.yaml"),
+      );
+      expect(observations).toEqual([]);
     });
 
     it("returns empty array when no config file exists", async () => {
@@ -255,6 +263,76 @@ describe("FormattingExtractor", () => {
     });
   });
 
+  describe("block bodies and comments", () => {
+    const valueOf = (source: string, type: string) =>
+      extractor.extractFromSource(source, "test.ts")
+        .find((o) => o.type === type)?.value;
+
+    it("reports trailing commas when a function body ends in a return statement", () => {
+      const source = [
+        "function f() {",
+        "  const o = {",
+        "    a: 1,",
+        "  };",
+        "  return o;",
+        "}",
+      ].join("\n");
+
+      const value = valueOf(source, "formatting.trailingCommas");
+
+      expect(value).toBe(true);
+    });
+
+    it("reports no trailing commas for a list without them inside a function body", () => {
+      const source = [
+        "function f() {",
+        "  const o = {",
+        "    a: 1",
+        "  };",
+        "  return o;",
+        "}",
+      ].join("\n");
+
+      const value = valueOf(source, "formatting.trailingCommas");
+
+      expect(value).toBe(false);
+    });
+
+    it("reports indent size 2 for a 2-space file starting with a JSDoc block", () => {
+      const source = [
+        "/**",
+        " * Adds one.",
+        " */",
+        "function f(x) {",
+        "  if (x) {",
+        "    return x + 1;",
+        "  }",
+        "}",
+      ].join("\n");
+
+      const value = valueOf(source, "formatting.indentSize");
+
+      expect(value).toBe(2);
+    });
+
+    it("reports indent size 4 for a 4-space file starting with a JSDoc block", () => {
+      const source = [
+        "/**",
+        " * Adds one.",
+        " */",
+        "function f(x) {",
+        "    if (x) {",
+        "        return x + 1;",
+        "    }",
+        "}",
+      ].join("\n");
+
+      const value = valueOf(source, "formatting.indentSize");
+
+      expect(value).toBe(4);
+    });
+  });
+
   describe("extract() with ParsedFile", () => {
     it("produces formatting observations from parsed file content", async () => {
       const { parseFile } = await import("@titan-design/code-parser");
@@ -268,6 +346,33 @@ describe("FormattingExtractor", () => {
       observations.forEach((o) => {
         expect(o.category).toBe("formatting");
       });
+    });
+  });
+
+  describe("editorconfig sections", () => {
+    function valueOf(raw: string, type: string): unknown {
+      return parseEditorConfig(raw, ".editorconfig").find((o) => o.type === type)?.value;
+    }
+
+    it("keeps the [*] indent style when a later section overrides it", () => {
+      const raw = "[*]\nindent_style = space\n\n[Makefile]\nindent_style = tab\n";
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("space");
+    });
+
+    it("ignores properties outside the [*] section", () => {
+      const raw = "root = true\nindent_size = 8\n[*.md]\nindent_size = 4\n";
+      expect(parseEditorConfig(raw, ".editorconfig")).toEqual([]);
+    });
+
+    it("skips semicolon comments", () => {
+      const raw = "[*]\n; indent_style = tab\nindent_style = space\n";
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("space");
+    });
+
+    it("drops a non-numeric indent_size instead of emitting NaN", () => {
+      const raw = "[*]\nindent_style = tab\nindent_size = tab\n";
+      expect(valueOf(raw, "formatting.indentSize")).toBeUndefined();
+      expect(valueOf(raw, "formatting.indentStyle")).toBe("tab");
     });
   });
 });

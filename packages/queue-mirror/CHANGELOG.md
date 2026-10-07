@@ -1,5 +1,22 @@
 # @titan-design/queue-mirror
 
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [f2e4abf]
+  - @titan-design/hitl@0.7.0
+
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [ea96b66]
+- Updated dependencies [f886302]
+- Updated dependencies [7fb6a9b]
+  - @titan-design/store-sqlite@0.3.3
+  - @titan-design/hitl@0.6.0
+
 ## 0.4.2
 
 ### Patch Changes

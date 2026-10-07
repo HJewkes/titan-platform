@@ -2,7 +2,8 @@ import { GateAlreadyExists, GateCancelled, openGate, waitForGate, type GateRecor
 import { nowIso } from "@titan-design/store-sqlite";
 import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
-import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape } from "./gate-ids.js";
+import { briefFields } from "./gate-brief.js";
+import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
 import type { ContextDeps, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
 import { isRecoverable, runLegacyStep } from "./recovery.js";
@@ -53,7 +54,8 @@ interface Memo {
 
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
 export class RunContext implements WorkflowContext {
-  private replaying = false;
+  /** The recorded result the call just made was answered from; undefined when it ran live. */
+  private answeredFrom: StepResult | undefined;
   readonly runId: string;
   readonly workflowName: string;
   readonly signal: AbortSignal;
@@ -188,8 +190,10 @@ export class RunContext implements WorkflowContext {
 
   /** A no-op while the call just made was answered from the record: replay re-runs old callbacks, and a side effect there would hit gates the run still waits on. */
   expireGates(reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
-    return this.replaying ? [] : cancelOwnPending(this.deps.gates, this.runId, reason, isStale);
+    return this.answeredFrom !== undefined ? [] : cancelOwnPending(this.deps.gates, this.runId, reason, isStale);
   }
+
+  historyNext(): string | undefined { return recordedAfter(this.run.stepResults, this.answeredFrom); }
 
   /** A paused run already opened this gate, so a missing row is lost history: reopening it would ask the step again. */
   private requireResumedGate(stepId: string, gateId: string): void {
@@ -200,11 +204,15 @@ export class RunContext implements WorkflowContext {
 
   private openGateOnce(gateId: string, prompt: string, options: AssistedOptions, stepId: string): void {
     try {
-      openGate(this.deps.gates, { id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt });
-      this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt });
+      openGate(this.deps.gates, { ...briefFields(options.brief), id: gateId, prompt, schema: options.schema, expiresAt: options.expiresAt });
+      this.emitGateOpened(stepId, gateId, prompt, options.brief?.summary);
     } catch (error) {
       if (!(error instanceof GateAlreadyExists)) throw error;
     }
+  }
+
+  private emitGateOpened(stepId: string, gateId: string, prompt: string, summary: string | undefined): void {
+    this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt, ...(summary === undefined ? {} : { summary }) });
   }
 
   authorize(stepId: string, request: AuthorizeRequest, options: AuthorizeOptions = {}): Promise<AuthorizeResult> {
@@ -221,7 +229,7 @@ export class RunContext implements WorkflowContext {
       id: gateId,
       store: this.deps.gates,
       wait: { pollMs: this.deps.gatePollMs, signal: this.signal },
-      opened: (gateId, prompt) => this.deps.emit({ type: "gate_opened", runId: this.runId, stepId, gateId, prompt }),
+      opened: (gateId, prompt, summary) => this.emitGateOpened(stepId, gateId, prompt, summary),
       paused: () => this.setCurrent(stepId, "paused"),
     };
     const authority = requireAuthority(this.deps.authority, stepId);
@@ -341,7 +349,7 @@ export class RunContext implements WorkflowContext {
     if (!this.legacyKeys && cached?.operation && cached.operation !== operation) {
       throw new WorkflowNonDeterminismError(this.runId, stepId, index, cached.operation, operation);
     }
-    this.replaying = cached !== undefined;
+    this.answeredFrom = cached;
     return { index, key, cached };
   }
 

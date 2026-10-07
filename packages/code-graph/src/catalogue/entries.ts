@@ -41,19 +41,19 @@ const SOURCE: readonly MetricDescriptor[] = [
   },
   {
     name: "cyclomatic_max", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
-    absent: "exclude", source: "source-metrics", description: "Highest cyclomatic complexity of any function in the file.",
+    absent: "exclude", source: "source-metrics", description: "Highest cyclomatic complexity of any function in the file; points attention at branchy code.",
   },
   {
     name: "cyclomatic_sum", unit: "count", appliesTo: FILE, rollup: "sum", direction: "higher-worse",
-    absent: "zero", source: "source-metrics", description: "Cyclomatic complexity summed over the file's functions.",
+    absent: "zero", source: "source-metrics", description: "Cyclomatic complexity summed over the file's functions; points attention at branchy code.",
   },
   {
     name: "cognitive_max", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
-    absent: "exclude", source: "source-metrics", description: "Highest cognitive complexity of any function in the file.",
+    absent: "exclude", source: "source-metrics", description: "Highest cognitive complexity of any function in the file, an estimate of comprehension friction.",
   },
   {
     name: "cognitive_sum", unit: "count", appliesTo: FILE, rollup: "sum", direction: "higher-worse",
-    absent: "zero", source: "source-metrics", description: "Cognitive complexity summed over the file's functions.",
+    absent: "zero", source: "source-metrics", description: "Cognitive complexity summed over the file's functions, an estimate of comprehension friction.",
   },
   {
     name: "max_nesting_depth", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
@@ -65,14 +65,19 @@ const SOURCE: readonly MetricDescriptor[] = [
     description: "Deepest JSX element tree in the file: the max of symbol_jsx_depth over its functions and module-scope JSX. Written only when > 0.",
   },
   {
+    name: "logic_cognitive_max", unit: "count", appliesTo: FILE, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Highest symbol_logic_cognitive over the file's JSX-rendering functions. Written only when one of them renders JSX.",
+  },
+  {
     name: "symbol_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
-    description: "Cognitive complexity of the function a symbol names; the max when several functions share the name.",
+    description: "Cognitive complexity (comprehension friction) of the function a symbol names; the max when several functions share the name.",
   },
   {
     name: "symbol_cyclomatic", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
-    description: "Cyclomatic complexity of the function a symbol names; the max when several functions share the name.",
+    description: "Cyclomatic complexity (an attention pointer) of the function a symbol names; the max when several functions share the name.",
   },
   {
     name: "symbol_loc", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
@@ -88,6 +93,31 @@ const SOURCE: readonly MetricDescriptor[] = [
     name: "symbol_jsx_depth", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
     absent: "exclude", source: "source-metrics",
     description: "Most JSX elements on one ancestor chain in the function, fragments not counted. Walks into {…} and inline callbacks, stops at a nested named function; attribute JSX sits one below its owner. Written only when > 0.",
+  },
+  {
+    name: "symbol_markup_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Share of symbol_cognitive, nesting bonus included, charged inside JSX {…} expressions: conditional rendering and callbacks inline in JSX. Hook callbacks such as useMemo or useEffect stay logic, a deliberate departure from excluding every nested callback. Written only when symbol_jsx_depth > 0.",
+  },
+  {
+    name: "symbol_logic_cognitive", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "symbol_cognitive minus symbol_markup_cognitive: the component's own logic, hook callbacks included. Written only when symbol_jsx_depth > 0.",
+  },
+  {
+    name: "symbol_prop_count", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared props of a component (a PascalCase function with symbol_jsx_depth > 0): members of its first parameter's type, resolved within the file through extends and & clauses; types the file does not declare (HTMLAttributes<…>) add none. Absent when the props type is imported.",
+  },
+  {
+    name: "symbol_bool_prop_count", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared component props typed boolean, or a union of true/false/boolean with undefined. Absent where symbol_prop_count is.",
+  },
+  {
+    name: "symbol_unread_props", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",
+    absent: "exclude", source: "source-metrics",
+    description: "Own-declared component props never read in the body: a destructured binding with no references, or a name no props.<name> access reads. 0 when a ...rest element or the whole props object forwards them. Absent where symbol_prop_count is.",
   },
   {
     name: "symbol_comment_lines", unit: "lines", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
@@ -204,7 +234,7 @@ const HISTORY: readonly MetricDescriptor[] = [
   {
     name: "recency_{w}", unit: "ratio", appliesTo: FILE, rollup: "none", direction: "neutral",
     absent: "exclude", source: "history", windowed: true,
-    description: "min(1, file age / window) for a file that churned in the {w} window; 1 for lifetime. A hotspot discount.",
+    description: "min(1, file age / window) for a file that churned in the {w} window; 1 for lifetime. Discounts the hotspot score, churn × complexity after Adam Tornhill and CodeScene.",
   },
   {
     name: "file_age_days", unit: "days", appliesTo: FILE, rollup: "max", direction: "neutral",

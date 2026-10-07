@@ -45,8 +45,9 @@ export function loadGeneratedPatterns(
   try {
     const content = source.readFile(path.join(rootDir, ".gitattributes"));
     return parseGeneratedPatterns(content);
-  } catch {
-    return [];
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
   }
 }
 

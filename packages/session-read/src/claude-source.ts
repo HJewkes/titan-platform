@@ -2,6 +2,7 @@ import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } fr
 import os from "node:os";
 import path from "node:path";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
+import { isMissing } from "./absent.js";
 import type { SessionSourceDescriptor } from "./normalized.js";
 
 export const CLAUDE_TRANSCRIPT_FORMAT = "claude-code-jsonl";
@@ -200,10 +201,6 @@ function verifyConversation(filePath: string, nativeId: string): true | false | 
   } finally {
     if (handle !== undefined) closeSync(handle);
   }
-}
-
-function isMissing(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ENOENT";
 }
 
 function messageOf(error: unknown): string {

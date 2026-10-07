@@ -2,14 +2,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
+import { AwaitHeadResult } from "../workflows/await-head.js";
+import { sleep, step } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
@@ -21,6 +23,7 @@ import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
 import { OWNER } from "../test-support/resolver.js";
+import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
 
 const H2 = fakeSha("head2");
 const BRANCH = "feat/demo";
@@ -52,14 +55,14 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:"): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get() };
@@ -504,6 +507,39 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
   });
 
+  it("asks again for a review a busy broker never started on a behind head, and opens no approve-merge gate before it runs", async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length === 1 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
+    Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked.slice(0, 2).map((request) => request.headSha)).toEqual([H1, H1]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  describe.each(["not-started", "timeout", "no-verdict"] as const)("a %s review of a head behind a moved base in a non-strict repo", (cause) => {
+    it("reviews the head again before any merge decision, so no gate opens on a head with no verdict", async () => {
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length === 1 ? { kind: "none", cause } : merges(ctx, request)));
+      w.fake.rules.strict = false;
+      // A non-strict stale head reads clean to ci-wait; the observe read after the first review is the one that sees it behind.
+      const seen = w.fake.onGetPr;
+      let observed = false;
+      w.fake.onGetPr = (pr, reads) => (seen?.(pr, reads), asked.length > 0 && !observed && pr.headSha === H1 && ((observed = true), Object.assign(pr, { mergeableState: "behind" })));
+      Object.assign(w.fake.pr(1), { mergeableState: "clean", behind: true });
+      const tip = w.fake.refs.get("main")!;
+      w.fake.commits.set(tip, { sha: tip, parents: [], committedAt: "2099-01-01T00:00:00Z" });
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      // Unfixed, the first review's silence opens approve-merge at once, so the second review is never asked.
+      await Promise.race([w.host.runtime.wait(runId), gateOpened(w.host, gateId(runId, "approve-merge"))]);
+
+      expect(asked.length).toBeGreaterThan(1);
+    });
+  });
+
   it("still counts reviews refused for a reason that does not clear, around reviews that never started", async () => {
     const causes = ["not-started", "no-verdict", "not-started", "no-verdict", "no-verdict"] as const;
     const asked: ReviewRequest[] = [];
@@ -619,6 +655,69 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
+  });
+});
+
+describe("gate briefs", () => {
+  const PR_URL = /^https:\/\/github\.com\/octo\/demo\/pull\/1$/;
+  const recommended = (gate: ReturnType<FactoryHost["gates"]["get"]>) => gate?.questions?.[0]?.options.filter((option) => option.recommended).map((option) => option.id);
+
+  it("opens approve-merge on a conflict with a summary naming the head and an evidence link", async () => {
+    const fake = fakeGitHub();
+    const { phases } = fakePhases({ wake: () => (fake.pushHead(1, H2), { kind: "woken", agent: "impl-a" }) });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1, mergeableState: "dirty" });
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+    expectBrief(gate, H2, PR_URL);
+    expect(gate?.summary).toContain("Conflict");
+    expect(recommended(gate)).toEqual([]);
+  });
+
+  it("opens sh-sent-back with a summary naming the head and an evidence link", async () => {
+    const { phases } = fakePhases({ review: () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    const gate = w.host.gates.get(gateId(runId, "sh-sent-back"));
+    expectBrief(gate, H1, PR_URL);
+    expect(recommended(gate)).toEqual(["await-new-head"]);
+  });
+
+  it("recommends merge only on the head the reviewer's MERGE names", async () => {
+    const fake = fakeGitHub();
+    const { phases } = fakePhases({
+      review: (request) => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "rename" } : { kind: "MERGE", headSha: H2, evidence: {} }),
+      wake: pushes(fake, H2),
+    });
+    const w = world(phases, undefined, fake);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    const atMerge = w.host.gates.get(gateId(runId, "approve-merge"));
+
+    expectBrief(atMerge, H2, PR_URL);
+    expect(recommended(atMerge)).toEqual(["merge"]);
+  });
+
+  it("recommends nothing when the review at the head said anything but MERGE", async () => {
+    const { phases } = fakePhases({ review: () => ({ kind: "none" }) });
+    const w = world(phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const gate = w.host.gates.get(gateId(runId, "approve-merge"));
+    expectBrief(gate, H1, PR_URL);
+    expect(recommended(gate)).toEqual([]);
   });
 });
 
@@ -930,9 +1029,9 @@ describe("a new cycle at a new head", () => {
     fake.onGetPr = (pr, reads) => {
       seedGates(pr, reads);
       if (reads !== 1) return;
-      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST` });
-      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST` });
+      w.host.gates.create({ id: `${runId}/approve-merge:7`, prompt: `Merge PR #1 in ${REPO} at head ${stale}?`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back`, prompt: `The review of PR #1 in ${REPO} at head ${stale} said FIX_FIRST`, ...TEST_BRIEF });
+      w.host.gates.create({ id: `${runId}/sh-sent-back:3`, prompt: `The review of PR #1 in ${REPO} at head ${H1} said FIX_FIRST`, ...TEST_BRIEF });
     };
     runId = shepherdPr1(w);
 
@@ -965,6 +1064,54 @@ describe("a restarted run", () => {
   });
 });
 
+describe("a fixer that exits without pushing a new head", () => {
+  const FLAKE_FILE = "packages/decider/src/ask-lint.test.ts";
+  const EXITED: WakeOutcome = { kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head past the red head" };
+
+  /** The red head fails on one test file; the PR changes `changed`, and the failure goes once its jobs are rerun. */
+  function redOnFlake(changed: string[], healsOnRerun: boolean) {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => EXITED });
+    const w = world(phases, () => (healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), fake);
+    fake.addPr({ headSha: H1 });
+    fake.jobLogs.set(1, `RUN  v3\n FAIL  ${FLAKE_FILE} > lints 7k distinct ids in bounded time\nAssertionError: expected 202.30 to be less than 200`);
+    fake.prFiles.set(1, changed.map((path) => ({ path, status: "modified" })));
+    fake.prChangedFiles.set(1, changed.length);
+    return { w, wakes };
+  }
+
+  it("reruns the failed jobs once at the same head when the failing test file is outside the PR's diff, with no second wake", async () => {
+    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
+    const runId = shepherdPr1(w);
+
+    await approve(w.host, runId, H1);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(stepIds(w.host, runId)).not.toContain("sh-sent-back");
+  });
+
+  it("opens the sent-back gate naming the fixer's exit, with no rerun, when the failing test file is in the PR's diff", async () => {
+    const { w } = redOnFlake([FLAKE_FILE], true);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(0);
+    expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("impl-a exited without pushing a new head");
+  });
+
+  it("reruns once per head: a head still red after the rerun and a second exit opens the gate", async () => {
+    const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], false);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toHaveLength(2);
+  });
+});
+
 describe("the repair budget", () => {
   const redHead = (n: number) => fakeSha(`red${n}`);
 
@@ -994,6 +1141,15 @@ describe("the repair budget", () => {
     expect(prompt).toContain("ci-red");
     expect(prompt).toContain("validate");
     expect(prompt).toContain(`${MAX_REPAIRS} fixer wakes at this run`);
+  });
+
+  it("opens the repair-budget sh-sent-back with a summary naming the head and an evidence link", async () => {
+    const { w } = alwaysRed();
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expectBrief(w.host.gates.get(gateId(runId, "sh-sent-back")), w.fake.pr(1).headSha, /^https:\/\/github\.com\/octo\/demo\/pull\/1$/);
   });
 
   it("does not reset the count at the next round or head when the owner awaits a new head", async () => {
@@ -1046,5 +1202,64 @@ describe("the repair budget", () => {
 
     expect(repairs(second.w.host, runId)).toBe(MAX_REPAIRS);
     expect(second.w.host.gates.get(gateId(runId, "sh-sent-back"))?.status).toBe("pending");
+  });
+});
+
+describe("the round after a wake's await-new-head", () => {
+  const RUN_HEAD = fakeSha("run-head");
+  const FIRST_PUSH = fakeSha("first-push");
+  const BRANCH_HEAD = fakeSha("branch-head");
+
+  /** The run's head is behind with green checks and reviewed FIX_FIRST; the woken fixer pushes twice and the branch settles clean, so the owner gate is next. */
+  function sentBackBehind(snapshotOf: (port: GitHubPort, fake: FakeGitHub) => PrSnapshot): { w: World; wakes: WakeRequest[] } {
+    const fake = fakeGitHub();
+    const wakes: WakeRequest[] = [];
+    const phases: ShepherdPhases = {
+      review: async (_ctx, request) => (request.headSha === RUN_HEAD ? { kind: "FIX_FIRST", headSha: RUN_HEAD, text: "missing test" } : { kind: "none" }),
+      wake: async (ctx, request) => {
+        wakes.push(request);
+        if (wakes.length === 1) [FIRST_PUSH, BRANCH_HEAD].forEach((head) => fake.pushHead(1, head));
+        Object.assign(fake.pr(1), { mergeableState: "clean", behind: false });
+        const head = await step(ctx, `sh-await-new-head:${request.round}`, { repo: request.repo, pr: request.pr, headSha: request.headSha }, AwaitHeadResult);
+        return head.headSha === request.headSha ? UNHANDLED : { kind: "woken", agent: "impl-a" };
+      },
+    };
+    const w = world(phases, undefined, fake, undefined, undefined, undefined, (port) => snapshotOf(port, fake));
+    fake.addPr({ headSha: RUN_HEAD, mergeableState: "behind", behind: true });
+    return { w, wakes };
+  }
+
+  it("reads the branch's current head in the next ci-wait and wakes the fixer once, not once per stale round", async () => {
+    const { w, wakes } = sentBackBehind((port) => prSnapshot(port, { now: () => 0 }));
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
+    expect(stepResult(w.host, runId, "ci-wait:r1:0")).toMatchObject({ result: { headSha: BRANCH_HEAD } });
+    expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
+  });
+
+  it("does not wake the fixer again when a read still shows the head an earlier wake saw replaced", async () => {
+    let staleReads = 0;
+    const lagging = (port: GitHubPort): PrSnapshot => ({
+      getPr: async (repo, number) => {
+        const pr = await port.getPr(repo, number);
+        if (pr.headSha === RUN_HEAD || staleReads >= 4) return pr;
+        staleReads += 1;
+        return { ...pr, headSha: RUN_HEAD, mergeableState: "behind", behind: true };
+      },
+      checkRuns: (repo, sha) => port.checkRuns(repo, sha),
+      invalidate: () => undefined,
+    });
+    const { w, wakes } = sentBackBehind(lagging);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(staleReads).toBe(4);
+    expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
+    expect(stepIds(w.host, runId).filter((id) => id === "sh-repair")).toHaveLength(1);
+    expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
   });
 });

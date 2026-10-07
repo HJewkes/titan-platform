@@ -1,7 +1,7 @@
 # @titan-design/agent-protocol
 
 Dependency-free identity and usage contracts shared by agent execution and session
-readers (TP-44). The `./trace` subpath adds zod schemas and needs `zod` as an optional peer. This package neither launches a harness nor reads its logs.
+readers (TP-44). The `./trace` and `./worker-facts` subpaths add zod schemas and need `zod` as an optional peer. This package neither launches a harness nor reads its logs.
 
 `ConversationIdentity` names a native thread by harness, corpus namespace and native
 ID. `conversationRef()` escapes each component into a `conversation:` reference;
@@ -28,8 +28,9 @@ with the caller. An empty list folds to no measurements on a `snapshot` basis.
 
 The lifecycle protocol records one invocation from durable preparation through terminal
 evidence. Every transition carries an event ID and expected revision, while owner
-generations and leases fence stale supervisors. `cancel_requested` records intent;
-`cancelled` requires observed terminal evidence, and `cancellation_unknown` remains an
+generations and leases fence stale supervisors. `cancel_requested` records intent,
+and a recovery keeps a requested cancellation, so an observed run after it stays
+`cancel_requested`; `cancelled` requires observed terminal evidence, and `cancellation_unknown` remains an
 absorbing honest outcome. `recovery_required` blocks automatic resubmission until a
 reconciler supplies positive running, terminal, or retry-safe absence evidence.
 The record keeps the caller's durable execution identity separate from an adapter's
@@ -121,3 +122,13 @@ Web Crypto. Correlation keys survive redaction and their values do not.
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
 kind holds the same records split by kind.
+
+## Worker facts
+
+The `@titan-design/agent-protocol/worker-facts` subpath (TP-1712) exports `WorkerFactsSchema` and
+the `WorkerFacts` type: what a spawned worker's completion carries. It holds the agent name,
+profile, spawner and exit facts (`code`, `signal`, `inferred`), plus, when known, the task id,
+the last Status or Verdict (`report`: message id, kind, text of at most 2,000 characters), the
+PR (`{ repo: "owner/name", number }`), `tokens` and `costUsd`. A no-report exit is valid and
+carries the exit facts only. The producer truncates the report; the schema rejects one over the
+cap. It is a subpath, like `./trace`, so the root entry stays free of zod.

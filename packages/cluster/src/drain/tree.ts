@@ -106,7 +106,7 @@ export class DrainTree {
    * Rebuild a tree from `toSnapshot()` output, re-linking each cluster into
    * its leaf without routing it through `insert()`.
    *
-   * Going through `insert()` — what a warm start did with a naive warm start — is lossy
+   * Replaying persisted clusters through `insert()` is lossy
    * twice over: two persisted templates similar enough to match would collapse
    * into one cluster, and every restored cluster would get a fresh id, so the
    * `clusterId -> templateId` map could not survive a restart.
@@ -139,14 +139,14 @@ export class DrainTree {
       best.tokens = merged;
       best.size += 1;
       this.touch(best);
-      return { cluster: best, isNew: false, templateChanged };
+      return { cluster: best, isNew: false, templateChanged, evicted: [] };
     }
 
     const cluster: DrainCluster = { clusterId: this.nextClusterId++, tokens: [...tokens], size: 1 };
     clusters.push(cluster);
     this.touch(cluster);
-    this.evictIfOverCapacity();
-    return { cluster, isNew: true, templateChanged: false };
+    const victim = this.evictIfOverCapacity();
+    return { cluster, isNew: true, templateChanged: false, evicted: victim === undefined ? [] : [victim] };
   }
 
   private bestMatch(clusters: DrainCluster[], tokens: string[]): DrainCluster | undefined {
@@ -227,14 +227,15 @@ export class DrainTree {
     return victim;
   }
 
-  private evictIfOverCapacity(): void {
-    if (this.recency.size <= this.maxClusters) return;
+  /** Returns the evicted cluster's id so the caller can drop anything keyed on it. */
+  private evictIfOverCapacity(): number | undefined {
+    if (this.recency.size <= this.maxClusters) return undefined;
     const victim = this.selectVictim();
-    if (!victim) return;
+    if (!victim) return undefined;
     this.recency.delete(victim.clusterId);
 
     const leaf = this.walkToLeaf(victim.tokens);
-    if (!leaf.clusters) return;
-    leaf.clusters = leaf.clusters.filter((c) => c.clusterId !== victim.clusterId);
+    if (leaf.clusters) leaf.clusters = leaf.clusters.filter((c) => c.clusterId !== victim.clusterId);
+    return victim.clusterId;
   }
 }

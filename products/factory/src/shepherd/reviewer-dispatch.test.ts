@@ -5,7 +5,7 @@ import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
 import { ReviewerMachineHold } from "./review-wait.js";
-import { agentChatReviewerDispatch, expandHome, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
+import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 
 const PROFILE = "rv-readonly";
 const BRIEF = "Review octo/demo#7. BRIEF-SENTINEL-4f2a";
@@ -45,7 +45,7 @@ const recordedArgv = (): string[] => recorded("argv").split("\0").slice(0, -1);
 const wasRun = (): boolean => existsSync(join(dir, "argv"));
 
 const dispatchOver = (script?: string, over: Partial<AgentChatReviewerDispatchOptions> = {}) =>
-  agentChatReviewerDispatch({ agentChatBin: fakeAgentChat(script), profile: PROFILE, cwdFor: () => checkout, ...over });
+  agentChatReviewerDispatch({ agentChatBin: fakeAgentChat(script), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout, ...over });
 
 const failure = (attempt: Promise<unknown>): Promise<unknown> =>
   attempt.then(
@@ -148,8 +148,17 @@ describe("agentChatReviewerDispatch spawn", () => {
     expect(repos).toEqual(["octo/demo"]);
   });
 
+  it("spawns a security PR and a correctness PR under different profiles", async () => {
+    const dispatch = dispatchOver(undefined, { roles: { g10: "bd-reviewer", standard: "reviewer" } });
+
+    await dispatch.spawn("rv-demo-7", BRIEF, target, { kind: "security" });
+    expect(recordedArgv()[3]).toBe("bd-reviewer");
+    await dispatch.spawn("rv-demo-8", BRIEF, target, { kind: "correctness" });
+    expect(recordedArgv()[3]).toBe("reviewer");
+  });
+
   it("spawns with whichever profile was configured", async () => {
-    await dispatchOver(undefined, { profile: "rv-other" }).spawn("rv-demo-7", BRIEF, target);
+    await dispatchOver(undefined, { roles: { g10: "rv-other", standard: "rv-other" } }).spawn("rv-demo-7", BRIEF, target);
 
     expect(recordedArgv()).toEqual(["agent", "spawn", "rv-demo-7", "rv-other", "--brief-stdin"]);
   });
@@ -270,7 +279,7 @@ describe("agentChatReviewerDispatch spawn", () => {
   });
 
   it("refuses when the agent-chat executable is missing", async () => {
-    const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), profile: PROFILE, cwdFor: () => checkout });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: join(dir, "absent"), roles: { g10: PROFILE, standard: PROFILE }, cwdFor: () => checkout });
 
     expectRefusal(await failure(dispatch.spawn("rv-demo-7", BRIEF, target)), "not found");
   });
@@ -303,5 +312,34 @@ describe("agentChatReviewerDispatch resume", () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).resume("rv-standing", BRIEF));
 
     expectRefusal(error, "timed out");
+  });
+});
+
+describe("runningReviewStarts", () => {
+  const NOW = 10_000_000;
+  const rv = (name: string, over: Partial<ReviewerRosterRow> = {}): ReviewerRosterRow => ({
+    name, agentId: name, sessionId: "s", presence: "live", spawnedBy: null, transcriptPath: null, transcriptExists: false, ...over,
+  });
+
+  it("counts a detached reviewer with no transcript write as not running", () => {
+    expect(runningReviewStarts([rv("rv-demo-1", { presence: "detached" })], new Map(), NOW)).toEqual([]);
+  });
+
+  it("counts a detached reviewer whose transcript was last written over 15 minutes ago as not running", () => {
+    const stale = rv("rv-demo-1", { presence: "detached", lastWrittenAt: NOW - 15 * 60_000 - 1 });
+    expect(runningReviewStarts([stale], new Map(), NOW)).toEqual([]);
+  });
+
+  it("counts a live reviewer, and a detached one written recently, from when each was first seen", () => {
+    const seen = new Map([["rv-demo-1", NOW - 600_000]]);
+    const rows = [rv("rv-demo-1"), rv("rv-demo-2", { presence: "detached", lastWrittenAt: NOW - 60_000 }), rv("coord"), rv("rv-demo-3", { presence: "exited" })];
+
+    expect(runningReviewStarts(rows, seen, NOW)).toEqual([NOW - 600_000, NOW]);
+  });
+
+  it("forgets a reviewer that no longer runs", () => {
+    const seen = new Map([["rv-demo-1", NOW - 600_000]]);
+    runningReviewStarts([], seen, NOW);
+    expect(seen.size).toBe(0);
   });
 });

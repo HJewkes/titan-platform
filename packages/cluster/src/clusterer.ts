@@ -1,3 +1,4 @@
+import { DEFAULT_ANCHOR_CONFIGS, type AnchorConfigs } from "./anchors.js";
 import type { DrainTreeOptions, DrainTreeSnapshot } from "./drain/tree.js";
 import { DEFAULT_MASK_CONFIGS, applyMasks, type MaskConfigs } from "./masks.js";
 import { DrainTreeRegistry } from "./registry.js";
@@ -7,6 +8,7 @@ import { templateId as computeTemplateId } from "./template-id.js";
 export interface ClustererOptions {
   drain?: DrainTreeOptions;
   masks?: MaskConfigs;
+  anchors?: AnchorConfigs;
 }
 
 export interface ClusterInput {
@@ -21,7 +23,12 @@ export interface ClusterResult {
   maskedSignature: string;
   extractedParams: Record<string, string>;
   signature: Signature;
-  /** True the first time this template id is minted by this clusterer (or since its snapshot). */
+  /**
+   * True when no live cluster was bound to this template id before this call.
+   * A template whose cluster was evicted and later recurs is new again, as it
+   * already was across a snapshot restore; callers that need lifetime novelty
+   * check their own template store.
+   */
   isNewTemplate: boolean;
 }
 
@@ -49,32 +56,40 @@ function tokenize(signatureLine: string): string[] {
 export class Clusterer {
   private readonly registry: DrainTreeRegistry;
   private readonly masks: MaskConfigs;
+  private readonly anchors: AnchorConfigs;
   private readonly clusterTemplateIds = new Map<string, Map<number, string>>();
-  private readonly knownTemplateIds = new Set<string>();
+  /** Live bindings per template id; several clusters can share one id. */
+  private readonly boundTemplateIds = new Map<string, number>();
 
-  constructor(private readonly options: ClustererOptions = {}) {
+  constructor(options: ClustererOptions = {}) {
     this.registry = new DrainTreeRegistry(options.drain);
     this.masks = options.masks ?? DEFAULT_MASK_CONFIGS;
+    this.anchors = options.anchors ?? DEFAULT_ANCHOR_CONFIGS;
   }
 
   static fromSnapshot(snapshot: ClustererSnapshot, options: ClustererOptions = {}): Clusterer {
     const clusterer = new Clusterer(options);
     for (const part of snapshot.partitions) {
       clusterer.registry.restore(part.partition, { nextClusterId: part.nextClusterId, clusters: part.clusters });
-      for (const [clusterId, id] of part.templateIds) clusterer.bind(part.partition, clusterId, id);
+      // Snapshots saved before evictions were reported hold bindings for evicted clusters.
+      const live = new Set(part.clusters.map((c) => c.clusterId));
+      for (const [clusterId, id] of part.templateIds) {
+        if (live.has(clusterId)) clusterer.bind(part.partition, clusterId, id);
+      }
     }
     return clusterer;
   }
 
   cluster({ partition, text }: ClusterInput): ClusterResult {
-    const signature = extractSignature(partition, text);
+    const signature = extractSignature(partition, text, this.anchors);
     const { maskedSignature, extractedParams } = applyMasks(partition, signature.signatureLine, this.masks);
-    const { cluster } = this.registry.getTree(partition).insert(tokenize(maskedSignature));
+    const { cluster, evicted } = this.registry.getTree(partition).insert(tokenize(maskedSignature));
 
     const bound = this.clusterTemplateIds.get(partition)?.get(cluster.clusterId);
     const id = bound ?? computeTemplateId(partition, maskedSignature);
-    const isNewTemplate = !this.knownTemplateIds.has(id);
+    const isNewTemplate = !this.boundTemplateIds.has(id);
     if (bound === undefined) this.bind(partition, cluster.clusterId, id);
+    for (const clusterId of evicted) this.unbind(partition, clusterId);
     return { templateId: id, partition, maskedSignature, extractedParams, signature, isNewTemplate };
   }
 
@@ -88,7 +103,7 @@ export class Clusterer {
   }
 
   get templateCount(): number {
-    return this.knownTemplateIds.size;
+    return this.boundTemplateIds.size;
   }
 
   /** True once any partition is at its cluster cap; clustering is no longer order-independent. */
@@ -103,6 +118,16 @@ export class Clusterer {
       this.clusterTemplateIds.set(partition, byCluster);
     }
     byCluster.set(clusterId, id);
-    this.knownTemplateIds.add(id);
+    this.boundTemplateIds.set(id, (this.boundTemplateIds.get(id) ?? 0) + 1);
+  }
+
+  private unbind(partition: string, clusterId: number): void {
+    const byCluster = this.clusterTemplateIds.get(partition);
+    const id = byCluster?.get(clusterId);
+    if (!byCluster || id === undefined) return;
+    byCluster.delete(clusterId);
+    const remaining = (this.boundTemplateIds.get(id) ?? 1) - 1;
+    if (remaining > 0) this.boundTemplateIds.set(id, remaining);
+    else this.boundTemplateIds.delete(id);
   }
 }

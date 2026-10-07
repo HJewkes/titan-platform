@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { PY_FUNCTION_TYPES, TS_FUNCTION_TYPES } from "./node-kinds.js";
 
 /**
  * Cognitive complexity per Sonarsource ("Cognitive Complexity: A new way of
@@ -11,8 +12,19 @@ import type { Node } from "web-tree-sitter";
  * Returns the score for a function body. Caller drives the per-function loop.
  */
 export function cognitiveComplexityOf(body: Node, language: string): number {
+  return cognitiveSplitOf(body, language).total;
+}
+
+/**
+ * Splits the cognitive score into the share charged inside JSX (C-97 S2): an
+ * increment, nesting bonus included, counts as markup once the walk has entered
+ * a `jsx_expression` (`{a && <X/>}`, `onClick={() => ...}`). Hook callbacks
+ * outside JSX stay logic. `total` equals `cognitiveComplexityOf`; Python has
+ * no JSX, so its markup is always 0.
+ */
+export function cognitiveSplitOf(body: Node, language: string): { total: number; markup: number } {
   const handler = language === "python" ? PY_HANDLER : TS_HANDLER;
-  return scoreNode(body, 0, handler);
+  return scoreNode(body, 0, handler, false);
 }
 
 interface LanguageHandler {
@@ -55,9 +67,7 @@ const TS_NESTING = new Set([
   "do_statement",
   "switch_statement",
   "catch_clause",
-  "function_declaration",
-  "method_definition",
-  "arrow_function",
+  ...TS_FUNCTION_TYPES,
 ]);
 
 const PY_NESTING = new Set([
@@ -65,7 +75,7 @@ const PY_NESTING = new Set([
   "for_statement",
   "while_statement",
   "except_clause",
-  "function_definition",
+  ...PY_FUNCTION_TYPES,
   "lambda",
 ]);
 
@@ -138,20 +148,28 @@ function isElseIf(node: Node): boolean {
   return !!parent && parent.type === "else_clause";
 }
 
+type CognitiveSplit = ReturnType<typeof cognitiveSplitOf>;
+
 function scoreNode(
   node: Node,
   nesting: number,
   handler: LanguageHandler,
-): number {
+  inMarkup: boolean,
+): CognitiveSplit {
   const elseIf = isElseIf(node);
   const structural = elseIf ? 0 : handler.structuralIncrement(node, nesting);
   const flat = handler.flatIncrement(node);
   const childNesting =
     !elseIf && handler.isNesting(node) ? nesting + 1 : nesting;
+  const markup = inMarkup || node.type === "jsx_expression";
 
-  let score = structural + flat;
+  const own = structural + flat;
+  const score = { total: own, markup: markup ? own : 0 };
   for (const child of node.namedChildren) {
-    if (child) score += scoreNode(child, childNesting, handler);
+    if (!child) continue;
+    const sub = scoreNode(child, childNesting, handler, markup);
+    score.total += sub.total;
+    score.markup += sub.markup;
   }
   return score;
 }

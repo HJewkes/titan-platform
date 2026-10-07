@@ -5,6 +5,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
+import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
@@ -12,10 +13,13 @@ import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVet
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, type OwnerBrief } from "./review-schemas.js";
 import type { Presence } from "./presence.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
+import { dispatchedNoVerdictCause } from "./depth-floor.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
-import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
+import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
+import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
+import type { ReviewerFacts } from "./reviewer-roles.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
@@ -29,8 +33,10 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: REVIEW_STEP, kind: "dispatch" },
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
+  { id: CORRECT_VERDICT_STEP, kind: "dispatch" },
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
   { id: CARRY_STEP, kind: "dispatch" },
+  ...PUBLISH_REVIEW_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -40,7 +46,7 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
-export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy } from "./review-wait.js";
+export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 
 export interface ReviewTarget {
@@ -67,16 +73,11 @@ export interface ReviewerAgent {
   lastWrittenAt?: number;
 }
 
-/** The port throws this when the broker cannot be reached: nothing was asked of it, so asking again is safe. */
-export class ReviewerBrokerDown extends Error {
-  override readonly name = "ReviewerBrokerDown";
-}
-
 /** How Shepherd starts a reviewer; a throw from `spawn` or `resume` other than `ReviewerBrokerDown` or `ReviewerBrokerBusy` is a refusal. */
 export interface ReviewerDispatch {
   roster(): Promise<readonly ReviewerAgent[]>;
-  /** `target` names the repo whose checkout the reviewer starts in. */
-  spawn(name: string, brief: string, target: ReviewTarget): Promise<void>;
+  /** `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. */
+  spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts): Promise<void>;
   resume(name: string, brief: string): Promise<void>;
 }
 
@@ -107,6 +108,8 @@ export interface ReviewerMessage {
   writtenAt: number;
   text: string;
   locator: SourceTextLocator;
+  /** Investigative tool calls the session made before this message; absent means the reader could not count, and no floor applies. */
+  investigativeCalls?: number;
 }
 
 /** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
@@ -135,7 +138,7 @@ const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), 
 /** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody. */
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional() });
 /** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. */
-const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema, fixFirsts: z.number().int().positive().optional(), ownerBrief: z.boolean().optional() });
+const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema, runId: z.string().min(1).optional(), fixFirsts: z.number().int().positive().optional(), ownerBrief: z.boolean().optional() });
 
 type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
 const takeovers: Parents = (agent) => [agent.predecessor];
@@ -195,25 +198,12 @@ function chooseReviewer(target: ReviewTarget, registration: Registration | undef
 
 type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
 
-/** Waits out a broker that is down; any other failure is the caller's to handle. */
-async function whileBrokerDown<T>(timing: Timing, signal: AbortSignal, ask: () => Promise<T>): Promise<T> {
-  for (;;) {
-    signal.throwIfAborted();
-    try {
-      return await ask();
-    } catch (error) {
-      if (!(error instanceof ReviewerBrokerDown)) throw error;
-    }
-    await timing.sleep(timing.pollMs, signal);
-  }
-}
-
 /** Spawns or resumes the intent's reviewer, waiting out a broker that is down or busy; the watch row names a busy wait while it lasts, and `waits` keeps each one. */
-async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<void> {
-  const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target));
+async function startReviewer(dispatch: ReviewerDispatch, intent: ReviewIntent, target: ReviewTarget, facts: ReviewerFacts, brief: string, timing: BusyTiming & Timing, signal: AbortSignal, waits: string[]): Promise<void> {
+  const ask = () => (intent.mode === "resume" ? dispatch.resume(intent.reviewer, brief) : dispatch.spawn(intent.reviewer, brief, target, facts));
   const note = (text: string) => {
     waits.push(text);
-    noteReviewWait(target.repo, target.pr, `waiting for the broker to start reviewer ${intent.reviewer}: ${text}`);
+    noteReviewWait(target.repo, target.pr, `waiting for reviewer admission (the broker has not started ${intent.reviewer}): ${text}`);
   };
   try {
     await whileBrokerBusy(timing, signal, note, () => whileBrokerDown(timing, signal, ask));
@@ -283,8 +273,14 @@ const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (dep
   return { kind: "intent", head: input.head, ...choice, at: deps.now() };
 };
 
+/** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
+function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerFacts {
+  const read = runId === undefined ? { unread: "no run id" } : registeredKind(deps.store, runId);
+  return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
+}
+
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
-const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs }, { intent, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
+const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs }, { intent, runId, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
@@ -292,12 +288,18 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const waits: string[] = [];
   const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
   if (asking) {
-    const refused = await startReviewer(dispatch, intent, target, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
+    const refused = await startReviewer(dispatch, intent, target, reviewerFacts(deps, runId), asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
   const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
   if (!started) return notStartedInTime(intent, rosterError);
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
+};
+
+/** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review. */
+const correctReviewer: BrokerStepBody<CorrectVerdictInput, CorrectedResult> = (deps, { dispatch, sessionStartTimeoutMs, busyWaitMs }, input, signal, repeat) => {
+  const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
+  return correctVerdict(dispatch, input, timing, signal, repeat);
 };
 
 /** `codeRoute` for a body that must know it ran before: a first run is attempt 0, and only the recovery of an interrupted step raises it. */
@@ -321,8 +323,10 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
     codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run)),
     codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal))),
+    repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) })),
     carryRoute(deps.now, wiring?.carry),
+    publishReviewRoute(deps),
   ];
 };
 
@@ -335,9 +339,11 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
 }
 
-/** A MERGE verdict at one head, carrying the facts and record collected there once; a replay reuses the step's output. */
+/** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
-  const request: MergeEvidenceInput = { ...input, runId: ctx.runId };
+  await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead }) });
+  const { visualPaths } = effectivePolicy(ctx);
+  const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }) };
   const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
   return { kind: "MERGE", headSha: input.head, evidence };
 }
@@ -356,21 +362,26 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (intent.kind !== "intent") return { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(effectivePolicy(ctx).merge === "owner-gate" && { ownerBrief: true }) }, Dispatched);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(effectivePolicy(ctx).merge === "owner-gate" && { ownerBrief: true }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
   return takeVerdict(ctx, target, awaiting, dispatchedReviewer);
 };
 
+type ExternalAwaiting = ReviewTarget & { external: string };
+
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
- * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate.
+ * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate, and one whose
+ * final message was malformed gets one correction turn.
  */
-async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: object, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
+async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  const awaited = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? "timeout" : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
+  const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
+  const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
+  const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
+  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? dispatchedNoVerdictCause(awaited.reason) : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "" };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });

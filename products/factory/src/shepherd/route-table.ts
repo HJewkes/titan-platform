@@ -24,7 +24,8 @@ type Table = Readonly<Record<RunState, Readonly<Record<MergeableState, Row>>>>;
 
 /** A state GitHub will merge through; `blocked` is here because merge facts judge a review-only block. */
 const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review" };
-const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "update-branch" };
+/** A behind head whose reviewer never started still needs its review: `update-branch` would go on to the merge decision with no review at all. */
+const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review" };
 const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer" };
 const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle" };
 /** A draft is no merge candidate: the run ends without a gate, and registering the PR again restarts it. */
@@ -58,6 +59,7 @@ export const MAX_REPAIRS = 10;
 
 /** The only reasons Shepherd opens approve-merge; the gate's prompt names one. */
 export const ESCALATIONS = {
+  /** The fixer already had the conflict files and its head still conflicts, so a second wake would likely repeat it; by design (TP-1753). */
   conflict: "a merge conflict survived one fixer attempt",
   "policy-denial": "the authority policy did not allow an automated merge",
   "failed-rounds": `${MAX_FAILED_ROUNDS} review rounds failed at this task`,
@@ -100,10 +102,13 @@ export function escalationReason(escalation: Escalation, detail: string): string
   return `${ESCALATIONS[escalation]}: ${detail}`;
 }
 
-/** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled. */
+/** How a finished post-merge main CI read is classified; `cancelled` means every failed run was cancelled and no later run of its name superseded it. */
 export const MAIN_CI_READS = ["green", "red", "cancelled", "cancelled-superseded"] as const;
 export type MainCiRead = (typeof MAIN_CI_READS)[number];
-export type MainCiRoute = "done" | "main-red" | "read-newer-run";
+export type MainCiRoute = "done" | "main-red" | "read-newer-run" | "wait";
 
-/** A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does. */
-export const MAIN_CI_ROUTES = { green: "done", red: "main-red", cancelled: "main-red", "cancelled-superseded": "read-newer-run" } as const satisfies Readonly<Record<MainCiRead, MainCiRoute>>;
+/**
+ * A run that concurrency cancelled because a newer main push superseded it says nothing about main; the newer run does.
+ * A cancel with no successor is not red either: the read waits for a later run of its name, or its deadline.
+ */
+export const MAIN_CI_ROUTES = { green: "done", red: "main-red", cancelled: "wait", "cancelled-superseded": "read-newer-run" } as const satisfies Readonly<Record<MainCiRead, MainCiRoute>>;

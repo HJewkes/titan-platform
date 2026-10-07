@@ -21,6 +21,11 @@ listNodes(store, snapshotId); // file / module / external nodes, symbols on requ
 listEdges(store, snapshotId); // imports / re-exports, references and calls on request
 ```
 
+`IndexResult.warnings` is present only when git was found but its history log overflowed or
+failed, so the snapshot has no (or partial) history metrics. It is absent when history loaded
+and outside git. `assembleIndexerMetrics` returns `{ metrics, warnings }`;
+`buildIndexerMetrics` keeps returning the metrics alone.
+
 ## What was extracted, and what was not
 
 In: the parser (tree-sitter WASM for TypeScript, TSX and Python, since moved to
@@ -83,11 +88,39 @@ index version 0.14.0:
   bare name, so same-named methods in one file collapsed into one node (TP-182).
 - An **external** id is `npm:<package>` (scope-aware) or the `node:` builtin verbatim.
 
-`NodeKind`, `EdgeKind`, and the `role` vocabulary are unchanged. So is the property the DAG
+`NodeKind` and `EdgeKind` are unchanged, and the `role` vocabulary only grew (see
+[File roles](#file-roles)). So is the property the DAG
 check rests on: an import of a workspace package by its published name resolves to that
 package's source file, not to an `npm:` external, by remapping the `dist/*.d.ts` entry
 ts-morph resolves back onto `src/`. That remap needs the target package built, which is why
 `pnpm build` precedes both `pnpm test` and `dag:check`.
+
+## File roles
+
+Every file and module node carries a `role`, one of `ALL_ROLES`: `test`, `fixture`, `story`,
+`lab`, `barrel`, `types`, `config`, `script`, `entry`, `generated` and `source`. The first
+match wins, in this order:
+
+1. `generated`: a `.gitattributes linguist-generated` path or a `*.gen.*`/`generated/` path.
+2. A configured glob from `.codewatch/roles.json` (below).
+3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
+   so a story under `fixtures/` is still a story.
+4. `fixture` (a `fixtures/` path or a `*.fixture.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+
+`UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
+`config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
+
+`lab` has no built-in rule, since a `lab/` directory name is too generic to guess. A repo
+assigns it, or any other role, with `.codewatch/roles.json`, which maps roles to
+`.gitattributes`-style globs matched against file ids:
+
+```json
+{ "lab": ["packages/ui/src/lab/**"] }
+```
+
+`loadRoleGlobs(repoRoot)` reads that file (an absent file configures nothing, an unknown role
+throws), and `computeRoleHints` passes the result to `annotateRoles` as `roleGlobs`. `story`,
+`lab` and roles.json arrived in index version 0.21.0.
 
 ## Identity across renames
 
@@ -227,12 +260,22 @@ the file is unreadable.
 
 ## Checks and diffs
 
-The rules engine turns a snapshot into pass/fail against a `check.json`. Seven rule types:
+The rules engine turns a snapshot into pass/fail against a `check.json`. Eight rule types:
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
-`layered-deps`, and `no-internal-only-barrels`. Severity defaults to `error`; only new errors
+`layered-deps`, `no-internal-only-barrels`, and `no-import-cycles`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
 destination file has an excluded role. `forbid-import` takes `except`: destination patterns
 that `to` matches but the rule allows, such as one sanctioned entry file.
+
+`no-import-cycles` reports each strongly connected component of the file import graph once,
+as one violation whose `members` are the cycle's files, sorted; a file importing itself is a
+cycle of one. `import type` and `export type … from` edges are left out unless
+`includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
+`verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
+`excludeRoles` take files out of the graph.
+The baseline key is the rule id plus every member, so it does not depend on edge order. Against
+a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
+split cycle passes, while a cycle that gains a file or merges two known cycles is new.
 
 Validation rejects a rule whose `severity` is anything but `error` or `warning`, whose `kind`
 is not a node kind (`package`, `module`, `file`, `symbol`, `external`), or whose `exclude` is
@@ -439,7 +482,9 @@ three are deterministic projections of rows the caller has already read; no LLM 
 - `buildContextDossier(input)` shapes one file or symbol into a `ContextDossier`: metrics,
   churn, centrality, ownership, consumers split into source and test files, coupling
   partners, and blast radius. A file target lists its symbols, exports first, each with an
-  `importance` that splits the file's centrality by utilization share. The record carries
+  `importance` that splits the file's centrality by utilization share. Symbol lines, the
+  symbol target and blast-radius entries carry an optional `loc` read from the `symbol_loc`
+  metric, which `collectNodeMetrics` folds onto the symbol's `loc`. The record carries
   `schemaVersion` (`CONTEXT_SCHEMA_VERSION`) so a store can invalidate old records.
 - `renderContextMarkdown(dossier)` renders the same facts as markdown.
 - `buildContextBundle(input)` wraps a dossier with the source text of the target's span (read
@@ -456,7 +501,8 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
 
 - `topUnusedExports(symbolNodes, publicApi, ctx, limit)` lists exported symbols whose
   `utilization` is 0 or absent, ranked internal first, then by `symbol_cognitive`
-  descending. `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
+  descending, each row carrying the export's own `loc` (`symbol_loc`, 0 when unmeasured).
+  `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
   node re-exports one hop away, whose exports may still have npm consumers.
 - `topDeadModules(nodes, edges, ctx, limit)` lists files that a forward walk over `imports`
   and `re-exports` edges never reaches, ranked by `loc`. The walk starts from files with the
@@ -475,7 +521,8 @@ files that `keepNode` rejects:
 - `topGrowthRisks(ctx, limit)` lists files with a structural scaling smell: loop nesting of
   depth 2 or more, `recursive_functions`, or `search_in_loop`. It is a heuristic, not a Big-O
   bound. Ranked by `loop_depth`, then smell count.
-- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`. Files with no
+- `topUntestedRisks(ctx, limit)` ranks `hotspot × (1 − coverage_pct / 100)`, where the hotspot
+  score is churn × complexity, after Adam Tornhill and CodeScene. Files with no
   `coverage_pct` metric or full coverage are left out, so a repo with no coverage overlay
   gets an empty list.
 
@@ -573,7 +620,7 @@ records out, no node ids or snapshots.
 ```ts
 import { computeChangeCoupling, couplingFor, loadChurnEntries } from "@titan-design/code-graph/history";
 
-const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git
+const entries = loadChurnEntries({ repoRoot: ".", windowDays: 90 }) ?? []; // null outside git; throws if the log overflows
 const { pairs, skippedLargeCommits } = computeChangeCoupling(entries);
 couplingFor(pairs, "packages/code-graph/src/indexer.ts"); // partners by co-edit count
 ```
@@ -585,12 +632,15 @@ plus `top_author_share_{w}` for the primary window. Windows default to 30, 90 an
 plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the defaults and
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
-metrics.
+metrics. A git log that overflows its buffer (64 MiB for churn, 128 MiB for first-seen) or makes
+git fail is not "outside git": `loadChurnEntries` and `loadFileFirstSeen` throw a `GitHistoryError`,
+and `loadHistoryMetrics` returns it as `LoadedHistory.warnings`. `loadChurnResult` and
+`loadFirstSeenResult` return `{ ok: false, reason: "not-git" | "overflow" | "git-error", detail }`.
 
 The adapter is exported from the package root, not from `./history`, because it speaks
 `GraphMetric` and the seam below does not. A product that indexes on its own terms calls
 `loadHistoryMetrics(nodes, idRoot, options)` for both the metric rows and the primary-window
-churn entries they were built from (`LoadedHistory`), with `HistoryMetricsOptions`,
+churn entries they were built from (`LoadedHistory`, whose `warnings` say why history is missing or partial), with `HistoryMetricsOptions`,
 `DEFAULT_CHURN_WINDOWS` (`[30, 90, 180]`), `resolveChurnWindows`, `windowSuffix` (`30d`,
 `lifetime`) and `computeRecencyWindows` alongside it. Node ids are the history engine's
 repo-relative paths, so both must be rooted at the same `idRoot`.

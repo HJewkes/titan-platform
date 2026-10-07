@@ -86,7 +86,6 @@ export interface LiveSource extends ReadSource {
   cachedSnapshots(): number[];
 }
 
-/** A `ReadSource` over a code-graph store; snapshots are immutable, so models are cached by id alone. */
 const NO_RULES: readonly CheckRule[] = [];
 
 interface RuleTrackedModels {
@@ -132,6 +131,7 @@ export function createLiveSource(deps: CodeReadDeps): LiveSource {
       return models.getOrLoad(snapshotId, () => loadReadModel(openOnce(), snapshotId, { rules: current, read }));
     },
     ...(read ? { readSource: read } : {}),
+    repoRoot: root,
     cachedSnapshots: () => models.keys(),
   };
 }

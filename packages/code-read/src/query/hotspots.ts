@@ -66,6 +66,7 @@ function symbolRows(rows: Pick<ReportContextInput, "nodes" | "metrics">, ctx: Re
     nodeId: b.symbolId,
     churn: b.churn,
     complexity: b.complexity,
+    loc: ctx.metricsByName.get("symbol_loc")?.get(b.symbolId) ?? 0,
     recency: 1,
     score: b.score,
     utilization: b.utilization,
@@ -82,7 +83,7 @@ export function reportContext(model: ReadModel, window: string): ReportContext {
   return buildReportContext({ ...inputsFor(model), excluders: [], excludedRoles: NO_ROLES, windowDays: windowDays(window) });
 }
 
-/** Every node with a non-zero score at the grain, highest first, ties by id. */
+/** Every file with non-zero churn and complexity, or symbol with a positive blast score (a rounded file score can still be 0), highest first, ties by id. */
 export function scoredRows(model: ReadModel, args: Pick<ListArgs, "grain" | "window">): Scored[] {
   const ctx = reportContext(model, args.window);
   const scored: Scored[] = args.grain === "file" ? topHotspots(ctx, Infinity) : symbolRows(inputsFor(model), ctx);

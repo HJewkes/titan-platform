@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAndClassify, parseOrFail } from "./failures.js";
 import { isRuffSyntaxError, parseRuffJsonOutput } from "../formatters/unified.js";
-import type { CheckDiagnostic, ToolFailure } from "../orchestrator/types.js";
+import type { ToolFailure } from "../orchestrator/types.js";
+import type { ParsedOutput, ToolOutput } from "./python-tool.js";
 import type { RunnerOptions, RunnerResult } from "./types.js";
 import type { RuffConfig } from "../generators/ruff.js";
 
@@ -83,12 +84,33 @@ function unreadFiles(stderr: string): ToolFailure[] {
   return [...stderr.matchAll(/^warning: Failed to lint (.+?): (.+)$/gm)].map((m) => notChecked(m[1]!, m[2]!));
 }
 
-function readRuffOutput(stdout: string, stderr: string): { diagnostics: CheckDiagnostic[]; failures: ToolFailure[] } {
-  const parsed = parseOrFail("ruff", () => ({
+/** Throws on output that is not ruff's JSON; callers wrap it in parseOrFail. */
+export function parseRuffOutput({ stdout, stderr }: ToolOutput): ParsedOutput {
+  return {
     diagnostics: parseRuffJsonOutput(stdout),
     failures: [...unparsedFiles(stdout), ...unreadFiles(stderr)],
-  }));
+  };
+}
+
+function readRuffOutput(output: ToolOutput): ParsedOutput {
+  const parsed = parseOrFail("ruff", () => parseRuffOutput(output));
   return parsed.ok ? parsed.value : { diagnostics: [], failures: [parsed.failure] };
+}
+
+export function ruffCheckArgs(configPath: string, files: string[], fix?: boolean): string[] {
+  return ["check", "--config", configPath, "--output-format", "json", ...(fix ? ["--fix"] : []), ...files];
+}
+
+/** Writes `config` to a temporary ruff.toml for the length of `run`. */
+export async function withRuffConfig<T>(config: RuffConfig, run: (configPath: string) => Promise<T>): Promise<T> {
+  const tempDir = mkdtempSync(join(tmpdir(), "style-checker-ruff-"));
+  const configPath = join(tempDir, "ruff.toml");
+  try {
+    writeFileSync(configPath, toToml(config), "utf-8");
+    return await run(configPath);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 export async function runRuff(
@@ -96,26 +118,10 @@ export async function runRuff(
   files: string[],
   options?: RunnerOptions,
 ): Promise<RunnerResult> {
-  const tempDir = mkdtempSync(join(tmpdir(), "codewatch-ruff-"));
-  const configPath = join(tempDir, "ruff.toml");
-
-  try {
-    writeFileSync(configPath, toToml(config), "utf-8");
-
-    const args = [
-      "check",
-      "--config",
-      configPath,
-      "--output-format",
-      "json",
-      ...(options?.fix ? ["--fix"] : []),
-      ...files,
-    ];
-
+  return withRuffConfig(config, async (configPath) => {
+    const args = ruffCheckArgs(configPath, files, options?.fix);
     const run = await runAndClassify("ruff", "ruff", args, { cwd: options?.cwd, timeout: options?.timeout });
     if (!run.ok) return { diagnostics: [], exitCode: run.exitCode, failures: [run.failure], skippedRules: [] };
-    return { ...readRuffOutput(run.stdout, run.stderr), exitCode: run.exitCode, skippedRules: [] };
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+    return { ...readRuffOutput(run), exitCode: run.exitCode, skippedRules: [] };
+  });
 }

@@ -27,9 +27,13 @@ estimated thinking share), `phase`, `human_edit`, `file_checkpoint`, `pr`, `pr_m
 `pr_create`, `branch`, `file`, `task`, `subagent`, `subagent_transcript`, `artifact`, and
 `edge` (`session:… touched file:…` and friends; vocabulary in `RELATIONS`).
 
-Every rule in `LineReader` is stateless across lines. That is what makes reading
-incrementally from a watermark and rebuilding the whole file produce the same events, so
-an index can resume without ever re-deriving history.
+Every rule in `LineReader` is stateless across lines except the last-seen timestamp: a
+record such as `cost-state` carries none of its own and takes the enclosing line's. A
+caller resuming mid-file with `LineReader` directly must pass `initialTs`, the last
+timestamp before its start offset. `readTranscriptEvents` does this for you, recovering it
+with a backward lookback from the start offset. With that, reading incrementally from a
+watermark and rebuilding the whole file produce the same events, so an index can resume
+without ever re-deriving history.
 
 ## Verdict block
 
@@ -39,11 +43,19 @@ an index can resume without ever re-deriving history.
 any short, upper-case or over-long head are refused. Rules and reasons are in
 `site/reference/session-read.md`.
 
+## Review verdicts and assigned tasks
+
+`parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
+verdicts. `assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned
+session was given, and `orientationEnd(brief)` returns where the assignment starts in the
+brief. Signatures and examples are in the
+[reference page](https://hjewkes.github.io/titan-platform/reference/session-read.html).
+
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 5) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -61,11 +73,13 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 
 - `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
 - `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
-- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `commit`, `push` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result.
 - `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
-- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+- `agent_spawn` is an `Agent` or `Task` call, or an agent-chat `agent_spawn`.
+- `file_read` is a `Read` call and `file_write` is a write-tool call (including notebook edits). Both carry the repo-relative path as `detail`; build trees matched by `IGNORED_PATH` emit nothing.
 - `command_heads` is the program and up to two subcommand words of each simple command in a Bash call, joined with `;` (`gh pr checks;git log`), plus `>dir/name` (the last parent directory and the basename) for each file it writes; a bare filename stays `>name`. `cd` is dropped, and `builtin`, `command`, `timeout N`, `nice`, `nohup` and `env A=1` are looked through to the program they run.
   Two program shapes keep a path operand's signal:
   - `gh api` gives the HTTP method (from `-X`/`--method`; otherwise POST when `-f`, `-F` or `--input` adds a body, else GET) and the endpoint's resource words, with owner, repo and item ids dropped: `gh api -X PUT repos/o/r/pulls/5/merge` gives `gh api PUT pulls/merge`. Flag values such as `-f`, `-H` and `--jq` never enter the head.
@@ -93,6 +107,10 @@ with the matching upserts.
 sidechains. Pass `subagentId` when reading a sidechain: its lines carry the parent's
 `sessionId`, and taking that at face value would file the child's work under the parent.
 The reader gives the child its own identity and emits the `spawned` edge instead.
+
+A missing projects or subagents directory, or a stray file beside the project
+directories, reads as no transcripts. Any other I/O error, such as `EACCES` on an
+unreadable directory, rejects the discovery call rather than returning a short corpus.
 
 ## Attribution
 
@@ -127,7 +145,10 @@ Legacy refs stay opt-in. `sessionRef(id)` is unchanged, and
 ## Codex rollouts
 
 `discoverCodexSources({ codexHome, namespace })` scans both `sessions/` and
-`archived_sessions/`. It reads conversation identity from `session_meta`; a filename stem
+`archived_sessions/`. `codexHome` defaults to `codexHome()`: `$CODEX_HOME` when it is set
+and non-empty, as the Codex CLI resolves it, otherwise `~/.codex`. A missing directory
+reads as no sources and a file whose first line is not JSON is skipped; any other I/O
+error, such as an unreadable rollout directory, rejects. It reads conversation identity from `session_meta`; a filename stem
 never substitutes for the native thread ID. Source IDs include namespace, thread, and
 rollout filename, so moving an identical rollout between active and archived storage keeps
 its identity while distinct files for one thread remain separate. Divergent files that
@@ -142,7 +163,10 @@ usage is emitted as idempotent deltas, while turn/thread totals remain ordered s
 reset epochs.
 
 `readCodexText(locator, { sources })` resolves moved sources by stable source ID and checks
-the exact source-line hash before returning the selected value. `readSessionText({ path,
+the exact source-line hash before returning the selected value. It returns `null` only for
+a stale locator: the file is gone or shorter than the span, or the bytes there no longer
+match the hash, decode as UTF-8 or parse as JSON. Any other I/O error rejects, and
+`readSessionSourceText` behaves the same for Claude locators. `readSessionText({ path,
 byteOffset, byteLength, field })` provides the corresponding legacy Claude field projection
 for miner consumers.
 

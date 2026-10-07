@@ -1,7 +1,8 @@
 import { z } from "zod";
 import type { ButtonRow, MessageRef, SendError } from "./contract.js";
 import type { TelegramConfig } from "./telegram.js";
-import { callBotApi, describeCause, methodUrl, readEnvelope, redactToken } from "./telegram.js";
+import { describeCause, isAbortError } from "./send-failure.js";
+import { callBotApi, methodUrl, readEnvelope, redactToken } from "./telegram.js";
 
 /** Only buttons with `callback_data` are read back: a URL or Web App button cannot be answered. */
 const inlineKeyboard = z.object({
@@ -94,9 +95,6 @@ export function isAllowedChat(
   return allowed.some((entry) => String(entry) === String(chatId));
 }
 
-function isAbort(cause: unknown): boolean {
-  return cause instanceof Error && cause.name.endsWith("AbortError");
-}
 
 /** The token is in the URL, and a thrown fetch quotes the URL it tried. */
 async function fetchUpdates(
@@ -113,7 +111,7 @@ async function fetchUpdates(
       signal,
     });
   } catch (cause) {
-    if (isAbort(cause)) throw cause;
+    if (isAbortError(cause)) throw cause;
     throw new Error(redactToken(describeCause(cause), config.token));
   }
 }
@@ -209,11 +207,17 @@ export function readInbound(raw: unknown): InboundReadResult {
   return inbound ? { ok: true, inbound } : { ok: false, reason: "not-text" };
 }
 
-/** The next offset acknowledges everything in the batch, read or skipped. */
+const updateIdOnly = z.object({ update_id: z.number().int() });
+
+/**
+ * The next offset acknowledges everything in the batch, read or skipped. It reads
+ * only `update_id`, so a shape the full schema rejects still advances the offset
+ * instead of being served again on every poll.
+ */
 function nextOffset(batch: readonly unknown[], current: number | undefined): number | undefined {
   let highest: number | undefined;
   for (const raw of batch) {
-    const parsed = telegramUpdateEvent.safeParse(raw);
+    const parsed = updateIdOnly.safeParse(raw);
     if (!parsed.success) continue;
     if (highest === undefined || parsed.data.update_id > highest) {
       highest = parsed.data.update_id;
@@ -238,7 +242,7 @@ export async function* pollUpdates(
     try {
       batch = await getUpdates(config, { offset, timeout: timeoutSeconds }, signal);
     } catch (cause) {
-      if (isAbort(cause) || signal?.aborted) return;
+      if (isAbortError(cause) || signal?.aborted) return;
       throw cause;
     }
     offset = nextOffset(batch, offset);

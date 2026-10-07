@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-graph",
-  "version": "0.13.0",
+  "version": "0.13.2",
   "description": "Fold session events into the activity graph on store-sqlite",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,7 +36,6 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@titan-design/cluster": "workspace:^",
     "@titan-design/locator": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",

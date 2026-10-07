@@ -32,7 +32,7 @@ function renderSymbol(s: SymbolDossier): string[] {
     `- **exported**: ${s.exported}`,
     `- **signature**: ${s.signature ? `\`${s.signature}\`` : "— (not indexed)"}`,
     `- **purpose**: ${s.purpose ?? "—"}`,
-    `- **complexity**: cognitive ${s.complexity.cognitive ?? "—"}, cyclomatic ${s.complexity.cyclomatic ?? "—"}`,
+    `- **complexity**: cognitive ${s.complexity.cognitive ?? "—"}, cyclomatic ${s.complexity.cyclomatic ?? "—"} · **loc** ${s.loc ?? "—"}`,
     `- **utilization**: ${s.utilization}`,
     `- **blast radius**: ${round(s.blastRadius)}`,
     ...renderConsumers(s.consumers),
@@ -66,16 +66,20 @@ function renderFile(f: FileDossier): string[] {
       const tag = s.exported ? "export" : "internal";
       const sig = s.signature ? ` \`${s.signature}\`` : "";
       const imp = s.importance !== undefined ? `, importance ${s.importance}` : "";
-      out.push(`- \`${s.name}\` (${tag})${sig} — util ${s.utilization}, cog ${s.cognitive ?? "—"}, consumers ${s.consumers}${imp}`);
+      out.push(`- \`${s.name}\` (${tag})${sig} — util ${s.utilization}, cog ${s.cognitive ?? "—"}, loc ${s.loc ?? "—"}, consumers ${s.consumers}${imp}`);
     }
     out.push("");
   }
-  if (f.blastRadius.length) {
-    out.push("### Blast radius (riskiest to touch)");
-    for (const b of f.blastRadius) out.push(`- \`${b.name}\` — score ${round(b.score)} (util ${b.utilization} × cog ${b.complexity} × churn ${b.churn})`);
-    out.push("");
-  }
+  out.push(...renderBlastRadius(f));
   return out;
+}
+
+function renderBlastRadius(f: FileDossier): string[] {
+  if (!f.blastRadius.length) return [];
+  const rows = f.blastRadius.map(
+    (b) => `- \`${b.name}\` — score ${round(b.score)} (util ${b.utilization} × cog ${b.complexity} × churn ${b.churn}; loc ${b.loc ?? "—"})`,
+  );
+  return ["### Blast radius (look here first)", ...rows, ""];
 }
 
 function section(title: string, items: readonly string[]): string[] {

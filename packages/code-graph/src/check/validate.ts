@@ -7,10 +7,11 @@ import type {
   MetricMinRule,
   MetricOutlierRule,
   MetricProductMaxRule,
+  NoImportCyclesRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./types.js";
-import type { NodeKind, NodeRole } from "../types.js";
+import { NODE_KINDS, NODE_ROLES, type NodeKind, type NodeRole } from "../types.js";
 
 export interface ValidateRulesOptions {
   /** Called with a human-readable message when a deprecated alias is healed. */
@@ -70,6 +71,8 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
       return assertLayeredDeps(r, warn);
     case "no-internal-only-barrels":
       return assertNoInternalOnlyBarrels(r);
+    case "no-import-cycles":
+      return assertNoImportCycles(r, warn);
     default:
       throw new Error(`rule[${index}] (${r.id}) unknown type "${r.type}"`);
   }
@@ -94,6 +97,20 @@ function assertNoInternalOnlyBarrels(
     packageRoots: r.packageRoots as string[],
     severity: parseSeverity(r),
     exclude: parseExclude(r),
+  };
+}
+
+function assertNoImportCycles(r: Record<string, unknown>, warn: Warn): NoImportCyclesRule {
+  if (r.includeTypeOnly !== undefined && typeof r.includeTypeOnly !== "boolean") {
+    throw new Error(`${r.id}: includeTypeOnly must be a boolean`);
+  }
+  return {
+    type: "no-import-cycles",
+    id: r.id as string,
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
+    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    includeTypeOnly: r.includeTypeOnly,
   };
 }
 
@@ -185,7 +202,7 @@ function assertMetricMin(r: Record<string, unknown>, warn: Warn): MetricMinRule 
   };
 }
 
-const NODE_KINDS: ReadonlySet<NodeKind> = new Set(["package", "module", "file", "symbol", "external"]);
+const KIND_SET: ReadonlySet<string> = new Set(NODE_KINDS);
 
 function assertMetricOutlier(r: Record<string, unknown>, warn: Warn): MetricOutlierRule {
   if (typeof r.metric !== "string") throw new Error(`${r.id}: metric must be a string`);
@@ -224,13 +241,13 @@ function assertForbidImport(r: Record<string, unknown>): ForbidImportRule {
     id: r.id as string,
     from: r.from,
     to: r.to,
-    except: parseStringList(r, "except"),
+    except: parseExcept(r),
     severity: parseSeverity(r),
   };
 }
 
 function isNodeKind(value: unknown): value is NodeKind {
-  return typeof value === "string" && NODE_KINDS.has(value as NodeKind);
+  return typeof value === "string" && KIND_SET.has(value);
 }
 
 function kindError(ruleId: unknown): Error {
@@ -256,6 +273,15 @@ function parseExclude(r: Record<string, unknown>): string[] | undefined {
   return parseStringList(r, "exclude");
 }
 
+/** An empty entry would match every destination and silently disable the rule. */
+function parseExcept(r: Record<string, unknown>): string[] | undefined {
+  const list = parseStringList(r, "except");
+  if (list?.some((e) => e === "")) {
+    throw new Error(`${r.id}: each except entry must be a non-empty string`);
+  }
+  return list;
+}
+
 function parseStringList(r: Record<string, unknown>, key: string): string[] | undefined {
   const value = r[key];
   if (value === undefined) return undefined;
@@ -265,15 +291,7 @@ function parseStringList(r: Record<string, unknown>, key: string): string[] | un
   return value;
 }
 
-const ROLE_VALUES: ReadonlySet<NodeRole> = new Set([
-  "test",
-  "fixture",
-  "barrel",
-  "types",
-  "config",
-  "entry",
-  "source",
-]);
+const ROLE_VALUES: ReadonlySet<string> = new Set(NODE_ROLES);
 
 function parseRoleArray(
   ruleId: string,
@@ -289,7 +307,7 @@ function parseRoleArray(
 
 /** Heal a deprecated role alias to canonical; throw only on genuinely-unknown. */
 function healRole(entry: unknown, ruleId: string, warn: Warn): NodeRole {
-  if (typeof entry === "string" && ROLE_VALUES.has(entry as NodeRole)) {
+  if (typeof entry === "string" && ROLE_VALUES.has(entry)) {
     return entry as NodeRole;
   }
   if (typeof entry === "string") {

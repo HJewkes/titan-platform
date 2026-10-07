@@ -1,5 +1,6 @@
 import type { BlueBubblesConfig } from "./bluebubbles.js";
 import { apiUrl } from "./bluebubbles.js";
+import { isAbortError } from "./send-failure.js";
 
 const INFO_PATH = "/api/v1/server/info";
 
@@ -66,7 +67,7 @@ function readInfo(body: unknown): Liveness {
 }
 
 function darkReason(cause: unknown): Liveness {
-  const aborted = cause instanceof Error && cause.name.endsWith("AbortError");
+  const aborted = isAbortError(cause);
   return { state: "dark", reason: aborted ? "timeout" : "unreachable" };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandCwd, commandHeads, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
+import { commandCwd, commandHeads, gitCommands,parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 
 describe("parseGitIntent", () => {
   it("captures a new branch with its start point, plus commit and push", () => {
@@ -23,6 +23,59 @@ describe("parseGitIntent", () => {
     expect(parseGitIntent("gh pr merge 42 --squash")?.mergedPr).toBe(42);
     expect(parseGitIntent("git branch -D old/thing")?.deletedBranch).toBe("old/thing");
     expect(parseGitIntent("ls -la")).toBeNull();
+  });
+
+  it("reads a commit whose heredoc message mentions git push as a commit only", () => {
+    const command = "git commit -m \"$(cat <<'EOF'\nthen git push origin feat/z\nEOF\n)\"";
+
+    const intent = parseGitIntent(command);
+
+    expect(intent).toMatchObject({ commit: true, push: false, setBranch: null, mergedPr: null });
+  });
+
+  it("finds no merge in an echoed gh pr merge", () => {
+    const intent = parseGitIntent('echo "gh pr merge 42"');
+
+    expect(intent).toMatchObject({ mergedPr: null, push: false });
+  });
+
+  it("finds no merge in a heredoc body written to a file", () => {
+    const intent = parseGitIntent("cat > f <<EOF\ngh pr merge 7\ngit push\nEOF");
+
+    expect(intent).toMatchObject({ mergedPr: null, push: false });
+  });
+
+  it("finds no branch or head in quoted prose, while the real command still counts", () => {
+    const command = 'gh pr create --title "t" --body "run git checkout -b oops then --head bad"';
+
+    const intent = parseGitIntent(command);
+
+    expect(intent).toMatchObject({ setBranch: null, branchBase: null, commit: false });
+  });
+
+  it("still reads a real push chained after a commit and a merge after a wrapper", () => {
+    expect(parseGitIntent('git commit -m "x" && git push')).toMatchObject({ commit: true, push: true });
+    expect(parseGitIntent("cd repo && timeout 60 gh pr merge 42 --squash")?.mergedPr).toBe(42);
+    expect(parseGitIntent("(git push origin feat/q)")?.push).toBe(true);
+  });
+
+  it("leaves a subshell closer out of every capture", () => {
+    expect(parseGitIntent("git push origin feat/q")?.setBranch).toBe("feat/q");
+    expect(parseGitIntent("(git push origin feat/q)")?.setBranch).toBe("feat/q");
+    expect(parseGitIntent("(git checkout -b feat/q)")?.setBranch).toBe("feat/q");
+    expect(parseGitIntent("(git switch -c feat/q main)")).toMatchObject({ setBranch: "feat/q", branchBase: "main" });
+    expect(parseGitIntent("(git checkout -b feat/q origin/main)")?.branchBase).toBe("main");
+    expect(parseGitIntent("(git push origin feat/q) && true")?.setBranch).toBe("feat/q");
+    expect(parseGitIntent("(git branch -d feat/q)")?.deletedBranch).toBe("feat/q");
+    expect(parseGitIntent("(gh pr merge 42)")?.mergedPr).toBe(42);
+    expect(parseGitIntent("(gh pr create --head feat/q)")?.setBranch).toBe("feat/q");
+    expect(parseGitIntent("(gh pr create --head feat/q --base main)")?.branchBase).toBe("main");
+  });
+
+  it("keeps parentheses that belong to a word", () => {
+    expect(gitCommands("(git push origin $(git branch --show-current))")).toEqual([
+      "git push origin $(git branch --show-current)",
+    ]);
   });
 });
 

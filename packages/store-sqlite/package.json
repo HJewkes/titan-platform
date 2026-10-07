@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/store-sqlite",
-  "version": "0.3.2",
-  "description": "SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations",
+  "version": "0.3.3",
+  "description": "SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -8,7 +8,8 @@ import { describe, expect, it, vi } from "vitest";
 import { bindAll } from "../workflows.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
-import { FreezeStore, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { SpawnDeferred } from "./spawn-gate.js";
 import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -45,7 +46,7 @@ function memoryFixers(spawned: Rig["spawned"]): FixerAgents {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12)]);
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
@@ -240,6 +241,19 @@ describe("sh-spawn-fixer", () => {
     expect(r.freezes.get(REPO)).toMatchObject({ episode: 2, fixer: null });
   });
 
+  it("retries a fixer spawn the spawn gate defers, and starts the fixer once the gate admits", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    const fixers = r.wiring.fixers!;
+    let deferrals = 1;
+    const gated: FixerAgents = { ...fixers, spawn: async (...args) => (deferrals-- > 0 ? Promise.reject(new SpawnDeferred("load5 40 is past the limit 28")) : fixers.spawn(...args)) };
+
+    const result = await spawnFixer(r.deps, { ...r.wiring, fixers: gated }, fixer, signal);
+
+    expect(result).toMatchObject({ fixer: fixerName(REPO, RED), detail: "spawned" });
+    expect(r.spawned).toHaveLength(1);
+  });
+
   it("spawns nothing when the policy grants no fixer", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
@@ -262,6 +276,14 @@ describe("sh-freeze", () => {
 
     expect([first.state, replay.state, second.state]).toEqual(["new", "new", "again"]);
   });
+
+  it("records on the freeze whether the red came only from cancelled runs", () => {
+    const r = rig();
+
+    freezeStep(r.wiring, red, true);
+
+    expect(r.freezes.get(REPO)).toMatchObject({ redSha: RED, cancelOnly: true });
+  });
 });
 
 describe("sh-unfreeze", () => {
@@ -272,6 +294,24 @@ describe("sh-unfreeze", () => {
 
     expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toMatchObject({ unfrozen: true });
     expect(r.freezes.isFrozen(REPO)).toBe(false);
+  });
+
+  it("unfreezes at the red sha itself when its red was only a cancel that a later run re-ran green", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED, true);
+    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 9, "2026-10-05T00:31:31Z")]);
+
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: RED })).toMatchObject({ unfrozen: true });
+    expect(r.freezes.isFrozen(REPO)).toBe(false);
+  });
+
+  it("stays frozen at the red sha when its red was a failure, even after a green re-run there", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "failure"), successRun("validate", 9, "2026-10-05T00:31:31Z")]);
+
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: RED })).toMatchObject({ unfrozen: false });
+    expect(r.freezes.isFrozen(REPO)).toBe(true);
   });
 
   it("stays frozen on a path-filtered green head where the red check did not run", async () => {

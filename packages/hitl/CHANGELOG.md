@@ -1,5 +1,25 @@
 # @titan-design/hitl
 
+## 0.7.0
+
+### Minor Changes
+
+- f2e4abf: Settle a gate with a conditional write, so a resolve, cancel or lazy expiry that loses a race to another store on the same file no longer overwrites the first answer. When the winner wrote the same answer (same status, payload and reason), the loser gets the settled gate back, so a retry still succeeds. A different answer throws `GateAlreadySettled` (or `GateExpired`).
+
+  Breaking for custom stores: `BaseGateStore.update` now returns a boolean. A subclass must write only while the stored row is still pending and return `false` when it was not.
+
+## 0.6.0
+
+### Minor Changes
+
+- 7fb6a9b: Add the `allowances` store option: a list of `{ resolverClass, stepId, payload }` answers that a non-owner class may give, each exact in class, gate step and payload, with a non-blank resolver id. It replaces the default class refusal for those gates only; the gate's rule and `authorize` still run after it, and a store with no allowances behaves as before.
+
+### Patch Changes
+
+- Updated dependencies [ea96b66]
+- Updated dependencies [f886302]
+  - @titan-design/store-sqlite@0.3.3
+
 ## 0.5.0
 
 ### Minor Changes

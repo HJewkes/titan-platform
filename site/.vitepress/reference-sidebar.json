@@ -124,12 +124,20 @@
         "link": "/reference/code-read"
       },
       {
+        "text": "coordinator",
+        "link": "/reference/coordinator"
+      },
+      {
         "text": "decider",
         "link": "/reference/decider"
       },
       {
         "text": "memory",
         "link": "/reference/memory"
+      },
+      {
+        "text": "owner-queue",
+        "link": "/reference/owner-queue"
       },
       {
         "text": "queue-mirror",

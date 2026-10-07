@@ -1,0 +1,98 @@
+{
+  "schema": "autonomy-seat/v1",
+  "name": "seat-d",
+  "prefix": "pd",
+  "role": "product",
+  "attended": false,
+  "profile": "profile-a",
+  "surface": "surface-a",
+  "model": "model-a",
+  "effort": "high",
+  "pool": "pool-b",
+  "overflow_pool": "pool-c",
+  "config_dir": "/home/user/cfg/pool-b",
+  "cwd": "/home/user/work/dir-d",
+  "heartbeat_cron": "13,43 * * * *",
+  "initiatives": {
+    "init-a": 0.6,
+    "init-b": 1.0
+  },
+  "scope_tags": [
+    "scope-a",
+    "scope-b",
+    "scope-c",
+    "scope-d",
+    "scope-e"
+  ],
+  "unclaimed_engineering": false,
+  "task_sources": [
+    "source-a"
+  ],
+  "repos": [
+    {
+      "path": "~/work/repo-3",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ],
+      "shared_with": [
+        "seat-a"
+      ]
+    },
+    {
+      "path": "~/work/repo-15",
+      "remote": "org-a/repo-15",
+      "default": "main",
+      "initiatives": [
+        "init-a"
+      ]
+    },
+    {
+      "path": "~/work/repo-10",
+      "read_only": true,
+      "initiatives": []
+    },
+    {
+      "path": "~/work/repo-16",
+      "read_only": true,
+      "initiatives": []
+    }
+  ],
+  "kind_weights": {
+    "kind-a": 1.0,
+    "kind-b": 0.9,
+    "kind-c": 0.8,
+    "kind-d": 0.9
+  },
+  "share_caps": {
+    "kind-a": 0.5
+  },
+  "spend": {
+    "per_run_points": 100,
+    "per_day_points": 100
+  },
+  "concurrency": {
+    "implementers": 2,
+    "reviewers": 2,
+    "planners": 3
+  },
+  "excluded_tags": [
+    "tag-a",
+    "tag-b",
+    "tag-c",
+    "tag-d"
+  ],
+  "extra_hard_stops": [
+    "stop-a",
+    "stop-b",
+    "stop-c"
+  ],
+  "grants_extra": [
+    "grant-a",
+    "grant-b"
+  ],
+  "log": "logs/seat-d/",
+  "queue": "queues/seat-d.md",
+  "dispatch_log": "logs/seat-d/dispatch.jsonl",
+  "digest_to": null
+}

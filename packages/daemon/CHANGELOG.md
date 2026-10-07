@@ -1,5 +1,21 @@
 # @titan-design/daemon
 
+## 0.4.1
+
+### Patch Changes
+
+- 179706a: Correct the watchTree platform-split docs and three stale comments (TP-1353, TP-1354).
+
+## 0.4.0
+
+### Minor Changes
+
+- a20a6e3: `@titan-design/daemon` exports `getProcessStartTime(pid)`, which reads when a process started from `ps -o lstart=` in the C locale, or null when the pid has no process.
+
+  `titan-factory service check` no longer reports a crash loop right after `service restart` or `launchctl kickstart -k`: a process under 5 minutes old whose `/health` body names the launchd pid is healthy, even though launchd recorded the killed run's non-zero exit. It reads process start time through the daemon helper instead of its own `ps` parser.
+
+- 0e67551: `startDaemon` now rejects when the server fails to bind instead of raising an uncaught exception. A port already in use rejects with the new exported `DaemonPortInUseError` (carrying `port` and `host`); other bind errors such as `EACCES` reject with the original error.
+
 ## 0.3.3
 
 ### Patch Changes

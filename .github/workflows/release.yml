@@ -11,8 +11,16 @@ name: Release
 # pointing at this repo and this workflow file. npm will not accept one for a
 # package it has never seen, so a brand-new package's first version is published once
 # by hand from the owner's own terminal (see CLAUDE.md). Setup: site/guides/autonomous-loop-setup.md.
+#
+# Release runs after a green CI run for a push to main, so it doesn't repeat CI's
+# build, typecheck, lint and test. Every main push's CI run completes and starts a
+# Release run. A run for a sha that is no longer the main tip skips its job, and a queued
+# run a newer one replaces never starts; pending changesets stay pending either way, so
+# the next Release for the tip releases them.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 concurrency:
@@ -21,6 +29,15 @@ concurrency:
 
 jobs:
   release:
+    # changesets/action bases the version commit and the release tags on github.sha,
+    # the main tip when the event fired. Requiring that it is the sha CI validated
+    # keeps the commit and the tags on code that passed. If a newer push landed first,
+    # its own CI run triggers the next Release.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_sha == github.sha
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -35,6 +52,7 @@ jobs:
           repositories: ${{ github.event.repository.name }}
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
       - uses: pnpm/action-setup@v4
@@ -46,11 +64,9 @@ jobs:
       # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older npm. Pinned to 11.x:
       # changesets passes pnpm's --git-checks to npm publish, which npm 12 rejects outright.
       - run: npm install -g npm@11 && npm --version
+      # No build here: `pnpm release` builds before `changeset publish`, and
+      # `pnpm version-packages` reads package sources, not dist.
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
       - name: Version packages or publish
         uses: changesets/action@v1
         with:

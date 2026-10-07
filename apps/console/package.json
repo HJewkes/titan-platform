@@ -1,6 +1,6 @@
 {
   "name": "titan-console",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph",
   "type": "module",
@@ -24,6 +24,7 @@
     "@titan-design/react-ui": "^0.20.0",
     "@titan-design/registry": "workspace:^",
     "@titan-design/rpc-client": "workspace:*",
+    "@titan-design/session-read": "workspace:^",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-native-web": "^0.21.0",

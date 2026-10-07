@@ -153,7 +153,10 @@ Packages version independently; there is no fixed group.
 
 Merging to main lets the Release workflow open or refresh the "Version Packages" pull
 request from pending changesets. Merging *that* pull request publishes the bumped packages
-to npm.
+to npm. The Release workflow runs only after CI passes for the push to main, so it doesn't
+repeat the checks. Every push to main gets its own CI run, which finishes and starts a
+Release run. A Release run for a commit that is no longer the main tip skips its job, and
+the run for the tip releases everything that is pending.
 
 Publishing uses npm trusted publishing (OIDC), so there is no npm token secret: each package
 has a trusted publisher on npmjs.com pointing at `HJewkes/titan-platform` and

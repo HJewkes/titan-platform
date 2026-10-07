@@ -24,7 +24,7 @@ Before adding code:
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
-| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
+| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
@@ -34,7 +34,7 @@ Before adding code:
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
-| [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runClaudePrint` in agent instead. |
+| [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
@@ -46,10 +46,12 @@ Before adding code:
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
+| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
+| [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, and a deterministic rank. It holds no I/O: adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
-| [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Parsing is session-read; storage is session-graph. |
+| [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it parses broker.log lines, events.db verdict rows, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
 | [`style-analyzer`](#cap-style-analyzer) | 2 | You measure how a codebase is actually written and build a style profile from real code. |
@@ -59,7 +61,7 @@ Before adding code:
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead. |
-| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. |
+| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. `date-order-notes` is only the pre-CC-101 floor. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
@@ -78,7 +80,7 @@ around a path, and run its smoke check in the environment the job will really us
 | Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: "claude-print"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
 | Style tool runners: ESLint, ruff, and the Python audit tools | `style-checker` | No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw. | `ruff --version` and `npx eslint --version` in the target repo. |
 | Embedding backends: `local`, `ollama`, hash fallback | `embed` | No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither. | `createEmbedder({ backend: "ollama" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over. |
-| agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`) | `agent-dispatch` | No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd. | `AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' \| agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: "exited"`, a non-empty `sessionId` and `transcriptExists: true`. Resume is not yet smoke-tested: compare `sessionId` before and after. |
+| agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`) | `agent-dispatch` | No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd. | `AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' \| agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: "exited"`, a non-empty `sessionId` and `transcriptExists: true`. Resume, smoke-tested 2026-10-06: once that row has exited, `agent-chat agent resume <name> --message <text>` runs a new turn in the same session; `sessionId` is the same before and after, and both replies are in one transcript. |
 
 ## Known gaps
 
@@ -121,7 +123,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.4.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.5.0`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
@@ -169,21 +171,22 @@ Key exports:
 
 ### [`cluster`](/reference/cluster)
 
-Tier 0, `@titan-design/cluster@0.1.2`. Deterministic Drain template mining with pluggable line masking
+Tier 0, `@titan-design/cluster@0.1.3`. Deterministic Drain template mining with pluggable line masking
 
 **Use this when:** You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. Ids are deterministic for a given input order and survive restarts via snapshot; merged lines take the founding line's id.
 
 Key exports:
 
-- `drain/types`: `DrainCluster`, `WILDCARD`
+- `drain/types`: `WILDCARD`
 - `drain/similarity`: `mergeTemplate`, `tokenSimilarity`
 - `drain/tree`: `DrainTree`
 - `registry`: `DrainTreeRegistry`
+- `anchors`: `DEFAULT_ANCHOR_CONFIGS`
 - `signature`: `extractSignature`, `hasErrorSignal`
 - `masks`: `DEFAULT_MASK_CONFIGS`, `applyMasks`
 - `template-id`: `templateId`
 - `clusterer`: `Clusterer`
-- +13 more in the [reference page](/reference/cluster)
+- +16 more in the [reference page](/reference/cluster)
 
 <a id="cap-code-parser"></a>
 
@@ -203,7 +206,7 @@ Key exports:
 
 ### [`egress-scan`](/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.4.0`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.5.1`. Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths or terms from a private list, reporting only `file:line` and the rule id. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -238,14 +241,16 @@ Key exports:
 
 ### `eslint-plugin`
 
-Tier 0, private, `packages/eslint-plugin`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines and TODO comments that name a tracking task
+Tier 0, private, `packages/eslint-plugin`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task
 
-**Use this when:** You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
+**Use this when:** You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
 
 Key exports:
 
 - `max-function-lines`: `DEFAULT_MAX_LINES`, `maxFunctionLines`
+- `no-commented-code`: `noCommentedCode`
 - `todo-needs-issue`: `todoNeedsIssue`
+- `index`: `recommended`
 
 <a id="cap-evidence"></a>
 
@@ -268,18 +273,18 @@ Key exports:
 
 ### [`fix-proof`](/reference/fix-proof)
 
-Tier 0, `@titan-design/fix-proof@0.1.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
+Tier 0, `@titan-design/fix-proof@0.3.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
 **Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority.
 
 Key exports:
 
 - `config`: `CONFIG_PATH`, `DEFAULT_CARRY_GLOBS`, `DEFAULT_TEST_GLOBS`, `parseFixProofConfig`
-- `glob`: `compileGlobs`
+- `glob`: `compileGlobs`, `expandBraces`
 - `plan`: `planFixProof`
-- `classify`: `classifyReports`, `TEST_CLASSES`, `VERDICTS`
+- `classify`: `classifyReports`, `TEST_CLASSES`
 - `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- +17 more in the [reference page](/reference/fix-proof)
+- +18 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -317,7 +322,7 @@ Key exports:
 
 ### [`store-sqlite`](/reference/store-sqlite)
 
-Tier 0, `@titan-design/store-sqlite@0.3.2`. SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations
+Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
 
 **Use this when:** You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself.
 
@@ -357,7 +362,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](/reference/agent)
 
-Tier 1, `@titan-design/agent@0.4.4`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.4.5`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -374,7 +379,7 @@ Key exports:
 
 ### [`agent-dispatch`](/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.3.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.4.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead.
 
@@ -389,7 +394,7 @@ Key exports:
 
 ### [`agent-lifecycle`](/reference/agent-lifecycle)
 
-Tier 1, `@titan-design/agent-lifecycle@0.1.4`. Durable agent execution state and fenced ownership
+Tier 1, `@titan-design/agent-lifecycle@0.1.5`. Durable agent execution state and fenced ownership
 
 **Use this when:** You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one.
 
@@ -403,9 +408,9 @@ Key exports:
 
 ### [`agent-surface`](/reference/agent-surface)
 
-Tier 1, `@titan-design/agent-surface@0.2.0`. Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan
+Tier 1, `@titan-design/agent-surface@0.3.0`. Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan
 
-**Use this when:** A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runClaudePrint` in agent instead.
+**Use this when:** A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead.
 
 Key exports:
 
@@ -414,14 +419,14 @@ Key exports:
 - `surfaces/command`: `launchCommand`, `paneCommand`, `relaunchCommand`, `relaunchScript`, `shellQuote`
 - `surfaces/headless`: `headlessSurface`
 - `surfaces/iterm`: `itermSessionPresent`, `itermSurface`
-- `surfaces/launch-check`: `psProbe`, `watchLaunch`
-- +50 more in the [reference page](/reference/agent-surface)
+- `surfaces/tmux`: `tmuxSurface`, `tmuxWindowPresent`
+- +53 more in the [reference page](/reference/agent-surface)
 
 <a id="cap-daemon"></a>
 
 ### [`daemon`](/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.3.3`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.4.1`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities.
 
@@ -439,7 +444,7 @@ Key exports:
 
 ### [`github`](/reference/github)
 
-Tier 1, `@titan-design/github@0.4.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.5.1`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
@@ -456,7 +461,7 @@ Key exports:
 
 ### [`hitl`](/reference/hitl)
 
-Tier 1, `@titan-design/hitl@0.5.0`. Human-in-the-loop gate()/resolve() primitive
+Tier 1, `@titan-design/hitl@0.7.0`. Human-in-the-loop gate()/resolve() primitive
 
 **Use this when:** A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`.
 
@@ -488,7 +493,7 @@ Key exports:
 
 ### [`messaging`](/reference/messaging)
 
-Tier 1, `@titan-design/messaging@0.4.0`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
+Tier 1, `@titan-design/messaging@0.4.1`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
 
 **Use this when:** A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel.
 
@@ -558,7 +563,7 @@ Key exports:
 
 ### [`worktree`](/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.1.2`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.1.4`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
 **Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
 
@@ -581,7 +586,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.12.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.14.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -594,13 +599,13 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +387 more in the [reference page](/reference/code-graph)
+- +397 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
 ### [`code-read`](/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.1.10`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.2.1`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -612,13 +617,25 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
-- +94 more in the [reference page](/reference/code-read)
+- +114 more in the [reference page](/reference/code-read)
+
+<a id="cap-coordinator"></a>
+
+### [`coordinator`](/reference/coordinator)
+
+Tier 2, `@titan-design/coordinator@0.0.0`. Seat config schema for the autonomy coordinator (pure code: zod schema and inferred types).
+
+**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package.
+
+Key exports:
+
+- `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`, `SeatConcurrency`, `SeatConfig`, `SeatRepo`, `SeatSpend`
 
 <a id="cap-decider"></a>
 
 ### [`decider`](/reference/decider)
 
-Tier 2, `@titan-design/decider@0.4.0`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+Tier 2, `@titan-design/decider@0.5.1`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
 
 **Use this when:** You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list.
 
@@ -629,13 +646,13 @@ Key exports:
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
 - `parse-answer`: `answerFor`, `parseAnswerText`
-- +170 more in the [reference page](/reference/decider)
+- +174 more in the [reference page](/reference/decider)
 
 <a id="cap-memory"></a>
 
 ### [`memory`](/reference/memory)
 
-Tier 2, `@titan-design/memory@0.1.2`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
+Tier 2, `@titan-design/memory@0.1.3`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
 
 **Use this when:** An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation.
 
@@ -647,11 +664,26 @@ Key exports:
 - `text`: `contentKey`, `jaccard`
 - +67 more in the [reference page](/reference/memory)
 
+<a id="cap-owner-queue"></a>
+
+### [`owner-queue`](/reference/owner-queue)
+
+Tier 2, `@titan-design/owner-queue@0.0.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
+
+**Use this when:** You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, and a deterministic rank. It holds no I/O: adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror.
+
+Key exports:
+
+- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ROUTE_TARGETS`, `SOURCE_SYSTEMS`, `ownerItemSchema`, `sourceRefSchema`, `ItemStatus`
+- `merge`: `isMergeKey`, `mergeByKeys`
+- `rank`: `rank`
+- +7 more in the [reference page](/reference/owner-queue)
+
 <a id="cap-queue-mirror"></a>
 
 ### [`queue-mirror`](/reference/queue-mirror)
 
-Tier 2, `@titan-design/queue-mirror@0.4.2`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
+Tier 2, `@titan-design/queue-mirror@0.4.4`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
 
 **Use this when:** A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back.
 
@@ -671,9 +703,9 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.7.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.9.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
-**Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Parsing is session-read; storage is session-graph.
+**Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it parses broker.log lines, events.db verdict rows, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph.
 
 Key exports:
 
@@ -685,13 +717,13 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +204 more in the [reference page](/reference/session-analytics)
+- +205 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
 ### [`session-graph`](/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.13.0`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.13.2`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph.
 
@@ -711,7 +743,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.8.1`. Claude Code transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.10.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -721,13 +753,13 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +197 more in the [reference page](/reference/session-read)
+- +198 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
 ### [`style-analyzer`](/reference/style-analyzer)
 
-Tier 2, `@titan-design/style-analyzer@0.1.2`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
+Tier 2, `@titan-design/style-analyzer@0.1.4`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
 
 **Use this when:** You measure how a codebase is actually written and build a style profile from real code.
 
@@ -748,7 +780,7 @@ Key exports:
 
 ### [`style-checker`](/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.1`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.3`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:** You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape.
 
@@ -771,7 +803,7 @@ Key exports:
 
 ### [`style-profile`](/reference/style-profile)
 
-Tier 2, `@titan-design/style-profile@0.3.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
+Tier 2, `@titan-design/style-profile@0.4.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
 
 **Use this when:** You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it.
 
@@ -779,17 +811,16 @@ Key exports:
 
 - `schema/style-rule`: `StyleRuleSchema`, `ExampleSchema`, `StabilitySchema`, `FixabilitySchema`
 - `schema/profile`: `ProfileSchema`
+- `schema/severity`: `severityForConfidence`, `toEslintLevel`
 - `io`: `readProfile`, `writeProfile`, `validateProfile`
 - `migrations/migrate-profile`: `migrateProfile`, `registerMigration`
-- `exporters/skill`: `generateSkillFiles`
-- `exporters/claude-rules`: `generateClaudeRules`
-- +37 more in the [reference page](/reference/style-profile)
+- +40 more in the [reference page](/reference/style-profile)
 
 <a id="cap-workflow"></a>
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.8.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.9.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
@@ -851,7 +882,7 @@ Key exports:
 
 Tier product, private, `products/factory`. Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams
 
-**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs under the `implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
+**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
 
 Key exports:
 

@@ -65,16 +65,42 @@ legacy table name. All DDL is `IF NOT EXISTS`.
 | Factory | Table | Helper class | Use when |
 |---|---|---|---|
 | `edgeTableDdl` | interval bi-temporal edges: `source_ref`, `relation`, `target_ref`, `t_valid/t_invalid`, `t_created/t_expired`, `fact_id`, `confidence`, `attrs`; partial indexes on live rows | `EdgeTable`: `assert`, `expire`, `supersede`, `current`, `from`, `to` | the cross-domain graph; relation names are free strings, corrections expire rather than delete |
-| `entityTableDdl` | interval entity keyed by ref, with `kind`, `name`, `parent_ref`, `attrs` | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) |
+| `entityTableDdl` | current-state entity keyed by ref, with `kind`, `name`, `parent_ref`, `attrs`, and soft expiry (`t_expired`); not interval bi-temporal | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) and only need their latest state |
 | `snapshotTableDdl` + `entitySnapTableDdl` | snapshot registry and snapshot-keyed entities (`PRIMARY KEY (snapshot_id, id)`) | none yet | a whole population re-indexed together (a code graph) |
 | `cacheBlobTableDdl` | `(namespace, model, content_hash)` to a blob plus JSON meta | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count` | embeddings and summaries: pure functions of text, stored once |
-| `spanFtsTablesDdl` | `<name>_span` locators plus a contentless FTS5 `<name>_fts` | `SpanFtsTables`: `index`, `search`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere |
-| `watermarkTableDdl` | per-source offset, prefix hash, size/mtime/content hash, status | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list` | incremental ingest of append-mostly sources |
+| `spanFtsTablesDdl` | `<name>_span` locators plus a contentless FTS5 `<name>_fts` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex`; `SpanScope` narrows a search by `ownerPrefix` and `fields` | full-text search where the text lives elsewhere |
+| `watermarkTableDdl` | per-source offset, prefix hash, size/mtime/content hash, status | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list`; call `ensure` first, since the other three return `false` and write nothing for a key never ensured | incremental ingest of append-mostly sources |
 
 The two time models are deliberately both here. Snapshot scoping is right when everything
-is re-indexed at once; forcing it on live single-event ingestion breaks it. Interval rows
-are right when facts change independently; forcing them on a snapshot graph writes an
-unchanged row per node per snapshot. One physical table cannot serve both.
+is re-indexed at once; forcing it on live single-event ingestion breaks it. Per-row time is
+right when facts change independently; forcing it on a snapshot graph writes an unchanged
+row per node per snapshot. One physical table cannot serve both.
+
+Of the per-row tables, only the edge table is interval bi-temporal. The entity table holds
+current state with soft expiry: `upsert` overwrites the row in place and keeps no history,
+`expire` sets `t_expired`, and an upsert of an expired ref revives it with its first
+`t_valid` and `t_created`, not new ones. Keep history in edges, or in your own table.
+
+## Watermarks: `ensure` first
+
+`WatermarkTable.ensure(sourceKey)` creates the row. `advance`, `rewind` and `markStatus` only
+update an existing row, and return `true` when one matched. On a key that was never ensured
+they return `false` and write nothing, so an ingester that checks the result can tell a
+lost update from a recorded one.
+
+## Scoped search
+
+`SpanFtsTables.search(query, limit = 50, scope?)` takes an optional `SpanScope` that narrows
+the search to one class of owner, so a high-volume class cannot crowd a small one out of
+the results. `limit` applies after the scope, so a scoped search returns its own top N.
+
+- `ownerPrefix`: only owners whose ref starts with it, such as `note:`. An empty string
+  means every owner.
+- `fields`: only spans whose field is in the list. An empty array matches nothing.
+
+When a prefix is shared by two kinds of owner, set both: the scope applies `ownerPrefix`
+and `fields` together, both, not either. A prefix alone lets every span under that prefix
+through, whatever its field.
 
 ## Contentless FTS rule
 

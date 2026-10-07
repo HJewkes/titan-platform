@@ -131,7 +131,7 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 5) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
 
 | kind | list | emitted for |
@@ -149,20 +149,26 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 
 - `chat_send` is an agent-chat `chat_send`, with the recipient as `detail`.
 - `status_report` is a `chat_send` whose text has `Status: DONE`, `DONE_WITH_CONCERNS`, `BLOCKED` or `NEEDS_*`, with the status word as `detail`.
-- `commit`, `push`, `pr_create` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `commit`, `push` and `pr_merge` come from a Bash command, via `parseGitIntent`. `pr_merge` carries the PR number.
+- `pr_create` is a Bash simple command that matches `gh pr create`, not a `parseGitIntent` result.
 - `task_wrap` is `active-work wrap` or `record` in Bash, or a `Skill` call whose skill is `active-work`.
 - `task_done` is `active-work task done`, with the task id as `detail`.
 - `doc_written` is a `Write` to a `.md` path.
-- `agent_spawn` is an `Agent` call or an agent-chat `agent_spawn`.
+- `agent_spawn` is an `Agent` or `Task` call, or an agent-chat `agent_spawn`.
+- `file_read` is a `Read` call and `file_write` is a write-tool call (including notebook edits). Both carry the repo-relative path as `detail`; build trees matched by `IGNORED_PATH` emit nothing.
 
 The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
 `bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
 
 ## Why incremental reading is safe
 
-**Every rule in `LineReader` is stateless across lines.** That is what makes reading
-incrementally from a watermark and rebuilding the whole file produce the same events, so an
-index can resume without ever re-deriving history.
+**Every rule in `LineReader` is stateless across lines except the last-seen timestamp.** A
+record such as `cost-state` carries none of its own and takes the enclosing line's. A caller
+resuming mid-file with `LineReader` directly must pass `initialTs`, the last timestamp before
+its start offset. `readTranscriptEvents` does this for you, recovering it with a backward
+lookback from the start offset. With that, reading incrementally from a watermark and
+rebuilding the whole file produce the same events, so an index can resume without ever
+re-deriving history.
 
 `EventFolder` then merges a chunk's events into a `TranscriptDelta` with rules chosen so
 chunk boundaries cannot change the answer: timestamps min/max, counters sum, `gitBranch` and
@@ -232,6 +238,13 @@ protect readback; prefix replay preserves model, usage and projection state acro
 chunks. The existing Claude reader remains available. See the
 [contract decision](/guides/multi-harness-contracts) for compatibility and migration.
 
+`codexHome()` honors `$CODEX_HOME` and falls back to `~/.codex`. Discovery and readback
+separate absence from failure. A missing directory yields no sources, and a stale locator
+(file gone or truncated, or a line that no longer matches its hash or parses) reads back
+as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
+`discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
+`readSessionSourceText`.
+
 ## Graph-free consumer views
 
 The normalized reader dispatches both Claude and Codex source descriptors through
@@ -251,9 +264,12 @@ selects measurements with agent-protocol's `foldUsage`, then groups them by mode
 null token count in a group makes that group's sum null.
 
 **Session identity mismatches throw `SessionIdentityError`.** A Claude transcript record
-that belongs to a different native session, or a sidechain window that names more than one
-parent session, throws `SessionIdentityError` — a `TypeError` subclass with a stable
+or Codex rollout record that belongs to a different native session, or a sidechain that
+names more than one parent session, throws `SessionIdentityError` from both the decoders
+and the recent-turn readers — a `TypeError` subclass with a stable
 `code` field (`"foreign_native_session"` or `"multiple_parent_sessions"`). Existing
 `instanceof TypeError` catches and message-prefix matches keep working; a consumer that
 wants to tell this apart from option-validation `TypeError`s (which stay plain) can now
-check `instanceof SessionIdentityError` and read `.code`.
+check `instanceof SessionIdentityError` and read `.code`. session-graph quarantines a
+source on this error, as it does on `TranscriptParseError`, because both describe the
+file's contents rather than a fault in the caller.

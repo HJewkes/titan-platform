@@ -89,14 +89,16 @@ function symbol(file, name, signature, startLine) {
   return { id: `${file}#${name}`, kind: "symbol", name, parentId: file, attrs: { exported: true, signature, startLine } };
 }
 
-const file = (id, role = "source") => ({ id, kind: "file", name: id, role });
+// The indexer stamps every file node with classifyRole's answer, so the fakes take theirs from the built package too.
+const { classifyRole } = await import(new URL("../packages/code-graph/dist/index.js", import.meta.url).href);
+const file = (id) => ({ id, kind: "file", name: id, role: classifyRole(id) });
 const ref = (srcId, dstId) => ({ srcId, dstId, kind: "references" });
 const passing = { passed: true, newErrors: 0, newWarnings: 0, carryoverErrors: 0, carryoverWarnings: 0, violations: [] };
 
 function fakeGraph(overrides = {}) {
   const nodes = overrides.nodes ?? {
-    1: [file("p/a.ts"), file("p/a.test.ts", "test"), symbol("p/a.ts", "keep", "keep(): void", 4), symbol("p/a.ts", "gone", "gone(): void", 9)],
-    2: [file("p/a.ts"), file("p/a.test.ts", "test"), file("p/new.ts"), symbol("p/a.ts", "keep", "keep(x: number): void", 4)],
+    1: [file("p/a.ts"), file("p/a.test.ts"), symbol("p/a.ts", "keep", "keep(): void", 4), symbol("p/a.ts", "gone", "gone(): void", 9)],
+    2: [file("p/a.ts"), file("p/a.test.ts"), file("p/new.ts"), symbol("p/a.ts", "keep", "keep(x: number): void", 4)],
   };
   const refs = overrides.refs ?? [ref("p/b.ts", "p/a.ts#gone"), ref("p/c.ts", "p/a.ts#keep")];
   const added = overrides.added ?? [file("p/new.ts")];
@@ -164,6 +166,22 @@ describe("collectReport", () => {
 
     expect(report.deltas).toEqual([]);
     expect(report.questions).toEqual([]);
+  });
+
+  it("asks the new-file question for a file the top-20 delta cut leaves out", () => {
+    const worsened = Array.from({ length: 20 }, (_, i) => `p/w${String(i).padStart(2, "0")}.ts`);
+    const { graph, store } = fakeGraph({
+      added: [file("p/new.ts")],
+      nodes: { 1: worsened.map(file), 2: [...worsened.map(file), file("p/new.ts")] },
+      metrics: [{ nodeId: "p/new.ts", name: "loc", value: 270 }],
+      metricDeltas: worsened.map((nodeId) => ({ nodeId, name: "loc", before: 300, after: 340 })),
+    });
+
+    const report = collectReport(graph, store, { snapshot: HEAD, baselineSnapshot: BASE, result: passing }, RULES);
+
+    expect(report.deltas).toHaveLength(20);
+    expect(report.deltas.some((d) => d.path === "p/new.ts")).toBe(false);
+    expect(report.questions).toEqual([expect.stringMatching(/^p\/new\.ts:1 is a new 270-line file/)]);
   });
 
   it("gives span-less type, interface and destructured exports their declaration line from source", () => {

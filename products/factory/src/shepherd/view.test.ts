@@ -1,9 +1,10 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
+import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { PHASES, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -56,13 +57,28 @@ describe("shepherd view phases", () => {
 
   it("names the wait a review step has noted in place of the plain review wait, and drops it once cleared", () => {
     const run = pausedAt("sh-review:abc1234");
-    noteReviewWait("acme/widgets", 1, "waiting for the broker to start reviewer rv-1: machine guard: full");
+    noteReviewWait("acme/widgets", 1, "waiting for reviewer admission (the broker has not started rv-1): machine guard: full");
 
     const noted = watchRow({ registration, run }).nextAction;
     clearReviewWait("acme/widgets", 1);
 
-    expect(noted).toBe("waiting for the broker to start reviewer rv-1: machine guard: full");
+    expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): machine guard: full");
     expect(watchRow({ registration, run }).nextAction).toBe("waiting for the review");
+  });
+
+  it("names the place in the spawn gate's queue of a review the gate keeps waiting", () => {
+    const run = pausedAt("sh-review:abc1234");
+    const gate = spawnGate({ read: () => ({ load5: 21 }), now: () => 1_000, log: () => undefined });
+    const ask = (name: string, pr: number, fixer: boolean) => expect(() => gate.admit(name, [], { fixer, target: { repo: "acme/widgets", pr } })).toThrow();
+    ask("rv-0", 0, false);
+    ask("rv-1", 1, false);
+    ask("rv-2", 2, true);
+    noteReviewWait("acme/widgets", 1, "waiting for reviewer admission (the broker has not started rv-1): ReviewerBrokerBusy; asking again in 1 min");
+
+    const noted = watchRow({ registration, run }).nextAction;
+    clearReviewWait("acme/widgets", 1);
+
+    expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): ReviewerBrokerBusy; asking again in 1 min; waiting for a spawn slot, position 3 of 3");
   });
 });
 
@@ -80,6 +96,69 @@ describe("shepherd view holds", () => {
     const held = { ...registration, held: true, holdReason: "owner review", holdSatisfied: null } as Registration;
 
     expect(watchRow({ registration: held, run: pausedAt("merge:0:0") }).held).toEqual({ reason: "owner review" });
+  });
+});
+
+describe("a run held at registration waiting in its merge step", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+  const waitedFrom = Date.parse("2026-01-01T00:10:00.000Z");
+  const reason = "g10-review: +415/-0 diff over 400";
+  const by = { reviewer: "seat-review", agentId: "agent-seat", sessionId: "session-seat", locator: {} };
+  const held = { ...registration, held: true, holdReason: reason, holdReviewer: "seat-review", holdSatisfied: null } as Registration;
+
+  /** Shepherd's own reviewer sent MERGE at `head`, the policy allowed it, and the run has sat in `merge` ever since. */
+  function mergingAt(head: string): WorkflowRun {
+    const run = { ...pausedAt("merge:0"), status: "running" } as WorkflowRun;
+    const record = (stepId: string, at: number, result: object) => {
+      run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(at).toISOString(), data: { result } };
+    };
+    record(`sh-await-verdict:${head}`, waitedFrom - 2000, { kind: "verdict", verdict: "MERGE", head, locator: {}, reviewer: { agentId: "agent-rv-own" } });
+    record("merge-policy:0", waitedFrom - 1000, { outcome: "allow", headSha: head });
+    record("ci-wait:1", waitedFrom, { verdict: "green", headSha: head });
+    return run;
+  }
+  const twentyMinutesIn = new Date(waitedFrom + 20 * 60_000);
+
+  it("keeps the merging phase, names the hold and its reviewer, and does not stall after 20 minutes", () => {
+    const row = watchRow({ registration: held, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row).toMatchObject({ phase: "merging", headSha: H1, held: { reason }, phaseSince: new Date(waitedFrom).toISOString(), stalled: null });
+    expect(row.nextAction).toBe(`waiting for the hold to be released (${reason}), or for a MERGE from seat-review at ${H1.slice(0, 7)}`);
+  });
+
+  it("still waits on the hold when its reviewer has sent MERGE only at the fix round's newer head", () => {
+    const satisfiedLater = { ...held, holdSatisfied: { head: H2, by } } as Registration;
+
+    const row = watchRow({ registration: satisfiedLater, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row).toMatchObject({ phase: "merging", stalled: null });
+    expect(row.nextAction).toMatch(/^waiting for the hold to be released/);
+  });
+
+  it("merges, with its stall limit, once the hold is satisfied at the run's head", () => {
+    const satisfied = { ...held, holdSatisfied: { head: H2, by } } as Registration;
+
+    const row = watchRow({ registration: satisfied, run: mergingAt(H2), now: twentyMinutesIn });
+
+    expect(row).toMatchObject({ phase: "merging", nextAction: "merging" });
+    expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
+  });
+
+  it("still stalls an unheld run 20 minutes into its merge step", () => {
+    const row = watchRow({ registration, run: mergingAt(H1), now: twentyMinutesIn });
+
+    expect(row.stalled).toEqual({ reason: "20 min in merging, over the 15 min limit" });
+  });
+
+  it("emits only the phases agent-chat's burndown parses, which rejects the whole status array on any other (CC-791)", () => {
+    expect(PHASES).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
+  });
+
+  it("names a hold with no reviewer by its reason alone", () => {
+    const owner = { ...held, holdReviewer: null } as Registration;
+
+    expect(watchRow({ registration: owner, run: mergingAt(H1), now: twentyMinutesIn }).nextAction).toBe(`waiting for the hold to be released (${reason})`);
   });
 });
 

@@ -7,7 +7,7 @@ import type {
   SendResult,
 } from "./contract.js";
 import { sendFailed } from "./contract.js";
-import { attemptFetch, unreadableSuccess } from "./send-failure.js";
+import { attemptFetch, describeCause, redactSecret, unreadableSuccess } from "./send-failure.js";
 
 export interface BlueBubblesConfig {
   /** Origin of the BlueBubbles server, e.g. `http://127.0.0.1:1234`. */
@@ -25,21 +25,13 @@ const SEND_PATH = "/api/v1/message/text";
 
 /** Every string that leaves this module passes through here. */
 export function redactPassword(value: string, password: string): string {
-  if (!password) return value;
-  const encoded = encodeURIComponent(password);
-  const once = value.split(password).join("***");
-  return encoded === password ? once : once.split(encoded).join("***");
+  return redactSecret(value, password);
 }
 
 export function apiUrl(config: BlueBubblesConfig, path: string): string {
   const url = new URL(config.baseUrl.replace(/\/+$/, "") + path);
   url.searchParams.set("password", config.password);
   return url.toString();
-}
-
-export function describeCause(cause: unknown): string {
-  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
-  return String(cause);
 }
 
 interface Envelope {

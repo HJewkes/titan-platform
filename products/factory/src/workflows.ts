@@ -5,12 +5,14 @@ import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./c
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
+import { reviewCheckPort } from "./shepherd/publish-review.js";
 import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanupAgents } from "./shepherd/cleanup-ports.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
-import { freezeGuard, freezeMigration, freezeStoreRef, type FreezeStoreRef } from "./shepherd/freeze.js";
+import { freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, isFixersPr, recheckedFrozen, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
+import { spawnGate, type SpawnGate } from "./shepherd/spawn-gate.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
@@ -18,8 +20,9 @@ import type { ParkPort } from "./shepherd/park.js";
 import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
-import type { ReviewWiring } from "./shepherd/review.js";
+import type { ReviewTarget, ReviewWiring } from "./shepherd/review.js";
 import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
@@ -44,6 +47,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   agentChatConfigDir?: string;
   /** The one roster reader every port over `agentChatBin` shares; absent means each wake reads through its own. */
   roster?: RosterReader;
+  /** The one gate every factory-started agent passes; absent means spawns are not gated. */
+  spawnGate?: SpawnGate;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
   seats?: () => SeatBook;
   /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
@@ -58,6 +63,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   registry?: PackageRegistry;
   /** The fix-task and fixer ports a red main uses; absent ports still freeze, and leave the rest to the owner. */
   mainRed?: Omit<MainRedWiring, "freezes">;
+  /** The App-token port `sh-publish-review` posts through; absent means it records `published: false`. */
+  reviewCheck?: GitHubPort;
   /** Starts `service deploy` after a green merge into the factory's own repo; absent means sh-redeploy spawns nothing. */
   redeploy?: Deployer;
 }
@@ -65,7 +72,7 @@ export interface FactoryRouteDeps extends LandPrDeps {
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -84,11 +91,11 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, cleanup: deps.cleanup, snapshot: deps.snapshot };
-  const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? (async (repo: string) => freeze.get().isFrozen(repo)) };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck };
+  const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze };
   return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
 }
 
@@ -117,11 +124,23 @@ function checkoutPath(book: SeatBook, repo: string): string | undefined {
   return found.kind === "seat" ? found.seat.paths[repo.toLowerCase()] : undefined;
 }
 
+/** The PR registered as its frozen repo's fix; a store the host has not bound reads as no fixer, so the review queues like any other. */
+function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
+  return ({ repo, pr }: ReviewTarget): boolean => {
+    try {
+      const red = freeze.get().get(repo);
+      return red !== undefined && isFixersPr(red, store.get().byPr(repo, pr));
+    } catch {
+      return false;
+    }
+  };
+}
+
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
-function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined): FactoryRouteDeps["review"] {
+function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
-  const dispatch = agentChatReviewerDispatch({ agentChatBin, profile: review.profile, configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster });
+  const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
   return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, ...(codewatch && { codewatch }) };
 }
@@ -134,9 +153,9 @@ function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
 }
 
 /** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
-function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined): FactoryRouteDeps["mainRed"] {
+function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate): FactoryRouteDeps["mainRed"] {
   const agentChatBin = shepherd?.agentChatBin;
-  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster })) }) };
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster, gate })) }) };
 }
 
 function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {
@@ -156,13 +175,16 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const review = configuredReview(shepherd, seats, roster);
+  const gate = overrides.spawnGate ?? spawnGate({ limits: shepherd?.spawnGate });
+  const store = overrides.store ?? shepherdStoreRef();
+  const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
+  const review = configuredReview(shepherd, seats, roster, gate, fixerReview(freeze, store));
   const cleanup = configuredCleanup(shepherd, env, roster);
-  const mainRed = configuredMainRed(shepherd, env, roster);
+  const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
   const port = overrides.port ?? githubPort(ghCliWire());
   const snapshot = prSnapshot(port, { now: overrides.now });
-  return factoryRoutesFor({ port, snapshot, store: shepherdStoreRef(), postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

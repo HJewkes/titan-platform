@@ -5,6 +5,7 @@ import { conversationRef } from "@titan-design/agent-protocol";
 import { SPAN_TEXT_CAP, readCodexObservations, type CodexReadResult, type NormalizedSessionObservation, type SessionSourceDescriptor, type SourceTextLocator } from "@titan-design/session-read";
 import type { SessionGraph } from "./graph.js";
 import { ensureNormalizedSchema } from "./normalized-schema.js";
+import { unreadableStatus } from "./unreadable.js";
 import { insertObservation, observationText } from "./normalized-project.js";
 
 export interface NormalizedIndexResult { status: "indexed" | "unchanged" | "missing" | "quarantined"; conversationRef: string; observations: number; reason?: string }
@@ -48,9 +49,11 @@ export async function indexCodexSource(graph: SessionGraph, source: SessionSourc
     })();
     return { ...base, status: "indexed", observations: count };
   } catch (error) {
+    const status = unreadableStatus(error);
+    if (!status) throw error;
     const reason = error instanceof Error ? error.message : String(error);
-    graph.transcripts.markStatus(source.sourceId, "quarantined", reason);
-    return { ...base, status: "quarantined", reason };
+    graph.transcripts.markStatus(source.sourceId, status, reason);
+    return { ...base, status, reason };
   } finally { graph.db.exec(`DROP TABLE ${stage}`); }
 }
 

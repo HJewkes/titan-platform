@@ -59,6 +59,19 @@ content (`readFile`), existence checks for Python imports and the `dist` to `src
 imports. It defaults to `workingTreeSource()`, which reads the checkout through `node:fs`. A
 source answers for the same absolute paths a checkout would, so node ids do not change.
 
+Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
+glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` and `*.fixture.*`),
+`script`, `entry`, `barrel`, `types`, `config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
+`.gitattributes` syntax:
+
+```json
+{ "lab": ["packages/ui/src/lab/**"] }
+```
+
+`UNIMPORTED_ROLES` names the roles nothing imports by design. Dead-module reachability treats
+them, plus `barrel`, as roots, so a story or lab file with no importer is not reported dead.
+
 ## Checking a snapshot
 
 The rules engine turns a snapshot into pass/fail against a `check.json`. Verified against
@@ -90,7 +103,12 @@ above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
 absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
-zero-valued node is never flagged. Severity defaults to `error`.
+zero-valued node is never flagged. An eighth, `no-import-cycles`, reports each strongly
+connected component of the file import graph once, with its sorted member files in `members`;
+`import type` and `export type … from` edges are left out unless `includeTypeOnly: true` (an
+all-inline `{ type T }` import still loads the module, so it counts), and `exclude` and `excludeRoles`
+take files out of the graph. Against a baseline, a cycle inside one known cycle carries over,
+and a cycle that gains a file is new. Severity defaults to `error`.
 
 `validateRules` and `loadCheckRules` throw on a `severity` other than `error` or `warning`, a
 `kind` outside the node kinds, and an `exclude` that is not a string array. Before this
@@ -326,12 +344,13 @@ topDeadModules(nodes, edges, ctx, 10);
 // [ { nodeId: 'orphan.ts', loc: 0, role: 'source' } ]
 
 topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
-// [ { nodeId: 'api.ts#run', name: 'run', fileId: 'api.ts', cognitive: 0, publicApi: true } ]
+// [ { nodeId: 'api.ts#run', name: 'run', fileId: 'api.ts', cognitive: 0, loc: 0, publicApi: true } ]
 ```
 
 - `topUnusedExports` lists exported symbols whose `utilization` is 0 or absent. Exports in
   files a barrel re-exports one hop away carry `publicApi: true`, since an npm consumer may
-  still use them, and rank after internal ones; ties break on `symbol_cognitive`.
+  still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
+  `symbol_loc` (0 when unmeasured).
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
   ranked by `loc`. The walk starts at files with the role `entry`, `barrel`, `test`,
   `script`, `config` or `fixture`, and at any `main.{ts,tsx,js,jsx}`. A computed
@@ -605,6 +624,11 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
+
+When git is present but its log overflowed or failed, the index has no (or partial) history
+metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and
+outside git. `buildIndexerMetrics` still returns only the metrics; `assembleIndexerMetrics`
+returns `{ metrics, warnings }`.
 
 **The adapter is a root export, not a `./history` one.** A product that runs its own indexing
 pass needs the same `GraphMetric` rows `indexPaths` writes, and `./history` may not speak

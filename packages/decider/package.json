@@ -1,10 +1,13 @@
 {
   "name": "@titan-design/decider",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ask-lint": "./dist/ask-lint-bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -57,6 +57,16 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).shepherd?.hardStopRepos).toEqual({ "dotfiles-merge": ["acme/dotfiles"] });
   });
 
+  it("reads the digest copy dirs and still accepts the legacy icloudDir", () => {
+    const env = xdg({ digest: { copyDirs: ["/a", "/b"], icloudDir: "/legacy" } });
+
+    expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
+  });
+
+  it("refuses an unknown digest key", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
+  });
+
   it("rejects an empty checks list and a wait beyond the cap", () => {
     const flaky = (rule: object) => configPath(xdg({ shepherd: { flakyChecks: { "acme/web": rule } } }));
 
@@ -69,6 +79,16 @@ describe("loadConfig", () => {
 
     expect(loadConfig(configPath(xdg({ shepherd: { flakyChecks } }))).shepherd?.flakyChecks).toEqual(flakyChecks);
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
+  });
+
+  it("reads the review-check App, and rejects a relative key path, a non-integer id and an unknown key", () => {
+    const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
+
+    expect(load(reviewCheck).shepherd?.reviewCheck).toEqual(reviewCheck);
+    expect(() => load({ ...reviewCheck, privateKeyPath: "keys/app.pem" })).toThrow(/reviewCheck/);
+    expect(() => load({ ...reviewCheck, appId: "101" })).toThrow(/reviewCheck/);
+    expect(() => load({ ...reviewCheck, token: "x" })).toThrow(/reviewCheck/);
   });
 
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
@@ -106,6 +126,19 @@ describe("loadConfig", () => {
     const env = xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } });
 
     expect(loadConfig(configPath(env)).shepherd).toEqual({ agentChatBin: "/opt/bin/agent-chat", review });
+  });
+
+  it("reads a reviewer role table and rejects a role profile with a slash", () => {
+    const review = { profile: "bd-reviewer", roles: { g10: "bd-reviewer", standard: "reviewer" } };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
+  });
+
+  it("rejects a role table naming a class that does not exist", () => {
+    const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
+
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } })))).toThrow(/roles/);
   });
 
   it("reads an agent-chat binary with no reviewer, and a reviewer that names only its profile", () => {

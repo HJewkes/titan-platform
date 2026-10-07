@@ -19,6 +19,13 @@ export function spaceUpdates(fake: FakeGitHub, advance: (ms: number) => void, ga
   fake.wire.updateBranch = async (...args) => (advance(gapMs), update(...args));
 }
 
+/** GitHub accepts the first `count` update-branch writes (HTTP 202) and never moves the head for them. */
+export function swallowUpdates(fake: FakeGitHub, count: number): void {
+  const update = fake.wire.updateBranch;
+  let swallowed = 0;
+  fake.wire.updateBranch = async (...args) => (swallowed++ < count ? void fake.calls.push("updateBranch:swallowed") : update(...args));
+}
+
 export interface LandScenario {
   fake: FakeGitHub;
   routes: StepRoute[];

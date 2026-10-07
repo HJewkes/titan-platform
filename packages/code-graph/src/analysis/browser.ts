@@ -21,6 +21,7 @@ export type { ReportContext, ReportContextInput } from "./graph-report-sections.
 export {
   buildReportContext,
   busFactorOf,
+  hotspotComplexityOf,
   hotspotScoreOf,
   keepNode,
   lookupMetric,
@@ -64,6 +65,8 @@ export {
   packagesReferencedByEdges,
   toSortedEdges,
 } from "./graph-arch-compute.js";
+export type { PackageStats, PairCoupling, PartitionQualityInput, PartitionQualityResult } from "./partition-quality.js";
+export { computePartitionQuality } from "./partition-quality.js";
 export type { SymbolConsumers } from "./symbol-coupling.js";
 export { computeSymbolConsumers } from "./symbol-coupling.js";
 export type { TestSourceLink } from "./test-linker.js";

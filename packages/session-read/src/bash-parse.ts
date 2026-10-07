@@ -4,8 +4,10 @@
  * (AW-22 → AW-23).
  */
 
-import os from 'node:os';
 import path from 'node:path';
+import { programStart } from './command-heads.js';
+import { expandHome } from './expand-home.js';
+import { splitCommands, type ShellWord } from './shell-split.js';
 export { commandHeads } from './command-heads.js';
 
 /** Build artifacts and vendored trees are never interesting file touches. */
@@ -14,15 +16,21 @@ export const IGNORED_PATH =
 
 export const TASK_ID = /\b([A-Z]{1,5}-\d+)\b/;
 
+/**
+ * Every pattern below is anchored at `^` and runs against one simple command
+ * from `gitCommands`, never the raw string: a commit message, an `echo`
+ * argument or a heredoc body that mentions `git push` is data, not a push.
+ */
+
 /** A branch-name capture (unquoted token). */
 const BRANCH = '[\'"]?([^\\s\'"&|;]+)';
 const RE_SWITCH = new RegExp(
-  '\\bgit\\s+(?:-C\\s+\\S+\\s+)?(?:checkout|switch)\\s+(?![-\\d])' + BRANCH,
+  '^git\\s+(?:-C\\s+\\S+\\s+)?(?:checkout|switch)\\s+(?![-\\d])' + BRANCH,
 );
-const RE_WORKTREE = new RegExp('\\bgit\\s+worktree\\s+add\\b[^&|;]*?\\s-b\\s+' + BRANCH);
-const RE_PUSH_BRANCH = new RegExp('\\bgit\\s+push\\b[^&|;]*?\\borigin\\s+(?:-u\\s+)?' + BRANCH);
-const RE_PR_HEAD = new RegExp('\\bgh\\s+pr\\s+create\\b[^&|;]*?--head\\s+' + BRANCH);
-const RE_MERGE = /\bgh\s+pr\s+merge\s+(\d+)/;
+const RE_WORKTREE = new RegExp('^git\\s+worktree\\s+add\\b[^&|;]*?\\s-b\\s+' + BRANCH);
+const RE_PUSH_BRANCH = new RegExp('^git\\s+push\\b[^&|;]*?\\borigin\\s+(?:-u\\s+)?' + BRANCH);
+const RE_PR_HEAD = new RegExp('^gh\\s+pr\\s+create\\b[^&|;]*?--head\\s+' + BRANCH);
+const RE_MERGE = /^gh\s+pr\s+merge\s+(\d+)/;
 
 /**
  * The start-point of `git checkout -b <new> <start>` (AW-104).
@@ -34,7 +42,7 @@ const RE_MERGE = /\bgh\s+pr\s+merge\s+(\d+)/;
  * `2>&1`, which is the single most common thing in this position.
  */
 const RE_NEW_WITH_START = new RegExp(
-  '\\bgit[^\\S\\n]+(?:-C[^\\S\\n]+\\S+[^\\S\\n]+)?' +
+  '^git[^\\S\\n]+(?:-C[^\\S\\n]+\\S+[^\\S\\n]+)?' +
     '(?:checkout[^\\S\\n]+-[bB]|switch[^\\S\\n]+-c)[^\\S\\n]+' +
     BRANCH +
     '(?:[^\\S\\n]+([A-Za-z0-9._/-]+)(?=[^\\S\\n]|$))?',
@@ -47,10 +55,59 @@ const RE_NEW_WITH_START = new RegExp(
  * temporal join it replaced, nothing is inferred: one command names both ends,
  * so a `cd` into another repo cannot misattribute it.
  */
-const RE_PR_BASE = new RegExp('\\bgh\\s+pr\\s+create\\b[^&|;]*?--base[=\\s]+' + BRANCH);
-const RE_DELETE = new RegExp('\\bgit\\s+branch\\s+-[dD]\\s+' + BRANCH);
-const RE_COMMIT = /\bgit\s+(?:-C\s+\S+\s+)?commit\b/;
-const RE_PUSH = /\bgit\s+(?:-C\s+\S+\s+)?push\b/;
+const RE_PR_BASE = new RegExp('^gh\\s+pr\\s+create\\b[^&|;]*?--base[=\\s]+' + BRANCH);
+const RE_DELETE = new RegExp('^git\\s+branch\\s+-[dD]\\s+' + BRANCH);
+const RE_COMMIT = /^git\s+(?:-C\s+\S+\s+)?commit\b/;
+const RE_PUSH = /^git\s+(?:-C\s+\S+\s+)?push\b/;
+const GIT_OR_GH = /^(?:git|gh)$/;
+/** A quoted word that could be a ref or path; anything else is prose and is blanked. */
+const SINGLE_TOKEN = /^[^\s'"]*$/;
+
+/**
+ * Each simple command in `raw` whose program is an unquoted `git` or `gh`,
+ * rejoined from that program word on. Heredoc bodies are already gone, and a
+ * quoted word with spaces becomes `''`, so a `--head` inside a PR body never
+ * reads as a flag.
+ */
+export function gitCommands(raw: string): string[] {
+  const commands: string[] = [];
+  for (const words of splitCommands(raw)) {
+    const args = words.slice(programStart(words));
+    const program = args[0];
+    if (program && !program.quoted && GIT_OR_GH.test(program.text.replace(/^\(+/, ''))) {
+      const last = args.length - 1;
+      const bare = args.map((word, i) => (i === last && i > 0 ? withoutSubshellCloser(word) : word));
+      commands.push(bare.map(rejoinWord).join(' ').replace(/^\(+/, ''));
+    }
+  }
+  return commands;
+}
+
+/** Drops `)` that closes an enclosing subshell, keeping those balanced inside the word (`$(…)`). */
+function withoutSubshellCloser(word: ShellWord): ShellWord {
+  if (word.quoted) return word;
+  let text = word.text;
+  const opens = [...text].filter((c) => c === '(').length;
+  let closes = [...text].filter((c) => c === ')').length;
+  while (closes > opens && text.endsWith(')')) {
+    text = text.slice(0, -1);
+    closes--;
+  }
+  return { text, quoted: false };
+}
+
+function rejoinWord(word: ShellWord): string {
+  if (!word.quoted) return word.text;
+  return SINGLE_TOKEN.test(word.text) ? `'${word.text}'` : "''";
+}
+
+function firstMatch(pattern: RegExp, commands: readonly string[]): RegExpExecArray | null {
+  for (const command of commands) {
+    const match = pattern.exec(command);
+    if (match) return match;
+  }
+  return null;
+}
 
 /** Strip leading `cd X && …` so we reach the real command verb. */
 export function realCommand(raw: string): string {
@@ -77,7 +134,7 @@ export function commandCwd(raw: string, sessionCwd: string | null): string | nul
   const cd = raw.trim().match(/^cd\s+([^&;|]+?)\s*(?:&&|;|$)/)?.[1];
   const target = (dashC ?? cd)?.trim().replace(/^['"]|['"]$/g, '');
   if (!target) return sessionCwd;
-  const expanded = target.startsWith('~/') ? path.join(os.homedir(), target.slice(2)) : target;
+  const expanded = expandHome(target);
   if (path.isAbsolute(expanded)) return expanded;
   return sessionCwd ? path.resolve(sessionCwd, expanded) : null;
 }
@@ -127,30 +184,29 @@ function baseOrNull(candidate: string | undefined): string | null {
  * which is also why this returns a pair instead of the caller reaching for
  * `RE_PR_BASE` after the fact.
  */
-function captureBranch(raw: string): BranchCapture {
-  const created = RE_NEW_WITH_START.exec(raw);
-  // A heredoc body is data, not commands: the only start-point this ever found
-  // inside one was a fragment of a quoted source file.
-  if (created)
-    return { name: created[1], base: raw.includes('<<') ? null : baseOrNull(created[2]) };
+function captureBranch(commands: readonly string[]): BranchCapture {
+  const created = firstMatch(RE_NEW_WITH_START, commands);
+  if (created) return { name: created[1], base: baseOrNull(created[2]) };
 
-  const worktree = RE_WORKTREE.exec(raw);
+  const worktree = firstMatch(RE_WORKTREE, commands);
   if (worktree) return { name: worktree[1], base: null };
 
-  const prHead = RE_PR_HEAD.exec(raw);
-  if (prHead) return { name: prHead[1], base: baseOrNull(RE_PR_BASE.exec(raw)?.[1]) };
+  const prHead = firstMatch(RE_PR_HEAD, commands);
+  if (prHead) return { name: prHead[1], base: baseOrNull(RE_PR_BASE.exec(prHead.input)?.[1]) };
 
-  return { name: (RE_PUSH_BRANCH.exec(raw) ?? RE_SWITCH.exec(raw))?.[1], base: null };
+  const pushOrSwitch = firstMatch(RE_PUSH_BRANCH, commands) ?? firstMatch(RE_SWITCH, commands);
+  return { name: pushOrSwitch?.[1], base: null };
 }
 
 export function parseGitIntent(raw: string): GitIntent | null {
   if (!raw.includes('git') && !raw.includes('gh ')) return null;
 
-  const branch = captureBranch(raw);
+  const commands = gitCommands(raw);
+  const branch = captureBranch(commands);
   const captured = cleanBranch(branch.name);
   const setBranch = isRealBranch(captured) ? captured : null;
-  const deleted = cleanBranch(RE_DELETE.exec(raw)?.[1]);
-  const mergedPr = RE_MERGE.exec(raw)?.[1];
+  const deleted = cleanBranch(firstMatch(RE_DELETE, commands)?.[1]);
+  const mergedPr = firstMatch(RE_MERGE, commands)?.[1];
 
   return {
     setBranch,
@@ -159,8 +215,8 @@ export function parseGitIntent(raw: string): GitIntent | null {
     branchBase: setBranch && branch.base !== setBranch ? branch.base : null,
     deletedBranch: deleted.length > 0 ? deleted : null,
     mergedPr: mergedPr ? Number(mergedPr) : null,
-    commit: RE_COMMIT.test(raw),
-    push: RE_PUSH.test(raw),
+    commit: commands.some((command) => RE_COMMIT.test(command)),
+    push: commands.some((command) => RE_PUSH.test(command)),
   };
 }
 

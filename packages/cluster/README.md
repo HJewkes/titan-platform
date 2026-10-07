@@ -22,7 +22,9 @@ const result = clusterer.cluster({ partition: "Bash", text: toolResultText });
 1. `extractSignature` reduces a multi-line blob to one anchor line plus a line-count
    bucket, because Drain is per-line and stack traces vary in length. `hasErrorSignal`
    tells you whether that anchor came from a recognized failure shape; successful output
-   has unbounded cardinality and should be screened out before clustering.
+   has unbounded cardinality and should be screened out before clustering. Anchor rules
+   are frozen data (`AnchorConfigs`), one per partition, with a generic fallback; see
+   [Anchor rules](#anchor-rules).
 2. `applyMasks` replaces UUIDs, hashes, paths, durations, line numbers, exit codes, and
    digit runs with typed placeholders, recording the first match of each as a parameter.
    Configs are frozen data (`MaskConfigs`), one per partition, with a generic fallback.
@@ -32,6 +34,26 @@ const result = clusterer.cluster({ partition: "Bash", text: toolResultText });
 4. `templateId` is a sha256 of `(partition, maskedSignature)`, taken from the line that
    founds a Drain cluster and bound to that cluster for good. Later lines Drain merges
    into the cluster reuse the founder's id, even when their own masked signature differs.
+
+## Anchor rules
+
+`DEFAULT_ANCHOR_CONFIGS` gives two partitions special rules. `test` tries test-runner
+shapes first (pass/fail counts, `error TS…`, eslint rule ids), then the shell ones. `git`
+anchors on its first line and never counts as an error signal. Every other partition
+uses `generic`: shell diagnostics, `…Error` lines, stack frames, exit codes, then the last
+non-blank line. Each `AnchorConfig` is a rule list plus a `fallback` of `last-non-blank`
+or `first-line`.
+
+Map your own partition names onto them through `ClustererOptions.anchors`, or the
+optional third argument of `extractSignature` and `hasErrorSignal`:
+
+```ts
+import { Clusterer, DEFAULT_ANCHOR_CONFIGS, hasErrorSignal } from "@titan-design/cluster";
+
+const anchors = { ...DEFAULT_ANCHOR_CONFIGS, Bash: DEFAULT_ANCHOR_CONFIGS.test! };
+const clusterer = new Clusterer({ anchors });
+hasErrorSignal("Bash", "src/a.ts(3,5): error TS2322: bad type", anchors); // true
+```
 
 ## Restarts
 
@@ -45,4 +67,5 @@ converges on the same templates and ids as one all-at-once run over the same inp
 `DrainTreeOptions`: `depth` (4), `simTh` (0.55, higher than Drain3's 0.4 because dev
 output is more heterogeneous than syslog), `maxChildren` (100), `maxClusters` (5000,
 evicting the least-supported cluster on overflow). `evicting` reports when a partition
-has hit the cap.
+has hit the cap. An evicted cluster's template binding is dropped with it, so a template
+whose cluster recurs after eviction comes back with the same id and `isNewTemplate: true`.

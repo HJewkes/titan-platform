@@ -1,31 +1,19 @@
 import type { Node } from "web-tree-sitter";
-
-/** Node types the TypeScript grammar emits for a class: declarations, abstract declarations and class expressions. */
-export const TS_CLASS_TYPES: ReadonlySet<string> = new Set([
-  "class_declaration",
-  "abstract_class_declaration",
-  "class",
-]);
+import { PY_DECL_TYPES, TS_BOUND_FUNCTION_TYPES, TS_CLASS_TYPES, TS_FUNCTION_DECL_TYPES } from "./node-kinds.js";
 
 /** Declarations that name the scope they open. */
 const TS_NAMED_SCOPES = new Set([
   ...TS_CLASS_TYPES,
-  "function_declaration",
-  "generator_function_declaration",
-  "method_definition",
+  ...TS_FUNCTION_DECL_TYPES,
   "internal_module",
 ]);
 
 /** Values that take the name they are bound to, or open an anonymous scope when unbound. */
 const TS_BOUND_SCOPES = new Set([
   "class",
-  "arrow_function",
-  "function_expression",
-  "generator_function",
+  ...TS_BOUND_FUNCTION_TYPES,
   "object",
 ]);
-
-const PY_NAMED_SCOPES = new Set(["function_definition", "class_definition"]);
 
 /** The segment an unbound callback, object or class adds, so its members never merge with a named declaration. */
 export const ANONYMOUS_SCOPE = "<anonymous>";
@@ -54,7 +42,7 @@ function bindingName(node: Node): string | null {
 /** The segment this node adds to its descendants' scope path, or null when it opens no named scope. */
 function scopeSegment(node: Node, python: boolean): string | null {
   if (python) {
-    return PY_NAMED_SCOPES.has(node.type) ? (node.childForFieldName("name")?.text ?? null) : null;
+    return PY_DECL_TYPES.has(node.type) ? (node.childForFieldName("name")?.text ?? null) : null;
   }
   const own = TS_NAMED_SCOPES.has(node.type) ? node.childForFieldName("name")?.text : undefined;
   if (own) return own;

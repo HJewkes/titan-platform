@@ -22,6 +22,8 @@ export interface CiSnapshot {
   mergeSha?: string | null;
   failing?: FailingCheck[];
   waitingOn?: string[];
+  /** On a `pending` read: every check waited on exists and is queued or in progress, none red or unreported, so a slow runner explains the wait. */
+  backlog?: boolean;
   /** On a `behind` read: the PR's own required checks are green at this head, so it can be reviewed before any update. */
   checksGreen?: boolean;
   /** On a `behind` read in a repo that does not require up-to-date heads: green, but the base moved after its CI started. */
@@ -53,8 +55,14 @@ export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, 
 }
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
-function findingsAt(input: CiInput, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+}
+
+/** True when every required check at `headSha` has passed, as ci-wait judges them; mergeability is not read. */
+export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, headSha: string, reads: PrReads): Promise<boolean> {
+  const runs = await reads.checkRuns(input.repo, headSha, () => true);
+  return findingsAt(input, headSha, runs).length === 0;
 }
 
 async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
@@ -67,7 +75,7 @@ async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, opti
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft, options.missingSettled?.(pr.headSha) ?? false);
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
-  if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName) };
+  if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName), ...backlogFlag(findings) };
   const verdict = await settledVerdict(port, input, pr);
   if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };
   return { ...base, verdict };
@@ -76,7 +84,7 @@ async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, opti
 /** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */
 function behindVerdict(base: Pick<CiSnapshot, "headSha" | "mergeableState">, findings: CheckFinding[], draft: boolean, missingSettled: boolean): CiSnapshot {
   const running = findings.filter((finding) => finding.kind !== "failed" && !(missingSettled && finding.kind === "missing"));
-  if (running.length > 0) return { ...base, verdict: "pending", waitingOn: running.map(findingName) };
+  if (running.length > 0) return { ...base, verdict: "pending", waitingOn: running.map(findingName), ...backlogFlag(running) };
   return { ...base, verdict: "behind", ...(findings.length === 0 && !draft && { checksGreen: true }) };
 }
 
@@ -103,6 +111,10 @@ function failingCheck(run: CheckRun): FailingCheck {
 
 function findingName(finding: CheckFinding): string {
   return finding.kind === "missing" ? finding.name : finding.run.name;
+}
+
+function backlogFlag(findings: CheckFinding[]): { backlog?: true } {
+  return findings.every((finding) => finding.kind === "pending") ? { backlog: true } : {};
 }
 
 /** A blocked PR is green when its only block is an approval rule the caller can bypass, which GitHub reports as blocked all the same. */

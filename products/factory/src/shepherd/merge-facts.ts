@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -32,7 +33,8 @@ interface SettleClock {
 
 const REAL_CLOCK: SettleClock = { sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
-export type IsFrozen = (repo: RepoSlug) => Promise<boolean>;
+/** Whether `repo` is frozen for `pr`: a freeze's own fix PR reads not frozen, as the freeze guard lets it land. */
+export type IsFrozen = (repo: RepoSlug, pr: number) => Promise<boolean>;
 
 /** A stand-in until TP-523 adds the freeze store: no repo can be frozen before it exists. */
 export const noFreezeStoreUntilTp523: IsFrozen = async () => false;
@@ -50,6 +52,8 @@ export interface MergeEvidenceInput {
   seatGrants: string[];
   /** The `sh-carry` step's answer for this head, with the head it asked about; absent means no carry was probed. */
   carry?: { fromHead: string; head: string; result: CarryResult };
+  /** The run policy's visual globs, so the evidence comment records the same decision `decide` reaches. */
+  visualPaths?: string[];
 }
 
 export interface EvidenceCheckRun {
@@ -87,6 +91,8 @@ export interface MergeEvidence {
   requiredChecksUnknown?: string;
   /** Facts that could not be read and were taken at their closed value; a gate's reason names them. */
   unreadFacts?: string[];
+  /** Why the PR's changed files could not be read; set means the merge gates. */
+  changedFilesUnread?: string;
 }
 
 /** Just what `decideAutoMerge` reads, so the evidence step can decide before its record exists. */
@@ -97,6 +103,7 @@ export interface DecidableEvidence {
   mergeableState?: string;
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
+  changedFilesUnread?: string;
 }
 
 function guardRule(rowId: string): PolicyRule {
@@ -120,16 +127,21 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
   return { ...decision, reason: `${decision.reason}; read closed: ${unread.join("; ")}` };
 }
 
-/** The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, or MRG-AU-RC for a tree-equal carry of the verdict to it, allows. */
-export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
-  return withUnreadFacts(decideOnFacts(headSha, evidence), evidence);
+/**
+ * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, or MRG-AU-RC for a
+ * tree-equal carry of the verdict to it, allows. Under `visualPaths`, a head whose changed files match one gates.
+ */
+export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[]): GateDecision {
+  return withUnreadFacts(decideOnFacts(headSha, evidence, visualPaths), evidence);
 }
 
-function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined): GateDecision {
+function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined, visualPaths: readonly string[] | undefined): GateDecision {
   if (!evidence) return { outcome: "gate", rule: guardRule("no-facts"), reason: `no merge facts were collected at ${headSha}` };
   if (evidence.head !== headSha || evidence.merge.head !== headSha) {
     return { outcome: "gate", rule: guardRule("head-mismatch"), reason: `merge facts were collected at ${evidence.head}, not ${headSha}` };
   }
+  const pathGate = changedFilesGate(evidence, visualPaths);
+  if (pathGate) return pathGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
   if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule("merge-state-unsettled"), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const workflowPaths = evidence.merge.changedPaths.filter(isGithubPath);
@@ -142,18 +154,59 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined)
   return { outcome: "gate", rule: authorityRule(decision.ruleId), reason };
 }
 
+const SHOWN_VISUAL_PATHS = 10;
+
+/** Unread changed files gate under any policy; under visual paths they count as visual, as does an empty list. */
+function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly string[] | undefined): GateDecision | undefined {
+  const asVisual = visualPaths === undefined ? "" : ", so the PR counts as visual";
+  if (evidence.changedFilesUnread !== undefined) return { outcome: "gate", rule: guardRule("files-unread"), reason: `${evidence.changedFilesUnread}${asVisual}; the owner decides` };
+  if (visualPaths === undefined) return undefined;
+  if (evidence.merge.changedPaths.length === 0) return { outcome: "gate", rule: guardRule("files-unread"), reason: `no changed files were read at ${evidence.head}${asVisual}; the owner decides` };
+  const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
+  if (visual.length === 0) return undefined;
+  const shown = visual.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (visual.length > SHOWN_VISUAL_PATHS ? ` and ${visual.length - SHOWN_VISUAL_PATHS} more` : "");
+  return { outcome: "gate", rule: guardRule("visual-path"), reason: `the owner decides visual changes: ${shown}` };
+}
+
+/**
+ * Case is folded on both sides, as a case-insensitive checkout writes `Packages/UI/x` into `packages/ui/`. A glob list
+ * that cannot compile matches every path, so a bad policy gates instead of throwing or allowing.
+ */
+function visualMatches(paths: readonly string[], visualPaths: readonly string[]): string[] {
+  let isVisual: (path: string) => boolean;
+  try {
+    isVisual = compileGlobs(visualPaths.map((glob) => glob.toLowerCase()));
+  } catch {
+    isVisual = () => true;
+  }
+  return paths.filter((path) => isVisual(path.toLowerCase()));
+}
+
 /** Both sides of every rename, so moving a file out of `.github/` still counts as touching it. */
 export function changedPaths(files: readonly PrFile[]): string[] {
   return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
 }
 
-/** A truncated list is no list: empty paths fail authority's path condition, so the merge gates. */
-async function prPaths(port: GitHubPort, repo: RepoSlug, pr: number): Promise<string[]> {
+interface PathsRead {
+  paths: string[];
+  /** Why the list could not be read whole. */
+  unread?: string;
+}
+
+/**
+ * A truncated or failed list is no list: empty paths fail authority's path condition, and the unread reason gates first.
+ * GitHub lists a PR's files at whatever head it has now, so the list counts only when the PR sits at `head` both before
+ * and after it is read. The compare endpoint would pin the sha itself, but it drops rename sources and stops at 300 files.
+ */
+async function pinnedPaths(port: GitHubPort, { repo, pr, head }: MergeEvidenceInput, readHead: string): Promise<PathsRead> {
+  const unread = (why: string): PathsRead => ({ paths: [], unread: `the changed files of ${repo}#${pr} are unknown: ${why}` });
+  if (readHead !== head) return unread(`the PR is at ${readHead}, not ${head}`);
   try {
-    return changedPaths(await port.listPrFiles(repo, pr));
+    const files = await port.listPrFiles(repo, pr);
+    const after = (await port.getPr(repo, pr)).headSha;
+    return after === head ? { paths: changedPaths(files) } : unread(`the head moved to ${after} during the read`);
   } catch (error) {
-    if (error instanceof FileListTruncatedError) return [];
-    throw error;
+    return unread(error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`);
   }
 }
 
@@ -199,6 +252,7 @@ interface Observed {
   runs: CheckRun[];
   requiredChecksUnknown?: string;
   unreadFacts?: string[];
+  changedFilesUnread?: string;
 }
 
 interface KindRead {
@@ -230,8 +284,8 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const [required, runs, paths, frozen, bypassable] = await Promise.all([
     readRequiredChecks(port, input.repo, pr.baseRef),
     port.latestCheckRuns(input.repo, input.head),
-    prPaths(port, input.repo, input.pr),
-    isFrozen(input.repo),
+    pinnedPaths(port, input, pr.headSha),
+    isFrozen(input.repo, input.pr),
     reviewBypassable(port, input.repo, pr),
   ]);
   const merge: MergeFacts = {
@@ -244,14 +298,15 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
     checkRuns: runs.map(runFact),
     mergeTreeClean: mergeTreeClean(pr, input.head, bypassable.bypassable),
     repoFrozen: frozen,
-    changedPaths: paths,
+    changedPaths: paths.paths,
     seatGrants: input.seatGrants,
   };
   const carry = carryFact(input.carry, input.head);
   if (carry) merge.carry = carry;
   if (kind !== undefined) merge.kind = kind;
   const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
-  return { pr, merge, runs, ...(required.readable ? {} : { requiredChecksUnknown: required.reason }), ...(unreadFacts.length > 0 && { unreadFacts }) };
+  const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
+  return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }) };
 }
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
@@ -299,10 +354,10 @@ export function evidenceComment(record: EvidenceRecord): string {
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */
 export async function mergeEvidence(port: GitHubPort, input: MergeEvidenceInput, isFrozen: IsFrozen, kind?: KindRead, clock?: SettleClock): Promise<MergeEvidence & { commentId: number }> {
-  const { pr, merge, runs, requiredChecksUnknown, unreadFacts } = await collectMergeFacts(port, input, isFrozen, kind, clock);
+  const { pr, merge, runs, requiredChecksUnknown, unreadFacts, changedFilesUnread } = await collectMergeFacts(port, input, isFrozen, kind, clock);
   const mergeableState = pr.mergeableState;
-  const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }) };
-  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown });
+  const unknown = { ...(requiredChecksUnknown !== undefined && { requiredChecksUnknown }), ...(unreadFacts && { unreadFacts }), ...(changedFilesUnread !== undefined && { changedFilesUnread }) };
+  const decision = decideAutoMerge(input.head, { head: input.head, merge, record: input, mergeableState, ...unknown }, input.visualPaths);
   const record: EvidenceRecord = {
     runId: input.runId,
     repo: input.repo,

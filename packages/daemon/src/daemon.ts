@@ -36,7 +36,7 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   allowUnauthenticatedNonLoopback?: boolean;
   /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
   toolPrefix?: string;
-  /** MCP handshake identity; defaults to the daemon `name` option or `titan-daemon`. */
+  /** MCP handshake identity; defaults to `titan-daemon`. */
   mcpName?: string;
   /** Directory to watch for live reload; each debounced change broadcasts `change` on the hub. */
   watchRoot?: string;
@@ -245,10 +245,10 @@ function headerValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value.join(",") : value;
 }
 
-function respondJson(res: ServerResponse, status: number, error: string): void {
+function respondJson(res: ServerResponse, status: number, error: string, code: number = EXIT.USAGE): void {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify(errorEnvelope(error, EXIT.USAGE)));
+  res.end(JSON.stringify(errorEnvelope(error, code)));
 }
 
 function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -308,8 +308,7 @@ function failRequest(res: ServerResponse, err: unknown): void {
     res.destroy();
     return;
   }
-  res.statusCode = 500;
-  res.end(String(err));
+  respondJson(res, 500, String(err), EXIT.SOFTWARE);
 }
 
 function boundPortOf(server: ServerType, requested: number): number {
