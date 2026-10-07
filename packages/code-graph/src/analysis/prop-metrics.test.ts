@@ -170,6 +170,11 @@ describe("component prop metrics (C-97 S3)", () => {
     ["an inner function name", "function label() {} use(label);"],
     ["an inner class name", "class label {} use(label);"],
     ["a named function expression", "const g = function label() { return label; };"],
+    ["a generator parameter", "function* g(label: string) { yield label; }"],
+    ["a generator expression parameter", "const g = function* (label: string) { yield label; };"],
+    ["a named generator expression", "const g = function* label() { yield label; };"],
+    ["a class expression name", "const K = class label { m() { return label; } };"],
+    ["an abstract class name", "abstract class label {} use(label);"],
   ])("does not count %s that shadows a prop as a read of it", async (_kind, inner) => {
     const metrics = await metricsOf(
       "export function Item({ label, x }: { label: string; x: number }) {\n" +
@@ -185,5 +190,14 @@ describe("component prop metrics (C-97 S3)", () => {
     );
 
     expect(propsOf(metrics, "Item").unread).toBe(0);
+  });
+
+  it("does not count a props.<name> read inside a nested function that shadows props", async () => {
+    const metrics = await metricsOf(
+      "export function E(props: { a: string; b: string }) {\n" +
+        "  const f = (props: { a: number }) => props.a;\n  return <i>{f({ a: 1 })}{props.b}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "E").unread).toBe(1);
   });
 });

@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { walkReferences } from "./scope-references.js";
 
 /** Own-declared prop counts of one component (C-97 S3). */
 export interface PropStats {
@@ -156,17 +157,12 @@ function countUnread(pattern: Node, fn: Node, names: readonly string[]): number 
 function propertyReads(param: Node, fn: Node): Set<string> | null {
   const reads = new Set<string>();
   let escapes = false;
-  const walk = (node: Node): void => {
-    if (node.type === "identifier" && node.text === param.text && node.id !== param.id) {
-      const keys = keysReadAt(node);
-      if (keys) keys.forEach((key) => reads.add(key));
-      else escapes = true;
-    }
-    for (const child of node.namedChildren) {
-      if (child) walk(child);
-    }
-  };
-  walk(fn);
+  walkReferences(fn, (ref, shadowed) => {
+    if (ref.type !== "identifier" || ref.text !== param.text || ref.id === param.id || shadowed.has(ref.text)) return;
+    const keys = keysReadAt(ref);
+    if (keys) keys.forEach((key) => reads.add(key));
+    else escapes = true;
+  });
   return escapes ? null : reads;
 }
 
@@ -223,101 +219,9 @@ function pairBinding(pair: Node): Node | null {
 /** Value references by name (identifier or object shorthand), minus declarations and shadowed names. */
 function countReferences(fn: Node, declIds: ReadonlySet<number>): Map<string, number> {
   const out = new Map<string, number>();
-  const walk = (node: Node, shadowed: ReadonlySet<string>): void => {
-    const isRef = node.type === "identifier" || node.type === "shorthand_property_identifier";
-    if (isRef && !declIds.has(node.id) && !shadowed.has(node.text)) {
-      out.set(node.text, (out.get(node.text) ?? 0) + 1);
-    }
-    const inner = node === fn ? shadowed : withScopeBindings(node, shadowed);
-    for (const child of node.namedChildren) {
-      if (child) walk(child, inner);
-    }
-  };
-  walk(fn, new Set());
+  walkReferences(fn, (ref, shadowed) => {
+    if (declIds.has(ref.id) || shadowed.has(ref.text)) return;
+    out.set(ref.text, (out.get(ref.text) ?? 0) + 1);
+  });
   return out;
-}
-
-const SCOPE_FUNCTIONS = new Set(["arrow_function", "function_expression", "function_declaration", "method_definition"]);
-const BINDING_LEAVES = new Set(["identifier", "type_identifier", "shorthand_property_identifier_pattern"]);
-const DECLARATIONS =new Set(["lexical_declaration", "variable_declaration"]);
-const NAMED_DECLARATIONS = new Set(["function_declaration", "generator_function_declaration", "class_declaration"]);
-
-/** `shadowed` plus every name a scope-creating `node` binds for its own subtree. */
-function withScopeBindings(node: Node, shadowed: ReadonlySet<string>): ReadonlySet<string> {
-  const names = scopeBindings(node);
-  return names.length === 0 ? shadowed : new Set([...shadowed, ...names]);
-}
-
-function scopeBindings(node: Node): string[] {
-  const names: string[] = [];
-  const bind = (target: Node | null): void => {
-    if (target) patternNames(target, names);
-  };
-  switch (node.type) {
-    case "statement_block":
-      declaredIn(node.namedChildren, names);
-      break;
-    case "switch_body":
-      declaredIn(node.namedChildren.flatMap((clause) => clause?.namedChildren ?? []), names);
-      break;
-    case "for_statement":
-      declaredIn([node.childForFieldName("initializer")], names);
-      break;
-    case "for_in_statement":
-      if (node.childForFieldName("kind")) bind(node.childForFieldName("left"));
-      break;
-    case "catch_clause":
-      bind(node.childForFieldName("parameter"));
-      break;
-    default:
-      if (!SCOPE_FUNCTIONS.has(node.type)) break;
-      bind(node.childForFieldName("parameters") ?? node.childForFieldName("parameter"));
-      if (node.type === "function_expression") bind(node.childForFieldName("name"));
-  }
-  return names;
-}
-
-/** Names bound by the declarations and named function/class declarations among `statements`. */
-function declaredIn(statements: readonly (Node | null)[], out: string[]): void {
-  for (const stmt of statements) {
-    if (stmt) declaredNames(stmt, out);
-  }
-}
-
-function declaredNames(stmt: Node, out: string[]): void {
-  if (NAMED_DECLARATIONS.has(stmt.type)) {
-    const name = stmt.childForFieldName("name");
-    if (name) patternNames(name, out);
-    return;
-  }
-  if (!DECLARATIONS.has(stmt.type)) return;
-  const targets = stmt.namedChildren.map((decl) =>
-    decl?.type === "variable_declarator" ? decl.childForFieldName("name") : null,
-  );
-  for (const target of targets) {
-    if (target) patternNames(target, out);
-  }
-}
-
-/** Identifiers a binding pattern or parameter list introduces; skips keys and default values. */
-function patternNames(node: Node, out: string[]): void {
-  if (BINDING_LEAVES.has(node.type)) {
-    out.push(node.text);
-    return;
-  }
-  if (PARAM_TYPES.has(node.type)) {
-    const pattern = node.childForFieldName("pattern");
-    if (pattern) patternNames(pattern, out);
-    return;
-  }
-  const inner =
-    node.type === "pair_pattern" ? node.childForFieldName("value")
-    : node.type === "assignment_pattern" || node.type === "object_assignment_pattern" ? node.childForFieldName("left")
-    : null;
-  if (inner) patternNames(inner, out);
-  else if (node.type !== "pair_pattern" && node.type !== "assignment_pattern" && node.type !== "object_assignment_pattern") {
-    for (const child of node.namedChildren) {
-      if (child && child.type !== "type_annotation") patternNames(child, out);
-    }
-  }
 }
