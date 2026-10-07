@@ -13,6 +13,23 @@ const NEVER_LEFT_CODES: ReadonlySet<string> = new Set([
   "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
+/** Strips a secret, and its URL-encoded form, from a string before it leaves the package. */
+export function redactSecret(value: string, secret: string): string {
+  if (!secret) return value;
+  const encoded = encodeURIComponent(secret);
+  const once = value.split(secret).join("***");
+  return encoded === secret ? once : once.split(encoded).join("***");
+}
+
+export function describeCause(cause: unknown): string {
+  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  return String(cause);
+}
+
+export function isAbortError(cause: unknown): boolean {
+  return cause instanceof Error && cause.name.endsWith("AbortError");
+}
+
 const MAX_CAUSE_DEPTH = 4;
 
 /** undici wraps the socket error as `TypeError("fetch failed")` with the coded error on `cause`. */
