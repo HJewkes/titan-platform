@@ -701,6 +701,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../../packages/fix-proof
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
