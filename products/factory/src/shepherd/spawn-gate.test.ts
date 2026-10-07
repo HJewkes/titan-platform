@@ -8,7 +8,7 @@ import { ReviewerBrokerBusy } from "./review.js";
 import { whileBrokerBusy } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import type { RosterReader } from "./roster.js";
-import { admitSpawn, DEFAULT_SPAWN_LIMITS, spawnGate, SpawnDeferred, type MachineReadings } from "./spawn-gate.js";
+import { admitSpawn, DEFAULT_SPAWN_LIMITS, REVIEW_STALE_MS, spawnGate, SpawnDeferred, type MachineReadings, type ReviewAsk } from "./spawn-gate.js";
 import { implementersOver } from "./wake.js";
 
 const limits = DEFAULT_SPAWN_LIMITS;
@@ -83,6 +83,75 @@ describe("spawnGate", () => {
     tryAll();
     expect(admitted).toEqual(["rv-a-1", "rv-b-2"]);
   });
+
+  it("admits a burst of ordinary reviews first come per poll, as with no review facts", () => {
+    const { gate, state } = scene(idle);
+    const names = ["rv-a-1", "rv-b-2", "rv-c-3"];
+    const admitted: string[] = [];
+    const tryAll = () => names.filter((name) => !admitted.includes(name)).forEach((name) => { try { gate.admit(name, [], { fixer: false }); admitted.push(name); } catch { /* deferred */ } });
+
+    tryAll();
+    state.now += limits.windowMs;
+    tryAll();
+
+    expect(admitted).toEqual(["rv-a-1", "rv-b-2"]);
+  });
+});
+
+describe("spawnGate review priority", () => {
+  const ordinary: ReviewAsk = { fixer: false };
+  const fixer: ReviewAsk = { fixer: true };
+  const scene = () => {
+    const state = { readings: { ...idle, load5: 21 }, now: 1_000, lines: [] as string[] };
+    const gate = spawnGate({ read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
+    const ask = (name: string, review: ReviewAsk) => { try { gate.admit(name, [], review); return true; } catch { return false; } };
+    return { state, gate, ask };
+  };
+
+  it("admits the waiting review of a red main's fix first once buildLoad5 clears, then the others in first-ask order", () => {
+    const { state, ask } = scene();
+    const waiting: [string, ReviewAsk][] = [["rv-a-1", ordinary], ["rv-b-2", ordinary], ["rv-fix-3", fixer]];
+    const admitted: string[] = [];
+    const poll = () => waiting.filter(([name]) => !admitted.includes(name)).forEach(([name, review]) => ask(name, review) && admitted.push(name));
+
+    poll();
+    expect(admitted).toEqual([]);
+    state.readings = idle;
+    for (let round = 0; round < 3; round++, state.now += limits.windowMs) poll();
+
+    expect(admitted).toEqual(["rv-fix-3", "rv-a-1", "rv-b-2"]);
+  });
+
+  it("refuses an ordinary review with a reason naming the waiting fix review", () => {
+    const { state, gate, ask } = scene();
+    ask("rv-fix-3", fixer);
+    state.readings = idle;
+
+    expect(() => gate.admit("rv-a-1", [], ordinary)).toThrow("the review rv-fix-3 of a red main's fix waits ahead");
+  });
+
+  it("stops holding the queue for a fix review that has not asked within the stale interval", () => {
+    const { state, ask } = scene();
+    ask("rv-fix-3", fixer);
+    state.readings = idle;
+
+    state.now += REVIEW_STALE_MS;
+    const blocked = ask("rv-a-1", ordinary);
+    state.now += 1;
+    const admitted = ask("rv-a-1", ordinary);
+
+    expect({ blocked, admitted }).toEqual({ blocked: false, admitted: true });
+  });
+
+  it("never holds back a spawn that is no review", () => {
+    const { state, gate, ask } = scene();
+    ask("rv-fix-3", fixer);
+    state.readings = idle;
+
+    gate.admit("fx-demo-abc");
+
+    expect(state.lines.at(-1)).toBe("shepherd: spawn_gate admitted fx-demo-abc (load5 2, pressure 1, free 85%)");
+  });
 });
 
 describe("every factory-started agent passes the one gate", () => {
@@ -130,6 +199,24 @@ describe("every factory-started agent passes the one gate", () => {
     await expect(agentChatAgents(bin(), { roster, gate }).resume("impl-a", "wake")).rejects.toBeInstanceOf(SpawnDeferred);
     await expect(dispatch.resume("rv-standing", "brief")).rejects.toBeInstanceOf(ReviewerBrokerBusy);
     expect(ran()).toBe(false);
+  });
+
+  it("spawns the reviewer of a frozen repo's fix PR before two reviewers that asked earlier", async () => {
+    mkdirSync(join(dir, "co"));
+    const state = { load5: 21, now: 0, admitted: [] as string[] };
+    const log = (line: string) => void (line.includes(" admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
+    const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate, isFixer: ({ pr }) => pr === 9 });
+    const prs = [7, 8, 9];
+    const poll = async () => {
+      for (const pr of prs.filter((pr) => !state.admitted.includes(`rv-octo-demo-${pr}`))) await dispatch.spawn(`rv-octo-demo-${pr}`, "brief", { repo: "octo/demo", pr, head: "a".repeat(40) }).catch(() => undefined);
+    };
+
+    await poll();
+    state.load5 = 3;
+    for (let round = 0; round < 3; round++, state.now += limits.windowMs) await poll();
+
+    expect(state.admitted).toEqual(["rv-octo-demo-9", "rv-octo-demo-7", "rv-octo-demo-8"]);
   });
 
   it("asks again on the step's next wait and starts the reviewer once load settles, leaving no record of the deferral", async () => {
