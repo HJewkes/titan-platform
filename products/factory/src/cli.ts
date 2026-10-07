@@ -291,7 +291,11 @@ export function formatResume(report: ResumeReport): string {
 }
 
 function formatGate({ runId, stepId, gate }: PendingGate): string[] {
-  const lines = [`gate ${gate.id}: ${gate.prompt}`];
+  const lines = [`gate ${gate.id}: ${gate.summary ?? gate.prompt}`];
+  if (gate.evidenceRef) lines.push(`  evidence: ${gate.evidenceRef}`);
+  for (const { question, options } of gate.questions ?? []) {
+    lines.push(`  ${question}`, ...options.map((option) => `    - ${option.id}: ${option.label}${option.recommended ? " (recommended)" : ""}`));
+  }
   if (gate.schema) lines.push(`  schema: ${JSON.stringify(gate.schema)}`);
   lines.push(`  resolve: ${resolveCommand(runId, stepId)}`);
   return lines;
