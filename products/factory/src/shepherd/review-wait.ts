@@ -3,6 +3,30 @@ import { errorClass, failureOf } from "./error-class.js";
 
 const minutes = (ms: number) => `${Math.round(ms / 6_000) / 10} min`;
 
+/** The port throws this when the broker cannot be reached: nothing was asked of it, so asking again is safe. */
+export class ReviewerBrokerDown extends Error {
+  override readonly name = "ReviewerBrokerDown";
+}
+
+export interface PollTiming {
+  now: () => number;
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>;
+  pollMs: number;
+}
+
+/** Waits out a broker that is down; any other failure is the caller's to handle. */
+export async function whileBrokerDown<T>(timing: PollTiming, signal: AbortSignal, ask: () => Promise<T>): Promise<T> {
+  for (;;) {
+    signal.throwIfAborted();
+    try {
+      return await ask();
+    } catch (error) {
+      if (!(error instanceof ReviewerBrokerDown)) throw error;
+    }
+    await timing.sleep(timing.pollMs, signal);
+  }
+}
+
 /** The port throws this when the broker refused a start for a reason that clears with time, such as its machine guard; nobody was started. */
 export class ReviewerBrokerBusy extends Error {
   override readonly name: string = "ReviewerBrokerBusy";

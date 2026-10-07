@@ -102,7 +102,10 @@ if (event.kind !== "malformed" && event.kind !== "other") {
 - `handle(stdin, env, port)` is the whole hook: it never throws and returns the stdout and
   log lines for the bin to write.
 - `nodeContext(home)` reads through `realpathSync.native`, so on a case-insensitive filesystem
-  `~/.NPMRC` resolves to the guarded `~/.npmrc`.
+  `~/.NPMRC` resolves to the guarded `~/.npmrc`. On darwin and Windows it also sets
+  `ctx.foldCase`, so a command word reads lower-cased beside its written spelling and
+  `GIT push origin HEAD:main` classifies as `git push origin HEAD:main`. On Linux, where `GIT` is a
+  different program, the word reads only as written.
 
 ## Spellings
 

@@ -1,5 +1,6 @@
 import type { ProbeOptions } from "./liveness.js";
 import { fetchWithTimeout } from "./liveness.js";
+import { isAbortError } from "./send-failure.js";
 import type { TelegramConfig } from "./telegram.js";
 import { methodUrl, readEnvelope } from "./telegram.js";
 
@@ -32,7 +33,7 @@ async function readAlive(response: Response): Promise<TelegramLiveness> {
 }
 
 function darkReason(cause: unknown): TelegramLiveness {
-  const aborted = cause instanceof Error && cause.name.endsWith("AbortError");
+  const aborted = isAbortError(cause);
   return { state: "dark", reason: aborted ? "timeout" : "unreachable" };
 }
 

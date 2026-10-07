@@ -46,6 +46,7 @@ Before adding code:
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
+| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
@@ -78,7 +79,7 @@ around a path, and run its smoke check in the environment the job will really us
 | Workflow step runners: `agentRunner`, `durableHarnessRunner`, `idempotentRunner`, `inlineRunner` | `workflow` | `agentRunner` calls `runAgent`, so it needs `CLAUDE_CODE_OAUTH_TOKEN`, or only the CLI login when its `defaults` set `harness: "claude-print"`. `durableHarnessRunner` needs whatever its dispatcher's adapter needs. `inlineRunner` needs nothing; `idempotentRunner` wraps another runner. | Run the workflow once with `inlineRunner` to prove the steps, then swap in the model runner. |
 | Style tool runners: ESLint, ruff, and the Python audit tools | `style-checker` | No credential. ESLint runs through `npx` and needs its plugins installed. ruff, `lint-imports`, vulture, pydoclint and pyright must be on PATH; an absent Python audit tool returns a warning naming its `pip install`, never a throw. | `ruff --version` and `npx eslint --version` in the target repo. |
 | Embedding backends: `local`, `ollama`, hash fallback | `embed` | No credential. `local` needs the optional `@huggingface/transformers` peer; `ollama` needs a reachable Ollama. `fallbackToHash: true` keeps a run alive with neither. | `createEmbedder({ backend: "ollama" }, { fallbackToHash: true, onFallback: console.warn })`; a warning means the hash fallback took over. |
-| agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`) | `agent-dispatch` | No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd. | `AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' \| agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: "exited"`, a non-empty `sessionId` and `transcriptExists: true`. Resume is not yet smoke-tested: compare `sessionId` before and after. |
+| agent-chat CLI: roster read, reviewer spawn, resume (`agent ls --json`, `agent spawn <name> <profile> --brief-stdin`, `agent resume <name> --message <text>`) | `agent-dispatch` | No credential in the caller. The agent-chat broker starts `claude` under its own login or the profile's config dir. The CLI reaches the broker over its 0600 unix socket as the same OS user, so a broker must be running; set `AGENT_CHAT_NO_AUTOSTART=1` to fail instead of starting one. A spawn runs in the caller's cwd. | `AGENT_CHAT_NO_AUTOSTART=1 agent-chat agent ls --json` prints a JSON array (about 6.5 s with 700 rows, so do not call it on a hot path). Then `printf 'Reply with the word ok and stop.' \| agent-chat agent spawn <name> <profile> --brief-stdin`; the roster row ends with `presence: "exited"`, a non-empty `sessionId` and `transcriptExists: true`. Resume, smoke-tested 2026-10-06: once that row has exited, `agent-chat agent resume <name> --message <text>` runs a new turn in the same session; `sessionId` is the same before and after, and both replies are in one transcript. |
 
 ## Known gaps
 
@@ -317,7 +318,7 @@ Key exports:
 
 ### [`store-sqlite`](https://hjewkes.github.io/titan-platform/reference/store-sqlite)
 
-Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: entity/edge (bi-temporal), content-addressed cache, contentless FTS5, watermark, migrations
+Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
 
 **Use this when:** You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself.
 
@@ -612,7 +613,19 @@ Key exports:
 - `live-source`: `createLiveSource`, `loadReadModel`, `toSnapshotInfo`
 - `register`: `defineCodeReadCommands`, `registerCodeReadCommands`
 - `query`: `serializeContract`, `Centrality`, `CoupledPartners`, `ExportRow`
-- +108 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
+- +114 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/code-read)
+
+<a id="cap-coordinator"></a>
+
+### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
+
+Tier 2, `@titan-design/coordinator@0.0.0`. Seat config schema for the autonomy coordinator (pure code: zod schema and inferred types).
+
+**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package.
+
+Key exports:
+
+- `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`, `SeatConcurrency`, `SeatConfig`, `SeatRepo`, `SeatSpend`
 
 <a id="cap-decider"></a>
 
