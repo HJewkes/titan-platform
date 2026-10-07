@@ -5,6 +5,7 @@ const REFERENCE_TYPES = new Set(["identifier", "shorthand_property_identifier"])
 const BINDING_LEAVES = new Set(["identifier", "type_identifier", "shorthand_property_identifier_pattern"]);
 const PARAM_TYPES = new Set(["required_parameter", "optional_parameter"]);
 const WITH_DEFAULT = new Set(["assignment_pattern", "object_assignment_pattern"]);
+const ELEMENT_LISTS = new Set(["formal_parameters", "object_pattern", "array_pattern", "rest_pattern"]);
 const DECLARATIONS = new Set(["lexical_declaration", "variable_declaration"]);
 
 /**
@@ -76,17 +77,17 @@ function declaredNames(stmt: Node, out: string[]): void {
   }
 }
 
-/** Identifiers a binding pattern or parameter list introduces; skips keys and default values. */
+/** Identifiers a binding pattern or parameter list introduces; anything not a binding position binds nothing. */
 function patternNames(node: Node, out: string[]): void {
   if (BINDING_LEAVES.has(node.type)) {
     out.push(node.text);
     return;
   }
-  const next = patternChildren(node);
-  for (const child of next) patternNames(child, out);
+  for (const child of bindingChildren(node)) patternNames(child, out);
 }
 
-function patternChildren(node: Node): Node[] {
+/** The sub-nodes of `node` that sit in a binding position; keys, defaults and annotations are not. */
+function bindingChildren(node: Node): Node[] {
   const field = (name: string): Node[] => {
     const child = node.childForFieldName(name);
     return child ? [child] : [];
@@ -94,5 +95,6 @@ function patternChildren(node: Node): Node[] {
   if (PARAM_TYPES.has(node.type)) return field("pattern");
   if (node.type === "pair_pattern") return field("value");
   if (WITH_DEFAULT.has(node.type)) return field("left");
-  return node.namedChildren.filter((c): c is Node => c !== null && c.type !== "type_annotation");
+  if (!ELEMENT_LISTS.has(node.type)) return [];
+  return node.namedChildren.filter((child): child is Node => child !== null);
 }

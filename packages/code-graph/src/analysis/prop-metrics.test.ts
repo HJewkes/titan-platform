@@ -200,4 +200,18 @@ describe("component prop metrics (C-97 S3)", () => {
 
     expect(propsOf(metrics, "E").unread).toBe(1);
   });
+
+  it.each([
+    ["an object method", "const o = { [label]() { return 1; } };"],
+    ["a class method", "class K { [label]() {} }"],
+    ["a destructuring default", "const f = ({ a = label }: { a?: string }) => a;"],
+    ["a destructuring computed key", "const { [label]: z } = obj;"],
+  ])("still counts a prop read in a computed key or default of %s", async (_kind, inner) => {
+    const metrics = await metricsOf(
+      "export function Item({ label, x }: { label: string; x: number }) {\n" +
+        `  ${inner}\n  return <i>{x}</i>;\n}\n`,
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(0);
+  });
 });
