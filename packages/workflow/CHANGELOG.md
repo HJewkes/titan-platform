@@ -1,5 +1,31 @@
 # @titan-design/workflow
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [f2e4abf]
+  - @titan-design/hitl@0.7.0
+
+## 0.9.0
+
+### Minor Changes
+
+- 27702c6: `assisted` and `authorize` take an optional `brief` (hitl `GateBrief`: `summary`, `evidenceRef`, `questions?`) and store it on the gate they open, so a store with `requireBrief` accepts it. The `gate_opened` event gains an optional `summary`.
+
+### Patch Changes
+
+- 85870d9: `WorkflowRuntime.hydrate` takes an optional `exclude` set of run ids to leave unclaimed. Factory serve uses it so a held Shepherd run whose PR read fails is no longer adopted and driven: it waits for the next tick, when a successful read ends it or adopts it.
+- 0f55e8b: Surface the errors Shepherd swallowed. `WorkflowRuntime.cancel` now throws a typed `WorkflowNotOwnedError` (same message) when it cannot claim the run. The gone-elsewhere sweep treats only that error as a lease held elsewhere; any other cancel failure goes to the new `onCancelFailed` callback, which serve logs, resync reports as `cancelErrors` and keeps held, and the pre-adoption recheck keeps unadopted. A `findPr` rejection in the Version Packages sweep is now a `{ repo, error }` note. A reviewer that never starts after failed roster reads names the last roster error in its reason. A thrown review-ruleset read or registration read still gates the merge, and the gate reason now names it (`unreadFacts` on the evidence).
+- Updated dependencies [ea96b66]
+- Updated dependencies [f886302]
+- Updated dependencies [411b4f0]
+- Updated dependencies [7fb6a9b]
+  - @titan-design/store-sqlite@0.3.3
+  - @titan-design/agent-protocol@0.5.0
+  - @titan-design/hitl@0.6.0
+  - @titan-design/agent@0.4.5
+
 ## 0.8.1
 
 ### Patch Changes

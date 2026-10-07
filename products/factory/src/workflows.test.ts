@@ -166,7 +166,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = 0;
-  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), ...overrides });
+  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined }, ...overrides });
   const workflow = defineWorkflow({ name: "review-wiring", steps: REVIEW_STEPS, run: async (ctx) => void (await reviewPhase(ctx, { repo, pr: 1, round: 0, headSha: H1 })) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);
@@ -277,7 +277,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(30_000);
     expect(elapsed).toBeLessThan(DEFAULT_EXIT_GRACE_MS);
   });
@@ -287,7 +287,7 @@ describe("configuredRoutes with shepherd.review", () => {
 
     const { result, elapsed } = await reviewWith(scene);
 
-    expect(result(AWAIT_VERDICT)).toEqual({ kind: "none" });
+    expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(DEFAULT_EXIT_GRACE_MS);
     expect(elapsed).toBeLessThan(DEFAULT_VERDICT_TIMEOUT_MS);
   });

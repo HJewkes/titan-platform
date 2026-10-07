@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { prefixHash, readJsonLines, readLocatorBytes } from "@titan-design/locator";
+import { isStaleLine } from "./absent.js";
 import { CodexRolloutDecoder } from "./codex-decoder.js";
 import { CODEX_ROLLOUT_FORMAT, codexSourceFromPath } from "./codex-discover.js";
 import type {
@@ -56,19 +57,24 @@ export async function* readCodexObservations(
 
 /** Read only the selected semantic subrecord, never the containing JSON line. */
 export async function readCodexText(locator: SourceTextLocator, options: ReadCodexTextOptions = {}): Promise<string | null> {
+  if (locator.source.format !== CODEX_ROLLOUT_FORMAT || locator.source.harness !== "codex") return null;
+  const source = resolveSource(locator, options.sources);
+  if (!source) return null;
   try {
-    if (locator.source.format !== CODEX_ROLLOUT_FORMAT || locator.source.harness !== "codex") return null;
-    const source = resolveSource(locator, options.sources);
-    if (!source || !(await sourceStillMatches(source))) return null;
-    const bytes = await readLocatorBytes(source.path, [0, locator.evidence.line.byteOffset, locator.evidence.line.byteLength]);
-    const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-    if (hashLine(line) !== locator.evidence.line.contentHash) return null;
-    const record = JSON.parse(line) as unknown;
-    const selected = valueAt(record, locator.selector.path);
-    return selectedText(selected, locator.selector.textIndex);
-  } catch {
-    return null;
+    return (await sourceStillMatches(source)) ? await readSelectedText(source, locator) : null;
+  } catch (error) {
+    if (isStaleLine(error)) return null;
+    throw error;
   }
+}
+
+async function readSelectedText(source: SessionSourceDescriptor, locator: SourceTextLocator): Promise<string | null> {
+  const bytes = await readLocatorBytes(source.path, [0, locator.evidence.line.byteOffset, locator.evidence.line.byteLength]);
+  const line = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  if (hashLine(line) !== locator.evidence.line.contentHash) return null;
+  const record = JSON.parse(line) as unknown;
+  const selected = valueAt(record, locator.selector.path);
+  return selectedText(selected, locator.selector.textIndex);
 }
 
 async function* locatedLines(source: SessionSourceDescriptor, queue: ObservationQueue, until?: number): AsyncGenerator<LocatedSourceLine> {

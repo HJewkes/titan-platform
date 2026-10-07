@@ -22,6 +22,7 @@ const ENTRIES = [
   "graph-arch-compute.ts",
   "graph-arch-types.ts",
   "package-buckets.ts",
+  "partition-quality.ts",
   "symbol-coupling.ts",
   "test-linker.ts",
   "../diff/violation-buckets.ts",

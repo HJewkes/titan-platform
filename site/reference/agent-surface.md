@@ -26,8 +26,8 @@ a shell or AppleScript.
 A host process that dispatches agents which outlive the request: a broker, a factory, a
 supervisor. Use `headless` for unattended work and `iterm-pane`, `iterm-tab` or
 `iterm-window` when a human should watch or answer. For a bounded `claude -p` run that
-returns a result and exits, use `runClaudePrint` in [agent](./agent.md); it is a different
-job.
+returns a result and exits, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` (see
+[agent](./agent.md)); it is a different job.
 
 ## Example
 

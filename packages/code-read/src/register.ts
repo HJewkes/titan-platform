@@ -99,6 +99,21 @@ const CLI: Partial<Record<CommandName, CliMeta>> = {
       limit: { long: "--limit", description: "Rows per list (default 20, max 500; 0 for counts only)" },
     },
   },
+  "paths.impact": {
+    options: {
+      paths: { long: "--path", description: "Repo-relative file path, or absolute under --root; repeatable" },
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      baseline: { long: "--baseline", description: "Snapshot id or ref to compute score, complexity, and findings deltas against" },
+      root: { long: "--root", description: "Absolute checkout directory, so absolute paths under it are read as repo paths" },
+      window: { long: "--window", description: "Churn window such as 90d, or lifetime (default 30d)" },
+    },
+  },
+  "packages.stats": {
+    options: {
+      snapshot: { long: "--snapshot", description: "Snapshot id or ref name (default: newest)" },
+      packages: { long: "--package", description: "Package root such as packages/cli; repeatable (default: every package the tier config declares)" },
+    },
+  },
   "node.neighbors": {
     positional: ["id"],
     options: {

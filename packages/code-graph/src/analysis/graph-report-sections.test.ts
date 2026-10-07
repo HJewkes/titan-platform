@@ -4,6 +4,7 @@ import type { GraphEdge, GraphMetric, GraphNode, NodeRole } from "../types.js";
 import {
   buildReportContext,
   busFactorOf,
+  hotspotComplexityOf,
   hotspotScoreOf,
   topBusFactorRisks,
   topCentralFiles,
@@ -55,6 +56,24 @@ describe("hotspots", () => {
     ]);
   });
 
+  it("reads each file's loc metric, and 0 for a file with none", () => {
+    const ctx = context({
+      nodes: [file("measured.ts"), file("bare.ts")],
+      metrics: [
+        metric("measured.ts", "churn_30d", 2),
+        metric("measured.ts", "cognitive_max", 3),
+        metric("measured.ts", "loc", 120),
+        metric("bare.ts", "churn_30d", 1),
+        metric("bare.ts", "cognitive_max", 3),
+      ],
+    });
+
+    expect(topHotspots(ctx, 5).map((r) => [r.nodeId, r.loc])).toEqual([
+      ["measured.ts", 120],
+      ["bare.ts", 0],
+    ]);
+  });
+
   it("falls back to cyclomatic_max when no cognitive metric is stored", () => {
     const ctx = context({
       nodes: [file("a.ts")],
@@ -62,7 +81,7 @@ describe("hotspots", () => {
     });
 
     expect(topHotspots(ctx, 5)).toEqual([
-      { nodeId: "a.ts", churn: 10, complexity: 4, recency: 1, score: 40 },
+      { nodeId: "a.ts", churn: 10, complexity: 4, loc: 0, recency: 1, score: 40 },
     ]);
   });
 
@@ -122,6 +141,15 @@ describe("hotspots", () => {
 
     expect(topHotspots(ctx, 5)).toEqual([]);
     expect(hotspotScoreOf(ctx, "a.ts")).toBe(0);
+  });
+
+  it("reads a file's complexity factor with or without churn, and undefined when unmeasured", () => {
+    const ctx = context({
+      nodes: [file("a.ts"), file("b.ts"), file("c.ts")],
+      metrics: [metric("a.ts", "cyclomatic_max", 5), metric("a.ts", "cognitive_max", 30), metric("b.ts", "cognitive_max", 9)],
+    });
+
+    expect([hotspotComplexityOf(ctx, "a.ts"), hotspotComplexityOf(ctx, "b.ts"), hotspotComplexityOf(ctx, "c.ts")]).toEqual([30, 9, undefined]);
   });
 });
 

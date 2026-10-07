@@ -1,5 +1,37 @@
 # @titan-design/session-analytics
 
+## 0.9.0
+
+### Minor Changes
+
+- b8da03a: Export `staleEpisodeSessions(db, ids?)`: the sessions `writeEpisodes` would change, newest last request first. It chooses each session's heuristic through the same `readSessionContexts` and `classifySession` step as `writeEpisodes`, so a consumer no longer keeps its own copy of the session-fact query. The README and reference page now document `blockedFlowReport`, `livenessReport` and `reviewFillReport` and the parsers they rest on.
+
+### Patch Changes
+
+- Updated dependencies [6a2c0f8]
+  - @titan-design/session-read@0.10.0
+  - @titan-design/session-graph@0.13.2
+
+## 0.8.0
+
+### Minor Changes
+
+- 218cbac: The session timeline prices 1h cache writes at the 1h rate. `TimelineTokens` gains `cacheWrite5m` and `cacheWrite1h` beside the `cacheWrite` total, filled from session-read's `cacheWriteSplit`, and each request is priced from the split. Before, every cache write was charged at the 5m rate, so a session with 1h writes read lower on the timeline than in `costReport`. A usage row with only the flat total counts as 5m and prices exactly as before, which is the rule `costReport` already uses.
+
+### Patch Changes
+
+- Updated dependencies [18e081a]
+- Updated dependencies [ea96b66]
+- Updated dependencies [218cbac]
+- Updated dependencies [f886302]
+- Updated dependencies [790f304]
+- Updated dependencies [411b4f0]
+- Updated dependencies [d10a591]
+  - @titan-design/session-read@0.9.0
+  - @titan-design/store-sqlite@0.3.3
+  - @titan-design/session-graph@0.13.1
+  - @titan-design/agent-protocol@0.5.0
+
 ## 0.7.0
 
 ### Minor Changes

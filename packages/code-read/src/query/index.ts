@@ -13,6 +13,8 @@ export { Centrality, CoupledPartners, ExportRow, LinkedTests, NodeLens, NodeLens
 export { EXCERPT_LINE_CAP, FINDINGS_PAGE_MAX, Finding, FindingStatus, SourceExcerpt } from "./contract-findings.js";
 export { ChurnWindow, HOTSPOTS_PAGE_MAX, Hotspot, HotspotMark } from "./contract-hotspots.js";
 export { AttentionSignal, LookFirstRow, OVERVIEW_ROWS_MAX, ReadingOrderRow } from "./contract-overview.js";
+export { FindingDelta, ImpactRollup, PATHS_IMPACT_MAX, PathDelta, PathHotspot, PathImpact } from "./contract-paths-impact.js";
+export { CrossEdge, PACKAGES_MAX, PackageLayer, PackageStatsRow } from "./contract-packages.js";
 export { CHANGES_ROWS_MAX, CoChangePair, FindingChange, NewFile, Regression, ScoreChange } from "./contract-changes.js";
 export {
   Capabilities,
@@ -53,6 +55,8 @@ export { listFindings } from "./findings-list.js";
 export { listHotspots } from "./hotspots.js";
 export { getOverview } from "./overview.js";
 export { getChanges } from "./changes.js";
+export { pathsImpact, repoRelative } from "./paths-impact.js";
+export { declaredTiers, packagesStats } from "./packages-stats.js";
 export { RELATED_CAP, getFinding } from "./finding-get.js";
 export { getNeighbors } from "./neighbors.js";
 export { excessOf } from "./finding-rows.js";

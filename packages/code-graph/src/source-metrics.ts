@@ -4,14 +4,9 @@ import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-h
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
 import { cognitiveComplexityOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
-import { qualify, walkScopes } from "./scope-path.js";
+import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
 import type { GraphMetric } from "./types.js";
-
-const TS_FUNCTION_TYPES = new Set([
-  "function_declaration",
-  "method_definition",
-]);
 
 const PY_FUNCTION_TYPES = new Set(["function_definition"]);
 
@@ -164,7 +159,7 @@ function countLoc(content: string): number {
 function analyzeFunctions(file: ParsedFile): FunctionStats[] {
   const stats: FunctionStats[] = [];
   const fnTypes =
-    file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
+    file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_DECL_TYPES;
   const lines = file.content.split("\n");
   walkScopes(file.tree.rootNode, file.language === "python", (node, scope) => {
     const fn = functionAt(node, fnTypes);
@@ -185,7 +180,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
 /**
  * A named, standalone function at this node, with its body and declared name —
  * or null. Covers declarations/methods (name on the node) and, crucially,
- * arrow / function-expression bound to a `const`/`let` (`export const foo =
+ * arrow, function or generator expression bound to a `const`/`let` (`export const foo =
  * () => {}`), where the name lives on the enclosing variable_declarator. Those
  * bindings were previously invisible to the analyzer (C-58) — a real complexity
  * under-count in an arrow-heavy codebase. Anonymous inline callbacks (parent is
@@ -200,10 +195,7 @@ function functionAt(
     const body = node.childForFieldName("body");
     return body ? { name: node.childForFieldName("name")?.text ?? null, body, node } : null;
   }
-  if (
-    (node.type === "arrow_function" || node.type === "function_expression") &&
-    node.parent?.type === "variable_declarator"
-  ) {
+  if (TS_BOUND_FUNCTION_TYPES.has(node.type) && node.parent?.type === "variable_declarator") {
     const body = node.childForFieldName("body");
     if (!body) return null;
     return { name: node.parent.childForFieldName("name")?.text ?? null, body, node };
@@ -214,7 +206,7 @@ function functionAt(
 /** JSX depth under `root`, stopping at each nested function `analyzeFunctions` scores on its own. Python has no JSX. */
 function jsxDepthIn(file: ParsedFile, root: Node): number {
   if (file.language === "python") return 0;
-  return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_TYPES) !== null);
+  return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_DECL_TYPES) !== null);
 }
 
 function nestingDepthOf(node: Node, language: string, depth: number): number {

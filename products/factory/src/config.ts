@@ -21,8 +21,12 @@ export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
 const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no leading dash, no whitespace");
 
 /** The reviewer Shepherd dispatches; strict, so a misspelt timeout fails the load instead of leaving the default in force. */
+const profileName = argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or ..");
+
 export const ReviewConfigSchema = z.strictObject({
-  profile: argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or .."),
+  profile: profileName,
+  /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
+  roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -63,7 +67,26 @@ export const FlakyChecksSchema = z.strictObject({
   waitSeconds: z.number().int().min(0).max(900),
 });
 
+/** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
+export const SpawnGateConfigSchema = z.strictObject({
+  load5: z.number().positive().optional(),
+  buildLoad5: z.number().positive().optional(),
+  pressureLevel: z.number().int().positive().optional(),
+  freeMemoryPct: z.number().min(0).max(100).optional(),
+  windowMs: z.number().int().min(0).optional(),
+  reviewLoad: z.number().min(0).optional(),
+});
+
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
+
+/** The GitHub App `shepherd/review` is posted as; absent means the publish step records `published: false`. */
+export const ReviewCheckConfigSchema = z.strictObject({
+  appId: z.number().int().positive(),
+  installationId: z.number().int().positive(),
+  privateKeyPath: absolutePath,
+});
+
+export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
@@ -78,7 +101,9 @@ export const FactoryConfigSchema = z.object({
       agentChatBin: absolutePath.optional(),
       review: ReviewConfigSchema.optional(),
       fixer: FixerConfigSchema.optional(),
+      spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
+      reviewCheck: ReviewCheckConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

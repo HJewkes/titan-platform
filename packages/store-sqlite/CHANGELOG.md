@@ -1,5 +1,12 @@
 # @titan-design/store-sqlite
 
+## 0.3.3
+
+### Patch Changes
+
+- ea96b66: Run `EdgeTable.supersede` and `SpanFtsTables.index` each in one transaction, so a failed insert no longer leaves a retracted edge with no replacement or a span row with no FTS row.
+- f886302: `SpanFtsTables.index` now re-inserts the FTS row of a span whose row `clearIndex` removed, so `clearIndex` followed by re-indexing every surviving span rebuilds the index instead of leaving it empty. session-graph documents why `resetIndex` still deletes the span table.
+
 ## 0.3.2
 
 ### Patch Changes

@@ -36,7 +36,7 @@ function extensionEntry(
   return {
     plugin,
     rule: ext.rule,
-    severity: sev === "info" ? "warn" : sev,
+    severity: sev,
     options: ext.options,
   };
 }
@@ -63,13 +63,11 @@ function addImportOrderRule(profile: Profile, entries: EslintRuleEntry[]): void 
 
   const [ruleName, ruleConfig] = result;
   const configArray = ruleConfig as unknown[];
-  const severity = configArray[0] as string;
-  if (severity === "info") return;
 
   entries.push({
     plugin: "perfectionist",
     rule: ruleName,
-    severity: severity as "error" | "warn",
+    severity: configArray[0] as EslintRuleEntry["severity"],
     options: [configArray[1]],
   });
 }

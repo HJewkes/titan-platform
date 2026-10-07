@@ -155,6 +155,22 @@ describe("indexPaths", () => {
     expect(onTest).toBe(false);
   });
 
+  it("gives abstract classes and generators symbol nodes with line spans", async () => {
+    const src = [
+      "abstract class Shape {}",
+      "function* walk() { yield 1; }",
+      "const pairs = function* () { yield 2; };",
+      "",
+    ].join("\n");
+    await fs.writeFile(path.join(root, "src/forms.ts"), src);
+    const result = await index();
+
+    const nodes = new Map(store.listNodes(result.snapshotId, { includeSymbols: true }).map((n) => [n.id, n]));
+    expect(nodes.get("src/forms.ts#Shape")?.attrs).toMatchObject({ startLine: 1 });
+    expect(nodes.get("src/forms.ts#walk")?.attrs).toMatchObject({ startLine: 2 });
+    expect(nodes.get("src/forms.ts#pairs")?.attrs).toMatchObject({ startLine: 3 });
+  });
+
   it("indexes a Python file into nodes and edges", async () => {
     await fs.writeFile(path.join(root, "src/loader.py"), PY);
     await fs.writeFile(path.join(root, "src/util.py"), "def helper():\n    return 1\n");

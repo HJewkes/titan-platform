@@ -139,6 +139,17 @@ open a daemon; `daemon` does.
   `measured: false` until co-change pairs are stored. Findings match by id, so a renamed
   file's finding reads as one resolved and one new until TP-187. Each list holds at most
   `limit` rows; `counts` holds the full sizes.
+- `paths.impact` reads `paths` against the snapshot only: it never touches the file system,
+  so a file created since the index is `not-indexed`. Absolute paths need `root`, the
+  checkout they sit in; without it every absolute path is `outside-repo`. Duplicate paths
+  after normalizing collapse to the first. A deleted file is `not-indexed`, so findings it
+  resolved since the baseline are not counted in the rollup. Without `baseline`, `delta` is
+  absent; across index versions it is null.
+- `packages.stats` reads package roots and tiers from the product's `layered-deps` rules, so
+  a source given no rules answers `packagesFrom: "none"` unless `packages` is passed. The
+  index holds no package manifests, so `name` is the root's last path segment. A given root
+  that holds no indexed files still gets a row, with zero counts. `band` is code-graph's
+  instability band; `layer` is the declared tier, and the two can disagree.
 - A metric name missing from code-graph's catalogue is still served, with `rollup: "none"`,
   `direction: "neutral"`, and a provenance source ending in `/uncatalogued`.
 

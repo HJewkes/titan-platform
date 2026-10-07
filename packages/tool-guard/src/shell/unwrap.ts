@@ -4,6 +4,9 @@ import { basename } from "./path.js";
 import { parseAssignment } from "./vars.js";
 import type { Assignment } from "./vars.js";
 import { SHORT_VALUES, SUDO_LONG_VALUES, spellLongOptions } from "./wrapper-long.js";
+import { xargsBatch, xargsDelimiters } from "./xargs-options.js";
+import type { XargsSyntax } from "./xargs-options.js";
+import { replaceStrings } from "./xargs-replace.js";
 
 interface WrapperSpec {
   /** Options that take a separate value. */
@@ -78,6 +81,12 @@ export interface XargsBatch {
   size: number | null;
 }
 
+/** How xargs splits its input into runs. */
+interface XargsReading {
+  delimiters: string[] | null;
+  batch: XargsBatch | null;
+}
+
 export interface Unwrapped {
   /** The command that runs, or null when no word names one statically. */
   name: string | null;
@@ -91,10 +100,16 @@ export interface Unwrapped {
   /** Set when `xargs` runs the command; `replace` is the string `-I` replaces with each input record. */
   xargs?: {
     replace: string | null;
+    /** The replace string read when an option's value word is taken as an option, as in `-I -i`; its runs are read too. */
+    replaceAsOption: string | null;
+    /** The BSD `-J` string all input items of a run replace, set only when `-J` comes after every `-I`. */
+    insert: string | null;
     /** Record separators `-0` and `-d` name; null when a `-d` value cannot be read statically. */
     delimiters: string[] | null;
     /** The `-L`/`-n` batching: how many lines or arguments one run takes; `size` is null when it cannot be read statically. */
     batch: XargsBatch | null;
+    /** `delimiters` and `batch` as the guard read them before a value word was skipped, set only where that differs; its runs are read too. */
+    asOption?: XargsReading;
     /** Every word after xargs's own options: any wrapper it runs, then the command and its arguments. */
     words: WordToken[];
   };
@@ -165,97 +180,26 @@ function ambiguousReadings(words: WordToken[], i: number, at: number): string {
   return [words.slice(at + 1), words.slice(at + 2)].map((rest) => scriptText("", [...kept, ...rest])).join("\n");
 }
 
-function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): Omit<NonNullable<Unwrapped["xargs"]>, "words"> {
-  const found = xargsDelimiters(options);
+const XARGS_SYNTAX: XargsSyntax = {
+  cluster: (word) => splitCluster(word, WRAPPERS.xargs),
+  takesValue: (word) => takesNextWord(word, WRAPPERS.xargs),
+};
+
+function readingOf(options: WordToken[], earlier: XargsReading | undefined, skipValues: boolean): XargsReading {
+  const found = xargsDelimiters(options, XARGS_SYNTAX, skipValues);
   const before = earlier?.delimiters;
   const delimiters = found === null || before === null ? null : [...(before ?? []), ...found];
-  const batch = xargsBatch(options) ?? earlier?.batch ?? null;
-  return { replace: xargsReplace(options) ?? earlier?.replace ?? null, delimiters, batch };
+  return { delimiters, batch: xargsBatch(options, XARGS_SYNTAX, skipValues) ?? earlier?.batch ?? null };
 }
 
-function batchSize(word: WordToken | undefined, text: string | undefined = word?.value): number | null {
-  if (!word || (text === word.value && word.dynamic) || !/^\d+$/.test(text ?? "")) return null;
-  return Number(text) > 0 ? Number(text) : null;
-}
-
-/** The last `-L N`, `-lN`, `--max-lines[=N]`, `-n N`, `--max-args N` or a cluster such as `-rL1`; a bare `-l` or `--max-lines` means one line. */
-function xargsBatch(options: WordToken[]): XargsBatch | null {
-  let found: XargsBatch | null = null;
-  options.forEach((word, j) => {
-    const v = word.value;
-    const next = options[j + 1];
-    if (v === "--max-lines") found = { unit: "lines", size: 1 };
-    else if (v === "--max-args") found = { unit: "args", size: batchSize(next) };
-    else if (v.startsWith("--max-lines=")) found = { unit: "lines", size: batchSize(word, v.slice("--max-lines=".length)) };
-    else if (v.startsWith("--max-args=")) found = { unit: "args", size: batchSize(word, v.slice("--max-args=".length)) };
-    else found = clusterBatch(word, next) ?? found;
-  });
-  return found;
-}
-
-function xargsCluster(word: string) {
-  return splitCluster(word, WRAPPERS.xargs);
-}
-
-/** The `-L`, `-l` or `-n` option that ends a short cluster; its value is the rest of the word. */
-function clusterBatch(word: WordToken, next: WordToken | undefined): XargsBatch | null {
-  const end = xargsCluster(word.value)?.end;
-  if (end?.option === "l") return { unit: "lines", size: end.text ? batchSize(word, end.text) : 1 };
-  if (end?.option !== "L" && end?.option !== "n") return null;
-  return { unit: end.option === "L" ? "lines" : "args", size: end.text ? batchSize(word, end.text) : batchSize(next) };
-}
-
-const DELIMITER_ESCAPES: Record<string, string> = { n: "\n", t: "\t", r: "\r", "0": "\0", "\\": "\\" };
-
-/** The separator a `-d` value names: one character or a C escape; null when dynamic or longer. */
-function delimiterOf(word: WordToken | undefined, text?: string): string | null {
-  if (!word || (text === undefined && word.dynamic)) return null;
-  const v = text ?? word.value;
-  if (v.length === 1) return v;
-  return v.length === 2 && v[0] === "\\" ? (DELIMITER_ESCAPES[v[1] as string] ?? null) : null;
-}
-
-/** The record separators of `-0`, `--null`, `-d c`, `-dc`, `--delimiter=c` or a cluster such as `-t0`; null if one is unreadable. */
-function xargsDelimiters(options: WordToken[]): string[] | null {
-  const out: string[] = [];
-  for (let j = 0; j < options.length; j++) {
-    const v = (options[j] as WordToken).value;
-    if (v === "--null") out.push("\0");
-    else if (v === "--delimiter") out.push(delimiterOf(options[++j]) ?? "");
-    else if (v.startsWith("--delimiter=")) out.push(delimiterOf(options[j], v.slice("--delimiter=".length)) ?? "");
-    else j = clusterDelimiters(options, j, out);
-  }
-  return out.includes("") ? null : out;
-}
-
-/** Reads the `0` and `d` options of the cluster at `j`; returns the index of the last word it used. */
-function clusterDelimiters(options: WordToken[], j: number, out: string[]): number {
-  const cluster = xargsCluster((options[j] as WordToken).value);
-  if (!cluster) return j;
-  out.push(...cluster.flags.filter((c) => c === "0").map(() => "\0"));
-  const end = cluster.end;
-  if (!end) return j;
-  if (end.option === "d") out.push((end.text ? delimiterOf(options[j], end.text) : delimiterOf(options[j + 1])) ?? "");
-  return end.text || end.optional ? j : j + 1;
-}
-
-/** The replace string of `-I str`, `-Istr`, `-i[str]`, `--replace[=str]` or a cluster such as `-tI{}`, `{}` when none is given. */
-function xargsReplace(options: WordToken[]): string | null {
-  let replace: string | null = null;
-  options.forEach((word, j) => {
-    const v = word.value;
-    if (v === "--replace") replace = "{}";
-    else if (v.startsWith("--replace=")) replace = v.slice("--replace=".length);
-    else replace = clusterReplace(v, options[j + 1]?.value) ?? replace;
-  });
-  return replace;
-}
-
-/** The replace string a short-option cluster sets: the text after `I` or `i`, else the next word for `I` and `{}` for `i`. */
-function clusterReplace(v: string, next: string | undefined): string | null {
-  const end = xargsCluster(v)?.end;
-  if (end?.option === "I") return end.text || (next ?? null);
-  return end?.option === "i" ? end.text || "{}" : null;
+function xargsOptions(options: WordToken[], earlier: Unwrapped["xargs"]): Omit<NonNullable<Unwrapped["xargs"]>, "words"> {
+  const { delimiters, batch } = readingOf(options, earlier, true);
+  const old = readingOf(options, earlier?.asOption ?? earlier, false);
+  const asOption = JSON.stringify(old) === JSON.stringify({ delimiters, batch }) ? undefined : old;
+  const read = replaceStrings(options, { endOf: (word) => XARGS_SYNTAX.cluster(word)?.end, takesValue: XARGS_SYNTAX.takesValue });
+  const replace = read.replace ?? earlier?.replace ?? null;
+  const replaceAsOption = read.replaceAsOption ?? earlier?.replaceAsOption ?? null;
+  return { replace, replaceAsOption, insert: read.insert ?? earlier?.insert ?? null, delimiters, batch, ...(asOption ? { asOption } : {}) };
 }
 
 function wrapperSpec(value: string): WrapperSpec | undefined {

@@ -1,5 +1,56 @@
 # @titan-design/session-miner
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [179706a]
+- Updated dependencies [9891e0d]
+- Updated dependencies [6a2c0f8]
+- Updated dependencies [b8da03a]
+  - @titan-design/daemon@0.4.1
+  - @titan-design/github@0.5.1
+  - @titan-design/session-read@0.10.0
+  - @titan-design/session-analytics@0.9.0
+  - @titan-design/session-graph@0.13.2
+
+## 0.4.2
+
+### Patch Changes
+
+- 6479be9: Guard the miner's own tables on a read-only foreign `--graph`. `status` reports `templates: 0` there, and `drain ingest`, `drain templates` and every `playbook` command exit 65 with a message naming the foreign graph instead of failing on "no such table".
+- Updated dependencies [18e081a]
+- Updated dependencies [1b83b86]
+- Updated dependencies [a20a6e3]
+- Updated dependencies [c8ab11b]
+- Updated dependencies [92e76c5]
+- Updated dependencies [ea96b66]
+- Updated dependencies [218cbac]
+- Updated dependencies [218cbac]
+- Updated dependencies [113cac1]
+- Updated dependencies [f886302]
+- Updated dependencies [fe76ae0]
+- Updated dependencies [790f304]
+- Updated dependencies [87e5857]
+- Updated dependencies [0e67551]
+- Updated dependencies [041125d]
+- Updated dependencies [6385c70]
+- Updated dependencies [f0db7a9]
+- Updated dependencies [170ed76]
+- Updated dependencies [13e505a]
+- Updated dependencies [6b19eac]
+- Updated dependencies [10a66c3]
+- Updated dependencies [4ed86e8]
+- Updated dependencies [d10a591]
+  - @titan-design/session-read@0.9.0
+  - @titan-design/cluster@0.1.3
+  - @titan-design/daemon@0.4.0
+  - @titan-design/github@0.5.0
+  - @titan-design/store-sqlite@0.3.3
+  - @titan-design/session-analytics@0.8.0
+  - @titan-design/session-graph@0.13.1
+  - @titan-design/memory@0.1.3
+
 ## 0.4.1
 
 ### Patch Changes

@@ -114,6 +114,12 @@ describe("cognitive complexity — TypeScript", () => {
     expect(score(metrics)).toBe(6);
   });
 
+  it("charges nesting for an if inside a nested function expression (TP-1229)", async () => {
+    const file = await parseTs(`function f(x: number) { return function () { if (x > 0) return 1; }; }`);
+    const metrics = computeSourceMetrics([file], idOf);
+    expect(score(metrics)).toBe(2);
+  });
+
   it("emits both cognitive_max and cognitive_sum", async () => {
     const file = await parseTs(`
       function a(x: number) { if (x > 0) return 1; }
