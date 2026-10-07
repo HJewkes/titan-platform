@@ -180,7 +180,7 @@ successor, only where exactly one declaration in the file carries that name.
 A file-membership delta (a file added or removed) forces the files whose imports it
 re-resolves back to full extraction even when they are byte-identical. Degree metrics are
 always recomputed over the whole assembled graph, so a heavily-reused run and a
-`incremental: false` run produce the same snapshot; `indexer.test.ts` asserts that.
+`incremental: false` run produce the same snapshot; `incremental-index.test.ts` asserts that.
 
 ## Store layout
 
