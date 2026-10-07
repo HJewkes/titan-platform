@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { keepDb, keptDbPath } from "./dag-check-self.mjs";
+import { keepDb, keptDbPath, seedDbPath } from "./dag-check-self.mjs";
 import { graphFromDb } from "./dead-code-check.mjs";
 
 const ENTRY = new URL("../packages/code-graph/dist/index.js", import.meta.url);
@@ -25,6 +25,14 @@ async function closedGraph(dir) {
   store.close();
   return workDb;
 }
+
+describe("seeding the graph from a CI cache", () => {
+  it("reads --seed-db as an absolute path and refuses a missing value", () => {
+    expect(seedDbPath(["--db", "/tmp/g.db", "--seed-db", "/tmp/s.db"])).toBe("/tmp/s.db");
+    expect(seedDbPath(["--db", "/tmp/g.db"])).toBeNull();
+    expect(() => seedDbPath(["--seed-db"])).toThrow("--seed-db needs a path");
+  });
+});
 
 describe("keeping the graph for dead:check", () => {
   it("reads --db as an absolute path and refuses a missing value", () => {
