@@ -6,7 +6,7 @@ them, all in one SQLite file built from `@titan-design/store-sqlite` kit tables 
 current incrementally.
 
 Tier 2 of the titan-platform DAG. Depends on `session-read`, `store-sqlite`,
-`cluster`, `locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
+`locator`, and `agent-protocol`. Extracted from active-work's session index (AW-23, TP-6).
 
 ```ts
 import os from "node:os";
@@ -17,7 +17,8 @@ import { openSessionGraph, refreshCorpus } from "@titan-design/session-graph";
 const graph = openSessionGraph(path.join(os.homedir(), ".local/state/miner/index.sqlite3"));
 const summary = await refreshCorpus(graph, await discoverTranscripts());
 // summary.indexed, summary.unchanged, summary.rewound, summary.quarantined, summary.missing,
-// summary.facetsBackfilled, summary.facetBacklog
+// summary.reconciled, summary.tasks, summary.origins, summary.prs, summary.reviews,
+// summary.markedMissing, summary.facetsBackfilled, summary.facetBacklog
 ```
 
 `openSessionGraph` takes an optional `schemaVersion`: the highest migration version the
@@ -29,6 +30,9 @@ passes 2002, clear of active-work's band at 1001.
 `{ readonly: true }` opens a graph another process owns without writing to it. No
 migrations run, and the open throws `SessionGraphNotMigratedError` when the graph lacks any
 migration this package declares, so a reader never meets a table it does not expect.
+
+`{ normalized: true }` keeps the opt-in `normalized_*` tables the Codex path reads and writes. It is
+off by default and ignored when `readonly` is set. See migration 9.
 
 ## What a refresh does
 
@@ -312,6 +316,24 @@ re-resolution drops an id, only that origin-made edge expires. A transcript's `r
 carries no `via`, and when a transcript claims an edge the origin made first, the edge is
 superseded without `via`, so origin expiry never removes a transcript's claim.
 session-graph stores and projects the ids a resolver hands it; it does not compute them.
+
+Migration 8, `review verdicts`, adds the `pr_review` table, one row per review verdict from
+either surface (`chat` or `gh`). Only parsed fields are kept, never message text.
+`source_key` is the primary key, `chat:<tool_use_id>:<n>` or `gh:<pr_ref>:<submitted_at>`,
+and `pr_ref` is filled in later. It also adds `review_rounds_gh`, `review_rounds_chat` and
+`commit_times` columns to `pr`, copies each PR's existing `review_rounds` into
+`review_rounds_gh`, and clears `outcome_checked_at` so the next pass re-queues every PR for
+its outcome. `resetIndex` and `purgeTranscript` clear `pr_review` too.
+
+Migration 9, `stop storing bulk classes`, runs DDL only and deletes no row it keeps. It drops
+the `artifact` table. It drops `normalized_span`, `normalized_event` and `normalized_source`
+only when every one that exists is empty, so a graph that holds Codex evidence keeps all
+three. It then creates `session_state` (`session_id`, `key`, `value`, primary key
+`(session_id, key)`) if missing.
+
+The normalized tables are now opt-in. `openSessionGraph(path, { normalized: true })` creates
+them when absent; without it a graph holds none unless migration 3 left rows in them.
+`normalized` is ignored with `readonly: true`. Open with it before calling `indexCodexSource`.
 
 For snapshot-only usage across multiple physical sources, queries select one source
 by latest native usage timestamp, then greatest usage-record coverage and stable

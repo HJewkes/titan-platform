@@ -1,4 +1,4 @@
-import { EPISODE_TABLE } from "./audit-schema-v5.js";
+import { EPISODE_TABLE } from "./origin-schema.js";
 import type { SessionGraph } from "./graph.js";
 
 /**
