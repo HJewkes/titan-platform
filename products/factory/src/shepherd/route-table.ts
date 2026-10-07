@@ -100,9 +100,16 @@ export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
   return outcome === "FIX_FIRST" ? "fix-first" : "stuck";
 }
 
-/** The streak of FIX_FIRST rounds that said Closer: no; any other round, or a missing or yes answer, resets it. */
-export function nextNoCloserStreak(streak: number, kind: RoundKind, verdict: { kind: string; closer?: string }): number {
-  return kind === "fix-first" && verdict.kind === "FIX_FIRST" && verdict.closer === "no" ? streak + 1 : 0;
+/** Consecutive FIX_FIRST rounds that said Closer: no, and the head the last one counted at. */
+export interface CloserStreak {
+  streak: number;
+  head?: string;
+}
+
+/** Any other round, or a missing or yes answer, resets it; a head already counted never counts twice, so a replayed verdict cannot escalate alone. */
+export function nextCloserStreak(state: CloserStreak, kind: RoundKind, verdict: { kind: string; closer?: string }, headSha: string): CloserStreak {
+  if (kind !== "fix-first" || verdict.kind !== "FIX_FIRST" || verdict.closer !== "no") return { streak: 0 };
+  return state.head === headSha ? state : { streak: state.streak + 1, head: headSha };
 }
 
 /** The owner is asked once the streak reaches its cap, ahead of the runaway cap; `fixFirsts` includes this round. */

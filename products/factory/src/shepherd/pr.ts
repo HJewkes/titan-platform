@@ -25,7 +25,7 @@ import { recordedRoute } from "./recorded-route.js";
 import { expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextNoCloserStreak, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, routeFor, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -93,7 +93,7 @@ interface ShepherdRun extends WakeRun {
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
   /** FIX_FIRST reviews at this task, and the consecutive ones that said Closer: no; each is progress until a cap. */
-  fixFirsts: number; noCloserStreak: number;
+  fixFirsts: number; closer: CloserStreak;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   conflictChecks: number;
@@ -122,7 +122,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, noCloserStreak: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
@@ -248,8 +248,8 @@ interface Routed {
 function countRound(run: ShepherdRun, routed: Routed): Escalated | undefined {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
-  run.noCloserStreak = nextNoCloserStreak(run.noCloserStreak, kind, routed.verdict);
-  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.noCloserStreak, headSha);
+  run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.closer.streak, headSha);
   if (kind !== "stuck") return undefined;
   run.failedRounds += 1;
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
