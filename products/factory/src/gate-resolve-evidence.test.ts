@@ -10,6 +10,7 @@ import { acknowledgeBrief, approveMergeDecision, ciFailedDecision, frozenDecisio
 import { resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./shepherd/policy.js";
+import { authorityGateReason, pendingCheck } from "./test-support/authority-reason.js";
 import { codeRoute, step } from "./workflows/land.js";
 
 const REPO = "o/r";
@@ -20,10 +21,13 @@ const AGENT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "tc-synth
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "synthetic" };
 const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() });
 const NOW = Date.parse("2026-10-07T18:00:00Z");
+const MECHANICAL = authorityGateReason(HEAD, pendingCheck(HEAD));
 
 interface Scenario {
   gate: "merge" | "sent-back" | "ci-failed" | "main-red" | "main-frozen";
   rule?: string;
+  /** The recorded merge decision's reason; defaults to MRG-AU gating only on a required check still running. */
+  reason?: string;
   verdict?: string;
   policy?: EffectivePolicy;
 }
@@ -54,9 +58,10 @@ const shepherdPr = defineWorkflow({
     if (scenario.gate === "sent-back") return void (await ctx.assisted("sh-sent-back", "Sent back.", sentBackDecision({ repo: REPO, pr: 1, headSha: HEAD, situation: "the reviewer sent it back" })));
     await step(ctx, `sh-await-verdict:${HEAD}`, { kind: "verdict", verdict: scenario.verdict ?? "MERGE", head: HEAD, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table, rowId] = (scenario.rule ?? "authority/MRG-AU").split("/");
-    await step(ctx, "merge-policy:0", { outcome: "gate", headSha: HEAD, rule: { table, rowId, version: 1 }, reason: "synthetic" }, Decision);
-    const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy ${table}/${rowId}: synthetic`;
-    await ctx.assisted("approve-merge", prompt, approveMergeDecision({ repo: REPO, pr: 1, headSha: HEAD, reason: "synthetic", reviewedMerge: true }));
+    const reason = scenario.reason ?? MECHANICAL;
+    await step(ctx, "merge-policy:0", { outcome: "gate", headSha: HEAD, rule: { table, rowId, version: 1 }, reason }, Decision);
+    const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy ${table}/${rowId}: ${reason}`;
+    await ctx.assisted("approve-merge", prompt, approveMergeDecision({ repo: REPO, pr: 1, headSha: HEAD, reason, reviewedMerge: true }));
   },
 });
 
@@ -149,7 +154,7 @@ describe("coordinator resolve of an approve-merge gate on fresh evidence", () =>
     expect(result.gate?.resolvedEvidence).toMatchObject({
       kind: "approve-merge",
       headSha: HEAD,
-      run: { rule: "authority/MRG-AU", merge: "auto", held: false, frozen: false },
+      run: { rule: "authority/MRG-AU", reason: MECHANICAL, merge: "auto", held: false, frozen: false },
       verdict: { step: `sh-await-verdict:${HEAD}`, verdict: "MERGE", head: HEAD, reviewer: "rv-synthetic" },
       checks: { base: "main", required: ["validate", "dag-check"], runs: [{ id: 11, name: "validate", conclusion: "success", headSha: HEAD }, { id: 12, name: "dag-check", conclusion: "success", headSha: HEAD }] },
       pull: { state: "open", headSha: HEAD, mergeableState: "clean", mergeable: "MERGEABLE" },
@@ -199,6 +204,26 @@ describe("coordinator resolve of an approve-merge gate on fresh evidence", () =>
 
   it("falls back on a seat owner-gate", async () => {
     const world = await paused({ gate: "merge", rule: "shepherd-seat/synthetic", policy: OWNER_GATE_POLICY });
+
+    expectFellBack(await resolveAs(world, "merge", MERGE));
+  });
+
+  it.each([
+    ["a CODEOWNERS change", authorityGateReason(HEAD, { ...pendingCheck(HEAD), changedPaths: ["CODEOWNERS"] })],
+    ["a .gitmodules change", authorityGateReason(HEAD, { changedPaths: [".gitmodules"] })],
+    ["a non-canonical path", authorityGateReason(HEAD, { changedPaths: ["src/../CODEOWNERS"] })],
+    ["a seat without the merge grant", authorityGateReason(HEAD, { ...pendingCheck(HEAD), seatGrants: [] })],
+    ["a frozen repo at decision time", authorityGateReason(HEAD, { repoFrozen: true })],
+    ["a tainted request", authorityGateReason(HEAD, {}, true)],
+    ["an authority reason it cannot read", "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; something new"],
+  ])("falls back on an MRG-AU gate for %s, all else green", async (_case, reason) => {
+    const world = await paused({ gate: "merge", reason });
+
+    expectFellBack(await resolveAs(world, "merge", MERGE));
+  });
+
+  it("falls back on an authority gate under a rule other than MRG-AU", async () => {
+    const world = await paused({ gate: "merge", rule: "authority/MRG-CO" });
 
     expectFellBack(await resolveAs(world, "merge", MERGE));
   });
