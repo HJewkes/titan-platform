@@ -196,12 +196,14 @@ export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): St
 
 const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()), unpublished: z.array(z.string()).default([]) });
 
+const NPM_BLOCKED_ROW = "Policy shepherd-release/preflight-blocked:";
+
 /** The preflight an owner gate asks about, when packages npm had not seen are its only blockers; a hand publish can clear exactly that. */
 export function blockedOnlyByNpm(stepResults: Readonly<Record<string, StepResult>>, gatePrompt: string): ReleasePreflight | undefined {
   for (const result of Object.values(stepResults)) {
     if (!result.stepId.startsWith(`${RELEASE_PREFLIGHT_STEP}:`)) continue;
     const parsed = PreflightResult.safeParse(result.data?.result);
-    if (!parsed.success || !gatePrompt.includes(`at head ${parsed.data.head}`)) continue;
+    if (!parsed.success || !gatePrompt.includes(`at head ${parsed.data.head}`) || !gatePrompt.includes(NPM_BLOCKED_ROW)) continue;
     const { blockers, unpublished } = parsed.data;
     return unpublished.length > 0 && unpublished.length === blockers.length ? parsed.data : undefined;
   }
