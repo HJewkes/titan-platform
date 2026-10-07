@@ -61,7 +61,7 @@ export class Clusterer {
   /** Live bindings per template id; several clusters can share one id. */
   private readonly boundTemplateIds = new Map<string, number>();
 
-  constructor(private readonly options: ClustererOptions = {}) {
+  constructor(options: ClustererOptions = {}) {
     this.registry = new DrainTreeRegistry(options.drain);
     this.masks = options.masks ?? DEFAULT_MASK_CONFIGS;
     this.anchors = options.anchors ?? DEFAULT_ANCHOR_CONFIGS;
