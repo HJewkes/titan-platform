@@ -5,6 +5,7 @@ import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { EXIT } from "./exit-codes.js";
+import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
@@ -101,7 +102,9 @@ function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .action((runId: string, stepId: string, opts: { json: string }) => withHost((host) => resolveGate(host, io, runId, stepId, opts.json, deps.presence)));
+    .action((runId: string, stepId: string, opts: { json: string }) =>
+      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
+    );
 }
 
 function registerServe(program: Command, { deps, dbPath }: Verbs): void {
