@@ -1,4 +1,4 @@
-import { REVIEW_TABLE } from "./audit-schema-v8.js";
+import { REVIEW_TABLE } from "./review-schema.js";
 import { callResolver } from "./enrich-result.js";
 import type { SessionGraph } from "./graph.js";
 import { countRounds } from "./review-rounds.js";

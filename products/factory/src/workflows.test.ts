@@ -127,10 +127,16 @@ function fakeAgentChat(dir: string, starts: boolean, transcript: string): string
 const assistantSaid = (n: number, timestamp: string, text: string) => ({ type: "assistant", sessionId: REVIEWER.sessionId, uuid: `assistant-${n}`, timestamp, message: { id: `response-${n}`, role: "assistant", model: "claude-test", content: [{ type: "text", text }] } });
 const jsonl = (records: readonly object[]) => records.map((record) => `${JSON.stringify(record)}\n`).join("");
 
+/** The reviewer reads one file and gets its text back, so its verdict clears the review depth floor. */
+const readOneFile = [
+  { type: "assistant", sessionId: REVIEWER.sessionId, uuid: "assistant-read", timestamp: "2026-09-30T10:01:00Z", message: { id: "response-read", role: "assistant", model: "claude-test", content: [{ type: "tool_use", id: "tool-read", name: "Read", input: { file_path: "src/a.ts" } }] } },
+  { type: "user", sessionId: REVIEWER.sessionId, uuid: "result-read", timestamp: "2026-09-30T10:01:01Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tool-read", content: "export const a = 1;" }] } },
+];
+
 /** A finished Claude Code transcript of the reviewer's session whose last assistant text is `lastWords`. */
 function writeTranscript(dir: string, lastWords: string): string {
   const path = join(dir, "transcripts", `${REVIEWER.sessionId}.jsonl`);
-  const records = [{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-1", timestamp: "2026-09-30T10:00:00Z", message: { role: "user", content: "review it" } }, assistantSaid(1, "2026-09-30T10:05:00Z", lastWords)];
+  const records = [{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-1", timestamp: "2026-09-30T10:00:00Z", message: { role: "user", content: "review it" } }, ...readOneFile, assistantSaid(1, "2026-09-30T10:05:00Z", lastWords)];
   mkdirSync(join(dir, "transcripts"));
   writeFileSync(path, jsonl(records));
   return path;
