@@ -49,10 +49,25 @@ function start(w: World): string {
 }
 
 const stepIds = (w: World, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
-const holdOf = (w: World, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-freeze-hold:0")?.data;
+const resultOf = (w: World, runId: string, stepId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === stepId)?.data;
+const holdOf = (w: World, runId: string) => resultOf(w, runId, "sh-freeze-hold:0");
 
 async function waitingOnThaw(w: World, runId: string): Promise<void> {
   await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("sh-freeze-wait:0"));
+}
+
+/** Main's head moves to a sha every Actions check passed at, so a recheck of main thaws the freeze. */
+function mainGoesGreen(w: World): void {
+  const green = fakeSha("main-green");
+  w.fake.refs.set("main", green);
+  w.fake.setRuns(green, runs([]));
+}
+
+/** From now on every read of PR 1 fails, as a GitHub outage would. */
+function prReadsFail(w: World): void {
+  w.fake.onGetPr = () => {
+    throw new Error("GitHub answered 502");
+  };
 }
 
 describe("a ci-red wake under a frozen main", () => {
@@ -105,5 +120,122 @@ describe("a ci-red wake under a frozen main", () => {
 
     expect(stepIds(w, runId)).toEqual(expect.arrayContaining(["sh-freeze-wait:0", "land-rules:r1", "sh-freeze-hold:1", "sh-repair"]));
     expect(w.wakes.map((wake) => [wake.kind, wake.round])).toEqual([["ci-red", 1]]);
+  });
+
+  it("holds a fixer's own PR as before: the fixer for the freeze is woken to repair it", async () => {
+    const w = world(["validate"], ["validate"]);
+    const { episode } = w.freeze.get().freeze(REPO, RED);
+    w.freeze.get().setFixTask(REPO, episode, "demo/1");
+    w.freeze.get().setFixer(REPO, episode, "impl-a");
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("fixer's PR") } });
+  });
+
+  it("wakes as before when main's checks cannot be read", async () => {
+    const w = world(["validate"], ["validate"]);
+    const listCheckRuns = w.fake.wire.listCheckRuns;
+    w.fake.wire.listCheckRuns = async (repo, sha) => (sha === RED ? Promise.reject(new Error("GitHub answered 502")) : listCheckRuns(repo, sha));
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("validate") } });
+  });
+
+  it("wakes rather than fails the run when the freeze store throws inside the hold", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    vi.spyOn(w.freeze.get(), "get").mockImplementation(() => {
+      throw new Error("database is locked");
+    });
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("database is locked") } });
+  });
+
+  it("leaves the wait for the next round when the PR moves to a new head", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    w.fake.pushHead(1, fakeSha("pr-new-head"));
+
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toBe("sh-freeze-wait:1"));
+    expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: false, headSha: fakeSha("pr-new-head") } });
+    expect(w.wakes).toEqual([]);
+  });
+
+  it("ends the run when the PR is closed during the wait", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    w.fake.pr(1).state = "closed";
+
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("completed"));
+    expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: false, headSha: H1 } });
+    expect(w.wakes).toEqual([]);
+  });
+
+  it("thaws the freeze from inside the wait once main is green after the red", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    mainGoesGreen(w);
+
+    await vi.waitFor(() => expect(w.freeze.get().isFrozen(REPO)).toBe(false));
+    await vi.waitFor(() => expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: true } }));
+  });
+
+  it("still rechecks main every FREEZE_RECHECK_MS while every read of the PR fails", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    prReadsFail(w);
+    mainGoesGreen(w);
+
+    await vi.waitFor(() => expect(w.freeze.get().isFrozen(REPO)).toBe(false), { timeout: 5_000 });
+  });
+
+  it("wakes the run to decide afresh once the wait reaches its limit, and neither fails nor wakes an agent", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+
+    expect(resultOf(w, runId, "sh-freeze-wait:0")).toMatchObject({ result: { thawed: false, expired: true, headSha: H1 } });
+    expect(w.host.runtime.status(runId)?.status).toBe("running");
+    expect(w.wakes).toEqual([]);
+  });
+
+  it("updates the same red head after a thaw on a non-strict repo before a repair is spent on it", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.fake.rules.strict = false;
+    w.fake.pr(1).behind = true;
+    const { episode } = w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    w.freeze.get().release(REPO, episode);
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.fake.effects.updateBranch).toBe(1);
+    expect(w.wakes.map((wake) => wake.headSha)).not.toContain(H1);
   });
 });
