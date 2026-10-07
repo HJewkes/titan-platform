@@ -143,6 +143,17 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
   });
 
+  it.each([
+    ["first", `git push origin HEAD:main; ${"sudo $a ".repeat(600)}true`],
+    ["last", `${"sudo $a ".repeat(600)}true; git push origin HEAD:main`],
+  ])("denies a script past the reading budget that xargs runs, with the push %s", async (_where, script) => {
+    const context = { ...nodeContext(HOME, fakeFs()), readScript: (p: string) => (p === `${REPO}/pad1.sh` ? script : null) };
+
+    const result = await handle(bash("printf 'pad1.sh\\n' | xargs -J % bash %"), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
   it("passes a command past the reading budget under the bypass and logs it", async () => {
     const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
 

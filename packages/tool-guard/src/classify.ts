@@ -65,11 +65,12 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, followScr
   return unique(out);
 }
 
-/** A command only an added xargs reading runs adds its actions, but an error drops it and it never moves the line's state. */
+/** A command only an added xargs reading runs adds its actions, but an error other than the reading limit drops it, and it never moves the line's state. */
 function addedActions(cmd: SimpleCommand, line: ClassifyContext, followScripts: boolean): ClassifiedAction[] {
   try {
     return [...classifySimple(cmd, line), ...(followScripts ? scriptActions(cmd, line) : [])];
-  } catch {
+  } catch (error) {
+    if (error instanceof ReadingLimitError) throw error;
     return [];
   }
 }
