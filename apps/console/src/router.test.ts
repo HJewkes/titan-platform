@@ -19,4 +19,8 @@ describe("hash routes", () => {
   it("ignores a query string and deeper segments, which later views will own", () => {
     expect(parseRoute("#/sessions/abc?tab=replay")).toEqual({ view: "sessions" });
   });
+
+  it("keeps the raw slug when an initiative detail has a malformed escape", () => {
+    expect(parseRoute("#/initiatives/50%")).toEqual({ view: "initiatives", slug: "50%" });
+  });
 });
