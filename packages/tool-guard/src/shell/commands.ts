@@ -14,6 +14,7 @@ import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 
 const MAX_DEPTH = 8;
+const MAX_UNSURE_WORDS = 512;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 
@@ -88,6 +89,8 @@ interface Walk {
   /** Whether `!` negates the pipeline the command being emitted belongs to. */
   negated: boolean;
   foldCase: boolean;
+  /** Script texts the readings of the command being emitted have walked, so a later reading walks each text once; null outside one. */
+  walked: Set<string> | null;
 }
 
 /**
@@ -99,7 +102,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null });
   return out;
 }
 
@@ -155,7 +158,7 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false };
+  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false, walked: null };
 }
 
 function scope(op: string, w: Walk): void {
@@ -172,23 +175,29 @@ function emit(rawWords: WordToken[], rawRedirects: RedirectToken[], w: Walk, nex
   const words = folded(rawWords.map(expand), w);
   const runs = caseNamed(words);
   const cut = cutReading(words);
+  w.walked = new Set();
   for (const cmd of [...runs, ...(cut ? caseNamed(cut) : [])]) run(cmd, redirects, w, next);
-  runUnsure(runs[0], redirects, w, next, 0);
+  runUnsure(runs[0], redirects, w, next);
+  w.walked = null;
   return runs[0] ?? null;
 }
 
 /**
  * Reads a command's `unsure` words as an added reading, then theirs in turn, since each wrapper may hide its own
- * dynamic word (`sudo $a timeout $O 5 git push`). Every step drops a word, and MAX_DEPTH bounds the steps.
+ * dynamic word (`sudo $a timeout $O 5 git push`). Classifying costs about 50 ms per KiB of words, so a chain past
+ * MAX_DEPTH steps or MAX_UNSURE_WORDS words fails as nesting too deep does in `walk`: outside the added reading's
+ * catch, so it can neither fail open nor run past the hook's timeout.
  */
-function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null, depth: number): void {
-  const unsure = cmd?.unsure;
-  if (!unsure || depth >= MAX_DEPTH) return;
-  addedReading(w, (copy) => {
+function runUnsure(cmd: Unwrapped | undefined, redirects: RedirectToken[], w: Walk, next: string | null): void {
+  let unsure = cmd?.unsure;
+  let words = 0;
+  for (let depth = 0; unsure; depth++) {
+    words += unsure.length;
+    if (depth >= MAX_DEPTH || words > MAX_UNSURE_WORDS) throw new ParseError("too many dynamic wrapper words");
     const runs = caseNamed(unsure);
-    for (const reading of runs) run(reading, redirects, copy, next);
-    runUnsure(runs[0], redirects, copy, next, depth + 1);
-  });
+    addedReading(w, (copy) => runs.forEach((reading) => run(reading, redirects, copy, next)));
+    unsure = runs[0]?.unsure;
+  }
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
@@ -234,9 +243,18 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
   const script = inlineScript(cmd, redirects, stdin);
-  if (script !== null) for (const text of script.texts) walk(tokenize(text), child(w, [...wrapping, script.wrap]));
+  if (script !== null) walkScript(script, w, wrapping);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
+}
+
+/** Two readings of one command often run the same script (`flock $F sh -c '...'`); walking it again per nesting level would double the cost. */
+function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
+  for (const text of script.texts) {
+    if (w.walked?.has(text)) continue;
+    w.walked?.add(text);
+    walk(tokenize(text), child(w, [...wrapping, script.wrap]));
+  }
 }
 
 function folded(words: WordToken[], w: Walk): WordToken[] {

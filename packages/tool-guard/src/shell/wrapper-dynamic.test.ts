@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
+import { extractCommands } from "./commands.js";
+import { ParseError } from "./lexer.js";
 
 const REPO = "/home/you/projects/app";
 const ctx: ClassifyContext = { home: "/home/you", readLink: () => null, readHead: () => "feat/x", readScript: () => null };
@@ -73,6 +75,46 @@ describe("dynamic words behind several wrappers", () => {
 
   it("passes a push to an unprotected branch", () => {
     expect(verdicts("timeout $O 5 timeout $P 5 git push origin feat/y")).toEqual([]);
+  });
+});
+
+describe("a chain of dynamic wrapper words too long to read", () => {
+  const tails = ["git push origin HEAD:main", "npm publish", "pnpm publish", "gh pr merge 5"];
+  const deep = [
+    ...[9, 10].map((n) => [`${n} x timeout $O 5`, Array(n).fill("timeout $O 5").join(" ")]),
+    ...["sudo", "env", "nohup", "stdbuf", "command", "exec"].flatMap((w) => [9, 10].map((n) => [`${n} x ${w} $a`, Array(n).fill(`${w} $a`).join(" ")])),
+  ];
+
+  it.each(deep.flatMap(([how, prefix]) => tails.map((tail) => [`${tail} after ${how}`, `${prefix} ${tail}`])))(
+    "fails as nesting too deep does, never open: %s",
+    (_how, command) => {
+      expect(() => verdicts(command as string)).toThrow(ParseError);
+    },
+  );
+
+  it("still reads a chain at the depth limit", () => {
+    expect(verdicts(`${Array(8).fill("timeout $O 5").join(" ")} git push origin HEAD:main`)).toContainEqual(MAIN_PUSH);
+  });
+
+  it("fails rather than reading a padded line once per dynamic word", () => {
+    expect(() => verdicts(`${Array(1000).fill("sudo $a").join(" ")} git push origin HEAD:main`)).toThrow(ParseError);
+  });
+});
+
+describe("a script that every reading of a dynamic wrapper runs", () => {
+  const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+  const nested = (levels: number, inner: string) => Array.from({ length: levels }).reduce<string>((text) => `flock $F sh -c ${quote(text)}`, inner);
+
+  it("is walked once per level, not once per reading", () => {
+    const pushes = Array(20).fill("git push origin HEAD:main").join("; ");
+
+    const commands = extractCommands(nested(7, pushes), { cwd: REPO, home: "/home/you" });
+
+    expect(commands.length).toBeLessThanOrEqual(2 * (7 + 20));
+  });
+
+  it("still reads the push inside it", () => {
+    expect(verdicts(nested(3, "git push origin HEAD:main"))).toContainEqual(MAIN_PUSH);
   });
 });
 
