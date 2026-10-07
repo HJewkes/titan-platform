@@ -20,6 +20,12 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it("keeps the full suite off the Mac", () => {
+    const brief = reviewerBrief(target);
+
+    expect(brief).toContain("ssh basement basement-suite");
+    expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+  });
 });
 
 describe("correctionPrompt", () => {
