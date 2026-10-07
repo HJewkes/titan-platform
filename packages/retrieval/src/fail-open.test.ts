@@ -43,4 +43,22 @@ describe("gatherFailOpen", () => {
     const { degraded } = await gatherFailOpen([slow], "q", { limit: 5, signal: controller.signal });
     expect(degraded[0]).toMatchObject({ retriever: "slow", reason: "error" });
   });
+
+  it("degrades every retriever as an error when the signal is already aborted", async () => {
+    const finished: string[] = [];
+    const recording = (name: string): Retriever => ({
+      name,
+      retrieve: async (_q, { signal }) => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        if (signal?.aborted) throw new Error("aborted");
+        finished.push(name);
+        return [{ id: name, rank: 1 }];
+      },
+    });
+    const { lists, degraded } = await gatherFailOpen([recording("a"), recording("b")], "q", { limit: 5, signal: AbortSignal.abort() });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lists).toEqual([]);
+    expect(degraded.map((d) => [d.retriever, d.reason])).toEqual([["a", "error"], ["b", "error"]]);
+    expect(finished).toEqual([]);
+  });
 });

@@ -623,6 +623,11 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
 
+When git is present but its log overflowed or failed, the index has no (or partial) history
+metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and
+outside git. `buildIndexerMetrics` still returns only the metrics; `assembleIndexerMetrics`
+returns `{ metrics, warnings }`.
+
 **The adapter is a root export, not a `./history` one.** A product that runs its own indexing
 pass needs the same `GraphMetric` rows `indexPaths` writes, and `./history` may not speak
 graph types:
