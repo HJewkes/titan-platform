@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EXTRACT_VERSION } from "./audit-events.js";
 
 describe("EXTRACT_VERSION", () => {
-  it("is 6 so graphs indexed with git intents read from quoted text re-extract", () => {
-    expect(EXTRACT_VERSION).toBe(6);
+  it("is 7 so graphs indexed with a subshell closer in a branch name re-extract", () => {
+    expect(EXTRACT_VERSION).toBe(7);
   });
 });

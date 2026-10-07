@@ -128,7 +128,7 @@ function observeRunning<TResult>(
   const surface = bindSurface(current.surface, transition.surface);
   return next(current, transition, {
     execution,
-    phase: "running",
+    phase: current.cancellation ? "cancel_requested" : "running",
     runnerRef: transition.runnerRef,
     adapterExecution,
     ...(surface ? { surface } : {}),

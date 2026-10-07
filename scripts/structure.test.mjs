@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   checkAgentsMatchesClaude,
   checkLayersMatchTiers,
@@ -20,10 +20,30 @@ const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 const fixture = (name) => join(REPO, "scripts", "fixtures", "structure", name);
 
 // Written at run time: Claude Code loads any CLAUDE.md under a directory it reads, so a checked-in one would be read as instructions.
+const tempRoots = [];
+afterAll(() => tempRoots.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+function tempRoot(prefix) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  tempRoots.push(root);
+  return root;
+}
+
 function driftedAgentsRoot() {
-  const root = mkdtempSync(join(tmpdir(), "structure-agents-"));
+  const root = tempRoot("structure-agents-");
   writeFileSync(join(root, "CLAUDE.md"), "# Rules\n\nOne rule.\n");
   writeFileSync(join(root, "AGENTS.md"), "# Rules\n");
+  return root;
+}
+
+// Built from the scaffold-gap fixture at run time so no second package-shaped tree is checked in.
+function driftedScriptRoot() {
+  const root = tempRoot("structure-scripts-");
+  const pkgDir = join(root, "packages", "a");
+  cpSync(join(fixture("scaffold-gap"), "packages", "a"), pkgDir, { recursive: true });
+  writeFileSync(join(pkgDir, "tsup.config.ts"), "export default {};\n");
+  const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, lint: "echo skipped" } }));
   return root;
 }
 
@@ -42,6 +62,12 @@ const cases = [
     message: "`.codewatch/check.json` lacks rule `product-isolation:apps/y->products/x`.",
   },
   {
+    rule: "R38 a missing to-side pair is reported",
+    check: checkProductIsolation,
+    root: () => fixture("product-isolation-to-side"),
+    message: "`.codewatch/check.json` lacks rule `product-isolation:products/x->products/z`.",
+  },
+  {
     rule: "R41 layers derive from $tiers",
     check: checkLayersMatchTiers,
     root: () => fixture("layers-drift"),
@@ -51,7 +77,13 @@ const cases = [
     rule: "R43 packages match the scaffold",
     check: checkScaffold,
     root: () => fixture("scaffold-gap"),
-    message: "`a` lacks `tsup.config.ts` from the scaffold. Re-stamp with `pnpm new:package`, or add the missing entry.",
+    message: "`a` lacks `tsup.config.ts` from the scaffold. Re-stamp with `pnpm new:package`, or fix the entry.",
+  },
+  {
+    rule: "R43 a script that differs from the template is reported",
+    check: checkScaffold,
+    root: driftedScriptRoot,
+    message: "`a` has `script lint` that differs from the scaffold (expected `eslint src`).",
   },
   {
     rule: "R46 tests live next to source",
@@ -70,6 +102,18 @@ const cases = [
     check: checkNoNpmToken,
     root: () => fixture("npm-token"),
     message: "`release.yml` names an npm token. Publishing uses the trusted publisher. Remove the secret.",
+  },
+  {
+    rule: "R49 a # inside a run command is not a comment",
+    check: checkNoNpmToken,
+    root: () => fixture("npm-token-run-hash"),
+    message: "`release.yml` names an npm token.",
+  },
+  {
+    rule: "R49 a # inside an inline map value is not a comment",
+    check: checkNoNpmToken,
+    root: () => fixture("npm-token-inline-map"),
+    message: "`release.yml` names an npm token.",
   },
   {
     rule: "R51 the pnpm pin holds",

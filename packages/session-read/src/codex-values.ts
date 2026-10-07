@@ -2,6 +2,7 @@ import type { createHash } from "node:crypto";
 import type { LocatedSourceLine, ResumeBoundary, SessionSourceDescriptor } from "./normalized.js";
 import { CODEX_ROLLOUT_FORMAT } from "./codex-discover.js";
 import { TranscriptParseError } from "./read.js";
+import { SessionIdentityError } from "./recent-claude.js";
 import { asObject, str, type Json } from "./text.js";
 
 export interface CodexMessage {
@@ -60,8 +61,8 @@ export function boundaryAt(byteOffset: number, digest: ReturnType<typeof createH
   return { byteOffset, prefixHash: digest.copy().digest("hex") };
 }
 
-export function sourceMismatch(source: SessionSourceDescriptor, observed: string | null): TypeError {
-  return new TypeError(`rollout identity ${String(observed)} does not match discovered conversation ${source.conversation.nativeId}`);
+export function sourceMismatch(source: SessionSourceDescriptor, observed: string | null): SessionIdentityError {
+  return new SessionIdentityError(`rollout identity ${String(observed)} does not match discovered conversation ${source.conversation.nativeId}`, "foreign_native_session");
 }
 
 function readRole(payload: Json, subtype: string): "user" | "assistant" | null {

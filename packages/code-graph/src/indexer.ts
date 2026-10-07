@@ -20,7 +20,7 @@ import {
   readSourceFiles,
 } from "./incremental.js";
 import { computeDeltaAffected } from "./reuse-delta.js";
-import { buildIndexerMetrics } from "./index-metrics.js";
+import { assembleIndexerMetrics } from "./index-metrics.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
 import { predatesQualifiedSymbols, qualifiedSymbolAliases } from "./symbol-aliases.js";
@@ -78,13 +78,16 @@ export interface IndexResult {
   cosmetic: number;
   nodesByKind: Record<string, number>;
   edgesByKind: Record<string, number>;
+  /** Present only when git history was partial or missing (churn log overflowed or git failed); absent otherwise. */
+  warnings?: string[];
 }
 
 function canonicalizePath(p: string): string {
   try {
     return realpathSync(p);
-  } catch {
-    return p;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return p;
+    throw err;
   }
 }
 
@@ -200,10 +203,10 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   accumulator.nodes = new Map(annotated.map((n) => [n.id, n]));
   pruneDanglingReferences(accumulator.nodes, accumulator.edges);
 
-  const metrics =
+  const { metrics, warnings } =
     options.computeMetrics === false
-      ? []
-      : buildIndexerMetrics({
+      ? { metrics: [], warnings: [] }
+      : assembleIndexerMetrics({
           nodes: accumulator.nodes,
           edges: accumulator.edges,
           parsedFiles: [...parsedByPath.values()],
@@ -243,5 +246,6 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
     cosmetic: classified.cosmeticFileIds.size,
     nodesByKind: countByKind(accumulator.nodes.values()),
     edgesByKind: countByKind(accumulator.edges.values()),
+    ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),
   };
 }

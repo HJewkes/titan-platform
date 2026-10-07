@@ -1,6 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { addColumnIfMissing } from "./audit-schema.js";
-import { EPISODE_TABLE } from "./audit-schema-v5.js";
+import { EPISODE_TABLE } from "./origin-schema.js";
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
 export const EPISODE_TRANSCRIPT_MIGRATION_NAME = "episode transcript ids";

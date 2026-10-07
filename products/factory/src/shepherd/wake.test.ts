@@ -14,6 +14,7 @@ import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
+import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
@@ -278,6 +279,36 @@ describe("sh-wake-implementer: who is woken", () => {
 
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
     expect(scene.clock.sleeps).toEqual([1_000]);
+    expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
+  });
+
+  it("gives up with the last error once a PR read has failed for the whole deadline", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })] });
+    scene.fake.onGetPr = (_pr, reads) => {
+      if (reads > 1) throw Object.assign(new Error("Not Found"), { status: 404 });
+    };
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toMatchObject({ kind: "unhandled", reason: expect.stringContaining("HTTP 404") });
+    expect(result).toMatchObject({ reason: expect.stringContaining(`${REPO}#1`) });
+    expect(scene.clock.now - T0).toBeGreaterThanOrEqual(HEAD_READ_GIVE_UP_MS);
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("restarts the deadline when a read succeeds between failures", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })] });
+    scene.agents.fail.message = [new BrokerUnavailableError("down")];
+    const outage = HEAD_READ_GIVE_UP_MS * 0.6;
+    const failing = (since: number) => since < outage || (since >= outage + 1_000 && since < 2 * outage + 1_000);
+    scene.fake.onGetPr = (_pr, reads) => {
+      if (reads > 1 && failing(scene.clock.now - T0)) throw new Error("HTTP 502: bad gateway");
+    };
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(scene.clock.now - T0).toBeGreaterThan(HEAD_READ_GIVE_UP_MS);
     expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
   });
 
