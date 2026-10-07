@@ -102,8 +102,9 @@ rejected token or a silent broker is an error envelope with code 69, never an em
 the sessions commands read transcripts.
 
 The upstream ids are the namespaces later commands live under: `work.*`, `agents.*` and
-`sessions.*`. `server/commands.ts` is the single list of commands. `src/data/rpc.ts` derives
-the browser's hook types from it with `CommandMapOf`, and a test calls the running daemon
+`sessions.*`. `server/commands.ts` is the single list of commands. `server/commands.ts` turns
+that list into the `ConsoleCommands` type with `CommandMapOf`, `src/data/rpc.ts` derives the
+browser's hook types from it with `createRpcHooks<ConsoleCommands>`, and a test calls the running daemon
 through `createRpcClient` with the same type.
 
 ## Routes
@@ -154,9 +155,12 @@ existing piece, not worked around with local styles.
 ## Layout
 
 ```
-server/   config.ts (ports and paths), upstreams.ts (the three probes), active-work.ts (the
-          read-only client), work.ts (the work.* read models), commands.ts, registry.ts,
-          daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers)
+server/   config.ts (ports and paths), paths.ts (the built page and export locations),
+          upstreams.ts (the three probes), active-work.ts (the read-only client), broker.ts (the
+          read-only agent-chat broker client), work.ts (the work.* read models), agents.ts (the
+          agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
+          daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
+          test-support.ts (a fake daemon for tests)
 src/      main.tsx, App.tsx (the shell), router.ts, views.tsx (the nav and its placeholders),
           pages/, data/rpc.ts (typed hooks)
 ```
