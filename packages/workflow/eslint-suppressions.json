@@ -1,0 +1,12 @@
+{
+  "src/context.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/durable-harness-runner.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

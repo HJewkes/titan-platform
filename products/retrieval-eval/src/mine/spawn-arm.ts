@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { TranscriptHead, ToolUse } from "../corpus/transcripts.js";
-import { readHead, streamToolUses, transcriptId } from "../corpus/transcripts.js";
+import { streamToolUses, transcriptId } from "../corpus/transcripts.js";
 import type { EvalPair, LinkMethod } from "../pairs.js";
 import { dedupeLabels, labelledPathOf, normaliseLabel } from "./labels.js";
 
@@ -149,9 +149,12 @@ export interface SpawnMining {
   withoutInitiative: number;
 }
 
-export async function mineSpawnArm(files: string[], activeRoot: string): Promise<SpawnMining> {
+export async function mineSpawnArm(
+  files: string[],
+  activeRoot: string,
+  heads: TranscriptHead[],
+): Promise<SpawnMining> {
   const spawns = await collectSpawns(files);
-  const heads = await Promise.all(files.map((file) => readHead(file)));
   const pairs: EvalPair[] = [];
   const byMethod: Record<string, number> = {};
   let linked = 0;

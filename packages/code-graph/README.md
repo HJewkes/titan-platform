@@ -180,7 +180,7 @@ successor, only where exactly one declaration in the file carries that name.
 A file-membership delta (a file added or removed) forces the files whose imports it
 re-resolves back to full extraction even when they are byte-identical. Degree metrics are
 always recomputed over the whole assembled graph, so a heavily-reused run and a
-`incremental: false` run produce the same snapshot; `indexer.test.ts` asserts that.
+`incremental: false` run produce the same snapshot; `incremental-index.test.ts` asserts that.
 
 ## Store layout
 
@@ -409,6 +409,10 @@ Python, and are written on every function or file, zeros included:
   above or trail), and `symbol_pass_through` (1 when the body is one call that forwards every
   parameter, in order, as a bare argument, skipping a `self` or `cls` receiver; a function
   with no parameters is never one).
+- Per component (a PascalCase function that renders JSX; props resolve within the file only,
+  absent when the props type is imported or untyped): `symbol_prop_count` (own-declared
+  props), `symbol_bool_prop_count` (those typed `boolean`) and `symbol_unread_props` (those
+  the body never reads; 0 when `...rest` or the whole props object is forwarded).
 - Per file: `except_count` (Python `except` and TypeScript `catch` clauses), `except_density`
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,

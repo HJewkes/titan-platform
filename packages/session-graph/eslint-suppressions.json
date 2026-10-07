@@ -1,0 +1,12 @@
+{
+  "src/normalized-index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "src/refresh.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}
