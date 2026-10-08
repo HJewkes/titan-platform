@@ -465,10 +465,11 @@ Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
 - `force-pushes`: `ForcePushesTruncated`
-- `checks`: `evaluateChecks`, `isPassing`, `latestPerName`
+- `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- `app-token`: `appInstallationToken`
+- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
