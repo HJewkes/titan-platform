@@ -19,6 +19,8 @@ export interface ConsoleConfig {
   agentChatPort: number;
   /** agent-chat's `ui.token`; the broker's `/api/*` reads need it in a header. */
   agentChatTokenPath: string;
+  /** agent-chat's event log, which agents.messages pages through read-only. */
+  agentChatEventsDbPath: string;
   /** Which seat owns the agents named `<prefix>-...`. */
   seatPrefixes: SeatPrefix[];
   sessionGraphPath: string;
@@ -36,6 +38,7 @@ export function resolveConfig(
     activeWorkPort: portFrom(env, "TITAN_CONSOLE_ACTIVE_WORK_PORT", ACTIVE_WORK_PORT),
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
+    agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
   };
