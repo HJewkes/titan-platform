@@ -51,7 +51,7 @@ export function mainRulesReader(port: GitHubPort, repo: RepoSlug, pr: number | u
   };
 }
 
-export interface MainJudgement {
+interface MainJudgement {
   findings: CheckFinding[];
   /** How many runs were judged; zero means nothing has run yet. */
   counted: number;

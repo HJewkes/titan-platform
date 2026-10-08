@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, FakeHttpError, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { REPO } from "../test-support/land.js";
-import { readBaseRequiredChecks } from "../required-checks.js";
+import { readBaseRequiredChecks, readClassicRequiredChecks } from "../required-checks.js";
 import { greenAfterRed } from "./freeze.js";
 import { readMainCi, SH_MAIN_CI_TIMEOUT_MS } from "./post-merge.js";
 
@@ -135,5 +135,14 @@ describe("readBaseRequiredChecks", () => {
     expect(await readBaseRequiredChecks(githubPort(fake.wire), REPO, "main")).toMatchObject({ readable: true, checks: { contexts: ["from-ruleset"] } });
     fake.rules = { contexts: [], strict: false };
     expect(await readBaseRequiredChecks(githubPort(fake.wire), REPO, "main")).toMatchObject({ readable: true, checks: { contexts: ["from-classic"] } });
+  });
+
+  it("reads classic protection's list and pins on its own, and reports a failed read as unreadable", async () => {
+    const fake = world({ classic: ["validate"] });
+    fake.classicRules = { contexts: ["validate"], strict: false, pins: { validate: [PINNED_APP] } };
+
+    expect(await readClassicRequiredChecks(githubPort(fake.wire), REPO, "main")).toEqual({ readable: true, checks: { contexts: ["validate"], strict: false, pins: { validate: [PINNED_APP] } } });
+    fake.wire.getClassicRequiredChecks = async () => Promise.reject(new FakeHttpError(502, "bad gateway"));
+    expect(await readClassicRequiredChecks(githubPort(fake.wire), REPO, "main")).toEqual({ readable: false, reason: expect.stringContaining("HTTP 502") });
   });
 });
