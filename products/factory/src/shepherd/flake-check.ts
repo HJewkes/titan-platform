@@ -6,10 +6,11 @@ import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
-import { noticeSeat } from "./exit-notice.js";
+import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts } from "./exit-notice.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
-export const FLAKE_CHECK_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }];
+/** The steps `afterFixerExit` records: the flake check, then the seat notice. */
+export const FIXER_EXIT_STEPS: readonly StepDeclaration[] = [{ id: FLAKE_CHECK_STEP, kind: "dispatch" }, ...EXIT_NOTICE_STEPS];
 
 const FlakeCheckResult = z.looseObject({ outside: z.boolean(), detail: z.string() });
 
@@ -46,9 +47,11 @@ export async function failuresOutsideDiff(port: GitHubPort, input: FlakeCheckInp
 }
 
 /** A read that fails is not a verdict: the run takes the gate rather than a rerun. */
-export function flakeCheckRoute(port: GitHubPort, now: () => number): StepRoute {
+function flakeCheckRoute(port: GitHubPort, now: () => number): StepRoute {
   return codeRoute(FLAKE_CHECK_STEP, now, async (input: FlakeCheckInput) => failuresOutsideDiff(port, input).catch((error: unknown) => ({ outside: false, detail: `the check could not read: ${error instanceof Error ? error.message : String(error)}` })));
 }
+
+export const fixerExitRoutes = (port: GitHubPort, now: () => number, exitNotice: ExitNoticePorts | undefined): StepRoute[] => [flakeCheckRoute(port, now), exitNoticeRoute(now, exitNotice)];
 
 const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string(), workflowRunId: z.number().nullable() })) });
 

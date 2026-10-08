@@ -7,8 +7,7 @@ import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { EXIT_NOTICE_STEPS, exitNoticeRoute } from "./exit-notice.js";
-import { FLAKE_CHECK_STEPS, flakeCheckRoute } from "./flake-check.js";
+import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
@@ -28,8 +27,7 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
   { id: FIX_FIRST_STEP, kind: "dispatch" },
   { id: REPAIR_STEP, kind: "dispatch" },
-  ...FLAKE_CHECK_STEPS,
-  ...EXIT_NOTICE_STEPS,
+  ...FIXER_EXIT_STEPS,
 ];
 
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
@@ -355,8 +353,7 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   awaitNewHeadRoute({ ...deps, agentExited: exitedOn(deps, wiring) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
-  flakeCheckRoute(deps.port, deps.now),
-  exitNoticeRoute(deps.now, deps.exitNotice),
+  ...fixerExitRoutes(deps.port, deps.now, deps.exitNotice),
 ];
 
 const Woke = z.discriminatedUnion("kind", [

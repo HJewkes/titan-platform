@@ -86,6 +86,9 @@ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
 
+/** A wake, what follows an exit, and the wait for the fixer's head. */
+const FIXING_STEPS = ["sh-wake-implementer", "sh-wake-fix-first", "sh-repair", "sh-flake-check", "sh-exit-notice", "await-new-head", "sh-await-new-head"];
+
 /** A step family to its phase, matched the way `stepIdMatches` matches declarations; an undeclared id reads as `ci` so a new step never breaks a view. */
 const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-await-pr": "awaiting-pr",
@@ -95,13 +98,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   rerun: "ci",
   "sh-freeze-hold": "ci",
   "sh-freeze-wait": "ci",
-  "sh-wake-implementer": "fixing",
-  "sh-wake-fix-first": "fixing",
-  "sh-repair": "fixing",
-  "sh-flake-check": "fixing",
-  "sh-exit-notice": "fixing",
-  "await-new-head": "fixing",
-  "sh-await-new-head": "fixing",
+  ...Object.fromEntries(FIXING_STEPS.map((id) => [id, "fixing"] as const)),
   "sh-park": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
