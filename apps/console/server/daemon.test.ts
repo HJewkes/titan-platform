@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
+import { closedPort, startFakeBroker, startFakeDaemon, type FakeDaemon } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 let dir: string;
@@ -26,6 +26,7 @@ beforeEach(async () => {
     activeWorkPort: activeWork.port,
     agentChatPort: await closedPort(),
     agentChatTokenPath: path.join(dir, "ui.token"),
+    agentChatEventsDbPath: path.join(dir, "events.db"),
     seatPrefixes: [],
     sessionGraphPath: path.join(dir, "graph.sqlite3"),
   };
@@ -80,6 +81,22 @@ describe("the console daemon", () => {
       expect(res.status).toBe(200);
       expect(await res.text()).toContain("console shell");
     }
+  });
+
+  it("answers agents.messages and agents.queue from a fake broker over /rpc", async () => {
+    const queue = [{ msgId: "q1", kind: "question", from: "coord", text: "Ship?", at: 1_000, meta: {} }];
+    const items = [{ msgId: "m1", kind: "message", from: "coord", text: "go", at: 2_000, meta: { target: "impl" } }];
+    const broker = await startFakeBroker({ token: "synthetic-token", sessions: [], items, queue });
+    await writeFile(config.agentChatTokenPath, "synthetic-token");
+    await chmod(config.agentChatTokenPath, 0o600);
+    handle = await startConsoleDaemon({ config: { ...config, agentChatPort: broker.port }, logger: silentLogger });
+    const client = createRpcClient<ConsoleCommands>(liveSource({ origin: origin() }));
+    const messages = await client.call("agents.messages", { agent: "impl", limit: 50 });
+    const open = await client.call("agents.queue", {});
+    await broker.close();
+    expect(messages).toMatchObject({ source: "history", partial: true, messages: [{ msgId: "m1", from: "coord", to: "impl" }] });
+    expect(open.items).toMatchObject([{ msgId: "q1", asker: "coord" }]);
+    expect(broker.requests.every((request) => request.startsWith("GET "))).toBe(true);
   });
 
   it("refuses a second console over the same state directory", async () => {

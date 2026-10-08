@@ -178,6 +178,7 @@ graph TD
   console --> sessionAnalytics
   console --> sessionGraph
   console --> sessionRead
+  console --> storeSqlite
   console --> worktree
 ```
 <!-- generated:arch-graph end -->

@@ -28,6 +28,7 @@
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-graph": "workspace:^",
     "@titan-design/session-read": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/worktree": "workspace:^",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
