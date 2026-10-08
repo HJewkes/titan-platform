@@ -108,6 +108,79 @@ describe("computeSourceMetrics — max_nesting_depth", () => {
       metric(computeSourceMetrics([file], idOf), "f.ts", "max_nesting_depth"),
     ).toBe(3);
   });
+
+  it("scores a flat else-if chain inside a loop at the loop's depth plus one", async () => {
+    const file = await parseTs(
+      `function chain(xs: number[]) {
+         for (const x of xs) {
+           if (x === 1) {
+             use(1);
+           } else if (x === 2) {
+             use(2);
+           } else if (x === 3) {
+             use(3);
+           } else {
+             use(4);
+           }
+         }
+       }\n`,
+    );
+    expect(
+      metric(computeSourceMetrics([file], idOf), "f.ts", "max_nesting_depth"),
+    ).toBe(2);
+  });
+
+  it("still counts a real if nested inside an else-if arm", async () => {
+    const file = await parseTs(
+      `function chain(xs: number[]) {
+         for (const x of xs) {
+           if (x === 1) {
+             use(1);
+           } else if (x === 2) {
+             if (x > 0) use(2);
+           }
+         }
+       }\n`,
+    );
+    expect(
+      metric(computeSourceMetrics([file], idOf), "f.ts", "max_nesting_depth"),
+    ).toBe(3);
+  });
+
+  it("does not inflate a Python elif chain inside a loop", async () => {
+    const file = await parsePy(
+      `def chain(xs):
+    for x in xs:
+        if x == 1:
+            use(1)
+        elif x == 2:
+            use(2)
+        elif x == 3:
+            use(3)
+        else:
+            use(4)
+`,
+    );
+    expect(
+      metric(computeSourceMetrics([file], idOf), "f.py", "max_nesting_depth"),
+    ).toBe(2);
+  });
+
+  it("counts a real if nested inside a Python elif arm", async () => {
+    const file = await parsePy(
+      `def chain(xs):
+    for x in xs:
+        if x == 1:
+            use(1)
+        elif x == 2:
+            if x > 0:
+                use(2)
+`,
+    );
+    expect(
+      metric(computeSourceMetrics([file], idOf), "f.py", "max_nesting_depth"),
+    ).toBe(3);
+  });
 });
 
 describe("computeSourceMetrics — id mapping", () => {
