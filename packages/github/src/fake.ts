@@ -89,6 +89,7 @@ export function successRun(name: string, id: number, startedAt = "2026-01-01T00:
 
 /** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
 export const FAKE_APP_ID = 424242;
+const FAKE_MERGED_AT = "2026-01-01T00:00:00Z";
 
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
 export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string; appId?: number } = {}): FakeGitHub {
@@ -121,7 +122,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
     },
@@ -298,5 +300,6 @@ function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeM
   pr.merged = true;
   pr.state = "closed";
   pr.mergeSha = nextSha("merge");
+  pr.mergedAt = FAKE_MERGED_AT;
   return { sha: pr.mergeSha };
 }

@@ -153,6 +153,7 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
   when the old path matters.
 - `mergeSha` on an open PR is GitHub's test merge. It means the merge commit only once
   `merged` is true.
+- `mergedAt` is GitHub's ISO merge timestamp (REST `merged_at`), null until the PR merges.
 
 ### Check runs under a GitHub App
 

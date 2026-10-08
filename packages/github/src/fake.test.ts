@@ -63,6 +63,18 @@ describe("check-then-act port over the fake", () => {
     expect(fake.effects.merge).toBe(1);
   });
 
+  it("stamps mergedAt when a PR merges, and leaves it null until then", async () => {
+    const fake = fakeGitHub();
+    const port = githubPort(fake.wire);
+    const pr = fake.addPr({ headSha: H1 });
+    expect(pr.mergedAt).toBeNull();
+
+    await port.merge(REPO, pr.number, H1, "squash");
+
+    expect(fake.pr(pr.number).mergedAt).toMatch(/^\d{4}-\d\d-\d\dT[\d:.]+Z$/);
+    expect(fake.addPr({ headSha: H2, merged: true }).mergedAt).not.toBeNull();
+  });
+
   it("merge refuses a head other than the one named, without calling GitHub's merge", async () => {
     const fake = fakeGitHub();
     const pr = fake.addPr({ headSha: H1 });
