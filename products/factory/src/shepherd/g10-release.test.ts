@@ -1,8 +1,8 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
-import { describe, expect, it } from "vitest";
-import { G10_RELEASE_STEP, g10ReleaseRoutes, holdClassOf, isOpusProfile, satisfiesG10, type G10Verdict } from "./g10-release.js";
+import { describe, expect, it, vi } from "vitest";
+import { G10_RELEASE_STEP, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, withReviewerProfile, type G10Verdict } from "./g10-release.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -35,7 +35,7 @@ describe("satisfiesG10", () => {
     expect(satisfiesG10(held("g10-review: x"), mergeAt(HEAD), HEAD, { head: HEAD, green: false }, "bd-reviewer")).toBe(false);
   });
 
-  it.each(["g10-adversary: authority PR; TP-1", "awaiting a named review", "g10-review-extra: x", "freeze: main red"])("keeps a %s hold", (reason) => {
+  it.each(["g10-adversary: authority PR; TP-1", "awaiting a named review", "g10-review-extra: x", "freeze: main red", "  g10-review: x", "g10-review : x", " g10-review: x"])("keeps a %s hold", (reason) => {
     expect(satisfiesG10(held(reason), mergeAt(HEAD), HEAD, green(HEAD), "bd-reviewer")).toBe(false);
   });
 
@@ -67,7 +67,7 @@ function rig(reason: string, prHead = HEAD) {
   const { number: pr } = fake.addPr({ headSha: prHead });
   store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   store.hold("run-1", reason);
-  const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0, reviewProfile: "bd-reviewer" } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
+  const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0 } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
   return { store, pr, deps };
 }
 
@@ -77,7 +77,7 @@ async function runStep(route: StepRoute, input: object): Promise<{ released: boo
   return (JSON.parse(result.output) as { result: { released: boolean; head: string; verdict?: unknown } }).result;
 }
 
-const stepInput = (pr: number, head: string, verdictHead = head) => ({ runId: "run-1", repo: REPO, pr, head, verdict: mergeAt(verdictHead), checks: green(head) });
+const stepInput = (pr: number, head: string, verdictHead = head) => ({ runId: "run-1", repo: REPO, pr, head, verdict: mergeAt(verdictHead), reviewerProfile: "bd-reviewer", checks: green(head) });
 
 describe(G10_RELEASE_STEP, () => {
   it("releases the hold and records the verdict ref", async () => {
@@ -99,5 +99,61 @@ describe(G10_RELEASE_STEP, () => {
     const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
+  });
+});
+
+describe("a re-hold while the PR head is read", () => {
+  it("is not released: the release swaps only the hold it judged", async () => {
+    const { store, pr, deps } = rig("g10-review: auth; TP-1");
+    const reholding = { ...deps, port: { ...deps.port, getPr: async (...args: Parameters<typeof deps.port.getPr>) => (store.hold("run-1", "g10-adversary: x"), deps.port.getPr(...args)) } };
+    const done = await runStep(g10ReleaseRoutes(reholding)[0]!, stepInput(pr, HEAD));
+    expect(done.released).toBe(false);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: x" });
+  });
+});
+
+describe("which reviewer's verdict releases", () => {
+  it("refuses a verdict whose spawned profile is not opus, or that carries none", () => {
+    const verdict = mergeAt(HEAD);
+    expect([satisfiesG10(held("g10-review: x"), verdict, HEAD, green(HEAD), "reviewer"), satisfiesG10(held("g10-review: x"), verdict, HEAD, green(HEAD), undefined)]).toEqual([false, false]);
+  });
+
+  it("marks only a MERGE with the profile it was spawned with", () => {
+    const merge = { kind: "MERGE", headSha: HEAD, evidence: null } as const;
+    expect(withReviewerProfile(merge, "bd-reviewer")).toMatchObject({ reviewerProfile: "bd-reviewer" });
+    expect(withReviewerProfile(merge, undefined)).not.toHaveProperty("reviewerProfile");
+    expect(withReviewerProfile({ kind: "FIX_FIRST", headSha: HEAD, text: "" }, "bd-reviewer")).not.toHaveProperty("reviewerProfile");
+  });
+});
+
+function workflowRun(reviewerProfile: string | undefined, released = true) {
+  const dispatch = vi.fn(async () => ({ data: { result: { released, head: HEAD } } }));
+  const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
+  const merge = { kind: "MERGE" as const, headSha: HEAD, evidence, ...(reviewerProfile && { reviewerProfile }) };
+  const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+  return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map([[HEAD, merge]]), lastCi: { headSha: HEAD, verdict: "green" } as never } };
+}
+
+describe("releaseG10Hold", () => {
+  it("asks for a release once for a verdict, so a re-hold at the same head waits for a newer one", async () => {
+    const { dispatch, run } = workflowRun("bd-reviewer");
+    await releaseG10Hold(run, "g10-review: x");
+    await releaseG10Hold(run, "g10-review: x");
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again after an attempt that released nothing", async () => {
+    const { dispatch, run } = workflowRun("bd-reviewer", false);
+    await releaseG10Hold(run, "g10-review: x");
+    await releaseG10Hold(run, "g10-review: x");
+    expect(dispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for nothing on a verdict with no spawned profile or under another class", async () => {
+    const external = workflowRun(undefined);
+    await releaseG10Hold(external.run, "g10-review: x");
+    const adversary = workflowRun("bd-reviewer");
+    await releaseG10Hold(adversary.run, "g10-adversary: x");
+    expect([external.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0]);
   });
 });

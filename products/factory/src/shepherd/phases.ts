@@ -30,7 +30,7 @@ export interface ReviewRequest extends PhaseTarget {
 export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started";
 
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown }
+  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };
@@ -49,8 +49,6 @@ export interface ShepherdDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   agentChatBin: string;
-  /** `shepherd.review.profile`; a `g10-review` hold releases itself only when this is an opus profile. */
-  reviewProfile?: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */

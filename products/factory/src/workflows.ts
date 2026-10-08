@@ -46,8 +46,6 @@ export interface FactoryRouteDeps extends LandPrDeps {
   /** Paces the snapshot tick and is reported in `/health`; `configuredRoutes` wires one on the `rate_limit` reading. */
   pacing?: TickPacing;
   agentChatBin?: string;
-  /** `shepherd.review.profile`; a `g10-review` hold releases itself only when this is an opus profile. */
-  reviewProfile?: string;
   /** The Claude config directory successors spawn under; the fixer's, since a successor is a fixer in a new session. */
   agentChatConfigDir?: string;
   /** The one roster reader every port over `agentChatBin` shares; absent means each wake reads through its own. */
@@ -96,7 +94,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", reviewProfile: deps.reviewProfile, agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
@@ -147,7 +145,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   if (!review || !agentChatBin) return undefined;
   const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
+  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
@@ -190,7 +188,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const port = overrides.port ?? githubPort(ghCliWire());
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
-  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, reviewProfile: shepherd?.review?.profile, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

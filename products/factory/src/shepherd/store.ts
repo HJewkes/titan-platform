@@ -292,6 +292,14 @@ export class ShepherdStore implements HoldLookup {
     return this.setHeld(runId, false, null, null);
   }
 
+  /** Compare-and-swap: releases only while the run is still held under exactly `reason`; false when a release or another hold got there first. */
+  releaseIfHeld(runId: string, reason: string): boolean {
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason = ?")
+      .run(this.stamp(), runId, reason).changes;
+    return changed === 1;
+  }
+
   /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
   satisfyHold(runId: string, reviewer: string, head: string, by: Omit<HoldSatisfiedBy, "reviewer">): boolean {
     const satisfiedBy = JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer }));
