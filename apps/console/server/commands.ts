@@ -3,6 +3,7 @@ import { defineCommand, type CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import type { ActiveWork } from "./active-work.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
+import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
 import { initiativeResult, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
@@ -35,6 +36,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, work 
     }),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
+    ...tasksCommands({ activeWork, sessions, work }),
     "work.portfolio": defineCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",

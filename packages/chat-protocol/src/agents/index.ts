@@ -21,12 +21,13 @@ export {
   HISTORY_STATES,
   LIVE_HISTORY_STATES,
   PRESENCE_STATES,
-  activityCategorySchema,
+  agentActivityCategory,
   agentCostSource,
   agentGraph,
   agentGraphEdge,
   agentGraphEdgeKind,
   agentGraphNode,
+  agentGraphNodeActivity,
   agentIdSource,
   agentOrigin,
   agentRosterSnapshot,
@@ -38,7 +39,6 @@ export {
   brokerSession,
   brokerSessions,
   historyWindow,
-  nodeActivitySchema,
 } from "./types.js";
 
 export { HUMAN, activityCategory, buildSpawnTree, isPeerName, nodeActivity } from "./spawn-tree.js";
