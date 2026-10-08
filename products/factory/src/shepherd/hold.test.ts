@@ -398,6 +398,19 @@ describe("a run held at registration whose seat sends the reviewed head back", (
     expect(r.fake.pr(r.pr).merged).toBe(false);
   });
 
+  it("ends the merge step at the old head, unmerged and still held, once a push moves the PR on, so land reads CI at the new head", async () => {
+    const r = heldAtRegistration();
+    const step = mergeStep(r, (poll) => poll === 1 && r.fake.pushHead(r.pr, H2));
+
+    const result = await step.run(H1);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(step.probe).toMatchObject({ ran: false, polls: 1 });
+    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(r.fake.pr(r.pr).merged).toBe(false);
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-review: +415/-0 diff over 400" });
+  });
+
   it("keeps the merge step waiting at the reviewed head once a push moves the PR on past the hold reviewer's MERGE", async () => {
     const r = heldAtRegistration();
     say(r, verdictAt(H1), agent(SEAT));
