@@ -653,9 +653,10 @@ describe("shepherd-pr on a red main", () => {
     expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
-  it("offers the owner the release when the fixer's green merge skipped a check that was red, and thaws on the owner's word", async () => {
+  it("offers the owner the release when the fixer's green merge skipped a check that was red under the all-checks rule an unreadable ruleset leaves, and thaws on the owner's word", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
-    w.fake.rules = { contexts: [], strict: false };
+    const rules = w.fake.wire.getBranchRules;
+    w.fake.wire.getBranchRules = async (...args) => (w.fake.pr(1).merged ? Promise.reject(new Error("HTTP 502")) : rules(...args));
     w.fake.setRuns(EARLIER_RED, [successRun("docs", 4, undefined, "failure")]);
     frozenWithFixer(w);
     const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
