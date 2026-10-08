@@ -485,8 +485,9 @@ import {
   topBusFactorRisks,
   topHotspots,
 } from "@titan-design/code-graph/analysis";
+import type { GraphNode } from "@titan-design/code-graph";
 
-const nodes = [
+const nodes: GraphNode[] = [
   { id: "hot.ts", kind: "file", name: "hot.ts" },
   { id: "calm.ts", kind: "file", name: "calm.ts" },
 ];

@@ -130,6 +130,25 @@ describe("computeSourceMetrics — max_nesting_depth", () => {
     ).toBe(2);
   });
 
+  it("counts a braced else { if } inside a loop at depth 3, unlike a flat else-if", async () => {
+    const file = await parseTs(
+      `function chain(xs: number[]) {
+         for (const x of xs) {
+           if (x === 1) {
+             use(1);
+           } else {
+             if (x === 2) {
+               use(2);
+             }
+           }
+         }
+       }\n`,
+    );
+    expect(
+      metric(computeSourceMetrics([file], idOf), "f.ts", "max_nesting_depth"),
+    ).toBe(3);
+  });
+
   it("still counts a real if nested inside an else-if arm", async () => {
     const file = await parseTs(
       `function chain(xs: number[]) {

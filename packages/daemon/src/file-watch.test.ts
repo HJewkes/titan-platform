@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as realDelay } from "node:timers/promises";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -226,5 +227,23 @@ describe("watchTree", () => {
     await sleep(DEBOUNCE_MS * 5);
 
     expect(counter.count).toBe(0);
+  });
+
+  it("clears its pending debounce timer on close instead of leaving it to expire", { timeout: 15_000 }, async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+      for (let attempt = 0; vi.getTimerCount() === 0 && attempt < 100; attempt++) {
+        await writeFile(path.join(root, `pending-${attempt}.md`), "hello");
+        await realDelay(50);
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      watcher.close();
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

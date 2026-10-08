@@ -23,7 +23,8 @@ delta.sessions, delta.requests, delta.edges, delta.lastByteOffset, delta.prefixH
 `SessionEvent` is a discriminated union on `kind`: `fact` (one per line, typed by event),
 `span` (search text for prompt / assistant_response / tool_input / tool_result), `session`
 (descriptive fields and turn/commit/push deltas), `turn`, `phase`, `human_edit`,
-`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict`, `branch`, `file`, `task`, `subagent`, `subagent_transcript`, `artifact`, and
+`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict`, `branch`, `file`, `task`,
+`subagent`, `subagent_transcript`, `artifact`, and
 `edge` (`session:… touched file:…` and friends; vocabulary in `RELATIONS`).
 
 Every rule in `LineReader` is stateless across lines except the last-seen timestamp: a
