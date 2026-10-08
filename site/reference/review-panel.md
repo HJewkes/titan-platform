@@ -6,7 +6,7 @@
 npm install @titan-design/review-panel
 ```
 
-Status: types and ports only. The classifier, planner, briefs, verdict acceptor and
+Status: types, ports and the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`). The planner, briefs, verdict acceptor and
 aggregate land in later slices of TP-1916.
 
 ## The problem it solves

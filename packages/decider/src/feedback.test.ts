@@ -36,6 +36,22 @@ describe("feedbackForRow", () => {
     expect(feedbackForRow(row({ pick_type: "unparsed" }), [{ principleId: "p1", verdict: "agrees" }])).toEqual({ feedback: [], skipped: "unscored" });
   });
 
+  it("skips a row that accepted a batch of defaults in one answer", () => {
+    const bulk = row({ recommended: "Accept the 6 defaults (recommended)", answer: "Accept the 6 defaults" });
+
+    expect(bulk.outcome).toBe("bulk");
+    expect(feedbackForRow(bulk, [{ principleId: "p1", verdict: "agrees" }])).toEqual({ feedback: [], skipped: "bulk" });
+  });
+
+  it("keeps a per-item redirect carved out of a bulk answer as evidence", () => {
+    const carveOut = row({ answer: "Not accepted: use a cron job here; accept all the other defaults", pick_type: "free_text" });
+
+    const mapping = feedbackForRow(carveOut, [{ principleId: "p1", verdict: "contradicts" }]);
+
+    expect(carveOut.outcome).toBe("redirect");
+    expect(mapping.feedback.map((f) => [f.principleId, f.type])).toEqual([["p1", "harmful"]]);
+  });
+
   it("turns an overrule into harmful feedback on every principle the decider cited", () => {
     const overrule = row({
       v: 2,

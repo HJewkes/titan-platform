@@ -245,6 +245,25 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked[0]!.message).toContain("from impl-a-s2");
   });
 
+  it("tells a successor of a tc- implementer to report to titan-coord, which spawned the lineage, though the human spawned its predecessor", async () => {
+    const rows = [row("tc-impl", { spawnedBy: "titan-coord" }), row("tc-impl-s1", { spawnedBy: "human" }), row("other-coord")];
+    const { agents, run } = wakeStep({ rows, registered: { ...registration, implementer: "tc-impl" } });
+
+    await run("review", fixFirst("fix it"));
+
+    expect(agents.asked[0]).toMatchObject({ verb: "spawn", name: "tc-impl-s2" });
+    expect(agents.asked[0]!.message).toContain("send your report with chat_send to titan-coord, the seat that started this PR's lineage, and to no other session.");
+  });
+
+  it("tells a successor to message no session when only the human spawned its lineage", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a", { spawnedBy: "human" })] });
+
+    await run("review", fixFirst("fix it"));
+
+    expect(agents.asked[0]!.message).toContain("send it to no session, since Shepherd found no seat that started this PR's lineage");
+    expect(agents.asked[0]!.message).not.toContain("chat_send");
+  });
+
   it("messages a live implementer with the findings instead of resuming it", async () => {
     const { agents, run } = wakeStep({ rows: [row("impl-a", { presence: "live" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
 
