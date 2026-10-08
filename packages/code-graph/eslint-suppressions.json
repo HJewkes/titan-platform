@@ -14,11 +14,6 @@
       "count": 1
     }
   },
-  "src/barrel-resolve.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "src/check/validate.ts": {
     "titan/max-function-lines": {
       "count": 1
