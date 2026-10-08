@@ -37,13 +37,13 @@ export interface CarryOptions {
 }
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
-const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
+export const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
 const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
 export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
 /** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
-class CarryRefusal extends Error {
+export class CarryRefusal extends Error {
   constructor(readonly command: string, readonly code: number) {
     super(`git ${command} exited ${code}`);
     this.name = "CarryRefusal";
@@ -79,35 +79,40 @@ export function bindCarryStateDir(stateDir: string): () => void {
   };
 }
 
+/** Where the git cache lives: the given dir, else the bound state dir, else the configured database's directory. */
+export function carryStateDir(stateDir?: string): string {
+  return stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
+}
+
 export function carryCacheDir(stateDir: string, repo: string): string {
   const [owner = "", name = ""] = repo.toLowerCase().split("/");
   return join(stateDir, "git-cache", owner, `${name}.git`);
 }
 
-const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
+export const githubRemote = (repo: string): string => `https://github.com/${repo}.git`;
 const firstLine = (text: string): string => text.trim().split("\n")[0] ?? "";
 
-async function must(git: Git, dir: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
+export async function must(git: Git, dir: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
   const result = await git(dir, args, signal);
   if (result.code !== 0) throw new CarryRefusal(args[0] ?? "", result.code);
   return result.stdout.trim();
 }
 
-async function isAncestor(git: Git, dir: string, ancestor: string, descendant: string, signal?: AbortSignal): Promise<boolean> {
+export async function isAncestor(git: Git, dir: string, ancestor: string, descendant: string, signal?: AbortSignal): Promise<boolean> {
   const result = await git(dir, ["merge-base", "--is-ancestor", ancestor, descendant], signal);
   if (result.code > 1) throw new CarryRefusal("merge-base", result.code);
   return result.code === 0;
 }
 
-async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
+export async function ensureCache(git: Git, dir: string, signal?: AbortSignal): Promise<void> {
   if (existsSync(join(dir, "HEAD"))) return;
   mkdirSync(dirname(dir), { recursive: true });
   await must(git, dir, ["init", "--bare", "--quiet"], signal);
 }
 
-const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
+export const remoteBase = (baseRef: string): string => `refs/remotes/origin/${baseRef}`;
 
-function fetchArgs(url: string, input: CarryInput): string[] {
+export function fetchArgs(url: string, input: CarryInput): string[] {
   return ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.fromHead, input.head, `+refs/heads/${input.baseRef}:${remoteBase(input.baseRef)}`];
 }
 
@@ -142,7 +147,7 @@ async function probe(git: Git, dir: string, url: string, input: CarryInput, sign
 const queues = new Map<string, Promise<unknown>>();
 
 /** One probe per cache at a time, so two runs never race `git init` or the base ref update. */
-function serialized<T>(dir: string, task: () => Promise<T>): Promise<T> {
+export function serialized<T>(dir: string, task: () => Promise<T>): Promise<T> {
   const next = (queues.get(dir) ?? Promise.resolve()).then(task, task);
   const settled = next.catch(() => undefined);
   queues.set(dir, settled);
@@ -151,7 +156,7 @@ function serialized<T>(dir: string, task: () => Promise<T>): Promise<T> {
 }
 
 /** A fixed-vocabulary reason: the reason is a stored step output that can reach a public PR, so no error text goes into it. */
-const reasonOf = (error: unknown): string => (error instanceof CarryRefusal ? `git ${error.command} exited ${error.code}` : `carry probe failed: ${errorClass(error)}`);
+export const reasonOf = (error: unknown): string => (error instanceof CarryRefusal ? `git ${error.command} exited ${error.code}` : `carry probe failed: ${errorClass(error)}`);
 
 /** Does `head` carry the review of `fromHead`? Every failure, from bad input to a refused fetch, answers not equal with a reason. */
 export async function carry(raw: unknown, options: CarryOptions = {}): Promise<CarryResult> {
