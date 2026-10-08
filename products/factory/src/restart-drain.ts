@@ -1,4 +1,5 @@
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
+import { stepIdMatches } from "./definition.js";
 import { stepPhase } from "./shepherd/step-phase.js";
 
 /** `park` names a step whose route parks the run on restart; it outranks the step's Shepherd phase. */
@@ -33,6 +34,8 @@ export const DEFAULT_DRAIN_TIMEOUT_MS = 45 * 60_000;
 const DRAIN_POLL_MS = 5_000;
 const REPORT_EVERY_MS = 60_000;
 const DRAIN_PHASES: ReadonlySet<string> = new Set(["review", "merging"]);
+/** Waits that only poll a store a restart reads again, so a restart costs them nothing; an exhausted account can hold one for days. */
+const IDLE_WAITS: readonly string[] = ["sh-account-wait"];
 
 type RouteFor = (stepId: string) => Pick<StepRoute, "onRestart"> | undefined;
 
@@ -45,6 +48,7 @@ function classify(run: WorkflowRun, routeFor: RouteFor): BusyRun | undefined {
   const step = run.currentStep;
   if (run.status !== "running" || step === null) return undefined;
   if (routeFor(step)?.onRestart === "park") return { runId: run.id, step, phase: "park" };
+  if (IDLE_WAITS.some((id) => stepIdMatches(id, step))) return undefined;
   const phase = stepPhase(step);
   return DRAIN_PHASES.has(phase) ? { runId: run.id, step, phase: phase as BusyPhase } : undefined;
 }

@@ -3,7 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { accountAlertText, accountHoldReason, isAccountHold, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
+import { accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 
@@ -24,6 +24,8 @@ export type AccountsView = Pick<ReviewAccounts, "dirs" | "alert">;
 interface Exhausted {
   account: string;
   notice?: string;
+  /** The reset the client recorded on the notice, epoch ms; absent means it is read from the notice's text. */
+  resetsAt?: number;
 }
 
 interface HoldInput extends ReviewTarget, Exhausted {
@@ -62,11 +64,10 @@ export function accountLimitsOf(deps: ShepherdDeps): AccountLimitStore {
 /** The first account with headroom, in the configured order. */
 export const usableAccount = (limits: AccountLimitStore, dirs: readonly string[]): string | undefined => dirs.find((dir) => limits.exhausted(dir) === undefined);
 
-/** A reset that is not after now cannot be right, so it counts as unknown and only a release lifts the hold. */
+/** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
   if (input.notice === undefined) return limits.exhausted(input.account);
-  const reset = parseLimitReset(input.notice, now);
-  return limits.markExhausted(input.account, reset !== undefined && reset > now ? reset : null, input.notice);
+  return limits.markExhausted(input.account, believedReset(input.resetsAt ?? parseLimitReset(input.notice, now), now), input.notice);
 }
 
 /** Claims the alert first, so two runs on one account send one; an alert that fails gives the claim back. */
@@ -111,10 +112,10 @@ function tryHold(deps: ShepherdDeps, runId: string, reason: string): boolean {
 /** An owner's release of this hold vouches for the account; with no own hold only headroom lifts the wait. */
 function released(deps: ShepherdDeps, input: WaitInput): boolean {
   if (!input.own) return false;
-  const store = deps.store.get();
-  const registration = store.byRun(input.runId);
-  if (registration === undefined || isAccountHold(registration.holdReason)) return false;
-  if (!registration.held) accountLimitsOf(deps).clear(input.account);
+  const limits = accountLimitsOf(deps);
+  const registration = deps.store.get().byRun(input.runId);
+  if (registration === undefined || limits.holdsRun(input.runId)) return false;
+  if (!registration.held) limits.clear(input.account);
   return true;
 }
 

@@ -70,6 +70,11 @@ export interface ReviewerMessage {
   locator: SourceTextLocator;
   /** Investigative tool calls the session made before this message; absent means the reader could not count, and no floor applies. */
   investigativeCalls?: number;
+  /**
+   * Set only for a record the client wrote in the model's place (Claude Code's `<synthetic>` model), from the record's own
+   * fields and never from its text: the API error it names, and the quota reset in epoch milliseconds. Absent means a model wrote it.
+   */
+  synthetic?: { apiError: string | null; resetsAt: number | null };
 }
 
 /** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */

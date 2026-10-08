@@ -28,8 +28,11 @@ interface Spawned {
   at: number;
 }
 
-/** Reviewers spawned under each account; one under an account `limited` says it is out of usage, any other says MERGE. */
-function fakeAccounts(dirs: string[], limited: (account: string, now: number) => boolean, clock: () => number, onSpawn: () => void) {
+/** Who writes the limit line: Claude Code's own `<synthetic>` record, or a reviewer typing the same words. */
+type Writer = "client" | "reviewer";
+
+/** Reviewers spawned under each account; one under an account `limited` gets the limit line from `writer`, any other says MERGE. */
+function fakeAccounts(dirs: string[], limited: (account: string, now: number) => boolean, clock: () => number, onSpawn: () => void, writer: Writer) {
   const agents: ReviewerAgent[] = [];
   const spawns: Spawned[] = [];
   const alerts: string[] = [];
@@ -42,8 +45,10 @@ function fakeAccounts(dirs: string[], limited: (account: string, now: number) =>
   const read = async (input: { repo: string; pr: number; head: string; reviewerAgentId: string; reviewerSessionId: string }): Promise<ReviewerMessage[]> => {
     const spawn = spawns.find((row) => `id-${row.name}` === input.reviewerAgentId);
     if (!spawn) return [];
-    const text = limited(spawn.account, spawn.at) ? NOTICE : `Read it.\n\nVerdict: MERGE\nPR: ${input.repo}#${input.pr}\nHead: ${input.head}\n`;
-    return [{ agentId: input.reviewerAgentId, sessionId: input.reviewerSessionId, writtenAt: clock() + 1, text, locator: locatorIn(input.reviewerSessionId) }];
+    const limit = limited(spawn.account, spawn.at);
+    const text = limit ? NOTICE : `Read it.\n\nVerdict: MERGE\nPR: ${input.repo}#${input.pr}\nHead: ${input.head}\n`;
+    const synthetic = limit && writer === "client" ? { synthetic: { apiError: "rate_limit", resetsAt: RESET } } : {};
+    return [{ agentId: input.reviewerAgentId, sessionId: input.reviewerSessionId, writtenAt: clock() + 1, text, locator: locatorIn(input.reviewerSessionId), ...synthetic }];
   };
   return { accounts, dispatch: under(dirs[0]!), reader: { read }, spawns, alerts };
 }
@@ -52,7 +57,7 @@ const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** One shepherd-pr run over the real review phase; every sleep moves the clock, and the store's hold reasons are sampled at each. */
-function shepherdWith(dirs: string[], limited: (account: string, now: number) => boolean) {
+function shepherdWith(dirs: string[], limited: (account: string, now: number) => boolean, writer: Writer = "client") {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, mergeSha: fakeSha("account-merge") });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -63,7 +68,7 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   let runId = "";
   /** Whether an approve-merge gate stood when each reviewer was spawned. */
   const approveAtSpawn: boolean[] = [];
-  const reviewers = fakeAccounts(dirs, limited, () => clock, () => void approveAtSpawn.push(host.gates.get(gateId(runId, "approve-merge")) !== undefined));
+  const reviewers = fakeAccounts(dirs, limited, () => clock, () => void approveAtSpawn.push(host.gates.get(gateId(runId, "approve-merge")) !== undefined), writer);
   const tick = async (ms: number, signal: AbortSignal) => {
     clock += ms;
     const reason = runId === "" ? undefined : store.get().byRun(runId)?.holdReason;
@@ -104,5 +109,16 @@ describe("a reviewer account out of usage", () => {
     expect(scene.reviewers.alerts).toHaveLength(1);
     expect(scene.holds).toEqual(new Set());
     expect(scene.stepIds().filter((id) => id.startsWith("sh-account-wait"))).toEqual([]);
+  });
+
+  it("marks no account, holds nothing and alerts nobody when the reviewer writes the limit line itself", async () => {
+    const scene = shepherdWith([PRIMARY], (account) => account === PRIMARY, "reviewer");
+
+    await vi.waitFor(() => expect(scene.reviewers.spawns.length).toBeGreaterThanOrEqual(2), { timeout: 20_000 });
+
+    expect(scene.reviewers.alerts).toEqual([]);
+    expect(scene.holds).toEqual(new Set());
+    expect(scene.stepIds().filter((id) => id.startsWith("sh-account"))).toEqual([]);
+    expect(scene.reviewers.spawns.map((row) => row.account)).toEqual(scene.reviewers.spawns.map(() => PRIMARY));
   });
 });

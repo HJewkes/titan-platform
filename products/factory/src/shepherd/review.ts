@@ -73,7 +73,7 @@ export interface AcceptedVerdict {
 }
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string };
+export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string; notice?: string; resetsAt?: number };
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
@@ -354,7 +354,7 @@ type ExternalAwaiting = ReviewTarget & { external: string };
  */
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (dispatchedReviewer && isUsageLimit(onTime)) return accountHeld(ctx, target, { account, notice: String(onTime.notice) });
+  if (dispatchedReviewer && isUsageLimit(onTime)) return accountHeld(ctx, target, { account, notice: String(onTime.notice), ...(typeof onTime.resetsAt === "number" && { resetsAt: onTime.resetsAt }) });
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;

@@ -14,14 +14,21 @@ export interface ReviewAccounts {
 }
 
 const HOLD_PREFIX = "account-exhausted: ";
+
+/** The furthest ahead a reset is believed: Claude Code's weekly window, plus a day of slack. */
+export const MAX_RESET_AHEAD_MS = 8 * 24 * 60 * 60_000;
+/** How long an account whose reset is not believed stays exhausted before a review tries it again. */
+export const RECHECK_AFTER_MS = 60 * 60_000;
+
+/** A reset that is missing, already past or beyond the cap is not believed, so the account is held an hour and then tried again, never longer. */
+export const believedReset = (reset: number | undefined, now: number): number =>
+  reset !== undefined && reset > now && reset - now <= MAX_RESET_AHEAD_MS ? reset : now + RECHECK_AFTER_MS;
 const TASK_REF = "TP-1955";
 
 const resetWords = (resetsAt: number | null): string => (resetsAt === null ? "an unknown reset" : new Date(resetsAt).toISOString());
 
 /** The store hold's reason, which `titan-factory shepherd status` shows and the wait recognises as its own. */
 export const accountHoldReason = (configDir: string, resetsAt: number | null): string => `${HOLD_PREFIX}${configDir} until ${resetWords(resetsAt)}; ${TASK_REF}`;
-
-export const isAccountHold = (reason: string | null | undefined): boolean => reason?.startsWith(HOLD_PREFIX) === true;
 
 export function accountAlertText(configDir: string, resetsAt: number | null): string {
   const lift = resetsAt === null ? "Release a held run with `titan-factory shepherd release` once it has headroom." : "Held runs resume on their own after the reset.";

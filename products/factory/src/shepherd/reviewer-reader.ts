@@ -32,11 +32,24 @@ interface FinalText {
 
 const writtenAt = (observation: NormalizedSessionObservation) => (observation.timestamp === null ? Number.NaN : Date.parse(observation.timestamp));
 
-/** One message per assistant text part written in this conversation; user messages and copied history yield none. */
-export function reviewerMessages(agentId: string, observation: NormalizedSessionObservation): ReviewerMessage[] {
+/** One message per assistant text part written in this conversation; user messages and copied history yield none. `synthetic` marks a record the client wrote. */
+export function reviewerMessages(agentId: string, observation: NormalizedSessionObservation, synthetic?: ReviewerMessage["synthetic"]): ReviewerMessage[] {
   if (observation.kind !== "message" || observation.role !== "assistant" || observation.historyOrigin !== null) return [];
   const sessionId = observation.conversation.nativeId;
-  return observation.content.map((part) => ({ agentId, sessionId, writtenAt: writtenAt(observation), text: part.text, locator: part.locator }));
+  return observation.content.map((part) => ({ agentId, sessionId, writtenAt: writtenAt(observation), text: part.text, locator: part.locator, ...(synthetic && { synthetic }) }));
+}
+
+/** Claude Code's model name on a record it wrote itself, such as an API error notice; a model's own output never carries it. */
+const SYNTHETIC_MODEL = "<synthetic>";
+
+/** The API error and quota reset of a record the client wrote, read from its metadata; undefined for a model's own record. */
+export function syntheticOf(observation: NormalizedSessionObservation): ReviewerMessage["synthetic"] {
+  if (observation.kind !== "metadata") return undefined;
+  const value = (name: string): unknown => observation.entries.find((entry) => entry.name === name)?.value;
+  if (value("model") !== SYNTHETIC_MODEL) return undefined;
+  const error = value("error");
+  const reset = (value("quotaLimits") as { resetsAt?: unknown } | null | undefined)?.resetsAt;
+  return { apiError: typeof error === "string" ? error : null, resetsAt: typeof reset === "number" && Number.isFinite(reset) ? reset * 1000 : null };
 }
 
 /** A seat reviewer sends its verdict as a chat_send call's `text` input, never as an assistant text part. */
@@ -84,14 +97,19 @@ export function finishedTurnMessages(agentId: string) {
   let final: FinalText | null = null;
   let continued = false;
   let investigativeCalls = 0;
+  // The decoder emits a record's metadata just before its message, so a mark applies to messages on the same line only.
+  let client: { line: number; synthetic: ReviewerMessage["synthetic"] } | undefined;
   const stamped = (found: ReviewerMessage[]) => found.map((message) => ({ ...message, investigativeCalls }));
   return {
     add(observation: NormalizedSessionObservation): void {
       if (isInvestigativeCall(observation)) investigativeCalls += 1;
+      const line = observation.evidence.line.byteOffset;
+      const marked = syntheticOf(observation);
+      if (marked) client = { line, synthetic: marked };
       // A sent message is kept but is never the final text, so a turn that ends on the call is still unfinished.
       const sent = stamped(sentMessages(agentId, observation));
       messages.push(...sent);
-      const found = stamped(reviewerMessages(agentId, observation));
+      const found = stamped(reviewerMessages(agentId, observation, client?.line === line ? client.synthetic : undefined));
       if (found.length === 0) {
         continued ||= sent.length > 0 || (final !== null && continuesPast(final, observation));
         return;

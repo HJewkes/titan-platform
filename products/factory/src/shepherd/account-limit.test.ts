@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountHoldReason, isAccountHold, parseLimitReset } from "./account-limit.js";
+import { MAX_RESET_AHEAD_MS, RECHECK_AFTER_MS, accountHoldReason, believedReset, parseLimitReset } from "./account-limit.js";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -35,15 +35,30 @@ describe("parseLimitReset", () => {
 });
 
 describe("accountHoldReason", () => {
-  it("starts with account-exhausted and names the account, the reset and the task, and reads as an account hold", () => {
-    const reason = accountHoldReason("/accounts/review", at("2026-10-11T00:00:00Z"));
-
-    expect(reason).toBe("account-exhausted: /accounts/review until 2026-10-11T00:00:00.000Z; TP-1955");
-    expect(isAccountHold(reason)).toBe(true);
-    expect(isAccountHold("owner: waiting on the design call")).toBe(false);
+  it("starts with account-exhausted and names the account, the reset and the task", () => {
+    expect(accountHoldReason("/accounts/review", at("2026-10-11T00:00:00Z"))).toBe("account-exhausted: /accounts/review until 2026-10-11T00:00:00.000Z; TP-1955");
   });
 
   it("names an unknown reset when the notice gave none", () => {
     expect(accountHoldReason("/accounts/review", null)).toBe("account-exhausted: /accounts/review until an unknown reset; TP-1955");
+  });
+});
+
+describe("believedReset", () => {
+  const now = at("2026-10-08T05:49:00Z");
+
+  it("believes a reset in the future within eight days", () => {
+    expect(believedReset(at("2026-10-11T00:00:00Z"), now)).toBe(at("2026-10-11T00:00:00Z"));
+    expect(believedReset(now + MAX_RESET_AHEAD_MS, now)).toBe(now + MAX_RESET_AHEAD_MS);
+  });
+
+  it("caps a reset six months out to an hour and a re-check", () => {
+    expect(believedReset(at("2027-04-08T05:49:00Z"), now)).toBe(now + RECHECK_AFTER_MS);
+  });
+
+  it("holds an hour and re-checks for a reset in the past, at now, or missing", () => {
+    expect(believedReset(at("2026-10-01T00:00:00Z"), now)).toBe(now + RECHECK_AFTER_MS);
+    expect(believedReset(now, now)).toBe(now + RECHECK_AFTER_MS);
+    expect(believedReset(undefined, now)).toBe(now + RECHECK_AFTER_MS);
   });
 });

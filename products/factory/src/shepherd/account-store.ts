@@ -1,31 +1,41 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { RECHECK_AFTER_MS } from "./account-limit.js";
 
 const ACCOUNT_LIMIT_DDL = `
   CREATE TABLE shepherd_account_limit (
     config_dir TEXT PRIMARY KEY,
-    resets_at  INTEGER,
+    resets_at  INTEGER NOT NULL,
     notice     TEXT NOT NULL,
     noted_at   TEXT NOT NULL,
     alerted_at TEXT
+  );
+  CREATE TABLE shepherd_account_hold (
+    run_id TEXT PRIMARY KEY,
+    reason TEXT NOT NULL
   );`;
 
-/** One row per reviewer account that hit its usage limit; `resets_at` null means the notice named no reset this could read. */
+/**
+ * One row per reviewer account that hit its usage limit, and the exact reason of each run hold an exhausted account placed,
+ * so only that hold is ever overwritten or lifted here.
+ */
 export function accountLimitMigration(version = 15): Migration {
   return { version, name: "factory:shepherd_account_limit", up: (db) => db.exec(ACCOUNT_LIMIT_DDL) };
 }
 
-/** A live exhaustion of one account: its reset, or null for one only a release lifts. */
+/** A live exhaustion of one account: its reset, and whether its seat was told. */
 interface Exhaustion {
-  resetsAt: number | null;
+  resetsAt: number;
   alerted: boolean;
 }
 
-/** The `accountHoldReason` prefix as a LIKE pattern; it holds no wildcard but the trailing one. */
-const ACCOUNT_HOLD_LIKE = "account-exhausted: %";
-
 interface Row {
-  resets_at: number | null;
+  resets_at: number;
   alerted_at: string | null;
+}
+
+interface HeldRow {
+  held: number;
+  hold_reason: string | null;
 }
 
 /**
@@ -40,23 +50,28 @@ export class AccountLimitStore {
 
   /** The account's exhaustion while it lasts; a reset already past reads as headroom. */
   exhausted(configDir: string): Exhaustion | undefined {
-    const row = this.db.prepare("SELECT resets_at, alerted_at FROM shepherd_account_limit WHERE config_dir = ?").get(configDir) as Row | undefined;
-    if (!row || (row.resets_at !== null && row.resets_at <= this.now())) return undefined;
+    const row = this.row(configDir);
+    if (!row || row.resets_at <= this.now()) return undefined;
     return { resetsAt: row.resets_at, alerted: row.alerted_at !== null };
   }
 
-  /** A live exhaustion keeps its alert and moves to the later reset; one that lapsed starts a new exhaustion, which is alerted again. */
-  markExhausted(configDir: string, resetsAt: number | null, notice: string): Exhaustion {
+  /**
+   * A live exhaustion moves to the later reset. A mark that lapsed within the last re-check window is the same exhaustion
+   * tried again, so it keeps its alert; one that lapsed before that starts a new exhaustion, which is alerted again.
+   */
+  markExhausted(configDir: string, resetsAt: number, notice: string): Exhaustion {
     const write = this.db.transaction(() => {
-      const live = this.exhausted(configDir);
-      const reset = live === undefined ? resetsAt : later(live.resetsAt, resetsAt);
+      const row = this.row(configDir);
+      const now = this.now();
+      const reset = row !== undefined && row.resets_at > now ? Math.max(row.resets_at, resetsAt) : resetsAt;
+      const same = row !== undefined && row.resets_at > now - RECHECK_AFTER_MS;
       this.db
         .prepare(
           `INSERT INTO shepherd_account_limit (config_dir, resets_at, notice, noted_at, alerted_at) VALUES (?, ?, ?, ?, NULL)
            ON CONFLICT (config_dir) DO UPDATE SET resets_at = excluded.resets_at, notice = excluded.notice, noted_at = excluded.noted_at,
              alerted_at = CASE WHEN ? THEN alerted_at ELSE NULL END`,
         )
-        .run(configDir, reset, notice, this.stamp(), live === undefined ? 0 : 1);
+        .run(configDir, reset, notice, this.stamp(), same ? 1 : 0);
     });
     write.immediate();
     return this.exhausted(configDir) ?? { resetsAt, alerted: false };
@@ -72,20 +87,37 @@ export class AccountLimitStore {
     this.db.prepare("UPDATE shepherd_account_limit SET alerted_at = NULL WHERE config_dir = ?").run(configDir);
   }
 
-  /** Holds the run for an exhausted account unless something else already holds it; an owner's own hold is never overwritten. True when the run is held for `reason` now. */
-  holdRun(runId: string, reason: string): boolean {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND (held = 0 OR hold_reason LIKE ?)")
-      .run(reason, this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
-    return changed === 1;
+  /** True while the run's hold is the one this store placed, matched exactly on the reason it wrote. */
+  holdsRun(runId: string): boolean {
+    const current = this.held(runId);
+    return current?.held === 1 && current.hold_reason !== null && current.hold_reason === this.ownReason(runId);
   }
 
-  /** Compare-and-swap: releases only a hold an exhausted account placed, so an owner hold placed since stays. */
+  /** Holds the run for an exhausted account unless a hold this store did not place stands; true when the run is held for `reason` now. */
+  holdRun(runId: string, reason: string): boolean {
+    const write = this.db.transaction((): boolean => {
+      const current = this.held(runId);
+      if (current === undefined || (current.held === 1 && !this.holdsRun(runId))) return false;
+      this.db
+        .prepare("UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?")
+        .run(reason, this.stamp(), runId);
+      this.db.prepare("INSERT INTO shepherd_account_hold (run_id, reason) VALUES (?, ?) ON CONFLICT (run_id) DO UPDATE SET reason = excluded.reason").run(runId, reason);
+      return true;
+    });
+    return write.immediate();
+  }
+
+  /** Lifts the run's hold only while it is still the one this store placed; true when it lifted it. */
   releaseRun(runId: string): boolean {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason LIKE ?")
-      .run(this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
-    return changed === 1;
+    const write = this.db.transaction((): boolean => {
+      if (!this.holdsRun(runId)) return false;
+      this.db
+        .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?")
+        .run(this.stamp(), runId);
+      this.db.prepare("DELETE FROM shepherd_account_hold WHERE run_id = ?").run(runId);
+      return true;
+    });
+    return write.immediate();
   }
 
   /** An owner's release vouches for the account, so its exhaustion ends now. */
@@ -93,13 +125,22 @@ export class AccountLimitStore {
     this.db.prepare("DELETE FROM shepherd_account_limit WHERE config_dir = ?").run(configDir);
   }
 
+  private row(configDir: string): Row | undefined {
+    return this.db.prepare("SELECT resets_at, alerted_at FROM shepherd_account_limit WHERE config_dir = ?").get(configDir) as Row | undefined;
+  }
+
+  private held(runId: string): HeldRow | undefined {
+    return this.db.prepare("SELECT held, hold_reason FROM shepherd_registration WHERE run_id = ?").get(runId) as HeldRow | undefined;
+  }
+
+  private ownReason(runId: string): string | undefined {
+    return (this.db.prepare("SELECT reason FROM shepherd_account_hold WHERE run_id = ?").get(runId) as { reason: string } | undefined)?.reason;
+  }
+
   private stamp(): string {
     return new Date(this.now()).toISOString();
   }
 }
-
-/** A known reset beats an unknown one, and the later of two known ones wins. */
-const later = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
 
 /** An account-limit store bound to whichever factory database the host opened; reading it unbound throws, so a hold fails closed. */
 export interface AccountLimitStoreRef {

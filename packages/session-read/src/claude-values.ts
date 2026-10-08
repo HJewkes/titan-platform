@@ -29,7 +29,7 @@ export function metadataEntries(record: Json, message: Json | null) {
   if ("version" in record) entries.push({ name: "cli_version", value: record.version, meaning: "normalized" });
   if ("aiTitle" in record) entries.push({ name: "title", value: record.aiTitle, meaning: "normalized" });
   if ("lastPrompt" in record) entries.push({ name: "seed_prompt", value: record.lastPrompt, meaning: "normalized" });
-  for (const name of ["gitBranch", "version", "entrypoint", "aiTitle", "lastPrompt", "slug", "permissionMode", "isSidechain", "toolDenialKind", "logicalParentUuid", "compactMetadata", "preventedContinuation", "hookInfos", "hookCount", "planContent"] as const) {
+  for (const name of ["gitBranch", "version", "entrypoint", "aiTitle", "lastPrompt", "slug", "permissionMode", "isSidechain", "toolDenialKind", "logicalParentUuid", "compactMetadata", "preventedContinuation", "hookInfos", "hookCount", "planContent", "isApiErrorMessage", "error", "apiErrorStatus", "quotaLimits"] as const) {
     add(record, name, "native");
   }
   add(message, "model", "normalized");

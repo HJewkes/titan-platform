@@ -444,20 +444,27 @@ answers `none`, and the owner gate decides every merge.
 
 ### A reviewer account out of usage
 
-A reviewer whose final message is Claude Code's usage-limit notice ("You've hit your weekly
-limit · resets Oct 10 at 6pm (America/Denver)") ends `sh-await-verdict` at once, with no late
+Only Claude Code's own usage-limit record counts: a final message whose transcript record has the
+placeholder model `<synthetic>` and, when it names one, the API error `rate_limit` or
+`usage_limit_reached`, with the notice text ("You've hit your weekly limit · resets Oct 10 at 6pm
+(America/Denver)"). The same words written by the reviewer itself are read as a malformed verdict,
+so a reviewer cannot mark an account. Such a record ends `sh-await-verdict` at once, with no late
 read and no correction turn. `sh-account-hold` then:
 
-1. Marks the account (`review.configDir`, or a fallback) exhausted until the reset the notice
-   names. A notice with no reset it can read, a reset that is not in the future, or a store it
-   cannot read all count as an unknown reset, which only a release lifts.
+1. Marks the account (`review.configDir`, or a fallback) exhausted until its reset: the record's
+   `quotaLimits.resetsAt`, or else the reset the notice's text names. A reset is believed only if
+   it is in the future and at most 8 days out. Any other reset, or none, marks the account for
+   1 hour, after which a review tries it again. No mark is ever indefinite.
 2. Sends one alert per exhaustion of an account, not per run, to the seat that owns the repo,
    over `agent-chat`. The fact that it was sent is stored in the factory database, so a restart
-   does not send it again; an alert that fails is tried at the next hold.
+   does not send it again. An account hit again within an hour of its mark lapsing is the same
+   exhaustion and is not alerted again. An alert that fails is tried at the next hold.
 3. Moves the review to the first account in `review.fallbackConfigDirs` with headroom, if any.
    Otherwise it holds the run through the store hold `titan-factory shepherd hold` uses, with
-   the reason `account-exhausted: <configDir> until <reset>; TP-1955`. An owner's own hold is
-   never overwritten.
+   the reason `account-exhausted: <configDir> until <reset>; TP-1955`. The store records the exact
+   reason it wrote, and it overwrites or lifts only a hold whose reason still matches that record.
+   An owner's hold, whatever its reason says, is never touched. A store it cannot read still holds
+   the run, with an unknown reset, for at most the wait's hour.
 
 While the run is held, `sh-account-wait` waits inside the review, so the run never reaches
 approve-merge on this reason, and `sh-review-intent` starts no reviewer on an exhausted account.
@@ -465,6 +472,7 @@ The wait ends when any account has headroom again (its reset passed), which lift
 the owner runs `titan-factory shepherd release`, which also clears the account's mark; when the
 PR's head moves; or after an hour. Each of these starts a new land round, which reads the PR's
 current head and reviews it again; an account still exhausted holds again without a new alert.
+The restart drain does not wait on `sh-account-wait`, since a restart only re-reads the store.
 
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.
