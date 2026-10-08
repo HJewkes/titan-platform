@@ -28,6 +28,7 @@ titan-factory serve [--port <n>]                              # own the database
 titan-factory land owner/repo#N [--task <t>]                  # start land-pr on serve, or drive it here when none answers
 titan-factory resume                                          # drive every unfinished run, then list open gates
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
+titan-factory gate resolve-batch --file <items.jsonl>          # answer merge to listed merge gates after one presence check
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist (systemd unit on Linux), load it, wait for /health
 titan-factory service status|check|restart|uninstall               # macOS only, like install
 titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
@@ -91,6 +92,37 @@ Any read that fails or comes back partial, a pending or red check, an unknown me
 head other than the gate's, or a missing verdict reads no evidence, and the command falls back to the
 dialog above. A visual-path, seat owner-gate, route-escalation or release gate, a round
 pick, and every other gate still need the owner's presence.
+
+`gate resolve-batch` answers `merge` to many merge gates after one owner presence check. It reads
+an itemized list, one item per merge gate, from `--file` (JSON lines or a JSON array) or from `--json` (a JSON array):
+
+```json
+{"gate": "<runId>/approve-merge", "pr": "owner/repo#12", "headSha": "<40 hex>"}
+```
+
+The verb first checks the whole list. A malformed line, an unknown or duplicate gate id, or an item
+whose PR is not the one its gate asks about exits 2 with no dialog, and nothing is resolved. Each gate
+must be an `approve-merge` gate pinned to one head (`Merge PR #N in owner/repo at head <sha>? CI is
+green.`). A release gate is refused from the batch: a Version Packages merge decided by the
+`shepherd-release` table, or an `after-stages` gate. A hardware gate is also refused: any step id
+naming a device or hardware. Both kinds stay one at a time at the Mac with `gate resolve`.
+
+The verb prints the numbered list and a batch digest, then shows one presence dialog:
+`resolve <n> merge gates as batch <first 16 hex of the digest>`. It asks even in a shell with no
+agent marker. If the owner cancels the dialog, the verb exits 1, resolves nothing and records nothing.
+A confirmed dialog writes the signed batch to the factory database (tables `gate_batch` and
+`gate_batch_item`, migration 15). The record holds the sha256 digest of the list, the proof id, the
+signer, and every item marked `signed`.
+
+The items then fire in order. Just before an item fires, the verb checks three things: its gate must
+still be pending, the run must still wait on that exact gate, and the gate must still ask about the
+listed head. With Shepherd wired, it also reads the PR from GitHub, which must be open at that head.
+An item that fails a check is skipped, and stdout names it with its outcome: `skipped-closed`,
+`skipped-moved`, or `skipped-unreadable` when the PR read fails. Every other item goes through the
+same `gate resolve` path with the batch's proof, so its gate row stores that proof as `confirmEvent`.
+An item is marked `firing` before its resolve runs, and `resolved` or `failed` after. The first
+failure stops the batch with exit 1, and the items after it stay `signed`. A process that dies
+mid-batch leaves the item it died on marked `firing`.
 
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
