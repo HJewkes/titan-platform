@@ -21,12 +21,12 @@ export interface ClassRules {
 }
 
 export const DEFAULT_CLASS_RULES: ClassRules = {
-  authority: ["packages/authority/**", "**/merge-facts.ts", "**/gate-policy.ts", ".github/CODEOWNERS", ".github/workflows/**", ".codewatch/**"],
-  policy: ["**/*policy*.ts", "**/route-table.ts", "**/freeze*.ts", "**/hold*.ts", "**/gate*schema*"],
+  authority: ["packages/authority/**", "**/merge-facts.ts", "**/gate-policy.ts", "**/required-checks*", ".github/CODEOWNERS", ".github/workflows/**", ".codewatch/**"],
+  policy: ["**/*policy*.ts", "**/route-table.ts", "**/freeze.ts", "**/freeze-*.ts", "**/hold.ts", "**/hold-*.ts", "**/gate*schema*"],
   migration: ["**/migration*/**", "**/*.sql", "**/store/**/schema*"],
   visual: ["packages/react-app/**", "apps/**", "**/*.css", "packages/react-*/**/*.tsx"],
-  security: ["packages/tool-guard/**", "packages/egress-scan/**", "**/auth/**", "**/auth*.ts", "**/credential*/**", "**/credential*.ts"],
-  perf: ["packages/tool-guard/**", "packages/code-graph/src/indexer*", "**/indexer*.ts", "**/parser*.ts", "**/tick*.ts", "**/hooks/**"],
+  security: ["packages/tool-guard/**", "packages/egress-scan/**", "**/auth/**", "**/auth.ts", "**/auth-*.ts", "**/credential*/**", "**/credential*.ts"],
+  perf: ["packages/tool-guard/**", "packages/code-graph/src/indexer*", "**/indexer*.ts", "**/parser*.ts", "**/tick.ts", "**/tick-*.ts", "**/hooks/**"],
   test: ["**/*.test.ts", "**/*.test.tsx"],
   source: ["**/src/**/*.ts", "**/src/**/*.tsx"],
   largeLines: 400,

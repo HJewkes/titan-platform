@@ -15,16 +15,42 @@ describe("classifyPr", () => {
     }
   });
 
-  it("treats a required-checks policy file as authority and policy", () => {
-    const result = classifyPr(facts(["packages/authority/src/required-checks-policy.ts", "products/factory/src/shepherd/gate-policy.ts"]));
-    expect(result.class).toBe("g10");
-    expect(result.touches).toEqual(expect.arrayContaining(["authority", "policy"]));
+  it("classifies tp#755's changed files as authority and policy", () => {
+    const result = classifyPr(
+      facts([
+        "packages/authority/src/conditions.ts",
+        "packages/authority/src/merge-carry.test.ts",
+        "products/factory/src/shepherd/merge-facts.ts",
+        "products/factory/src/shepherd/merge-facts.test.ts",
+        "products/factory/src/shepherd/policy.test.ts",
+        "site/reference/authority.md",
+      ]),
+    );
+    expect(result).toEqual({ class: "g10", touches: ["authority", "policy"] });
+  });
+
+  it("classifies tp#747's required-checks policy files as authority and policy", () => {
+    const result = classifyPr(facts(["products/factory/src/required-checks-policy.ts", "products/factory/src/required-checks-policy.test.ts"]));
+    expect(result).toEqual({ class: "g10", touches: ["authority", "policy"] });
+  });
+
+  it("classifies tp#754's changed files as policy and large, not security", () => {
+    const changedFiles = [
+      file("packages/hitl/src/resolver-policy.ts", 50, 9),
+      file("packages/hitl/src/evidence.test.ts", 166, 0),
+      file("products/factory/src/coordinator-evidence.ts", 225, 0),
+      file("products/factory/src/test-support/authority-reason.ts", 29, 0),
+    ];
+    expect(classifyPr(facts([], { changedFiles }))).toEqual({ class: "g10", touches: ["policy", "large"] });
   });
 
   it("treats a gate schema file as policy", () => {
-    const result = classifyPr(facts(["packages/gates/src/gate-schema.json"]));
-    expect(result.class).toBe("g10");
-    expect(result.touches).toEqual(["policy"]);
+    expect(classifyPr(facts(["packages/gates/src/gate-schema.json"])).touches).toEqual(["policy"]);
+  });
+
+  it("does not read authority, holder or ticket files as auth, hold or tick files", () => {
+    const result = classifyPr(facts(["packages/x/src/authority-reason.ts", "packages/x/src/holder.ts", "packages/x/src/ticket.ts", "packages/x/src/a.test.ts"]));
+    expect(result).toEqual({ class: "standard", touches: [] });
   });
 
   it("keeps a ui-only change standard with the visual flag", () => {
