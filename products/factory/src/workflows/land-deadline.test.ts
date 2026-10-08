@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
 import { landRoutes } from "./land.js";
 import { REPO } from "../test-support/land.js";
@@ -21,6 +21,7 @@ interface Harness {
 function harness(options: { jumpAtSleep?: number; greenAfterMs?: number } = {}): Harness {
   const fake = fakeGitHub();
   fake.addPr({ headSha: fakeSha("head1"), mergeableState: "unknown" });
+  fake.setRuns(fakeSha("head1"), [successRun("validate", 1)]);
   const clock = { now: 0 };
   const polls: number[] = [];
   const wakes: number[] = [];
