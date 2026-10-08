@@ -493,6 +493,35 @@ describe("handle over real script files behind dynamic wrapper words, case foldi
     expect(advised).toEqual({ stdout: "", log: [] });
   });
 
+  const INSTALL = "$SUDO cp ./etc/a.conf /etc/a.conf\n".repeat(176);
+  const STATUS = "timeout $T git status\n".repeat(181);
+  it.each([
+    ["./inst.sh", { "inst.sh": INSTALL }],
+    ["sudo ./inst.sh", { "inst.sh": INSTALL }],
+    ["bash ./tmo.sh", { "tmo.sh": STATUS }],
+  ])("passes `%s`, a lone script of more dynamic wrapper words than a line may hold, as main does", async (command, files) => {
+    const result = await inRepo(command, files);
+
+    expect(result).toEqual({ stdout: "", log: [] });
+  });
+
+  it("refuses a line of more dynamic wrapper words than it checks, and the script file it advises then passes", async () => {
+    const steps = "$S cp a b\n".repeat(171);
+
+    const refused = await inRepo(steps.replaceAll("\n", "; "), {});
+    const advised = await inRepo("./steps.sh", { "steps.sh": steps });
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/write the steps to a script file and run that/);
+    expect(advised).toEqual({ stdout: "", log: [] });
+  });
+
+  it("still denies a push in a script after more dynamic wrapper words than a line may hold", async () => {
+    const result = await inRepo("./steps.sh", { "steps.sh": `${"$S cp a b\n".repeat(171)}${MAIN}\n` });
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
   it("refuses scripts past the line's budget, names the script to split off, and each half then passes", async () => {
     const files = { "a1.sh": fill("echo hi\n", 34 * 1024), "a2.sh": fill("echo hi\n", 34 * 1024) };
 
