@@ -308,7 +308,6 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
   const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
-  if (required.contexts.length === 0) throw new Error(`${input.repo}@${pr.baseRef} requires no status checks; land waits on required checks only, so it refuses`);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 

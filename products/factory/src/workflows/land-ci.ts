@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
+import { openRepoFindings } from "./land-open-checks.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -56,6 +57,7 @@ export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, 
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
 function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+  if (input.contexts.length === 0) return openRepoFindings(headSha, runs);
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
 }
 
@@ -99,7 +101,7 @@ async function baseMovedSinceGreen(port: GitHubPort, input: CiInput, pr: PullReq
 
 /** The earliest start among the required runs that made the head green; a pull_request run tests the base as it stood then. */
 function greenStartedAt(runs: CheckRun[], headSha: string, contexts: string[]): number | null {
-  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && contexts.includes(run.name));
+  const required = runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID && (contexts.length === 0 || contexts.includes(run.name)));
   const starts = latestPerName(required).map((run) => Date.parse(run.startedAt ?? ""));
   if (starts.length === 0 || starts.some(Number.isNaN)) return null;
   return Math.min(...starts);
