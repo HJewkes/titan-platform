@@ -102,7 +102,7 @@ describe("computeDeadCodeMetrics on Python — unused locals (TP-318)", () => {
     expect(await metricOf(code, "unused_locals")).toBe(0);
   });
 
-  it("skips a nonlocal name and does not count a nested def's own assignment for the outer one", async () => {
+  it("skips the outer n because the nested def binds it via nonlocal n (nested set), while still counting that def's own dead local", async () => {
     const code = lines(
       "def k():",
       "    n = 0",

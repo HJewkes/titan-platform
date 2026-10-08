@@ -120,17 +120,19 @@ describe("loadReuseBasis", () => {
   it("carries only source, dead-code and growth-risk metrics, bucketing symbol metrics under the parent file", () => {
     const fileLoc: GraphMetric = { nodeId: "a.ts", name: "loc", value: 10 };
     const symbolCognitive: GraphMetric = { nodeId: "a.ts#run", name: "cognitive_max", value: 3 };
+    const deadCode: GraphMetric = { nodeId: "a.ts", name: "unused_locals", value: 2 };
+    const growthRisk: GraphMetric = { nodeId: "a.ts#run", name: "loop_depth", value: 1 };
     const unrelated: GraphMetric = { nodeId: "a.ts", name: "not_a_carried_metric", value: 1 };
     const unknownNode: GraphMetric = { nodeId: "z.ts", name: "loc", value: 2 };
     const store = stubStore({
       snapshots: [snapshot(1, "v")],
       fingerprints: { 1: [{ fileId: "a.ts", contentHash: "h" }] },
       nodes: [FILE_A, SYM_A],
-      metrics: [fileLoc, symbolCognitive, unrelated, unknownNode],
+      metrics: [fileLoc, symbolCognitive, deadCode, growthRisk, unrelated, unknownNode],
     });
     const basis = loadReuseBasis(store, "v");
     expect([...(basis?.sourceMetricsByFile ?? [])]).toEqual([
-      ["a.ts", [fileLoc, symbolCognitive]],
+      ["a.ts", [fileLoc, symbolCognitive, deadCode, growthRisk]],
       ["z.ts", [unknownNode]],
     ]);
   });

@@ -61,7 +61,9 @@ code passes none.
 
 - On macOS the XDG variables are ignored, exactly as env-paths ignores them. Setting
   `XDG_DATA_HOME` on a Mac does not move the data root; set the override variable instead.
-- An empty override variable or empty XDG variable counts as unset.
+- An empty override variable or empty XDG variable counts as unset. A whitespace-only
+  `ACTIVE_ROOT` does not: it is not ignored, and resolves to the current working directory plus
+  the spaces, as active-work does.
 - The override expands only `~` and `~/...`, not `~user`, and a relative override resolves
   against the current working directory.
 - Paths are joined with the host's `node:path`, so a `win32` result computed on macOS uses

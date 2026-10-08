@@ -118,8 +118,9 @@ publicRepos, key })` applies it and resolves to a plain object. Digests are
 `hmac-sha256:<hex>`, an HMAC-SHA-256 via Web Crypto keyed by the required per-export `key`:
 equal values join within an export, and without the key a low-entropy value such as a line
 number or PR number can't be recovered by hashing guesses. Keep the key out of the export;
-reuse it only for exports meant to join. An empty key is an error. Correlation keys survive
-redaction and their values do not.
+reuse it only for exports meant to join. An empty key is an error. Exports made with the
+old unkeyed `sha256:` digests do not join new keyed `hmac-sha256:` ones. Correlation keys
+survive redaction and their values do not.
 
 Fixtures for a synthetic documentation run ship in the package under
 `fixtures/trace/v1/`: `doc-run.jsonl` holds all 17 records in order, and one JSON file per
