@@ -36,12 +36,13 @@ export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: st
   return "superseded" in answer ? undefined : answer;
 }
 
-/** An approve-merge gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again. */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview?: string) => Error): WorkflowContext["assisted"] {
+/** An approve-merge gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. */
+export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined) => Error): WorkflowContext["assisted"] {
   return async (stepId, prompt, options = {}) => {
     if (!stepIdMatches("approve-merge", stepId)) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
     if (!("superseded" in answer)) return answer;
-    throw leave(answer.superseded.startsWith(REREVIEW) ? gateHead(prompt) : undefined);
+    const gated = gateHead(prompt);
+    throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated);
   };
 }

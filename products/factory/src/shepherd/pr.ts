@@ -193,6 +193,13 @@ function leaveOnConflict(headSha: string): LeaveLand {
   return new LeaveLand({ kind: "stopped", reason: "conflict", headSha, detail: `the pull request at ${headSha} conflicts with its base` });
 }
 
+/** A failed-rounds gate the head moved past hands the owner's question to the new head, whose rounds count afresh or it would gate at once. */
+function leaveSuperseded(run: ShepherdRun, rereview: string | undefined, gated: string | undefined): LeaveLand {
+  if (rereview !== undefined) run.reviews.delete(rereview);
+  else if (gated !== undefined && run.escalations.get(gated)?.escalation === "failed-rounds") run.failedRounds = 0;
+  return new LeaveLand();
+}
+
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {
   const { ctx } = run;
@@ -206,7 +213,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) }),
+    assisted: followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview, gated) => leaveSuperseded(run, rereview, gated)), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) }),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
