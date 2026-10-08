@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import path from "node:path";
 import type { ScoredHit } from "../metrics.js";
 import type { Arm } from "../pairs.js";
@@ -29,10 +28,6 @@ export interface Candidate {
   readonly name: string;
   search(query: string, limit: number, context: SearchContext): Promise<ScoredHit[]>;
   close(): void;
-}
-
-export function defaultGraphPath(home = homedir()): string {
-  return path.join(home, "Library", "Application Support", "active-work", ".miner", "graph.sqlite3");
 }
 
 /**
