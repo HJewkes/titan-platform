@@ -746,3 +746,32 @@ describe("a 5xx while posting the sh-merge-evidence comment", () => {
     expect(fake.effects.merge).toBe(0);
   });
 });
+
+describe("an empty gh body while posting the sh-merge-evidence comment", () => {
+  const emptyBody = () => ({ error: new SyntaxError("Unexpected end of JSON input") });
+
+  it("retries the post and lets the run continue past the step, with one comment", async () => {
+    const fake = world();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    fake.createCommentFaults = [emptyBody()];
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(fake.comments.get(1)).toHaveLength(1);
+  });
+
+  it("stops at the step, naming sh-merge-evidence, when every post answers an empty body", async () => {
+    const fake = world();
+    fake.createCommentFaults = Array.from({ length: 10 }, emptyBody);
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: .*unexpected end of JSON input`, "i"));
+    expect(fake.effects.merge).toBe(0);
+  });
+});
