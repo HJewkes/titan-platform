@@ -1,4 +1,5 @@
 import type { RepoSlug } from "@titan-design/github";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -24,7 +25,7 @@ export const isOpusProfile = (profile: string | undefined): boolean => profile !
 const Identity = z.looseObject({ agentId: z.string(), sessionId: z.string() });
 
 /** The reviewer's answer at one head and where it was written: the verdict ref a release records. */
-const G10VerdictSchema = z.looseObject({ value: z.string(), head: z.string(), reviewer: Identity, locator: z.looseObject({}) });
+const G10VerdictSchema = z.looseObject({ value: z.string(), head: z.string(), reviewer: Identity, locator: z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null) });
 export type G10Verdict = z.infer<typeof G10VerdictSchema>;
 
 export interface G10Run {
