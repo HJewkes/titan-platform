@@ -18,7 +18,7 @@ afterEach(() => {
 
 type Bound = ReturnType<typeof newUpdateBound>;
 /** A bound whose retries are spent from the start stands in for code that predates retries: it goes from the budget straight to the gate. */
-const OLD_CODE: Bound = { ...newUpdateBound(), retries: MAX_UPDATE_RETRIES };
+const oldCode = (): Bound => ({ ...newUpdateBound(), retries: MAX_UPDATE_RETRIES });
 
 interface World {
   scenario: LandScenario;
@@ -44,19 +44,22 @@ function world(): World {
   return { scenario, dbPath, open, stopRacing: () => void (racing = false) };
 }
 
+/** The gate is pending in the store before replay re-reaches it; an answer that lands first would resolve it unseen. */
+const replayReaches = (host: FactoryHost, runId: string) => new Promise((resolve) => setTimeout(resolve, 300)).then(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
+
 const rows = (host: FactoryHost, runId: string, prefix: string) => Object.values(host.runtime.status(runId)!.stepResults).filter((row) => row.stepId.startsWith(prefix)).length;
 
 describe("a restart during a stuck-behind wait", () => {
   const cases = [
-    { name: "old code, answered", recordedBy: OLD_CODE, answered: true, backoffs: 0, updates: MAX_UPDATE_CYCLES },
-    { name: "old code, paused", recordedBy: OLD_CODE, answered: false, backoffs: 0, updates: MAX_UPDATE_CYCLES },
-    { name: "new code, answered", recordedBy: undefined, answered: true, backoffs: MAX_UPDATE_RETRIES, updates: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES },
-    { name: "new code, paused", recordedBy: undefined, answered: false, backoffs: MAX_UPDATE_RETRIES, updates: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES },
+    { name: "old code, answered", recordedBy: oldCode, answered: true, backoffs: 0, updates: MAX_UPDATE_CYCLES },
+    { name: "old code, paused", recordedBy: oldCode, answered: false, backoffs: 0, updates: MAX_UPDATE_CYCLES },
+    { name: "new code, answered", recordedBy: () => undefined, answered: true, backoffs: MAX_UPDATE_RETRIES, updates: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES },
+    { name: "new code, paused", recordedBy: () => undefined, answered: false, backoffs: MAX_UPDATE_RETRIES, updates: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES },
   ];
 
   it.each(cases)("$name: keeps the recorded retries and honours a retry answer exactly once", async ({ recordedBy, answered, backoffs, updates }) => {
     const w = world();
-    const first = w.open(recordedBy);
+    const first = w.open(recordedBy());
     const runId = first.runtime.start("land-test");
     await gateOpened(first, gateId(runId, "stuck-behind"));
     if (answered) {
@@ -71,6 +74,7 @@ describe("a restart during a stuck-behind wait", () => {
     await second.runtime.hydrate();
     if (!answered) {
       await gateOpened(second, gateId(runId, "stuck-behind"));
+      await replayReaches(second, runId);
       expect(rows(second, runId, "update-branch")).toBe(atRestart);
       w.stopRacing();
       second.runtime.signal(runId, "stuck-behind", { decision: "retry" }, OWNER);

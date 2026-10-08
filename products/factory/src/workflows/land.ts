@@ -172,13 +172,14 @@ async function askStuckBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnap
 }
 
 /**
- * Retry before the gate, unless the record already holds the gate: a replay of a run recorded before retries either
- * answered `stuck-behind` (the next row is not a backoff) or is still paused on it (the gate is pending, with no row).
+ * Retry before the gate. Where the record continues, it alone decides: only a recorded backoff means retrying. Where the
+ * record ends, a run paused on `stuck-behind` (recorded before retries) keeps its pending gate; a live run retries.
  */
 function retryBeforeGate(ctx: WorkflowContext, bound: UpdateBound): boolean {
-  if (!retriesLeft(bound) || ctx.resumedGate() === "stuck-behind") return false;
+  if (!retriesLeft(bound)) return false;
   const next = ctx.historyNext();
-  return next === undefined || next.startsWith("update-backoff");
+  if (next !== undefined) return next.startsWith("update-backoff");
+  return ctx.resumedGate() !== "stuck-behind";
 }
 
 /** The recorded wait before a retry; the retry itself is an ordinary `update-branch` step, so every consumer of that step covers it. */

@@ -207,34 +207,6 @@ describe("land core", () => {
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "conflict" });
   });
 
-  it("keeps a run recorded before retries on its pending stuck-behind gate across a restart, without a live retry", async () => {
-    const scenario = landScenario();
-    const keepGreen = scenario.fake.onGetPr!;
-    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
-    const exhausted = { ...newUpdateBound(), retries: MAX_UPDATE_RETRIES };
-    const variant = (updateBound?: ReturnType<typeof newUpdateBound>) =>
-      defineWorkflow({ name: "land-test", steps: LAND_STEPS, run: async (ctx) => void scenario.outcomes.push(await land(ctx, { repo: "octo/demo", pr: 1, updateBound }, { policy: gateEverything })) });
-    const dbPath = dbFile();
-    const before = openFactoryHost({ dbPath, workflows: [variant(exhausted)], routes: scenario.routes, gatePollMs: 5 });
-    hosts.push(before);
-    const runId = before.runtime.start("land-test");
-    await gateOpened(before, gateId(runId, "stuck-behind"));
-    before.close();
-    const updatesBefore = scenario.fake.effects.updateBranch;
-
-    const after = openFactoryHost({ dbPath, workflows: [variant()], routes: scenario.routes, gatePollMs: 5 });
-    hosts.push(after);
-    await after.runtime.hydrate();
-    await gateOpened(after, gateId(runId, "stuck-behind"));
-    after.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
-    await vi.waitFor(() => expect(after.runtime.status(runId)?.status).toBe("completed"));
-
-    const run = after.runtime.status(runId)!;
-    expect(Object.keys(run.stepResults).filter((id) => id.startsWith("update-backoff"))).toEqual([]);
-    expect(scenario.fake.effects.updateBranch).toBe(updatesBefore);
-    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
-  });
-
   it("updates the branch and merges again when GitHub refuses a merge because the base moved", async () => {
     const scenario = landScenario();
     const refuse = refuseNextMerge(scenario, 405, "Base branch was modified. Review and try the merge again.");
