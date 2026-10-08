@@ -192,8 +192,11 @@ Every `titan-factory serve` start resyncs before it adopts a run. Each running o
 whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
-request moved head is superseded. That covers a seat-policy or MRG-AU `approve-merge` gate,
-an `sh-sent-back` gate and a `ci-failed` gate; a superseded `ci-failed` gate reads as
+request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
+`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate and a `ci-failed`
+gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
+failed-rounds gate starts the new head's review rounds from zero, so the run does not ask the
+owner again before the new head has failed its own rounds. A superseded `ci-failed` gate reads as
 `await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
