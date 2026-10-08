@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
-import { openRepoFindings } from "./land-open-checks.js";
+import { openRepoFindings, openRunsSignature } from "./land-open-checks.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -29,6 +29,8 @@ export interface CiSnapshot {
   checksGreen?: boolean;
   /** On a `behind` read in a repo that does not require up-to-date heads: green, but the base moved after its CI started. */
   baseMoved?: boolean;
+  /** On a green read of a base that requires no check: the Actions runs it judged, so `ci-wait` can hold the green for a second read. */
+  openRuns?: string;
   /** When `ci-wait` returned this read, so the update budget can tell how long the base has been chased. */
   readAt?: number;
 }
@@ -61,7 +63,7 @@ function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, runs: rea
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
 }
 
-/** True when every required check at `headSha` has passed, as ci-wait judges them; mergeability is not read. */
+/** True when every required check at `headSha` has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */
 export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, headSha: string, reads: PrReads): Promise<boolean> {
   const runs = await reads.checkRuns(input.repo, headSha, () => true);
   return findingsAt(input, headSha, runs).length === 0;
@@ -80,7 +82,7 @@ async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, opti
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName), ...backlogFlag(findings) };
   const verdict = await settledVerdict(port, input, pr);
   if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };
-  return { ...base, verdict };
+  return { ...base, verdict, ...(verdict === "green" && input.contexts.length === 0 && { openRuns: openRunsSignature(pr.headSha, runs) }) };
 }
 
 /** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */

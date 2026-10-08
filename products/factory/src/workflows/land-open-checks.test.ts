@@ -2,7 +2,7 @@ import { fakeSha, successRun, type CheckRun } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, landScenario, type LandScenario } from "../test-support/land.js";
-import { openRepoFindings } from "./land-open-checks.js";
+import { holdsForSecondRead, openRepoFindings, openRunsSignature } from "./land-open-checks.js";
 
 const HEAD = fakeSha("open-head");
 const OTHER_APP = 99;
@@ -40,6 +40,23 @@ describe("openRepoFindings", () => {
   });
 });
 
+describe("holding an open repo's green for a second read", () => {
+  it("signs the Actions runs at the head by id, ignoring other apps and heads", () => {
+    const runs = [run("b", 2), run("a", 1), run("ext", 9, "success", OTHER_APP), { ...run("old", 7), headSha: fakeSha("elsewhere") }];
+    expect(openRunsSignature(HEAD, runs)).toBe("1,2");
+  });
+
+  it("holds the first green and any green whose runs changed, and releases an unchanged one", () => {
+    expect(holdsForSecondRead("1", undefined)).toBe(true);
+    expect(holdsForSecondRead("1,2", "1")).toBe(true);
+    expect(holdsForSecondRead("1,2", "1,2")).toBe(false);
+  });
+
+  it("does not hold a read of a repo that names required contexts", () => {
+    expect(holdsForSecondRead(undefined, undefined)).toBe(false);
+  });
+});
+
 /** A workout-analytics-shaped repo: no ruleset, so the base requires no status checks. */
 function openScenario(runs: CheckRun[], ciTimeoutMs?: number): LandScenario {
   const scenario = landScenario({ ciTimeoutMs });
@@ -66,6 +83,20 @@ describe("land on a repo whose base requires no status checks", () => {
     expect(host.runtime.status(runId)!.status).toBe("completed");
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
     expect(scenario.fake.effects.merge).toBe(1);
+  });
+
+  it("does not land on a green read taken before a later job's run existed", async () => {
+    const scenario = landScenario();
+    scenario.fake.rules.contexts = [];
+    let reads = 0;
+    // read 1 is land-rules; read 2 is the first ci-wait poll, when only the first job had a run
+    scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, ++reads <= 2 ? [successRun("lint", 1)] : [successRun("lint", 1), successRun("test", 2, undefined, "failure")]);
+    const { host, runId } = start(scenario);
+
+    await host.runtime.wait(runId);
+
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "ci-failed", failing: [{ name: "test" }] });
+    expect(scenario.fake.effects.merge).toBe(0);
   });
 
   it("never lands with zero check-runs, and times out through ci-wait", async () => {
