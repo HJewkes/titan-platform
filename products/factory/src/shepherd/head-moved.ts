@@ -60,6 +60,14 @@ function gatingDecision(run: WorkflowRun, prompt: string): RecordedDecision["res
   return asked !== undefined && decision?.outcome === "gate" && decision.headSha === asked && named ? decision : undefined;
 }
 
+/** The rule and reason the run itself recorded for the gate at the head the prompt asks about; none when the last decision gated another head. */
+export function gatedRule(run: WorkflowRun, prompt: string): { table: string; rowId: string; reason: string } | undefined {
+  const decision = gatingDecision(run, prompt);
+  const rule = decision?.rule;
+  if (typeof rule?.table !== "string" || typeof rule.rowId !== "string" || typeof decision?.reason !== "string") return undefined;
+  return { table: rule.table, rowId: rule.rowId, reason: decision.reason };
+}
+
 /** The head a seat-policy gate asks about: the run's last decision gated that same head under the seat table. */
 export function seatPolicyHead(run: WorkflowRun, prompt: string): string | undefined {
   const decision = gatingDecision(run, prompt);

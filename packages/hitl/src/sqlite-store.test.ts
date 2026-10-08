@@ -214,7 +214,7 @@ describe("a store whose table predates the resolver column", () => {
     runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
     new SqliteGateStore(db).create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     const versions = db.prepare("SELECT version FROM _migration ORDER BY version").all();
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
     expect(() => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(REMOTE), "g1")).toThrow("hitl: resolver outside the gate rule");
   });
 });
