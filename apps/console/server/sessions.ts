@@ -20,14 +20,14 @@ export interface SessionsSource {
   now?: () => number;
 }
 
-export type DegradedReason = "graph-missing" | "graph-not-migrated" | "graph-unreadable" | "transcript-missing";
+type DegradedReason ="graph-missing" | "graph-not-migrated" | "graph-unreadable" | "transcript-missing";
 
-export interface Degraded {
+interface Degraded {
   reason: DegradedReason;
   detail: string;
 }
 
-export interface ModelUsage {
+interface ModelUsage {
   model: string;
   inputTokens: number;
   cacheReadTokens: number;
@@ -39,7 +39,7 @@ export interface ModelUsage {
   priced: boolean;
 }
 
-export interface SessionRow {
+interface SessionRow {
   sessionId: string;
   title: string | null;
   startedAt: string | null;
