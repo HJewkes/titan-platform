@@ -140,6 +140,7 @@ graph TD
   factory --> fixProof
   factory --> github
   factory --> hitl
+  factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient
@@ -170,12 +171,14 @@ graph TD
   console --> appPaths
   console --> chatProtocol
   console --> daemon
+  console --> github
   console --> reactApp
   console --> registry
   console --> rpcClient
   console --> sessionAnalytics
   console --> sessionGraph
   console --> sessionRead
+  console --> worktree
 ```
 <!-- generated:arch-graph end -->
 

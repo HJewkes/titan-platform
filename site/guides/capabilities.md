@@ -690,10 +690,11 @@ Tier 2, `@titan-design/owner-queue@0.0.0`. The owner queue core: one OwnerItem s
 
 Key exports:
 
-- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ROUTE_TARGETS`, `SOURCE_SYSTEMS`, `ownerItemSchema`, `sourceRefSchema`, `ItemStatus`
+- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ownerItemSchema`, `sourceRefSchema`
+- `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `merge`: `isMergeKey`, `mergeByKeys`
 - `rank`: `rank`
-- +7 more in the [reference page](/reference/owner-queue)
+- +12 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-pm"></a>
 

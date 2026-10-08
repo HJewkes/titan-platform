@@ -50,6 +50,40 @@ const list = rank(mergeByKeys([gate, ask]));
 // one item, id "gate:g-1", sources [hitl g-1, agent-chat m-1], keys [head, "task:PRJ1-7"]
 ```
 
+## Filing a deposit
+
+Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
+holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
+`recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
+`personal`, `unblocks`, `expiresAt`, plus `depositId`. `asker` and `depositId` are required;
+`keys` and `unblocks` default to empty and `personal` to false.
+
+The schema is strict at every level. The system alone sets `id`, `status`, `answer`, `route`,
+`authority`, `lint` and hidden picks, so a deposit carrying any of them is refused rather than
+stripped. Unknown fields are refused the same way.
+
+```ts
+import { fromDeposit } from "@titan-design/owner-queue";
+
+const item = fromDeposit(
+  {
+    depositId: "d-1", asker: "agent-a", kind: "decide", door: "two-way",
+    summary: "Pick a cache layout", context: "Two layouts fit the read path.",
+    options: [{ id: "flat", label: "Flat" }, { id: "nested", label: "Nested" }],
+    recommended: { optionId: "flat", by: "agent-a" },
+  },
+  new Date("2026-01-01T00:00:00Z"),
+);
+// status "open", lens "blocking-agent", sources [{ system: "deposit", ref: "agent-a/d-1" }]
+```
+
+`fromDeposit` throws on a refused deposit, opens the item at `now`, and takes its lens from
+`DEPOSIT_LENS`: `know` is `fyi`, `review` is `planning`, and every other kind is
+`blocking-agent`, since an agent is waiting on the answer. The id is `depositItemId(asker,
+depositId)`: `deposit:` and the first 32 hex characters of the SHA-256 of the JSON pair
+`[asker, depositId]`. Filing the same `depositId` again yields the same id, so a retried deposit
+names the item it already filed, and two askers using one `depositId` never collide.
+
 ## What it deliberately does not do
 
 - No I/O. Adapters, the projection store and the schedule belong to the product that runs them.
