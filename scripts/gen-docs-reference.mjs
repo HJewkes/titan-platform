@@ -155,8 +155,6 @@ const GRAPH_TITLES = {
 /** Words mermaid's flowchart parser treats as keywords, so they cannot be node ids. */
 const MERMAID_KEYWORDS = new Set(["cluster", "end", "graph", "subgraph", "style", "class", "click", "default"]);
 
-const shortName = (name) => name.replace("@titan-design/", "");
-
 function nodeId(dir) {
   const id = dir.replace(/-(\w)/g, (_, c) => c.toUpperCase());
   return MERMAID_KEYWORDS.has(id) ? `${id}Pkg` : id;
