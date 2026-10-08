@@ -1,0 +1,5 @@
+---
+"@titan-design/session-analytics": minor
+---
+
+Add the agent-chat events.db readers `readVerdicts(db, window, seats)`, `readSpawns(db)` and `readLastPrompts(db, asOf)`, which take a connection the caller opened read-only. Each runs an exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the `verdicts`, `spawns` and `prompts` commands in `BLOCKED_FLOW_SOURCES` and `LIVENESS_SOURCES` are now `eventsDbCommand(sql)` over that same constant, so a printed re-read runs the reader's own query, with `.parameter set` lines for its epoch-millisecond parameters. The verdicts command now selects the reviewer (`actor`) and the window bounds, and the spawns command the `msg_id IS NOT NULL` filter and JSON guard it lacked. The prompts source no longer claims a `broker_started` skip that events.db cannot show: that skip comes from broker.log, so the `registrations` grep now includes `broker_started` and `stalePrompts` cites `registrations`. `EVENTS_TABLE_DDL` exports agent-chat's events table for test fixtures.
