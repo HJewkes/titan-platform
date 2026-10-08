@@ -67,7 +67,7 @@ export const drainIngest = defineCommand<z.infer<typeof DrainArgs>, DrainSummary
 
 /** Error facts not yet clustered, joined to their transcript path. */
 function pendingErrorFacts(graph: SessionGraph, limit?: number): ErrorFact[] {
-  const claude = graph.db.prepare(`${CLAUDE_ERROR_FACTS} ORDER BY ts LIMIT ?`).all(limit ?? -1) as ErrorFact[];
+  const claude = graph.db.prepare(`${CLAUDE_ERROR_FACTS} ORDER BY f.ts LIMIT ?`).all(limit ?? -1) as ErrorFact[];
   const handled = graph.db.prepare(`SELECT 1 FROM occurrence WHERE transcript_id = ? AND byte_offset = ?
     UNION ALL SELECT 1 FROM drain_screened WHERE transcript_id = ? AND byte_offset = ? AND source_hash = ?`);
   const normalized = normalizedErrorFacts(graph)
