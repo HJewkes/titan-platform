@@ -35,6 +35,7 @@ const COUNTS: Record<string, { sessions: number; notes: number; sources: number;
 const BRIEF = `---
 title: "Orbit relay: message routing between stations"
 state: focused
+task_prefix: OR
 ---
 
 # Orbit relay
@@ -52,6 +53,15 @@ OR-12 is the next slice. The routing table format is settled; see [[routing-tabl
 - Land the handshake retry.
 - Measure queue depth before tuning the backoff.
 `;
+
+/** `atlas-archive` predates task prefixes, so its brief names none. */
+const PREFIXES: Record<string, string> = { "lantern-docs": "LD", "kiln-tools": "KT", "garden-plan": "GP" };
+
+function brief(slug: unknown): string {
+  if (slug === "orbit-relay") return BRIEF;
+  const prefix = typeof slug === "string" ? PREFIXES[slug] : undefined;
+  return `---\nstate: focused\n${prefix ? `task_prefix: "${prefix}"\n` : ""}---\n\n# ${String(slug)}\n`;
+}
 
 const SESSIONS = [
   { filename: "2031-03-04-1500-relay-retry.md", frontmatter: { session_id: "relay-retry", started: "2031-03-04T15:00:00Z", ended: "2031-03-04T16:20:00Z", track: "canonical" }, first_line: "# Handshake retry spike" },
@@ -115,8 +125,10 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
       return { notes: records ? NOTES : [], errors: [] };
     case "source.list":
       return { sources: records ? SOURCES.filter((source) => args.nested || !source.nested) : [], drift: [] };
-    case "source.read":
-      return { path: "brief.md", content: BRIEF, truncated: false, bytes: BRIEF.length };
+    case "source.read": {
+      const content = brief(args.slug);
+      return { path: "brief.md", content, truncated: false, bytes: content.length };
+    }
     default:
       throw new Error(`The fixture has no answer for ${command}`);
   }

@@ -49,6 +49,26 @@ describe("the portfolio", () => {
     });
   });
 
+  it("carries each brief's task prefix, and none for a brief that names none", async () => {
+    const { initiatives } = await readPortfolio(await fakeActiveWork());
+    expect(Object.fromEntries(initiatives.map((row) => [row.slug, row.taskPrefix]))).toEqual({
+      "orbit-relay": "OR",
+      "lantern-docs": "LD",
+      "kiln-tools": "KT",
+      "garden-plan": "GP",
+      "atlas-archive": undefined,
+    });
+  });
+
+  it("leaves the prefix out when a brief cannot be read, and still lists the initiative", async () => {
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      if (command === "source.read" && args.slug === "kiln-tools") throw new Error("no brief");
+      return fixtureAnswer(command, args);
+    });
+    const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
+    expect(initiatives.find((row) => row.slug === "kiln-tools")).not.toHaveProperty("taskPrefix");
+  });
+
   it("flags a personal initiative and still shows it", async () => {
     const { initiatives } = await readPortfolio(await fakeActiveWork());
     expect(initiatives.filter((row) => row.personal).map((row) => row.slug)).toEqual(["garden-plan"]);
