@@ -196,7 +196,7 @@ describe("linear time and two false positives (TP-1684)", () => {
   });
 
   it("lints distinct ids in linear time, not quadratic", () => {
-    const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+    const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
     const timeFor = (count: number) => {
       const ids = Array.from({ length: count }, (_, i) => `VW-${i}`).join(" ");
       const question = "Recommend yes. " + ids + NOW;
