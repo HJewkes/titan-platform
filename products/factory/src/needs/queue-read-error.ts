@@ -1,4 +1,4 @@
-export type QueueReadFailure = "not-running" | "unreachable" | "unauthorized" | "http" | "malformed";
+type QueueReadFailure = "not-running" | "unreachable" | "unauthorized" | "http" | "malformed";
 
 /** A source that cannot be read throws this, so a caller never mistakes an outage for an empty queue. */
 export class QueueReadError extends Error {

@@ -7,13 +7,13 @@ import { localBrokerEndpoint } from "./agent-chat-endpoint.js";
 import { hitlGateSource, type GateReader } from "./hitl-source.js";
 import { QueueReadError } from "./queue-read-error.js";
 
-export interface CountsIo {
+interface CountsIo {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   env: NodeJS.ProcessEnv;
 }
 
-export interface CountsVerbs {
+interface CountsVerbs {
   io: CountsIo;
   withHost: (fn: (host: FactoryHost) => Promise<number> | number) => Promise<void>;
 }

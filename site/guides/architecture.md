@@ -139,6 +139,7 @@ graph TD
   factory --> fixProof
   factory --> github
   factory --> hitl
+  factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient

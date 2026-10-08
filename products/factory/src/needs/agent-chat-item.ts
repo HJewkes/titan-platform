@@ -4,7 +4,7 @@ import { keysIn } from "../digest/keys.js";
 import { summaryOf } from "./queue-read-error.js";
 
 /** One row of agent-chat's `GET /api/queue` (its `QueueItem`); `meta` carries the optional chat_ask item shape. */
-export const queueRowSchema = z.object({
+const queueRowSchema = z.object({
   msgId: z.string().min(1),
   kind: z.string().min(1),
   from: z.string(),

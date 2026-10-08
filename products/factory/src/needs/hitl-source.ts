@@ -5,7 +5,7 @@ import { summaryOf } from "./queue-read-error.js";
 
 export type GateReader = Pick<GateStore, "get" | "listPending">;
 
-export interface HitlSourceOptions {
+interface HitlSourceOptions {
   gates: GateReader;
   pollMs?: number;
 }
@@ -38,7 +38,7 @@ function contextOf(gate: GateRecord): string {
 }
 
 /** Every factory gate holds a land or Shepherd run before its merge, and resolving one releases that run. */
-export function gateToOwnerItem(gate: GateRecord): OwnerItem {
+function gateToOwnerItem(gate: GateRecord): OwnerItem {
   const runId = runOf(gate.id);
   return {
     id: `gate:${gate.id}`,

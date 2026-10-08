@@ -1,8 +1,8 @@
 import type { ClosedStatus, OwnerItem, SourceEvent } from "@titan-design/owner-queue";
 
-export const POLL_TAIL_MS = 30_000;
+const POLL_TAIL_MS = 30_000;
 
-export interface PollTailOptions {
+interface PollTailOptions {
   open: () => Promise<OwnerItem[]>;
   /** How a ref that left the open set closed; sources that cannot tell say `gone-elsewhere`. */
   closedAs?: (ref: string) => ClosedStatus;
