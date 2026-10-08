@@ -63,6 +63,30 @@ tool_input / tool_result), `session` (descriptive fields and turn/commit/push de
 `task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
 file:…` and friends; vocabulary in `RELATIONS`).
 
+## File refs and code ids
+
+A `touched` edge points at `fileRef(repo, path)`: `file:<repo>/<path>`, or `file:<abs path>`
+when the file is outside any working tree. Two functions turn either form back into a
+`(repo, path)` pair, and that path is the code-graph file id:
+
+- `toRepoRelative(absPath): { repo, path }` resolves an absolute path by its nearest `.git`,
+  in posix form. A path under a removed `.worktrees/<name>/` resolves to the same path a live
+  worktree gives, so one file gets one ref. A path outside any repo keeps its absolute form
+  with a null repo.
+- `parseFileRef(ref): { repo, path } | null` is the inverse of `fileRef`. It splits at the
+  first `/` and strips a `.worktrees/<name>/` prefix that an older ingest stored. A null
+  repo means plain text, with no code link. A ref that is not `file:` returns null.
+
+```ts
+import { parseFileRef } from "@titan-design/session-read";
+
+parseFileRef("file:demo/.worktrees/feature-b/src/app.ts"); // { repo: "demo", path: "src/app.ts" }
+parseFileRef("file:/srv/notes.md");                         // { repo: null, path: "/srv/notes.md" }
+```
+
+Only the default `.worktrees` base is recognised. Refs stored before 0.11 keep their
+leaked prefix in the graph; `parseFileRef` normalises them at read time.
+
 ## Review verdicts
 
 `parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
