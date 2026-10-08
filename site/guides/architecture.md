@@ -134,11 +134,13 @@ graph TD
   workflow --> hitl
   workflow --> storeSqlite
   factory --> agentDispatch
+  factory --> appPaths
   factory --> authority
   factory --> daemon
   factory --> fixProof
   factory --> github
   factory --> hitl
+  factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient
