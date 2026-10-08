@@ -38,7 +38,7 @@ export const SettleResult = z.looseObject({ headSha: z.string(), since: z.number
 type Settled = z.infer<typeof SettleResult>;
 
 /** The settle state at one head, rebuilt from the recorded settle steps on a replay. */
-export interface SettleState {
+interface SettleState {
   headSha: string;
   since: number;
   attempt: number;
