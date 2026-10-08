@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, PEER_NAME_PATTERN, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -16,7 +16,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, REPAIR_STEP, describeWake } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isSeat, successorBrief } from "./wake-brief.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -33,8 +33,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
-/** The roster's `spawnedBy` for a spawn from the CLI, which Shepherd's own spawns are. */
-const HUMAN_SPAWNER = "human";
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
 /** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
@@ -110,38 +108,17 @@ interface WakeTask {
   successors: readonly string[];
 }
 
-const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
-
 function resumeMessage(task: WakeTask): string {
   const { input, pr } = task;
   const intro = `Shepherd is waking you on ${input.repo}#${input.pr}. ${task.reason}`;
   return `${intro}\n\n${task.payload}\n\nFix it on branch \`${pr.headRef}\`, push, and ${HEAD_LINE}`;
 }
 
-/**
- * Shepherd spawns through the CLI as the human, so the broker appends no return contract and the brief is the only
- * place a successor learns whom to report to. Left unsaid, one guessed from its peer list and reported to another seat.
- */
-function reportLine(seat: string | undefined): string {
-  if (seat === undefined) return "then end your turn with your report as plain text and send it to no session, since Shepherd found no seat that started this PR's lineage, and";
-  return `then send your report with chat_send to ${seat}, the seat that started this PR's lineage, and to no other session. In it,`;
-}
-
-function successorBrief(task: WakeTask, predecessor: string, name: string, seat: string | undefined): string {
-  const { input, pr } = task;
-  return [
-    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
-    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
-    task.payload,
-    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), ${reportLine(seat)} ${HEAD_LINE}`,
-  ].join("\n\n");
-}
-
 /** The earliest spawner in the lineage that is a session; a successor's own spawner is the human, which names no seat. */
 function lineageSeat(task: WakeTask, roster: readonly AgentRow[]): string | undefined {
   return chain(task, roster)
     .flatMap((name) => roster.filter((row) => row.name === name).map((row) => row.spawnedBy))
-    .find((spawner): spawner is string => typeof spawner === "string" && spawner !== HUMAN_SPAWNER && PEER_NAME_PATTERN.test(spawner));
+    .find(isSeat);
 }
 
 function successorIndex(implementer: string, name: string): number | undefined {
