@@ -1,9 +1,8 @@
 import { defineCommand, EXIT } from "@titan-design/registry";
 import { sessionRef } from "@titan-design/session-read";
 import { z } from "zod";
-import { normalizedSessions, normalizedUsage, type SessionGraph } from "@titan-design/session-graph";
+import { normalizedConversationDetail, normalizedSessions, normalizedUsage, type SessionGraph } from "@titan-design/session-graph";
 import type { MinerContext } from "../context.js";
-import { hasNormalized } from "../normalized-tables.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -92,12 +91,6 @@ function toSummary(row: Record<string, unknown>): SessionSummary {
 }
 
 function normalizedDetail(graph: SessionGraph, ref: string): Pick<SessionDetail, "turns" | "edges" | "inbound"> {
-  if (!hasNormalized(graph)) return { turns: [], edges: [], inbound: [] };
-  const rows = graph.db.prepare(`SELECT turn_ref,MIN(ts) AS started,MAX(ts) AS ended FROM normalized_event
-    WHERE conversation_ref = ? AND history_origin IS NULL AND kind = 'native_turn' GROUP BY turn_ref ORDER BY MIN(ts)`).all(ref) as { turn_ref: string; started: string | null; ended: string | null }[];
-  const edges = graph.db.prepare("SELECT DISTINCT relationship,related_ref FROM normalized_event WHERE conversation_ref = ? AND kind = 'lineage'").all(ref) as { relationship: string; related_ref: string }[];
-  const inbound = graph.db.prepare("SELECT DISTINCT relationship,conversation_ref FROM normalized_event WHERE related_ref = ? AND kind = 'lineage'").all(ref) as { relationship: string; conversation_ref: string }[];
-  return { turns: rows.map((t,index) => ({ promptId: t.turn_ref, index, startedAt: t.started ?? "", durationMs: null,
-    toolCalls: (graph.db.prepare("SELECT count(DISTINCT call_ref) AS n FROM normalized_event WHERE conversation_ref = ? AND turn_ref = ? AND history_origin IS NULL AND kind = 'tool_call'").get(ref,t.turn_ref) as { n: number }).n })),
-    edges: edges.map(e => ({ relation: e.relationship, targetRef: e.related_ref })), inbound: inbound.map(e => ({ relation: e.relationship, sourceRef: e.conversation_ref })) };
+  const { turns, edges, inbound } = normalizedConversationDetail(graph, ref);
+  return { turns: turns.map((t, index) => ({ promptId: t.turnRef, index, startedAt: t.startedAt ?? "", durationMs: null, toolCalls: t.toolCalls })), edges, inbound };
 }

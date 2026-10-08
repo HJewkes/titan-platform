@@ -290,6 +290,14 @@ existing Claude APIs continue to operate. Back up the database before upgrading;
 restore that backup when rolling back to an older binary. Migration never resets
 or rebuilds the corpus.
 
+`hasNormalizedTables` is the one presence rule every normalized reader uses: both
+`normalized_event` and `normalized_source` must exist. A read-only graph that migration 9
+left without them reads as empty, never as an error. `countNormalizedSessions` and
+`countNormalizedEvents` give totals, `normalizedSourcePath` maps a transcript to its
+rollout file, `normalizedConversationDetail` returns turns in start order with each turn's
+distinct tool calls (one grouped query) plus lineage edges both ways, and
+`normalizedErrorFacts` lists error tool results of readable transcripts, oldest first.
+
 Migration 5, `origin, episodes, prices`, adds four tables and three views. It creates only
 empty tables, so existing rows are untouched.
 

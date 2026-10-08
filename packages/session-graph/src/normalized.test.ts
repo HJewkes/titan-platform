@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openSessionGraph } from "./graph.js";
 import { MIGRATIONS } from "./schema.js";
 import { indexCodexSource } from "./normalized-index.js";
-import { normalizedSessions, normalizedUsage, readIndexedText } from "./normalized-query.js";
+import {
+  countNormalizedEvents, countNormalizedSessions, hasNormalizedTables, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions,
+  normalizedSourcePath, normalizedUsage, readIndexedText,
+} from "./normalized-query.js";
 import { resolveConversationAlias } from "./normalized-schema.js";
 import { mkdirSync } from "node:fs";
 
@@ -119,4 +122,74 @@ it("does not add snapshot-only totals from duplicate physical sources", async ()
       expect.objectContaining({ inputTokens: 10, outputTokens: 4, basis: "snapshot" }),
     ]);
   } finally { graph.db.close(); }
+});
+
+describe("normalized readers", () => {
+  const at = (timestamp: string, type: string, payload: unknown) => JSON.stringify({ type, timestamp, payload }) + "\n";
+  const call = (id: string) => at("2026-09-11T12:01:00Z", "response_item", { type: "function_call", name: "shell", call_id: id, arguments: "{}" });
+  const output = (id: string, isError: boolean) => at("2026-09-11T12:02:00Z", "response_item", { type: "function_call_output", call_id: id, output: "ENOENT", is_error: isError });
+  async function indexedChild() {
+    const dir = temp(); mkdirSync(path.join(dir, "sessions")); const file = path.join(dir, "sessions", "rollout.jsonl");
+    writeFileSync(file, [
+      at("2026-09-11T12:00:00Z", "session_meta", { id: "child-id", parent_thread_id: "parent-id", cwd: "/scratch", cli_version: "test" }),
+      at("2026-09-11T12:00:00Z", "event_msg", { type: "task_started", turn_id: "turn-1" }),
+      call("c1"), call("c2"), call("c1"), output("c1", true), output("c2", false),
+      at("2026-09-11T12:03:00Z", "event_msg", { type: "task_complete", turn_id: "turn-1" }),
+      at("2026-09-11T12:04:00Z", "event_msg", { type: "task_started", turn_id: "turn-2" }),
+      at("2026-09-11T12:05:00Z", "event_msg", { type: "task_complete", turn_id: "turn-2" }),
+    ].join(""));
+    const source = (await discoverCodexSources({ codexHome: dir, namespace: "host" }))[0]!;
+    const graph = openSessionGraph(":memory:", { normalized: true });
+    await indexCodexSource(graph, source);
+    return { graph, file: source.path, ref: conversationRef(source.conversation), transcriptId: graph.transcripts.ensure(source.sourceId).sourceId };
+  }
+
+  it("counts each turn's distinct tool calls in one grouped query and report lineage both ways", async () => {
+    const { graph, ref } = await indexedChild();
+    try {
+      const detail = normalizedConversationDetail(graph, ref);
+      expect(detail.turns).toEqual([
+        { turnRef: expect.stringContaining("turn-1"), startedAt: "2026-09-11T12:00:00Z", endedAt: "2026-09-11T12:03:00Z", toolCalls: 2 },
+        { turnRef: expect.stringContaining("turn-2"), startedAt: "2026-09-11T12:04:00Z", endedAt: "2026-09-11T12:05:00Z", toolCalls: 0 },
+      ]);
+      expect(detail.edges).toEqual([{ relation: "parent", targetRef: expect.stringContaining("parent-id") }]);
+      expect(normalizedConversationDetail(graph, detail.edges[0]!.targetRef).inbound).toEqual([{ relation: "parent", sourceRef: ref }]);
+    } finally { graph.db.close(); }
+  });
+
+  it("reads error tool results only, with their conversation and transcript", async () => {
+    const { graph, ref, transcriptId } = await indexedChild();
+    try {
+      expect(normalizedErrorFacts(graph)).toEqual([expect.objectContaining({ transcriptId, conversationRef: ref, ts: "2026-09-11T12:02:00Z" })]);
+    } finally { graph.db.close(); }
+  });
+
+  it("counts sessions and events and resolve a source's file", async () => {
+    const { graph, file, transcriptId } = await indexedChild();
+    try {
+      expect(hasNormalizedTables(graph)).toBe(true);
+      expect(countNormalizedSessions(graph)).toBe(1);
+      expect(countNormalizedEvents(graph)).toBe((graph.db.prepare("SELECT count(*) AS n FROM normalized_event").get() as { n: number }).n);
+      expect(normalizedSourcePath(graph, transcriptId)).toBe(file);
+      expect(normalizedSourcePath(graph, transcriptId + 1)).toBeNull();
+    } finally { graph.db.close(); }
+  });
+
+  it.each([
+    ["holds no normalized tables", () => openSessionGraph(":memory:")],
+    ["holds normalized_event without normalized_source", () => {
+      const graph = openSessionGraph(":memory:", { normalized: true }); graph.db.exec("DROP TABLE normalized_source"); return graph;
+    }],
+  ])("reads nothing from a graph that %s", (_, open) => {
+    const graph = open();
+    try {
+      expect(hasNormalizedTables(graph)).toBe(false);
+      expect([countNormalizedSessions(graph), countNormalizedEvents(graph)]).toEqual([0, 0]);
+      expect(normalizedSourcePath(graph, 1)).toBeNull();
+      expect(normalizedConversationDetail(graph, "conversation:codex:host:x")).toEqual({ turns: [], edges: [], inbound: [] });
+      expect(normalizedErrorFacts(graph)).toEqual([]);
+      expect(normalizedSessions(graph)).toEqual([]);
+      expect(normalizedUsage(graph, "conversation:codex:host:x")).toEqual([]);
+    } finally { graph.db.close(); }
+  });
 });
