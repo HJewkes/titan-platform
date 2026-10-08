@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, landScenario, type LandScenario } from "../test-support/land.js";
 import { readCi } from "./land-ci.js";
+import { prSnapshot } from "./pr-snapshot.js";
 import { openRepoFindings, openRunsSettled, openRunsSignature } from "./land-open-checks.js";
 
 const HEAD = fakeSha("open-head");
@@ -90,6 +91,55 @@ describe("readCi on a repo whose base requires no status checks", () => {
     await readCi(port, input, undefined, { openSeen: seen });
 
     expect(await readCi(port, input, undefined, { openSeen: seen })).toMatchObject({ verdict: "behind", checksGreen: true, baseMoved: true });
+  });
+});
+
+describe("readCi on an open repo with a snapshot wired", () => {
+  const input = { repo: "octo/demo", pr: 1, contexts: [], strict: false };
+  const POLL_MS = 30_000;
+
+  function wired(state: { mergeableState: string; behind: boolean }) {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1, ...state });
+    fake.setRuns(H1, [successRun("lint", 1)]);
+    const port = githubPort(fake.wire);
+    let clock = 0;
+    const reads = prSnapshot(port, { now: () => clock });
+    const poll = async (seen: object) => {
+      const snapshot = await readCi(port, input, reads, { openSeen: seen });
+      clock += POLL_MS;
+      return snapshot;
+    };
+    return { fake, poll };
+  }
+
+  it.each([
+    ["green", { mergeableState: "clean", behind: false }, { verdict: "red", failing: [{ name: "test" }] }],
+    ["base-moved", { mergeableState: "clean", behind: true }, { verdict: "red", failing: [{ name: "test" }] }],
+    // a behind head is updated whatever its red, but it must never claim its checks are green
+    ["behind", { mergeableState: "behind", behind: true }, { verdict: "behind" }],
+  ])("reads a job that turned red before the second poll as not green on a %s head", async (_name, state, expected) => {
+    const { fake, poll } = wired(state);
+    const seen = {};
+
+    const first = await poll(seen);
+    fake.setRuns(H1, [successRun("lint", 1), successRun("test", 2, undefined, "failure")]);
+    const second = await poll(seen);
+
+    expect(first.verdict).toBe("pending");
+    expect(second).toMatchObject(expected);
+    expect(second.checksGreen).toBeUndefined();
+  });
+
+  it("settles a stable green within three polls", async () => {
+    const { fake, poll } = wired({ mergeableState: "clean", behind: false });
+    const seen = {};
+
+    const first = await poll(seen);
+    fake.setRuns(H1, [successRun("lint", 1), successRun("test", 2)]);
+    const verdicts = [first.verdict, (await poll(seen)).verdict, (await poll(seen)).verdict];
+
+    expect(verdicts).toEqual(["pending", "pending", "green"]);
   });
 });
 

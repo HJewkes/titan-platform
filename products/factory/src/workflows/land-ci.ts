@@ -54,7 +54,12 @@ export interface CiReadOptions {
 export async function readCi(port: GitHubPort, input: CiInput, reads?: PrReads, options: CiReadOptions = {}): Promise<CiSnapshot> {
   const ci = await readCiFrom(port, input, reads ?? portReads(port), options);
   if (ci.verdict !== "green" || reads === undefined) return ci;
-  return readCiFrom(port, input, portReads(port), options);
+  return readCiFrom(port, input, portReads(port), { ...options, openSeen: undefined });
+}
+
+/** An open repo's settled judgement compares two polls, so each is a live read: a cached run set would be compared with itself. */
+function judgedReads(port: GitHubPort, input: CiInput, reads: PrReads, options: CiReadOptions): PrReads {
+  return input.contexts.length === 0 && options.openSeen !== undefined ? { getPr: reads.getPr, checkRuns: portReads(port).checkRuns } : reads;
 }
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
@@ -69,7 +74,8 @@ export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts
   return findingsAt(input, headSha, runs).length === 0;
 }
 
-async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
+async function readCiFrom(port: GitHubPort, input: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
+  const reads = judgedReads(port, input, snapshotReads, options);
   const pr = await reads.getPr(input.repo, input.pr);
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
