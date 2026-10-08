@@ -109,7 +109,7 @@ interface RestartFlags {
 }
 
 /** The checkout this bin was built in: dist/bin.js and src/cli.ts both sit three levels below its root. */
-const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
+export const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
 
 function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
   const deploy = service

@@ -7,7 +7,8 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { LAND_STEPS, codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
-import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
+import { followingApprovals } from "./approval-carry.js";
+import { CARRY_SCOPE_STEPS, carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { FREEZE_HOLD_STEPS, freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -202,7 +203,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
+    assisted: followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) }),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -356,8 +357,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
-    carryScopeRoute(deps),
-    carrySeatRoute(deps, wiring.review),
+    ...carryRoutes(deps, wiring.review),
     ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),

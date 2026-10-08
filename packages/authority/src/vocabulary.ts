@@ -34,6 +34,7 @@ export const CONDITION_KINDS = [
   "resolver-is-dispatched-reviewer",
   "verdict-merge-at-head",
   "verdict-merge-carried-tree-equal",
+  "verdict-merge-carried-remerge-clean",
   "pr-kind-not-security",
   "required-contexts-green",
   "no-non-green-run",

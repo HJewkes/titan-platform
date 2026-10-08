@@ -20,8 +20,8 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 92 rules: 42 allow, 6 gate and 44 deny.
-- A rule with `when` (MRG-AU-RV and MRG-AU-RC today) applies only when every condition holds on
+- The table holds 93 rules: 43 allow, 6 gate and 44 deny.
+- A rule with `when` (MRG-AU-RV, MRG-AU-RC and MRG-AU-RM today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
