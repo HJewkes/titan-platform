@@ -18,7 +18,7 @@ const holdsMarker = (body: string, marker: string): boolean => body.split(/\r?\n
 /** Waits before attempts 2 to 4 of the post, so a persistent failure surfaces after about nine seconds. */
 const POST_RETRY_DELAYS_MS = [1000, 3000, 5000];
 
-export type Sleep = (ms: number) => Promise<void>;
+type Sleep = (ms: number) => Promise<void>;
 const pause: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function upsertComment(wire: GitHubWire, login: () => Promise<string>, repo: RepoSlug, number: number, marker: string, body: string, sleep: Sleep = pause): Promise<WriteResult<{ id: number }>> {
