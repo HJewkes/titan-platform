@@ -100,3 +100,77 @@ describe("topDeadModules (C-65)", () => {
     expect(rows.map((r) => r.nodeId)).not.toContain("src/deep.ts");
   });
 });
+
+describe("topDeadModules views (C-155)", () => {
+  // src/Foo.tsx is used only by its story; src/lab/x.tsx is a lab page pulling in src/labOnly.ts.
+  const repoNodes: GraphNode[] = [
+    file("src/index.ts", "barrel"),
+    file("src/Button.tsx", "source"),
+    file("src/Foo.tsx", "source"),
+    file("src/Foo.stories.tsx", "story"),
+    file("src/lab/x.tsx", "lab"),
+    file("src/labOnly.ts", "source"),
+    file("src/__fixtures__/data.ts", "fixture"),
+    file("src/Button.test.tsx", "test"),
+  ];
+  const repoEdges: GraphEdge[] = [
+    edge("src/index.ts", "src/Button.tsx", "re-exports"),
+    edge("src/Foo.stories.tsx", "src/Foo.tsx", "imports"),
+    edge("src/lab/x.tsx", "src/labOnly.ts", "imports"),
+    edge("src/Button.test.tsx", "src/Button.tsx", "imports"),
+  ];
+  const rowsOf = (view: "all-consumers" | "public", graphNodes = repoNodes, graphEdges = repoEdges) =>
+    topDeadModules(graphNodes, graphEdges, ctxOf(graphNodes), 10, { view });
+  const neverRows = ["src/Foo.stories.tsx", "src/lab/x.tsx", "src/__fixtures__/data.ts", "src/Button.test.tsx"];
+
+  // Story, lab, fixture and test files already seed the default view (C-154), so this guards
+  // the default against the public view's seed change rather than proving new behavior.
+  it("the default view counts story and lab importers as consumers and reports no role-only files", () => {
+    const ids = topDeadModules(repoNodes, repoEdges, ctxOf(repoNodes), 10).map((r) => r.nodeId);
+
+    expect(ids).toEqual([]);
+  });
+
+  it("the public view reports a file kept alive only by a story or lab page, never the story or lab", () => {
+    const rows = rowsOf("public");
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: "src/Foo.tsx", reachableOnlyFrom: "story" }),
+        expect.objectContaining({ nodeId: "src/labOnly.ts", reachableOnlyFrom: "lab" }),
+      ]),
+    );
+    const ids = rows.map((r) => r.nodeId);
+    expect(ids).not.toContain("src/Button.tsx");
+    for (const id of neverRows) expect(ids).not.toContain(id);
+  });
+
+  it("the public view marks a test-only file as test and leaves the field off an orphan", () => {
+    const graphNodes = [...repoNodes, file("src/testOnly.ts", "source"), file("src/orphan.ts", "source")];
+    const graphEdges = [...repoEdges, edge("src/Button.test.tsx", "src/testOnly.ts", "imports")];
+
+    const rows = rowsOf("public", graphNodes, graphEdges);
+
+    expect(rows.find((r) => r.nodeId === "src/testOnly.ts")?.reachableOnlyFrom).toBe("test");
+    const orphan = rows.find((r) => r.nodeId === "src/orphan.ts");
+    expect(orphan).toBeDefined();
+    expect(orphan).not.toHaveProperty("reachableOnlyFrom");
+  });
+
+  it("the public view names lab over story over test when several reach a file", () => {
+    const graphNodes = [...repoNodes, file("src/shared.ts", "source"), file("src/storyTest.ts", "source")];
+    const graphEdges = [
+      ...repoEdges,
+      edge("src/Button.test.tsx", "src/shared.ts", "imports"),
+      edge("src/Foo.stories.tsx", "src/shared.ts", "imports"),
+      edge("src/lab/x.tsx", "src/shared.ts", "imports"),
+      edge("src/Button.test.tsx", "src/storyTest.ts", "imports"),
+      edge("src/Foo.stories.tsx", "src/storyTest.ts", "imports"),
+    ];
+
+    const rows = rowsOf("public", graphNodes, graphEdges);
+
+    expect(rows.find((r) => r.nodeId === "src/shared.ts")?.reachableOnlyFrom).toBe("lab");
+    expect(rows.find((r) => r.nodeId === "src/storyTest.ts")?.reachableOnlyFrom).toBe("story");
+  });
+});

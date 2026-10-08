@@ -1,38 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { evaluateChecks, latestPerName } from "./checks.js";
+import { isPassing, latestPerName } from "./checks.js";
 import { successRun } from "./fake.js";
 
-const REQUIRED = ["validate", "dag-check"];
-
-describe("required checks on one head", () => {
-  it("a success followed by a later cancelled run for validate reads as not passed", () => {
+describe("latestPerName", () => {
+  it("a later cancelled run supersedes an earlier success for the same name", () => {
     const runs = [successRun("validate", 1, "2026-01-01T00:00:00Z"), successRun("validate", 2, "2026-01-01T00:05:00Z", "cancelled"), successRun("dag-check", 3)];
 
-    const verdict = evaluateChecks(REQUIRED, latestPerName(runs));
-
-    expect(verdict.state).toBe("failed");
-    expect(verdict.failing.map((run) => [run.name, run.conclusion])).toEqual([["validate", "cancelled"]]);
+    expect(latestPerName(runs).map((run) => [run.name, run.conclusion])).toEqual([["validate", "cancelled"], ["dag-check", "success"]]);
   });
 
   it("a later success supersedes an earlier cancelled run, whatever order the API lists them in", () => {
-    const runs = [successRun("validate", 2, "2026-01-01T00:05:00Z"), successRun("validate", 1, "2026-01-01T00:00:00Z", "cancelled"), successRun("dag-check", 3)];
+    const runs = [successRun("validate", 2, "2026-01-01T00:05:00Z"), successRun("validate", 1, "2026-01-01T00:00:00Z", "cancelled")];
 
-    expect(evaluateChecks(REQUIRED, latestPerName(runs)).state).toBe("passed");
+    expect(latestPerName(runs).map((run) => run.id)).toEqual([2]);
   });
 
-  it("an empty rollup reads pending, never passed", () => {
-    expect(evaluateChecks(REQUIRED, [])).toEqual({ state: "pending", pending: REQUIRED, failing: [] });
+  it("an empty list stays empty", () => {
+    expect(latestPerName([])).toEqual([]);
+  });
+});
+
+describe("isPassing", () => {
+  it("a run still in progress is not passing even if it reports success", () => {
+    expect(isPassing({ ...successRun("validate", 1), status: "in_progress" })).toBe(false);
   });
 
-  it("a required check still running reads pending even when the others passed", () => {
-    const running = { ...successRun("dag-check", 3), status: "in_progress", conclusion: null };
-
-    expect(evaluateChecks(REQUIRED, latestPerName([successRun("validate", 1), running]))).toMatchObject({ state: "pending", pending: ["dag-check"] });
-  });
-
-  it("checks that are not required do not decide the verdict", () => {
-    const runs = [successRun("validate", 1), successRun("dag-check", 2), successRun("deploy", 3, undefined, "failure")];
-
-    expect(evaluateChecks(REQUIRED, latestPerName(runs)).state).toBe("passed");
+  it("a cancelled run is not passing", () => {
+    expect(isPassing(successRun("validate", 1, undefined, "cancelled"))).toBe(false);
   });
 });

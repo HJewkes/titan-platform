@@ -1,15 +1,7 @@
 import type { CheckRun } from "./port.js";
 
-/** Conclusions a required check may end with and still count as passed. */
+/** Conclusions that are not red. This is not the required-check rule: `headCheckFindings` demands `success`. */
 const PASSING = new Set(["success", "neutral", "skipped"]);
-
-export interface ChecksVerdict {
-  state: "pending" | "passed" | "failed";
-  /** Required names with no completed latest run. */
-  pending: string[];
-  /** Latest runs of required checks that completed without passing. */
-  failing: CheckRun[];
-}
 
 export function isPassing(run: CheckRun): boolean {
   return run.status === "completed" && PASSING.has(run.conclusion ?? "");
@@ -29,18 +21,4 @@ function isNewer(run: CheckRun, than: CheckRun): boolean {
   const a = run.startedAt ?? "";
   const b = than.startedAt ?? "";
   return a === b ? run.id > than.id : a > b;
-}
-
-/** A required name with no run at all is pending, never passed. */
-export function evaluateChecks(required: readonly string[], latestRuns: readonly CheckRun[]): ChecksVerdict {
-  const byName = new Map(latestRuns.map((run) => [run.name, run]));
-  const pending: string[] = [];
-  const failing: CheckRun[] = [];
-  for (const name of required) {
-    const run = byName.get(name);
-    if (!run || run.status !== "completed") pending.push(name);
-    else if (!isPassing(run)) failing.push(run);
-  }
-  const state = failing.length > 0 ? "failed" : pending.length > 0 ? "pending" : "passed";
-  return { state, pending, failing };
 }

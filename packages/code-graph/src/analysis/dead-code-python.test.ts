@@ -85,6 +85,37 @@ describe("computeDeadCodeMetrics on Python — unused locals (TP-318)", () => {
     expect(await metricOf(code, "unused_locals")).toBe(0);
   });
 
+  it("skips a name also bound as a nested def or lambda parameter", async () => {
+    const code = lines(
+      "def k():",
+      "    x = 1",
+      "    y = 2",
+      "    def g(x):",
+      "        return x",
+      "    return g, lambda y: y",
+    );
+    expect(await metricOf(code, "unused_locals")).toBe(0);
+  });
+
+  it("skips a name also assigned in a nested class body", async () => {
+    const code = lines("def k():", "    x = 1", "    class C:", "        x = 2", "    return C");
+    expect(await metricOf(code, "unused_locals")).toBe(0);
+  });
+
+  it("skips the outer n because the nested def binds it via nonlocal n (nested set), while still counting that def's own dead local", async () => {
+    const code = lines(
+      "def k():",
+      "    n = 0",
+      "    def g():",
+      "        nonlocal n",
+      "        n = 1",
+      "        dead = 2",
+      "        return 0",
+      "    return g",
+    );
+    expect(await metricOf(code, "unused_locals")).toBe(1);
+  });
+
   it("attributes a method's unused local to the method", async () => {
     const code = lines("class C:", "    def m(self):", "        dead = 1", "        return self");
     expect(await metricOf(code, "unused_locals")).toBe(1);

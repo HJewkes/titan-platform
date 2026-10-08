@@ -1,3 +1,4 @@
+import { EVENTS_TABLE_DDL } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 
 /** Synthetic graph rows for the insight tests. Test support: nothing outside tests imports it. */
@@ -82,8 +83,7 @@ export interface FixtureMessage {
 /** An agent-chat events table holding these messages; returns its path. */
 export function seedEventsDb(file: string, messages: readonly FixtureMessage[]): string {
   const db = openDatabase(file);
-  db.exec(`CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL,
-    target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)`);
+  db.exec(EVENTS_TABLE_DDL);
   const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, 'message', ?, ?, ?)");
   for (const m of messages) insert.run(Date.parse(m.ts), m.actor, m.target, m.body);
   db.close();

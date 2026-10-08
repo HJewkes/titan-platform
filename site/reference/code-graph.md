@@ -97,7 +97,9 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import` (`except` lists destination patterns `to` matches but the rule allows),
 `layered-deps` (layers are path prefixes; an import may point only to its own layer or a lower
-one; `excludeRoles` drops an import whose source or destination file has one of the roles), and
+one; `excludeRoles` drops an import whose source or destination file has one of the roles;
+`exemptTypeOnly: true`, off by default, drops an edge whose every import from that file is
+`import type` or `export type … from`), and
 `no-internal-only-barrels`. A seventh, `metric-outlier`, flags nodes of one `kind` strictly
 above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
@@ -175,7 +177,10 @@ diffCheckResults(store, { fromSnapshotId: 1, toSnapshotId: 2, rules: tight }).ne
 alias chain between the two snapshots, across every rename in between, so a move is a rename
 rather than a delete plus an add, and its edges do not churn. `diffCheckResults` buckets violations as
 new, resolved, or unchanged, and splits unchanged metric violations into worsened and
-improved by value.
+improved, where worsened means further past the threshold, so a falling value on a
+`metric-min` rule such as `coverage_pct` is worsened. `violationExcess` and `compareExcess`, also on the
+browser-safe `./analysis` subpath, are that rule; a pair with no excess on either side is
+neither.
 
 ## Finding similar symbols
 
@@ -282,8 +287,83 @@ and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 A browser imports the report, dashboard, and package-architecture derivations from
 `@titan-design/code-graph/analysis`, which leaves out the root's ts-morph, tree-sitter, and
 SQLite. A test keeps the subpath's import closure free of packages and Node builtins.
-`computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so import it from
-the root, which needs Node.
+`computeSymbolConsumers` and `buildSymbolCouplingPayload` are on it.
+
+### Report sections and drift
+
+The hotspot, bus-factor, test-coverage, and central-file sections of codewatch's `graph
+report`, and the drift between two reports, are pure functions over rows you have already
+read, so they run in a browser too. All ten are on the root and on `./analysis`. Build one
+`ReportContext` per snapshot and window, then pass it to every section:
+
+```ts
+import {
+  buildReportContext,
+  busFactorOf,
+  computeReportDrift,
+  hotspotScoreOf,
+  topBusFactorRisks,
+  topHotspots,
+} from "@titan-design/code-graph/analysis";
+import type { GraphNode } from "@titan-design/code-graph";
+
+const nodes: GraphNode[] = [
+  { id: "hot.ts", kind: "file", name: "hot.ts" },
+  { id: "calm.ts", kind: "file", name: "calm.ts" },
+];
+const metric = (nodeId: string, name: string, value: number) => ({ nodeId, name, value, unit: "count" });
+const metrics = [
+  metric("hot.ts", "churn_30d", 12),
+  metric("hot.ts", "cognitive_max", 9),
+  metric("hot.ts", "bus_factor_30d", 1),
+  metric("calm.ts", "churn_30d", 2),
+  metric("calm.ts", "cognitive_max", 3),
+  metric("calm.ts", "bus_factor_30d", 3),
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+const hotspots = topHotspots(ctx, 10);
+// [ { nodeId: 'hot.ts', churn: 12, complexity: 9, loc: 0, recency: 1, score: 108 },
+//   { nodeId: 'calm.ts', churn: 2, complexity: 3, loc: 0, recency: 1, score: 6 } ]
+const silos = topBusFactorRisks(ctx, 10);
+// [ { nodeId: 'hot.ts', busFactor: 1, topAuthorShare: 1, churn: 12 } ]
+
+const drift = computeReportDrift({
+  baselineSnapshot, // the SnapshotRow the baseline rows were computed from
+  currentHotspots: hotspots,
+  baselineHotspots: [{ nodeId: "calm.ts", churn: 5, complexity: 4, loc: 0, recency: 1, score: 20 }],
+  currentHotspotScore: (id) => hotspotScoreOf(ctx, id),
+  currentSilos: silos,
+  baselineSilos: [],
+  currentBusFactor: (id) => busFactorOf(ctx, id),
+  currentCoupling: [],
+  baselineCoupling: [],
+});
+drift.improvedHotspots; // [ { nodeId: 'calm.ts', before: 20, after: 6, delta: -14 } ]
+drift.newSilos; // [ { nodeId: 'hot.ts', churn: 12 } ]
+```
+
+- `buildReportContext` indexes nodes by id and metrics by name, and records the window's
+  metric suffix (`30d`, or `lifetime`). `keepNode(ctx, nodeId)` is the gate every section
+  applies: a file, not excluded by pattern or role, and not `generated`.
+  `lookupMetric(ctx, name, nodeId)` reads one value, `undefined` when absent.
+- `topHotspots` returns `HotspotRow[]` ranked by churn × complexity × recency, after Adam
+  Tornhill and CodeScene. Complexity is `cognitive_max`, else `cyclomatic_max`.
+  `hotspotScoreOf` is the same score for one file, 0 when it is filtered out or unscored.
+- `topBusFactorRisks` returns `BusFactorRow[]`, files with a bus factor of 1, ranked by churn.
+  `busFactorOf` reads one file's bus factor for the window.
+- `topTestCoverageRisks` returns `TestCoverageRow[]`, source files whose linked tests have a
+  single author, ranked by linked test count.
+- `topCentralFiles(nodes, edges, ctx, limit)` returns `CentralRow[]`, the top PageRank files
+  that `keepNode` accepts.
+- `computeReportDrift` returns a `ReportDrift`: new, resolved, displaced, worsened, and
+  improved hotspots; new, resolved, and displaced silos; new and intensified coupling pairs.
+  Pass `baselineHotspotScore` to tell a newborn file from one that climbed into the ranking.
+
+Coupling clusters stay in codewatch. Nothing here builds the report's `couplingClusters`
+section, because codewatch reads `git log` for it at report time, which a browser cannot do.
+`computeReportDrift` only diffs the `CouplingRow[]` you pass in, and `computeChangeCoupling`
+on `./history` gives the raw co-change pairs.
 
 ### Dashboard derivations
 
@@ -314,8 +394,7 @@ classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
 
 `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
 node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
-caps symbol coupling at 40 pairs and 15 consumer groups; it ships from the root export only,
-so it needs Node.
+caps symbol coupling at 40 pairs and 15 consumer groups, and is on the same subpath.
 
 ### Unused exports and dead modules
 
@@ -353,9 +432,14 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
   still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
   `symbol_loc` (0 when unmeasured).
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
-  ranked by `loc`. The walk starts at files with the role `entry`, `barrel`, `test`,
-  `script`, `config` or `fixture`, and at any `main.{ts,tsx,js,jsx}`. A computed
-  `import(variable)` or a registry string escapes it, so a live file can show up here.
+  ranked by `loc`. Files with the role `test`, `fixture`, `story` or `lab` are never rows. The
+  default view, `"all-consumers"`, starts the walk at files with the role `entry`, `barrel`,
+  `test`, `fixture`, `story`, `lab`, `script` or `config`, and at any `main.{ts,tsx,js,jsx}`.
+  Pass `{ view: "public" }` as a fifth argument to start it only at `entry`, `barrel`,
+  `config`, `script` and `main.*` files. Then a file that only a story, lab page or test
+  reaches is a row with `reachableOnlyFrom` set to `"lab"`, `"story"` or `"test"`, in that
+  order of precedence. A computed `import(variable)` or a registry string escapes the walk,
+  so a live file can show up here.
 
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.

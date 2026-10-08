@@ -31,14 +31,14 @@ import { extractTranscript, readTranscriptEvents } from "@titan-design/session-r
 
 // Stream events from a watermark
 for await (const event of readTranscriptEvents(path, { fromByteOffset: watermark })) {
-  // event.kind: 'session' | 'branch' | 'edge' | 'fact' | 'span' | 'turn' | 'usage' | …
+  // event.kind: 'session' | 'branch' | 'edge' | 'fact' | 'span' | 'turn' | 'request' | …
 }
 
 // Or fold a chunk into one delta of rows
 const delta = await extractTranscript(path, { fromByteOffset: 0 });
 
 delta.sessions;        // [{ sessionId: 's-1', gitBranch: 'main', … }]
-delta.usage;           // [{ model: 'claude-opus-5', inputTokens: 120, outputTokens: 40, … }]
+delta.requests;        // [{ requestId: 'req_1', model: 'claude-opus-5', inputTokens: 120, outputTokens: 40, … }], one per line; dedupe on requestId
 delta.lastByteOffset;  // 542
 delta.prefixHash;      // hash of the bytes consumed, for rewrite detection
 ```

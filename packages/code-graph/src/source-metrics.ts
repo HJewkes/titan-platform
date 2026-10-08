@@ -230,13 +230,18 @@ function jsxDepthIn(file: ParsedFile, root: Node): number {
   return jsxDepthOf(root, (node) => functionAt(node, TS_FUNCTION_DECL_TYPES) !== null);
 }
 
+/** An `else if` parses as else_clause > if_statement; ESLint max-depth and Sonar keep the chain flat. */
+function isElseIf(parent: Node, child: Node): boolean {
+  return parent.type === "else_clause" && child.type === "if_statement";
+}
+
 function nestingDepthOf(node: Node, language: string, depth: number): number {
   const nestingTypes =
     language === "python" ? PY_NESTING_TYPES : TS_NESTING_TYPES;
   let maxDepth = depth;
   for (const child of node.namedChildren) {
     if (!child) continue;
-    const next = nestingTypes.has(child.type) ? depth + 1 : depth;
+    const next = nestingTypes.has(child.type) && !isElseIf(node, child) ? depth + 1 : depth;
     const childMax = nestingDepthOf(child, language, next);
     if (childMax > maxDepth) maxDepth = childMax;
   }

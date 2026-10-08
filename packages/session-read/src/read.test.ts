@@ -29,7 +29,7 @@ describe("extractTranscript", () => {
     }
   });
 
-  it("folds session metadata, turns, and per-model token buckets", async () => {
+  it("folds session metadata and turns", async () => {
     const result = await extractTranscript(transcript);
     expect(result.sessions).toHaveLength(1);
     expect(result.sessions[0]).toMatchObject({
@@ -44,19 +44,16 @@ describe("extractTranscript", () => {
       commitDelta: 1,
     });
     expect(result.turns.map((t) => t.promptId)).toEqual(["p1", "p2"]);
-    expect(result.usage).toEqual([
-      expect.objectContaining({
-        sessionId: "sess-1",
-        model: "claude-opus-5",
-        inputTokens: 90,
-        outputTokens: 180,
-        cacheReadTokens: 45,
-        cacheCreationTokens: 18,
-        // 'hmm' (3 chars) against 8 chars of generated content on that line: round(20 * 3/8).
-        thinkingTokens: 8,
-        requestCount: 9,
-      }),
-    ]);
+  });
+
+  it("counts a response written over two lines as one request after the store's key dedupe", async () => {
+    const result = await extractTranscript(transcript);
+    const twoBlock = result.requests.filter((r) => r.requestId === "req_two_block");
+    expect(twoBlock).toHaveLength(2);
+    const stored = dedupe(result.requests, (r) => r.requestId);
+    // 'hmm' (3 chars) against 8 chars of generated content on the first line: round(20 * 3/8).
+    expect(stored.filter((r) => r.requestId === "req_two_block")).toEqual([expect.objectContaining({ outputTokens: 20, thinkingTokens: 8 })]);
+    expect(stored).toHaveLength(result.requests.length - 1);
   });
 
   it("extracts assets and relations while skipping ignored paths", async () => {
@@ -127,7 +124,7 @@ describe("extractTranscript", () => {
     }
     expect(dedupe([...first.edges, ...second.edges], (e) => `${e.sourceRef} ${e.relation} ${e.targetRef}`)).toHaveLength(full.edges.length);
     expect(dedupe([...first.files, ...second.files], (f) => f.fileRef).map((f) => f.fileRef)).toEqual(full.files.map((f) => f.fileRef));
-    expect(first.usage[0]!.requestCount + (second.usage[0]?.requestCount ?? 0)).toBe(full.usage[0]!.requestCount);
+    expect(sortedJson([...first.requests, ...second.requests])).toEqual(sortedJson(full.requests));
   });
 
   it("gives a subagent sidechain its own identity and links it to the parent", async () => {

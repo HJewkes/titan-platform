@@ -6,7 +6,10 @@ export type {
   CentralRow,
   CouplingDelta,
   CouplingRow,
+  DeadModuleConsumer,
   DeadModuleRow,
+  DeadModulesOptions,
+  DeadModuleView,
   GraphReportResult,
   GrowthRiskRow,
   HotspotDelta,
@@ -48,8 +51,8 @@ export {
   collectSymbolUtil,
   referencedNodes,
 } from "./dashboard-node-metrics.js";
-export type { BucketableViolation, UnchangedViolation, ViolationBuckets } from "../diff/violation-buckets.js";
-export { bucketViolations } from "../diff/violation-buckets.js";
+export type { BucketableViolation, ExcessChange, UnchangedViolation, ViolationBuckets } from "../diff/violation-buckets.js";
+export { bucketViolations, compareExcess, violationExcess } from "../diff/violation-buckets.js";
 export type { CouplingClass, SnapshotContext } from "./dashboard-coupling.js";
 export { classifyCoupling, pairKey } from "./dashboard-coupling.js";
 export type { PackageRoot } from "./package-buckets.js";
@@ -67,6 +70,13 @@ export {
 } from "./graph-arch-compute.js";
 export type { PackageStats, PairCoupling, PartitionQualityInput, PartitionQualityResult } from "./partition-quality.js";
 export { computePartitionQuality } from "./partition-quality.js";
+export type {
+  SymbolConsumerGroup,
+  SymbolConsumerRow,
+  SymbolCouplingPayload,
+  SymbolCouplingRow,
+} from "./dashboard-symbol-coupling.js";
+export { buildSymbolCouplingPayload } from "./dashboard-symbol-coupling.js";
 export type { SymbolConsumers } from "./symbol-coupling.js";
 export { computeSymbolConsumers } from "./symbol-coupling.js";
 export type { TestSourceLink } from "./test-linker.js";
