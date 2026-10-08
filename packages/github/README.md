@@ -33,8 +33,9 @@ relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value thro
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
-`evaluateChecks(required, latestRuns)` folds those into `pending`, `passed` or `failed`; a
-required name with no run is pending, never passed.
+`mergeReadiness` (and `headCheckFindings` under it) is the one rule for whether a required check
+passed: a required name needs a completed `success` run, so a `skipped` or `neutral` run, or no run
+at all, never passes.
 
 `mergeReadiness({ pr, rules, runs, requiredApps, approvedHead })` is pure. It is ready only when
 the PR is open, not a draft, not conflicting, up to date when the rules are strict, at exactly
