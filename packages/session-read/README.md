@@ -15,16 +15,15 @@ for await (const event of readTranscriptEvents(path, { fromByteOffset: watermark
 
 // Or fold a chunk into one delta of rows
 const delta = await extractTranscript(path, { fromByteOffset: watermark, priorPrefixHash: hash });
-delta.sessions, delta.usage, delta.edges, delta.lastByteOffset, delta.prefixHash
+delta.sessions, delta.requests, delta.edges, delta.lastByteOffset, delta.prefixHash
 ```
 
 ## The event model
 
 `SessionEvent` is a discriminated union on `kind`: `fact` (one per line, typed by event),
 `span` (search text for prompt / assistant_response / tool_input / tool_result), `session`
-(descriptive fields and turn/commit/push deltas), `turn`, `usage` (per-model tokens with an
-estimated thinking share), `phase`, `human_edit`, `file_checkpoint`, `pr`, `pr_merge`,
-`pr_create`, `branch`, `file`, `task`, `subagent`, `subagent_transcript`, `artifact`, and
+(descriptive fields and turn/commit/push deltas), `turn`, `phase`, `human_edit`,
+`file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict`, `branch`, `file`, `task`, `subagent`, `subagent_transcript`, `artifact`, and
 `edge` (`session:… touched file:…` and friends; vocabulary in `RELATIONS`).
 
 Every rule in `LineReader` is stateless across lines except the last-seen timestamp: a
@@ -61,7 +60,7 @@ whenever a classification rule changes, so a store can tell stale rows apart and
 
 | kind | list | emitted for |
 |---|---|---|
-| `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Supersedes the deprecated `usage`. |
+| `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Thinking tokens are an estimated share of output. |
 | `tool_call` | `toolCalls` | each `tool_use` block, with `family` and `mcpServer` from `toolFamily`, and `inputChars` |
 | `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName` and `msgId`. A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. `promptSource` is the record's own `promptSource` (`typed`, `system`, `sdk` for a headless turn), null when absent. |
 | `context_block` | `contextBlocks` | the characters that entered context, by `ContextSource`. A user record gives one row for its text, labelled by its wake cause (`human`, `channel`, `compaction_summary`, or `system_reminder` for other injected text). It also gives one `tool_result` row per `tool_result` block, and one `image` row per image block. An assistant line gives one row per `text`, `thinking` and `tool_use` block. An attachment gives one row (`skill_listing`, or `attachment` with `attachmentType`) only when its string content is 256 characters or more (`MIN_ATTACHMENT_CHARS`). `isMedia` marks base64 images, whose `chars` is the encoded length. |

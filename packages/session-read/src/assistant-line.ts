@@ -5,7 +5,7 @@ import { commandCwd, parseGitIntent, parsePrCreateTitle, parseTaskIntents, type 
 import type { LineContext, LineReader } from "./line-reader.js";
 import { RELATIONS, agentRef, branchRef, repoForCwd, sessionRef, taskRef } from "./refs.js";
 import { parseReviewVerdicts } from "./review-verdict.js";
-import { asObject, blocks, int, str, thinkingTokens, type Json } from "./text.js";
+import { asObject, blocks, str, type Json } from "./text.js";
 
 const FILE_TOOLS = new Set(["Read", "Write", "Edit", "MultiEdit"]);
 
@@ -15,7 +15,6 @@ export function readAssistantLine(reader: LineReader, ctx: LineContext): void {
   const toolUses = content.filter((b) => b.type === "tool_use");
   reader.fact(ctx, toolUses.length > 0 ? "tool_decision" : "assistant_response", str(toolUses[0] ?? null, "id"));
   reader.session(ctx, {}, { turn: 1 });
-  recordUsage(reader, ctx, message);
   emitRequest(reader, ctx, message);
   emitToolCalls(reader, ctx, content);
   emitAssistantContextBlocks(reader, ctx, content);
@@ -23,24 +22,6 @@ export function readAssistantLine(reader: LineReader, ctx: LineContext): void {
   if (toolUses.length > 0) reader.span(ctx, "tool_input");
   content.forEach((block, blockIndex) => {
     if (block.type === "tool_use") readToolUse(reader, ctx, block, blockIndex);
-  });
-}
-
-/** @deprecated Superseded by the `request` event, which dedupes on `requestId`. Removed after one minor version. */
-function recordUsage(reader: LineReader, ctx: LineContext, message: Json | null): void {
-  const usage = asObject(message?.usage);
-  const model = str(message, "model");
-  if (!usage || !model) return;
-  const outputTokens = int(usage, "output_tokens");
-  reader.emit({
-    ...reader.base(ctx),
-    kind: "usage",
-    model,
-    inputTokens: int(usage, "input_tokens"),
-    outputTokens,
-    cacheReadTokens: int(usage, "cache_read_input_tokens"),
-    cacheCreationTokens: int(usage, "cache_creation_input_tokens"),
-    thinkingTokens: thinkingTokens(message, outputTokens),
   });
 }
 
