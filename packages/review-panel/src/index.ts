@@ -1,2 +1,14 @@
-// Placeholder entry for @titan-design/review-panel (tier 2). Filled in by TP-1917.
-export {};
+export type { AwaitVerdictInput, Presence, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerFacts, ReviewerMessage, ReviewerReader } from "./ports.js";
+export type {
+  ChangedFile,
+  PanelFinding,
+  PanelMember,
+  PanelOutcome,
+  PanelPlan,
+  PanelVerdict,
+  PrClass,
+  PrFacts,
+  PrTouch,
+  ReviewClass,
+  ReviewShape,
+} from "./types.js";

@@ -1,5 +1,6 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -11,7 +12,6 @@ import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, 
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, type OwnerBrief } from "./review-schemas.js";
-import type { Presence } from "./presence.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import { dispatchedNoVerdictCause } from "./depth-floor.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
@@ -48,38 +48,9 @@ export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
-
-export interface ReviewTarget {
-  repo: string;
-  pr: number;
-  head: string;
-}
+export type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader };
 
 export type ReviewInput = z.infer<typeof ReviewInputSchema>;
-
-/** One roster row, as the dispatch port reports it. */
-export interface ReviewerAgent {
-  name: string;
-  agentId: string;
-  /** Empty until the agent's session has started. */
-  sessionId: string;
-  presence: Presence;
-  spawnedBy: string | null;
-  /** The agent this one took over from, null for none; absent means the port holds no lineage, and such an agent is never resumed. */
-  predecessor?: string | null;
-  /** Context tokens the session holds; absent means unknown, and an unknown fill is never resumed. */
-  fillTokens?: number;
-  /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
-  lastWrittenAt?: number;
-}
-
-/** How Shepherd starts a reviewer; a throw from `spawn` or `resume` other than `ReviewerBrokerDown` or `ReviewerBrokerBusy` is a refusal. */
-export interface ReviewerDispatch {
-  roster(): Promise<readonly ReviewerAgent[]>;
-  /** `target` names the repo whose checkout the reviewer starts in; `facts` pick the reviewer's profile. */
-  spawn(name: string, brief: string, target: ReviewTarget, facts?: ReviewerFacts): Promise<void>;
-  resume(name: string, brief: string): Promise<void>;
-}
 
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
@@ -87,37 +58,6 @@ type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
-
-export interface AwaitVerdictInput {
-  repo: string;
-  pr: number;
-  head: string;
-  reviewerAgentId: string;
-  reviewerSessionId: string;
-  /** Epoch milliseconds. */
-  dispatchedAt: number;
-  /** Epoch milliseconds when the reviewer's session was up; the wait counts from it. Absent on a run recorded before it existed. */
-  startedAt?: number;
-}
-
-/** One assistant message, attributed by the reader to the agent and session it came from. */
-export interface ReviewerMessage {
-  agentId: string;
-  sessionId: string;
-  /** Epoch milliseconds. */
-  writtenAt: number;
-  text: string;
-  locator: SourceTextLocator;
-  /** Investigative tool calls the session made before this message; absent means the reader could not count, and no floor applies. */
-  investigativeCalls?: number;
-}
-
-/** The assistant messages of the dispatched reviewer's session, oldest first; the last one is the final message. */
-export interface ReviewerReader {
-  read(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-  /** A seat reviewer's sent messages from every complete record, finished turn or not; rejects on a damaged transcript, with a `DamagedTranscriptError` for a partial last record. Absent means `read`. */
-  readSeat?(input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]>;
-}
 
 export interface AcceptedVerdict {
   kind: "verdict";
