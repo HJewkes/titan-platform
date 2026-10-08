@@ -25,7 +25,8 @@ import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
-import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
+import type { Phase } from "./step-phase.js";
+import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 

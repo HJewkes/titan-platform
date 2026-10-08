@@ -4,7 +4,8 @@ import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { PHASES, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+import { PHASES, stepPhase } from "./step-phase.js";
+import { PrTimelineSchema, TimelineEntrySchema, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 

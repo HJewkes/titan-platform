@@ -1,5 +1,5 @@
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
-import { stepPhase } from "./shepherd/view.js";
+import { stepPhase } from "./shepherd/step-phase.js";
 
 /** `park` names a step whose route parks the run on restart; it outranks the step's Shepherd phase. */
 export type BusyPhase = "review" | "merging" | "park";
