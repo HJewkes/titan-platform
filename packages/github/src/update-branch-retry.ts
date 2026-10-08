@@ -22,7 +22,7 @@ async function retryUpdateBranch(wire: GitHubWire, repo: RepoSlug, number: numbe
   return { done: true };
 }
 
-function isRetryableWrite(error: unknown): boolean {
+export function isRetryableWrite(error: unknown): boolean {
   return isTransient(error) || (httpStatusOf(error) ?? 0) >= 500;
 }
 
