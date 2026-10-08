@@ -72,4 +72,10 @@ describe("report derivations in a browser", () => {
 
     expect(reExported.filter((file) => !ENTRIES.includes(file))).toEqual([]);
   });
+
+  it("the ./analysis subpath carries buildSymbolCouplingPayload", () => {
+    const text = readFileSync(path.join(here, SUBPATH_ENTRY), "utf8");
+
+    expect(text).toMatch(/export\s*\{[^}]*\bbuildSymbolCouplingPayload\b[^}]*\}\s*from\s*"\.\/dashboard-symbol-coupling\.js"/);
+  });
 });

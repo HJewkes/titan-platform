@@ -459,20 +459,18 @@ The pure `computePageRank`, `computeRelevance`, `computeSymbolConsumers`, and
 derivations below without the root's ts-morph, tree-sitter, and SQLite, so a browser bundle
 can import it. `analysis/graph-report-browser-safe.test.ts` keeps its whole import closure
 free of packages and Node builtins, and fails if the barrel re-exports a module it does not
-check. `computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so it needs the
-root export and Node.
+check. `computeSymbolConsumers` and `buildSymbolCouplingPayload` are on it.
 
 ### Dashboard derivations
 
 Ported with TP-918 from codewatch's `graph dashboard`, unchanged apart from import paths. All
-are pure functions over rows the caller has already read, so they run in a browser, except
-`buildSymbolCouplingPayload`:
+are pure functions over rows the caller has already read, so they run in a browser:
 
 - `collectNodeMetrics` folds metric rows into per-node `NodeMetrics`; `collectSymbolUtil`
   pairs symbol nodes with their utilization; `buildNodeMetrics`, `buildCentralFiles`,
   `buildHotExports`, and `buildBlastRadius` shape them for the files a `GraphReportResult`
   references (`referencedNodes`).
-- `buildSymbolCouplingPayload` (root export only, so it needs Node) caps `computeSymbolCoupling` and `computeSymbolConsumers`
+- `buildSymbolCouplingPayload` caps `computeSymbolCoupling` and `computeSymbolConsumers`
   into co-imported pairs and per-file consumer groups.
 - `classifyCoupling` marks a co-changed pair hidden, expected, or unindexed against a
   `SnapshotContext`; build its `linkedPairs` with `pairKey`.
