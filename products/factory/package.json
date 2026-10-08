@@ -40,6 +40,7 @@
     "@titan-design/github": "workspace:^",
     "@titan-design/hitl": "workspace:^",
     "@titan-design/registry": "workspace:^",
+    "@titan-design/review-panel": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",

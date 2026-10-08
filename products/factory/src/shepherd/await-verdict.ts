@@ -58,6 +58,13 @@ function boundedFindings(text: string): string {
 
 export const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
 
+/** Why a final message was no verdict: the account's usage limit ended the reviewer's turn, so asking again is pointless until it resets. */
+export const USAGE_LIMIT_REASON = "the reviewer hit the account usage limit and wrote no review";
+/** Claude Code's synthetic limit message, whole and short; a review that quotes the phrase is longer and still read as a review. */
+const USAGE_LIMIT_NOTICE = /^You've hit your [\w -]{0,24}limit\b/;
+const MAX_LIMIT_NOTICE_CHARS = 200;
+const isUsageLimitNotice = (text: string): boolean => text.length <= MAX_LIMIT_NOTICE_CHARS && USAGE_LIMIT_NOTICE.test(text.trim());
+
 type MalformedNone = { kind: "none"; malformed: Malformed };
 const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): MalformedNone => ({ kind: "none", malformed: { refusal, writtenAt } });
 
@@ -66,7 +73,7 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): Malfor
  * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
  * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
- * `malformed` record; silence, a foreign or earlier message and `WAIT` carry none. A MERGE or FIX_FIRST from a session that
+ * `malformed` record; silence, a foreign or earlier message, `WAIT` and a usage-limit notice (which no correction can answer) carry none. A MERGE or FIX_FIRST from a session that
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
@@ -76,6 +83,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
+  if (isUsageLimitNotice(final.text)) return { kind: "none", reason: USAGE_LIMIT_REASON };
   const block = parseVerdictBlock(final.text);
   if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);

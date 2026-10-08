@@ -67,14 +67,16 @@ function keyed(model: ReadModel): Keyed[] {
     const k: Keyed = { ruleId: row.rule, nodeId: row.node.id, row };
     if (row.destination) k.destinationId = row.destination.id;
     if (row.value !== undefined) k.value = row.value;
+    if (row.threshold !== undefined) k.threshold = row.threshold;
     return k;
   });
 }
 
 // Matched by id only, as findings.list matches: following renames through the alias chain is TP-187's identity work.
-/** Two snapshots' findings as code-graph buckets them: new, resolved, and unchanged, worsened or improved by value. */
+/** Two snapshots' findings as code-graph buckets them: new, resolved, and unchanged, worsened or improved against the threshold. */
 export function bucketFindings(baseline: ReadModel, current: ReadModel): ViolationBuckets<Keyed> {
-  return bucketViolations(keyed(baseline), keyed(current));
+  const ruleTypes = new Map([...baseline.rules, ...current.rules].map((r) => [r.id, r.type]));
+  return bucketViolations(keyed(baseline), keyed(current), undefined, (id) => ruleTypes.get(id));
 }
 
 function findingChanges(current: ReadModel, baseline: ReadModel): Lists["findings"] {

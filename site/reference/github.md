@@ -36,7 +36,7 @@ for free. Tests use `fakeGitHub()`, an in-memory wire with effect counters, inst
 Verified against 0.0.0 (the workspace build), on the fake wire.
 
 ```ts
-import { evaluateChecks, fakeGitHub, githubPort, successRun } from "@titan-design/github";
+import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 
 const fake = fakeGitHub();
 const port = githubPort(fake.wire);
@@ -47,8 +47,6 @@ await port.ensureBranch("o/r", "feat/x", base);          // { sha, done: false, 
 
 const { pr } = await port.openPr("o/r", { head: "feat/x", base: "main", title: "x", body: "" });
 fake.setRuns(pr.headSha, [successRun("validate", 1)]);
-const runs = await port.latestCheckRuns("o/r", pr.headSha);
-evaluateChecks(["validate", "dag-check"], runs);         // { state: "pending", pending: ["dag-check"], failing: [] }
 ```
 
 Deciding a merge, where `dag-check` passed but was posted by an app that does not count:
@@ -104,8 +102,8 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
 
 - `mergeableState` is computed lazily by GitHub. `unknown` is common and never means clean.
 - One head can carry several runs per check name, for example a success and a later
-  superseded `cancelled` run. `evaluateChecks` wants `latestCheckRuns`; `mergeReadiness`
-  wants every run from `checkRuns`, so a superseded red run still blocks the merge.
+  superseded `cancelled` run. `mergeReadiness` wants every run from `checkRuns`, so a
+  superseded red run still blocks the merge.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
@@ -153,6 +151,7 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
   when the old path matters.
 - `mergeSha` on an open PR is GitHub's test merge. It means the merge commit only once
   `merged` is true.
+- `mergedAt` is GitHub's ISO merge timestamp (REST `merged_at`), null until the PR merges.
 
 ### Check runs under a GitHub App
 

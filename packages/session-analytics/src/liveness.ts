@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LAST_PROMPTS_SQL, SPAWNS_SQL, eventsDbCommand } from "./events-db.js";
 import { stringField, type BrokerEntry } from "./liveness-broker.js";
 import { DARK_MIN, darkGaps } from "./liveness-dark.js";
 import { unreportedExitRows, type SpawnRecord } from "./liveness-exits.js";
@@ -9,18 +10,15 @@ import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 /** Where each section's findings come from: the command that re-reads them and the field it reads. */
 export const LIVENESS_SOURCES = {
   registrations: {
-    command: `grep -nE '"event":"(registered|deregistered|agent_exited|teleport_started|teleport_completed|teleport_failed|teleport_aborted)"' <broker.log>`,
-    field: "ts, event, name; cited as broker.log line numbers; a gap with a clean agent_exited (code 0, not inferred) and no teleport is a resume",
+    command: `grep -nE '"event":"(broker_started|registered|deregistered|agent_exited|teleport_started|teleport_completed|teleport_failed|teleport_aborted)"' <broker.log>`,
+    field: "ts, event, name; cited as broker.log line numbers; a gap with a clean agent_exited (code 0, not inferred) and no teleport is a resume; a prompt before the last broker_started from an agent never registered after it is skipped",
   },
   routes: { command: `grep -n '"event":"route"' <broker.log>`, field: "to, delivered, recipients" },
   exits: { command: `grep -n '"event":"unreported-exit"' <broker.log>`, field: "agentId, name, spawner, lastAction" },
-  spawns: {
-    command: `sqlite3 -readonly <events.db> "SELECT id, msg_id, target, json_extract(meta,'$.profile') FROM events WHERE kind='agent_spawned'"`,
-    field: "events.msg_id (agent id), events.meta.profile",
-  },
+  spawns: { command: eventsDbCommand(SPAWNS_SQL), field: "events.msg_id (agent id), events.target (name), events.meta.profile" },
   prompts: {
-    command: `sqlite3 -readonly <events.db> "SELECT e.* FROM events e JOIN (SELECT actor, max(id) id FROM events WHERE ts < <asOf> AND kind != 'resolution' GROUP BY actor) l ON e.id = l.id WHERE e.kind='approval_request'"`,
-    field: "events.ts, events.actor, events.meta.tool_name; a resolution row's events.ref; skipped after the actor's agent_exited or agent_retired, or a broker_started it never re-registered after",
+    command: eventsDbCommand(LAST_PROMPTS_SQL),
+    field: "events.ts, events.actor, events.meta.tool_name; a resolution row's events.ref; skipped after the actor's agent_exited or agent_retired (endEventId)",
   },
 } as const;
 
@@ -97,7 +95,7 @@ export function livenessReport(input: LivenessInput): LivenessReport {
     darkSeats: { cites: ["registrations", "routes"], withTeleport: dark.filter((g) => g.teleport).length, withoutTeleport: dark.filter((g) => !g.teleport).length, rows: dark },
     routeFailures: { cites: ["routes"], ...countMisses(routeMissesInScope), rows: routes },
     unreportedExits: { cites: ["exits", "spawns"], total: sum(exits.map((r) => r.count)), rows: exits },
-    stalePrompts: { cites: ["prompts"], rows: prompts.filter((p) => p.resolutionEventId === null), resolvedRows: prompts.filter((p) => p.resolutionEventId !== null) },
+    stalePrompts: { cites: ["prompts", "registrations"], rows: prompts.filter((p) => p.resolutionEventId === null), resolvedRows: prompts.filter((p) => p.resolutionEventId !== null) },
   };
 }
 
