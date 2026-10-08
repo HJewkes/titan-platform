@@ -330,6 +330,28 @@ describe("validateRules — schema healing", () => {
     expect(warnings).toHaveLength(1);
   });
 
+  it("accepts exemptTypeOnly as a boolean on a layered-deps rule", () => {
+    const [rule] = validateRules({
+      rules: [{ id: "r", type: "layered-deps", layers: [["a"], ["b"]], exemptTypeOnly: true }],
+    }) as LayeredDepsRule[];
+    expect(rule!.exemptTypeOnly).toBe(true);
+  });
+
+  it("leaves exemptTypeOnly unset by default", () => {
+    const [rule] = validateRules({
+      rules: [{ id: "r", type: "layered-deps", layers: [["a"], ["b"]] }],
+    }) as LayeredDepsRule[];
+    expect(rule!.exemptTypeOnly).toBeUndefined();
+  });
+
+  it("rejects a non-boolean exemptTypeOnly", () => {
+    expect(() =>
+      validateRules({
+        rules: [{ id: "r", type: "layered-deps", layers: [["a"], ["b"]], exemptTypeOnly: "yes" }],
+      }),
+    ).toThrow("r: exemptTypeOnly must be a boolean");
+  });
+
   it("rejects an unknown role in layered-deps excludeRoles", () => {
     expect(() =>
       validateRules({

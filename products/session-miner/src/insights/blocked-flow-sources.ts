@@ -1,27 +1,17 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { GhError, execGh, type GhExec } from "@titan-design/github";
+import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
 import {
   parseDenials,
   parseSeatJournal,
-  parseVerdict,
   prKey,
   type DenialRecord,
   type PullState,
   type SeatJournal,
-  type VerdictRecord,
 } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-
-interface EventRow {
-  id: number;
-  ts: number;
-  actor: string;
-  target: string | null;
-  body: string;
-}
 
 /** Runs `read` over agent-chat's events table opened read-only; nothing is written, not even a WAL pragma. */
 export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
@@ -34,45 +24,27 @@ export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
   }
 }
 
-/** Verdict messages from agent-chat's events table, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive, and `seats` limits the refused count to verdicts sent to those seats. */
-export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }, seats?: readonly string[]): { verdicts: VerdictRecord[]; unparsed: number } {
-  return withEventsDb(eventsDb, (db) => {
-    const sql = `SELECT id, ts, actor, target, body FROM events WHERE kind = 'message' AND body LIKE 'Verdict:%' AND ts >= ? AND ts < ? ORDER BY id`;
-    const rows = db.prepare(sql).all(window.since ? Date.parse(window.since) : 0, window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER) as EventRow[];
-    const verdicts = rows.flatMap((row) => {
-      const parsed = parseVerdict(row.body);
-      return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
-    });
-    const inSeats = (row: EventRow) => !seats || seats.includes(row.target ?? "");
-    const unparsed = rows.filter((row) => !parseVerdict(row.body) && inSeats(row)).length;
-    return { verdicts, unparsed };
-  });
-}
-
-const ghPull = z.object({ state: z.enum(["open", "closed"]), merged_at: z.string().nullable(), head: z.object({ sha: z.string() }) });
-
 const PULL_CONCURRENCY = 6;
 
-/** Each PR's state from GitHub REST; a PR GitHub cannot find is left out and reported as unknown. */
-export async function fetchPulls(keys: readonly { repo: string; pr: number }[], exec: GhExec = execGh): Promise<PullState[]> {
+/** Each PR's state through the GitHub port; a PR GitHub cannot find is left out and reported as unknown. */
+export async function fetchPulls(keys: readonly { repo: string; pr: number }[], github: GitHubPort = githubPort(ghCliWire())): Promise<PullState[]> {
   const unique = [...new Map(keys.map((k) => [prKey(k), k])).values()];
   const pulls: PullState[] = [];
   for (let i = 0; i < unique.length; i += PULL_CONCURRENCY) {
-    const batch = await Promise.all(unique.slice(i, i + PULL_CONCURRENCY).map((key) => fetchPull(key, exec)));
+    const batch = await Promise.all(unique.slice(i, i + PULL_CONCURRENCY).map((key) => fetchPull(key, github)));
     pulls.push(...batch.flatMap((p) => (p ? [p] : [])));
   }
   return pulls;
 }
 
-async function fetchPull({ repo, pr }: { repo: string; pr: number }, exec: GhExec): Promise<PullState | null> {
-  const args = ["api", `repos/${repo}/pulls/${pr}`];
-  const result = await exec(args);
-  if (result.code !== 0) {
-    if (new GhError(args, result).status === 404) return null;
-    throw new GhError(args, result);
+async function fetchPull({ repo, pr }: { repo: string; pr: number }, github: GitHubPort): Promise<PullState | null> {
+  try {
+    const found = await github.getPr(repo, pr);
+    return { repo, pr, state: found.state, mergedAt: found.mergedAt && new Date(found.mergedAt).toISOString(), headSha: found.headSha };
+  } catch (error) {
+    if ((error as { status?: unknown }).status === 404) return null;
+    throw error;
   }
-  const body = ghPull.parse(JSON.parse(result.stdout));
-  return { repo, pr, state: body.state, mergedAt: body.merged_at && new Date(body.merged_at).toISOString(), headSha: body.head.sha };
 }
 
 const pullSnapshot = z.array(z.object({ repo: z.string(), pr: z.number().int(), state: z.enum(["open", "closed"]), mergedAt: z.string().nullable(), headSha: z.string() }));

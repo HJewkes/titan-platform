@@ -54,6 +54,15 @@ describe("gh api adapter", () => {
     expect(update?.args).toEqual(["api", "-i", "-X", "PUT", "repos/octo/demo/pulls/7/update-branch", "-f", `expected_head_sha=${H1}`]);
   });
 
+  it("maps REST merged_at to mergedAt, and null while the PR is open", async () => {
+    const mergedPr = JSON.stringify({ ...JSON.parse(openPr), state: "closed", merged: true, merged_at: "2026-01-02T03:04:05Z" });
+    const merged = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 0 }), "pulls/7": mergedPr });
+    const open = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+
+    expect(await ghCliWire(merged.exec).getPr(REPO, 7)).toMatchObject({ merged: true, mergedAt: "2026-01-02T03:04:05Z" });
+    expect(await ghCliWire(open.exec).getPr(REPO, 7)).toMatchObject({ merged: false, mergedAt: null });
+  });
+
   it("reads behind from the compare API and never passes a token", async () => {
     const gh = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 3 }), "pulls/7": openPr });
 

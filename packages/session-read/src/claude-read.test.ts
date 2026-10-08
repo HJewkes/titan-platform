@@ -265,6 +265,19 @@ describe("Claude locator readback and dispatcher", () => {
     await expect(readClaudeText(locator, { sources: [movedSource] })).resolves.toBeNull();
   });
 
+  it("resolves a moved source only by full identity, not by a matching sourceId alone", async () => {
+    const { observations } = await collect(source);
+    const locator = observations.find((observation): observation is NormalizedToolResultObservation => observation.kind === "tool_result")!.outputLocator!;
+    const moved = path.join(configDir, "projects", "archived", `${SESSION}.jsonl`);
+    mkdirSync(path.dirname(moved), { recursive: true });
+    renameSync(filePath, moved);
+    const movedSource = { ...source, path: moved };
+    const impostor: SessionSourceDescriptor = { ...movedSource, provenance: { kind: "claude-code-transcript", legacySessionId: "other-session" } };
+
+    await expect(readClaudeText(locator, { sources: [impostor] })).resolves.toBeNull();
+    await expect(readClaudeText(locator, { sources: [impostor, movedSource] })).resolves.toBe("Permission denied by sanitized fixture.\nproofmarker");
+  });
+
   it("returns null when the transcript was truncated or removed before the selected line", async () => {
     const { observations } = await collect(source);
     const message = observations.find((observation): observation is NormalizedMessageObservation => observation.kind === "message");

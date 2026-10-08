@@ -1,7 +1,7 @@
 export type { EventBase, EventOf, LineSpan, SessionEvent, SessionEventKind, SessionPatch, SpanField } from "./events.js";
 export type { Emit, LineContext } from "./line-reader.js";
 export { LineReader } from "./line-reader.js";
-export type { BranchRow, SessionRow, TranscriptDelta, UsageRow } from "./fold.js";
+export type { BranchRow, SessionRow, TranscriptDelta } from "./fold.js";
 export { EventFolder, foldEvents } from "./fold.js";
 export type { ExtractOptions, ExtractResult, ReadOptions, ReadResult } from "./read.js";
 export { TranscriptParseError, extractTranscript, readTranscriptEvents } from "./read.js";

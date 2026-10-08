@@ -288,6 +288,20 @@ describe("readCodexText", () => {
     expect(await readCodexText(locator, { sources: [movedSource] })).toBe("héllo 🌍");
     expect(await readCodexText(locator, { sources: [{ ...movedSource, conversation: { ...movedSource.conversation, nativeId: "other" } }] })).toBeNull();
   });
+
+  it("resolves a moved source only by full identity, not by a matching sourceId alone", async () => {
+    const { observations } = await collect(source);
+    const locator = observations.find((observation): observation is NormalizedMessageObservation => observation.kind === "message")!.content[0]!.locator;
+    const moved = path.join(dir, "archived_sessions", path.basename(filePath));
+    mkdirSync(path.dirname(moved), { recursive: true });
+    writeFileSync(moved, renderCodexRollout(records), "utf8");
+    rmSync(filePath);
+    const movedSource = (await codexSourceFromPath(moved, "host-a"))!;
+    const impostor: SessionSourceDescriptor = { ...movedSource, format: "other-format" };
+
+    expect(await readCodexText(locator, { sources: [impostor] })).toBeNull();
+    expect(await readCodexText(locator, { sources: [impostor, movedSource] })).toBe("héllo 🌍");
+  });
 });
 
 describe("normalizedSearchText", () => {

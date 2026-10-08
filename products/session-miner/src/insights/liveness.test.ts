@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { LivenessReport } from "@titan-design/session-analytics";
+import { EVENTS_TABLE_DDL, type LivenessReport } from "@titan-design/session-analytics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
@@ -48,8 +48,7 @@ const EVENTS: EventFixture[] = [
 
 function seedEvents(file: string): string {
   const db = openDatabase(file);
-  db.exec(`CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL,
-    target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)`);
+  db.exec(EVENTS_TABLE_DDL);
   const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, msg_id, ref, meta) VALUES (?, ?, ?, ?, ?, ?, ?)");
   for (const e of EVENTS) insert.run(Date.parse(e.ts), e.kind, e.actor, e.target ?? null, e.msgId ?? null, e.ref ?? null, typeof e.meta === "string" ? e.meta : e.meta && JSON.stringify(e.meta));
   db.close();

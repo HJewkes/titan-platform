@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import path from "node:path";
 import type { Label } from "../pairs.js";
 import type { ToolUse } from "../corpus/transcripts.js";
@@ -12,10 +11,6 @@ import { pathToRef } from "../workspace-layout.js";
  * alone would score every retriever at zero, so a label carries all three and
  * a hit counts if it names any of them.
  */
-
-export function defaultActiveRoot(home = homedir()): string {
-  return path.join(home, "Library", "Application Support", "active-work");
-}
 
 /** The tools whose `file_path` counts as "the agent went and opened this". */
 const FILE_TOOLS = new Set(["Read", "Edit", "Write", "NotebookEdit"]);
