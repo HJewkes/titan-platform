@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
@@ -376,7 +376,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A workflow that takes the MERGE review through the sh-merge-evidence step, then lands with the Shepherd options. */
 function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined): FactoryHost {
-  const port = githubPort(fake.wire);
+  const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
   const deps: ShepherdDeps = { port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
@@ -679,5 +679,34 @@ describe("approve-merge under merge:auto", () => {
     expect(host.runtime.status(runId)!.stepResults["merge-policy:0:0"]!.data).not.toHaveProperty("allowEvidence");
     host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: HEAD }, OWNER);
     await host.runtime.wait(runId);
+  });
+});
+
+describe("a 5xx while posting the sh-merge-evidence comment", () => {
+  const bad502 = () => ({ error: new FakeHttpError(502, "Server Error") });
+
+  it("retries the post and lets the run continue past the step, with one comment", async () => {
+    const fake = world();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    fake.createCommentFaults = [bad502()];
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(fake.comments.get(1)).toHaveLength(1);
+  });
+
+  it("fails the run with an error naming sh-merge-evidence when every post answers 502", async () => {
+    const fake = world();
+    fake.createCommentFaults = Array.from({ length: 10 }, bad502);
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: .*502`));
+    expect(fake.effects.merge).toBe(0);
   });
 });
