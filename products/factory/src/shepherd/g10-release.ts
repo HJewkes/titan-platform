@@ -51,7 +51,7 @@ export function satisfiesG10(run: G10Run, verdict: G10Verdict | undefined, prHea
 const G10ReleaseInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), verdict: G10VerdictSchema, checks: z.looseObject({ head: z.string(), green: z.boolean() }) });
 const G10ReleaseResult = z.looseObject({ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional() });
 
-export function g10ReleaseRoutes(deps: ShepherdDeps, reviewProfile: string | undefined) {
+export function g10ReleaseRoutes(deps: ShepherdDeps) {
   return [
     codeRoute(G10_RELEASE_STEP, deps.now, async (raw: unknown) => {
       const input = G10ReleaseInput.parse(raw);
@@ -59,7 +59,7 @@ export function g10ReleaseRoutes(deps: ShepherdDeps, reviewProfile: string | und
       const registration = store.byRun(input.runId);
       const prHead = (await deps.port.getPr(input.repo as RepoSlug, input.pr)).headSha;
       const run = { held: registration?.held ?? false, holdReason: registration?.holdReason ?? null };
-      const released = satisfiesG10(run, input.verdict, prHead, { head: input.checks.head, green: input.checks.green }, reviewProfile);
+      const released = satisfiesG10(run, input.verdict, prHead, { head: input.checks.head, green: input.checks.green }, deps.reviewProfile);
       if (released) store.release(input.runId);
       return { released, head: prHead, ...(released && { verdict: input.verdict }) };
     }),

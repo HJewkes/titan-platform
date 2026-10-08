@@ -242,8 +242,6 @@ export interface ReviewWiring {
   isFrozen?: IsFrozen;
   /** The App `shepherd/review` is posted as; merge facts count that check only from it. Absent means no app can satisfy it. */
   reviewAppId?: number;
-  /** `shepherd.review.profile`; a hold of class `g10-review` releases itself only when this is an opus profile. */
-  profile?: string;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
   carry?: Omit<CarryOptions, "signal">;
 }

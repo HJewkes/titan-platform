@@ -16,7 +16,7 @@ import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phase
 import { verdictIsMergeAt } from "../gate-brief.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { G10_RELEASE_STEPS, g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
-import { narrowToRegistration } from "./registration-policy.js";
+import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { publishOutcome } from "./publish-review.js";
@@ -354,10 +354,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   return [
     awaitPrRoute(deps),
     ...outcomeRoutes(deps.now),
-    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => {
-      const registration = deps.store.get().byRun(input.runId);
-      return { policy: registration?.policy ?? null, holdReason: registration?.held ? registration.holdReason : null };
-    }),
+    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => registrationPolicy(deps.store.get(), input.runId)),
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
@@ -368,7 +365,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
-    ...g10ReleaseRoutes(deps, wiring.review?.profile),
+    ...g10ReleaseRoutes(deps),
   ];
 }
 

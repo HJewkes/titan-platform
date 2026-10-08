@@ -49,6 +49,8 @@ export interface ShepherdDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   agentChatBin: string;
+  /** `shepherd.review.profile`; a `g10-review` hold releases itself only when this is an opus profile. */
+  reviewProfile?: string;
   /** The Claude config directory a successor spawns under; absent means agent-chat's default account. */
   agentChatConfigDir?: string;
   /** The serve process's one roster reader over `agentChatBin`; absent means each wake reads through its own. */
