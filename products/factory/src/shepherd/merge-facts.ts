@@ -116,6 +116,13 @@ function guardRule(rowId: string): PolicyRule {
   return { table: "shepherd-merge-guard", rowId, version: 1 };
 }
 
+const UNSETTLED_ROW = "merge-state-unsettled";
+
+/** The one gate a later read at the same head may clear: GitHub had not computed mergeability on any read. */
+export function isUnsettledGate(decision: GateDecision): boolean {
+  return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === UNSETTLED_ROW;
+}
+
 function authorityRule(ruleId: string | null): PolicyRule {
   return { table: "authority", rowId: ruleId ?? "none", version: AUTHORITY_VERSION };
 }
@@ -149,7 +156,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
   const pathGate = changedFilesGate(evidence, visualPaths);
   if (pathGate) return pathGate;
   if (evidence.requiredChecksUnknown !== undefined) return { outcome: "gate", rule: guardRule("required-checks-unknown"), reason: evidence.requiredChecksUnknown };
-  if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule("merge-state-unsettled"), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
+  if (evidence.mergeableState === "unknown") return { outcome: "gate", rule: guardRule(UNSETTLED_ROW), reason: `mergeable_state unknown after ${SETTLE_MAX_READS} reads` };
   const decision = evaluate(DEFAULT_TABLE, { action: "merge", actor: AUTHORITY_ACTOR, tainted: false, subject: { repo: evidence.record.repo, pr: String(evidence.record.pr) }, facts: { merge: evidence.merge } });
   if (decision.verdict === "allow" && decision.ruleId !== null && AUTO_MERGE_RULES.includes(decision.ruleId)) {
     return { outcome: "allow", rule: authorityRule(decision.ruleId), reason: `${decision.ruleId} holds at ${headSha}` };

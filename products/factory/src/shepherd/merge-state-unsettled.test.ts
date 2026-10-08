@@ -105,6 +105,11 @@ function start(host: FactoryHost, w: World): string {
   return runId;
 }
 
+/** The run goes on to read main CI after the merge, which this fake never reports, so the merge is what a test waits on. */
+async function merged(w: World): Promise<void> {
+  await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 10_000 });
+}
+
 function settleRecords(host: FactoryHost, runId: string): { headSha: string; since: number; at: number; spent: boolean }[] {
   const results = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("merge-settle"));
   return results.map((result) => (result.data as { result: { headSha: string; since: number; at: number; spent: boolean } }).result);
@@ -116,13 +121,11 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    await host.runtime.wait(runId);
+    await merged(w);
 
-    expect(host.runtime.status(runId)?.status).toBe("completed");
     expect(w.fake.pr(1)).toMatchObject({ merged: true, headSha: H1 });
     expect(w.collections.get(H1)).toBe(11);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
-    expect(host.gates.listPending()).toEqual([]);
     expect(w.mergeTreeProbes).toEqual([]);
   });
 
@@ -158,15 +161,15 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
 
   it("restarts the wait at a head pushed during it, so the new head gets its own bound", async () => {
     const w = world((head, _collection, now) => (head === H1 || now < 45 * MINUTE ? "unknown" : "clean"));
+    const read = w.fake.onGetPr!;
+    w.fake.onGetPr = (pr, reads) => (pr.headSha === H1 && w.clock.now >= 20 * MINUTE && w.fake.pushHead(1, H2), read(pr, reads));
     const host = open(w);
     const runId = start(host, w);
-    await vi.waitFor(() => expect(w.clock.now).toBeGreaterThanOrEqual(20 * MINUTE));
-    w.fake.pushHead(1, H2);
 
-    await host.runtime.wait(runId);
+    await merged(w);
 
     expect(w.fake.pr(1)).toMatchObject({ merged: true, headSha: H2 });
-    expect(host.gates.listPending()).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
     const sinceAt = (head: string) => new Set(settleRecords(host, runId).filter((settle) => settle.headSha === head).map((settle) => settle.since));
     expect(sinceAt(H1).size).toBe(1);
     expect(sinceAt(H2).size).toBe(1);

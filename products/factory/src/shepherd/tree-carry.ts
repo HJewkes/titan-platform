@@ -153,20 +153,47 @@ function serialized<T>(dir: string, task: () => Promise<T>): Promise<T> {
 /** A fixed-vocabulary reason: the reason is a stored step output that can reach a public PR, so no error text goes into it. */
 const reasonOf = (error: unknown): string => (error instanceof CarryRefusal ? `git ${error.command} exited ${error.code}` : `carry probe failed: ${errorClass(error)}`);
 
+const issuesOf = (error: z.ZodError): string => error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
+
+/** Runs `task` on the repo's cache, one at a time; a failure answers through `refused`, never a throw. */
+async function inCache<T>(repo: string, options: CarryOptions, task: (git: Git, dir: string, url: string) => Promise<T>, refused: (reason: string) => T): Promise<T> {
+  try {
+    const stateDir = options.stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
+    const dir = carryCacheDir(stateDir, repo);
+    const url = (options.remote ?? githubRemote)(repo);
+    return await serialized(dir, () => task(options.git ?? systemGit, dir, url));
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    return refused(reasonOf(error));
+  }
+}
+
 /** Does `head` carry the review of `fromHead`? Every failure, from bad input to a refused fetch, answers not equal with a reason. */
 export async function carry(raw: unknown, options: CarryOptions = {}): Promise<CarryResult> {
   const parsed = CarryInputSchema.safeParse(raw);
-  if (!parsed.success) return { equal: false, reason: `invalid carry input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` };
+  if (!parsed.success) return { equal: false, reason: `invalid carry input: ${issuesOf(parsed.error)}` };
   const input = parsed.data;
-  try {
-    const stateDir = options.stateDir ?? boundStateDir ?? dirname(resolveDbPath({ env: process.env }));
-    const dir = carryCacheDir(stateDir, input.repo);
-    const url = (options.remote ?? githubRemote)(input.repo);
-    return await serialized(dir, () => probe(options.git ?? systemGit, dir, url, input, options.signal));
-  } catch (error) {
-    options.signal?.throwIfAborted();
-    return { equal: false, reason: reasonOf(error) };
-  }
+  return inCache(input.repo, options, (git, dir, url) => probe(git, dir, url, input, options.signal), (reason) => ({ equal: false, reason }));
+}
+
+const MergeTreeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, headSha: Sha });
+
+/**
+ * `git merge-tree` of the head onto the base tip as fetched now: the merge GitHub's own mergeability read computes. It
+ * answers `clean`, `conflict`, or `unread: <why>` from a fixed vocabulary, since the answer can reach a public PR.
+ */
+export async function localMergeTree(raw: unknown, options: CarryOptions = {}): Promise<string> {
+  const parsed = MergeTreeInputSchema.safeParse(raw);
+  if (!parsed.success) return `unread: invalid input: ${issuesOf(parsed.error)}`;
+  const { repo, baseRef, headSha } = parsed.data;
+  const merge = async (git: Git, dir: string, url: string): Promise<string> => {
+    await ensureCache(git, dir, options.signal);
+    await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, headSha, `+refs/heads/${baseRef}:${remoteBase(baseRef)}`], options.signal);
+    const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", remoteBase(baseRef), headSha], options.signal);
+    if (merged.code > 1) throw new CarryRefusal("merge-tree", merged.code);
+    return merged.code === 0 ? "clean" : "conflict";
+  };
+  return inCache(repo, options, merge, (reason) => `unread: ${reason}`);
 }
 
 export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal"> = {}): StepRoute {
