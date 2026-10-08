@@ -100,4 +100,6 @@ function read(event: ReadEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Reading a credential: SEC rows of the authority table. */
-export const secret: Family = { bash, read };
+const SECRET_VERBS = new Set([...METADATA, ...WALKERS, ...Object.keys(VERBS), "security"]);
+
+export const secret: Family = { verbs: SECRET_VERBS, bash, read };

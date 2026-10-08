@@ -9,7 +9,7 @@ export interface ScriptTarget {
   kind: "shell" | "interpreter";
 }
 
-const SOURCERS = new Set(["source", "."]);
+export const SOURCERS: ReadonlySet<string> = new Set(["source", "."]);
 const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
 const INLINE_FLAG_RE = /^-[A-Za-z]*[ceEpm]$|^--(eval|print)(=|$)/;
 

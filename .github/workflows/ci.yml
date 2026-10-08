@@ -23,7 +23,22 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Turbo replays a package's build when its inputs hash the same. Only main saves; PRs restore main's cache.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Save turbo cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
       - run: pnpm typecheck
       - run: pnpm lint
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.

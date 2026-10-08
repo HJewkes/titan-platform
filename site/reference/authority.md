@@ -53,6 +53,10 @@ claims: `owner-terminal` (OT), `owner-remote` (OR, a verified phone, voice or Ma
 channel), `coordinator` (CO), `worker` (WK), `headless` (HD, a daemon-dispatched run) and
 `automation` (AU, CI and other non-agent processes).
 
+`RESOLVER_CLASSES` lists the owner classes that may resolve a gate. `DELEGATE_RESOLVER_CLASSES`
+(`coordinator` only) lists the classes a gate's rule may name as a delegate resolver. A hitl
+store admits a delegate only when it has `authorize` and `authorize` allows it.
+
 A session is **tainted** once untrusted content (web pages, issue text, third-party
 messages) enters its context. Taint is sticky and inherited on spawn. A rule marked T turns
 `allow` into a gate that only the owner at a terminal resolves; in table 1.0.0 only

@@ -540,8 +540,8 @@ describe("xargs -I runs the command once per input line", () => {
     expect(gitArgs("printf status | xargs -I{} git {} < list.txt")).toEqual([["{}"], ["push", "origin", "HEAD:main"]]);
   });
 
-  it("leaves {} as a value alone when stdin is unknown", () => {
-    expect(gitArgs("xargs -I{} git -C {} status < repos.txt")).toEqual([["-C", "{}", "status"]]);
+  it("reads {} as a value both as written and as the worst record when stdin is unknown", () => {
+    expect(gitArgs("xargs -I{} git -C {} status < repos.txt")).toEqual([["-C", "{}", "status"], ["-C", "HEAD:main", "status"]]);
   });
 
   it("reads input from a pipe that is not literal as unknown", () => {
