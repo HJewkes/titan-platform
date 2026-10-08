@@ -1,4 +1,6 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +26,7 @@ const ITEMS = [
 
 let dir: string;
 let broker: FakeDaemon | undefined;
+let cleanups: Array<() => Promise<void>> = [];
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-agents-"));
@@ -32,12 +35,14 @@ beforeEach(async () => {
 afterEach(async () => {
   await broker?.close();
   broker = undefined;
+  await Promise.all(cleanups.map((cleanup) => cleanup()));
+  cleanups = [];
   await rm(dir, { recursive: true, force: true });
 });
 
-async function invoke(name: "agents.roster" | "agents.graph", port: number, tokenPath = path.join(dir, "ui.token")) {
+async function invoke(name: "agents.roster" | "agents.graph", port: number, tokenPath = path.join(dir, "ui.token"), doFetch?: typeof fetch) {
   const commands = agentsCommands({
-    broker: brokerReader({ port, tokenPath }),
+    broker: brokerReader({ port, tokenPath, fetch: doFetch }),
     seatPrefixes: [{ seat: "coord-seat", prefix: "coord" }],
     now: () => 10_000,
   });
@@ -46,10 +51,31 @@ async function invoke(name: "agents.roster" | "agents.graph", port: number, toke
   return invokeCommand(registry.get(name)!, {}, { warnings: [], format: "json" });
 }
 
-async function liveBroker(): Promise<number> {
-  await writeFile(path.join(dir, "ui.token"), `${TOKEN}\n`);
-  broker = await startFakeBroker({ token: TOKEN, sessions: SESSIONS, items: ITEMS });
+async function writeToken(token: string, mode = 0o600): Promise<void> {
+  const file = path.join(dir, "ui.token");
+  await writeFile(file, token);
+  // chmod rather than writeFile's mode, which the umask would narrow.
+  await chmod(file, mode);
+}
+
+async function liveBroker(sessions: unknown[] = SESSIONS): Promise<number> {
+  await writeToken(`${TOKEN}\n`);
+  broker = await startFakeBroker({ token: TOKEN, sessions, items: ITEMS });
   return broker.port;
+}
+
+/** A loopback server that redirects every request to the same path on `targetPort`. */
+async function redirectingServer(targetPort: number): Promise<number> {
+  const server = createServer((req, res) => {
+    res.writeHead(307, { location: `http://127.0.0.1:${targetPort}${req.url ?? "/"}` });
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanups.push(() => {
+    server.closeAllConnections();
+    return new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return (server.address() as AddressInfo).port;
 }
 
 describe("agents.roster", () => {
@@ -67,7 +93,7 @@ describe("agents.roster", () => {
   });
 
   it("reports the broker as unavailable when nothing listens", async () => {
-    await writeFile(path.join(dir, "ui.token"), TOKEN);
+    await writeToken(TOKEN);
     const { envelope, exitCode } = await invoke("agents.roster", await closedPort());
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.UNAVAILABLE);
@@ -79,8 +105,37 @@ describe("agents.roster", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/ui token not readable/) });
   });
 
+  it("refuses a token file that group or others can read, before calling the broker", async () => {
+    await writeToken(TOKEN, 0o644);
+    broker = await startFakeBroker({ token: TOKEN, sessions: SESSIONS, items: ITEMS });
+    const { envelope, exitCode } = await invoke("agents.roster", broker.port);
+    expect(exitCode).toBe(EXIT.CONFIG);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/mode 644; refusing it until it is 600/) });
+  });
+
+  it("does not follow a redirect, so the token never reaches another origin", async () => {
+    const port = await liveBroker();
+    const { envelope, exitCode } = await invoke("agents.roster", await redirectingServer(port));
+    expect(envelope.ok).toBe(false);
+    expect(exitCode).toBe(EXIT.UNAVAILABLE);
+  });
+
+  it("classifies a drifted broker body as an unexpected shape", async () => {
+    const { envelope, exitCode } = await invoke("agents.roster", await liveBroker([{ name: 7 }]));
+    expect(exitCode).toBe(EXIT.SOFTWARE);
+    expect(envelope).toMatchObject({ ok: false, error: "agent-chat broker /api/sessions answered an unexpected shape" });
+  });
+
+  it("classifies a non-JSON broker body as an unexpected shape", async () => {
+    await writeToken(TOKEN);
+    const notJson: typeof fetch = async () => new Response("<html>", { status: 200 });
+    const { envelope, exitCode } = await invoke("agents.roster", 1, undefined, notJson);
+    expect(exitCode).toBe(EXIT.SOFTWARE);
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/answered an unexpected shape$/) });
+  });
+
   it("surfaces a rejected token as unavailable rather than an empty roster", async () => {
-    await writeFile(path.join(dir, "ui.token"), "wrong");
+    await writeToken("wrong");
     broker = await startFakeBroker({ token: TOKEN, sessions: SESSIONS, items: ITEMS });
     const { envelope } = await invoke("agents.roster", broker.port);
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/answered 401/) });
