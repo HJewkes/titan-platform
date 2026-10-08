@@ -18,7 +18,7 @@ type Tied<List extends readonly string[], Union extends string> = [Same<List[num
 const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
-export { PHASES, PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const WatchRowSchema = z.object({

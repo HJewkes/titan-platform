@@ -2,7 +2,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 
 /** The phases a Shepherd run moves through, as `shepherd.list` and `shepherd.timeline` report them; TP-466 section 2 pins them for the UI. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
+const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
 
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
