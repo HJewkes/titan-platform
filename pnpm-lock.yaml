@@ -135,6 +135,9 @@ importers:
 
   apps/console:
     dependencies:
+      '@titan-design/app-paths':
+        specifier: workspace:*
+        version: link:../../packages/app-paths
       '@titan-design/chat-protocol':
         specifier: workspace:^
         version: link:../../packages/chat-protocol
