@@ -282,8 +282,7 @@ and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 A browser imports the report, dashboard, and package-architecture derivations from
 `@titan-design/code-graph/analysis`, which leaves out the root's ts-morph, tree-sitter, and
 SQLite. A test keeps the subpath's import closure free of packages and Node builtins.
-`computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so import it from
-the root, which needs Node.
+`computeSymbolConsumers` and `buildSymbolCouplingPayload` are on it.
 
 ### Dashboard derivations
 
@@ -314,8 +313,7 @@ classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
 
 `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
 node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
-caps symbol coupling at 40 pairs and 15 consumer groups; it ships from the root export only,
-so it needs Node.
+caps symbol coupling at 40 pairs and 15 consumer groups, and is on the same subpath.
 
 ### Unused exports and dead modules
 
