@@ -20,12 +20,18 @@ interface Exhaustion {
   alerted: boolean;
 }
 
+/** The `accountHoldReason` prefix as a LIKE pattern; it holds no wildcard but the trailing one. */
+const ACCOUNT_HOLD_LIKE = "account-exhausted: %";
+
 interface Row {
   resets_at: number | null;
   alerted_at: string | null;
 }
 
-/** Which reviewer accounts are out of usage, and whether their seat was told; in the factory database, so a restart keeps both. */
+/**
+ * Which reviewer accounts are out of usage, and whether their seat was told, in the factory database so a restart keeps both;
+ * and the run hold an exhausted account places, which never touches a hold anyone else placed.
+ */
 export class AccountLimitStore {
   constructor(
     private readonly db: Db,
@@ -64,6 +70,22 @@ export class AccountLimitStore {
   /** Undoes a claim whose alert did not go out. */
   unclaimAlert(configDir: string): void {
     this.db.prepare("UPDATE shepherd_account_limit SET alerted_at = NULL WHERE config_dir = ?").run(configDir);
+  }
+
+  /** Holds the run for an exhausted account unless something else already holds it; an owner's own hold is never overwritten. True when the run is held for `reason` now. */
+  holdRun(runId: string, reason: string): boolean {
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND (held = 0 OR hold_reason LIKE ?)")
+      .run(reason, this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
+    return changed === 1;
+  }
+
+  /** Compare-and-swap: releases only a hold an exhausted account placed, so an owner hold placed since stays. */
+  releaseRun(runId: string): boolean {
+    const changed = this.db
+      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason LIKE ?")
+      .run(this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
+    return changed === 1;
   }
 
   /** An owner's release vouches for the account, so its exhaustion ends now. */

@@ -202,9 +202,6 @@ const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
 const REFS_HEADS = "refs/heads/";
 
-/** The `accountHoldReason` prefix as a LIKE pattern; it holds no wildcard but the trailing one. */
-const ACCOUNT_HOLD_LIKE = "account-exhausted: %";
-
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
@@ -296,22 +293,6 @@ export class ShepherdStore implements HoldLookup {
     return this.setHeld(runId, false, null, null);
   }
 
-  /** Holds the run for an exhausted account unless something else already holds it; an owner's own hold is never overwritten. True when the run is held for `reason` now. */
-  holdForAccount(runId: string, reason: string): boolean {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND (held = 0 OR hold_reason LIKE ?)")
-      .run(reason, this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
-    return changed === 1;
-  }
-
-  /** Compare-and-swap: releases only a hold an exhausted account placed, so an owner hold placed since stays. */
-  releaseAccountHold(runId: string): boolean {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason LIKE ?")
-      .run(this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
-    return changed === 1;
-  }
-
   /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
   satisfyHold(runId: string, reviewer: string, head: string, by: Omit<HoldSatisfiedBy, "reviewer">): boolean {
     const satisfiedBy = JSON.stringify(HoldSatisfiedBySchema.parse({ ...by, reviewer }));
@@ -347,9 +328,7 @@ export class ShepherdStore implements HoldLookup {
   }
 
   /** The reviewer accounts' usage limits, in the same database; the table comes from `accountLimitMigration`. */
-  accountLimits(): AccountLimitStore {
-    return new AccountLimitStore(this.db, this.now);
-  }
+  readonly accountLimits = (): AccountLimitStore => new AccountLimitStore(this.db, this.now);
 
   /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */
   recordAuthor(runId: string, agent: AuthorInput): void {

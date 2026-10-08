@@ -229,7 +229,8 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
   if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
-    run.reviews.set(headSha, verdict);
+    // An account hold is no review: the round it ends reads the head again and reviews it once the hold lifts.
+    if (verdict.kind !== "none" || verdict.cause !== "account-exhausted") run.reviews.set(headSha, verdict);
     const observed = await observePr(run.ctx, run.target, headSha);
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
     const routed: Routed = { headSha, verdict, observed, outcome, route: recordedRoute(run.ctx, headSha, routeFor(observed.runState, observed.mergeableState, outcome)) };
@@ -269,8 +270,6 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   switch (route) {
     case "merge":
       return true;
-    case "await-account":
-      return reviewAgain(run, headSha);
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":
@@ -284,16 +283,11 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       throw new LeaveLand(endedOutcome(routed));
     case "update-branch":
     case "new-cycle":
+    case "await-account":
       // A head behind a moved base lands as it stands, so only a MERGE verdict may take it to the merge decision.
       if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
-}
-
-/** The account hold already waited inside the review; a new round reads the head as it is now and reviews it again. */
-function reviewAgain(run: ShepherdRun, headSha: string): never {
-  run.reviews.delete(headSha);
-  throw new LeaveLand();
 }
 
 function endedOutcome({ observed, headSha }: Routed): LandOutcome {

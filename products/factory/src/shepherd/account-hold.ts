@@ -75,14 +75,13 @@ async function alertOnce(limits: AccountLimitStore, accounts: AccountsView, inpu
 }
 
 async function decideHold(deps: ShepherdDeps, accounts: AccountsView, input: HoldInput): Promise<Held> {
-  const store = deps.store.get();
-  const limits = store.accountLimits();
+  const limits = deps.store.get().accountLimits();
   const resetsAt = noteLimit(limits, input, deps.now())?.resetsAt ?? null;
   await alertOnce(limits, accounts, input, resetsAt);
   const next = usableAccount(limits, accounts.dirs);
   if (next !== undefined) return { held: false, own: false, reason: `the review account ${input.account} is exhausted; the review moves to ${next}` };
   const reason = accountHoldReason(input.account, resetsAt);
-  return { held: true, own: store.holdForAccount(input.runId, reason), reason };
+  return { held: true, own: limits.holdRun(input.runId, reason), reason };
 }
 
 /** Fails closed: a store that cannot be read still holds the run, with an unknown reset. */
@@ -97,7 +96,7 @@ async function holdOrFailClosed(deps: ShepherdDeps, accounts: AccountsView, inpu
 
 function tryHold(deps: ShepherdDeps, runId: string, reason: string): boolean {
   try {
-    return deps.store.get().holdForAccount(runId, reason);
+    return deps.store.get().accountLimits().holdRun(runId, reason);
   } catch {
     return false;
   }
@@ -116,8 +115,8 @@ function released(deps: ShepherdDeps, input: WaitInput): boolean {
 /** Headroom on any account ends the wait and lifts this run's own hold; a release, or a PR that moved on, ends it too. */
 async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput): Promise<Waited["resumed"] | undefined> {
   if (released(deps, input)) return "released";
-  const store = deps.store.get();
-  if (usableAccount(store.accountLimits(), accounts.dirs) !== undefined) return (store.releaseAccountHold(input.runId), "headroom");
+  const limits = deps.store.get().accountLimits();
+  if (usableAccount(limits, accounts.dirs) !== undefined) return (limits.releaseRun(input.runId), "headroom");
   const pr = await deps.port.getPr(input.repo, input.pr);
   return pr.headSha !== input.head || pr.state !== "open" ? "head-moved" : undefined;
 }
