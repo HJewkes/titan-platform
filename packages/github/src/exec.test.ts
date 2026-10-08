@@ -1,11 +1,13 @@
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execGh } from "./exec.js";
 
-const MARKER = "tp564-fake-gh-sleeper";
+// Per-run so a concurrent run of this suite on the same host cannot count or kill our sleepers via host-wide pgrep/pkill.
+const MARKER = `tp564-fake-gh-sleeper-${process.pid}-${randomBytes(4).toString("hex")}`;
 const dirs: string[] = [];
 const savedPath = process.env.PATH;
 
