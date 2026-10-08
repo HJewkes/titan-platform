@@ -98,9 +98,9 @@ async function retryRead<R>(attempt: () => Promise<R>, sleep: (ms: number) => Pr
   return attempt();
 }
 
-const CONNECTION_FAILURE = /error connecting|connection (reset|refused)|timed? ?out|ECONN|ETIMEDOUT|EOF|no such host|temporary failure/i;
+const CONNECTION_FAILURE = /error connecting|connection (reset|refused)|timed? ?out|ECONN|ETIMEDOUT|EOF|no such host|temporary failure|unexpected end of JSON input/i;
 
-function isTransient(error: unknown): boolean {
+export function isTransient(error: unknown): boolean {
   if (error instanceof SyntaxError) return true;
   if (!(error instanceof GhError)) return false;
   if (error.status !== undefined) return error.status >= 500;

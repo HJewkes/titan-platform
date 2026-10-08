@@ -7,6 +7,8 @@ import { acceptExternalVerdict, externalReviewer, latestSession } from "./extern
 import type { FreezeGuard } from "./freeze.js";
 import { provablyIndependent, type ReviewerAgent, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
+import { openOrRead } from "./snapshot-reads.js";
+import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import { namesPr } from "./verdict-target.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
@@ -104,10 +106,11 @@ export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
   };
 }
 
-export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard, satisfy?: HoldSatisfier): HeldCheck {
+/** `snapshot` serves the PR read of a wait; the merge itself goes through `holdingPort`, which reads the PR from the port. */
+export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard, satisfy?: HoldSatisfier, snapshot?: PrSnapshot): HeldCheck {
   return async (repo, pr, sha) => {
     const lookup = holds();
-    const { headRef, baseRef, state, merged, headSha } = await port.getPr(repo, pr);
+    const { headRef, baseRef, state, merged, headSha } = await openOrRead(port, snapshot, repo, pr);
     if (merged || state === "closed") return undefined;
     const at = sha === undefined || sha === headSha ? headSha : undefined;
     if (at !== undefined) await satisfy?.(repo, pr, at, baseRef);

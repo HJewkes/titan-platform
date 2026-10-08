@@ -14,12 +14,14 @@ export interface PrReads {
 export interface PrSnapshot extends PrReads {
   /** Drops what the snapshot holds for `repo`; call it after a write there, so the next read sees the write. */
   invalidate(repo: RepoSlug): void;
+  /** The repo's open PRs as of this tick's list read, which carries no `behind` or `mergeableState`; a PR missing from it is not open or is newer than the list. */
+  openPrs(repo: RepoSlug): Promise<PullRequest[]>;
 }
 
 interface PrSnapshotOptions {
   now?: () => number;
   /** One conditional open-list read per repo per tick. */
-  tickMs?: number;
+  tickMs?: number | (() => number);
   /** How often a pending head's check runs, or an unsettled mergeable state, are read again. */
   pendingMs?: number;
   /** How long a settled read is trusted: the backstop for a base push that changes no open PR. */
@@ -32,7 +34,7 @@ const SNAPSHOT_SETTLED_MS = 30 * 60_000;
 
 interface Timing {
   now: () => number;
-  tickMs: number;
+  tickMs: () => number;
   pendingMs: number;
   settledMs: number;
 }
@@ -62,7 +64,7 @@ interface RepoState {
 }
 
 export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): PrSnapshot {
-  const timing: Timing = { now: options.now ?? Date.now, tickMs: options.tickMs ?? SNAPSHOT_TICK_MS, pendingMs: options.pendingMs ?? SNAPSHOT_PENDING_MS, settledMs: options.settledMs ?? SNAPSHOT_SETTLED_MS };
+  const timing: Timing = { now: options.now ?? Date.now, tickMs: tickReader(options.tickMs), pendingMs: options.pendingMs ?? SNAPSHOT_PENDING_MS, settledMs: options.settledMs ?? SNAPSHOT_SETTLED_MS };
   const repos = new Map<string, RepoState>();
   const stateOf = (repo: RepoSlug): RepoState => {
     const key = repo.toLowerCase();
@@ -72,13 +74,16 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
   return {
     getPr: async (repo, number) => snapshotPr(port, timing, repo, await listed(port, timing, repo, stateOf(repo)), number),
     checkRuns: async (repo, sha, settled) => snapshotRuns(port, timing, repo, stateOf(repo), sha, settled),
+    openPrs: async (repo) => [...(await listed(port, timing, repo, stateOf(repo))).list!.rows.values()].map((pr) => ({ ...pr })),
     invalidate: (repo) => void repos.delete(repo.toLowerCase()),
   };
 }
 
+const tickReader = (tickMs: number | (() => number) = SNAPSHOT_TICK_MS): (() => number) => (typeof tickMs === "number" ? () => tickMs : tickMs);
+
 /** Concurrent readers of one repo share one list read per tick. */
 async function listed(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState): Promise<RepoState> {
-  if (state.list && timing.now() - state.list.at < timing.tickMs) return state;
+  if (state.list && timing.now() - state.list.at < timing.tickMs()) return state;
   state.listing ??= refreshList(port, timing, repo, state).finally(() => (state.listing = undefined));
   await state.listing;
   return state;

@@ -122,6 +122,112 @@ describe("handle: failure policy", () => {
     expect(plain).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
   });
 
+  it("denies a protected push that a chain of dynamic wrapper words follows", async () => {
+    const result = await handle(bash(`git push origin HEAD:main; ${"timeout $T 5 ".repeat(9)}true`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("denies a protected push behind a chain of dynamic wrapper words", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(9)}git push origin HEAD:main`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  it("denies a command with more dynamic wrapper readings than it checks, and says to split it", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(400)}git push origin HEAD:feat/x`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toMatch(/variables in wrapper positions/);
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  });
+
+  it.each([
+    ["first", `git push origin HEAD:main; ${"sudo $a ".repeat(600)}true`],
+    ["last", `${"sudo $a ".repeat(600)}true; git push origin HEAD:main`],
+  ])("denies a script past the reading budget that xargs runs, with the push %s", async (_where, script) => {
+    const context = { ...nodeContext(HOME, fakeFs()), readScript: (p: string) => (p === `${REPO}/pad1.sh` ? script : null) };
+
+    const result = await handle(bash("printf 'pad1.sh\\n' | xargs -J % bash %"), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  const PUSH = "git push origin HEAD:main\n";
+  const PAD = "echo hi; ".repeat(7000);
+  it.each([
+    ["timeout $P . a.sh", "first", PUSH + PAD],
+    ["timeout $P . a.sh", "last", PAD + PUSH],
+    ["timeout $P source a.sh", "first", PUSH + PAD],
+    ["timeout $P source a.sh", "last", PAD + PUSH],
+    ["timeout $P bash a.sh", "first", PUSH + PAD],
+    ["timeout $P bash a.sh", "last", PAD + PUSH],
+  ])("denies `%s` running a 63 KB script with the push %s, case folding on", async (line, _where, script) => {
+    const context = { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
+
+    const result = await handle(bash(line), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  }, 30_000);
+
+  const pads = (...names: string[]) => {
+    const readScript = (p: string) => (names.some((n) => p === `${REPO}/${n}`) ? PAD : null);
+    return { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript };
+  };
+  const MAIN = "git push origin HEAD:main";
+  it.each([
+    `sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh; ${MAIN}`,
+    `$b a1.sh; $b a2.sh; $b a3.sh; $b a4.sh; ${MAIN}`,
+    `timeout $O 5 timeout $P a1.sh a2.sh; env $E a3.sh; nohup $a a4.sh; ${MAIN}`,
+    `${MAIN}; timeout $O 5 timeout $P a1.sh a2.sh; env $E a3.sh; nohup $a a4.sh`,
+    `sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; ${MAIN}`,
+    `sh -c 'sudo $a a1.sh; sh -c "sudo \\$a a2.sh"'; ${MAIN}`,
+    `xargs sudo $a a1.sh; xargs sudo $a a2.sh; ${MAIN}`,
+  ])("denies `%s`, each script 63 KB, case folding on", async (line) => {
+    const result = await handle(bash(line), {}, port({ context: pads("a1.sh", "a2.sh", "a3.sh", "a4.sh") }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.oversize"]);
+  }, 30_000);
+
+  it("reads four distinct scripts behind dynamic wrappers when together they are small", async () => {
+    const small: Record<string, string> = { a1: "echo hi; ".repeat(200), a2: "echo hi; ".repeat(200), a3: "echo hi; ".repeat(200), a4: MAIN };
+    const context = { ...nodeContext(HOME, fakeFs()), foldCase: true, readScript: (p: string) => small[path.basename(p, ".sh")] ?? null };
+
+    const result = await handle(bash("sudo $a a1.sh; sudo $a a2.sh; sudo $a a3.sh; sudo $a a4.sh"), {}, port({ context }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("denies a line whose scripts together pass the budget, and says to run each in its own command", async () => {
+    const result = await handle(bash("bash a1.sh; bash a2.sh"), {}, port({ context: pads("a1.sh", "a2.sh") }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toMatch(/run a2\.sh in its own command/);
+    expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "oversize", "bash.oversize"]);
+  }, 30_000);
+
+  it("reads a 63 KB script run twice with no switch between once, and denies the push after it", async () => {
+    const result = await handle(bash(`. a1.sh; . a1.sh; ${MAIN}`), {}, port({ context: pads("a1.sh") }));
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  }, 30_000);
+
+  it("denies a 63 KB script run again after a branch switch as past the budget", async () => {
+    const result = await handle(bash(`. a1.sh; git checkout feat/y && . a1.sh; ${MAIN}`), {}, port({ context: pads("a1.sh") }));
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.oversize"]);
+  }, 30_000);
+
+  it("passes a command past the reading budget under the bypass and logs it", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
+
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
+  });
+
   it("denies a credential read padded past the size cap without classifying it", async () => {
     const padded = `${"x ".repeat(20_000)}; cat ~/.npmrc`;
     const start = performance.now();
@@ -324,4 +430,106 @@ describe("nodeContext over a real temp directory", () => {
 
     expect(decisionOf(stdout)).toBe("deny");
   });
+});
+
+describe("handle over real script files behind dynamic wrapper words, case folding on", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const fill = (unit: string, bytes: number) => unit.repeat(Math.ceil(bytes / unit.length)).slice(0, bytes);
+  const PATHS = "/a /b /c /d /e /f /g /h ";
+  const MAIN = "git push origin HEAD:main";
+  /** Well inside Claude Code's 5 s hook timeout, past which the command runs unchecked. */
+  const WITHIN_MS = 2000;
+
+  /** Runs `command` from a checkout on feat/x that holds `files`, read through the real filesystem. */
+  async function inRepo(command: string, files: Record<string, string>) {
+    const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "tool-guard-home-")));
+    dirs.push(home);
+    const repo = path.join(home, "app");
+    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(repo, ".git/HEAD"), "ref: refs/heads/feat/x\n");
+    for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(repo, name), text);
+    return handle(bash(command, { cwd: repo }), {}, port({ context: { ...nodeContext(home), foldCase: true } }));
+  }
+
+  it.each([
+    ["python3", "a.py", 64 * 1024],
+    ["node", "a.js", 32 * 1024],
+  ])("denies a push after `sudo $a %s` running a script of paths", async (interpreter, script, bytes) => {
+    const start = performance.now();
+
+    const result = await inRepo(`sudo $a ${interpreter} ${script}; ${MAIN}`, { [script]: fill(PATHS, bytes) });
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+  });
+
+  it("denies a push after `sudo $a b.sh` and 8 KB of reads, b.sh 8 KiB of reads", async () => {
+    const start = performance.now();
+
+    const result = await inRepo(`sudo $a b.sh; ${fill("cat x; ", 8000)}${MAIN}`, { "b.sh": fill("cat x\n", 8192) });
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(performance.now() - start).toBeLessThan(WITHIN_MS);
+  });
+
+  it("passes a lone `$SUDO ./install.sh` of 12 KB, as main does", async () => {
+    const result = await inRepo("$SUDO ./install.sh", { "install.sh": fill("echo installing\n", 12_000) });
+
+    expect(result).toEqual({ stdout: "", log: [] });
+  });
+
+  it("refuses a large script behind a dynamic wrapper with the limit, its size and a command that passes", async () => {
+    const files = { "install.sh": fill("echo installing\n", 40_000) };
+
+    const refused = await inRepo("$SUDO ./install.sh", files);
+    const advised = await inRepo("sudo ./install.sh", files);
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/16 KiB.*install\.sh holds 40 KiB.*write the wrapper out/);
+    expect(advised).toEqual({ stdout: "", log: [] });
+  });
+
+  const INSTALL = "$SUDO cp ./etc/a.conf /etc/a.conf\n".repeat(176);
+  const STATUS = "timeout $T git status\n".repeat(181);
+  it.each([
+    ["./inst.sh", { "inst.sh": INSTALL }],
+    ["sudo ./inst.sh", { "inst.sh": INSTALL }],
+    ["bash ./tmo.sh", { "tmo.sh": STATUS }],
+  ])("passes `%s`, a lone script of more dynamic wrapper words than a line may hold, as main does", async (command, files) => {
+    const result = await inRepo(command, files);
+
+    expect(result).toEqual({ stdout: "", log: [] });
+  });
+
+  it("refuses a line of more dynamic wrapper words than it checks, and the script file it advises then passes", async () => {
+    const steps = "$S cp a b\n".repeat(171);
+
+    const refused = await inRepo(steps.replaceAll("\n", "; "), {});
+    const advised = await inRepo("./steps.sh", { "steps.sh": steps });
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/write the steps to a script file and run that/);
+    expect(advised).toEqual({ stdout: "", log: [] });
+  });
+
+  it("still denies a push in a script after more dynamic wrapper words than a line may hold", async () => {
+    const result = await inRepo("./steps.sh", { "steps.sh": `${"$S cp a b\n".repeat(171)}${MAIN}\n` });
+
+    expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.merge.git-push-protected"]);
+  });
+
+  it("refuses scripts past the line's budget, names the script to split off, and each half then passes", async () => {
+    const files = { "a1.sh": fill("echo hi\n", 34 * 1024), "a2.sh": fill("echo hi\n", 34 * 1024) };
+
+    const refused = await inRepo("bash a1.sh; bash a2.sh", files);
+    const halves = [await inRepo("bash a1.sh", files), await inRepo("bash a2.sh", files)];
+
+    expect(decisionOf(refused.stdout)).toBe("deny");
+    expect(refused.stdout).toMatch(/64 KiB.*reach 68 KiB at a2\.sh.*run a2\.sh in its own command/);
+    expect(halves).toEqual([{ stdout: "", log: [] }, { stdout: "", log: [] }]);
+  }, 30_000);
 });

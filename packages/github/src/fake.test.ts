@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeGitHub, fakeSha } from "./fake.js";
+import { FakeHttpError, fakeGitHub, fakeSha } from "./fake.js";
 import { GitHubConflictError, githubPort } from "./port.js";
 
 const REPO = "octo/demo";
@@ -86,6 +86,38 @@ describe("check-then-act port over the fake", () => {
 
     expect([done, moved, upToDate]).toEqual([{ done: true }, { done: false, skipped: "head-moved" }, { done: false, skipped: "up-to-date" }]);
     expect(fake.effects.updateBranch).toBe(1);
+  });
+
+  it("updateBranch continues after one empty-body failure and sends the PUT twice", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, behind: true });
+    fake.updateBranchFaults = [{ error: new SyntaxError("Unexpected end of JSON input") }];
+
+    const result = await githubPort(fake.wire).updateBranch(REPO, pr.number, H1);
+
+    expect(result).toEqual({ done: true });
+    expect(fake.updateBranchFaults).toEqual([]);
+    expect(fake.effects.updateBranch).toBe(1);
+  });
+
+  it("updateBranch reads a retry's 422 head mismatch as done when the first PUT landed", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, behind: true });
+    fake.updateBranchFaults = [{ error: new FakeHttpError(502, "bad gateway"), lands: true }];
+
+    const result = await githubPort(fake.wire).updateBranch(REPO, pr.number, H1);
+
+    expect(result).toEqual({ done: true });
+    expect(fake.effects.updateBranch).toBe(1);
+  });
+
+  it("updateBranch rethrows the original error when both PUTs fail", async () => {
+    const fake = fakeGitHub();
+    const pr = fake.addPr({ headSha: H1, behind: true });
+    const first = new SyntaxError("Unexpected end of JSON input");
+    fake.updateBranchFaults = [{ error: first }, { error: new FakeHttpError(500, "boom") }];
+
+    await expect(githubPort(fake.wire).updateBranch(REPO, pr.number, H1)).rejects.toBe(first);
   });
 
   it("rerunFailed does nothing while the run is already re-running", async () => {

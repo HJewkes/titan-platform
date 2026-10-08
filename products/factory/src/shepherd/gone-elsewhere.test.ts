@@ -6,6 +6,7 @@ import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import { prSnapshot } from "../workflows/pr-snapshot.js";
 import { CLOSED_ELSEWHERE, LANDED_ELSEWHERE, endRunsGoneElsewhere } from "./gone-elsewhere.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -17,11 +18,12 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const H1 = fakeSha("gone-head");
 
 /** Two owner-gated PRs, each waiting on approve-merge. */
-async function gatedRuns(): Promise<{ host: FactoryHost; fake: FakeGitHub; runs: string[]; services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]> }> {
+async function gatedRuns(withSnapshot = false): Promise<{ host: FactoryHost; fake: FakeGitHub; runs: string[]; services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]> }> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const port = githubPort(fake.wire);
+  const routes = factoryRoutesFor({ port, ...(withSnapshot && { snapshot: prSnapshot(port, { now: () => 0 }) }), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
   const phases = { wake: async () => ({ kind: "unhandled" as const, reason: "test" }), review: async (_ctx: unknown, request: { headSha: string }) => ({ kind: "MERGE" as const, headSha: request.headSha, evidence: {} }) };
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);
@@ -48,6 +50,20 @@ describe("endRunsGoneElsewhere", () => {
     expect(host.gates.get(gateId(runs[0]!, "approve-merge"))?.status).toBe("cancelled");
     expect(host.runtime.status(runs[1]!)?.status).toBe("paused");
     expect(host.gates.get(gateId(runs[1]!, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("reads open PRs from the snapshot with no getPr call, and still reads a merged one from the port", async () => {
+    const { host, fake, runs, services } = await gatedRuns(true);
+    const before = fake.calls.filter((call) => call === "getPr").length;
+    await endRunsGoneElsewhere(host, services);
+    await endRunsGoneElsewhere(host, services);
+    expect(fake.calls.filter((call) => call === "getPr").length - before).toBe(0);
+
+    Object.assign(fake.pr(1), { merged: true, state: "closed" });
+    services.snapshot!.invalidate(REPO);
+    const ended = await endRunsGoneElsewhere(host, services);
+
+    expect(ended).toEqual([{ runId: runs[0], reason: `${LANDED_ELSEWHERE}${REPO}#1 was merged outside Shepherd` }]);
   });
 
   it("ends a gated run whose PR was closed without a merge", async () => {

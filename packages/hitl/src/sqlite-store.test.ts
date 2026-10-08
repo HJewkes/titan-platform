@@ -3,7 +3,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteGateStore, gateBriefMigration, gateMigration, gateResolverMigration, gateRuleMigration } from "./sqlite-store.js";
+import {
+  SqliteGateStore,
+  gateBriefMigration,
+  gateDelegateMigration,
+  gateEvidenceMigration,
+  gateMigration,
+  gateResolverMigration,
+  gateRuleMigration,
+} from "./sqlite-store.js";
 import { GateAlreadySettled, GateExpired, GateStoreSchemaOutdated, type GateQuestion, type GateResolver, type GateRule } from "./types.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner-fixture", channel: "test-cli" };
@@ -214,7 +222,7 @@ describe("a store whose table predates the resolver column", () => {
     runMigrations(db, [gateMigration(1), gateRuleMigration(3)]);
     new SqliteGateStore(db).create({ id: "g1", prompt: "release?", rule: TERMINAL_ONLY });
     const versions = db.prepare("SELECT version FROM _migration ORDER BY version").all();
-    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
+    expect(versions).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
     expect(() => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(REMOTE), "g1")).toThrow("hitl: resolver outside the gate rule");
   });
 });
@@ -593,5 +601,89 @@ describe("a store whose table predates the brief columns", () => {
     const construct = () => new SqliteGateStore(db, { migrate: false, requireBrief: true });
 
     expect(construct).toThrow(expect.objectContaining({ name: "GateStoreSchemaOutdated", gateId: "", migration: "gateBriefMigration" }));
+  });
+});
+
+describe("gateDelegateMigration", () => {
+  const COORDINATOR: GateResolver = { class: "coordinator", id: "tc-fixture", channel: "test-cli" };
+  const DELEGATING: GateRule = { ...TERMINAL_ONLY, delegates: ["coordinator"] };
+  const ALLOW = () => ({ allowed: true }) as const;
+  const v5 = () => [gateMigration(1), gateResolverMigration(2), gateRuleMigration(3), gateBriefMigration(4), gateEvidenceMigration(5)];
+
+  function v6Db(): Db {
+    const db = open();
+    runMigrations(db, [...v5(), gateDelegateMigration(6)]);
+    return db;
+  }
+
+  function insertPending(db: Db, id: string, rule: unknown): void {
+    db.prepare(RAW_INSERT).run(id, null, null, JSON.stringify(rule), "pending");
+  }
+
+  const rawResolve = (db: Db, id: string, resolver: GateResolver) => () => db.prepare(RAW_RESOLVE).run(T_SETTLED, JSON.stringify(resolver), id);
+
+  it("a database at version 5 upgrades, and a coordinator its row's rule names in delegates then resolves", () => {
+    const db = open();
+    runMigrations(db, v5());
+    insertPending(db, "g1", DELEGATING);
+    expect(rawResolve(db, "g1", COORDINATOR)).toThrow("hitl: resolver outside the gate rule");
+
+    const store = new SqliteGateStore(db, { authorize: ALLOW });
+
+    expect(store.resolve("g1", "yes", COORDINATOR)).toMatchObject({ status: "resolved", resolvedBy: COORDINATOR, rule: DELEGATING });
+    expect(db.prepare("SELECT max(version) AS v FROM _migration").get()).toEqual({ v: 6 });
+  });
+
+  it("the trigger admits only a class the row's own rule names in delegates", () => {
+    const db = v6Db();
+    insertPending(db, "named", DELEGATING);
+    insertPending(db, "unnamed", TERMINAL_ONLY);
+
+    expect(rawResolve(db, "unnamed", COORDINATOR)).toThrow("hitl: resolver outside the gate rule");
+    rawResolve(db, "named", COORDINATOR)();
+
+    expect(rawRow(db, "named").status).toBe("resolved");
+  });
+
+  it.each(["worker", "headless", "automation"] as const)("a direct UPDATE by %s aborts, even on a row whose rule names it in delegates", (actorClass) => {
+    const db = v6Db();
+    insertPending(db, "g1", { ...TERMINAL_ONLY, delegates: ["coordinator", actorClass] });
+    const resolver: GateResolver = { class: actorClass, id: "x-fixture", channel: "test-cli" };
+
+    expect(rawResolve(db, "g1", resolver)).toThrow("hitl: resolver outside the gate rule");
+    expect(() => new SqliteGateStore(db, { authorize: ALLOW }).resolve("g1", "yes", resolver)).toThrow("may not resolve a gate");
+  });
+
+  it("a pending row's delegates cannot be widened by UPDATE or REPLACE", () => {
+    const db = v6Db();
+    insertPending(db, "g1", TERMINAL_ONLY);
+    const widened = JSON.stringify(DELEGATING);
+
+    expect(() => db.prepare(`UPDATE "hitl_gate" SET rule = ? WHERE id = 'g1'`).run(widened)).toThrow("hitl: resolver outside the gate rule");
+    expect(() => db.prepare(RAW_REPLACE).run("g1", T_SETTLED, JSON.stringify(COORDINATOR), widened, "resolved")).toThrow(
+      "hitl: a pending rule-bound gate cannot be replaced",
+    );
+    expect(rawRow(db, "g1")).toMatchObject({ status: "pending", rule: RULE_JSON });
+  });
+
+  it("a later resolver migration keeps the delegate-aware triggers", () => {
+    const db = open();
+    runMigrations(db, [gateMigration(1), gateRuleMigration(2), gateDelegateMigration(3), gateResolverMigration(4)]);
+    insertPending(db, "g1", DELEGATING);
+
+    rawResolve(db, "g1", COORDINATOR)();
+
+    expect(rawRow(db, "g1").status).toBe("resolved");
+  });
+
+  it("a store refuses a gate with delegates on a table without gateDelegateMigration", () => {
+    const db = open();
+    runMigrations(db, v5());
+    const store = new SqliteGateStore(db, { migrate: false });
+
+    expect(() => store.create({ id: "g1", prompt: "merge?", rule: DELEGATING })).toThrow(
+      expect.objectContaining({ name: "GateStoreSchemaOutdated", gateId: "g1", migration: "gateDelegateMigration" }),
+    );
+    expect(store.get("g1")).toBeUndefined();
   });
 });
