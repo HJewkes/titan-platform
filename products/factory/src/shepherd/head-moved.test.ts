@@ -73,10 +73,21 @@ async function gatedAtSecondHead(): Promise<Scenario> {
 }
 
 /** Every review is silent, so the run escalates to the owner after its failed rounds at GATED. */
-async function escalatedAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string }> {
+async function escalatedAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string; reviewed: string[] }> {
   const fake = fakeGitHub();
-  const phases: ShepherdPhases = { review: async () => ({ kind: "none" }), wake: async () => ({ kind: "unhandled", reason: "test" }) };
-  return { ...(await gatedRun(fake, phases, { headSha: GATED })), fake };
+  const reviewed: string[] = [];
+  const phases: ShepherdPhases = { review: async (_ctx, request) => (reviewed.push(request.headSha), { kind: "none", cause: "no-verdict", reason: "no_block" }), wake: async () => ({ kind: "unhandled", reason: "test" }) };
+  return { ...(await gatedRun(fake, phases, { headSha: GATED })), fake, reviewed };
+}
+
+/** Two FIX_FIRST reviews in a row whose Closer line says no, at SENT_BACK and then at the fixer's GATED: the route table asks the owner at GATED. */
+async function noProgressAtGated(): Promise<{ host: FactoryHost; fake: FakeGitHub; services: Services; runId: string }> {
+  const fake = fakeGitHub();
+  const phases: ShepherdPhases = {
+    review: async (_ctx, request) => ({ kind: "FIX_FIRST", headSha: request.headSha, text: "synthetic finding", closer: "no" }),
+    wake: async () => (fake.pushHead(1, GATED), { kind: "woken", agent: "impl-a" }),
+  };
+  return { ...(await gatedRun(fake, phases, { headSha: SENT_BACK })), fake };
 }
 
 /** A conflict that survives the fixer's push to GATED asks the owner at GATED. */
@@ -187,13 +198,13 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("cancelled");
   });
 
-  it("leaves an escalation gate at an old head with the owner when the head moves", async () => {
-    const { host, fake, services, runId } = await escalatedAtGated();
+  it("leaves a route gate for a reason other than failed rounds with the owner when the head moves", async () => {
+    const { host, fake, services, runId } = await noProgressAtGated();
     fake.pushHead(1, MOVED);
 
     const superseded = await supersedeMovedGates(host, services);
 
-    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`shepherd-route/failed-rounds`);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${GATED}? CI is green. Policy shepherd-route/no-progress`);
     expect(superseded).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
@@ -256,6 +267,48 @@ async function sentBackUnwoken(): Promise<{ host: FactoryHost; fake: FakeGitHub;
   await gateOpened(host, gateId(runId, "sh-sent-back"));
   return { host, fake, services: routes.shepherd!, runId, reviewed };
 }
+
+describe("a pending shepherd-route failed-rounds approve-merge gate", () => {
+  it("is superseded when the head moves, and the new head is reviewed again", async () => {
+    const { host, fake, services, runId, reviewed } = await escalatedAtGated();
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${GATED}? CI is green. Policy shepherd-route/failed-rounds`);
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: GATED, to: MOVED, condition: "head-moved" }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
+    await vi.waitFor(() => expect(reviewed).toContain(MOVED));
+  });
+
+  it("counts the new head's failed rounds from zero, so the owner is asked again only after three rounds there", async () => {
+    const { host, fake, services, runId, reviewed } = await escalatedAtGated();
+    fake.pushHead(1, MOVED);
+
+    await supersedeMovedGates(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    expect(reviewed).toEqual([GATED, GATED, GATED, MOVED, MOVED, MOVED]);
+    expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}? CI is green. Policy shepherd-route/failed-rounds`);
+  });
+
+  it("a dry run reports it and cancels nothing", async () => {
+    const { host, fake, services, runId } = await escalatedAtGated();
+    fake.pushHead(1, MOVED);
+
+    const superseded = await supersedeMovedGates(host, services, { dryRun: true });
+
+    expect(superseded.map((gate) => gate.gateId)).toEqual([gateId(runId, "approve-merge")]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("is kept while the head it asks about is still the pull request's head", async () => {
+    const { host, services, runId } = await escalatedAtGated();
+
+    expect(await supersedeMovedGates(host, services)).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
 
 describe("a pending shepherd-merge-guard approve-merge gate", () => {
   it("is superseded when the head moves, and the fresh gate at the new head is a guard gate again", async () => {

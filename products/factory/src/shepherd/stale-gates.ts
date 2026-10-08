@@ -1,5 +1,6 @@
 import { GATE_CANCELLED_SIGNAL, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
+import type { Escalated } from "./route-table.js";
 
 const HEAD_GATES = /\/(approve-merge|sh-sent-back)(:\d+)?$/;
 const HEAD_IN_PROMPT = /\bat head ([0-9a-f]{40})\b/;
@@ -36,12 +37,26 @@ export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: st
   return "superseded" in answer ? undefined : answer;
 }
 
-/** An approve-merge gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again. */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview?: string) => Error): WorkflowContext["assisted"] {
+/** An approve-merge gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. */
+export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined) => Error): WorkflowContext["assisted"] {
   return async (stepId, prompt, options = {}) => {
     if (!stepIdMatches("approve-merge", stepId)) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
     if (!("superseded" in answer)) return answer;
-    throw leave(answer.superseded.startsWith(REREVIEW) ? gateHead(prompt) : undefined);
+    const gated = gateHead(prompt);
+    throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated);
   };
+}
+
+/** The run state a superseded approve-merge gate clears. */
+interface SupersededRun {
+  reviews: Map<string, unknown>;
+  escalations: Map<string, Escalated>;
+  failedRounds: number;
+}
+
+/** A re-review drops the head's review; a failed-rounds gate the head moved past hands the owner's question to the new head, whose rounds count afresh or it would gate at once. */
+export function clearSuperseded(run: SupersededRun, rereview: string | undefined, gated: string | undefined): void {
+  if (rereview !== undefined) run.reviews.delete(rereview);
+  else if (gated !== undefined && run.escalations.get(gated)?.escalation === "failed-rounds") run.failedRounds = 0;
 }
