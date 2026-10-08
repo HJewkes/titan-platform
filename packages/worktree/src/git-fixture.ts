@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterAll } from "vitest";
 import { fixtureEnv } from "./test-env.js";
 
 /** Files committed by the seed commit, keyed by path relative to the repository root. */
@@ -24,12 +25,24 @@ const git = (args: string[], cwd: string): void => {
 };
 
 function rootDir(): string {
-  if (templateRoot) return templateRoot;
-  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wt-template-")));
-  process.on("exit", () => fs.rmSync(root, { recursive: true, force: true }));
-  templateRoot = root;
-  return root;
+  templateRoot ??= fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "wt-template-")));
+  return templateRoot;
 }
+
+/** The directory holding this test file's templates, or undefined before the first seed. */
+export function templateDirectory(): string | undefined {
+  return templateRoot;
+}
+
+/** Deletes every template built so far; the next seed builds them again. */
+export function removeTemplates(): void {
+  if (templateRoot) fs.rmSync(templateRoot, { recursive: true, force: true });
+  templateRoot = undefined;
+  templates.clear();
+}
+
+// Each test file loads its own copy of this module, and vitest ends worker threads without emitting `exit`.
+afterAll(removeTemplates);
 
 function buildTemplate(files: SeedFiles): Template {
   const dir = fs.mkdtempSync(path.join(rootDir(), "t-"));
