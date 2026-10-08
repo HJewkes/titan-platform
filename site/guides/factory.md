@@ -226,6 +226,32 @@ payload must match the schema stored with the gate:
 you did not see. `resume` and `factory.gates` print the exact command for each open gate;
 copy the run id and step id from there.
 
+## `gate resolve-batch` {#gate-resolve-batch}
+
+```sh
+titan-factory gate resolve-batch --file batch.jsonl
+titan-factory gate resolve-batch --json '[{"gate":"<runId>/approve-merge","pr":"owner/repo#12","headSha":"<40 hex>"}]'
+```
+
+One owner presence check signs a reviewed list of merge-gate resolves. Every item answers
+`merge` at exactly the head it lists. A page or a seat can generate the list. The flow:
+
+1. The whole list is checked first. A malformed line, an unknown or duplicate gate, or a PR that
+   is not the one the gate asks about exits 2 with no dialog.
+2. Release gates (`shepherd-release` merges and `after-stages`) and hardware gates are refused
+   from a batch. They stay one at a time with `gate resolve`.
+3. The numbered list and its digest print before the single Touch ID or password dialog. A
+   cancelled dialog exits 1 and resolves nothing.
+4. The signed batch is recorded in the factory database with every item, before any item fires.
+5. Each item fires through the `gate resolve` path only if its gate is still pending at the
+   listed head, and with Shepherd wired, only if GitHub shows the PR open at that head. An item
+   that moved or closed is skipped and named. Its recorded outcome is `skipped-moved` or
+   `skipped-closed`.
+6. A failed resolve stops the batch. The record shows which items fired, which failed, and which
+   never ran.
+
+The package README has the record's columns and the exact checks.
+
 ## `resume`
 
 ```sh
