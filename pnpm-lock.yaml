@@ -469,6 +469,15 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/pm:
+    devDependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/queue-mirror:
     dependencies:
       '@titan-design/hitl':

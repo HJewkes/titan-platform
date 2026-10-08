@@ -59,6 +59,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | none |
+| [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks | none |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `session-read` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `session-graph`, `session-read`, `store-sqlite` |
