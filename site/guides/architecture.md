@@ -16,136 +16,174 @@ an import against the order. This page takes its tiers from that map. See
 Every edge below is a real `dependencies` entry in a `package.json`, not an aspiration.
 Packages with no outgoing edge depend on nothing from this repo.
 
+<!-- generated:arch-graph start -->
 ```mermaid
 graph TD
   subgraph T0["Tier 0 · primitives and contracts"]
-    storeSqlite["store-sqlite"]
-    locator["locator"]
-    clusterpkg["cluster"]
-    embed["embed"]
     agentProtocol["agent-protocol"]
-    chatProtocol["chat-protocol"]
-    codeParser["code-parser"]
-    rpcProtocol["rpc-protocol"]
-    evidence["evidence"]
+    appPaths["app-paths"]
     authority["authority"]
+    chatProtocol["chat-protocol"]
+    clusterPkg["cluster"]
+    codeParser["code-parser"]
     egressScan["egress-scan"]
+    embed["embed"]
+    eslintPlugin["eslint-plugin"]
+    evidence["evidence"]
     fixProof["fix-proof"]
+    locator["locator"]
+    rpcProtocol["rpc-protocol"]
+    storeSqlite["store-sqlite"]
+    toolGuard["tool-guard"]
   end
   subgraph T1["Tier 1 · engines"]
-    retrieval["retrieval"]
     agent["agent"]
-    registry["registry"]
-    daemon["daemon"]
-    hitl["hitl"]
-    agentLifecycle["agent-lifecycle"]
-    messaging["messaging"]
-    rpcClient["rpc-client"]
-    matrixBus["matrix-bus"]
-    github["github"]
     agentDispatch["agent-dispatch"]
+    agentLifecycle["agent-lifecycle"]
+    agentSurface["agent-surface"]
+    daemon["daemon"]
+    github["github"]
+    hitl["hitl"]
+    matrixBus["matrix-bus"]
+    messaging["messaging"]
+    registry["registry"]
+    retrieval["retrieval"]
+    rpcClient["rpc-client"]
+    worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
-    sessionRead["session-read"]
-    sessionGraph["session-graph"]
     codeGraph["code-graph"]
-    workflow["workflow"]
+    codeRead["code-read"]
+    coordinator["coordinator"]
+    decider["decider"]
     memory["memory"]
-    styleProfile["style-profile"]
+    ownerQueue["owner-queue"]
+    queueMirror["queue-mirror"]
+    reviewPanel["review-panel"]
+    sessionAnalytics["session-analytics"]
+    sessionGraph["session-graph"]
+    sessionRead["session-read"]
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
-    codeRead["code-read"]
-    sessionAnalytics["session-analytics"]
-    queueMirror["queue-mirror"]
+    styleProfile["style-profile"]
+    workflow["workflow"]
   end
   subgraph UI["UI"]
     reactApp["react-app"]
   end
   subgraph P["Products"]
-    sessionMiner["session-miner"]
-    retrievalEval["retrieval-eval"]
-    codewatch["codewatch"]
+    evals["evals"]
     factory["factory"]
+    retrievalEval["retrieval-eval"]
+    sessionMiner["session-miner"]
+    codewatch["codewatch"]
+    console["console"]
   end
 
-  retrieval --> embed
-  retrieval --> storeSqlite
   agent --> agentLifecycle
   agent --> agentProtocol
-  registry --> rpcProtocol
-  daemon --> registry
-  daemon --> rpcProtocol
-  hitl --> authority
-  hitl --> storeSqlite
   agentLifecycle --> agentProtocol
   agentLifecycle --> storeSqlite
-  rpcClient --> rpcProtocol
-  sessionRead --> agentProtocol
-  sessionRead --> locator
-  sessionGraph --> agentProtocol
-  sessionGraph --> clusterpkg
-  sessionGraph --> locator
-  sessionGraph --> sessionRead
-  sessionGraph --> storeSqlite
   codeGraph --> codeParser
   codeGraph --> embed
   codeGraph --> retrieval
   codeGraph --> storeSqlite
-  workflow --> agent
-  workflow --> agentProtocol
-  workflow --> hitl
-  workflow --> storeSqlite
-  memory --> embed
-  memory --> retrieval
-  memory --> storeSqlite
-  styleAnalyzer --> codeParser
-  styleAnalyzer --> styleProfile
-  styleChecker --> styleAnalyzer
-  styleChecker --> styleProfile
   codeRead --> codeGraph
   codeRead --> registry
   codeRead --> rpcProtocol
-  sessionAnalytics --> sessionGraph
-  sessionAnalytics --> storeSqlite
+  daemon --> registry
+  daemon --> rpcProtocol
+  decider --> locator
+  decider --> memory
+  decider --> sessionRead
+  decider --> storeSqlite
+  egressScan --> fixProof
+  hitl --> authority
+  hitl --> storeSqlite
+  memory --> embed
+  memory --> retrieval
+  memory --> storeSqlite
   queueMirror --> hitl
   queueMirror --> matrixBus
   queueMirror --> storeSqlite
   reactApp --> rpcClient
   reactApp --> rpcProtocol
-  sessionMiner --> clusterpkg
+  registry --> rpcProtocol
+  retrieval --> embed
+  retrieval --> storeSqlite
+  reviewPanel --> sessionRead
+  rpcClient --> rpcProtocol
+  sessionAnalytics --> agentProtocol
+  sessionAnalytics --> sessionGraph
+  sessionAnalytics --> sessionRead
+  sessionAnalytics --> storeSqlite
+  sessionGraph --> agentProtocol
+  sessionGraph --> locator
+  sessionGraph --> sessionRead
+  sessionGraph --> storeSqlite
+  sessionRead --> agentProtocol
+  sessionRead --> locator
+  styleAnalyzer --> codeParser
+  styleAnalyzer --> styleProfile
+  styleChecker --> styleAnalyzer
+  styleChecker --> styleProfile
+  toolGuard --> authority
+  workflow --> agent
+  workflow --> agentProtocol
+  workflow --> authority
+  workflow --> hitl
+  workflow --> storeSqlite
+  factory --> agentDispatch
+  factory --> authority
+  factory --> daemon
+  factory --> fixProof
+  factory --> github
+  factory --> hitl
+  factory --> registry
+  factory --> reviewPanel
+  factory --> rpcClient
+  factory --> sessionRead
+  factory --> storeSqlite
+  factory --> workflow
+  factory --> worktree
+  retrievalEval --> appPaths
+  retrievalEval --> embed
+  retrievalEval --> retrieval
+  retrievalEval --> storeSqlite
+  sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
+  sessionMiner --> github
   sessionMiner --> locator
   sessionMiner --> memory
   sessionMiner --> registry
   sessionMiner --> retrieval
+  sessionMiner --> sessionAnalytics
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
-  retrievalEval --> embed
-  retrievalEval --> retrieval
-  retrievalEval --> storeSqlite
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
   codewatch --> rpcProtocol
-  factory --> authority
-  factory --> daemon
-  factory --> github
-  factory --> hitl
-  factory --> registry
-  factory --> sessionRead
-  factory --> storeSqlite
-  factory --> workflow
+  console --> appPaths
+  console --> chatProtocol
+  console --> daemon
+  console --> reactApp
+  console --> registry
+  console --> rpcClient
+  console --> sessionRead
 ```
+<!-- generated:arch-graph end -->
 
 Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
-`session-graph --> session-read` are legal when they remain acyclic. `store-sqlite`,
-`locator`, `cluster`, `embed`, `agent-protocol`, `chat-protocol`, `code-parser`,
-`rpc-protocol`, `evidence`, `authority`, `egress-scan`, `fix-proof`, `messaging`,
-`matrix-bus`, `github`, `agent-dispatch`, and `style-profile` have no titan dependencies at
-all, which is why any of them can be adopted on its own. The
-[package families](/guides/package-families) guide groups the same packages by job.
+`session-graph --> session-read` are legal when they remain acyclic.
+
+<!-- generated:arch-leaves start -->
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `coordinator`, `owner-queue`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+<!-- generated:arch-leaves end -->
+
+The [package families](/guides/package-families) guide groups the same packages by job.
 
 Two units sit outside the graph. `codewatch` also depends on `@titan-design/react-ui`, the
 design system published from a separate repository. `deploy/hub` is a workspace member that
@@ -188,13 +226,17 @@ is.
 those live in the separate `@titan-design/react-ui` design system.
 
 **Products.** Thin. A product owns its surface wiring — commander, MCP transports, its own
-command definitions — and gets everything else from the tiers. There are four in the
-`product` tier: `session-miner`, `retrieval-eval`, `factory`, and the `codewatch` app.
-Each has a usage guide under [Guides](/guides/#running-the-products).
+command definitions — and gets everything else from the tiers.
+
+<!-- generated:arch-products start -->
+The `product` tier holds six units: `evals`, `factory`, `retrieval-eval`, `session-miner`, and the `codewatch` and `console` apps.
+<!-- generated:arch-products end -->
+
+The usage guides are under [Guides](/guides/#running-the-products).
 
 ## What a product actually looks like
 
-The session miner composes ten packages and is roughly a thousand lines of its own code.
+The session miner composes <!-- generated:miner-count start -->twelve<!-- generated:miner-count end --> packages and is roughly a thousand lines of its own code.
 Its structure generalises: one context type, one registry, one binding of the daemon, and a
 set of commands.
 

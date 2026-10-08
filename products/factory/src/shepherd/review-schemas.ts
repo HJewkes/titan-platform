@@ -118,7 +118,7 @@ export function parseOwnerBrief(text: string): OwnerBrief | null {
 
 const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string() }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("dispatched"), at: z.number(), startedAt: z.number().optional(), ...Identity.shape }),
+  z.looseObject({ kind: z.literal("dispatched"), at: z.number(), startedAt: z.number().optional(), profile: z.string().optional(), ...Identity.shape }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
 /** A verdict carries its owner brief, or null when the reviewer wrote none; a brief never changes the verdict. */

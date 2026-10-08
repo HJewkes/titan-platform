@@ -33,7 +33,7 @@ it("indexes mixed corpora with isolated identities, excerpts and clustered error
   const codexId=list.find(s=>s.harness==="codex")!.sessionId;expect(codexId).not.toBe("same-id");
   const hits=await search.run({query:"codexword",limit:10},ctx);expect(hits.hits[0]).toMatchObject({ref:codexId,excerpt:"codexword café"});
   expect((await search.run({query:"legacyword",limit:10},ctx)).hits[0]).toMatchObject({ref:"session:same-id",excerpt:"legacyword"});
-  expect(await sessionShow.run({id:codexId},ctx)).toMatchObject({harness:"codex",nativeId:"same-id"});
+  expect(await sessionShow.run({id:codexId},ctx)).toMatchObject({harness:"codex",nativeId:"same-id",turns:[{index:0,durationMs:null,toolCalls:1}]});
   expect(await status.run({},ctx)).toMatchObject({sessions:2});
   expect(await drainIngest.run({limit:1},ctx)).toMatchObject({screened:1,clustered:0});
   expect(await drainIngest.run({limit:1},ctx)).toMatchObject({clustered:1,unreadable:0});

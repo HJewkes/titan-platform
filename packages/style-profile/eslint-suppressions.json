@@ -1,7 +1,0 @@
-{
-  "src/exporters/editorconfig.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  }
-}

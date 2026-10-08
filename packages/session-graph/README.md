@@ -243,6 +243,14 @@ tokens stay null. Response deltas take precedence over snapshot projections; sna
 are ordered within reset epochs. Multiple semantic subrecords remain independently
 stored, while text siblings in the same line/field share a span with several selectors.
 
+`hasNormalizedTables` is the one presence rule every normalized reader uses: both
+`normalized_event` and `normalized_source` must exist. A read-only graph that migration 9
+left without them reads as empty, never as an error. `countNormalizedSessions` and
+`countNormalizedEvents` give totals, `normalizedSourcePath` maps a transcript to its
+rollout file, `normalizedConversationDetail` returns turns in start order with each turn's
+distinct tool calls (one grouped query) plus lineage edges both ways, and
+`normalizedErrorFacts` lists error tool results of readable transcripts, oldest first.
+
 Migration 3 adds conversation, alias, source and semantic-event tables without
 rewriting legacy session/fact/turn rows. Known Claude transcript sessions get explicit
 aliases in the `legacy` corpus namespace; workspace session-body refs are not
