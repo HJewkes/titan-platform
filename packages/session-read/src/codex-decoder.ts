@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import type { ConversationIdentity } from "@titan-design/agent-protocol";
+import { decodeLines, parseRecord } from "./decode-lines.js";
 import type {
   DecodeRequest,
   DecodeResult,
@@ -15,18 +15,15 @@ import type {
   SourceEvidence,
   SourceTextLocator,
 } from "./normalized.js";
-import { asObject, str, type Json } from "./text.js";
+import { asObject, booleanOrNull, str, type Json } from "./text.js";
 import { CodexProjectionBuffer } from "./codex-projections.js";
 import { CodexUsageDecoder, type CodexUsageEmission } from "./codex-usage.js";
 import {
   CALL_TYPES,
   COMPACTION_TYPES,
   RESULT_TYPES,
-  booleanOrNull,
-  boundaryAt,
   finiteNumber,
   hasEncryptedContent,
-  parseCodexRecord,
   readCanonicalMessage,
   selectedValue,
   sourceMismatch,
@@ -45,15 +42,8 @@ export class CodexRolloutDecoder implements SessionFormatDecoder<never> {
   async decode(request: DecodeRequest<never>, emit: EmitNormalizedObservation): Promise<DecodeResult<never>> {
     validateCodexDescriptor(request.source);
     if (request.resume.strategy !== "replay-prefix") throw new TypeError("Codex checkpoints are not implemented; replay the verified prefix");
-    const digest = createHash("sha256");
     const context = new CodexContext(request.source, request.resume.emitFrom.byteOffset, emit);
-    let boundary = boundaryAt(0, digest);
-    for await (const line of request.lines) {
-      const before = boundaryAt(line.evidence.byteOffset, digest);
-      if (line.raw.trim().length > 0) context.handle(line, before);
-      digest.update(line.raw, "utf8").update("\n");
-      boundary = boundaryAt(line.evidence.byteOffset + line.evidence.byteLength + 1, digest);
-    }
+    const boundary = await decodeLines(request.lines, (line, before) => context.handle(line, before));
     return { resumeBoundary: context.pendingBoundary ?? boundary, checkpoint: null };
   }
 
@@ -88,7 +78,7 @@ class CodexContext {
 
   handle(line: LocatedSourceLine, before: ResumeBoundary): void {
     this.line = line;
-    this.record = parseCodexRecord(this.source.path, line);
+    this.record = parseRecord(this.source.path, line);
     this.payload = asObject(this.record.payload);
     this.nextIndex = 0;
     const ordinal = finiteNumber(this.record.ordinal);
