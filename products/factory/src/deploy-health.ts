@@ -2,7 +2,7 @@ const REFUSALS_TO_ALARM = 2;
 const BEHIND_MERGES_TO_ALARM = 3;
 const BEHIND_MINUTES_TO_ALARM = 60;
 /** A burst of green merges asks for several deploys at once, and one deploy with its build takes minutes; an ask younger than this has not had its chance. */
-export const DEPLOY_GRACE_MS = 20 * 60_000;
+const DEPLOY_GRACE_MS = 20 * 60_000;
 const REASON_MAX_CHARS = 1_000;
 
 /**
