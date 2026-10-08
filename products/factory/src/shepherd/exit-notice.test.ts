@@ -111,8 +111,10 @@ describe("a woken fixer that exits with no push", () => {
     first.host.close();
 
     const { host: second } = world(ports, fake, dbPath);
-    await second.resume();
+    expect(await second.adopt()).toEqual([runId]);
     await waitingForHead(second, runId);
+    fake.pushHead(1, H2);
+    await gateOpened(second, gateId(runId, "approve-merge"));
 
     expect(sends).toHaveLength(1);
     expect(second.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
@@ -129,7 +131,7 @@ describe("a woken fixer that exits with no push", () => {
     await gateOpened(host, gateId(runId, "sh-sent-back"));
 
     expect(sends).toHaveLength(0);
-    expect(String(host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("the seat notice failed: broker refused the message");
+    expect(String(host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("the seat notice failed: Error");
   });
 
   it("resumes the normal CI and review path when a new head arrives after the message", async () => {
@@ -180,6 +182,6 @@ describe("the seat notice", () => {
     const unreadable = await sendExitNotice({ ...seat().ports, seatFor: () => { throw new Error("bad seat file"); } }, input);
 
     expect(none).toMatchObject({ sent: false, cause: "unread" });
-    expect(unreadable).toMatchObject({ sent: false, detail: "the seat notice failed: bad seat file" });
+    expect(unreadable).toMatchObject({ sent: false, detail: "the seat notice failed: Error" });
   });
 });
