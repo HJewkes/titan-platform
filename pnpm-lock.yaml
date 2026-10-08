@@ -144,6 +144,9 @@ importers:
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -165,6 +168,9 @@ importers:
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../../packages/worktree
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -463,6 +469,15 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/pm:
+    devDependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/queue-mirror:
     dependencies:
       '@titan-design/hitl':
@@ -749,6 +764,9 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry

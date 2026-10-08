@@ -18,7 +18,7 @@ import {
   VERSION_PATH,
   rpcFailureStatus,
 } from "@titan-design/rpc-protocol";
-import { getRequestAuth } from "./auth.js";
+import { authGate, getRequestAuth, mountLogoutRoute, type DaemonAuth } from "./auth.js";
 import type { EventHub } from "./events.js";
 import { CLIENT_HEADER, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
@@ -45,12 +45,21 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
   mountRoutes?: (app: Hono) => void;
   /** Host/Origin allowlists and the JSON body gate. Defaults to loopback only. */
   guards?: RequestGuardOptions;
+  /**
+   * Require a session or bearer on every route, built-ins and `mountRoutes` alike, except
+   * `/auth/login`. It runs right after the Host/Origin guard and also adds `/auth/logout`.
+   */
+  gate?: DaemonAuth;
 }
 
 export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ctx>): Hono {
   const app = new Hono();
   const startedAt = options.startedAt ?? Date.now();
   registerGuards(app, options);
+  if (options.gate) {
+    app.use("*", authGate(options.gate));
+    mountLogoutRoute(app);
+  }
 
   app.get(HEALTH_PATH, (c) => {
     if (options.ready && !options.ready()) return c.json({ ok: false, starting: true }, 503);
@@ -116,7 +125,11 @@ function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions
     const rawArgs = await readJsonBody(c);
     if (rawArgs === INVALID_JSON) return c.json(errorEnvelope("Invalid JSON body", EXIT.USAGE), RPC_STATUS.BAD_REQUEST);
 
-    const context = options.createContext("http", getRequestAuth(c.req.raw));
+    const auth = getRequestAuth(c.req.raw);
+    // On a gated app an absent record means the gate did not vouch for this request; never
+    // let it reach createContext looking like an ungated loopback call.
+    if (options.gate && !auth) return c.json(errorEnvelope("Authentication required", EXIT.USAGE), 401);
+    const context = options.createContext("http", auth);
     const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, context, {
       invalidArgsCode: EXIT.DATAERR,
       formatError: options.formatError,

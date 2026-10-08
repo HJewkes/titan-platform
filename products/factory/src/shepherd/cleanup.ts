@@ -102,18 +102,25 @@ async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<vo
   if ((await deps.port.getPr(input.repo, input.pr)).merged) store.release(input.runId);
 }
 
-/** A slice PR notes its task and leaves it open, because the task's other slices have not landed. An unread merge sha writes nothing, so a retry cannot add a second line for the landing. */
+/**
+ * A slice PR notes its task and leaves it open, because the task's other slices have not landed. Any other PR cites itself
+ * and its merge sha in the task's notes, then closes it. A slice with an unread merge sha writes nothing, so a retry cannot add a second
+ * line for the landing; a close still goes ahead then, citing the PR alone, because an unreadable GitHub must not keep a
+ * merged task open.
+ */
 async function settleTask(deps: CleanupDeps, registration: Registration, input: CleanupInput, wait: Waiter): Promise<string> {
   const tasks = deps.cleanup!.tasks;
-  if (registration.slice === null) return closeTask(tasks, registration.task, wait);
   const pr = await retrying(`merge sha of #${input.pr}`, () => deps.port.getPr(input.repo, input.pr), wait);
+  const landing = `${input.repo}#${input.pr} at ${pr?.mergeSha ?? "unknown"}`;
+  if (registration.slice === null) return closeTask(tasks, registration.task, `closed by Shepherd: ${landing} merged`, wait);
   if (pr === undefined) return "unread";
-  const line = `${registration.slice} landed in ${input.repo}#${input.pr} at ${pr.mergeSha ?? "unknown"}`;
-  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, line).then(() => "noted"), tasks);
+  return onOpenTask(registration.task, wait, (initiative, id) => tasks.appendNote(initiative, id, `${registration.slice} landed in ${landing}`).then(() => "noted"), tasks);
 }
 
-async function closeTask(tasks: CleanupTasks, key: string, wait: Waiter): Promise<string> {
-  return onOpenTask(key, wait, (initiative, id) => tasks.done(initiative, id).then(() => "done"), tasks);
+/** The note goes first: a crash between the two leaves an open task with its citation, and the replay finds the line already there. */
+async function closeTask(tasks: CleanupTasks, key: string, note: string, wait: Waiter): Promise<string> {
+  const closed = (initiative: string, id: string): Promise<string> => tasks.appendNote(initiative, id, note).then(() => tasks.done(initiative, id)).then(() => "done");
+  return onOpenTask(key, wait, closed, tasks);
 }
 
 async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, id: string) => Promise<string>, tasks: CleanupTasks): Promise<string> {
@@ -128,7 +135,7 @@ async function onOpenTask(key: string, wait: Waiter, act: (initiative: string, i
     if (state !== "open") return state === "done" ? "already-done" : "missing";
     return act(initiative, id);
   };
-  return (await retrying(`task ${key}`, close, wait)) ?? "unread";
+  return (await retrying(`task ${key} not closed`, close, wait)) ?? "unread";
 }
 
 async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter): Promise<T | undefined> {

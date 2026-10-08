@@ -7,8 +7,8 @@ export type Surface = "http" | "mcp";
 /**
  * What every surface needs to run a command. `createContext` is the seam that keeps this
  * package domain-free: the daemon never knows what a product's context contains. `auth` is
- * what an `authGate` in front of the route recorded, so a command can refuse a credential
- * kind; it is undefined on an ungated listener and on MCP.
+ * what the `gate` recorded, so a command can refuse a credential kind. It is undefined only on
+ * an ungated listener and on MCP: a gated app answers 401 rather than call this without it.
  */
 export interface SurfaceOptions<Ctx extends BaseContext = BaseContext> {
   registry: CommandRegistry<Ctx>;
