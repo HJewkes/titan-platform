@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchTimeoutError, PEER_NAME_PATTERN, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -33,6 +33,8 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
+/** The roster's `spawnedBy` for a spawn from the CLI, which Shepherd's own spawns are. */
+const HUMAN_SPAWNER = "human";
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
 /** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
@@ -116,14 +118,30 @@ function resumeMessage(task: WakeTask): string {
   return `${intro}\n\n${task.payload}\n\nFix it on branch \`${pr.headRef}\`, push, and ${HEAD_LINE}`;
 }
 
-function successorBrief(task: WakeTask, predecessor: string, name: string): string {
+/**
+ * Shepherd spawns through the CLI as the human, so the broker appends no return contract and the brief is the only
+ * place a successor learns whom to report to. Left unsaid, one guessed from its peer list and reported to another seat.
+ */
+function reportLine(seat: string | undefined): string {
+  if (seat === undefined) return "then end your turn with your report as plain text and send it to no session, since Shepherd found no seat that started this PR's lineage, and";
+  return `then send your report with chat_send to ${seat}, the seat that started this PR's lineage, and to no other session. In it,`;
+}
+
+function successorBrief(task: WakeTask, predecessor: string, name: string, seat: string | undefined): string {
   const { input, pr } = task;
   return [
     `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
     `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
     task.payload,
-    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), then ${HEAD_LINE}`,
+    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), ${reportLine(seat)} ${HEAD_LINE}`,
   ].join("\n\n");
+}
+
+/** The earliest spawner in the lineage that is a session; a successor's own spawner is the human, which names no seat. */
+function lineageSeat(task: WakeTask, roster: readonly AgentRow[]): string | undefined {
+  return chain(task, roster)
+    .flatMap((name) => roster.filter((row) => row.name === name).map((row) => row.spawnedBy))
+    .find((spawner): spawner is string => typeof spawner === "string" && spawner !== HUMAN_SPAWNER && PEER_NAME_PATTERN.test(spawner));
 }
 
 function successorIndex(implementer: string, name: string): number | undefined {
@@ -172,7 +190,7 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
