@@ -92,6 +92,16 @@ describe("foldSeatEvents", () => {
     ["a scratchpad cwd", "node watch.js", "/srv/session/scratchpad"],
     ["a relative path into a scratchpad", "node scratchpad/watch.js", "/srv/w"],
     ["a path under the host's tmpdir", "node /var/folders/t/x.js", "/srv/w"],
+    ["a stdout redirect into /tmp", "node w.js >/tmp/out.log 2>&1", "/srv/w"],
+    ["a stderr redirect into /tmp", "node w.js 2>/tmp/err", "/srv/w"],
+    ["an option glued to a /tmp value", "node w.js -o/tmp/x", "/srv/w"],
+    ["an unspaced && after cd /tmp", "cd /tmp&&node x", "/srv/w"],
+    ["a pipe into a /tmp file", "node w.js|tee /tmp/log", "/srv/w"],
+    ["a quoted /tmp path", "node w.js --log '/tmp/a b.log'", "/srv/w"],
+    ["a literal $TMPDIR path", "node $TMPDIR/x.js", "/srv/w"],
+    ["a literal ${TMPDIR} path", "node ${TMPDIR}/x.js", "/srv/w"],
+    ["a $TMPDIR cwd", "node x.js", "$TMPDIR"],
+    ["a cwd at the /private real path of the tmpdir", "node x.js", "/private/var/folders/t/T"],
   ])("refuses a background command with %s", (_case, command, cwd) => {
     const state = foldSeatEvents([{ kind: "background", id: "b", command, cwd }], { tmpdir: "/var/folders/t/" });
 
@@ -155,5 +165,17 @@ describe("foldSeatEvents", () => {
 describe("scratchPathOf", () => {
   it("does not treat a directory merely named like tmp as temp space", () => {
     expect(scratchPathOf("ls /tmpfiles /srv/scratchpads", "/srv/w")).toBeUndefined();
+  });
+
+  it("accepts redirects and operators that stay outside temp space", () => {
+    expect(scratchPathOf("cd /srv/a&&node w.js >/srv/log 2>&1 | tee -a/srv/b", "/srv/w")).toBeUndefined();
+  });
+
+  it("does not read a URL path as a filesystem path", () => {
+    expect(scratchPathOf("curl https://h/scratchpad/x", "/srv/w")).toBeUndefined();
+  });
+
+  it("names the temp path it refused", () => {
+    expect(scratchPathOf("node w.js 2>/tmp/err", "/srv/w")).toBe("/tmp/err");
   });
 });

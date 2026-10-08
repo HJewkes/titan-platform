@@ -43,18 +43,36 @@ export const emptySeatState = (): SeatState => ({
   unknownEvents: 0,
 });
 
-const TMP_ROOTS = ["/tmp", "/private/tmp"];
+// The fold never expands variables, so a literal `$TMPDIR` is rewritten to this root instead.
+const TMPDIR_VAR_ROOT = "/$TMPDIR";
+const TMP_ROOTS = ["/tmp", "/private/tmp", TMPDIR_VAR_ROOT];
 
 const isUnder = (path: string, root: string): boolean => {
   const base = root.length > 1 ? root.replace(/\/+$/, "") : root;
   return path === base || path.startsWith(`${base}/`);
 };
 
-// Whitespace and `=` split `--out=/tmp/x` too; only tokens with a slash can name a directory.
+// macOS hands out $TMPDIR as /var/folders/..., but cwd and `pwd -P` report the /private real path.
+function tempRoots(tmpdir: string | undefined): string[] {
+  if (!tmpdir) return TMP_ROOTS;
+  return tmpdir.startsWith("/var/") ? [...TMP_ROOTS, tmpdir, `/private${tmpdir}`] : [...TMP_ROOTS, tmpdir];
+}
+
+const expandTmpdirVar = (text: string): string => text.replace(/\$\{TMPDIR\}|\$TMPDIR\b/g, TMPDIR_VAR_ROOT);
+
+// Splits on shell operators and quotes as well as whitespace, so `>/tmp/log`, `cd /tmp&&x` and
+// `--out=/tmp/x` all yield the path; `-o/tmp/x` loses its option prefix.
+function shellTokens(command: string): string[] {
+  return expandTmpdirVar(command)
+    .split(/[\s=<>|;&()'"`]+/)
+    .map((t) => t.replace(/^-[^/]*(?=\/)/, ""))
+    .filter((t) => t.includes("/") && !t.includes("://"));
+}
+
 function pathsIn(command: string, cwd: string): string[] {
-  const tokens = command.split(/[\s=]+/).map((t) => t.replace(/^['"]|['"]$/g, ""));
-  const relative = (t: string) => (t.startsWith("/") ? t : posix.join(cwd, t));
-  return [cwd, ...tokens.filter((t) => t.includes("/")).map(relative)].map((p) => posix.normalize(p));
+  const base = expandTmpdirVar(cwd);
+  const resolve = (t: string) => (t.startsWith("/") ? t : posix.join(base, t));
+  return [base, ...shellTokens(command).map(resolve)].map((p) => posix.normalize(p));
 }
 
 /** The first path in a background command that sits in throwaway space, or undefined. */
@@ -63,7 +81,7 @@ export function scratchPathOf(
   cwd: string,
   options: SeatFoldOptions = {},
 ): string | undefined {
-  const roots = options.tmpdir ? [...TMP_ROOTS, options.tmpdir] : TMP_ROOTS;
+  const roots = tempRoots(options.tmpdir);
   return pathsIn(command, cwd).find(
     (p) => roots.some((root) => isUnder(p, root)) || p.split("/").includes("scratchpad"),
   );
@@ -134,7 +152,8 @@ function step(state: SeatState, raw: unknown, index: number, options: SeatFoldOp
 
 /**
  * Folds a seat's event log into its state. Pure: no clock, fs, env or network. It never throws:
- * an unknown kind is counted and a malformed or refused event is recorded in `errors`.
+ * an unknown kind is counted and a malformed or refused event is recorded in `errors`, whose
+ * `index` counts from the start of this call's `events`, not from any log behind `from`.
  */
 export function foldSeatEvents(
   events: readonly unknown[],
