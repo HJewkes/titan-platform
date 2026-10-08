@@ -7,7 +7,8 @@ import { parseRoleGlobs, roleGlobMatcher, type RoleGlobs } from "./role-globs.js
 const TEST_RE = /(?:^|\/)(?:__tests__\/|tests?\/)|\.(?:test|spec)(?:\.[a-z]+)?$/;
 // The extension is optional so a story's module node (`Button.stories`) matches too.
 const STORY_RE = /\.stories(?:\.[cm]?[jt]sx?)?$|\.mdx$/;
-const FIXTURE_RE = /(?:^|\/)fixtures(?:\/|$)/;
+// A fixtures/ directory, or a `*.fixture.*` file kept beside the test that loads it.
+const FIXTURE_RE = /(?:^|\/)fixtures(?:\/|$)|\.fixture(?:\.[a-z]+)?$/;
 // One-off tooling under scripts/ or dormant archive/ dirs: report noise, not
 // product signal. Test-ness wins (checked first) since it's more meaningful.
 const SCRIPT_RE = /(?:^|\/)(?:scripts|archive)(?:\/|$)/;

@@ -24,7 +24,7 @@ export interface Delivery {
   warnings: string[];
 }
 
-/** The slot names the file, so a rerun for the same slot replaces it; a failed iCloud copy warns but keeps the local file. */
+/** The slot names the file, so a rerun for the same slot replaces it; a failed copy warns but keeps the local file. */
 export function deliverDigest(markdown: string, slot: DigestSlot, dirs: Directories): Delivery {
   const name = `${slot.date}-${slot.hour}.md`;
   const write = (dir: string): string => {
@@ -34,11 +34,11 @@ export function deliverDigest(markdown: string, slot: DigestSlot, dirs: Director
   };
   const written = [write(dirs.outDir)];
   const warnings: string[] = [];
-  if (dirs.icloudDir) {
+  for (const dir of dirs.copyDirs) {
     try {
-      written.push(write(dirs.icloudDir));
+      written.push(write(dir));
     } catch (error) {
-      warnings.push(`iCloud copy failed: ${(error as Error).message}`);
+      warnings.push(`copy to ${dir} failed: ${(error as Error).message}`);
     }
   }
   return { written, warnings };

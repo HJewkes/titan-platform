@@ -3,6 +3,7 @@ export {
   DEFAULT_GATE_TABLE,
   SqliteGateStore,
   gateBriefMigration,
+  gateEvidenceMigration,
   gateMigration,
   gateResolverMigration,
   gateRuleMigration,

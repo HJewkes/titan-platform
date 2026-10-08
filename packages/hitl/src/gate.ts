@@ -5,6 +5,7 @@ import {
   GateExpired,
   GateNotFound,
   GatePayloadInvalid,
+  type GateEvidence,
   type GateQuestion,
   type GateRecord,
   type GateResolver,
@@ -86,8 +87,8 @@ export async function waitForGate<T = unknown>(
 }
 
 /** Resolve a gate from wherever the human answered: a CLI, an MCP tool, a dashboard route. */
-export function resolveGate(store: GateStore, id: string, payload: unknown, resolvedBy: GateResolver): GateRecord {
-  return store.resolve(id, payload, resolvedBy);
+export function resolveGate(store: GateStore, id: string, payload: unknown, resolvedBy: GateResolver, evidence?: GateEvidence): GateRecord {
+  return store.resolve(id, payload, resolvedBy, evidence);
 }
 
 export function cancelGate(store: GateStore, id: string, reason: string): GateRecord {

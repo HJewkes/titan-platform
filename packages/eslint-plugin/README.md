@@ -5,8 +5,12 @@ next, so an agent that hits the rule can fix the code without asking.
 
 - `max-function-lines`: a function may have at most 30 non-blank lines (option `max`).
   Blank lines are not counted; comment lines are.
-- `todo-needs-issue`: a comment containing `TODO` must name a task, as a tracker key such as
-  `TODO(TP-123)` or an issue number such as `#123`.
+- `todo-needs-issue`: every `TODO` in a comment must carry its task right after the marker:
+  `TODO(TP-123)`, `TODO(#123)`, or a bare `TODO: TP-123` / `TODO #123` that ends the
+  sentence. `TODO UTF-8 support`, `TODO ES-2022` (keys with a standards prefix such as `UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP` are prose), and a key that sits later in the comment
+  or inside a URL are reported. `FIXME` is deliberately not checked; the rule is about `TODO`.
+- `no-commented-code`: a comment whose text parses as statements with a code signal (a declaration or control statement, an assignment, a call, `;`) is reported; a lone expression such as `read-only` or `100 - 75` is prose. JSDoc and directive comments pass.
+- `recommended`: a flat config enabling all three rules at `error` under the `titan` namespace.
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
@@ -24,5 +28,4 @@ export default [
 ];
 ```
 
-Status: unpublished (`private`). The first publish and a `recommended` config follow in
-later TP-897 slices.
+Status: unpublished (`private`). The first publish follows in a later TP-897 slice.

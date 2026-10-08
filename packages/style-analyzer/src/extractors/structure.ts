@@ -1,23 +1,21 @@
+import { builtinModules } from "node:module";
 import type { Node } from "web-tree-sitter";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
+import { PYTHON_STDLIB_MODULES } from "./python-stdlib.js";
 
-const PYTHON_BUILTINS = new Set([
-  "os", "sys", "re", "json", "math", "time", "datetime", "pathlib",
-  "collections", "itertools", "functools", "typing", "io", "abc",
-  "dataclasses", "enum", "logging", "unittest", "hashlib", "subprocess",
-  "argparse", "copy", "glob", "shutil", "tempfile", "textwrap",
-  "contextlib", "operator", "string", "struct", "csv", "xml",
-]);
+// Includes subpaths such as `fs/promises`; `node:`-only modules like
+// `node:test` are covered by the prefix check.
+const NODE_BUILTINS = new Set(builtinModules);
 
 function classifyImportSource(source: string, language: string): string {
   if (language === "python") {
     if (source.startsWith(".")) return "relative";
     const topModule = source.split(".")[0]!;
-    if (PYTHON_BUILTINS.has(topModule)) return "builtin";
+    if (PYTHON_STDLIB_MODULES.has(topModule)) return "builtin";
     return "external";
   }
 
-  if (source.startsWith("node:")) return "builtin";
+  if (source.startsWith("node:") || NODE_BUILTINS.has(source)) return "builtin";
   if (source.startsWith(".") || source.startsWith("..")) return "relative";
   if (source.startsWith("@")) {
     const scope = source.split("/")[0]!;

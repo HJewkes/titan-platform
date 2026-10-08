@@ -32,12 +32,11 @@ export function toFindings(result: CheckResult): Finding[] {
   return result.violations.map(violationToFinding);
 }
 
-/** Ids key on node id, not line, so a finding keeps its id when code above it moves. */
+/** Ids key on node id, not line, so a finding keeps its id when code above it moves; a cycle keys on every member. */
 function violationToFinding(v: CheckViolation): Finding {
   const tool = v.tool ?? CODE_GRAPH_TOOL;
-  const target = v.destinationId ? `${v.nodeId}->${v.destinationId}` : v.nodeId;
   return withoutUndefined({
-    id: `${tool}:${v.ruleId}:${target}`,
+    id: `${tool}:${v.ruleId}:${findingTarget(v)}`,
     path: v.path ?? v.nodeId,
     lineStart: v.lineStart,
     lineEnd: v.lineEnd,
@@ -49,6 +48,11 @@ function violationToFinding(v: CheckViolation): Finding {
     evidence: v.evidence ?? v.message,
     tool,
   });
+}
+
+function findingTarget(v: CheckViolation): string {
+  if (v.members) return v.members.join("+");
+  return v.destinationId ? `${v.nodeId}->${v.destinationId}` : v.nodeId;
 }
 
 export function externalToFinding(input: ExternalDiagnostic): Finding {

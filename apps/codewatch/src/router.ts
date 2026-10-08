@@ -1,9 +1,10 @@
+import { FindingSort } from "@titan-design/code-read/query";
 import { useSyncExternalStore } from "react";
+import type { SortKey } from "./data/calls.js";
 
 export const FILTER_KEYS = ["rule", "severity", "kind", "provenance"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
-export const SORT_KEYS = ["severity", "excess", "value", "path", "rule"] as const;
-export type SortKey = (typeof SORT_KEYS)[number];
+export const SORT_KEYS: readonly SortKey[] = FindingSort.options;
 
 export interface PrioritiesQuery {
   filters: Partial<Record<FilterKey, string[]>>;
@@ -18,11 +19,20 @@ export type Route =
   | { page: "finding"; id: string }
   | { page: "compare" };
 
+/** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
   const [path = "", search = ""] = hash.replace(/^#/, "").split("?");
   const [, page = "", ...rest] = path.split("/");
-  const tail = decodeURIComponent(rest.join("/"));
+  const tail = safeDecode(rest.join("/"));
   if (page === "priorities") return { page, query: parsePriorities(new URLSearchParams(search)) };
   if (page === "node") return { page, id: tail };
   if (page === "finding" && tail) return { page, id: tail };

@@ -1,12 +1,14 @@
 /**
  * Reduces a multi-line tool-result blob to one deterministic signature line
- * before it reaches Drain (§C1: "per-blob via an extracted signature line").
+ * before it reaches Drain, so each blob is clustered by one extracted line.
  * Drain is inherently per-line; stack traces and multi-line summaries break
  * it if fed whole, since line count varies with recursion depth. The
  * signature captures the blob's *shape* — the anchor line that identifies
  * the failure, plus a coarse line-count bucket — without ever touching the
  * full body.
  */
+
+import { DEFAULT_ANCHOR_CONFIGS, anchorFor, type AnchorConfigs } from './anchors.js';
 
 export type LineCountBucket = '0' | '1' | '2-5' | '6+';
 
@@ -16,9 +18,9 @@ export interface Signature {
   lineCountBucket: LineCountBucket;
   /**
    * True when `anchorLine` came from a recognized failure-shape rule rather
-   * than the positional fallback (last non-blank line, or a `git` blob's first
-   * line). An unanchored signature's clustering key is arbitrary output text,
-   * so callers use this to screen successful command output — see
+   * than its partition's positional fallback (last non-blank line, or the first
+   * line for a `first-line` partition such as the default `git`). An unanchored
+   * signature's clustering key is arbitrary output text, so callers use this to screen successful command output — see
    * `hasErrorSignal`.
    */
   anchored: boolean;
@@ -26,62 +28,11 @@ export interface Signature {
   signatureLine: string;
 }
 
-const BASH_ANCHOR_RULES: RegExp[] = [
-  // Native shell diagnostics are not necessarily prefixed with an Error class.
-  /^[^\s:]+: .+: (?:No such file or directory|Permission denied|Not a directory|Is a directory)\s*$/i,
-  /^\w*Error\b.*$/,
-  /^\s*at\s.*$/,
-  /exit (?:code|status)[: ]+\d+/i,
-];
-
-const TEST_RUNNER_ANCHOR_RULES: RegExp[] = [
-  /\d+\s+passed.*\d+\s+failed/i,
-  /\d+\s+failed.*\d+\s+passed/i,
-  /error TS\d+:.*$/,
-  /^\s*✖?\s*[\w-]+\/[\w-]+(?:\/[\w-]+)*\s*$/, // eslint-style rule id, e.g. no-unused-vars
-];
-
 function bucketLineCount(count: number): LineCountBucket {
   if (count === 0) return '0';
   if (count === 1) return '1';
   if (count <= 5) return '2-5';
   return '6+';
-}
-
-function firstMatch(lines: string[], rules: RegExp[]): string | undefined {
-  for (const rule of rules) {
-    const line = lines.find((l) => rule.test(l));
-    if (line !== undefined) return line.trim();
-  }
-  return undefined;
-}
-
-function lastNonBlank(lines: string[]): string {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!;
-    if (line.trim().length > 0) return line.trim();
-  }
-  return '';
-}
-
-interface Anchor {
-  line: string;
-  anchored: boolean;
-}
-
-function anchorForToolType(toolType: string, lines: string[]): Anchor {
-  if (toolType === 'git') return { line: (lines[0] ?? '').trim(), anchored: false };
-
-  if (toolType === 'test') {
-    const match = firstMatch(lines, TEST_RUNNER_ANCHOR_RULES);
-    if (match) return { line: match, anchored: true };
-  }
-
-  // Bash and generic is_error blobs share the same anchor priority.
-  const match = firstMatch(lines, BASH_ANCHOR_RULES);
-  return match === undefined
-    ? { line: lastNonBlank(lines), anchored: false }
-    : { line: match, anchored: true };
 }
 
 const ERROR_CLASS_RULES: [RegExp, (match: RegExpMatchArray) => string][] = [
@@ -99,15 +50,19 @@ function classifyError(anchorLine: string): string {
 }
 
 /**
- * Reduce a raw tool-result blob to its `Signature` for a given `toolType`
+ * Reduce a raw tool-result blob to its `Signature` for a given `partition`
  * (the Drain partition key). Never stores or returns the full
  * blob — only the anchor line survives.
  */
-export function extractSignature(toolType: string, blobText: string): Signature {
+export function extractSignature(
+  partition: string,
+  blobText: string,
+  anchors: AnchorConfigs = DEFAULT_ANCHOR_CONFIGS,
+): Signature {
   const lines = blobText.split('\n');
   const nonBlankCount = lines.filter((l) => l.trim().length > 0).length;
 
-  const { line: anchorLine, anchored } = anchorForToolType(toolType, lines);
+  const { line: anchorLine, anchored } = anchorFor(partition, lines, anchors);
   const errorClass = classifyError(anchorLine);
   const lineCountBucket = bucketLineCount(nonBlankCount);
 
@@ -131,6 +86,10 @@ export function extractSignature(toolType: string, blobText: string): Signature 
  * cardinality is unbounded — every distinct successful command minted its own
  * permanent singleton cluster, and the template count never flattened.
  */
-export function hasErrorSignal(toolType: string, blobText: string): boolean {
-  return anchorForToolType(toolType, blobText.split('\n')).anchored;
+export function hasErrorSignal(
+  partition: string,
+  blobText: string,
+  anchors: AnchorConfigs = DEFAULT_ANCHOR_CONFIGS,
+): boolean {
+  return anchorFor(partition, blobText.split('\n'), anchors).anchored;
 }

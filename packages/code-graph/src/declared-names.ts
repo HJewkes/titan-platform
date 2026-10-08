@@ -1,14 +1,7 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
-import { qualify, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES, walkScopes } from "./scope-path.js";
-
-const TS_DECL_TYPES = new Set([
-  ...TS_FUNCTION_DECL_TYPES,
-  "class_declaration",
-  "abstract_class_declaration",
-]);
-
-const PY_DECL_TYPES = new Set(["function_definition", "class_definition"]);
+import { PY_DECL_TYPES, TS_BOUND_FUNCTION_TYPES, TS_DECL_TYPES } from "./node-kinds.js";
+import { qualify, walkScopes } from "./scope-path.js";
 
 /** 1-based inclusive line span of a declaration, for coverage range-attribution (C-63). */
 export interface LineSpan {

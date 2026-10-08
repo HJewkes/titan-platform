@@ -1,6 +1,7 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
+import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PHASES, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
@@ -63,6 +64,21 @@ describe("shepherd view phases", () => {
 
     expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): machine guard: full");
     expect(watchRow({ registration, run }).nextAction).toBe("waiting for the review");
+  });
+
+  it("names the place in the spawn gate's queue of a review the gate keeps waiting", () => {
+    const run = pausedAt("sh-review:abc1234");
+    const gate = spawnGate({ read: () => ({ load5: 21 }), now: () => 1_000, log: () => undefined });
+    const ask = (name: string, pr: number, fixer: boolean) => expect(() => gate.admit(name, [], { fixer, target: { repo: "acme/widgets", pr } })).toThrow();
+    ask("rv-0", 0, false);
+    ask("rv-1", 1, false);
+    ask("rv-2", 2, true);
+    noteReviewWait("acme/widgets", 1, "waiting for reviewer admission (the broker has not started rv-1): ReviewerBrokerBusy; asking again in 1 min");
+
+    const noted = watchRow({ registration, run }).nextAction;
+    clearReviewWait("acme/widgets", 1);
+
+    expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): ReviewerBrokerBusy; asking again in 1 min; waiting for a spawn slot, position 3 of 3");
   });
 });
 

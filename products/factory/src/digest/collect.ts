@@ -5,8 +5,13 @@ import type { AgentChatDigest, Ask, DigestModel, DigestSlot, Merged, SeatLine, S
 export interface GateFact {
   runId: string;
   stepId: string;
+  gateId: string;
   prompt: string;
   resolve: string;
+  /** Absent on a gate opened before the brief migration; the ask falls back to `prompt`. */
+  summary?: string;
+  evidenceRef?: string;
+  createdAt: string;
 }
 
 /** Where a digest's facts come from; tests pass fakes, the CLI passes the factory host and the agent-chat CLI. */
@@ -51,7 +56,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: [...gateAsks(gates, rows), ...queue, ...(chat ? chatAsks(chat) : [])],
+    needsYou: [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
@@ -60,11 +65,20 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   };
 }
 
-function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[]): Ask[] {
+/** One ask per pending gate; a gate still pending from an earlier window repeats, marked with when it opened. */
+function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[], since: Date): Ask[] {
   return gates.map((gate) => {
     const row = rows.find((r) => r.runId === gate.runId);
-    const keys = [runKey(gate.runId), ...(row?.pr != null ? [prKey(row.repo, row.pr)] : [])];
-    return { text: `${row ? refOf(row) : gate.runId.slice(0, 8)} ${gate.stepId}: ${gate.prompt}`, command: gate.resolve, source: "factory", keys };
+    const keys = [`gate:${gate.gateId}`, runKey(gate.runId), ...(row?.pr != null ? [prKey(row.repo, row.pr)] : [])];
+    const text = `${row ? refOf(row) : gate.runId.slice(0, 8)} ${gate.stepId}: ${gate.summary ?? gate.prompt}`;
+    return {
+      text,
+      command: gate.resolve,
+      source: "factory",
+      keys,
+      ...(gate.evidenceRef !== undefined && { evidence: gate.evidenceRef }),
+      ...(Date.parse(gate.createdAt) < since.getTime() && { since: gate.createdAt }),
+    };
   });
 }
 

@@ -84,7 +84,7 @@ export function insightCommand(question: AnyInsight): AnyCommand<MinerContext> {
 const HAS_ZONE = /(Z|[+-]\d{2}(:?\d{2})?)$/i;
 
 /** Request times are stored as UTC ISO strings and compared as text, so an offset must be resolved first; no zone means UTC. */
-function utc(time: string | undefined): string | undefined {
+export function utc(time: string | undefined): string | undefined {
   if (time === undefined) return undefined;
   const zoned = /[T ]\d{2}:/.test(time) && !HAS_ZONE.test(time) ? `${time}Z` : time;
   return new Date(zoned).toISOString();

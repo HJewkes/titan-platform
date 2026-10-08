@@ -249,3 +249,40 @@ ${block()}`)).toBe("multiple_blocks");
     expect(Date.now() - started).toBeLessThan(1000);
   });
 });
+
+describe("the optional Closer line", () => {
+  const withCloser = (verdict: string, ...after: string[]) => [block(verdict), ...after].join("\n");
+  const unchanged = { ok: true, verdict: "FIX_FIRST", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0 };
+
+  it.each(["yes", "no"])("reads Closer: %s directly after Head on FIX_FIRST", (answer) => {
+    expect(parseVerdictBlock(withCloser("FIX_FIRST", `Closer: ${answer}`))).toEqual({ ...unchanged, closer: answer });
+  });
+
+  it("leaves closer undefined when the line is absent", () => {
+    expect(parseVerdictBlock(block("FIX_FIRST"))).toEqual(unchanged);
+  });
+
+  it("ignores a Closer line on MERGE", () => {
+    const result = parseVerdictBlock(withCloser("MERGE", "Closer: yes"));
+    expect(result).toEqual({ ...unchanged, verdict: "MERGE" });
+  });
+
+  it.each([
+    ["another value", "Closer: maybe"],
+    ["a capitalised value", "Closer: Yes"],
+    ["trailing words", "Closer: yes please"],
+    ["a duplicate", "Closer: yes\nCloser: no"],
+    ["a duplicate further down", "Closer: no\nProse.\nCloser: no"],
+    ["a gap after Head", "\nCloser: no"],
+    ["prose between", "Note.\nCloser: no"],
+    ["a quoted line", "> Closer: no"],
+    ["an indented-code line", "    Closer: no"],
+    ["a fenced line", "```\nCloser: no\n```"],
+  ])("leaves verdict, PR and head unchanged for %s", (_name, tail) => {
+    expect(parseVerdictBlock(withCloser("FIX_FIRST", tail))).toEqual(unchanged);
+  });
+
+  it("is not read when the line sits before the Verdict line", () => {
+    expect(parseVerdictBlock(`Closer: no\n${block("FIX_FIRST")}`)).toEqual({ ...unchanged, lineOffset: 1 });
+  });
+});

@@ -55,9 +55,20 @@ function symbolNamesByFile(nodes: Iterable<GraphNode>): Map<string, Set<string>>
  * the `history-metrics.ts` adapter. Test-coverage metrics run with or without it.
  */
 export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
+  return assembleIndexerMetrics(input).metrics;
+}
+
+export interface AssembledIndexerMetrics {
+  metrics: GraphMetric[];
+  /** Why git-history metrics are missing or partial; empty when history loaded or the root is not git. */
+  warnings: readonly string[];
+}
+
+/** {@link buildIndexerMetrics} plus the history warnings it would otherwise drop. */
+export function assembleIndexerMetrics(input: IndexerMetricsInput): AssembledIndexerMetrics {
   const nodeList = [...input.nodes.values()];
   const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
-  return [
+  const metrics = [
     ...computeMetrics(nodeList, [...input.edges.values()]),
     ...computeCallMetrics(nodeList, input.edges.values()),
     ...computeSourceMetrics(
@@ -71,6 +82,7 @@ export function buildIndexerMetrics(input: IndexerMetricsInput): GraphMetric[] {
     ...(history?.metrics ?? []),
     ...computeTestCoverage(nodeList, history?.primaryEntries ?? null, input.history?.churnWindowDays),
   ];
+  return { metrics, warnings: history?.warnings ?? [] };
 }
 
 /**

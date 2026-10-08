@@ -7,6 +7,7 @@ import type {
   MetricMinRule,
   MetricOutlierRule,
   MetricProductMaxRule,
+  NoImportCyclesRule,
   NoInternalOnlyBarrelsRule,
   Severity,
 } from "./types.js";
@@ -70,6 +71,8 @@ function validateRule(raw: unknown, index: number, warn: Warn): CheckRule {
       return assertLayeredDeps(r, warn);
     case "no-internal-only-barrels":
       return assertNoInternalOnlyBarrels(r);
+    case "no-import-cycles":
+      return assertNoImportCycles(r, warn);
     default:
       throw new Error(`rule[${index}] (${r.id}) unknown type "${r.type}"`);
   }
@@ -94,6 +97,20 @@ function assertNoInternalOnlyBarrels(
     packageRoots: r.packageRoots as string[],
     severity: parseSeverity(r),
     exclude: parseExclude(r),
+  };
+}
+
+function assertNoImportCycles(r: Record<string, unknown>, warn: Warn): NoImportCyclesRule {
+  if (r.includeTypeOnly !== undefined && typeof r.includeTypeOnly !== "boolean") {
+    throw new Error(`${r.id}: includeTypeOnly must be a boolean`);
+  }
+  return {
+    type: "no-import-cycles",
+    id: r.id as string,
+    severity: parseSeverity(r),
+    exclude: parseExclude(r),
+    excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    includeTypeOnly: r.includeTypeOnly,
   };
 }
 

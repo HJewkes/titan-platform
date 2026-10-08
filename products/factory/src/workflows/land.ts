@@ -69,7 +69,7 @@ export type LandOutcome =
   /** `mergeSha` is null when GitHub reports the PR merged but names no merge commit. */
   | { kind: "merged"; headSha: string; mergeSha: string | null }
   | { kind: "ci-failed"; headSha: string; failing: FailingCheck[] }
-  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied"; headSha: string; detail: string };
+  | { kind: "stopped"; reason: "closed" | "not-mergeable" | "conflict" | "abandoned" | "stuck-behind" | "merge-denied" | "update-branch-unmoved"; headSha: string; detail: string };
 
 export interface LandDeps {
   port: GitHubPort;
@@ -98,6 +98,8 @@ interface UpdateResult {
   skipped?: string;
   /** GitHub refused the update because the base does not merge into the head; the head is unchanged. */
   conflict?: boolean;
+  /** GitHub accepted the update but the head never moved, even after the bounded re-reads and re-sends. */
+  unmoved?: boolean;
 }
 
 interface LandState {
@@ -164,6 +166,7 @@ async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, 
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
   if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
+  if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
   if (update.own && refresh) state.refreshed.add(update.headSha);
   return undefined;
@@ -313,26 +316,37 @@ interface UpdateInput {
   expectedHeadSha: string;
 }
 
+/** GitHub's update-branch sometimes never moves the head on the first write; each re-send follows a fresh read of the PR. */
+const UPDATE_RESENDS = 2;
+
 /** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
 async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
-  const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
-  if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
-  if (!write.done && write.skipped !== "head-moved") {
-    const pr = await port.getPr(input.repo, input.pr);
-    return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
+  for (let resend = 0; ; resend++) {
+    const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
+    if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
+    if (!write.done && write.skipped !== "head-moved") {
+      const pr = await port.getPr(input.repo, input.pr);
+      return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
+    }
+    const headSha = await waitForHeadChange(port, input, timing, signal);
+    if (headSha !== undefined) return movedHead(port, input, headSha, write.done ? undefined : write.skipped);
+    if (resend === UPDATE_RESENDS) return { headSha: input.expectedHeadSha, own: false, unmoved: true };
   }
-  const headSha = await waitForHeadChange(port, input, timing, signal);
-  const commit = await port.getCommit(input.repo, headSha);
-  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
-  return { headSha, own, ...(write.done ? {} : { skipped: write.skipped }) };
 }
 
-async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string> {
+async function movedHead(port: GitHubPort, input: UpdateInput, headSha: string, skipped: string | undefined): Promise<UpdateResult> {
+  const commit = await port.getCommit(input.repo, headSha);
+  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
+  return { headSha, own, ...(skipped === undefined ? {} : { skipped }) };
+}
+
+/** The head that replaced the expected one, or undefined when the wait ran out with it unmoved. */
+async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string | undefined> {
   const clock = deadline(timing);
   for (;;) {
     const pr = await port.getPr(input.repo, input.pr);
     if (pr.headSha !== input.expectedHeadSha) return pr.headSha;
-    if (clock.expired()) throw new Error(`update-branch: head still ${input.expectedHeadSha} after ${timing.timeoutMs} ms`);
+    if (clock.expired()) return undefined;
     await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
 }

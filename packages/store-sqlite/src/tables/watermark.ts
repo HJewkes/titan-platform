@@ -115,8 +115,13 @@ export class WatermarkTable {
     return raw === undefined ? undefined : toRow(raw);
   }
 
-  advance(sourceKey: string, update: WatermarkAdvance): void {
-    this.advanceStmt.run({
+  /**
+   * Record progress on a source `ensure` already created. Returns false, and
+   * writes nothing, for a key that was never ensured; a no-op rather than a throw
+   * because ingesters may touch keys they have not ensured yet.
+   */
+  advance(sourceKey: string, update: WatermarkAdvance): boolean {
+    const result = this.advanceStmt.run({
       sourceKey,
       lastOffset: update.lastOffset,
       prefixHash: update.prefixHash ?? null,
@@ -124,15 +129,17 @@ export class WatermarkTable {
       fileMtime: update.fileMtime ?? null,
       contentHash: update.contentHash ?? null,
     });
+    return result.changes > 0;
   }
 
-  /** Back to byte 0, for a source that was rewritten rather than appended to. */
-  rewind(sourceKey: string): void {
-    this.rewindStmt.run(sourceKey);
+  /** Back to byte 0, for a source that was rewritten rather than appended to. False for a key never ensured. */
+  rewind(sourceKey: string): boolean {
+    return this.rewindStmt.run(sourceKey).changes > 0;
   }
 
-  markStatus(sourceKey: string, status: WatermarkStatus, reason: string | null = null): void {
-    this.statusStmt.run(status, reason, sourceKey);
+  /** False, and nothing written, for a key never ensured. */
+  markStatus(sourceKey: string, status: WatermarkStatus, reason: string | null = null): boolean {
+    return this.statusStmt.run(status, reason, sourceKey).changes > 0;
   }
 
   list(): WatermarkRow[] {

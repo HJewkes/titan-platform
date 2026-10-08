@@ -5,9 +5,11 @@ import { EXCERPT_LINE_CAP } from "./query/contract-findings.js";
 import type { CommandResult } from "./query/contract.js";
 import type { ModelFinding } from "./query/model.js";
 import { createQueryResolver } from "./query/resolver.js";
+import { isStoredKind } from "./query/schemas.js";
 
 type Get = CommandResult<"finding.get">;
 type Neighbors = CommandResult<"node.neighbors">;
+type Hierarchy = CommandResult<"hierarchy.get">;
 
 const numbered = (n: number): string[] => Array.from({ length: n }, (_, i) => `line ${i + 1}`);
 
@@ -157,5 +159,14 @@ describe("node.neighbors over a model", () => {
   it("rejects a synthesized directory and fails NOINPUT for an unknown id", () => {
     expect(resolve("node.neighbors", { id: "lib/" })).toMatchObject({ ok: false, code: EXIT.DATAERR });
     expect(resolve("node.neighbors", { id: "lib/zzz.ts" })).toMatchObject({ ok: false, code: EXIT.NOINPUT });
+  });
+
+  it("answers for exactly the hierarchy rows whose kind isStoredKind accepts", () => {
+    const rows = answer(resolve)<Hierarchy>("hierarchy.get", { depth: 8, include_symbols: true }).nodes;
+
+    const answered = rows.map((row) => [row.kind, resolve("node.neighbors", { id: row.id }).ok]);
+
+    expect(new Set(rows.map((row) => row.kind))).toEqual(new Set(["repo", "directory", "file", "symbol"]));
+    expect(answered).toEqual(rows.map((row) => [row.kind, isStoredKind(row.kind)]));
   });
 });

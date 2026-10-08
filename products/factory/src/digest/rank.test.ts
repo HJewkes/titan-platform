@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { emptyModel, fakeSources, NOW, SLOT, watchRow } from "../test-support/digest.js";
-import { collectDigest } from "./collect.js";
+import { collectDigest, type GateFact } from "./collect.js";
 import { queueAsk } from "./queues.js";
 import { rankDigest } from "./rank.js";
 
 const RUN = "22222222-2222-4222-8222-222222222222";
 
+function gateFact(gateId: string, stepId: string): GateFact {
+  return { runId: RUN, stepId, gateId, prompt: "Merge PR #42?", resolve: `titan-factory gate resolve ${RUN} ${stepId} --json '<payload>'`, createdAt: "2026-03-10T19:00:00Z" };
+}
+
 describe("rankDigest", () => {
   it("lists a PR once when a factory gate and a seat queue item both ask about it", async () => {
     const sources = fakeSources({
       rows: async () => [watchRow({ pr: 42, runId: RUN, phase: "awaiting-approval" })],
-      gates: async () => [{ runId: RUN, stepId: "approve-merge", prompt: "Merge PR #42?", resolve: `titan-factory gate resolve ${RUN} approve-merge --json '<payload>'` }],
+      gates: async () => [gateFact("g-1", "approve-merge")],
       queueAsks: () => [queueAsk("seat-a", "**widgets#42:** recommend merge, CI green"), queueAsk("seat-a", "Unrelated ask")],
     });
     const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
@@ -19,6 +23,19 @@ describe("rankDigest", () => {
 
     expect(ranked.needsYou.map((ask) => ask.source)).toEqual(["factory", "seat-a"]);
     expect(ranked.needsYou[1]!.text).toBe("Unrelated ask");
+  });
+
+  it("two gates on one PR stay two asks", async () => {
+    const sources = fakeSources({
+      rows: async () => [watchRow({ pr: 42, runId: RUN, phase: "awaiting-approval" })],
+      gates: async () => [gateFact("g-1", "approve-merge"), gateFact("g-2", "ci-failed")],
+      queueAsks: () => [queueAsk("seat-a", "**widgets#42:** recommend merge, CI green")],
+    });
+    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+
+    const ranked = rankDigest(model);
+
+    expect(ranked.needsYou.map((ask) => ask.keys[0])).toEqual(["gate:g-1", "gate:g-2"]);
   });
 
   it("matches a queue item to a gate by the run id it quotes", () => {

@@ -7,8 +7,8 @@ import {
 import type { UntestedRiskRow } from "./graph-report-types.js";
 
 /**
- * Files that are load-bearing + complex + churning AND under-tested (C-63) —
- * the sharpest single risk signal: `hotspot × (1 − coverage/100)`. Requires an
+ * Files that are load-bearing, complex, frequently changed and under-tested (C-63),
+ * ranked by `hotspot × (1 − coverage/100)`. Requires an
  * ingested coverage overlay (`graph coverage`); with no coverage, the section is
  * empty (never a stale or assumed number — coverage is an overlay, not inferred).
  * A fully-covered hotspot (coverage 100) scores 0 and drops out.
