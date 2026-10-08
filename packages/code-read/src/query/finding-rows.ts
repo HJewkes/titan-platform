@@ -1,3 +1,4 @@
+import { compareExcess, violationExcess } from "@titan-design/code-graph/analysis";
 import type { Finding } from "./contract-findings.js";
 import type { ModelFinding, ModelRule, ReadModel } from "./model.js";
 import type { NodeRef } from "./schemas.js";
@@ -16,11 +17,7 @@ export function refFor(model: ReadModel, id: string): NodeRef {
 }
 
 /** Larger is worse for every rule: value over threshold for a maximum, threshold over value for a minimum. */
-export function excessOf(ruleType: string | undefined, value?: number, threshold?: number): number | null {
-  if (value === undefined || threshold === undefined) return null;
-  if (ruleType === "metric-min") return value > 0 ? threshold / value : null;
-  return threshold > 0 ? value / threshold : null;
-}
+export const excessOf = violationExcess;
 
 function toFinding(model: ReadModel, f: ModelFinding, rules: ReadonlyMap<string, ModelRule>): Finding {
   const out: Finding = {
@@ -56,8 +53,8 @@ export function findingsFor(model: ReadModel): readonly Finding[] {
 
 function statusAgainst(current: Finding, before: Finding | undefined): Finding["status"] {
   if (!before) return "new";
-  if (current.excess === null || before.excess === null || current.excess === before.excess) return "carryover";
-  return current.excess > before.excess ? "worsened" : "improved";
+  const change = compareExcess(before.excess, current.excess);
+  return change === null || change === "unchanged" ? "carryover" : change;
 }
 
 // Matched by id only: following renames through the alias chain is TP-187's identity work.
