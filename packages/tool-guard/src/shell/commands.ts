@@ -141,9 +141,15 @@ function walk(tokens: Token[], w: Walk): void {
     if (token.type === "word") words.push(token);
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
-    if (token.type === "subs") for (const tail of token.tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth });
+    if (token.type === "subs") walkTails(token.tails, w);
   }
   emit(words, redirects, w, null);
+}
+
+/** Tails get their own unsure budget, so the bash 5 reading never spends what main's reading of the body would have had. */
+function walkTails(tails: Token[][], w: Walk): void {
+  const unsure = { ...w.unsure, left: MAX_UNSURE_WORDS };
+  for (const tail of tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth, unsure });
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
