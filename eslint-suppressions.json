@@ -1,0 +1,282 @@
+{
+  "packages/agent-dispatch/src/dispatch.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent-dispatch/src/exec.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent-protocol/src/trace/schema.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent-surface/src/run-agent.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent-surface/src/surfaces/headless.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent/src/claude-code-adapter.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/agent/src/codex-exec.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/agent/src/durable-dispatcher.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/analysis/dashboard-node-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/analysis/graph-report-drift.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/code-graph/src/analysis/partition-quality.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/check/validate.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/reexport-resolve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/extractors/ts-morph-extractor.test-helpers.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/indexer.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/source-metrics.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/store.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/daemon/src/daemon.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/decider/src/router.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/eslint-plugin/src/todo-needs-issue.ts": {
+    "titan/todo-needs-issue": {
+      "count": 1
+    }
+  },
+  "packages/github/src/fake.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/gh-cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/port.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/github/src/rest.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/messaging/src/telegram-fakes.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/react-app/src/hooks/event-bus.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/react-app/src/hooks/query-store.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-graph/src/normalized-index.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-graph/src/refresh.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/claude-source.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/session-read/src/codex-fixture.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/discover.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/fold.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/line-reader.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/session-read/src/recent-claude.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/store-sqlite/src/tables/span-fts.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/style-checker/src/profile-diff/diff-against-profile.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/style-checker/src/runners/tool-runner.ts": {
+    "titan/max-function-lines": {
+      "count": 2
+    }
+  },
+  "packages/style-profile/src/exporters/editorconfig.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/tool-guard/src/shell/unwrap.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/context.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/workflow/src/durable-harness-runner.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/worktree/src/allocator.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/worktree/src/reattach.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "packages/worktree/src/setup.ts": {
+    "titan/max-function-lines": {
+      "count": 3
+    }
+  },
+  "products/factory/src/cli-service.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/serve.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/service.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/reviewer-brief.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/roster.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/retrieval-eval/src/mine/spawn-arm.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/retrieval-eval/src/served/format.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/retrieval-eval/src/uptake.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  },
+  "products/session-miner/src/cli.ts": {
+    "titan/max-function-lines": {
+      "count": 1
+    }
+  }
+}

@@ -725,8 +725,9 @@ Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer 
 Key exports:
 
 - `ports`: `AwaitVerdictInput`, `Presence`, `ReviewTarget`, `ReviewerAgent`, `ReviewerDispatch`, `ReviewerFacts`, `ReviewerMessage`, `ReviewerReader`
-- `types`: `ChangedFile`, `PanelFinding`, `PanelMember`, `PanelOutcome`
-- +7 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- `types`: `ChangedFile`, `PanelFinding`
+- `classify`: `classifyPr`, `DEFAULT_CLASS_RULES`
+- +10 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
