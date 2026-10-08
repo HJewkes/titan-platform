@@ -764,6 +764,9 @@ importers:
 
   products/retrieval-eval:
     dependencies:
+      '@titan-design/app-paths':
+        specifier: workspace:*
+        version: link:../../packages/app-paths
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed

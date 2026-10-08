@@ -917,8 +917,8 @@ Key exports:
 
 - `pairs`: `formatPairs`, `labelKeys`, `parsePairs`, `scopePair`
 - `corpus/transcripts`: `defaultTranscriptRoots`, `discoverTranscripts`, `readHead`, `streamToolUses`, `textOf`, `transcriptId`
-- `mine/labels`: `dedupeLabels`, `defaultActiveRoot`
-- +101 more in `products/retrieval-eval/src/index.ts`
+- `mine/labels`: `dedupeLabels`, `labelledPathOf`
+- +99 more in `products/retrieval-eval/src/index.ts`
 
 <a id="cap-session-miner"></a>
 
