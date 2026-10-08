@@ -18,6 +18,8 @@ interface Machine {
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
+  /** Successive /health answers, the last repeating; overrides `health`. */
+  healthSequence?: (Record<string, unknown> | null)[];
   dead?: number[];
   startedAgoMs?: number;
   installed?: string;
@@ -31,6 +33,7 @@ const healthy = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 
 function fakePorts(init: Machine) {
   const calls: string[] = [];
+  let probes = 0;
   const ports: CheckPorts = {
     platform: init.platform ?? "darwin",
     uid: UID,
@@ -46,7 +49,7 @@ function fakePorts(init: Machine) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: () => undefined,
-    health: async () => init.health ?? null,
+    health: async () => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null)),
     mkdir: () => undefined,
     writeFile: () => undefined,
     readFile: () => undefined,
@@ -104,6 +107,20 @@ describe("titan-factory service check", () => {
     const { out } = await check({ print: running, health: null });
 
     expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health`);
+  });
+
+  it("exits 0 when one failed probe is followed by an ok probe from the job pid", async () => {
+    const { code, out } = await check({ print: running, healthSequence: [null, healthy()] });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
+  it("reports stale pid naming the probe count when three probes all fail", async () => {
+    const { code, out } = await check({ print: running, healthSequence: [null, null, null, healthy()] });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health on port 7410 (3 probes failed)`);
   });
 
   it("reports a crash loop when the job exited non-zero several times and holds no process", async () => {
