@@ -4,6 +4,7 @@ import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefin
 import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import type { SettleHold } from "../workflows/land-settle.js";
 import { LAND_STEPS, codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
@@ -104,6 +105,8 @@ interface ShepherdRun extends WakeRun {
   fresh: Set<string>;
   /** Update-branch calls since the last human gate across every round; replaying the run's recorded steps rebuilds it, so a restart keeps the count. */
   updateBound: UpdateBound;
+  /** The unsettled-merge wait at a head across every round; replay rebuilds it like the update bound. */
+  settleHold: SettleHold;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
 }
@@ -123,7 +126,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
@@ -140,7 +143,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
 async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
   try {
-    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, round: run.state.round, updateBound: run.updateBound }, options);
+    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options);
   } catch (error) {
     if (error instanceof LeaveLand) return error.outcome;
     throw error;

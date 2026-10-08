@@ -1,8 +1,10 @@
 import type { MergeMethod } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
-import { decideAutoMerge, type MergeEvidence } from "./merge-facts.js";
+import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-facts.js";
+import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
@@ -110,21 +112,32 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
 
 /**
  * The Shepherd land options: the policy read at each decision, and on an allow the evidence record the PR comment carries.
- * Every gate names why the owner is asked: the escalation at that head, else a policy that did not allow the merge.
+ * Every gate names why the owner is asked: the escalation at that head, else a policy that did not allow the merge. An
+ * unsettled mergeability re-reads the evidence at the same head, and later decisions about that review judge the re-read.
  */
 export function shepherdLandOptions(
   effective: () => EffectivePolicy,
   verdictFor: (headSha: string) => Verdict | undefined = () => undefined,
   escalationAt: (headSha: string) => Escalated | undefined = () => undefined,
 ): LandOptions {
+  const reread = new WeakMap<Verdict, unknown>();
+  const current = (headSha: string): Verdict | undefined => {
+    const verdict = verdictFor(headSha);
+    return verdict?.kind === "MERGE" && reread.has(verdict) ? { ...verdict, evidence: reread.get(verdict) } : verdict;
+  };
+  const refresh = async (ctx: WorkflowContext, headSha: string): Promise<void> => {
+    const verdict = verdictFor(headSha);
+    const evidence = mergeEvidenceAt(headSha, current);
+    if (verdict && evidence) reread.set(verdict, await refreshMergeEvidence(ctx, evidence, effective().visualPaths));
+  };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
-    const decision = shepherdGatePolicy(effective(), verdictFor).decide(action, target);
+    const decision = shepherdGatePolicy(effective(), current).decide(action, target);
     if (decision.outcome !== "gate") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
     if (escalated !== undefined) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalationReason(escalated.escalation, escalated.detail) };
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, verdictFor)?.record }) };
+  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh } };
 }
 
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
