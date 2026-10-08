@@ -16,9 +16,9 @@ export interface DeployWatchPorts {
 }
 
 /** Whether the hub seat was told about the alarm that is up now. */
-export type AlarmNotice = { sent: string } | { failed: string } | { skipped: string };
+type AlarmNotice = { sent: string } | { failed: string } | { skipped: string };
 
-export type DeployStatus = DeployHealth & { notice: AlarmNotice | null };
+type DeployStatus = DeployHealth & { notice: AlarmNotice | null };
 
 export interface DeployWatch {
   /** Re-reads every source, then tells the hub seat once when the alarm goes up. */
@@ -32,7 +32,7 @@ async function lockNote(ports: DeployWatchPorts, outcomes: ReturnType<typeof par
   return last && namesIndexLock(last.text) ? describeIndexLock(await ports.indexLock()) : undefined;
 }
 
-export async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
+async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
   const outcomes = parseRedeployLog(ports.readLog() ?? "");
   const [lag, note] = await Promise.all([ports.lag(), lockNote(ports, outcomes)]);
   return deployHealth({ outcomes, runningSha: ports.runningSha(), lag, now: ports.now(), ...(note !== undefined && { lockNote: note }) });

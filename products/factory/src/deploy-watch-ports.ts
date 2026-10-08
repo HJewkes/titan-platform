@@ -14,7 +14,7 @@ import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 const LOG_TAIL_BYTES = 256 * 1024;
 const LAG_TIMEOUT_MS = 10_000;
 
-export function readTail(path: string, maxBytes = LOG_TAIL_BYTES): string | undefined {
+function readTail(path: string, maxBytes = LOG_TAIL_BYTES): string | undefined {
   let fd: number;
   try {
     fd = openSync(path, "r");
@@ -32,7 +32,7 @@ export function readTail(path: string, maxBytes = LOG_TAIL_BYTES): string | unde
 }
 
 /** compare lists the build's missing commits oldest first, so the first one's commit time is how long main has been ahead. */
-export async function mainLag(sha: string, repo: string | undefined = FACTORY_REPO, exec: GhExec = execGh): Promise<MainLag | string> {
+async function mainLag(sha: string, repo: string | undefined = FACTORY_REPO, exec: GhExec = execGh): Promise<MainLag | string> {
   if (sha === UNKNOWN_BUILD_SHA || sha.endsWith(DIRTY_SUFFIX) || repo === undefined) return `no clean build sha to compare (${sha})`;
   const args = ["api", `repos/${repo}/compare/${sha}...main`, "--jq", `"\\(.ahead_by) \\(.commits[0].commit.committer.date // "")"`];
   try {

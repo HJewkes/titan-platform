@@ -3,7 +3,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 
 /** git gives up on a lock it cannot create, so one left by a killed git blocks every later merge until it is removed. */
-export const STALE_LOCK_MS = 10 * 60_000;
+const STALE_LOCK_MS = 10 * 60_000;
 const PROBE_TIMEOUT_MS = 5_000;
 
 /** What the detector reads; tests pass fakes, so none of them touches the filesystem or the process table. */
@@ -21,7 +21,7 @@ export type IndexLock =
   | { state: "fresh"; path: string; ageMs: number }
   | { state: "held"; path: string; ageMs: number; holder: string };
 
-export const indexLockPath = (checkout: string): string => join(checkout, ".git", "index.lock");
+const indexLockPath = (checkout: string): string => join(checkout, ".git", "index.lock");
 
 /** Stale means no process holds the lock and it is older than `staleMs`; a younger one may belong to a git that is just starting. */
 export async function inspectIndexLock(checkout: string, probe: LockProbe, staleMs = STALE_LOCK_MS): Promise<IndexLock> {

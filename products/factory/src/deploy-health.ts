@@ -1,10 +1,10 @@
-export const REFUSALS_TO_ALARM = 2;
-export const BEHIND_MERGES_TO_ALARM = 3;
-export const BEHIND_MINUTES_TO_ALARM = 60;
+const REFUSALS_TO_ALARM = 2;
+const BEHIND_MERGES_TO_ALARM = 3;
+const BEHIND_MINUTES_TO_ALARM = 60;
 const REASON_MAX_CHARS = 1_000;
 
 /** One finished `service deploy` as redeploy.log shows it; `at` is the start line before it, since outcome lines carry no time. */
-export interface LoggedOutcome {
+interface LoggedOutcome {
   kind: "ok" | "refused";
   at: string | null;
   text: string;
@@ -16,7 +16,7 @@ export interface MainLag {
   oldestAt?: number;
 }
 
-export interface DeployHealthInput {
+interface DeployHealthInput {
   outcomes: readonly LoggedOutcome[];
   runningSha: string;
   /** A string says why the lag could not be read. */
