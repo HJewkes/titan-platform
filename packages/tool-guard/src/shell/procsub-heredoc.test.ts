@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
-import { ParseError } from "./lexer.js";
+import { decide } from "../decide.js";
+import { handle } from "../hook.js";
+import type { HookPort } from "../hook.js";
 
 const REPO = "/home/you/projects/app";
 
@@ -19,13 +21,12 @@ function classifyCommand(command: string): string[] {
   return classify(event, context).map((a) => a.spelling);
 }
 
-/** Pass when the push is seen or the command is refused as unparseable; fail when it is hidden. */
-function seesPushOrFailsClosed(command: string): boolean {
-  try {
-    return classifyCommand(command).includes("bash.merge.git-push-protected");
-  } catch (error) {
-    return error instanceof ParseError;
-  }
+/** The hook's own verdict, which is what the agent meets: a ParseError passes unless the text names a guarded keyword. */
+async function hookDenies(command: string): Promise<boolean> {
+  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+  const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
+  const result = await handle(input, { PATH: "/usr/bin" }, port);
+  return result.stdout !== "";
 }
 
 describe("a heredoc opened inside a process substitution", () => {
@@ -35,13 +36,13 @@ describe("a heredoc opened inside a process substitution", () => {
     ["<( (cat <<EOF) )", "cat <( (cat <<EOF) )"],
     ["<(cat <<EOF)", "cat <(cat <<EOF)"],
     [">(cat <<EOF)", "cat >(cat <<EOF)"],
-  ])("does not let a quote in the body of %s hide the push", (_form, opener) => {
+  ])("does not let a quote in the body of %s hide the push", async (_form, opener) => {
     const command = `${opener}\nit's\nEOF\n${PUSH}\necho \\'`;
-    expect(seesPushOrFailsClosed(command)).toBe(true);
+    expect(await hookDenies(command)).toBe(true);
   });
 
-  it("does not hide a push written in the body of a heredoc fed to a shell", () => {
-    expect(seesPushOrFailsClosed(`bash <(cat <<EOF)\n${PUSH}\nEOF\n`)).toBe(true);
+  it("does not hide a push written in the body of a heredoc fed to a shell", async () => {
+    expect(await hookDenies(`bash <(cat <<EOF)\n${PUSH}\nEOF\n`)).toBe(true);
   });
 
   it("keeps a heredoc whose body is inside the substitution", () => {
@@ -50,5 +51,39 @@ describe("a heredoc opened inside a process substitution", () => {
 
   it("still reads a real arithmetic shift as a shift", () => {
     expect(classifyCommand(`(( x << 2 ))\n${PUSH}`)).toContain("bash.merge.git-push-protected");
+  });
+
+  it.each([
+    ["a plain body", `cat <(cat <<EOF)\nbody\nEOF\n${PUSH}`],
+    ["a diff operand after it", `diff <(cat <<EOF) file\nbody\nEOF\n${PUSH}`],
+    ["a doubled opener", `cat <((cat <<EOF) )\nbody\nEOF\n${PUSH}`],
+    ["an output substitution", `cat >(cat <<EOF)\nbody\nEOF\n${PUSH}`],
+    ["a tab-stripping heredoc", `cat <(cat <<-EOF)\n\tbody\n\tEOF\n${PUSH}`],
+    ["a single-quoted delimiter", `cat <(cat <<'EOF')\nbody\nEOF\n${PUSH}`],
+    ["a double-quoted delimiter", `cat <(cat <<"EOF")\nbody\nEOF\n${PUSH}`],
+    ["a nested substitution", `cat <(cat <(cat <<EOF))\nbody\nEOF\n${PUSH}`],
+    ["a command substitution around it", `echo $(cat <(cat <<EOF))\nbody\nEOF\n${PUSH}`],
+    ["a shell -c string", `bash -c ${JSON.stringify(`cat <(cat <<EOF)\nbody\nEOF\n${PUSH}`)}`],
+    ["a delimiter that never closes", `cat <(cat <<EOF)\nbody\n${PUSH}`],
+    ["a body holding a closing parenthesis", `cat <(cat <<EOF)\nEOF)\nEOF\n${PUSH}`],
+  ])("the hook denies a push after %s", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it("the hook denies a push after a pending heredoc that has a quote in its body", async () => {
+    expect(await hookDenies(`cat <(cat <<EOF)\nit's\nEOF\n${PUSH}\necho \\'`)).toBe(true);
+  });
+
+  it("the hook denies a protected merge after a pending heredoc", async () => {
+    expect(await hookDenies("cat <(cat <<EOF)\nbody\nEOF\ngh pr merge 1 --squash")).toBe(true);
+  });
+
+  it("the hook lets a pending heredoc with no push pass", async () => {
+    expect(await hookDenies("cat <(cat <<EOF)\nbody\nEOF\nls")).toBe(false);
+  });
+
+  it("lexes three hundred pending heredocs without running away", async () => {
+    const command = `${Array.from({ length: 300 }, () => "cat <(cat <<EOF)\nb\nEOF").join("\n")}\n${PUSH}`;
+    expect(await hookDenies(command)).toBe(true);
   });
 });
