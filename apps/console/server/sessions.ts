@@ -167,6 +167,22 @@ function pageOf(graph: SessionGraph, args: z.infer<typeof listArgs>, now: () => 
   return withDetail(graph, rows, now);
 }
 
+export interface TaskSessions {
+  sessions: SessionRow[];
+  degraded: Degraded | null;
+}
+
+/** Sessions whose `session_origin.task_ids` names the task, newest first. */
+export async function sessionsForTask(source: SessionsSource, taskId: string, limit: number): Promise<TaskSessions> {
+  const read = await readGraph(source.graphPath, (graph) => {
+    // json_each raises on malformed JSON, so a bad row is skipped rather than failing the query.
+    const sql = `${ROW_SELECT} WHERE CASE WHEN json_valid(o.task_ids) THEN EXISTS (SELECT 1 FROM json_each(o.task_ids) WHERE value = ?) ELSE 0 END
+                 ORDER BY s.started_at DESC LIMIT ?`;
+    return withDetail(graph, graph.db.prepare(sql).all(taskId, limit) as RawRow[], source.now ?? Date.now);
+  });
+  return read.ok ? { sessions: read.value, degraded: null } : { sessions: [], degraded: read.degraded };
+}
+
 function lookupSession(graph: SessionGraph, sessionId: string, now: () => number): SessionRow | null {
   const row = graph.db.prepare(`${ROW_SELECT} WHERE s.session_id = ?`).get(sessionId) as RawRow | undefined;
   return row ? (withDetail(graph, [row], now)[0] ?? null) : null;
