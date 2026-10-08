@@ -352,7 +352,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `shell`: `ParseError`, `tokenize`
-- +47 more in `packages/tool-guard/src/index.ts`
+- +48 more in `packages/tool-guard/src/index.ts`
 
 ## Tier 1 — engines
 
