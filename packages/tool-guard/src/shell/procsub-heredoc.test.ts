@@ -106,4 +106,9 @@ describe("a heredoc opened inside a process substitution", () => {
     expect(performance.now() - started).toBeLessThan(2000);
     expect(denied).toBe(true);
   });
+
+  it.each([40, 80])("the hook denies a push when %i arithmetic openers sit in a quote only bash 3.2 opens", async (count) => {
+    const command = `cat <(cat <<EOF)\nit's\nEOF\n${"((x\n".repeat(count)}x'\n(( a ))\n${PUSH}`;
+    expect(await hookDenies(command)).toBe(true);
+  });
 });
