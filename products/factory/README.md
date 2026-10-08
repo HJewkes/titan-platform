@@ -123,6 +123,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   branch: a repeat, or a PR registered after its branch, updates the task, implementer,
   reviewer and policy on the existing registration and returns its run. The run's policy only
   ever narrows toward the stored one.
+- Once a run merges, `sh-cleanup` closes the registration's `--task` through active-work's loopback rpc unless
+  the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
+  task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
+  active-work as a caveat on the step's result instead of failing the run.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
