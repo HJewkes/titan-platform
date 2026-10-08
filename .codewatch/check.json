@@ -52,7 +52,8 @@
           "packages/decider",
           "packages/coordinator",
           "packages/owner-queue",
-          "packages/review-panel"
+          "packages/review-panel",
+          "packages/pm"
         ],
         "ui": [
           "packages/react-app"
@@ -114,7 +115,8 @@
           "packages/decider",
           "packages/coordinator",
           "packages/owner-queue",
-          "packages/review-panel"
+          "packages/review-panel",
+          "packages/pm"
         ],
         [
           "packages/react-app"

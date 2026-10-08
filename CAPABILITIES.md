@@ -19,7 +19,7 @@ Before adding code:
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
 | [`app-paths`](#cap-app-paths) | 0 | You need an app's per-user data, config, cache or log directory (`appDirs`, the env-paths table with no `-nodejs` suffix), or active-work's data root and session graph path as active-work's own CLI resolves them (`activeWorkRoot`, `activeWorkGraphPath`, honouring `ACTIVE_ROOT`). Every function is pure over an injectable `{ env, home, platform }`. To expand `~` in a transcript path, use `expandHome` in session-read; to scan diffs for leaked data-directory paths, use egress-scan. |
-| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
+| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. Ids are deterministic for a given input order and survive restarts via snapshot; merged lines take the founding line's id. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
@@ -51,6 +51,7 @@ Before adding code:
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, and a deterministic rank. It holds no I/O: adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags and notes). Pure zod schema and inferred type; it reads no files, so parse the task YAML in the host and hand the object over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`) and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. Types only for now; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph. |
@@ -157,16 +158,15 @@ Key exports:
 
 Tier 0, `@titan-design/authority@0.3.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
 
-**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
+**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`, `RESOLVER_CLASSES`
 - `conditions`: `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
-- `table`: `DEFAULT_TABLE`
-- +16 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
@@ -452,7 +452,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +63 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -694,6 +694,18 @@ Key exports:
 - `merge`: `isMergeKey`, `mergeByKeys`
 - `rank`: `rank`
 - +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
+
+<a id="cap-pm"></a>
+
+### [`pm`](https://hjewkes.github.io/titan-platform/reference/pm)
+
+Tier 2, `@titan-design/pm@0.0.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
+
+**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags and notes). Pure zod schema and inferred type; it reads no files, so parse the task YAML in the host and hand the object over. For a seat's front matter use `coordinator` instead.
+
+Key exports:
+
+- `task`: `TaskSchema`, `Task`
 
 <a id="cap-queue-mirror"></a>
 

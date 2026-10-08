@@ -1,4 +1,4 @@
-import type { ConditionKind } from "./vocabulary.js";
+import type { ConditionKind, MergeConditionKind, QuestionConditionKind } from "./vocabulary.js";
 
 export interface AgentIdentity {
   agentId: string;
@@ -52,8 +52,17 @@ export interface MergeFacts {
   kind?: string;
 }
 
+/** What the caller observed about the question gate a decider wants to answer. */
+export interface QuestionFacts {
+  /** The kind of rule the gate was opened under; only `question` passes. */
+  ruleKind: string;
+  /** The decision mode of the question's category; only `auto` passes. */
+  mode: string;
+}
+
 export interface ConditionFacts {
   merge?: MergeFacts;
+  question?: QuestionFacts;
 }
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
@@ -170,7 +179,7 @@ function noProtectedPathChange(facts: MergeFacts): boolean {
   return Array.isArray(paths) && paths.length > 0 && !paths.some(isProtectedPath);
 }
 
-const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
+const MERGE_CHECKS: Record<MergeConditionKind, (facts: MergeFacts) => boolean> = {
   "resolver-is-dispatched-reviewer": (facts) => sameAgent(facts.resolver, facts.dispatchedReviewer),
   "verdict-merge-at-head": verdictMergeAtHead,
   "verdict-merge-carried-tree-equal": verdictMergeCarriedTreeEqual,
@@ -184,13 +193,26 @@ const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "seat-grants-merge-on-green-approve": (facts) => Array.isArray(facts.seatGrants) && facts.seatGrants.includes("merge-on-green-approve"),
 };
 
+// Exact strings only, so an unknown, missing or differently cased kind or mode fails closed.
+const QUESTION_CHECKS: Record<QuestionConditionKind, (facts: QuestionFacts) => boolean> = {
+  "gate-rule-is-question": (facts) => facts.ruleKind === "question",
+  "category-mode-auto": (facts) => facts.mode === "auto",
+};
+
 // Facts arrive from outside the type system, so a malformed fact fails its condition instead of throwing.
-function holds(check: (facts: MergeFacts) => boolean, facts: MergeFacts): boolean {
+function holds<T>(check: ((facts: T) => boolean) | undefined, facts: unknown): boolean {
+  if (check === undefined || !isRecord(facts)) return false;
   try {
-    return check(facts);
+    return check(facts as T);
   } catch {
     return false;
   }
+}
+
+function conditionHolds(condition: ConditionKind, facts: ConditionFacts): boolean {
+  if (Object.hasOwn(MERGE_CHECKS, condition)) return holds(MERGE_CHECKS[condition as MergeConditionKind], facts.merge);
+  if (Object.hasOwn(QUESTION_CHECKS, condition)) return holds(QUESTION_CHECKS[condition as QuestionConditionKind], facts.question);
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -228,27 +250,26 @@ function toPlainData(value: unknown, ancestors: Set<object>): unknown {
 }
 
 /**
- * The merge facts as fresh plain data, read once, or undefined when they are not plain data.
+ * The facts as fresh plain data, read once, or undefined when they are not plain data.
  * structuredClone rejects functions (so no toJSON can speak for a value), Proxies and throwing getters;
  * the rebuild then reads own properties only and rejects Map, Set, Date, BigInt, cycles and sparse arrays.
  */
-export function plainMergeFacts(read: () => unknown): MergeFacts | undefined {
+export function plainFacts(read: () => unknown): ConditionFacts | undefined {
   try {
     const copy = toPlainData(structuredClone(read()), new Set());
-    const merge = isRecord(copy) ? copy.merge : undefined;
-    return isRecord(merge) ? (merge as unknown as MergeFacts) : undefined;
+    return isRecord(copy) ? (copy as ConditionFacts) : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** The conditions that do not hold on facts already made plain by `plainMergeFacts`. */
-export function unmetMergeConditions(conditions: readonly ConditionKind[], merge: MergeFacts | undefined): ConditionKind[] {
-  if (!merge) return [...conditions];
-  return conditions.filter((condition) => !holds(MERGE_CHECKS[condition], merge));
+/** The conditions that do not hold on facts already made plain by `plainFacts`. */
+export function unmetPlainConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[] {
+  if (!facts) return [...conditions];
+  return conditions.filter((condition) => !conditionHolds(condition, facts));
 }
 
 /** The conditions that do not hold. Missing or non-plain facts fail every condition, so a caller that observed nothing gets nothing. */
 export function unmetConditions(conditions: readonly ConditionKind[], facts: ConditionFacts | undefined): ConditionKind[] {
-  return unmetMergeConditions(conditions, plainMergeFacts(() => facts));
+  return unmetPlainConditions(conditions, plainFacts(() => facts));
 }
