@@ -67,6 +67,13 @@ export {
 } from "./graph-arch-compute.js";
 export type { PackageStats, PairCoupling, PartitionQualityInput, PartitionQualityResult } from "./partition-quality.js";
 export { computePartitionQuality } from "./partition-quality.js";
+export type {
+  SymbolConsumerGroup,
+  SymbolConsumerRow,
+  SymbolCouplingPayload,
+  SymbolCouplingRow,
+} from "./dashboard-symbol-coupling.js";
+export { buildSymbolCouplingPayload } from "./dashboard-symbol-coupling.js";
 export type { SymbolConsumers } from "./symbol-coupling.js";
 export { computeSymbolConsumers } from "./symbol-coupling.js";
 export type { TestSourceLink } from "./test-linker.js";
