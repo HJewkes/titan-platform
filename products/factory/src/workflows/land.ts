@@ -8,7 +8,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
-import { holdsForSecondRead } from "./land-open-checks.js";
+import { holdOpenGreen } from "./land-open-checks.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
@@ -337,15 +337,13 @@ async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal:
   const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
   const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
-  let previousRuns: string | undefined;
+  const holdGreen = holdOpenGreen();
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads, { missingSettled });
-      const held = holdsForSecondRead(snapshot.openRuns, previousRuns);
-      previousRuns = snapshot.openRuns;
+      const snapshot = holdGreen(await readCi(port, input, reads, { missingSettled }));
       if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
-      if (snapshot.verdict !== "pending" && !held) return { ...snapshot, readAt: timing.now() };
-      last = held ? "waiting for a second read to see the same check-runs" : `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
+      if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
+      last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
       backlog = snapshot.backlog === true;
     } catch (error) {
       last = error instanceof Error ? error.message : String(error);

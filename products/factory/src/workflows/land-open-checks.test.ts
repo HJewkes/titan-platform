@@ -2,7 +2,7 @@ import { fakeSha, successRun, type CheckRun } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, landScenario, type LandScenario } from "../test-support/land.js";
-import { holdsForSecondRead, openRepoFindings, openRunsSignature } from "./land-open-checks.js";
+import { holdOpenGreen, openRepoFindings, openRunsSignature } from "./land-open-checks.js";
 
 const HEAD = fakeSha("open-head");
 const OTHER_APP = 99;
@@ -47,13 +47,14 @@ describe("holding an open repo's green for a second read", () => {
   });
 
   it("holds the first green and any green whose runs changed, and releases an unchanged one", () => {
-    expect(holdsForSecondRead("1", undefined)).toBe(true);
-    expect(holdsForSecondRead("1,2", "1")).toBe(true);
-    expect(holdsForSecondRead("1,2", "1,2")).toBe(false);
+    const hold = holdOpenGreen();
+    const green = (openRuns: string) => ({ verdict: "green", openRuns });
+    expect([green("1"), green("1,2"), green("1,2")].map((read) => hold(read).verdict)).toEqual(["pending", "pending", "green"]);
   });
 
-  it("does not hold a read of a repo that names required contexts", () => {
-    expect(holdsForSecondRead(undefined, undefined)).toBe(false);
+  it("passes a read of a repo that names required contexts through untouched", () => {
+    const read = { verdict: "green" };
+    expect(holdOpenGreen()(read)).toBe(read);
   });
 });
 

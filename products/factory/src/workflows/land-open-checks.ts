@@ -17,10 +17,22 @@ export function openRunsSignature(headSha: string, runs: readonly CheckRun[]): s
   return ids.sort((a, b) => a - b).join(",");
 }
 
+interface HoldableRead {
+  verdict: string;
+  openRuns?: string;
+  waitingOn?: string[];
+}
+
 /**
  * GitHub creates a job's check-run when the job is queued, so a job behind `needs:` has none while an earlier job is
- * green. An open repo's green therefore stands only when the previous poll saw the same runs; the first green is held.
+ * green. An open repo's green therefore stands only when the previous poll saw the same runs; the first green becomes
+ * a pending read, and so does any green whose runs changed since.
  */
-export function holdsForSecondRead(signature: string | undefined, previous: string | undefined): boolean {
-  return signature !== undefined && signature !== previous;
+export function holdOpenGreen(): <T extends HoldableRead>(read: T) => T {
+  let previous: string | undefined;
+  return (read) => {
+    const held = read.openRuns !== undefined && read.openRuns !== previous;
+    previous = read.openRuns;
+    return held ? { ...read, verdict: "pending", waitingOn: ["a second read that sees the same check-runs"] } : read;
+  };
 }
