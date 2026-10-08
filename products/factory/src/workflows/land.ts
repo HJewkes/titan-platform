@@ -308,7 +308,6 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
   const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
-  if (required.contexts.length === 0) throw new Error(`${input.repo}@${pr.baseRef} requires no status checks; land waits on required checks only, so it refuses`);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 
@@ -337,9 +336,10 @@ async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal:
   const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
   const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
+  const openSeen = {};
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads, { missingSettled });
+      const snapshot = await readCi(port, input, reads, { missingSettled, openSeen });
       if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
       if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
