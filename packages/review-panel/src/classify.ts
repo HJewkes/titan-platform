@@ -1,0 +1,73 @@
+import { matchesAny } from "./glob.js";
+import type { ChangedFile, PrClass, PrFacts, PrTouch } from "./types.js";
+
+/** The per-deployment tables: path globs per touch, and where a PR counts as large. */
+export interface ClassRules {
+  authority: readonly string[];
+  policy: readonly string[];
+  migration: readonly string[];
+  visual: readonly string[];
+  security: readonly string[];
+  /** Hot paths: indexers, parsers, tick loops, hook scripts. */
+  perf: readonly string[];
+  /** A changed file matching these is a test. */
+  test: readonly string[];
+  /** A changed non-test file matching these is a source change. */
+  source: readonly string[];
+  /** Large when additions plus deletions exceed this. */
+  largeLines: number;
+  /** Large when any changed file lacks line counts and the file count exceeds this. */
+  largeFiles: number;
+}
+
+export const DEFAULT_CLASS_RULES: ClassRules = {
+  authority: ["packages/authority/**", "**/merge-facts.ts", "**/gate-policy.ts", ".github/CODEOWNERS", ".github/workflows/**", ".codewatch/**"],
+  policy: ["**/*policy*.ts", "**/route-table.ts", "**/freeze*.ts", "**/hold*.ts", "**/gate*schema*"],
+  migration: ["**/migration*/**", "**/*.sql", "**/store/**/schema*"],
+  visual: ["packages/react-app/**", "apps/**", "**/*.css", "packages/react-*/**/*.tsx"],
+  security: ["packages/tool-guard/**", "packages/egress-scan/**", "**/auth/**", "**/auth*.ts", "**/credential*/**", "**/credential*.ts"],
+  perf: ["packages/tool-guard/**", "packages/code-graph/src/indexer*", "**/indexer*.ts", "**/parser*.ts", "**/tick*.ts", "**/hooks/**"],
+  test: ["**/*.test.ts", "**/*.test.tsx"],
+  source: ["**/src/**/*.ts", "**/src/**/*.tsx"],
+  largeLines: 400,
+  largeFiles: 12,
+};
+
+const PATH_TOUCHES = ["authority", "policy", "migration", "visual", "security", "perf"] as const;
+
+function hasLineCounts(file: ChangedFile): boolean {
+  return Number.isFinite(file.additions) && Number.isFinite(file.deletions);
+}
+
+function isLarge(files: readonly ChangedFile[], rules: ClassRules): boolean {
+  if (!files.every(hasLineCounts)) return files.length > rules.largeFiles;
+  return files.reduce((sum, f) => sum + f.additions + f.deletions, 0) > rules.largeLines;
+}
+
+function isUntested(paths: readonly string[], rules: ClassRules): boolean {
+  const tests = paths.some((p) => matchesAny(p, rules.test));
+  return !tests && paths.some((p) => matchesAny(p, rules.source));
+}
+
+function collectTouches(facts: PrFacts, rules: ClassRules): Set<PrTouch> {
+  const paths = facts.changedFiles.map((f) => f.path);
+  const touches = new Set<PrTouch>();
+  for (const touch of PATH_TOUCHES) if (paths.some((p) => matchesAny(p, rules[touch]))) touches.add(touch);
+  if (facts.authorityTouch) touches.add("authority");
+  if (facts.policyTouch) touches.add("policy");
+  if (facts.kind === "security") touches.add("security");
+  if (isUntested(paths, rules)) touches.add("untested");
+  if (isLarge(facts.changedFiles, rules)) touches.add("large");
+  return touches;
+}
+
+const STRICT: readonly PrTouch[] = ["authority", "policy", "security", "migration", "large"];
+const ORDER: readonly PrTouch[] = ["authority", "policy", "migration", "visual", "security", "perf", "untested", "large"];
+
+/** Class and touch flags from signals alone; no model reads the diff. An unread kind takes the strict class. */
+export function classifyPr(facts: PrFacts, rules: ClassRules = DEFAULT_CLASS_RULES): PrClass {
+  const found = collectTouches(facts, rules);
+  const unread = facts.kind === undefined || facts.kind === "unknown";
+  const strict = unread || STRICT.some((t) => found.has(t));
+  return { class: strict ? "g10" : "standard", touches: ORDER.filter((t) => found.has(t)) };
+}
