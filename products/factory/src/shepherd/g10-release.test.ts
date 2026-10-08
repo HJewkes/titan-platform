@@ -11,7 +11,7 @@ const HEAD = fakeSha("head-1");
 const MOVED = fakeSha("head-2");
 
 const held = (reason: string | null) => ({ held: reason !== null, holdReason: reason });
-const mergeAt = (head: string): G10Verdict => ({ value: "MERGE", head, reviewer: { agentId: "a-1", sessionId: "s-1" }, locator: { sourceId: "line-1" } });
+const mergeAt = (head: string): G10Verdict => ({ value: "MERGE", head, reviewer: { agentId: "a-1", sessionId: "s-1" }, locator: { source: { conversation: { nativeId: "s-1" } } } as unknown as G10Verdict["locator"] });
 const green = (head: string) => ({ head, green: true });
 
 describe("satisfiesG10", () => {
@@ -83,7 +83,7 @@ describe(G10_RELEASE_STEP, () => {
   it("releases the hold and records the verdict ref", async () => {
     const { store, pr, deps } = rig("g10-review: auth; TP-1");
     const done = await runStep(g10ReleaseRoutes(deps, "bd-reviewer")[0]!, stepInput(pr, HEAD));
-    expect(done).toMatchObject({ released: true, head: HEAD, verdict: { reviewer: { agentId: "a-1" }, locator: { sourceId: "line-1" } } });
+    expect(done).toMatchObject({ released: true, head: HEAD, verdict: { reviewer: { agentId: "a-1" }, locator: { source: { conversation: { nativeId: "s-1" } } } } });
     expect(store.byRun("run-1")?.held).toBe(false);
   });
 

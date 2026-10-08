@@ -14,7 +14,7 @@ export const G10_RELEASE_STEPS: readonly StepDeclaration[] = [{ id: G10_RELEASE_
  * A hold's class is the text before the first colon of its reason. Only `g10-review` releases itself; `g10-adversary`
  * (authority, merge-policy and security PRs, until a seat's fail-open reviewer is Shepherd's) and every other class wait for a seat.
  */
-export const G10_REVIEW_CLASS = "g10-review";
+const G10_REVIEW_CLASS = "g10-review";
 
 export const holdClassOf = (reason: string | null | undefined): string | undefined => (reason?.includes(":") ? reason.slice(0, reason.indexOf(":")).trim() : undefined);
 
@@ -28,12 +28,12 @@ const Identity = z.looseObject({ agentId: z.string(), sessionId: z.string() });
 const G10VerdictSchema = z.looseObject({ value: z.string(), head: z.string(), reviewer: Identity, locator: z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null) });
 export type G10Verdict = z.infer<typeof G10VerdictSchema>;
 
-export interface G10Run {
+interface G10Run {
   held: boolean;
   holdReason: string | null;
 }
 
-export interface G10Checks {
+interface G10Checks {
   head: string;
   green: boolean;
 }
