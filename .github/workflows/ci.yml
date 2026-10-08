@@ -43,19 +43,20 @@ jobs:
           path: .turbo/cache
           key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
       # Content strategy keys the cache on file contents, so a fresh checkout's mtimes do not matter. Only main saves.
+      # eslint cannot see edits to the workspace plugin's rules, so its source is part of the key.
       - name: Restore eslint cache
         uses: actions/cache/restore@v4
         with:
           path: .eslintcache
-          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
+          restore-keys: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-
       - run: pnpm lint
       - name: Save eslint cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
           path: .eslintcache
-          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
       # It only orders files, so a miss leaves the step as it was and a hit never skips a test.
       - name: Restore vitest results
