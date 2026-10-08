@@ -6,10 +6,10 @@ loopback daemon built from `@titan-design/daemon` and `@titan-design/registry`. 
 talks only to that daemon, through `@titan-design/react-app` hooks typed from the daemon's own
 command definitions. The app is private and publishes nothing.
 
-The skeleton (TP-842) serves the shell, hash routes and a nav for every planned view. The
+The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
 the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847),
-which no view shows yet. Every other view except Status is a placeholder that names the task
+which no view shows yet. Every other view except Home is a placeholder that names the task
 that builds it.
 
 ## Run it
@@ -113,16 +113,22 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
-| `#/` | Status | Upstream reachability | this slice |
+| `#/` | Home | Upstream reachability, until the Home page lands | TP-1061 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
-| `#/tasks` | Tasks | Read-only board and task detail | TP-866 |
-| `#/sessions` | Sessions | Sessions list, conversation, sidebar, replay | TP-862, TP-863 |
-| `#/agents` | Agents | Roster with costs, topology, agent-to-agent chat | TP-864, TP-865 |
-| `#/productivity` | Flow | Productivity and quality | TP-867 |
-| `#/knowledge` | Notes | Notes and sources, then the knowledge graph | TP-869, TP-871 |
-| `#/search` | Search | Search and the what-is-where inventory | TP-870 |
-| `#/stores` | Stores | Databases and file roots | TP-872 |
+| `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
+| `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
+| `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
+| `#/knowledge`, `#/knowledge/<ref>` | Notes | Notes and sources with a reader, and a Graph tab | TP-869, TP-871a |
+
+Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
+A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,
+including Flow, Search and Stores, which left the rail, opens Home.
+
+`src/pages/index.ts` maps a view to its page, one entry per page; a rail entry with no entry
+renders its placeholder. `src/refs.ts` holds `refToRoute`, the one place a ref (`task:`, `note:`,
+`source:`, `session:`, `agent:`, `pr:`, `code:`) becomes a console route, a GitHub pull request
+or a codewatch file, and `initiativeForTask`, which finds a task's initiative from its id prefix.
 
 The command palette (TP-868) is an overlay, so it has no route.
 
@@ -142,7 +148,7 @@ existing piece, not worked around with local styles.
 | Gap | What the console does until it is filled |
 | --- | --- |
 | No `console` brand preset in `shell/brands` | Borrows the `agents` preset and overrides the wordmark |
-| No search, database or chart glyph in `components/icons` | Search uses `TargetIcon`, Stores uses `EqualIcon`, Flow uses `AwardIcon` |
+| No home glyph exported from `components/icons` | Home uses `ActivityIcon` |
 | No page container for `AppShell`'s content region | Views render flush against the rail, with no inset |
 | `InitiativeCard` has no press handler and no slot for record counts, newest activity or a personal mark | The portfolio adds a `Table` under `PortfolioOverview` that carries the counts, the `personal` badge and the link into the detail |
 | No list or reader for notes and sources (TP-859) | The detail lists both in a dense `Table`; nothing opens a note or a source yet |
@@ -161,8 +167,8 @@ server/   config.ts (ports and paths), paths.ts (the built page and export locat
           agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
           daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
           test-support.ts (a fake daemon for tests)
-src/      main.tsx, App.tsx (the shell), router.ts, views.tsx (the nav and its placeholders),
-          pages/, data/rpc.ts (typed hooks)
+src/      main.tsx, App.tsx (the shell), router.ts, refs.ts (refToRoute), views.tsx (the rail and
+          its placeholders), pages/ (index.ts is the page registry), data/rpc.ts (typed hooks)
 ```
 
 Tests sit beside the code. `server/*.test.ts` start the real daemon on an ephemeral port

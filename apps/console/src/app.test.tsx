@@ -35,9 +35,9 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 }
 
 describe("the shell", () => {
-  it("offers every planned view in the nav and marks the current one", () => {
+  it("shows the rail of six and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(VIEWS.map((view) => view.label));
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Work", "Tasks", "Sessions", "Agents", "Notes"]);
     // react-ui's NavItem sets no aria-selected on the web, so its accent bar is the only mark of the active item.
     expect(within(screen.getByRole("tab", { name: "Sessions" })).getByTestId("nav-item-accent")).toBeTruthy();
     expect(screen.getAllByTestId("nav-item-accent")).toHaveLength(1);
@@ -47,18 +47,26 @@ describe("the shell", () => {
     renderConsole("#/", healthy());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
-    expect(await screen.findByText(/agent topology and agent-to-agent chat/)).toBeTruthy();
+    expect(await screen.findByText(/spawn tree and message feed/)).toBeTruthy();
   });
 });
 
 describe("a planned view", () => {
-  it.each(VIEWS.filter((view) => view.planned))("shows a placeholder for $key that names its task", (view) => {
+  const planned = VIEWS.filter((view) => view.planned);
+
+  it.each(planned)("shows a placeholder for $key that names its task", (view) => {
     renderConsole(`#/${view.key}`, healthy());
     expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();
   });
+
+  it.each(planned)("shows the same placeholder on a $key detail route and keeps its rail entry active", (view) => {
+    renderConsole(`#/${view.key}/some-record?tab=graph`, healthy());
+    expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();
+    expect(within(screen.getByRole("tab", { name: view.label })).getByTestId("nav-item-accent")).toBeTruthy();
+  });
 });
 
-describe("the status view", () => {
+describe("the home view", () => {
   it("lists the three upstreams with their reachability", async () => {
     renderConsole("#/", healthy());
     expect(await screen.findByText("active-work daemon")).toBeTruthy();
