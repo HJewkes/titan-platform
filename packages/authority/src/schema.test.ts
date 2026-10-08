@@ -20,7 +20,7 @@ function issues(table: unknown): string[] {
 describe("policyTableSchema", () => {
   it("accepts the shipped table.json as is", () => {
     expect(issues(tableJson)).toEqual([]);
-    expect(DEFAULT_TABLE.rules).toHaveLength(92);
+    expect(DEFAULT_TABLE.rules).toHaveLength(93);
   });
 
   it("rejects a table missing one action by actor pair", () => {

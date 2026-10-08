@@ -65,14 +65,14 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-42 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the two conditional
-allow rows MRG-AU-RV and MRG-AU-RC described below. Each rule also carries an optional `condition` that
+43 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the three conditional
+allow rows MRG-AU-RV, MRG-AU-RC and MRG-AU-RM described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
 | Action | OT | OR | CO | WK | HD | AU |
 |---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV or MRG-AU-RC |
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC or MRG-AU-RM |
 | `release` | allow | deny | gate (OT) | deny | deny | allow |
 | `secret-read` | allow | deny | deny | deny | deny | allow |
 | `untrusted-ingest` | allow | allow | allow | allow | allow | allow |
@@ -124,6 +124,17 @@ reads from the run's registration, must be `correctness`, `feature` or `refactor
 never carries `kind: security` and fails closed on an unknown or missing kind. MRG-AU-RV
 does not read `kind`.
 
+MRG-AU-RM allows the same automation merge for a head that is the reviewed head plus one merge
+of a base-branch commit, when that merge resolved nothing a reviewer reads. It keeps every
+MRG-AU-RC condition except `verdict-merge-carried-tree-equal`, and adds
+`verdict-merge-carried-remerge-clean`: the `carry` fact names the verdict's head and `facts.head`
+as for MRG-AU-RC, and its `rule` is either `remerge-empty`, with `remergePaths` empty and equal
+trees, or `remerge-generated-only`, with every entry of `remergePaths` (the paths the head's
+remerge-diff or the remerge's conflicts touch) listed in `generatedPaths` and none of them a
+protected path. The caller's remerge probe fills both lists; `generatedPaths` holds the paths it
+matched to the repo's declared generated files, so the declaration stays data on the caller's
+side. It is a separate row so that deleting it revokes the remerge carry alone.
+
 A request with no `facts` fails every condition, and a conditional row matches only when
 `tainted` is an own property set to exactly `false`; an inherited `false`, or any other value (`true`, missing, `null`, `0`, `""`) is
 treated as tainted, so all of these get the MRG-AU gate. Every fact is attested by the caller, so a
@@ -173,6 +184,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, and MRG-AU-RC in TP-778. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, and MRG-AU-RM in TP-1907. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.
