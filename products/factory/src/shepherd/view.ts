@@ -60,6 +60,8 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     agent: z.string().nullable(),
     mode: z.enum(WAKE_MODES).nullable(),
     sessionId: z.string().nullable(),
+    /** Why a held wake started no fixer: agent-chat's refusal of the successor. */
+    held: z.string().optional(),
   }),
   z.object({
     kind: z.literal("verdict"),
@@ -154,6 +156,15 @@ function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | 
 
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
+const HeldWakeData = z.object({ result: z.object({ kind: z.literal("unhandled"), reason: z.string(), held: z.unknown() }) });
+
+/** While a held send-back waits for a new head, the refusal that held it is the next action, not an implementer's push. */
+function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
+  const wake = HeldWakeData.safeParse(steps.filter((result) => stepIdMatches("sh-wake-implementer", result.stepId)).at(-1)?.data);
+  return wake.success && wake.data.result.held !== undefined ? `no fixer could start (${wake.data.result.reason}); the seat was told, waiting for a new head` : undefined;
+}
+
 /** While a red head waits out a frozen main, the hold's own reason is the next action. */
 function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
   if (run.currentStep === null || !stepIdMatches("sh-freeze-wait", run.currentStep)) return undefined;
@@ -241,7 +252,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
@@ -279,7 +290,7 @@ const VerdictRecord = z.discriminatedUnion("kind", [
 ]);
 const WakeRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(WAKE_MODES).optional(), sessionId: z.string().optional() }),
-  z.looseObject({ kind: z.literal("unhandled") }),
+  z.looseObject({ kind: z.literal("unhandled"), reason: z.string().optional(), held: z.unknown().optional() }),
 ]);
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 
@@ -314,7 +325,7 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const parsed = WakeRecord.safeParse(payload);
   if (!parsed.success) return undefined;
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
-  if (parsed.data.kind === "unhandled") return unhandled;
+  if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
 }
 

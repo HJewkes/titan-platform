@@ -17,7 +17,7 @@ import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, 
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { WAKE_STEPS, isHeld, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
 const REPO = "octo/demo";
@@ -781,20 +781,17 @@ describe("wakePhase", () => {
     expect(outcome).toEqual({ kind: "unhandled", reason: `octo/demo#1 closed at head ${H1} before a new head` });
   });
 
-  it("waits for a new head with no owner gate when agent-chat refused the successor, and records why", async () => {
+  it("returns a held outcome without waiting on the head when agent-chat refused the successor of a send-back", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: H1 });
     const agents = fakeAgents([row("impl-a")]);
     agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
-    let reads = 0;
-    fake.onGetPr = (pr) => void (++reads === 3 && (pr.headSha = H2));
 
-    const { outcome, stepIds, results } = await runPhase(agents, fake, async () => undefined);
+    const { outcome, stepIds } = await runPhase(agents, fake, async () => undefined);
 
-    expect(outcome).toEqual({ kind: "woken", agent: "impl-a-s1" });
-    expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
-    expect(results["sh-wake-implementer:0"]).toMatchObject({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
-    expect(results["sh-await-new-head:0"]).not.toHaveProperty("exited", true);
+    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(isHeld(outcome!)).toBe(true);
+    expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0"]);
   });
 
   it.each(["ci-red", "conflict"] as const)("keeps a %s wake whose successor agent-chat refused unhandled, so its own route decides", async (kind) => {
@@ -854,7 +851,7 @@ describe("a held wake and the repair budget", () => {
 
     const stepIds = Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
     expect(outcomes).toHaveLength(MAX_REPAIRS);
-    expect(outcomes.every((outcome) => outcome.kind === "woken")).toBe(true);
+    expect(outcomes.every(isHeld)).toBe(true);
     expect(stepIds.filter((id) => id === "sh-repair")).toHaveLength(MAX_REPAIRS);
     expect(refusals).toBe(MAX_REPAIRS);
   });

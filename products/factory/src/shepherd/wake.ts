@@ -93,7 +93,7 @@ type Mode = "resume" | "successor" | "live";
 type Fallback = "resume" | "message";
 /**
  * The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. A
- * `held` wake is one whose successor agent-chat refused to start: the run waits for a new head instead of opening a gate.
+ * `held` wake is one whose successor agent-chat refused to start, so its seat can be told before the owner is asked.
  */
 export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number } | { kind: "unhandled"; reason: string; held?: { agent: string } };
 
@@ -318,7 +318,7 @@ function exitedOn(deps: ShepherdDeps, wiring: WakeWiring): ((name: string, signa
   };
 }
 
-/** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate, unless it is `held`. */
+/** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
   const agents = agentsFor(deps, wiring);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
@@ -348,6 +348,14 @@ const Woke = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
 
+/**
+ * A send-back whose successor agent-chat refused to start. No agent took it, so `afterWake` routes it as a fixer's exit
+ * with no push: a seat notice and a wait, or else the owner gate.
+ */
+export type HeldWake = Extract<WakeOutcome, { kind: "unhandled" }> & { held: { agent: string } };
+
+export const isHeld = (outcome: WakeOutcome): outcome is HeldWake => "held" in outcome && outcome.held !== undefined;
+
 /** Only a review's send-back holds; a ci-red or conflict wake no fixer took keeps its own route: the ci-failed gate or the not-mergeable stop. */
 const HOLDING_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "fix-proof"]);
 
@@ -368,14 +376,14 @@ export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
   if (woke.kind === "woken") return awaitFixerHead(ctx, request, woke);
-  // A held send-back's refusal is on the step's record; the run waits for any new head, as after a seat's exit notice.
-  if (woke.held !== undefined && HOLDING_KINDS.has(request.kind)) return awaitFixerHead(ctx, request, woke.held, false);
-  return { kind: "unhandled", reason: woke.reason };
+  if (woke.held === undefined || !HOLDING_KINDS.has(request.kind)) return { kind: "unhandled", reason: woke.reason };
+  const heldWake: HeldWake = { kind: "unhandled", reason: woke.reason, held: woke.held };
+  return heldWake;
 };
 
-/** The wait after a wake an agent took, which ends early if that agent exits unless `watch` is false; only a ci-red wake can end on its own head turning green. */
-export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence, watch = true): Promise<WakeOutcome> {
-  const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, ...(watch && { agent: woke.agent }), ...(request.kind === "ci-red" && { untilGreen: true }) };
+/** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
+export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence): Promise<WakeOutcome> {
+  const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
   const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
   if (head.green) return { ...woken, sameHead: true };

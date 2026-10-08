@@ -302,6 +302,18 @@ describe("shepherd timeline verdict and wake entries", () => {
     ]);
   });
 
+  it("names the refusal on a held wake's entry, and as the next action while the run waits for a new head", () => {
+    const refusal = "agent-chat refused to start the successor impl-1-s1: DispatchError";
+    const run = withResults([{ stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "unhandled", reason: refusal, held: { agent: "impl-1-s1" } } }]);
+    run.currentStep = "await-new-head:0";
+
+    const [entry] = timelineEntries(run, []);
+
+    expect(entry).toEqual({ kind: "wake", stepId: "sh-wake-implementer:0", request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null, held: refusal });
+    expect(TimelineEntrySchema.parse(entry)).toEqual(entry);
+    expect(watchRow({ registration, run }).nextAction).toBe(`no fixer could start (${refusal}); the seat was told, waiting for a new head`);
+  });
+
   it("emits entries that the timeline schema accepts", () => {
     const run = withResults([
       { stepId: `sh-await-verdict:${H1}`, at: "2026-01-01T00:01:00.000Z", result: { kind: "verdict", verdict: "MERGE", head: H1, locator, reviewer } },

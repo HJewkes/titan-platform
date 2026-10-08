@@ -283,7 +283,9 @@ unhandled.
 A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
-refusal as `held`, and the run waits for a new head with no `sh-sent-back` gate. A ci-red wake
+refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
+started and the run waits for a new head; if no notice is sent, `sh-sent-back` opens and names
+the refusal. The watch row's next action and the timeline's wake entry carry the refusal. A ci-red wake
 still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
 spends one repair from the `repair-budget`.
 
