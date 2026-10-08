@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import type { ClassifyContext } from "../types.js";
 import { decide } from "../decide.js";
@@ -122,5 +125,29 @@ describe("a heredoc opened inside a process substitution", () => {
     ["inside a shell -c string", `bash -c "echo ${NESTED}"\n${PUSH}`],
   ])("the hook denies a push after a pending heredoc and substitutions nested to the limit %s", async (_name, rest) => {
     expect(await hookDenies(`cat <(cat <<EOF)\nbody\nEOF\n${rest}`)).toBe(true);
+  });
+});
+
+describe("a pending heredoc in a followed script", () => {
+  const dir = mkdtempSync(join(tmpdir(), "procsub-script-"));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  const FILLER = "flock $F ls git status\n".repeat(200);
+  const scriptWith = (last: string) => `cat <(cat <<EOF)\nflock $F ls ${last}\nEOF\n${FILLER}`;
+
+  async function verdict(command: string, script: string): Promise<boolean> {
+    writeFileSync(join(dir, "s.sh"), script);
+    const readScript = (path: string) => (path === join(dir, "s.sh") ? readFileSync(path, "utf8") : null);
+    const port: HookPort = { context: { ...context, readHead: () => "main", readScript }, now: () => new Date(0), loadDecide: async () => decide };
+    const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: dir, tool_input: { command } });
+    return (await handle(input, { PATH: "/usr/bin" }, port)).stdout !== "";
+  }
+
+  it.each(["bash ./s.sh", "./s.sh"])("the hook denies `%s` when the body line pushes behind an unsure flock", async (command) => {
+    expect(await verdict(command, scriptWith(PUSH))).toBe(true);
+  });
+
+  it.each(["bash ./s.sh", "./s.sh"])("the hook lets `%s` pass when the body line only reads status", async (command) => {
+    expect(await verdict(command, scriptWith("git status"))).toBe(false);
   });
 });
