@@ -17,15 +17,19 @@ export interface PrincipleFeedback {
   reason: string | null;
 }
 
-export type FeedbackSkip = "decider-answer" | "unclaimed" | "unscored";
+export type FeedbackSkip = "decider-answer" | "unclaimed" | "unscored" | "bulk";
 
 export type FeedbackMapping = { feedback: PrincipleFeedback[] } | { feedback: []; skipped: FeedbackSkip };
 
-/** Only the owner's own answers are evidence; an unoverruled auto-decision is not approval. */
+/**
+ * Only the owner's own per-item answers are evidence; an unoverruled auto-decision is not
+ * approval, and one answer that accepted a batch of decisions says nothing about any of them.
+ */
 function skipReason(row: LedgerRow): FeedbackSkip | null {
   if (row.answered_by === "decider") return "decider-answer";
   if (row.unclaimed) return "unclaimed";
   if (row.outcome === null) return "unscored";
+  if (row.outcome === "bulk") return "bulk";
   return null;
 }
 

@@ -154,6 +154,10 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent\0chat" } })))).toThrow(/shepherd\.agentChatBin: must not contain a NUL/);
   });
 
+  it("rejects a hub seat configured without an agent-chat binary", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { hubSeat: "hub" } })))).toThrow(/shepherd\.agentChatBin: hubSeat needs an agentChatBin/);
+  });
+
   it("rejects a reviewer configured without an agent-chat binary", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { review: { profile: "rv-readonly" } } })))).toThrow(/shepherd\.agentChatBin: review needs an agentChatBin/);
   });

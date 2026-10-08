@@ -1,4 +1,4 @@
-import { dataFence } from "@titan-design/agent-dispatch";
+import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
 import { failureOf } from "./error-class.js";
@@ -221,4 +221,37 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "fix-proof":
       return { reason: `The fix-proof check at head ${head} did not pass. Its result follows.`, payload: dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2)) };
   }
+}
+
+export const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
+/** The roster's `spawnedBy` for a spawn from the CLI, which Shepherd's own spawns are. */
+const HUMAN_SPAWNER = "human";
+
+/** A spawner that is a session a report can reach; agent-dispatch checks only a row's required strings, so `spawnedBy` is narrowed here. */
+export const isSeat = (spawner: unknown): spawner is string => typeof spawner === "string" && spawner !== HUMAN_SPAWNER && PEER_NAME_PATTERN.test(spawner);
+
+/**
+ * Shepherd spawns through the CLI as the human, so the broker appends no return contract and the brief is the only
+ * place a successor learns whom to report to. Left unsaid, one guessed from its peer list and reported to another seat.
+ */
+function reportLine(seat: string | undefined): string {
+  if (seat === undefined) return "then end your turn with your report as plain text and send it to no session, since Shepherd found no seat that started this PR's lineage, and";
+  return `then send your report with chat_send to ${seat}, the seat that started this PR's lineage, and to no other session. In it,`;
+}
+
+interface SuccessorTask {
+  input: { repo: string; pr: number };
+  pr: PullRequest;
+  reason: string;
+  payload: string;
+}
+
+export function successorBrief(task: SuccessorTask, predecessor: string, name: string, seat: string | undefined): string {
+  const { input, pr } = task;
+  return [
+    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
+    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
+    task.payload,
+    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), ${reportLine(seat)} ${HEAD_LINE}`,
+  ].join("\n\n");
 }

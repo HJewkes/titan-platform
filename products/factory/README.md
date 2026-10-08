@@ -327,6 +327,29 @@ then held until a newer one arrives.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
 
+`serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`.
+It judges the deployer only on what it was asked to land: each `service deploy --expect`
+line there is an ask, and Shepherd writes one only after a merge's main CI is green. A
+deploy lands exactly the sha it was asked for, so a landing (`deployed`, `skipped` or
+`already deployed`) covers an earlier ask only when it names that ask's target or a target
+asked at or after it. A burst's deployers that lose `deploy.lock` stay behind until something
+newer lands. The running build is a landing too, so a deploy fixed by hand clears the alarm:
+it lands its own ask, which covers that ask and every one before it and ends the refusals in
+a row. A running build that no ask named lands nothing.
+`/health` carries a `deploy` block: the running sha, the asks that have not landed
+(`behind`, counting only asks older than 20 minutes) and the age of the oldest one, the
+refusals in a row, and the last refusal's reason. The alarm goes up on two refusals in a row,
+on more than 3 waiting asks, or on an ask over 60 minutes old. A merge that never asked, such
+as one with a red main, raises nothing. A refusal because the checkout already landed a newer
+commit from origin/main is a deploy finishing out of order, and does not count. When the last
+refusal names `index.lock`, its reason ends with a report on the service checkout's
+`.git/index.lock`: its path and age, and whether a process holds it. A lock with no holder that
+is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
+`shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
+row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
+gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
+clears. A failed message is retried on the next check.
+
 Shepherd starts the deployer itself. After `sh-main-ci` reads green on a merge into the
 factory's own repo (its `package.json` `repository`), step `sh-redeploy:<merge sha>` spawns
 `service deploy --expect <merge sha>` detached, so it leads its own session and process group

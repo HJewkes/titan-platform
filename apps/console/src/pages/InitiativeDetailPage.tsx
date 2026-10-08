@@ -40,23 +40,13 @@ const LINKERS = sessionLinkers();
 export function InitiativeDetailPage({ slug }: { slug: string }): ReactNode {
   const detail = useQuery("work.initiative", { slug });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading initiative" />;
-  if (detail.data === undefined) {
-    return (
-      <VStack gap={4}>
-        <Trail slug={slug} />
-        <Alert status="error" message={`Could not load ${slug}: ${detail.error?.message ?? "no answer"}`} />
-      </VStack>
-    );
-  }
+  if (detail.data === undefined) return <LoadFailure slug={slug} message={detail.error?.message} />;
   const { initiative, brief, loops, fetchedAt } = detail.data;
   const now = Date.parse(fetchedAt);
   return (
     <VStack gap={4}>
       <Trail slug={slug} />
-      <HStack gap={3} align="center" wrap>
-        <InitiativeHeader title={initiative.title} slug={initiative.slug} state={initiative.state} rank={initiative.rank} shipTarget={initiative.shipTarget} updated={initiative.updated} />
-        {initiative.personal ? <PersonalBadge /> : null}
-      </HStack>
+      <Heading initiative={initiative} />
       <Panel>
         <OpenLoops loops={loops} now={now} linkers={LINKERS} emptyLabel="No open loops" />
       </Panel>
@@ -68,6 +58,24 @@ export function InitiativeDetailPage({ slug }: { slug: string }): ReactNode {
         <Records detail={detail.data} now={now} />
       </Panel>
     </VStack>
+  );
+}
+
+function LoadFailure({ slug, message }: { slug: string; message: string | undefined }): ReactNode {
+  return (
+    <VStack gap={4}>
+      <Trail slug={slug} />
+      <Alert status="error" message={`Could not load ${slug}: ${message ?? "no answer"}`} />
+    </VStack>
+  );
+}
+
+function Heading({ initiative }: { initiative: Detail["initiative"] }): ReactNode {
+  return (
+    <HStack gap={3} align="center" wrap>
+      <InitiativeHeader title={initiative.title} slug={initiative.slug} state={initiative.state} rank={initiative.rank} shipTarget={initiative.shipTarget} updated={initiative.updated} />
+      {initiative.personal ? <PersonalBadge /> : null}
+    </HStack>
   );
 }
 

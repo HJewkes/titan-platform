@@ -56,7 +56,8 @@ reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back uncha
 
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
-a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
+a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
+nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. The kind
 does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
 replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
 `unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
@@ -191,8 +192,11 @@ Every `titan-factory serve` start resyncs before it adopts a run. Each running o
 whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
-request moved head is superseded. That covers a seat-policy or MRG-AU `approve-merge` gate,
-an `sh-sent-back` gate and a `ci-failed` gate; a superseded `ci-failed` gate reads as
+request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
+`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate and a `ci-failed`
+gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
+failed-rounds gate starts the new head's review rounds from zero, so the run does not ask the
+owner again before the new head has failed its own rounds. A superseded `ci-failed` gate reads as
 `await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves

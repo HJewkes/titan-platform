@@ -152,6 +152,10 @@
         "link": "/reference/queue-mirror"
       },
       {
+        "text": "review-panel",
+        "link": "/reference/review-panel"
+      },
+      {
         "text": "session-analytics",
         "link": "/reference/session-analytics"
       },

@@ -1,0 +1,83 @@
+# review-panel
+
+**Tier 2 · domain.** Depends on [`session-read`](/reference/session-read).
+
+```sh
+npm install @titan-design/review-panel
+```
+
+Status: types, ports and the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`). The planner, briefs, verdict acceptor and
+aggregate land in later slices of TP-1916.
+
+## The problem it solves
+
+A pull request review is one reviewer with one brief, wired into Shepherd. A PR that
+touches authority or policy needs more than one question asked of it (does it do what it
+claims, and does any input read as allowed when it should not), and a second caller, such
+as a local CLI, wants the same review without running Shepherd.
+
+This package holds the vocabulary of a review panel and the ports a caller satisfies, so
+every caller plans, briefs and aggregates the same way:
+
+- `PrFacts`: what the caller knows about the PR (repo, number, head, base, kind, changed
+  files with line counts). Classification reads nothing else.
+- `PrClass`: the class (`g10` or `standard`) and the touch flags that choose the panel's
+  shapes.
+- `PanelPlan`: the members (one per `ReviewShape`), each with its profile, brief id, and
+  whether it blocks or was degraded to sonnet, plus a spend estimate.
+- `PanelVerdict`: the panel's outcome in Shepherd's vocabulary (`MERGE`, `FIX_FIRST`,
+  `no-verdict`, `timeout`), the labelled findings, the dissenting members, and
+  `satisfiesG10`.
+- The ports `ReviewerDispatch` (roster, spawn, resume), `ReviewerReader` (a reviewer's
+  assistant messages) and their rows `ReviewerAgent` and `ReviewerMessage`, with
+  `ReviewTarget` naming the head under review.
+
+## When to reach for it
+
+Use it when you start reviewers for a pull request and read their verdicts, and want the
+same types Shepherd uses. To start an agent, use
+[agent-dispatch](./agent-dispatch.md) inside your `ReviewerDispatch` adapter; this package
+never imports it. To parse a transcript into messages for your `ReviewerReader`, use
+[session-read](./session-read.md).
+
+## Example
+
+Verified against 0.0.0 (unreleased).
+
+```ts
+import type { ReviewerDispatch, ReviewerReader } from "@titan-design/review-panel";
+
+const dispatch: ReviewerDispatch = {
+  roster: async () => [],
+  spawn: async (name, brief, target) => {
+    console.log(`spawn ${name} in ${target.repo} at ${target.head}`);
+  },
+  resume: async () => {},
+};
+
+const reader: ReviewerReader = {
+  read: async () => [],
+};
+```
+
+## What it deliberately does not do
+
+- It runs nothing. Every side effect (starting an agent, reading a transcript, the clock,
+  spawn headroom) is a port the caller passes in.
+- It does not import `agent-dispatch`, `workflow`, `github`, or any product.
+- Durability is the caller's. Shepherd records each step itself; the package keeps no state.
+
+## Gotchas
+
+- `ReviewerAgent.presence` is a closed union. Map any unlisted roster value to `unknown`,
+  which nothing treats as `exited`, `detached` or `deregistered`.
+- `ReviewerAgent.predecessor` and `fillTokens` absent mean unknown, and Shepherd never
+  resumes such an agent. Report them when your roster knows them.
+- `ReviewerReader.read` returns messages oldest first; the last one is the final message.
+- `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap.
+
+## Where it came from
+
+Slice 1 of TP-1916. The ports moved from Shepherd's `review.ts` in the factory product,
+unchanged, so its `reviewer-dispatch.ts` and `reviewer-reader.ts` adapters satisfy them as
+they are. The factory now imports them from here.
