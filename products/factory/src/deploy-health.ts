@@ -40,7 +40,7 @@ export interface DeployHealth {
 
 const START = /^(\d{4}-\d\d-\d\dT\S+Z) service deploy\b/;
 const OK = /^(?:(?:deployed|skipped) [0-9a-f]{7,}\b|already deployed:)/;
-const REFUSED = /^(?:error: (?:deploy refused|deploy held|rolled-back) |deployer did not start)/;
+const REFUSED = /^(?:error: (?:deploy refused:|deploy held:|rolled-back )|deployer did not start)/;
 /** Lines that close a refusal's detail: progress, another error, or a new start. */
 const CLOSES = /^(?:error: |deploying |\d{4}-\d\d-\d\dT)/;
 

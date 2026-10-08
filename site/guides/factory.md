@@ -128,7 +128,7 @@ and again every 30 seconds for runs whose owner died and whose lease lapsed. It 
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
 
@@ -380,6 +380,19 @@ then held until a newer one arrives.
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
+
+`serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`
+and compares its build with origin/main. `/health` then carries a `deploy` block: the
+running sha, how many merges it is behind and for how long, the refusals in a row, and the
+last refusal's reason. The alarm goes up on two refusals in a row, or on a build more than 3
+merges or 60 minutes behind. A deploy that lands clears the refusal streak. When the last
+refusal names `index.lock`, its reason ends with a report on the service checkout's
+`.git/index.lock`: its path and age, and whether a process holds it. A lock with no holder that
+is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
+`shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
+row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
+gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
+clears. A failed message is retried on the next check.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
 It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
