@@ -34,11 +34,6 @@
       "count": 1
     }
   },
-  "src/incremental.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "src/indexer.ts": {
     "titan/max-function-lines": {
       "count": 1
