@@ -138,6 +138,27 @@ export function checkAgentsMatchesClaude(root) {
   return ["`AGENTS.md` and `CLAUDE.md` differ. Copy `CLAUDE.md` over `AGENTS.md`."];
 }
 
+const BUILD_CONFIGS = ["tsup.config.ts", "vite.config.ts"];
+
+/** R54: a build leaves the tracked tree alone, and a build that reads outside its package is never replayed from the turbo cache. */
+export function checkTurboBuildContract(root) {
+  const messages = [];
+  if (readJson(join(root, "turbo.json")).agentGuidance !== false) {
+    messages.push("`turbo.json` must set `agentGuidance: false`, or turbo rewrites the tracked `AGENTS.md` during `pnpm build` in an agent session.");
+  }
+  for (const dir of workspaceDirs(root)) {
+    const readsProcess = BUILD_CONFIGS.map((file) => join(dir, file))
+      .filter(existsSync)
+      .some((path) => readFileSync(path, "utf8").includes("node:child_process"));
+    const turboPath = join(dir, "turbo.json");
+    const uncached = existsSync(turboPath) && readJson(turboPath).tasks?.build?.cache === false;
+    if (readsProcess && !uncached) {
+      messages.push(`\`${relative(root, dir)}\` runs a process in its build config. Add a \`turbo.json\` that extends \`//\` and sets \`tasks.build.cache\` to false.`);
+    }
+  }
+  return messages;
+}
+
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
   return level === "warn" || level === 1;
