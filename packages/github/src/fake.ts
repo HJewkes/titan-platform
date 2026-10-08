@@ -38,6 +38,8 @@ export interface FakeGitHub {
   pushHead(number: number, sha: string): void;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
+  /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
+  updateBranchFaults?: { error: Error; lands?: boolean }[];
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
@@ -265,8 +267,17 @@ function updateRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: stri
 
 /** Like GitHub: refused unless the head is the expected one; the new head is a merge of head and base. */
 function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextSha: (tag: string) => string): void {
+  const fault = fake.updateBranchFaults?.shift();
+  if (fault) {
+    if (fault.lands) landUpdate(fake, pr, nextSha);
+    throw fault.error;
+  }
   if (pr.headSha !== expected) throw new FakeHttpError(422, "expected head sha did not match");
   if (fake.updateBranchConflict) throw new FakeHttpError(422, "merge conflict between base and head");
+  landUpdate(fake, pr, nextSha);
+}
+
+function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) => string): void {
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
   fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });

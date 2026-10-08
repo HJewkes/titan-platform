@@ -1,4 +1,5 @@
 import { latestPerName } from "./checks.js";
+import { sendUpdateBranch } from "./update-branch-retry.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
@@ -317,20 +318,7 @@ async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, ex
   const pr = await wire.getPr(repo, number);
   const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
   if (skipped) return { done: false, skipped };
-  try {
-    await wire.updateBranch(repo, number, expectedHeadSha);
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-    return answeredUnreadably(wire, repo, number, expectedHeadSha, error);
-  }
-  return { done: true };
-}
-
-/** The PUT may have landed behind a body that would not parse, so a re-read of the head decides; a second PUT is never sent. */
-async function answeredUnreadably(wire: GitHubWire, repo: RepoSlug, number: number, expectedHeadSha: string, error: SyntaxError): Promise<WriteResult> {
-  const pr = await wire.getPr(repo, number);
-  if (pr.headSha === expectedHeadSha) throw error;
-  return { done: true };
+  return sendUpdateBranch(wire, repo, number, expectedHeadSha);
 }
 
 async function pushEmptyCommit(wire: GitHubWire, repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>> {
