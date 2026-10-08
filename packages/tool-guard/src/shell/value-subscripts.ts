@@ -77,6 +77,15 @@ function substitutionsOf(value: string): Token[][] {
   }
 }
 
+/** Runs one walk of a value's substitution, and drops it on a ParseError: a value may only add actions to the line. */
+export function walkOrDrop(walk: () => void): void {
+  try {
+    walk();
+  } catch (error) {
+    if (!(error instanceof ParseError)) throw error;
+  }
+}
+
 function nested(token: Token): Token[][] {
   if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
   return token.type === "op" ? [] : token.subs;
