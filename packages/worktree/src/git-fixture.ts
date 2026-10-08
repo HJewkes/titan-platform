@@ -66,6 +66,10 @@ function buildTemplate(files: SeedFiles): Template {
   git(["commit", "-q", "-m", "seed"], repo);
   fs.cpSync(repo, local, { recursive: true });
   git(["init", "-q", "--bare", "-b", "main"], origin);
+  // A push runs the same detached auto-maintenance on the receiving side (receive.autogc).
+  git(["config", "receive.autogc", "false"], origin);
+  git(["config", "maintenance.auto", "false"], origin);
+  git(["config", "gc.auto", "0"], origin);
   git(["remote", "add", "origin", origin], repo);
   git(["push", "-q", "origin", "main"], repo);
   return { local, repo, origin };

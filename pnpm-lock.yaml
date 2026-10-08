@@ -537,6 +537,12 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
+  packages/review-panel:
+    dependencies:
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
+
   packages/rpc-client:
     dependencies:
       '@titan-design/rpc-protocol':
@@ -740,6 +746,9 @@ importers:
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
+      '@titan-design/review-panel':
+        specifier: workspace:^
+        version: link:../../packages/review-panel
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
