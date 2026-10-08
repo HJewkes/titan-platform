@@ -1,4 +1,4 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { dataFence, type AgentRow } from "@titan-design/agent-dispatch";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
@@ -66,13 +66,21 @@ function wakeLine(wake: WakeEvidence): string {
   return `mode ${wake.mode ?? "unrecorded"}${wake.fallback === undefined ? "" : `, after a ${wake.fallback} fallback`}`;
 }
 
-/** The seat's one message: what happened, why, the agent's own last words, and what the seat can do next. */
+/** A transcript entry with no readable timestamp still gets its report sent; `toISOString` would throw on it. */
+function writtenLine(report: LastReport): string {
+  return Number.isFinite(report.writtenAt) ? `Last report (${new Date(report.writtenAt).toISOString()}):` : "Last report (time unrecorded):";
+}
+
+/**
+ * The seat's one message: what happened, why, the agent's own last words, and what the seat can do next. The message
+ * reaches the seat from the human seat, so the agent-written report is fenced as data; it may echo PR comments or CI text.
+ */
 export function noticeText(input: ExitNoticeInput, cause: ExitCause, report: LastReport | undefined): string {
   const { repo, pr, headSha, round, kind, wake } = input;
   return [
     `Shepherd: ${repo}#${pr} round ${round}: ${wake.agent} exited after the ${kind} wake (${wakeLine(wake)}) without pushing past head ${headSha}.`,
     `Why: ${causeText(cause, wake)}.`,
-    report === undefined ? "Last report: none Shepherd could read." : `Last report (${new Date(report.writtenAt).toISOString()}):\n${bounded(report.text)}`,
+    report === undefined ? "Last report: none Shepherd could read." : `${writtenLine(report)}\n${dataFence("last report", bounded(report.text))}`,
     `The run waits for a new head, with no owner gate. Next: resume ${wake.agent} (\`agent-chat agent resume ${wake.agent}\`) or start a successor to push the fix, push a fix to the PR's branch yourself, or close the PR to end the run. A repeat \`shepherd register\` does not re-wake a live run.`,
   ].join("\n");
 }

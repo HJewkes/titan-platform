@@ -163,8 +163,8 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
 A FIX_FIRST or ci-failed wake can end with the woken agent exiting at the same head. A red
 whose failing tests sit outside the PR's diff is rerun once first. Otherwise `sh-exit-notice`
 sends the repo's seat one agent-chat message per run and head. The message names the PR, the
-head, the round, the wake mode and the agent's last report, cut to 600 characters. The step
-records why the agent stopped:
+head, the round, the wake mode and the agent's last report, cut to 600 characters and fenced
+as data. The step records why the agent stopped:
 
 - `unread`: the wake reached a live agent, and the agent wrote nothing after it. It finished
   the turn it was already in and exited without reading the message. This is the live-wake
