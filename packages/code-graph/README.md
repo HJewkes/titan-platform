@@ -461,6 +461,85 @@ can import it. `analysis/graph-report-browser-safe.test.ts` keeps its whole impo
 free of packages and Node builtins, and fails if the barrel re-exports a module it does not
 check. `computeSymbolConsumers` and `buildSymbolCouplingPayload` are on it.
 
+### Report sections and drift
+
+Ported with TP-916 from codewatch's `graph report`, unchanged apart from import paths. All ten
+are on the root and on `./analysis`, and are pure functions over rows the caller has already
+read, so they run in a browser. Build one `ReportContext` per snapshot and window, then pass
+it to every section:
+
+```ts
+import {
+  buildReportContext,
+  busFactorOf,
+  computeReportDrift,
+  hotspotScoreOf,
+  topBusFactorRisks,
+  topHotspots,
+} from "@titan-design/code-graph/analysis";
+
+const nodes = [
+  { id: "hot.ts", kind: "file", name: "hot.ts" },
+  { id: "calm.ts", kind: "file", name: "calm.ts" },
+];
+const metric = (nodeId: string, name: string, value: number) => ({ nodeId, name, value, unit: "count" });
+const metrics = [
+  metric("hot.ts", "churn_30d", 12),
+  metric("hot.ts", "cognitive_max", 9),
+  metric("hot.ts", "bus_factor_30d", 1),
+  metric("calm.ts", "churn_30d", 2),
+  metric("calm.ts", "cognitive_max", 3),
+  metric("calm.ts", "bus_factor_30d", 3),
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+const hotspots = topHotspots(ctx, 10);
+// [ { nodeId: 'hot.ts', churn: 12, complexity: 9, loc: 0, recency: 1, score: 108 },
+//   { nodeId: 'calm.ts', churn: 2, complexity: 3, loc: 0, recency: 1, score: 6 } ]
+const silos = topBusFactorRisks(ctx, 10);
+// [ { nodeId: 'hot.ts', busFactor: 1, topAuthorShare: 1, churn: 12 } ]
+
+const drift = computeReportDrift({
+  baselineSnapshot, // the SnapshotRow the baseline rows were computed from
+  currentHotspots: hotspots,
+  baselineHotspots: [{ nodeId: "calm.ts", churn: 5, complexity: 4, loc: 0, recency: 1, score: 20 }],
+  currentHotspotScore: (id) => hotspotScoreOf(ctx, id),
+  currentSilos: silos,
+  baselineSilos: [],
+  currentBusFactor: (id) => busFactorOf(ctx, id),
+  currentCoupling: [],
+  baselineCoupling: [],
+});
+drift.improvedHotspots; // [ { nodeId: 'calm.ts', before: 20, after: 6, delta: -14 } ]
+drift.newSilos; // [ { nodeId: 'hot.ts', churn: 12 } ]
+```
+
+- `buildReportContext(input)` indexes `nodes` by id and `metrics` by name, drops null values,
+  and records the window and its metric suffix (`30d`, or `lifetime`).
+- `keepNode(ctx, nodeId)` is the gate every section applies: a file node, not matched by
+  `excluders`, not `generated`, and not in `excludedRoles`. `lookupMetric(ctx, name, nodeId)`
+  reads one value, `undefined` when absent.
+- `topHotspots(ctx, limit)` returns `HotspotRow[]` ranked by churn × complexity × recency,
+  after Adam Tornhill and CodeScene. Complexity is `cognitive_max`, else `cyclomatic_max`;
+  files with zero churn or complexity are left out. `hotspotScoreOf(ctx, nodeId)` is the same
+  score for one file, 0 when it is filtered out or unscored.
+- `topBusFactorRisks(ctx, limit)` returns `BusFactorRow[]`: files with a bus factor of 1 in
+  the window, ranked by churn. `busFactorOf(ctx, nodeId)` reads one file's bus factor.
+- `topTestCoverageRisks(ctx, limit)` returns `TestCoverageRow[]`: source files whose linked
+  tests have a single author, ranked by `linked_test_count`.
+- `topCentralFiles(nodes, edges, ctx, limit)` returns `CentralRow[]`, the top PageRank files
+  that `keepNode` accepts.
+- `computeReportDrift(input)` diffs current section rows against a baseline's into a
+  `ReportDrift`: new, resolved, displaced, worsened, and improved hotspots; new, resolved, and
+  displaced silos; new and intensified coupling pairs. Pass `baselineHotspotScore` to tell a
+  newborn file from one that climbed into the ranking. `./analysis` also exports
+  `hotspotComplexityOf`, which the root does not.
+
+Coupling clusters stay in codewatch. Nothing here builds the report's `couplingClusters`
+section, because codewatch's `topCouplingClusters` reads `git log` at report time, which a
+browser cannot do. `computeReportDrift` only diffs the `CouplingRow[]` you pass in, and
+`computeChangeCoupling` on `./history` gives the raw co-change pairs.
+
 ### Dashboard derivations
 
 Ported with TP-918 from codewatch's `graph dashboard`, unchanged apart from import paths. All
