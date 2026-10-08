@@ -126,6 +126,17 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
+  A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
+  the reason is free text, so no class is validated. Two classes carry the G10 rule:
+  - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
+    configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
+    checks are green at that head, the `sh-g10-release:<head>:<n>` step releases the hold and records the verdict
+    ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
+    profile that is not an opus one keeps the hold.
+  - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
+    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release`.
+
+  Any other class waits for `shepherd release`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 
@@ -157,6 +168,28 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   other round, resets the count. It is checked before `fix-first-runaway`.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
+
+### A fixer that exits with no push
+
+A FIX_FIRST or ci-failed wake can end with the woken agent exiting at the same head. A red
+whose failing tests sit outside the PR's diff is rerun once first. Otherwise `sh-exit-notice`
+sends the repo's seat one agent-chat message per run and head. The message names the PR, the
+head, the round, the wake mode and the agent's last report, cut to 600 characters and fenced
+as data. The step records why the agent stopped:
+
+- `unread`: the wake reached a live agent, and the agent wrote nothing after it. It finished
+  the turn it was already in and exited without reading the message. This is the live-wake
+  race.
+- `read-no-push`: a resume or successor wake, or a live agent that wrote after the wake. It
+  took the wake and pushed nothing.
+
+The run then waits for a new head, with no owner gate open. The seat can resume the agent or
+start a successor, push a fix itself, or close the PR. A repeat `shepherd register` does not
+wake a live run again.
+
+The owner's `sh-sent-back` gate still opens in these cases: the message fails to send, no
+single seat owns the repo, the agent exits a second time at a head the seat was already told
+about, or the wake was a conflict or fix-proof wake.
 
 ## Owner digest
 

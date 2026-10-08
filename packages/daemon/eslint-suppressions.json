@@ -1,7 +1,0 @@
-{
-  "src/daemon.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  }
-}
