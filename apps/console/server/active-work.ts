@@ -100,6 +100,11 @@ export function failure(message: string, code: number): Error {
   return Object.assign(new Error(message), { code });
 }
 
+/** Schema drift in an upstream answer: every upstream client reports it with this message shape and EXIT.SOFTWARE. */
+export function unexpectedShape(upstream: string): Error {
+  return failure(`${upstream} answered an unexpected shape`, EXIT.SOFTWARE);
+}
+
 /** Calls the active-work daemon's `/rpc` on loopback. It never starts the daemon. */
 export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS): ActiveWork {
   const source = liveSource({
@@ -111,7 +116,7 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
       const envelope = await source.call(command, args);
       if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
       const parsed = READS[command].safeParse(envelope.data);
-      if (!parsed.success) throw failure(`active-work ${command} answered an unexpected shape`, EXIT.SOFTWARE);
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
       return parsed.data as ReadResult<typeof command>;
     },
   };
