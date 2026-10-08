@@ -322,8 +322,14 @@ rename rather than a delete plus an add, and its edges do not churn. Metric and 
 canonicalised before comparing.
 
 `diffCheckResults(store, { fromSnapshotId, toSnapshotId, rules })` runs the rules on both
-snapshots and buckets each violation as new, resolved, or unchanged; unchanged metric
-violations are further split into worsened and improved by value. From-side ids follow the
+snapshots and buckets each violation as new, resolved, or unchanged. Unchanged metric
+violations are further split into worsened and improved, where
+worsened means further past the threshold: a rising value on a maximum, a falling one on a
+minimum such as `coverage_pct`. `violationExcess(ruleType, value, threshold)` is that measure, value over
+threshold for a maximum and threshold over value for a minimum, and `compareExcess(before,
+after)` names the direction. A pair whose excess is null on either side, because the value
+or threshold is missing, or a maximum or a minimum rule's value is 0 or less, is neither
+worsened nor improved. `delta` stays the raw value difference. From-side ids follow the
 alias chain, as in the ratchet.
 
 `computeFootprints({ nodes, edges }, options)` gives each symbol node a footprint built from

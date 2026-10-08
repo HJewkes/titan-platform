@@ -177,7 +177,10 @@ diffCheckResults(store, { fromSnapshotId: 1, toSnapshotId: 2, rules: tight }).ne
 alias chain between the two snapshots, across every rename in between, so a move is a rename
 rather than a delete plus an add, and its edges do not churn. `diffCheckResults` buckets violations as
 new, resolved, or unchanged, and splits unchanged metric violations into worsened and
-improved by value.
+improved, where worsened means further past the threshold, so a falling value on a
+`metric-min` rule such as `coverage_pct` is worsened. `violationExcess` and `compareExcess`, also on the
+browser-safe `./analysis` subpath, are that rule; a pair with no excess on either side is
+neither.
 
 ## Finding similar symbols
 
