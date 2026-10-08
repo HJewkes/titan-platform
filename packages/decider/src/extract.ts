@@ -1,5 +1,5 @@
 import { isExcluded, type ExclusionPolicy, type ExclusionReason } from "./exclusion.js";
-import type { LedgerRowWire } from "./ledger.js";
+import { LedgerRowSchema, type LedgerRowWire } from "./ledger.js";
 import type { LedgerSource, SourceCandidate } from "./source.js";
 import type { LedgerStore } from "./store.js";
 
@@ -10,6 +10,8 @@ export interface ExtractSummary {
   written: number;
   /** Candidates whose key the ledger already held. */
   alreadyIndexed: number;
+  /** Admitted rows that accepted a batch of decisions; still written, since they authorize their own items, but never evidence. */
+  bulk: number;
   excluded: Record<ExclusionReason, number>;
   pending: number;
   errors: string[];
@@ -59,6 +61,7 @@ export async function extractSource(
     read: read.candidates.length,
     written,
     alreadyIndexed: admitted.length - written,
+    bulk: admitted.filter((row) => LedgerRowSchema.parse(row).outcome === "bulk").length,
     excluded,
     pending: read.pending,
     errors: read.errors,
