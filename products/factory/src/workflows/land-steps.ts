@@ -28,6 +28,8 @@ export const CiSnapshotResult = z.looseObject({
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), unmoved: z.boolean().optional(), at: z.number().optional() });
 
+export const BackoffResult = z.looseObject({ waitMs: z.number(), retry: z.number() });
+
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 
 /** GitHub's HTTP 405 for a merge that raced another PR into the base; the wire may carry the status only in the message. */

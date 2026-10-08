@@ -9,13 +9,14 @@ import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
+import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
+import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
-import { baseMovedOrThrow, conflictOrThrow, CiSnapshotResult, LandRulesResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
+export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
 export const MAX_CI_CYCLES = 20;
@@ -25,6 +26,7 @@ export const LAND_STEPS: readonly StepDeclaration[] = [
   { id: "land-rules", kind: "dispatch" },
   { id: "ci-wait", kind: "dispatch" },
   { id: "update-branch", kind: "dispatch" },
+  { id: "update-backoff", kind: "dispatch" },
   { id: "merge", kind: "dispatch" },
   { id: "merge-policy", kind: "dispatch" },
   { id: "approve-merge", kind: "assisted" },
@@ -91,21 +93,11 @@ interface LandRules {
   strict: boolean;
 }
 
-interface UpdateResult {
-  headSha: string;
-  /** The new head is GitHub's merge of the expected head and the base, so it adds nothing a human has not seen. */
-  own: boolean;
-  skipped?: string;
-  /** GitHub refused the update because the base does not merge into the head; the head is unchanged. */
-  conflict?: boolean;
-  /** GitHub accepted the update but the head never moved, even after the bounded re-reads and re-sends. */
-  unmoved?: boolean;
-}
-
 interface LandState {
   round: number;
   cycle: number;
   updates: number;
+  retries: number;
   bound: UpdateBound;
   merges: number;
   decisions: number;
@@ -125,10 +117,11 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, cycle: 0, updates: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
+  const state: LandState = { round, cycle: 0, updates: 0, retries: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
   for (;;) {
     if (state.cycle >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
+    if (ci.verdict !== "behind" && retryLanded(state.bound)) restartUpdates(state.bound);
     const settled = landsAsIs(ci, state) ? { ...ci, verdict: "green" as const } : ci;
     const next = settled.verdict === "behind" ? await onBehind(ctx, input, ci, state) : await onSettled(ctx, input, settled, state, options);
     if (next) return next;
@@ -156,15 +149,47 @@ function landsAsIs(ci: CiSnapshot, state: LandState): boolean {
  */
 async function onBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
   const refresh = ci.baseMoved === true;
-  if (!refresh && budgetSpent(state.bound, ci.readAt)) {
-    const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
-    const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
-    const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
-    if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
-    resetBound(state.bound);
+  const spent = !refresh && budgetSpent(state.bound, ci.readAt);
+  const retrying = spent && retryBeforeGate(ctx, state.bound);
+  if (retrying) await backoff(ctx, state);
+  else if (spent) {
+    const stopped = await askStuckBehind(ctx, input, ci, state);
+    if (stopped) return stopped;
   }
   const update = await step(ctx, roundId("update-branch", state.round, state.updates++), { repo: input.repo, pr: input.pr, expectedHeadSha: ci.headSha }, UpdateResultResult);
-  if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
+  if (retrying) recordRetry(state.bound, ci.headSha);
+  else if (!refresh) recordUpdate(state.bound, ci.headSha, update.at);
+  return afterUpdate(ci, update, state, refresh);
+}
+
+async function askStuckBehind(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState): Promise<LandOutcome | undefined> {
+  const why = stuckBehindReason(state.bound, ci.headSha, ci.readAt);
+  const { schema, brief } = stuckBehindDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, why });
+  const answer = await ctx.assisted("stuck-behind", `PR #${input.pr} in ${input.repo} is ${why}. Retry or abandon?`, { schema, brief });
+  if (schema.parse(answer.data).decision === "abandon") return stopped("stuck-behind", ci.headSha, why);
+  resetBound(state.bound);
+  return undefined;
+}
+
+/**
+ * Retry before the gate. Where the record continues, it alone decides: only a recorded backoff means retrying. Where the
+ * record ends, a run paused on `stuck-behind` (recorded before retries) keeps its pending gate; a live run retries.
+ */
+function retryBeforeGate(ctx: WorkflowContext, bound: UpdateBound): boolean {
+  if (!retriesLeft(bound)) return false;
+  const next = ctx.historyNext();
+  if (next !== undefined) return next.startsWith("update-backoff");
+  return ctx.resumedGate() !== "stuck-behind";
+}
+
+/** The recorded wait before a retry; the retry itself is an ordinary `update-branch` step, so every consumer of that step covers it. */
+async function backoff(ctx: WorkflowContext, state: LandState): Promise<void> {
+  const retry = (state.bound.retries ?? 0) + 1;
+  await step(ctx, roundId("update-backoff", state.round, state.retries++), { waitMs: retryBackoffMs(retry - 1), retry }, BackoffResult);
+}
+
+/** What follows any update, a retry included: the stops, and the trust a head built on an approved one inherits. */
+function afterUpdate(ci: CiSnapshot, update: z.infer<typeof UpdateResultResult>, state: LandState, refresh: boolean): LandOutcome | undefined {
   if (update.conflict) return stopped("conflict", ci.headSha, "update-branch: merge conflict between base and head");
   if (update.unmoved) return stopped("update-branch-unmoved", ci.headSha, `update-branch: head still ${ci.headSha} after ${UPDATE_RESENDS} re-sends`);
   if (update.own && state.trustedBy === "human" && state.trusted.has(ci.headSha)) state.trusted.add(update.headSha);
@@ -234,10 +259,15 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
   return [
     codeRoute("land-rules", now, (input: { repo: string; pr: number }) => readRules(deps.port, input)),
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
-    codeRoute("update-branch", now, async (input: UpdateInput, signal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() })),
+    codeRoute("update-branch", now, updateRun(deps, timing, now)),
+    codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
     codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
   ];
+}
+
+function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () => number) {
+  return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 }, signal))), at: now() });
 }
 
 export function codeRoute<I>(match: string, now: () => number, fn: (input: I, signal: AbortSignal) => Promise<object>): StepRoute {
@@ -307,47 +337,6 @@ async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal:
       if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${last}`);
     }
     await clock.sleep(timing.pollMs, signal);
-  }
-}
-
-interface UpdateInput {
-  repo: string;
-  pr: number;
-  expectedHeadSha: string;
-}
-
-/** GitHub's update-branch sometimes never moves the head on the first write; each re-send follows a fresh read of the PR. */
-const UPDATE_RESENDS = 2;
-
-/** update-branch is asynchronous on GitHub, so the step waits for the head to move before it reports one. */
-async function updateBranch(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<UpdateResult> {
-  for (let resend = 0; ; resend++) {
-    const write = await port.updateBranch(input.repo, input.pr, input.expectedHeadSha).catch(conflictOrThrow);
-    if (write === "conflict") return { headSha: input.expectedHeadSha, own: false, conflict: true };
-    if (!write.done && write.skipped !== "head-moved") {
-      const pr = await port.getPr(input.repo, input.pr);
-      return { headSha: pr.headSha, own: pr.headSha === input.expectedHeadSha, skipped: write.skipped };
-    }
-    const headSha = await waitForHeadChange(port, input, timing, signal);
-    if (headSha !== undefined) return movedHead(port, input, headSha, write.done ? undefined : write.skipped);
-    if (resend === UPDATE_RESENDS) return { headSha: input.expectedHeadSha, own: false, unmoved: true };
-  }
-}
-
-async function movedHead(port: GitHubPort, input: UpdateInput, headSha: string, skipped: string | undefined): Promise<UpdateResult> {
-  const commit = await port.getCommit(input.repo, headSha);
-  const own = commit.parents.length === 2 && commit.parents[0] === input.expectedHeadSha;
-  return { headSha, own, ...(skipped === undefined ? {} : { skipped }) };
-}
-
-/** The head that replaced the expected one, or undefined when the wait ran out with it unmoved. */
-async function waitForHeadChange(port: GitHubPort, input: UpdateInput, timing: Timing, signal: AbortSignal): Promise<string | undefined> {
-  const clock = deadline(timing);
-  for (;;) {
-    const pr = await port.getPr(input.repo, input.pr);
-    if (pr.headSha !== input.expectedHeadSha) return pr.headSha;
-    if (clock.expired()) return undefined;
-    await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   }
 }
 
