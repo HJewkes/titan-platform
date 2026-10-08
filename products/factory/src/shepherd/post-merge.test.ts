@@ -655,6 +655,7 @@ describe("shepherd-pr on a red main", () => {
 
   it("offers the owner the release when the fixer's green merge skipped a check that was red, and thaws on the owner's word", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
+    w.fake.rules = { contexts: [], strict: false };
     w.fake.setRuns(EARLIER_RED, [successRun("docs", 4, undefined, "failure")]);
     frozenWithFixer(w);
     const runId = await registeredToMerge(w, "demo/FX-1", FIXER);
