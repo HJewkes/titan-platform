@@ -408,7 +408,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
     fake.addPr({ headSha: H1 });
     fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
     const base = githubPort(fake.wire);
-    const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 5)]), base.checkRuns(repo, sha)) };
+    const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 5), successRun("dag-check", 6)]), base.checkRuns(repo, sha)) };
     let clock = 0;
     const env = { XDG_CONFIG_HOME: dir, AW_PORT: String(activeWork.port) };
     const routes = configuredRoutes(env, { port, now: () => clock, sleep: async (ms) => void (clock += ms) });

@@ -72,7 +72,7 @@ function landingPort(repo: Repo): GitHubPort {
   const mergeShas = () => [1, 2].map((pr) => repo.fake.pr(pr).mergeSha);
   return {
     ...port,
-    checkRuns: async (slug, sha) => (mergeShas().includes(sha) && repo.fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(slug, sha)),
+    checkRuns: async (slug, sha) => (mergeShas().includes(sha) && repo.fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)),
   };
 }
 
