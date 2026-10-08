@@ -16,8 +16,8 @@ const lockRefusal = [
 const pastRefusal = (head: string, target: string): string =>
   `error: deploy refused: the checkout's main is at ${head}, already past ${target}; deploy that commit instead with titan-factory service deploy --expect ${head}`;
 
-function health(log: string[], lockNote?: string) {
-  return deployHealth({ entries: parseRedeployLog(log.join("\n")), runningSha: SHA, now: NOW, ...(lockNote && { lockNote }) });
+function health(log: string[], lockNote?: string, runningSha = SHA) {
+  return deployHealth({ entries: parseRedeployLog(log.join("\n")), runningSha, now: NOW, ...(lockNote && { lockNote }) });
 }
 
 describe("deploy health from refusals in redeploy.log", () => {
@@ -140,6 +140,26 @@ describe("deploy health from asks that have not landed", () => {
     const result = health([ask(600), `deployed ${NEXT}`]);
 
     expect(result).toMatchObject({ alarm: false, behind: 0, behindMinutes: 0, consecutiveRefusals: 0 });
+  });
+});
+
+describe("deploy health once serve runs a build deployed by hand", () => {
+  const refusedPair = [ask(90, NEXT), ...lockRefusal, ask(80, LATER), ...lockRefusal];
+
+  it("clears the refusal streak and every older ask when serve runs the newest refused target", () => {
+    const result = health(refusedPair, undefined, LATER);
+
+    expect(result).toMatchObject({ alarm: false, consecutiveRefusals: 0, behind: 0, behindMinutes: 0 });
+  });
+
+  it("covers the asks up to the running build's ask, and still counts refusals of asks after it", () => {
+    const result = health([...refusedPair, ask(30, "d".repeat(40)), ...lockRefusal, ask(25, "e".repeat(40)), ...lockRefusal], undefined, NEXT);
+
+    expect(result).toMatchObject({ alarm: true, consecutiveRefusals: 3, behind: 3, behindMinutes: 80 });
+  });
+
+  it("lands nothing for a running build that no ask named", () => {
+    expect(health(refusedPair, undefined, "f".repeat(40))).toMatchObject({ alarm: true, consecutiveRefusals: 2, behind: 2 });
   });
 });
 

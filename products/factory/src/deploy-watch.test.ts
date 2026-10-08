@@ -6,22 +6,27 @@ const SHA = "a".repeat(40);
 const NEXT = "b".repeat(40);
 const NOW = Date.parse("2026-10-07T12:00:00Z");
 const LOCK = "/srv/checkout/.git/index.lock";
-const REFUSAL = `2026-10-07T11:55:00Z service deploy --expect ${NEXT}\nerror: deploy refused: git merge --ff-only ${NEXT} failed: Unable to create '${LOCK}': File exists.\n`;
+const LATER = "c".repeat(40);
+const refusal = (sha: string, at = "2026-10-07T11:55:00Z"): string =>
+  `${at} service deploy --expect ${sha}\nerror: deploy refused: git merge --ff-only ${sha} failed: Unable to create '${LOCK}': File exists.\n`;
+const REFUSAL = refusal(NEXT);
 
 interface Fake {
   ports: DeployWatchPorts;
   sent: string[];
   log: string[];
   failNext: () => void;
+  deployByHand: (sha: string) => void;
 }
 
 function fake(lock: IndexLock = { state: "stale", path: LOCK, ageMs: 60 * 60_000 }): Fake {
   const sent: string[] = [];
   const log: string[] = [];
   let fail = false;
+  let running = SHA;
   const ports: DeployWatchPorts = {
     readLog: () => (log.length === 0 ? undefined : log.join("")),
-    runningSha: () => SHA,
+    runningSha: () => running,
     indexLock: async () => lock,
     notify: async (text) => {
       if (fail) {
@@ -32,7 +37,7 @@ function fake(lock: IndexLock = { state: "stale", path: LOCK, ageMs: 60 * 60_000
     },
     now: () => NOW,
   };
-  return { ports, sent, log, failNext: () => void (fail = true) };
+  return { ports, sent, log, failNext: () => void (fail = true), deployByHand: (sha) => void (running = sha) };
 }
 
 describe("the deploy watch serve runs", () => {
@@ -65,6 +70,22 @@ describe("the deploy watch serve runs", () => {
     await watch.tick();
 
     expect(cleared).toMatchObject({ alarm: false, consecutiveRefusals: 0, notice: null });
+    expect(sent).toHaveLength(2);
+  });
+
+  it("clears the alarm once serve runs a build deployed by hand, and tells the hub seat about the next stall", async () => {
+    const { ports, sent, log, deployByHand } = fake();
+    const watch = deployWatch(ports);
+
+    log.push(refusal(NEXT, "2026-10-07T11:40:00Z"), refusal(LATER, "2026-10-07T11:45:00Z"));
+    await watch.tick();
+    deployByHand(LATER);
+    await watch.tick();
+    const cleared = watch.status();
+    log.push(refusal("d".repeat(40), "2026-10-07T11:50:00Z"), refusal("e".repeat(40)));
+    await watch.tick();
+
+    expect(cleared).toMatchObject({ alarm: false, consecutiveRefusals: 0, behind: 0, notice: null });
     expect(sent).toHaveLength(2);
   });
 

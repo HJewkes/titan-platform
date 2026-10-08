@@ -83,11 +83,36 @@ export const namesIndexLock = (reason: string): boolean => reason.includes("inde
 
 const outcomesOf = (entries: readonly LogEntry[]): Outcome[] => entries.filter((entry): entry is Outcome => entry.kind === "ok" || entry.kind === "refused");
 
-function refusalStreak(entries: readonly LogEntry[]): number {
-  const outcomes = outcomesOf(entries);
-  let streak = 0;
-  for (let index = outcomes.length - 1; index >= 0 && outcomes[index]!.kind === "refused"; index--) streak++;
-  return streak;
+/** A landing of `target`, placed at log position `index`. */
+interface Landing {
+  index: number;
+  target: string;
+}
+
+/** Each target's last ask position. */
+function askPositions(entries: readonly LogEntry[]): Map<string, number> {
+  const askedAt = new Map<string, number>();
+  for (const [index, entry] of entries.entries()) if (entry.kind === "ask") askedAt.set(entry.target, index);
+  return askedAt;
+}
+
+/**
+ * Every proof that serve caught up, and the only one: logged landings, plus the running build. A fix made by hand
+ * never writes to redeploy.log, so the running build counts as its own ask's deployer having landed, placed where
+ * that ask's outcome lines end (the next ask). A running build that was never asked lands nothing.
+ */
+function landingsOf(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, runningSha: string): Landing[] {
+  const logged = entries.flatMap((entry, index) => (entry.kind === "ok" && entry.target !== undefined ? [{ index, target: entry.target }] : []));
+  const runningAsk = askedAt.get(runningSha);
+  if (runningAsk === undefined) return logged;
+  const nextAsk = entries.findIndex((entry, index) => index > runningAsk && entry.kind === "ask");
+  return [...logged, { index: nextAsk === -1 ? entries.length : nextAsk, target: runningSha }];
+}
+
+/** Refusals since the last landing; superseded ones are no refusal. */
+function refusalStreak(entries: readonly LogEntry[], landings: readonly Landing[]): number {
+  const since = Math.max(-1, ...landings.map((landing) => landing.index));
+  return entries.filter((entry, index) => index > since && entry.kind === "refused").length;
 }
 
 /** The last refused outcome, superseded ones aside. */
@@ -105,19 +130,14 @@ function lastRefusal(entries: readonly LogEntry[], lockNote: string | undefined)
 /**
  * `service deploy --expect T` lands exactly T, so an ask is covered only by a later landing of its own target or of a
  * target asked at or after it; position in the log alone proves nothing, since a burst's lock losers never deploy.
- * The running build covers an ask for its own sha, which also clears one deployed by hand.
  */
-function uncoveredAsks(entries: readonly LogEntry[], runningSha: string): number[] {
-  const askedAt = new Map<string, number>();
-  for (const [index, entry] of entries.entries()) if (entry.kind === "ask") askedAt.set(entry.target, index);
-  const landings = entries.flatMap((entry, index) => (entry.kind === "ok" && entry.target !== undefined ? [{ index, target: entry.target }] : []));
+function uncoveredAsks(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, landings: readonly Landing[]): number[] {
   const covered = (target: string, index: number): boolean =>
-    target === runningSha || landings.some((landing) => landing.index > index && (landing.target === target || (askedAt.get(landing.target) ?? -1) >= index));
+    landings.some((landing) => landing.index > index && (landing.target === target || (askedAt.get(landing.target) ?? -1) >= index));
   return entries.flatMap((entry, index) => (entry.kind === "ask" && !covered(entry.target, index) ? [Date.parse(entry.at)] : []));
 }
 
-function waiting(entries: readonly LogEntry[], runningSha: string, now: number): Pick<DeployHealth, "behind" | "behindMinutes"> {
-  const asks = uncoveredAsks(entries, runningSha);
+function waiting(asks: readonly number[], now: number): Pick<DeployHealth, "behind" | "behindMinutes"> {
   if (asks.length === 0) return { behind: 0, behindMinutes: 0 };
   const behind = asks.filter((at) => now - at >= DEPLOY_GRACE_MS).length;
   return { behind, behindMinutes: Math.max(0, Math.floor((now - Math.min(...asks)) / 60_000)) };
@@ -137,10 +157,12 @@ function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">): string[] {
  * or an ask over 60 minutes old with nothing landed since. A merge that never asked is no deploy failure.
  */
 export function deployHealth(input: DeployHealthInput): DeployHealth {
+  const askedAt = askPositions(input.entries);
+  const landings = landingsOf(input.entries, askedAt, input.runningSha);
   const base = {
     runningSha: input.runningSha,
-    ...waiting(input.entries, input.runningSha, input.now),
-    consecutiveRefusals: refusalStreak(input.entries),
+    ...waiting(uncoveredAsks(input.entries, askedAt, landings), input.now),
+    consecutiveRefusals: refusalStreak(input.entries, landings),
     lastRefusal: lastRefusal(input.entries, input.lockNote),
   };
   const causes = alarmCauses(base);

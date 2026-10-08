@@ -387,7 +387,9 @@ line there is an ask, and Shepherd writes one only after a merge's main CI is gr
 deploy lands exactly the sha it was asked for, so a landing (`deployed`, `skipped` or
 `already deployed`) covers an earlier ask only when it names that ask's target or a target
 asked at or after it. A burst's deployers that lose `deploy.lock` stay behind until something
-newer lands. An ask for the running build's own sha is covered.
+newer lands. The running build is a landing too, so a deploy fixed by hand clears the alarm:
+it lands its own ask, which covers that ask and every one before it and ends the refusals in
+a row. A running build that no ask named lands nothing.
 `/health` carries a `deploy` block: the running sha, the asks that have not landed
 (`behind`, counting only asks older than 20 minutes) and the age of the oldest one, the
 refusals in a row, and the last refusal's reason. The alarm goes up on two refusals in a row,
