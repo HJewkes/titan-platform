@@ -41,7 +41,7 @@ export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, re
 }
 
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
-export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
+function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
     kind: registeredKind(deps.store, input.runId).kind ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
@@ -167,7 +167,7 @@ function treeEqual(result: CarryResult): boolean {
 }
 
 /** What the evidence step records about a carry: both heads, the tree probe's answer, the rule that carried, and the remerge answer behind a remerge rule. */
-export interface CarryEvidence {
+interface CarryEvidence {
   fromHead: string;
   head: string;
   result: CarryResult;

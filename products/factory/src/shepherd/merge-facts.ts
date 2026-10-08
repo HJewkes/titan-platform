@@ -16,7 +16,7 @@ export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 /** The rules that let Shepherd merge without the owner; any other allow still gates. */
 export const MERGE_BY_REVIEWER_RULE = "MRG-AU-RV";
 export const MERGE_BY_CARRIED_VERDICT_RULE = "MRG-AU-RC";
-export const MERGE_BY_REMERGED_VERDICT_RULE = "MRG-AU-RM";
+const MERGE_BY_REMERGED_VERDICT_RULE = "MRG-AU-RM";
 const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CARRIED_VERDICT_RULE, MERGE_BY_REMERGED_VERDICT_RULE];
 
 /** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */

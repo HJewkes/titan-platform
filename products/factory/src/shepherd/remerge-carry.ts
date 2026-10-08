@@ -38,9 +38,9 @@ export function generatedPathsFor(repo: string): string[] {
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const RemergeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha, generated: z.array(z.string().min(1)) });
-export type RemergeInput = z.infer<typeof RemergeInputSchema>;
+type RemergeInput = z.infer<typeof RemergeInputSchema>;
 
-export const RemergeResultSchema = z.object({
+const RemergeResultSchema = z.object({
   carries: z.boolean(),
   rule: z.enum(["remerge-empty", "remerge-generated-only"]).optional(),
   base: z.string().optional(),

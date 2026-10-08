@@ -12,7 +12,7 @@ const ESCALATION_TABLE = "shepherd-route";
 
 const MergeAnswer = z.looseObject({ decision: z.literal("merge"), headSha: z.string() });
 
-export interface ApprovalCarry {
+interface ApprovalCarry {
   target: CarryTarget;
   /** True when the run's verdict at this head is a MERGE; an approval follows only a head whose review stands too. */
   reviewedMerge: (headSha: string) => boolean;
