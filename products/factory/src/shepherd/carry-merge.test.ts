@@ -6,6 +6,7 @@ import { CARRY_SEAT_HEAD_CAP, carriedSource, carriedVerdict, carrySeatRoute, pus
 import type { ReviewerAgent, ReviewerMessage, ReviewWiring } from "./review.js";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import type { Verdict } from "./phases.js";
+import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
@@ -14,6 +15,9 @@ const REVIEWED = fakeSha("reviewed");
 const NEW_HEAD = fakeSha("new-head");
 const AGENT = { agentId: "rv-1", sessionId: "s-1" };
 const EQUAL: CarryResult = { equal: true, base: fakeSha("main"), headTree: "tree-a", mergeTree: "tree-a" };
+const UNEQUAL: CarryResult = { equal: false, base: fakeSha("main"), reason: "conflicts" };
+const NOT_REMERGED: RemergeResult = { carries: false, paths: ["src/a.ts"], generatedPaths: [], reason: "the merge changed 1 path(s) outside the declared generated files" };
+const GENERATED_ONLY: RemergeResult = { carries: true, rule: "remerge-generated-only", headTree: "tree-h", remergeTree: "tree-r", paths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"] };
 
 function mergeAt(head: string, verdictHead = head, extra: object = {}): Verdict {
   const merge = { head, verdict: { value: "MERGE", head: verdictHead }, resolver: AGENT, dispatchedReviewer: AGENT, seatGrants: ["merge-on-green-approve"] };
@@ -26,12 +30,13 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }): Rig {
+function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED): Rig {
   const asked: Rig["asked"] = [];
   const answer = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
     if (stepId.startsWith("sh-carry:")) return probe;
     if (stepId.startsWith("sh-carry-seat:")) return seats;
+    if (stepId.startsWith("sh-remerge:")) return remerge;
     if (stepId.startsWith("sh-publish-review:")) return { published: false };
     return { head: input.head, merge: {}, record: {} };
   };
@@ -162,6 +167,73 @@ describe("carrying a MERGE to a tree-equal head", () => {
 
   it("has no source when the only review is at the head itself", () => {
     expect(carriedSource(reviews([NEW_HEAD, mergeAt(NEW_HEAD)]), NEW_HEAD)).toBeUndefined();
+  });
+});
+
+describe("carrying a MERGE across a merge of the base whose remerge resolved nothing", () => {
+  const MERGE_SCOPE = { kind: "refactor", baseRef: "main" };
+
+  it("asks the remerge probe only when the tree probe refuses, and carries a generated-only remerge with its rule", async () => {
+    const r = rig(MERGE_SCOPE, UNEQUAL, { clear: true }, GENERATED_ONLY);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
+    expect(r.asked.find((step) => step.stepId === `sh-remerge:${NEW_HEAD}`)!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD, generated: [] });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: UNEQUAL, rule: "remerge-generated-only", remerge: GENERATED_ONLY });
+  });
+
+  it("names the rule in the shepherd/review check it publishes", async () => {
+    const r = rig(MERGE_SCOPE, UNEQUAL, { clear: true }, GENERATED_ONLY);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    const publish = r.asked.find((step) => step.stepId === `sh-publish-review:${NEW_HEAD}`)!.input;
+    expect(publish).toMatchObject({ carriedFrom: REVIEWED, carryRule: "remerge-generated-only" });
+    expect(reviewCheck({ ...publish, autoMergeArmed: false } as Parameters<typeof reviewCheck>[0])).toMatchObject({ conclusion: "success", title: expect.stringContaining("(remerge-generated-only)") });
+  });
+
+  it("carries an empty remerge-diff", async () => {
+    const empty: RemergeResult = { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
+    const r = rig(MERGE_SCOPE, UNEQUAL, { clear: true }, empty);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toMatchObject({ kind: "MERGE" });
+
+    expect(carryOf(r)).toMatchObject({ rule: "remerge-empty" });
+  });
+
+  it("does not ask the remerge probe when the tree probe carries", async () => {
+    const r = rig(MERGE_SCOPE, EQUAL, { clear: true }, GENERATED_ONLY);
+
+    await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-remerge"))).toBe(false);
+    expect(carryOf(r)).toMatchObject({ rule: "tree-equal" });
+  });
+
+  it.each([
+    ["a real conflict resolution", NOT_REMERGED],
+    ["a second parent that is not on the base", { carries: false, reason: `second parent ${fakeSha("side")} is not on main` }],
+  ])("re-reviews after %s", async (_name, remerge) => {
+    const r = rig(MERGE_SCOPE, UNEQUAL, { clear: true }, remerge);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(carryOf(r)).toBeUndefined();
+  });
+
+  it("never probes for a security run, even a generated-only remerge", async () => {
+    const r = rig({ kind: "security", baseRef: "main" }, UNEQUAL, { clear: true }, GENERATED_ONLY);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.map((step) => step.stepId)).toEqual(["sh-carry-scope:0"]);
+  });
+
+  it("does not carry a generated-only remerge past a seat reviewer's FIX_FIRST", async () => {
+    const r = rig(MERGE_SCOPE, UNEQUAL, { clear: false }, GENERATED_ONLY);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
   });
 });
 

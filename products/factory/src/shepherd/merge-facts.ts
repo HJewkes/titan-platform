@@ -136,8 +136,8 @@ function withUnreadFacts(decision: GateDecision, evidence: DecidableEvidence | u
 }
 
 /**
- * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, or MRG-AU-RC for a
- * tree-equal carry of the verdict to it, allows. Under `visualPaths`, a head whose changed files match one gates.
+ * The pure decision both the evidence step and `decide` use; only MRG-AU-RV at this exact head, MRG-AU-RC for a
+ * tree-equal carry of the verdict to it, or MRG-AU-RM for a remerge-clean one, allows. Under `visualPaths`, a head whose changed files match one gates.
  */
 export function decideAutoMerge(headSha: string, evidence: DecidableEvidence | undefined, visualPaths?: readonly string[]): GateDecision {
   return withUnreadFacts(decideOnFacts(headSha, evidence, visualPaths), evidence);
