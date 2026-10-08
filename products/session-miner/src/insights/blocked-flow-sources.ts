@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { GhError, execGh, type GhExec } from "@titan-design/github";
+import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { EXIT } from "@titan-design/registry";
 import {
   parseDenials,
@@ -49,30 +49,27 @@ export function readVerdicts(eventsDb: string, window: { since?: string; until?:
   });
 }
 
-const ghPull = z.object({ state: z.enum(["open", "closed"]), merged_at: z.string().nullable(), head: z.object({ sha: z.string() }) });
-
 const PULL_CONCURRENCY = 6;
 
-/** Each PR's state from GitHub REST; a PR GitHub cannot find is left out and reported as unknown. */
-export async function fetchPulls(keys: readonly { repo: string; pr: number }[], exec: GhExec = execGh): Promise<PullState[]> {
+/** Each PR's state through the GitHub port; a PR GitHub cannot find is left out and reported as unknown. */
+export async function fetchPulls(keys: readonly { repo: string; pr: number }[], github: GitHubPort = githubPort(ghCliWire())): Promise<PullState[]> {
   const unique = [...new Map(keys.map((k) => [prKey(k), k])).values()];
   const pulls: PullState[] = [];
   for (let i = 0; i < unique.length; i += PULL_CONCURRENCY) {
-    const batch = await Promise.all(unique.slice(i, i + PULL_CONCURRENCY).map((key) => fetchPull(key, exec)));
+    const batch = await Promise.all(unique.slice(i, i + PULL_CONCURRENCY).map((key) => fetchPull(key, github)));
     pulls.push(...batch.flatMap((p) => (p ? [p] : [])));
   }
   return pulls;
 }
 
-async function fetchPull({ repo, pr }: { repo: string; pr: number }, exec: GhExec): Promise<PullState | null> {
-  const args = ["api", `repos/${repo}/pulls/${pr}`];
-  const result = await exec(args);
-  if (result.code !== 0) {
-    if (new GhError(args, result).status === 404) return null;
-    throw new GhError(args, result);
+async function fetchPull({ repo, pr }: { repo: string; pr: number }, github: GitHubPort): Promise<PullState | null> {
+  try {
+    const found = await github.getPr(repo, pr);
+    return { repo, pr, state: found.state, mergedAt: found.mergedAt && new Date(found.mergedAt).toISOString(), headSha: found.headSha };
+  } catch (error) {
+    if ((error as { status?: unknown }).status === 404) return null;
+    throw error;
   }
-  const body = ghPull.parse(JSON.parse(result.stdout));
-  return { repo, pr, state: body.state, mergedAt: body.merged_at && new Date(body.merged_at).toISOString(), headSha: body.head.sha };
 }
 
 const pullSnapshot = z.array(z.object({ repo: z.string(), pr: z.number().int(), state: z.enum(["open", "closed"]), mergedAt: z.string().nullable(), headSha: z.string() }));
