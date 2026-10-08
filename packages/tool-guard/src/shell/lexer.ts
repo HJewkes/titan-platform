@@ -46,6 +46,8 @@ export interface OpToken {
 export interface SubsToken {
   type: "subs";
   subs: Token[][];
+  /** The lines after a pending heredoc's body, read as bash 5 does; walked at the depth of the token itself. */
+  tails: Token[][];
 }
 
 /** `target` is the word after the operator; for a heredoc it is the delimiter and `body` is the text. */
@@ -376,7 +378,7 @@ function readRedirect(s: LexState): void {
   const op = (REDIRECT_RE.exec(s.src) as RegExpExecArray)[0];
   s.i += op.length;
   if ((op === "<" || op === ">") && s.src[s.i] === "(") {
-    s.tokens.push({ type: "subs", subs: readProcessSubstitution(s, s.i + 1) });
+    s.tokens.push(readProcessSubstitution(s, s.i + 1));
     return;
   }
   const heredoc = op === "<<" || op === "<<-";

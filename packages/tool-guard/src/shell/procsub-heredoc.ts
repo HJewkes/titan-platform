@@ -1,5 +1,5 @@
 import { type ArithTrials, chargeTrial, newTrials, spent } from "./arith-trials.js";
-import { endWord, type LexState, lex, newState, ParseError, step, type Token } from "./lexer.js";
+import { endWord, type LexState, lex, newState, ParseError, step, type SubsToken, type Token } from "./lexer.js";
 
 type Pending = LexState["heredocs"];
 
@@ -21,16 +21,16 @@ let known: Set<number> = new Set();
 /**
  * A heredoc still pending when a process substitution closes takes its body from the lines after
  * the current one in bash 5, and not at all in bash 3.2, which lexes those lines as commands. No single
- * reading is safe for both, so both are returned: the first list is the one bash 3.2 gives (and the
- * one this lexer always gave), the others are the text after the bodies that bash 5 skips. Each such
+ * reading is safe for both, so both are returned: `subs` is the reading bash 3.2 gives (and the
+ * one this lexer always gave), `tails` is the text after the bodies that bash 5 skips. Each such
  * text is lexed once, stops where the next one begins, is returned once, and is charged by the length read;
  * once the budget is spent only the first reading is returned, which is what main gives.
  */
-export function readProcessSubstitution(s: LexState, start: number): Token[][] {
+export function readProcessSubstitution(s: LexState, start: number): SubsToken {
   const inner = newState(s.src, start, true, s.trials);
   lex(inner);
   s.i = inner.i + 1;
-  const first: Token[][] = [inner.tokens];
+  const first: SubsToken = { type: "subs", subs: [inner.tokens], tails: [] };
   if (inner.heredocs.length === 0 || s.arithEnd === Number.POSITIVE_INFINITY) return first;
   const at = skipBodies(s.src, inner.i, [...s.heredocs, ...inner.heredocs]);
   if (at === null) return first;
@@ -39,7 +39,8 @@ export function readProcessSubstitution(s: LexState, start: number): Token[][] {
     known.add(at);
     return first;
   }
-  return [...first, ...readTails(bookOf(s), at)];
+  first.tails = readTails(bookOf(s), at);
+  return first;
 }
 
 function bookOf(s: LexState): Book {

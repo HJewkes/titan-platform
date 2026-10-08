@@ -141,6 +141,7 @@ function walk(tokens: Token[], w: Walk): void {
     if (token.type === "word") words.push(token);
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
+    if (token.type === "subs") for (const tail of token.tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth });
   }
   emit(words, redirects, w, null);
 }
