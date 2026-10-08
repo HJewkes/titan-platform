@@ -67,7 +67,7 @@ function rig(reason: string, prHead = HEAD) {
   const { number: pr } = fake.addPr({ headSha: prHead });
   store.register({ repo: REPO, pr, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   store.hold("run-1", reason);
-  const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0 } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
+  const deps = { port: githubPort(fake.wire), store: { get: () => store }, now: () => 0, reviewProfile: "bd-reviewer" } as unknown as Parameters<typeof g10ReleaseRoutes>[0];
   return { store, pr, deps };
 }
 
@@ -82,21 +82,21 @@ const stepInput = (pr: number, head: string, verdictHead = head) => ({ runId: "r
 describe(G10_RELEASE_STEP, () => {
   it("releases the hold and records the verdict ref", async () => {
     const { store, pr, deps } = rig("g10-review: auth; TP-1");
-    const done = await runStep(g10ReleaseRoutes(deps, "bd-reviewer")[0]!, stepInput(pr, HEAD));
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
     expect(done).toMatchObject({ released: true, head: HEAD, verdict: { reviewer: { agentId: "a-1" }, locator: { source: { conversation: { nativeId: "s-1" } } } } });
     expect(store.byRun("run-1")?.held).toBe(false);
   });
 
   it("keeps the hold when the PR's head moved after the verdict was read", async () => {
     const { store, pr, deps } = rig("g10-review: auth; TP-1", MOVED);
-    const done = await runStep(g10ReleaseRoutes(deps, "bd-reviewer")[0]!, stepInput(pr, HEAD));
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
   it("keeps a g10-adversary hold", async () => {
     const { store, pr, deps } = rig("g10-adversary: authority; TP-1");
-    const done = await runStep(g10ReleaseRoutes(deps, "bd-reviewer")[0]!, stepInput(pr, HEAD));
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, stepInput(pr, HEAD));
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
   });
