@@ -6,6 +6,7 @@ import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
 import { readLastDeploy } from "./deploy-ports.js";
+import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
@@ -48,6 +49,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   deployStateDir?: string;
   /** Resync Shepherd's runs and gates with GitHub before the first adoption; defaults to true. */
   resyncOnStart?: boolean;
+  /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
+  deployWatch?: DeployWatch;
 }
 
 export interface FactoryServer {
@@ -85,13 +88,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
+  const deploySweep = startDeployWatch(options.deployWatch, log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    await goneSweep?.stop();
-    await releaseSweep?.stop();
-    await checkoutSweep?.stop();
+    for (const later of [goneSweep, releaseSweep, checkoutSweep, deploySweep]) await later?.stop();
     await daemon.close();
     unbindCarry();
     host.close();
@@ -142,6 +144,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
+      ...(options.deployWatch && { deploy: options.deployWatch.status() }),
     }),
     logger: options.logger,
   };
@@ -244,6 +247,13 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
   const onError = (path: string, error: unknown): void =>
     log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
   for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
+}
+
+/** The first tick is not awaited: its gh compare must not hold up the start. */
+function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | undefined {
+  const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
+  void sweep?.tick();
+  return sweep;
 }
 
 /** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */

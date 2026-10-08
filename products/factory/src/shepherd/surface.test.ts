@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import { openFactoryHost } from "../host.js";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
+import { deployWatch, type DeployWatch } from "../deploy-watch.js";
 import { H1, REPO } from "../test-support/land.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
@@ -25,8 +26,9 @@ function dbFile(): string {
   return join(dir, "state", "factory.sqlite3");
 }
 
-async function serve(fixture: ShepherdFixture): Promise<FactoryServer> {
+async function serve(fixture: ShepherdFixture, deployWatch?: DeployWatch): Promise<FactoryServer> {
   const server = await startFactoryServer({
+    deployWatch,
     dbPath: dbFile(),
     workflows: fixture.workflows,
     routes: fixture.routes,
@@ -107,6 +109,38 @@ describe("shepherd surfaces on titan-factory serve", () => {
     expect(registered).toMatchObject({ ok: true, data: { created: true } });
     expect(status.code).toBe(0);
     expect(JSON.parse(status.out)).toMatchObject([{ repo: REPO, pr: 1, runId: registered.data.runId }]);
+  });
+});
+
+describe("the deploy block on shepherd status", () => {
+  const SHA = "a".repeat(40);
+  const lagging = (): DeployWatch =>
+    deployWatch({ readLog: () => undefined, runningSha: () => SHA, lag: async () => ({ behind: 4 }), indexLock: async () => ({ state: "absent", path: "" }), now: () => 0 });
+
+  async function served(): Promise<{ fixture: ShepherdFixture; port: string }> {
+    const fixture = shepherdFixture({ frozen: true });
+    const watch = lagging();
+    const server = await serve(fixture, watch);
+    await watch.tick();
+    return { fixture, port: String(server.port) };
+  }
+
+  it("rides along as { rows, deploy } under --json --deploy, while bare --json stays the row array", async () => {
+    const { fixture, port } = await served();
+
+    const withDeploy = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
+    const bare = await cli(["shepherd", "status", "--json", "--port", port], fixture);
+
+    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], deploy: { alarm: true, behind: 4, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
+    expect(JSON.parse(bare.out)).toEqual([]);
+  });
+
+  it("ends the human view with the deploy line", async () => {
+    const { fixture, port } = await served();
+
+    const status = await cli(["shepherd", "status", "--port", port], fixture);
+
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toMatch(new RegExp(`^deploy: running ${SHA}, 4 behind origin/main, .*ALARM`));
   });
 });
 
