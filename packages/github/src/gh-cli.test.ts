@@ -93,6 +93,28 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
   });
 
+  it("reads a context's app pin from a ruleset, and leaves an unpinned context out of the pins", async () => {
+    const rules = [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "validate", integration_id: 15368 }, { context: "dag-check" }] } }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules) });
+
+    expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: false, pins: { validate: [15368] } });
+  });
+
+  it("reads classic protection's contexts, strictness and app pins", async () => {
+    const body = { strict: true, contexts: ["validate", "dag-check"], checks: [{ context: "validate", app_id: 15368 }, { context: "dag-check", app_id: -1 }] };
+    const gh = scriptedGh({ "branches/main/protection/required_status_checks": JSON.stringify(body) });
+
+    expect(await ghCliWire(gh.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true, pins: { validate: [15368] } });
+  });
+
+  it("reads a 404 from classic protection as no required checks, and any other failure as an error", async () => {
+    const absent = scriptedGh({ "protection/required_status_checks": { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)\n" } });
+    const broken = scriptedGh({ "protection/required_status_checks": { code: 1, stdout: "", stderr: "gh: Server Error (HTTP 502)\n" } });
+
+    expect(await ghCliWire(absent.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: [], strict: false });
+    await expect(ghCliWire(broken.exec).getClassicRequiredChecks(REPO, "main")).rejects.toThrow(/502/);
+  });
+
   it("throws a named error for a required_status_checks rule with no parameters, rather than reading no contexts", async () => {
     const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
 
@@ -246,6 +268,7 @@ describe("gh api adapter, REST only", () => {
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
+      classicRequiredChecks: () => port.classicRequiredChecks(REPO, "main"),
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),

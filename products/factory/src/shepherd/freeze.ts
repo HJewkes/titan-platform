@@ -1,5 +1,8 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, latestPerName, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
+
+export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
 
 export const FREEZE_RECHECK_MS = 5 * 60_000;
 
@@ -195,17 +198,20 @@ export type Red = Pick<Freeze, "redSha" | "cancelOnly">;
 export async function greenHead(port: GitHubPort, repo: RepoSlug, baseRef: string, red: Red): Promise<string | undefined> {
   const head = await port.getHeadSha(repo, baseRef);
   if (head === null) return undefined;
-  return (await greenAfterRed(port, repo, head, red)) ? head : undefined;
+  return (await greenAfterRed(port, repo, head, red, baseRef)) ? head : undefined;
 }
 
 /**
- * Every Actions check at `sha` is complete and green by its newest run, and every check that was red at the red sha ran
- * green here, so a path-filtered head cannot clear it. The red sha itself qualifies only when its red was only cancels.
+ * Every check that judges main at `sha` is complete and green by its newest run: the base branch's required contexts when
+ * it has them (`baseRef` given and readable), else every Actions check, which must also have run green where it was red
+ * at the red sha, so a path-filtered head cannot clear it. The red sha itself qualifies only when its red was only cancels.
  */
-export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: string, red: Red): Promise<boolean> {
+export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: string, red: Red, baseRef?: string): Promise<boolean> {
   if (sha === red.redSha && !red.cancelOnly) return false;
   const runs = await actionsRuns(port, repo, sha);
   if (runs.length === 0) return false;
+  const rules = baseRef === undefined ? undefined : (await readMainRules(port, repo, baseRef)).rules;
+  if (rules !== undefined) return judgeMain(sha, await port.latestCheckRuns(repo, sha), rules).findings.length === 0;
   return headCheckFindings({ headSha: sha, contexts: await failingAt(port, repo, red.redSha), runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
 }
 
@@ -216,20 +222,6 @@ export async function failingAt(port: GitHubPort, repo: RepoSlug, sha: string): 
 
 async function actionsRuns(port: GitHubPort, repo: RepoSlug, sha: string): Promise<CheckRun[]> {
   return actionsRunsAt(await port.latestCheckRuns(repo, sha), sha);
-}
-
-/** Only GitHub Actions runs at `sha` judge main CI there. */
-export function actionsRunsAt(runs: readonly CheckRun[], sha: string): CheckRun[] {
-  return runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID);
-}
-
-/**
- * Drops each cancelled run that a newer run of its name superseded, as workflow concurrency does to a run when a later
- * push starts; "newer" is the latest start, then the higher id. Any other superseded run still counts.
- */
-export function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const newest = new Set(latestPerName(runs).map((run) => run.id));
-  return runs.filter((run) => run.conclusion !== "cancelled" || newest.has(run.id));
 }
 
 /** True when every Actions run that completed red at `sha`, superseded ones included, was cancelled. */

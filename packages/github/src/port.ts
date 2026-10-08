@@ -42,6 +42,8 @@ export interface RequiredChecks {
   contexts: string[];
   /** The ruleset requires the branch to be up to date before merging. */
   strict: boolean;
+  /** Apps a context is pinned to; a context absent here accepts a check from any app. */
+  pins?: Record<string, number[]>;
 }
 
 export interface CheckRun {
@@ -134,6 +136,8 @@ export interface GitHubWire {
   createPr(repo: RepoSlug, request: OpenPrRequest): Promise<PullRequest>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   getBranchRules(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** Classic branch protection's required status checks; a branch with none (HTTP 404) reads as an empty list. */
+  getClassicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
@@ -179,6 +183,8 @@ export interface GitHubPort {
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
   /** Read from the branch's active rulesets, never hardcoded. */
   requiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+  /** The classic-protection counterpart of `requiredChecks`, for a branch whose rulesets require nothing. */
+  classicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   /** True when the caller can bypass every pull_request rule on the branch that requires review, or none does; a read that fails throws. A rule that requires no review cannot be the block, so it is skipped. */
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
   /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
@@ -247,6 +253,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
+    classicRequiredChecks: async (repo, branch) => wire.getClassicRequiredChecks(repoOf(repo), checkRef("branch", branch)),
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
     checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),

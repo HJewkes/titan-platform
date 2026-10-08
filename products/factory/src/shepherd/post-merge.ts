@@ -8,6 +8,7 @@ import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./freeze.js";
+import { judgeMain, mainRulesReader, warningOf, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -57,6 +58,8 @@ export const MainCiResult = z.looseObject({
   acknowledgedSha: z.string().optional(),
   after: AfterStagesSchema,
   detail: z.string(),
+  /** Set when a job outside the base branch's required contexts was red: recorded here, and never a freeze. */
+  warning: z.string().optional(),
 });
 
 export type MainCi = z.infer<typeof MainCiResult>;
@@ -151,9 +154,9 @@ export interface Timing {
   timeoutMs: number;
 }
 
-type Read = { verdict: "green" | "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
+type Read = { verdict: "green"; detail: string; warning?: string } | { verdict: "red"; detail: string } | { verdict: "pending"; detail: string; queued?: true } | { verdict: "newer"; sha: string; detail: string };
 
-type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha">;
+type Settled = Pick<MainCi, "verdict" | "detail" | "readSha" | "acknowledgedSha" | "warning">;
 
 interface Watch {
   sha: string;
@@ -174,17 +177,18 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
   const base = { mergeSha: input.mergeSha, after: input.after };
   if (input.mergeSha === "") return { ...base, verdict: "none", detail: "land returned no merge sha" };
   const acknowledge = greenContainingReader(port, input);
+  const rules = mainRulesReader(port, input.repo, input.pr);
   const watch: Watch = { sha: input.mergeSha, last: "no read yet", queued: false };
   let clock = deadline(timing);
   let rechecks = 0;
   for (;;) {
     const wasRed = watch.red !== undefined;
-    const settled = await pollOnce(port, input, watch, acknowledge).catch((error: unknown) => failedPoll(watch, error));
+    const settled = await pollOnce(port, input, watch, acknowledge, rules).catch((error: unknown) => failedPoll(watch, error));
     if (settled !== undefined) return { ...base, ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
     if (clock.expired()) {
       if (watch.red !== undefined) return { ...base, ...watch.red };
-      const newest = await newestSettled(port, input, watch.sha).catch(() => undefined);
+      const newest = await newestSettled(port, input, watch.sha, await rules()).catch(() => undefined);
       if (newest !== undefined) return { ...base, readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
       if (!watch.queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${watch.last}` };
       rechecks += 1;
@@ -195,16 +199,16 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
 }
 
 /** One poll: green settles; red, cancelled or missing asks for a green main commit containing the merge. */
-async function pollOnce(port: GitHubPort, input: MainCiInput, watch: Watch, acknowledge: () => Promise<string | undefined>): Promise<Settled | undefined> {
+async function pollOnce(port: GitHubPort, input: MainCiInput, watch: Watch, acknowledge: () => Promise<string | undefined>, rules: RulesReader): Promise<Settled | undefined> {
   const at = watch.sha !== input.mergeSha ? { readSha: watch.sha } : {};
-  const read = await readAt(port, input, watch.sha);
+  const read = await readAt(port, input, watch.sha, await rules());
   watch.queued = read.verdict === "pending" && read.queued === true;
   watch.last = read.detail;
   if (read.verdict === "newer") {
     watch.sha = read.sha;
     return undefined;
   }
-  if (read.verdict === "green") return { ...at, verdict: "green", detail: read.detail };
+  if (read.verdict === "green") return { ...at, verdict: "green", detail: read.detail, ...(read.warning && { warning: read.warning }) };
   if (read.verdict === "red") watch.red ??= { ...at, verdict: "red", detail: read.detail };
   if (watch.queued) return undefined;
   const green = await acknowledge();
@@ -253,23 +257,23 @@ function greenOnRequired(sha: string, contexts: readonly string[], runs: readonl
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
-async function newestSettled(port: GitHubPort, input: MainCiInput, sha: string): Promise<{ verdict: "green" | "red"; sha: string; detail: string } | undefined> {
+async function newestSettled(port: GitHubPort, input: MainCiInput, sha: string, rules: MainRules | undefined): Promise<{ verdict: "green" | "red"; sha: string; detail: string } | undefined> {
   const tip = await newerMainPush(port, input, sha);
   if (tip === undefined) return undefined;
-  const read = evaluate(tip, await port.checkRuns(input.repo, tip));
+  const read = evaluate(tip, await port.checkRuns(input.repo, tip), rules);
   return read.verdict === "green" || read.verdict === "red" ? { verdict: read.verdict, sha: tip, detail: read.detail } : undefined;
 }
 
 /** One read at `sha`, routed by MAIN_CI_ROUTES once it has finished. */
-async function readAt(port: GitHubPort, input: MainCiInput, sha: string): Promise<Read> {
-  const read = evaluate(sha, await port.checkRuns(input.repo, sha));
+async function readAt(port: GitHubPort, input: MainCiInput, sha: string, rules: MainRules | undefined): Promise<Read> {
+  const read = evaluate(sha, await port.checkRuns(input.repo, sha), rules);
   if (read.verdict === "pending") return { verdict: "pending", detail: read.detail, ...(read.queued && { queued: true as const }) };
   const newer = read.verdict === "cancelled" ? await newerMainPush(port, input, sha) : undefined;
   const classified: Classified = newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer };
   const routed = routeOf(classified);
   switch (routed.route) {
     case "done":
-      return { verdict: "green", detail: read.detail };
+      return { verdict: "green", detail: read.detail, ...("warning" in read && read.warning && { warning: read.warning }) };
     case "main-red":
       return { verdict: "red", detail: read.detail };
     case "read-newer-run":
@@ -308,20 +312,21 @@ async function newerMainPush(port: GitHubPort, input: MainCiInput, sha: string):
   return (await port.compareFiles(input.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
 }
 
-type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded">; detail: string } | { verdict: "pending"; detail: string; queued?: true };
+type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded" | "green">; detail: string } | { verdict: "green"; detail: string; warning?: string } | { verdict: "pending"; detail: string; queued?: true };
 
 /**
  * Only allowed-app runs at the merge sha count, and each counts but a cancel a newer run of its name superseded, so an
- * older red survives a newer green of its name while a concurrency cancel does not.
+ * older red survives a newer green of its name while a concurrency cancel does not. With `rules`, only the required
+ * contexts judge, each from its pinned app; a red job outside them comes back as a warning on a green read.
  */
-function evaluate(mergeSha: string, runs: readonly CheckRun[]): Evaluated {
-  const counted = withoutSupersededCancels(actionsRunsAt(runs, mergeSha));
-  if (counted.length === 0) return { verdict: "pending", detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
-  const findings = headCheckFindings({ headSha: mergeSha, contexts: [], runs: counted, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+function evaluate(mergeSha: string, runs: readonly CheckRun[], rules: MainRules | undefined): Evaluated {
+  const { findings, counted, warnings } = judgeMain(mergeSha, runs, rules);
+  if (counted === 0) return { verdict: "pending", detail: `no run from app ${GITHUB_ACTIONS_APP_ID} at ${mergeSha} yet` };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
   const names = failed.map((run) => run.name).join(", ");
   if (failed.length > 0 && failed.every((run) => run.conclusion === "cancelled")) return { verdict: "cancelled", detail: `cancelled: ${names}` };
   if (failed.length > 0) return { verdict: "red", detail: `failed: ${names}` };
   if (findings.length > 0) return { verdict: "pending", queued: true, detail: `still running: ${findings.map((finding) => (finding.kind === "missing" ? finding.name : finding.run.name)).join(", ")}` };
-  return { verdict: "green", detail: `${counted.length} runs passed` };
+  const warning = warningOf(warnings);
+  return { verdict: "green", detail: `${counted} runs passed${warning ? `; ${warning}` : ""}`, ...(warning && { warning }) };
 }
