@@ -149,11 +149,13 @@ describe("releaseG10Hold", () => {
     expect(dispatch).toHaveBeenCalledTimes(2);
   });
 
-  it("asks for nothing on a verdict with no spawned profile or under another class", async () => {
+  it("asks for nothing on a verdict with no spawned profile, a non-opus profile, or under another class", async () => {
     const external = workflowRun(undefined);
     await releaseG10Hold(external.run, "g10-review: x");
+    const sonnet = workflowRun("reviewer");
+    await releaseG10Hold(sonnet.run, "g10-review: x");
     const adversary = workflowRun("bd-reviewer");
     await releaseG10Hold(adversary.run, "g10-adversary: x");
-    expect([external.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0]);
+    expect([external.dispatch, sonnet.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0, 0]);
   });
 });

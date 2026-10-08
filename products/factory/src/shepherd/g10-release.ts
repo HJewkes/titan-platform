@@ -100,7 +100,7 @@ export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | n
   const verdict = mergeRefAt(merge, ci.headSha);
   const reviewerProfile = merge?.kind === "MERGE" ? merge.reviewerProfile : undefined;
   const key = JSON.stringify([ci.headSha, verdict?.locator]);
-  if (!verdict || reviewerProfile === undefined || used.get(run.ctx)?.has(key)) return;
+  if (!verdict || reviewerProfile === undefined || !isOpusProfile(reviewerProfile) || used.get(run.ctx)?.has(key)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
   const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, verdict, reviewerProfile, checks: { head: ci.headSha, green: ci.verdict === "green" } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
