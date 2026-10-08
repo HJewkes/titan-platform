@@ -4,6 +4,7 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import { SUPERSEDED, gateHead } from "./stale-gates.js";
 
+const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
 const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
 const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
@@ -74,6 +75,12 @@ export function seatPolicyHead(run: WorkflowRun, prompt: string): string | undef
   return decision?.rule?.table === SHEPHERD_POLICY_TABLE ? decision.headSha : undefined;
 }
 
+/** The head a merge-guard gate (visual path, unread files, unknown required checks, head mismatch) asks about: the run's last decision gated that head under the guard table. */
+export function guardGateHead(run: WorkflowRun, prompt: string): string | undefined {
+  const decision = gatingDecision(run, prompt);
+  return decision?.rule?.table === MERGE_GUARD_TABLE ? decision.headSha : undefined;
+}
+
 interface AuthorityGate {
   head: string;
   reason: string;
@@ -98,16 +105,16 @@ function waitsForNewHead({ stepId, gate }: PendingGate): boolean {
   return (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) || (stepId === "ci-failed" && CI_FAILED_GATE.test(gate.id));
 }
 
-/** A conflict, escalation, guard or release gate shares the approve-merge step id but stays with the owner; a send-back or red head only ever waits for a new head. */
+/** A conflict, escalation or release gate shares the approve-merge step id but stays with the owner; a send-back or red head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
   const run = approveMergeRun(host, pending);
-  return run && (seatPolicyHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head);
+  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head);
 }
 
 /**
- * Cancels each shepherd-pr seat-policy or authority MRG-AU approve-merge gate, sh-sent-back or ci-failed gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard or authority MRG-AU approve-merge gate, sh-sent-back or ci-failed gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
