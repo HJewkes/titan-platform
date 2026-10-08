@@ -1,4 +1,4 @@
-import type { ActorClass, ResolverClass } from "@titan-design/authority";
+import type { ActorClass, DelegateResolverClass, ResolverClass } from "@titan-design/authority";
 
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
 export type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
@@ -66,6 +66,11 @@ export interface GateRule {
   version: string;
   ruleId: string;
   resolvers: ResolverClass[];
+  /**
+   * Non-owner classes the rule lets answer too, drawn only from `DELEGATE_RESOLVER_CLASSES`. A delegate is admitted
+   * only by a store that has `authorize`, and only when `authorize` allows it; SQLite needs `gateDelegateMigration`.
+   */
+  delegates?: DelegateResolverClass[];
 }
 
 /** A claim about who answered a gate. hitl records it and checks its class; it cannot prove it. */

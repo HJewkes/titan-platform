@@ -1,4 +1,5 @@
 import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
+import { DELEGATE_RESOLVER_CLASSES } from "@titan-design/authority";
 import { BaseGateStore } from "./base-store.js";
 import {
   GateStoreSchemaOutdated,
@@ -94,11 +95,25 @@ const CANONICAL_STATUSES = "'pending', 'resolved', 'cancelled', 'expired'";
  * Without `resolved_by` no resolver can be recorded, so they refuse every resolve
  * of a rule-bound row; whichever migration runs second installs the class-aware form.
  */
-function ruleTriggerDdl(db: Db, name: string): string {
+function ruleTriggerDdl(db: Db, name: string, delegates = hasDelegateTriggers(db, name)): string {
   const hasResolver = hasResolverColumn(db, name);
-  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule");
-  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0");
+  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule", delegates);
+  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0", delegates);
   return `${update}\n${insert}\n${replaceGuard(name)}`;
+}
+
+/** Once `gateDelegateMigration` has run, a later rule or resolver migration keeps the delegate-aware form rather than narrow it back. */
+function hasDelegateTriggers(db: Db, name: string): boolean {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(`${name}_rule_resolver`) as { sql: string } | undefined;
+  return row?.sql.includes("'$.delegates'") ?? false;
+}
+
+/** The classes a rule-bound row admits: its resolvers, and with delegates on, the delegate classes its rule names as a JSON array. */
+function admittedClasses(rule: string, delegates: boolean): string {
+  const resolvers = `SELECT value FROM json_each(${rule}, '$.resolvers')`;
+  if (!delegates) return resolvers;
+  const named = DELEGATE_RESOLVER_CLASSES.map((cls) => `'${cls}'`).join(", ");
+  return `${resolvers} UNION ALL SELECT value FROM json_each(${rule}, '$.delegates') WHERE json_type(${rule}, '$.delegates') = 'array' AND value IN (${named})`;
 }
 
 /** REPLACE deletes the old row before any delete trigger fires without recursive_triggers, so refuse it up front. */
@@ -117,10 +132,10 @@ function replaceGuard(name: string): string {
   `;
 }
 
-function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string): string {
+function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string, delegates: boolean): string {
   const trigger = quoteIdent(event === "UPDATE" ? `${name}_rule_resolver` : `${name}_rule_resolver_insert`);
   const outsideRule = hasResolver
-    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(${rule}, '$.resolvers'))`
+    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (${admittedClasses(rule, delegates)})`
     : "1";
   return `
     DROP TRIGGER IF EXISTS ${trigger};
@@ -176,9 +191,26 @@ export function gateEvidenceMigration(version: number, name: string = DEFAULT_GA
   };
 }
 
+/**
+ * Reinstalls the rule triggers to admit a delegate class the row's own rule names; a pending row's rule still cannot change. A
+ * store refuses a gate with delegates until this runs, since no delegate could resolve it. Idempotent and backfill-free.
+ */
+export function gateDelegateMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:delegate:${name}`,
+    up: (db) => {
+      const missing = ["resolved_by", "rule"].filter((column) => !hasColumn(db, name, column));
+      missing.forEach((column) => db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN ${column} TEXT`));
+      db.exec(resolverRequiredTriggerDdl(name));
+      db.exec(ruleTriggerDdl(db, name, true));
+    },
+  };
+}
+
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration` and `gateEvidenceMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, `gateEvidenceMigration` and `gateDelegateMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -245,6 +277,7 @@ export class SqliteGateStore extends BaseGateStore {
     const optional = new Map<string, string | null>();
     if (record.rule) {
       this.requireColumn(record.id, "rule", "gateRuleMigration");
+      if (record.rule.delegates && !hasDelegateTriggers(this.db, this.table)) throw new GateStoreSchemaOutdated(record.id, this.table, "gateDelegateMigration");
       optional.set("rule", JSON.stringify(record.rule));
     }
     if (hasBrief(record)) {
@@ -302,7 +335,7 @@ function missingMigration(db: Db, table: string, requireBrief: boolean): string 
 }
 
 function defaultMigrations(table: string): Migration[] {
-  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table), gateEvidenceMigration(5, table)];
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table), gateEvidenceMigration(5, table), gateDelegateMigration(6, table)];
 }
 
 const BASE_COLUMNS = ["id", "prompt", "schema", "status", "payload", "reason", "created_at", "resolved_at", "expires_at"];

@@ -3,6 +3,9 @@ export const ACTOR_CLASSES = ["owner-terminal", "owner-remote", "coordinator", "
 /** The only classes that may resolve a gate: the owner, at a terminal or through a verified remote channel. */
 export const RESOLVER_CLASSES = ["owner-terminal", "owner-remote"] as const;
 
+/** The only classes a gate's rule may name as a delegate resolver; anything a delegate answers still goes through `authorize`. */
+export const DELEGATE_RESOLVER_CLASSES = ["coordinator"] as const;
+
 export const ACTION_CLASSES = [
   "merge",
   "release",
@@ -42,6 +45,7 @@ export const CONDITION_KINDS = [
 
 export type ActorClass = (typeof ACTOR_CLASSES)[number];
 export type ResolverClass = (typeof RESOLVER_CLASSES)[number];
+export type DelegateResolverClass = (typeof DELEGATE_RESOLVER_CLASSES)[number];
 export type ActionClass = (typeof ACTION_CLASSES)[number];
 export type Verdict = (typeof VERDICTS)[number];
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
