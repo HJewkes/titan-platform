@@ -2,14 +2,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeHttpError, fakeGitHub, fakeSha, ghCliWire, githubPort, successRun, type CheckRun, type GhExec } from "@titan-design/github";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { expectBrief } from "../test-support/brief.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, swallowUpdates, type LandScenario } from "../test-support/land.js";
-import { defineWorkflow } from "../definition.js";
-import { gateEverything } from "../gate-policy.js";
-import { LAND_STEPS, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, land, landRoutes, newUpdateBound, readCi } from "./land.js";
+import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, landRoutes, readCi } from "./land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "../test-support/resolver.js";
 
