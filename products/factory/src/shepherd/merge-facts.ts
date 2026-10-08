@@ -8,6 +8,7 @@ import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
+import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 
 export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
@@ -15,7 +16,8 @@ export const MERGE_EVIDENCE_STEP = "sh-merge-evidence";
 /** The rules that let Shepherd merge without the owner; any other allow still gates. */
 export const MERGE_BY_REVIEWER_RULE = "MRG-AU-RV";
 export const MERGE_BY_CARRIED_VERDICT_RULE = "MRG-AU-RC";
-const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CARRIED_VERDICT_RULE];
+export const MERGE_BY_REMERGED_VERDICT_RULE = "MRG-AU-RM";
+const AUTO_MERGE_RULES: readonly string[] = [MERGE_BY_REVIEWER_RULE, MERGE_BY_CARRIED_VERDICT_RULE, MERGE_BY_REMERGED_VERDICT_RULE];
 
 /** Authority pins no app, so Shepherd trusts check runs from GitHub Actions only. */
 export const ALLOWED_CHECK_APPS: readonly number[] = [GITHUB_ACTIONS_APP_ID];
@@ -56,8 +58,8 @@ export interface MergeEvidenceInput {
   /** The reviewer this run dispatched, read from the dispatch record, so a mismatch with the resolver gates. */
   dispatchedReviewer: AgentIdentity;
   seatGrants: string[];
-  /** The `sh-carry` step's answer for this head, with the head it asked about; absent means no carry was probed. */
-  carry?: { fromHead: string; head: string; result: CarryResult };
+  /** The `sh-carry` step's answer for this head, with the head it asked about; absent means no carry was probed. `remerge` is the `sh-remerge` answer behind a remerge rule. */
+  carry?: { fromHead: string; head: string; result: CarryResult; rule?: CarryRule; remerge?: RemergeResult };
   /** The run policy's visual globs, so the evidence comment records the same decision `decide` reaches. */
   visualPaths?: string[];
 }
@@ -275,11 +277,13 @@ export function registeredKind(store: ShepherdStoreRef, runId: string): KindRead
   }
 }
 
-/** Only an equal probe result for this head becomes a fact; the reviewer's text never does. */
+/** Only an equal tree probe or a carrying remerge probe for this head becomes a fact; the reviewer's text never does. */
 function carryFact(carry: MergeEvidenceInput["carry"], head: string): CarryFact | undefined {
-  const { result } = carry ?? {};
-  if (!carry || carry.head !== head || !result?.equal || !result.headTree || !result.mergeTree) return undefined;
-  return { fromHead: carry.fromHead, head: carry.head, headTree: result.headTree, mergeTree: result.mergeTree };
+  if (!carry || carry.head !== head) return undefined;
+  if (carry.rule === "remerge-empty" || carry.rule === "remerge-generated-only") return carry.remerge && remergeFact(carry.fromHead, carry.head, carry.remerge);
+  const { result } = carry;
+  if (!result?.equal || !result.headTree || !result.mergeTree) return undefined;
+  return { fromHead: carry.fromHead, head: carry.head, headTree: result.headTree, mergeTree: result.mergeTree, rule: "tree-equal" };
 }
 
 /** Every fact is read from GitHub, the run's own step outputs or its registration (`kind`), never from the reviewer's text. */
@@ -351,7 +355,7 @@ export function locatorReference(locator: SourceTextLocator): LocatorReference {
 
 export function evidenceComment(record: EvidenceRecord): string {
   const { decision } = record;
-  const carried = record.carry ? ` Carried the MERGE reviewed at \`${record.carry.fromHead}\` (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.` : "";
+  const carried = record.carry ? ` Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.` : "";
   const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}${carried}`;
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
   return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(posted, null, 2), "```", ""].join("\n");

@@ -14,6 +14,7 @@ import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceCommen
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
+import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -403,7 +404,7 @@ describe("a carried verdict", () => {
   it("allows by authority/MRG-AU-RC when the sh-carry output reports equal trees for this head", async () => {
     const evidence = await collect(world(), carried());
 
-    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: TREE });
+    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: TREE, rule: "tree-equal" });
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RC" } });
   });
 
@@ -436,6 +437,41 @@ describe("a carried verdict", () => {
     ["a carry from a head other than the verdict's", { ...carried(), verdict: { value: "MERGE" as const, head: OTHER_HEAD, locator } }],
   ])("gates on %s", async (_name, overrides) => {
     const evidence = await collect(world(), { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, ...overrides });
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+});
+
+const REMERGE_TREE = fakeSha("merge-facts-remerge-tree");
+
+/** A MERGE at CARRIED_FROM, carried to HEAD by a remerge whose diff touched only a generated file. */
+function remerged(remerge: Partial<RemergeResult> = {}): Partial<MergeEvidenceInput> {
+  const answer: RemergeResult = { carries: true, rule: "remerge-generated-only", headTree: TREE, remergeTree: REMERGE_TREE, paths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"], ...remerge };
+  const result: CarryResult = { equal: false, reason: "trees differ" };
+  return { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, carry: { fromHead: CARRIED_FROM, head: HEAD, result, rule: "remerge-generated-only", remerge: answer } };
+}
+
+describe("a verdict carried across a remerge", () => {
+  it("allows by authority/MRG-AU-RM and records the rule and the paths the merge touched", async () => {
+    const evidence = await collect(world([{ path: "src/a.ts", status: "modified" }, { path: "CAPABILITIES.md", status: "modified" }]), remerged());
+
+    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: REMERGE_TREE, rule: "remerge-generated-only", remergePaths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"] });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RM" } });
+    expect(evidenceComment(evidence.record).split("\n")[1]).toContain("by remerge-generated-only");
+  });
+
+  it.each([
+    ["a remerge that does not carry", remerged({ carries: false, generatedPaths: [] })],
+    ["a remerge rule with no remerge answer", { ...remerged(), carry: { fromHead: CARRIED_FROM, head: HEAD, result: { equal: false }, rule: "remerge-generated-only" as const } }],
+    ["a remerge path the answer did not match as generated", remerged({ paths: ["CAPABILITIES.md", "src/a.ts"] })],
+  ])("gates on %s", async (_name, overrides) => {
+    const evidence = await collect(world(), overrides);
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("gates a remerge carry of registered kind security", async () => {
+    const evidence = await collect(world(), remerged(), "security");
 
     expect(evidence.record.decision.outcome).toBe("gate");
   });
@@ -475,7 +511,7 @@ describe("the evidence comment of a carried MERGE", () => {
   it("names both heads and both trees, and records the carry", async () => {
     const evidence = await collect(world(), carried());
 
-    expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE });
+    expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE, rule: "tree-equal" });
   });
 
   it("names the head's tree and the merge-tree separately in the summary", async () => {

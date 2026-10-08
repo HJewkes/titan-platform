@@ -26,6 +26,7 @@ const PublishInputSchema = z.strictObject({
   verdictHead: z.string().min(1).optional(),
   head: z.string().min(1),
   carriedFrom: z.string().min(1).optional(),
+  carryRule: z.enum(["tree-equal", "remerge-empty", "remerge-generated-only"]).optional(),
   autoMergeArmed: z.boolean(),
   releaseBlockers: z.number().int().min(0).optional(),
 });

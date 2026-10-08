@@ -10,24 +10,35 @@ import { seatFixFirst } from "./external-review.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
-import { carryStep, type CarryResult } from "./tree-carry.js";
+import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
+import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
+/** Records an approve-merge answer that followed a head to its remerge-clean update, so the ledger shows why no gate opened. */
+export const APPROVAL_CARRY_STEP = "sh-approval-carry";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
+  { id: REMERGE_STEP, kind: "dispatch" },
+  { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
 ];
 
 /** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
 export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
 
-interface CarryTarget {
+export interface CarryTarget {
   repo: RepoSlug;
   pr: number;
 }
 
 const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable() });
+
+/** The base branch a carry probes against, or undefined when the run's kind does not carry or the base is unknown. */
+export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string): Promise<string | undefined> {
+  const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${read}`, { ...target, runId: ctx.runId }, ScopeResult);
+  return scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
+}
 
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
 export function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
@@ -155,18 +166,36 @@ function treeEqual(result: CarryResult): boolean {
   return result.equal && !!result.headTree && result.headTree === result.mergeTree;
 }
 
+/** What the evidence step records about a carry: both heads, the tree probe's answer, the rule that carried, and the remerge answer behind a remerge rule. */
+export interface CarryEvidence {
+  fromHead: string;
+  head: string;
+  result: CarryResult;
+  rule: CarryRule;
+  remerge?: RemergeResult;
+}
+
+/** The tree probe decides first; a head it refuses may still be the reviewed head plus a merge whose remerge-diff resolved nothing reviewed. */
+async function carryRule(ctx: WorkflowContext, input: CarryInput): Promise<CarryEvidence | undefined> {
+  const at = { fromHead: input.fromHead, head: input.head };
+  const result = await carryStep(ctx, input);
+  if (treeEqual(result)) return { ...at, result, rule: "tree-equal" };
+  const remerge = await remergeStep(ctx, input);
+  return remerge.carries && remerge.rule ? { ...at, result, rule: remerge.rule, remerge } : undefined;
+}
+
 /**
- * At a new green head, reuse the newest MERGE across a tree-equal update instead of dispatching a reviewer. Undefined means
- * review as usual: no MERGE to carry, a kind that does not carry, or a probe that did not answer equal.
+ * At a new green head, reuse the newest MERGE across a tree-equal or remerge-clean update instead of dispatching a reviewer.
+ * Undefined means review as usual: no MERGE to carry, a kind that does not carry, or neither probe carried.
  */
 export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, reviews: ReadonlyMap<string, Verdict>, headSha: string, scopeRead: number): Promise<Verdict | undefined> {
   const source = carriedSource(reviews, headSha);
   if (!source) return undefined;
-  const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${scopeRead}`, { ...target, runId: ctx.runId }, ScopeResult);
-  if (scope.kind === null || !CARRYING_KINDS.has(scope.kind) || scope.baseRef === null) return undefined;
+  const baseRef = await carryingBase(ctx, target, String(scopeRead));
+  if (baseRef === undefined) return undefined;
   const fromHead = source.merge.verdict.head;
-  const result = await carryStep(ctx, { repo: target.repo, baseRef: scope.baseRef, fromHead, head: headSha });
-  if (!treeEqual(result)) return undefined;
+  const carry = await carryRule(ctx, { repo: target.repo, baseRef, fromHead, head: headSha });
+  if (!carry) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
   const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, fromHead, head: headSha, heads }, SeatResult);
   if (!seats.clear) return undefined;
@@ -178,6 +207,16 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     resolver: merge.resolver,
     dispatchedReviewer: merge.dispatchedReviewer,
     seatGrants: merge.seatGrants,
-    carry: { fromHead, head: headSha, result },
+    carry,
   });
+}
+
+/** The routes the carry steps dispatch to; the remerge probe reaches git as the tree probe does. */
+export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, wiring: ReviewWiring | undefined): StepRoute[] {
+  return [
+    carryScopeRoute(deps),
+    carrySeatRoute(deps, wiring),
+    remergeRoute(deps.now, wiring?.carry),
+    codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
+  ];
 }

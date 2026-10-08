@@ -59,7 +59,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
     const evidence = r.asked.find((step) => step.stepId.startsWith("sh-merge-evidence"))!.input;
     expect(evidence).toMatchObject({ head: NEW_HEAD, verdict: { value: "MERGE", head: REVIEWED }, resolver: AGENT, dispatchedReviewer: AGENT });
-    expect(evidence.carry).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL });
+    expect(evidence.carry).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL, rule: "tree-equal" });
     expect(r.asked.find((step) => step.stepId.startsWith("sh-carry:"))!.input).toEqual({ repo: REPO, baseRef: "main", fromHead: REVIEWED, head: NEW_HEAD });
   });
 
@@ -111,7 +111,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
 
     await carried(r, reviews([REVIEWED, mergeAt(REVIEWED, REVIEWED, { carry: forged })]));
 
-    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL, rule: "tree-equal" });
   });
 
   it.each([["security"], ["unknown"], [null]])("does not carry for kind %s and does not probe", async (kind) => {
