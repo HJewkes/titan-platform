@@ -249,7 +249,7 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
   for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
 }
 
-/** The first tick is not awaited: its gh compare must not hold up the start. */
+/** The first tick is not awaited: its redeploy.log read and index.lock probe (lsof, pgrep) must not hold up the start. */
 function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | undefined {
   const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
   void sweep?.tick();

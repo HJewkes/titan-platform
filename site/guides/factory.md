@@ -384,7 +384,10 @@ target.
 `serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`.
 It judges the deployer only on what it was asked to land: each `service deploy --expect`
 line there is an ask, and Shepherd writes one only after a merge's main CI is green. A
-landing (`deployed`, `skipped` or `already deployed`) covers every ask logged before it.
+deploy lands exactly the sha it was asked for, so a landing (`deployed`, `skipped` or
+`already deployed`) covers an earlier ask only when it names that ask's target or a target
+asked at or after it. A burst's deployers that lose `deploy.lock` stay behind until something
+newer lands. An ask for the running build's own sha is covered.
 `/health` carries a `deploy` block: the running sha, the asks that have not landed
 (`behind`, counting only asks older than 20 minutes) and the age of the oldest one, the
 refusals in a row, and the last refusal's reason. The alarm goes up on two refusals in a row,

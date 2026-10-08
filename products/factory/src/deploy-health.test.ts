@@ -97,8 +97,28 @@ describe("deploy health from asks that have not landed", () => {
     expect(result).toMatchObject({ alarm: false, behind: 0, behindMinutes: 9 });
   });
 
-  it("keeps quiet once one deploy lands after the burst asked", () => {
+  it("keeps quiet once the newest ask of the burst lands, which covers every ask before it", () => {
     expect(health([...burst, `deployed ${"6".repeat(40)}`])).toMatchObject({ alarm: false, behind: 0, behindMinutes: 0 });
+  });
+
+  it("keeps the burst's later asks behind when only the first lands, and alarms once they pass the grace", () => {
+    const lostLock = "error: another deploy is running (pid 42 holds /state/deploy.lock)";
+    const log = [ask(25, "1".repeat(40)), ask(24, "2".repeat(40)), lostLock, ask(24, "3".repeat(40)), lostLock, ask(23, "4".repeat(40)), lostLock, ask(23, "5".repeat(40)), lostLock, `deployed ${"1".repeat(40)}`];
+
+    expect(health(log)).toMatchObject({ alarm: true, behind: 4, behindMinutes: 24 });
+  });
+
+  it("covers an ask by an already-deployed line naming its target, and by the running build's own sha", () => {
+    const already = health([ask(30, NEXT), `already deployed: build ${LATER} contains ${NEXT}`]);
+    const running = health([ask(90, SHA)]);
+
+    expect([already.behind, already.behindMinutes, running.behind, running.alarm]).toEqual([0, 0, 0, false]);
+  });
+
+  it("does not let a landing of an older target cover a newer ask", () => {
+    const result = health([ask(70, NEXT), ask(65, LATER), `skipped ${NEXT}: no changed path reaches the factory build`]);
+
+    expect(result).toMatchObject({ alarm: true, behind: 1, behindMinutes: 65 });
   });
 
   it("raises the alarm when more than 3 asks pass the grace period with nothing landed", () => {
