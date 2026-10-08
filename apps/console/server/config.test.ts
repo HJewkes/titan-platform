@@ -29,6 +29,19 @@ describe("console config", () => {
     );
   });
 
+  it("lets ACTIVE_ROOT override the default session graph location", () => {
+    expect(resolveConfig({ ACTIVE_ROOT: "/var/aw" }, HOME, "linux").sessionGraphPath).toBe("/var/aw/.miner/graph.sqlite3");
+  });
+
+  it("prefers TITAN_CONSOLE_SESSION_GRAPH over ACTIVE_ROOT", () => {
+    const env = { ACTIVE_ROOT: "/var/aw", TITAN_CONSOLE_SESSION_GRAPH: "/var/graphs/g.sqlite3" };
+    expect(resolveConfig(env, HOME, "linux").sessionGraphPath).toBe("/var/graphs/g.sqlite3");
+  });
+
+  it("finds the session graph under XDG_DATA_HOME on linux", () => {
+    expect(resolveConfig({ XDG_DATA_HOME: "/var/xdg" }, HOME, "linux").sessionGraphPath).toBe("/var/xdg/active-work/.miner/graph.sqlite3");
+  });
+
   it("reads the agent-chat token from AGENT_CHAT_HOME unless a token path is given", () => {
     expect(resolveConfig({}, HOME).agentChatTokenPath).toBe(path.join(HOME, ".agent-chat", "ui.token"));
     expect(resolveConfig({ AGENT_CHAT_HOME: "/var/chat" }, HOME).agentChatTokenPath).toBe("/var/chat/ui.token");

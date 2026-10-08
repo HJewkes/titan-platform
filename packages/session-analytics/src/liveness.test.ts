@@ -149,9 +149,11 @@ describe("livenessReport", () => {
     const broker = parseBrokerLog([log("12:40:00", "broker_started"), log("12:40:05", "registered", { name: "rev-1" })]);
     const lastEvents = [prompt("rev-1", "12:30:00"), prompt("rev-22", "12:35:00"), { ...prompt("rev-333", "12:42:00"), endEventId: 120 }, prompt("rev-4444", "12:45:00")];
 
-    const { stalePrompts } = livenessReport({ broker, spawns: [], lastEvents, asOf: AS_OF });
+    const { stalePrompts, sources } = livenessReport({ broker, spawns: [], lastEvents, asOf: AS_OF });
 
     expect(stalePrompts.rows.map((r) => r.agent)).toEqual(["rev-1", "rev-4444"]);
+    expect(stalePrompts.cites).toContain("registrations");
+    expect(sources.registrations.command).toContain("broker_started");
   });
 
   it("marks a gap after an aborted teleport as a teleport gap", () => {

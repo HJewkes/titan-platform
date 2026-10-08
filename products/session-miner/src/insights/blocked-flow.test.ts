@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { GhExec } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, githubPort } from "@titan-design/github";
 import type { BlockedFlowReport } from "@titan-design/session-analytics";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
@@ -201,22 +201,28 @@ describe("insights blocked-flow refused verdicts", () => {
 
 describe("fetchPulls", () => {
   it("reads state, merged_at and the head sha once per PR, and skips a PR GitHub cannot find", async () => {
-    const calls: string[] = [];
-    const exec: GhExec = async (args) => {
-      calls.push(args[1]!);
-      if (args[1]!.endsWith("/2")) return { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)" };
-      return { code: 0, stdout: JSON.stringify({ state: "closed", merged_at: "2026-09-12T09:30:00Z", head: { sha: HEAD_A } }), stderr: "" };
-    };
+    const fake = fakeGitHub({ repo: "acme/w" });
+    fake.addPr({ headSha: HEAD_A, state: "open" });
+    fake.addPr({ headSha: HEAD_B, state: "closed" });
+    fake.addPr({ headSha: HEAD_A, state: "closed", merged: true, mergedAt: "2026-09-12T09:30:00Z" });
 
-    const pulls = await fetchPulls([{ repo: "acme/w", pr: 1 }, { repo: "acme/w", pr: 1 }, { repo: "acme/w", pr: 2 }], exec);
+    const pulls = await fetchPulls([{ repo: "acme/w", pr: 1 }, { repo: "acme/w", pr: 1 }, { repo: "acme/w", pr: 2 }, { repo: "acme/w", pr: 3 }, { repo: "acme/w", pr: 9 }], githubPort(fake.wire));
 
-    expect(calls).toEqual(["repos/acme/w/pulls/1", "repos/acme/w/pulls/2"]);
-    expect(pulls).toEqual([{ repo: "acme/w", pr: 1, state: "closed", mergedAt: "2026-09-12T09:30:00.000Z", headSha: HEAD_A }]);
+    expect(fake.calls.filter((c) => c === "getPr")).toHaveLength(3);
+    expect(pulls).toEqual([
+      { repo: "acme/w", pr: 1, state: "open", mergedAt: null, headSha: HEAD_A },
+      { repo: "acme/w", pr: 2, state: "closed", mergedAt: null, headSha: HEAD_B },
+      { repo: "acme/w", pr: 3, state: "closed", mergedAt: "2026-09-12T09:30:00.000Z", headSha: HEAD_A },
+    ]);
   });
 
   it("raises any other GitHub failure", async () => {
-    const exec: GhExec = async () => ({ code: 1, stdout: "", stderr: "API rate limit exceeded (HTTP 403)" });
+    const fake = fakeGitHub({ repo: "acme/w" });
+    fake.addPr({ headSha: HEAD_A });
+    fake.onGetPr = () => {
+      throw new FakeHttpError(403, "API rate limit exceeded");
+    };
 
-    await expect(fetchPulls([{ repo: "acme/w", pr: 1 }], exec)).rejects.toThrow(/rate limit/);
+    await expect(fetchPulls([{ repo: "acme/w", pr: 1 }], githubPort(fake.wire))).rejects.toThrow(/rate limit/);
   });
 });

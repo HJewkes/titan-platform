@@ -6,7 +6,10 @@ export type {
   CentralRow,
   CouplingDelta,
   CouplingRow,
+  DeadModuleConsumer,
   DeadModuleRow,
+  DeadModulesOptions,
+  DeadModuleView,
   GraphReportResult,
   GrowthRiskRow,
   HotspotDelta,
@@ -48,8 +51,8 @@ export {
   collectSymbolUtil,
   referencedNodes,
 } from "./dashboard-node-metrics.js";
-export type { BucketableViolation, UnchangedViolation, ViolationBuckets } from "../diff/violation-buckets.js";
-export { bucketViolations } from "../diff/violation-buckets.js";
+export type { BucketableViolation, ExcessChange, UnchangedViolation, ViolationBuckets } from "../diff/violation-buckets.js";
+export { bucketViolations, compareExcess, violationExcess } from "../diff/violation-buckets.js";
 export type { CouplingClass, SnapshotContext } from "./dashboard-coupling.js";
 export { classifyCoupling, pairKey } from "./dashboard-coupling.js";
 export type { PackageRoot } from "./package-buckets.js";
