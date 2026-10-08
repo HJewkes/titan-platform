@@ -1,14 +1,4 @@
 {
-  "apps/codewatch/src/components/DataTable.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "apps/console/src/pages/InitiativeDetailPage.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "packages/agent-dispatch/src/dispatch.ts": {
     "titan/max-function-lines": {
       "count": 1
