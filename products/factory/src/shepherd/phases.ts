@@ -43,7 +43,7 @@ export interface ReviewRequest extends PhaseTarget {
 export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started";
 
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown }
+  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };

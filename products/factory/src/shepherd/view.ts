@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
@@ -17,12 +18,9 @@ type Tied<List extends readonly string[], Union extends string> = [Same<List[num
 const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
+export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
-
-export const PhaseSchema = z.enum(PHASES);
-export type Phase = z.infer<typeof PhaseSchema>;
-
 export const WatchRowSchema = z.object({
   repo: z.string(),
   pr: z.number().int().nullable(),
@@ -86,67 +84,7 @@ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
 
-/** A wake, what follows an exit, and the wait for the fixer's head. */
-const FIXING_STEPS = ["sh-wake-implementer", "sh-wake-fix-first", "sh-repair", "sh-flake-check", "sh-exit-notice", "await-new-head", "sh-await-new-head"];
-
-/** A step family to its phase, matched the way `stepIdMatches` matches declarations; an undeclared id reads as `ci` so a new step never breaks a view. */
-const STEP_PHASE: Readonly<Record<string, Phase>> = {
-  "sh-await-pr": "awaiting-pr",
-  "land-rules": "ci",
-  "ci-wait": "ci",
-  "update-branch": "ci",
-  rerun: "ci",
-  "sh-freeze-hold": "ci",
-  "sh-freeze-wait": "ci",
-  ...Object.fromEntries(FIXING_STEPS.map((id) => [id, "fixing"] as const)),
-  "sh-park": "review",
-  "sh-review-intent": "review",
-  "sh-review": "review",
-  "sh-late-verdict": "review",
-  "sh-correct-verdict": "review",
-  "sh-release-preflight": "review",
-  "sh-observe": "review",
-  "sh-merge-evidence": "review",
-  "sh-publish-review": "review",
-  "sh-carry": "review",
-  "sh-carry-scope": "review",
-  "sh-carry-seat": "review",
-  "sh-remerge": "review",
-  "sh-approval-carry": "awaiting-approval",
-  "sh-await-verdict": "review",
-  "sh-policy": "review",
-  "merge-policy": "awaiting-approval",
-  "approve-merge": "awaiting-approval",
-  "ci-failed": "awaiting-approval",
-  "sh-sent-back": "awaiting-approval",
-  "sh-conflict-check": "awaiting-approval",
-  "stuck-behind": "awaiting-approval",
-  "merge-settle": "merging",
-  merge: "merging",
-  "sh-train-leave": "merging",
-  "sh-landed": "post-merge",
-  "sh-main-ci": "post-merge",
-  "sh-redeploy": "post-merge",
-  "main-red": "post-merge",
-  "main-ci-timeout": "post-merge",
-  "main-red-again": "post-merge",
-  "main-frozen": "post-merge",
-  "sh-unfreeze": "post-merge",
-  "sh-thaw": "post-merge",
-  "sh-stopped": "post-merge",
-  "after-stages": "post-merge",
-  "sh-freeze": "post-merge",
-  "sh-file-fix-task": "post-merge",
-  "sh-spawn-fixer": "post-merge",
-  "sh-cleanup": "post-merge",
-};
-
 const TERMINAL_PHASE: Partial<Record<WorkflowRun["status"], Phase>> = { completed: "done", failed: "failed", cancelled: "cancelled" };
-
-export function stepPhase(stepId: string): Phase {
-  const family = Object.keys(STEP_PHASE).find((id) => stepIdMatches(id, stepId));
-  return family === undefined ? "ci" : STEP_PHASE[family]!;
-}
 
 /** Completed step results, oldest first. */
 function completedSteps(run: WorkflowRun): StepResult[] {
