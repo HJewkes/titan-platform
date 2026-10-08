@@ -19,7 +19,7 @@ Before adding code:
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
 | [`app-paths`](#cap-app-paths) | 0 | You need an app's per-user data, config, cache or log directory (`appDirs`, the env-paths table with no `-nodejs` suffix), or active-work's data root and session graph path as active-work's own CLI resolves them (`activeWorkRoot`, `activeWorkGraphPath`, honouring `ACTIVE_ROOT`). Every function is pure over an injectable `{ env, home, platform }`. To expand `~` in a transcript path, use `expandHome` in session-read; to scan diffs for leaked data-directory paths, use egress-scan. |
-| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
+| [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph. |
 | [`cluster`](#cap-cluster) | 0 | You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. Ids are deterministic for a given input order and survive restarts via snapshot; merged lines take the founding line's id. |
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
@@ -157,16 +157,15 @@ Key exports:
 
 Tier 0, `@titan-design/authority@0.3.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
 
-**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware or answer a human verb, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
+**Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
 
 Key exports:
 
-- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `RESOLVER_CLASSES`, `VERDICTS`
+- `vocabulary`: `ACTION_CLASSES`, `ACTOR_CLASSES`, `CONDITION_KINDS`, `DELEGATE_RESOLVER_CLASSES`, `EVIDENCE_KINDS`, `MERGE_CONDITION_KINDS`, `QUESTION_CONDITION_KINDS`, `RESOLVER_CLASSES`
 - `conditions`: `unmetConditions`
 - `schema`: `policyTableSchema`
 - `evaluate`: `evaluate`, `canResolve`
-- `table`: `DEFAULT_TABLE`
-- +16 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/authority)
 
 <a id="cap-chat-protocol"></a>
 
