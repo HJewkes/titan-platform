@@ -118,7 +118,7 @@ const READERS: Record<string, (s: LexState) => void> = {
   ">": readRedirect,
 };
 
-function step(s: LexState): void {
+export function step(s: LexState): void {
   const c = s.src[s.i] as string;
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
@@ -181,7 +181,7 @@ function appendChar(s: LexState, c: string): void {
   s.i++;
 }
 
-function endWord(s: LexState): void {
+export function endWord(s: LexState): void {
   const w = s.word;
   if (!w) return;
   s.word = null;
