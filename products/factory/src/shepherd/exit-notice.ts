@@ -1,7 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
-import type { StepDeclaration } from "../definition.js";
+import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { GateRun } from "./gates.js";
@@ -110,12 +110,24 @@ const SEAT_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "ci-red"
 type NoticeRun = GateRun & { state: { round: number } };
 
 /**
+ * A run recorded before this step went straight to the sent-back gate. Where the record continues, only a recorded
+ * notice means noticing; where it ends, a run paused on `sh-sent-back` keeps its pending gate.
+ */
+function recordedWithoutNotice(run: NoticeRun): boolean {
+  const next = run.ctx.historyNext();
+  if (next !== undefined) return !stepIdMatches(EXIT_NOTICE_STEP, next);
+  const paused = run.ctx.resumedGate();
+  return paused !== undefined && stepIdMatches("sh-sent-back", paused);
+}
+
+/**
  * One seat message per run and head, recorded as a step so a restart replays it instead of sending again. Undefined
- * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, or no record of the wake.
+ * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, no
+ * record of the wake, or a run whose record took the gate without a notice.
  */
 export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined): Promise<ExitNoticeResult | undefined> {
   const noticed = noticedHeads.get(run.ctx) ?? noticedHeads.set(run.ctx, new Set()).get(run.ctx)!;
-  if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined) return undefined;
+  if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined || recordedWithoutNotice(run)) return undefined;
   const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake }, ExitNoticeResult);
   if (result.sent) noticed.add(headSha);
   return result;

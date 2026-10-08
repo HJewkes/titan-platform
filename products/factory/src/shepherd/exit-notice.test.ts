@@ -39,9 +39,12 @@ function seat(options: { fails?: boolean; seatName?: string } = {}): Seat {
   return { sends, ports };
 }
 
-/** FIX_FIRST at H1, then no verdict; the woken fixer exits at H1 with no push, as the live-wake race leaves it. */
-function exitedFixer(): ShepherdPhases {
-  const exited: WakeOutcome = { kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: LIVE };
+/**
+ * FIX_FIRST at H1, then no verdict; the woken fixer exits at H1 with no push, as the live-wake race leaves it. Without
+ * `recordsWake` the outcome has the shape it had before the notice existed.
+ */
+function exitedFixer(recordsWake = true): ShepherdPhases {
+  const exited: WakeOutcome = { kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, ...(recordsWake && { wake: LIVE }) };
   return {
     wake: async () => exited,
     review: async (_ctx, request): Promise<Verdict> => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "missing test" } : { kind: "none" }),
@@ -53,7 +56,7 @@ interface World {
   store: ShepherdStore;
 }
 
-function world(ports: ExitNoticePorts, fake: FakeGitHub, dbPath = ":memory:"): World {
+function world(ports: ExitNoticePorts, fake: FakeGitHub, dbPath = ":memory:", phases = exitedFixer()): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
   const port = githubPort(fake.wire);
@@ -61,7 +64,7 @@ function world(ports: ExitNoticePorts, fake: FakeGitHub, dbPath = ":memory:"): W
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const ref = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, exitNotice: ports });
-  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(exitedFixer())], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, store: ref.get() };
 }
@@ -118,6 +121,27 @@ describe("a woken fixer that exits with no push", () => {
 
     expect(sends).toHaveLength(1);
     expect(second.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
+  });
+
+  it("keeps a run paused on the sent-back gate before the notice existed on that gate, with no message, until the owner answers it", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp1953-")), "factory.db");
+    const { sends, ports } = seat();
+    const fake = fakeGitHub();
+    const before = world(ports, fake, dbPath, exitedFixer(false));
+    fake.addPr({ headSha: H1 });
+    const runId = start(before);
+    await gateOpened(before.host, gateId(runId, "sh-sent-back"));
+    before.host.close();
+
+    const { host: after } = world(ports, fake, dbPath);
+    expect(await after.adopt()).toEqual([runId]);
+    await vi.waitFor(() => expect(after.runtime.status(runId)?.currentStep).toBe("sh-sent-back"));
+    after.runtime.signal(runId, "sh-sent-back", { decision: "await-new-head" }, OWNER);
+    fake.pushHead(1, H2);
+    await gateOpened(after, gateId(runId, "approve-merge"));
+
+    expect(sends).toHaveLength(0);
+    expect(stepIds(after, runId)).not.toContain("sh-exit-notice");
   });
 
   it("keeps the sent-back gate, naming the failure, when the seat message fails to send", async () => {

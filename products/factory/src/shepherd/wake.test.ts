@@ -338,6 +338,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
       ["message", "impl-a"],
     ]);
     expect(scene.clock.now - T0).toBeGreaterThanOrEqual(TURN_START_MS);
+    expect(result.kind === "woken" && result.askedAt! - T0).toBeGreaterThanOrEqual(TURN_START_MS);
   });
 
   it("resumes an agent that ended without starting the turn its resume asked for", async () => {
