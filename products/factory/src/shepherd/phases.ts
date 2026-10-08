@@ -3,6 +3,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
+import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
@@ -64,4 +65,6 @@ export interface ShepherdDeps {
   snapshot?: PrSnapshot;
   /** The App-token port `sh-publish-review` posts `shepherd/review` through; absent means it records `published: false`. */
   reviewCheck?: GitHubPort;
+  /** Which reviewer accounts are out of usage; absent reads as a store that cannot be read, so a usage limit fails closed. */
+  accountLimits?: AccountLimitStoreRef;
 }

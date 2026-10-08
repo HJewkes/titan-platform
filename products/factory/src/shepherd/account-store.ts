@@ -100,3 +100,26 @@ export class AccountLimitStore {
 
 /** A known reset beats an unknown one, and the later of two known ones wins. */
 const later = (a: number | null, b: number | null): number | null => (a === null ? b : b === null ? a : Math.max(a, b));
+
+/** An account-limit store bound to whichever factory database the host opened; reading it unbound throws, so a hold fails closed. */
+export interface AccountLimitStoreRef {
+  get(): AccountLimitStore;
+  /** Returns the unbind, which the host calls before it closes the database. */
+  bind(db: Db): () => void;
+}
+
+export function accountLimitStoreRef(now: () => number = Date.now): AccountLimitStoreRef {
+  let store: AccountLimitStore | undefined;
+  return {
+    get() {
+      if (!store) throw new Error("the account-limit store is not bound to an open factory database");
+      return store;
+    },
+    bind(db) {
+      if (store) throw new Error("the account-limit store is already bound to an open factory database");
+      const bound = new AccountLimitStore(db, now);
+      store = bound;
+      return () => void (store === bound && (store = undefined));
+    },
+  };
+}

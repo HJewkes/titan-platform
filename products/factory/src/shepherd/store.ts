@@ -1,7 +1,6 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { AccountLimitStore } from "./account-store.js";
 import { EffectivePolicySchema, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy.js";
 
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
@@ -326,9 +325,6 @@ export class ShepherdStore implements HoldLookup {
     const held = candidates.find((registration) => registration?.held && !(sha !== undefined && registration.holdSatisfied?.head === sha));
     return held && (held.holdReason ?? "held");
   }
-
-  /** The reviewer accounts' usage limits, in the same database; the table comes from `accountLimitMigration`. */
-  readonly accountLimits = (): AccountLimitStore => new AccountLimitStore(this.db, this.now);
 
   /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */
   recordAuthor(runId: string, agent: AuthorInput): void {

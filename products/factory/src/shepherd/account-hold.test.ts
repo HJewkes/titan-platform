@@ -2,7 +2,7 @@ import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, type AccountsView } from "./account-hold.js";
-import { accountLimitMigration } from "./account-store.js";
+import { AccountLimitStore, accountLimitMigration, type AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
@@ -28,7 +28,8 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const ref = { get: () => store } as unknown as ShepherdStoreRef;
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: HEAD });
-  const deps = { port: githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000 } as unknown as ShepherdDeps;
+  const limits = { get: () => new AccountLimitStore(db, () => clock.now) } as unknown as AccountLimitStoreRef;
+  const deps = { port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000 } as unknown as ShepherdDeps;
   const alerts: string[] = [];
   const accounts: AccountsView = { dirs: options.dirs ?? [ACCOUNT], alert: options.alert ?? (async (_repo, text) => void alerts.push(text)) };
   const routes = accountRoutes(deps, accounts);
@@ -39,7 +40,7 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const register = (runId: string, pr: number) => store.register({ repo: REPO, pr, runId, task: "demo", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   const hold = (runId: string, pr = 1, notice: string | undefined = NOTICE) => run("sh-account-hold", { repo: REPO, pr, head: HEAD, runId, account: ACCOUNT, ...(notice && { notice }) });
   const wait = (runId: string, own = true) => run("sh-account-wait", { repo: REPO, pr: 1, head: HEAD, runId, account: ACCOUNT, own });
-  return { db, clock, store: () => store, restart: () => void (store = new ShepherdStore(db, () => clock.now)), alerts, hold, wait, register, fake };
+  return { db, clock, store: () => store, limits: () => limits.get(), restart: () => void (store = new ShepherdStore(db, () => clock.now)), alerts, hold, wait, register, fake };
 }
 
 describe("sh-account-hold", () => {
@@ -158,7 +159,7 @@ describe("sh-account-wait", () => {
     const waited = await s.wait("run-1");
 
     expect(waited).toEqual({ resumed: "released" });
-    expect(s.store().accountLimits().exhausted(ACCOUNT)).toBeUndefined();
+    expect(s.limits().exhausted(ACCOUNT)).toBeUndefined();
   });
 
   it("ends when the PR's head moves, keeping the hold", async () => {

@@ -9,7 +9,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, isUsageLimit, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
-import { ACCOUNT_STEPS, accountHeld, accountRoutes, usableAccount, type AccountsView } from "./account-hold.js";
+import { ACCOUNT_STEPS, accountHeld, accountLimitsOf, accountRoutes, usableAccount, type AccountsView } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
@@ -222,7 +222,7 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
 /** The first account with headroom; null when none has any or the limits cannot be read, so no spawn bills an exhausted account. */
 function chooseAccount(deps: ShepherdDeps, accounts: ReviewAccounts): string | null {
   try {
-    return usableAccount(deps.store.get().accountLimits(), accounts.dirs) ?? null;
+    return usableAccount(accountLimitsOf(deps), accounts.dirs) ?? null;
   } catch {
     return null;
   }
