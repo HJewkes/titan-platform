@@ -48,7 +48,8 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   return EXIT.OK;
 }
 
-function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
+/** The gate the run waits on at `stepId` now, if any. */
+export function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
   const base = `${runId}/${stepId}`;
   return host.pendingGates().find(({ gate }) => stepIdMatches(base, gate.id))?.gate.id;
 }
@@ -98,9 +99,9 @@ async function cliResolver(
   return { resolver: proof === undefined ? coordinator : { ...owner, confirmEvent: proof } };
 }
 
-const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
+export const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
 const DECISION = /^[a-z][a-z0-9-]{0,31}$/;
-const HEAD_SHA = /^[0-9a-f]{40}$/;
+export const HEAD_SHA = /^[0-9a-f]{40}$/;
 const MAX_REASON = 256;
 
 /** The dialog text, built only from fields that pass a strict shape, so nothing in it can break a line or hide text. */
