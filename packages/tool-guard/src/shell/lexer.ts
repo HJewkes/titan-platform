@@ -376,7 +376,7 @@ function readRedirect(s: LexState): void {
   const op = (REDIRECT_RE.exec(s.src) as RegExpExecArray)[0];
   s.i += op.length;
   if ((op === "<" || op === ">") && s.src[s.i] === "(") {
-    s.tokens.push({ type: "subs", subs: [readProcessSubstitution(s, s.i + 1)] });
+    s.tokens.push({ type: "subs", subs: readProcessSubstitution(s, s.i + 1) });
     return;
   }
   const heredoc = op === "<<" || op === "<<-";

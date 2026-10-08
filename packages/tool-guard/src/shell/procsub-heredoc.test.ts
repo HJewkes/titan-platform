@@ -63,7 +63,7 @@ describe("a heredoc opened inside a process substitution", () => {
     ["a double-quoted delimiter", `cat <(cat <<"EOF")\nbody\nEOF\n${PUSH}`],
     ["a nested substitution", `cat <(cat <(cat <<EOF))\nbody\nEOF\n${PUSH}`],
     ["a command substitution around it", `echo $(cat <(cat <<EOF))\nbody\nEOF\n${PUSH}`],
-    ["a shell -c string", `bash -c ${JSON.stringify(`cat <(cat <<EOF)\nbody\nEOF\n${PUSH}`)}`],
+    ["a shell -c string", `bash -c 'cat <(cat <<EOF)\nbody\nEOF\n${PUSH}'`],
     ["a delimiter that never closes", `cat <(cat <<EOF)\nbody\n${PUSH}`],
     ["a body holding a closing parenthesis", `cat <(cat <<EOF)\nEOF)\nEOF\n${PUSH}`],
   ])("the hook denies a push after %s", async (_name, command) => {
