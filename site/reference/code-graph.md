@@ -97,7 +97,9 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
 `forbid-import` (`except` lists destination patterns `to` matches but the rule allows),
 `layered-deps` (layers are path prefixes; an import may point only to its own layer or a lower
-one; `excludeRoles` drops an import whose source or destination file has one of the roles), and
+one; `excludeRoles` drops an import whose source or destination file has one of the roles;
+`exemptTypeOnly: true`, off by default, drops an edge whose every import from that file is
+`import type` or `export type … from`), and
 `no-internal-only-barrels`. A seventh, `metric-outlier`, flags nodes of one `kind` strictly
 above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
