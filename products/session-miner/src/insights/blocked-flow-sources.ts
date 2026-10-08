@@ -5,23 +5,13 @@ import { EXIT } from "@titan-design/registry";
 import {
   parseDenials,
   parseSeatJournal,
-  parseVerdict,
   prKey,
   type DenialRecord,
   type PullState,
   type SeatJournal,
-  type VerdictRecord,
 } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-
-interface EventRow {
-  id: number;
-  ts: number;
-  actor: string;
-  target: string | null;
-  body: string;
-}
 
 /** Runs `read` over agent-chat's events table opened read-only; nothing is written, not even a WAL pragma. */
 export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
@@ -32,21 +22,6 @@ export function withEventsDb<T>(eventsDb: string, read: (db: Db) => T): T {
   } finally {
     db.close();
   }
-}
-
-/** Verdict messages from agent-chat's events table, and how many `Verdict:` messages parseVerdict refused; window bounds are ISO and inclusive-exclusive, and `seats` limits the refused count to verdicts sent to those seats. */
-export function readVerdicts(eventsDb: string, window: { since?: string; until?: string }, seats?: readonly string[]): { verdicts: VerdictRecord[]; unparsed: number } {
-  return withEventsDb(eventsDb, (db) => {
-    const sql = `SELECT id, ts, actor, target, body FROM events WHERE kind = 'message' AND body LIKE 'Verdict:%' AND ts >= ? AND ts < ? ORDER BY id`;
-    const rows = db.prepare(sql).all(window.since ? Date.parse(window.since) : 0, window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER) as EventRow[];
-    const verdicts = rows.flatMap((row) => {
-      const parsed = parseVerdict(row.body);
-      return parsed ? [{ ...parsed, eventId: row.id, at: new Date(row.ts).toISOString(), seat: row.target ?? "", reviewer: row.actor }] : [];
-    });
-    const inSeats = (row: EventRow) => !seats || seats.includes(row.target ?? "");
-    const unparsed = rows.filter((row) => !parseVerdict(row.body) && inSeats(row)).length;
-    return { verdicts, unparsed };
-  });
 }
 
 const PULL_CONCURRENCY = 6;
