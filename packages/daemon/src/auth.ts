@@ -151,13 +151,18 @@ export function getRequestAuth(request: Request): RequestAuth | undefined {
   return requestAuth.get(request);
 }
 
+const LOGIN_METHODS = "GET, HEAD, POST";
+
 /**
- * Pass a valid session cookie or bearer, answer 401 otherwise. Only {@link LOGIN_PATH} is
- * open. Mount it after the Host/Origin guard, so `/auth/*` stays behind the Host check.
+ * Pass a valid session cookie or bearer, answer 401 otherwise. {@link LOGIN_PATH} is open, and
+ * the gate answers it itself, so no route mounted behind the gate can catch a login method.
+ *
+ * Not exported from the package: `buildHttpApp`'s `gate` option mounts it right after the
+ * Host/Origin guard and before every route. Mounted any later, the routes ahead of it are open.
  */
 export function authGate(auth: DaemonAuth): MiddlewareHandler {
   return async (c, next) => {
-    if (c.req.path === LOGIN_PATH) return next();
+    if (c.req.path === LOGIN_PATH) return answerLogin(c, auth);
     const secret = currentSecret(auth);
     if (secret === null) return unavailable(c);
     const facts = authenticate(c, secret, Date.now());
@@ -202,10 +207,17 @@ function unauthorized(c: Context): Response {
 
 const COOKIE_OPTIONS = { httpOnly: true, sameSite: "Strict", path: "/" } as const;
 
-/** `GET` and `POST` {@link LOGIN_PATH} and `POST` {@link LOGOUT_PATH}. */
-export function mountAuthRoutes(app: Hono, auth: DaemonAuth): void {
-  app.get(LOGIN_PATH, loginPage);
-  app.post(LOGIN_PATH, (c) => login(c, auth));
+/** `GET` and `HEAD` render the page, `POST` spends the code, anything else is 405. */
+function answerLogin(c: Context, auth: DaemonAuth): Response | Promise<Response> {
+  const method = c.req.method;
+  if (method === "GET" || method === "HEAD") return loginPage(c);
+  if (method === "POST") return login(c, auth);
+  c.header("Allow", LOGIN_METHODS);
+  return c.json(errorEnvelope(`Method ${method} is not allowed on ${LOGIN_PATH}`, EXIT.USAGE), 405);
+}
+
+/** `POST` {@link LOGOUT_PATH}; it sits behind the gate, which answers {@link LOGIN_PATH} itself. */
+export function mountLogoutRoute(app: Hono): void {
   app.post(LOGOUT_PATH, (c) => {
     deleteCookie(c, SESSION_COOKIE, COOKIE_OPTIONS);
     c.header("Cache-Control", "no-store");

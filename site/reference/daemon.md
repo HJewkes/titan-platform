@@ -121,23 +121,28 @@ the policy: the file path, the CLI verbs that mint links and rotate the secret, 
 listener the gate sits on. Nothing here is wired into `startDaemon` yet.
 
 ```ts
-import { Hono } from "hono";
 import {
-  authGate, createDaemonAuth, ensureTokenFile, mintLoginCode, mountAuthRoutes, rotateTokenFile,
+  buildHttpApp, createDaemonAuth, ensureTokenFile, mintLoginCode, rotateTokenFile,
 } from "@titan-design/daemon";
 
 const tokenFile = path.join(stateDir, "lan.token");
 ensureTokenFile(tokenFile);                    // creates it once: 32 random bytes, 0600, O_EXCL
 const auth = createDaemonAuth({ tokenFile });  // throws TokenFileError on an untrustworthy file
 
-app.use("*", authGate(auth));                  // after the Host/Origin guard, before every route
-mountAuthRoutes(app, auth);                    // GET+POST /auth/login, POST /auth/logout
+const app = buildHttpApp({ ...options, gate: auth });
 
 // In a separate CLI process, on the daemon's host:
 console.log(`http://host:7500/auth/login?code=${mintLoginCode(ensureTokenFile(tokenFile))}`);
 rotateTokenFile(tokenFile);                    // ends every session and voids every code
 ```
 
+- **The `gate` option.** The gate runs right after the Host/Origin guard and before every
+  route, so `/health`, `/version`, `/events`, `/rpc` and anything `mountRoutes` adds all
+  answer 401 without a credential. A foreign Host still gets the guard's 403 first. Only
+  `/auth/login` is open, and the gate answers it itself: `GET` and `HEAD` render the page,
+  `POST` spends the code, and every other method gets 405 with `Allow: GET, HEAD, POST`.
+  The gate is not exported as middleware, because mounted any later than this it leaves
+  the routes ahead of it open. Without `gate` the app behaves exactly as before.
 - **Token file.** A 32-byte base64url secret. It is refused (`TokenFileError`, with a `problem`)
   when it is a symlink, not a regular file, owned by another user, readable by group or others,
   empty, shorter than 32 bytes, or not base64url. The gate re-reads it whenever its inode, size,
@@ -165,7 +170,8 @@ rotateTokenFile(tokenFile);                    // ends every session and voids e
   else gets a JSON envelope. Neither names a product's login command.
 - **`createContext(surface, auth)`.** The gate records `{ credential: "session" | "bearer",
   issuedAt }` and `/rpc` passes it as `createContext`'s second argument, so a command can refuse
-  a credential kind. It is `undefined` on an ungated listener and on MCP.
+  a credential kind. It is `undefined` only on an ungated listener and on MCP; a gated app
+  answers 401 rather than call `createContext` without it.
 
 ## Serving a built front end
 
@@ -197,7 +203,7 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 ## The seams
 
 - **`createContext(surface, auth?)`** builds the per-request context. `surface` is `"http"` or
-  `"mcp"`; `auth` is what an `authGate` recorded, if one ran. The daemon never knows what your
+  `"mcp"`; `auth` is what the `gate` recorded, if one ran. The daemon never knows what your
   context contains.
 - **`health()`** extends `/health` with product state. Core fields win a collision.
 - **`mountRoutes(app)`** adds product routes to the same hono app.
