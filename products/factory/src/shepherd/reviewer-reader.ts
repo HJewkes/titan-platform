@@ -43,7 +43,7 @@ export function reviewerMessages(agentId: string, observation: NormalizedSession
 const SYNTHETIC_MODEL = "<synthetic>";
 
 /** The API error and quota reset of a record the client wrote, read from its metadata; undefined for a model's own record. */
-export function syntheticOf(observation: NormalizedSessionObservation): ReviewerMessage["synthetic"] {
+function syntheticOf(observation: NormalizedSessionObservation): ReviewerMessage["synthetic"] {
   if (observation.kind !== "metadata") return undefined;
   const value = (name: string): unknown => observation.entries.find((entry) => entry.name === name)?.value;
   if (value("model") !== SYNTHETIC_MODEL) return undefined;
