@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -56,11 +56,21 @@ function fakeAccounts(dirs: string[], limited: (account: string, now: number) =>
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-/** One shepherd-pr run over the real review phase; every sleep moves the clock, and the store's hold reasons are sampled at each. */
-function shepherdWith(dirs: string[], limited: (account: string, now: number) => boolean, writer: Writer = "client") {
+interface SceneHooks {
+  /** Called at every sleep with the new time, so a test can move the head or the CI mid-run. */
+  onTick?: (now: number, scene: { fake: FakeGitHub; ci: { greenFrom: number } }) => void;
+}
+
+/**
+ * One shepherd-pr run over the real review phase; every sleep moves the clock, and the store's hold reasons are sampled at
+ * each. Required checks stay queued until `ci.greenFrom`, so a test can make a round's review start after a given time.
+ */
+function shepherdWith(dirs: string[], limited: (account: string, now: number) => boolean, writer: Writer = "client", hooks: SceneHooks = {}) {
   const fake = fakeGitHub();
+  const ci = { greenFrom: Number.NEGATIVE_INFINITY };
   fake.addPr({ headSha: H1, mergeSha: fakeSha("account-merge") });
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+  const queued = { ...successRun("validate", 1), status: "queued" as const, conclusion: null };
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, clock < ci.greenFrom ? [queued] : [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = T0;
   const store = shepherdStoreRef(() => clock);
@@ -71,6 +81,7 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   const reviewers = fakeAccounts(dirs, limited, () => clock, () => void approveAtSpawn.push(host.gates.get(gateId(runId, "approve-merge")) !== undefined), writer);
   const tick = async (ms: number, signal: AbortSignal) => {
     clock += ms;
+    hooks.onTick?.(clock, { fake, ci });
     const reason = runId === "" ? undefined : store.get().byRun(runId)?.holdReason;
     if (reason) holds.add(reason);
     await sleep(1, signal);
@@ -82,7 +93,7 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
   const stepIds = () => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
-  return { runId, store, reviewers, holds, stepIds, approveAtSpawn };
+  return { runId, store, reviewers, holds, stepIds, approveAtSpawn, fake };
 }
 
 describe("a reviewer account out of usage", () => {
@@ -120,5 +131,47 @@ describe("a reviewer account out of usage", () => {
     expect(scene.holds).toEqual(new Set());
     expect(scene.stepIds().filter((id) => id.startsWith("sh-account"))).toEqual([]);
     expect(scene.reviewers.spawns.map((row) => row.account)).toEqual(scene.reviewers.spawns.map(() => PRIMARY));
+  });
+
+  describe("the run's own hold after its wait ends", () => {
+    const MINUTE = 60_000;
+    const limitedUntilReset = (account: string, at: number) => account === PRIMARY && at < RESET;
+
+    it("merges with no owner release when the head moves mid-hold and the reset passes before the new head's review", async () => {
+      const H2 = fakeSha("account-head-2");
+      let pushed = false;
+      const scene = shepherdWith([PRIMARY], limitedUntilReset, "client", {
+        onTick: (now, { fake, ci }) => {
+          if (pushed || now < T0 + 50 * MINUTE) return;
+          pushed = true;
+          ci.greenFrom = RESET + MINUTE;
+          fake.pushHead(1, H2);
+        },
+      });
+
+      await vi.waitFor(() => expect(scene.fake.calls).toContain("merge"), { timeout: 20_000 });
+
+      expect(scene.reviewers.spawns.map((row) => row.at >= RESET)).toEqual([false, true]);
+      expect(scene.stepIds().filter((id) => id.startsWith("sh-account-hold"))).toHaveLength(1);
+      expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
+    });
+
+    it("merges with no owner release when the wait expires and the reset passes before the next review", async () => {
+      let slowed = false;
+      const scene = shepherdWith([PRIMARY], limitedUntilReset, "client", {
+        onTick: (now, { ci }) => {
+          if (slowed || now < T0 + 30 * MINUTE) return;
+          slowed = true;
+          ci.greenFrom = RESET + MINUTE;
+        },
+      });
+
+      await vi.waitFor(() => expect(scene.fake.calls).toContain("merge"), { timeout: 20_000 });
+
+      expect(scene.reviewers.spawns.map((row) => row.at >= RESET)).toEqual([false, true]);
+      expect(scene.stepIds().filter((id) => id.startsWith("sh-account-hold"))).toHaveLength(1);
+      expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`);
+      expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
+    });
   });
 });

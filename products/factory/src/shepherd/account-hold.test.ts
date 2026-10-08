@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, type AccountsView } from "./account-hold.js";
+import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, accountWithHeadroom, type AccountsView } from "./account-hold.js";
 import { RECHECK_AFTER_MS } from "./account-limit.js";
 import { AccountLimitStore, accountLimitMigration, type AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -41,7 +41,9 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const register = (runId: string, pr: number) => store.register({ repo: REPO, pr, runId, task: "demo", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   const hold = (runId: string, pr = 1, notice: string | undefined = NOTICE, resetsAt?: number) => run("sh-account-hold", { repo: REPO, pr, head: HEAD, runId, account: ACCOUNT, ...(notice && { notice }), ...(resetsAt !== undefined && { resetsAt }) });
   const wait = (runId: string, own = true) => run("sh-account-wait", { repo: REPO, pr: 1, head: HEAD, runId, account: ACCOUNT, own });
-  return { db, clock, store: () => store, limits: () => limits.get(), restart: () => void (store = new ShepherdStore(db, () => clock.now)), alerts, hold, wait, register, fake };
+  /** What `sh-review-intent` does when it picks an account: the one place the run's own hold is lifted. */
+  const pick = (runId: string) => accountWithHeadroom(deps, accounts.dirs, runId);
+  return { db, clock, store: () => store, limits: () => limits.get(), pick, restart: () => void (store = new ShepherdStore(db, () => clock.now)), alerts, hold, wait, register, fake };
 }
 
 describe("sh-account-hold", () => {
@@ -153,6 +155,19 @@ describe("sh-account-hold", () => {
     expect(s.store().byRun("run-1")?.held).toBe(false);
     expect(s.alerts).toHaveLength(1);
   });
+
+  it("lifts its own earlier hold when it fails over to a fallback that has headroom again", async () => {
+    const s = scene({ dirs: [ACCOUNT, "/accounts/spare"] });
+    s.register("run-1", 1);
+    s.limits().markExhausted("/accounts/spare", T0 + RECHECK_AFTER_MS, "You've hit your weekly limit");
+    expect(await s.hold("run-1")).toMatchObject({ held: true, own: true });
+
+    s.clock.now = T0 + RECHECK_AFTER_MS + 60_000;
+    const moved = await s.hold("run-1");
+
+    expect(moved).toMatchObject({ held: false, reason: expect.stringContaining("moves to /accounts/spare") });
+    expect(s.store().byRun("run-1")?.held).toBe(false);
+  });
 });
 
 describe("sh-account-wait", () => {
@@ -166,6 +181,7 @@ describe("sh-account-wait", () => {
 
       expect(held).toMatchObject({ held: true, own: false });
       expect(await s.wait("run-1", held.own)).toEqual({ resumed: "headroom" });
+      expect(s.pick("run-1")).toBe(ACCOUNT);
       expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: reason });
     }
   });
@@ -181,7 +197,7 @@ describe("sh-account-wait", () => {
     expect(s.limits().exhausted(ACCOUNT)).toBeDefined();
   });
 
-  it("waits until the reset, then lifts its own hold", async () => {
+  it("waits until the reset and ends there, leaving the hold for the next account pick to lift", async () => {
     const s = scene();
     s.register("run-1", 1);
     await s.hold("run-1");
@@ -191,7 +207,18 @@ describe("sh-account-wait", () => {
 
     expect(waited).toEqual({ resumed: "headroom" });
     expect(s.clock.now).toBeGreaterThanOrEqual(Date.parse("2026-10-11T00:00:00.000Z"));
+    expect(s.store().byRun("run-1")?.held).toBe(true);
+    expect(s.pick("run-1")).toBe(ACCOUNT);
     expect(s.store().byRun("run-1")?.held).toBe(false);
+  });
+
+  it("lifts nothing at the account pick while the account is still exhausted", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+
+    expect(s.pick("run-1")).toBeNull();
+    expect(s.store().byRun("run-1")?.held).toBe(true);
   });
 
   it("ends at its limit with the hold still in place, so the run reads its head and holds again", async () => {

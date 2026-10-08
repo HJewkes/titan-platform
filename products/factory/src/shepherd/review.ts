@@ -9,7 +9,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { HEAD, awaitLateVerdict, awaitVerdict, bounded, isUsageLimit, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
-import { ACCOUNT_STEPS, accountHeld, accountLimitsOf, accountRoutes, usableAccount, type AccountsView } from "./account-hold.js";
+import { ACCOUNT_STEPS, accountHeld, accountRoutes, accountWithHeadroom, type AccountsView } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
@@ -219,26 +219,17 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     });
   };
 
-/** The first account with headroom; null when none has any or the limits cannot be read, so no spawn bills an exhausted account. */
-function chooseAccount(deps: ShepherdDeps, accounts: ReviewAccounts): string | null {
-  try {
-    return usableAccount(accountLimitsOf(deps), accounts.dirs) ?? null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing. With
- * accounts wired it names the account the reviewer bills; a standing reviewer is resumed only on the first account, and
- * with no account left it names the first as exhausted, so the phase holds instead of spawning.
+ * accounts wired it names the account the reviewer bills, which lifts the run's own account hold; a standing reviewer is
+ * resumed only on the first account, and with no account left it names the first as exhausted, so the phase holds instead of spawning.
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch, accounts }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
   const registration = deps.store.get().byRun(input.runId);
   const choice = chooseReviewer(input, registration, roster, input.fresh);
   if (!accounts || choice.mode === "external") return { kind: "intent", head: input.head, ...choice, at: deps.now() };
-  const account = chooseAccount(deps, accounts);
+  const account = accountWithHeadroom(deps, accounts.dirs, input.runId);
   if (account === null) return { kind: "none", reason: "every review account is exhausted", exhausted: accounts.dirs[0] ?? DEFAULT_ACCOUNT };
   const chosen = account === accounts.dirs[0] ? choice : chooseReviewer(input, registration, roster, true);
   return { kind: "intent", head: input.head, ...chosen, at: deps.now(), account };

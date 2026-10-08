@@ -56,13 +56,28 @@ export async function accountHeld(ctx: WorkflowContext, target: ReviewTarget, ex
 }
 
 /** Throws when no store is wired, which every caller reads as a store it cannot read. */
-export function accountLimitsOf(deps: ShepherdDeps): AccountLimitStore {
+function accountLimitsOf(deps: ShepherdDeps): AccountLimitStore {
   if (!deps.accountLimits) throw new Error("no account-limit store is wired");
   return deps.accountLimits.get();
 }
 
 /** The first account with headroom, in the configured order. */
-export const usableAccount = (limits: AccountLimitStore, dirs: readonly string[]): string | undefined => dirs.find((dir) => limits.exhausted(dir) === undefined);
+const usableAccount = (limits: AccountLimitStore, dirs: readonly string[]): string | undefined => dirs.find((dir) => limits.exhausted(dir) === undefined);
+
+/**
+ * The one place the run's own hold follows the accounts: the first account with headroom lifts the hold this store
+ * placed, so no hold outlives its exhaustion; null when none has headroom or the limits cannot be read, and the caller holds.
+ */
+export function accountWithHeadroom(deps: ShepherdDeps, dirs: readonly string[], runId: string): string | null {
+  try {
+    const limits = accountLimitsOf(deps);
+    const account = usableAccount(limits, dirs);
+    if (account !== undefined) limits.releaseRun(runId);
+    return account ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** The client's recorded reset wins over the one in the notice's text; either is believed only within `believedReset`'s bounds. */
 function noteLimit(limits: AccountLimitStore, input: HoldInput, now: number) {
@@ -85,8 +100,8 @@ async function decideHold(deps: ShepherdDeps, accounts: AccountsView, input: Hol
   const limits = accountLimitsOf(deps);
   const resetsAt = noteLimit(limits, input, deps.now())?.resetsAt ?? null;
   await alertOnce(limits, accounts, input, resetsAt);
-  const next = usableAccount(limits, accounts.dirs);
-  if (next !== undefined) return { held: false, own: false, reason: `the review account ${input.account} is exhausted; the review moves to ${next}` };
+  const next = accountWithHeadroom(deps, accounts.dirs, input.runId);
+  if (next !== null) return { held: false, own: false, reason: `the review account ${input.account} is exhausted; the review moves to ${next}` };
   const reason = accountHoldReason(input.account, resetsAt);
   return { held: true, own: limits.holdRun(input.runId, reason), reason };
 }
@@ -119,11 +134,11 @@ function released(deps: ShepherdDeps, input: WaitInput): boolean {
   return true;
 }
 
-/** Headroom on any account ends the wait and lifts this run's own hold; a release, or a PR that moved on, ends it too. */
+/** Headroom on any account ends the wait, as do a release and a PR that moved on; the next review intent recomputes the hold. */
 async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput): Promise<Waited["resumed"] | undefined> {
   if (released(deps, input)) return "released";
   const limits = accountLimitsOf(deps);
-  if (usableAccount(limits, accounts.dirs) !== undefined) return (limits.releaseRun(input.runId), "headroom");
+  if (usableAccount(limits, accounts.dirs) !== undefined) return "headroom";
   const pr = await deps.port.getPr(input.repo, input.pr);
   return pr.headSha !== input.head || pr.state !== "open" ? "head-moved" : undefined;
 }

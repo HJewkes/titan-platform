@@ -468,10 +468,13 @@ read and no correction turn. `sh-account-hold` then:
 
 While the run is held, `sh-account-wait` waits inside the review, so the run never reaches
 approve-merge on this reason, and `sh-review-intent` starts no reviewer on an exhausted account.
-The wait ends when any account has headroom again (its reset passed), which lifts the hold; when
-the owner runs `titan-factory shepherd release`, which also clears the account's mark; when the
-PR's head moves; or after an hour. Each of these starts a new land round, which reads the PR's
-current head and reviews it again; an account still exhausted holds again without a new alert.
+The wait ends when any account has headroom again (its reset passed); when the owner runs
+`titan-factory shepherd release`, which also clears the account's mark; when the PR's head moves;
+or after an hour. Each of these starts a new land round, which reads the PR's current head and
+reviews it again. The run's own hold follows the accounts in one place only, where a review picks
+its account (`sh-review-intent`, and the failover in `sh-account-hold`): an account with headroom
+lifts it, and none places it again, without a new alert. So however the wait ended, a review that
+gets an account never leaves a stale hold in front of its MERGE.
 The restart drain does not wait on `sh-account-wait`, since a restart only re-reads the store.
 
 The config file is read when the routes are first built, so restart `serve` after a change to
