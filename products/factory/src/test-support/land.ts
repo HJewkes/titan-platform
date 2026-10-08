@@ -61,7 +61,7 @@ export function gateId(runId: string, stepId: string, iteration = 0): string {
 }
 
 export async function gateOpened(host: FactoryHost, id: string, timeout?: number): Promise<void> {
-  await vi.waitFor(() => expect(host.gates.get(id)?.status).toBe("pending"), timeout);
+  await vi.waitFor(() => expect(host.gates.get(id)?.status).toBe("pending"), { timeout });
 }
 
 /** Approve the run's pending approve-merge gate, if any, with the head the fake shows now. */

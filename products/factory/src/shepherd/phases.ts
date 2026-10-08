@@ -1,6 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
+import type { ExitNoticePorts } from "./exit-notice.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
@@ -20,7 +21,19 @@ export interface WakeRequest extends PhaseTarget {
   payload: unknown;
 }
 
-export type WakeOutcome = { kind: "woken"; agent: string; sessionId?: string; /** The head did not move: a rerun turned it green, so a later wake at it is a real one. */ sameHead?: true } | { kind: "unhandled"; reason: string; /** The woken agent exited with the head unchanged and the PR open. */ exited?: true };
+/** How a wake reached the agent that later exited: the evidence its seat notice and recorded reason are built from. */
+export interface WakeEvidence {
+  agent: string;
+  sessionId?: string;
+  mode?: "resume" | "successor" | "live";
+  /** Epoch milliseconds of the ask that the agent's turn was confirmed after; absent on a wake recorded before it existed. */
+  askedAt?: number;
+  fallback?: "resume" | "message";
+}
+
+export type WakeOutcome =
+  | { kind: "woken"; agent: string; sessionId?: string; /** The head did not move: a rerun turned it green, so a later wake at it is a real one. */ sameHead?: true }
+  | { kind: "unhandled"; reason: string; /** The woken agent exited with the head unchanged and the PR open. */ exited?: true; wake?: WakeEvidence };
 
 export interface ReviewRequest extends PhaseTarget {
   /** Spawn a reviewer under a never-held name, so a reviewer that went silent at this head is not asked again. */
@@ -67,4 +80,6 @@ export interface ShepherdDeps {
   reviewCheck?: GitHubPort;
   /** Which reviewer accounts are out of usage; absent reads as a store that cannot be read, so a usage limit fails closed. */
   accountLimits?: AccountLimitStoreRef;
+  /** Tells the repo's seat that a woken fixer exited with no push; absent means every such exit opens the owner gate. */
+  exitNotice?: ExitNoticePorts;
 }

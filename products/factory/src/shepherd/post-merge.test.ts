@@ -363,6 +363,9 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   return { host, fake, store, freezes: () => freeze.get() };
 }
 
+/** A queued run waits out every recheck: hundreds of 1 ms sleeps, which a loaded CI runner stretches past waitFor's 1 s default. */
+const QUEUED_WAIT_TIMEOUT_MS = 4_000;
+
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), ...params });
   await gateOpened(w.host, gateId(runId, "approve-merge"));
@@ -485,8 +488,7 @@ describe("shepherd-pr after land", () => {
     const w = shepherdWorld(() => [{ ...successRun("validate", 1), status: "queued", conclusion: null }]);
     const runId = await runToMerge(w);
 
-    // The full 240 min wait is ~480 polls, each a real 1 ms sleep, so on a loaded CI runner it outlasts waitFor's 1 s default.
-    await gateOpened(w.host, gateId(runId, "main-ci-timeout"), 10_000);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"), QUEUED_WAIT_TIMEOUT_MS);
 
     const sha = w.fake.pr(1).mergeSha!;
     expect(JSON.stringify(w.host.gates.get(gateId(runId, "main-ci-timeout")))).toContain(`no completed main run containing ${sha} within 240 min`);
@@ -682,8 +684,7 @@ describe("post-merge gate briefs", () => {
     const w = shepherdWorld(() => []);
     const runId = await runToMerge(w);
 
-    // The full 240 min wait is ~480 polls, each a real 1 ms sleep, so on a loaded CI runner it outlasts waitFor's 1 s default.
-    await gateOpened(w.host, gateId(runId, "main-ci-timeout"), 10_000);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     const sha = w.fake.pr(1).mergeSha!;
     expectBrief(w.host.gates.get(gateId(runId, "main-ci-timeout")), sha, MAIN_RUNS(sha));

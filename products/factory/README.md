@@ -169,6 +169,28 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
+### A fixer that exits with no push
+
+A FIX_FIRST or ci-failed wake can end with the woken agent exiting at the same head. A red
+whose failing tests sit outside the PR's diff is rerun once first. Otherwise `sh-exit-notice`
+sends the repo's seat one agent-chat message per run and head. The message names the PR, the
+head, the round, the wake mode and the agent's last report, cut to 600 characters and fenced
+as data. The step records why the agent stopped:
+
+- `unread`: the wake reached a live agent, and the agent wrote nothing after it. It finished
+  the turn it was already in and exited without reading the message. This is the live-wake
+  race.
+- `read-no-push`: a resume or successor wake, or a live agent that wrote after the wake. It
+  took the wake and pushed nothing.
+
+The run then waits for a new head, with no owner gate open. The seat can resume the agent or
+start a successor, push a fix itself, or close the PR. A repeat `shepherd register` does not
+wake a live run again.
+
+The owner's `sh-sent-back` gate still opens in these cases: the message fails to send, no
+single seat owns the repo, the agent exits a second time at a head the seat was already told
+about, or the wake was a conflict or fix-proof wake.
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:
