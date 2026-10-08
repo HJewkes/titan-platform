@@ -65,4 +65,15 @@ describe("the hook verdict on a value that arithmetic reads (TP-1624)", () => {
   it("denies a push hidden in a value that also holds an unbalanced quote", async () => {
     expect(await verdict(`X="it's a[\\$(${PUSH})]"; (( X ))`)).toBe("deny");
   });
+
+  it.each([
+    ["bash -c", `X='a[$(bash -c "echo \\"")]'; (( X )); ${PUSH}`],
+    ["eval", `X='a[$(eval "echo \\"")]'; (( X )); ${PUSH}`],
+    ["sh -c", `X='a[$(sh -c "a=\\$(")]'; (( X )); ${PUSH}`],
+    ["a here-string to bash", `X='a[$(bash <<<"echo \\"")]'; (( X )); ${PUSH}`],
+    ["find -exec bash -c", `X='a[$(find . -exec bash -c "echo \\"" \\;)]'; (( X )); ${PUSH}`],
+    ["a bash -c inside an unlexable value", `X="it's a[\\$(bash -c \\"echo \\\\\\"\\")]"; (( X )); ${PUSH}`],
+  ])("denies a later push when the value holds %s that cannot be lexed", async (_, command) => {
+    expect(await verdict(command)).toBe("deny");
+  });
 });
