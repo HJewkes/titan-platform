@@ -60,8 +60,9 @@ export function gateId(runId: string, stepId: string, iteration = 0): string {
   return iteration === 0 ? `${runId}/${stepId}` : `${runId}/${stepId}:${iteration}`;
 }
 
+/** Polling loops that tick a real `sleep(1)` per fake interval can need most of a second to reach a gate; loaded CI runners need more. */
 export async function gateOpened(host: FactoryHost, id: string): Promise<void> {
-  await vi.waitFor(() => expect(host.gates.get(id)?.status).toBe("pending"));
+  await vi.waitFor(() => expect(host.gates.get(id)?.status).toBe("pending"), { timeout: 4_000, interval: 10 });
 }
 
 /** Approve the run's pending approve-merge gate, if any, with the head the fake shows now. */
