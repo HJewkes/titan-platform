@@ -10,6 +10,7 @@ import { readInitiative, readPortfolio, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
 const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), seatPrefixes: [] };
+const NO_SESSIONS = { graphPath: "/nonexistent/graph.sqlite3" };
 
 let daemon: FakeDaemon | undefined;
 let calls: string[] = [];
@@ -108,7 +109,7 @@ describe("an initiative", () => {
 
 describe("an export", () => {
   const exported = async (options: FixtureOptions = {}) =>
-    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
+    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());
