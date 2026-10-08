@@ -120,6 +120,7 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
     state: pr.state,
     merged: pr.merged ?? Boolean(pr.merged_at),
     mergeSha: pr.merge_commit_sha,
+    mergedAt: pr.merged_at ?? null,
     headRef: pr.head.ref,
     headSha: pr.head.sha,
     headRepo: pr.head.repo?.full_name ?? null,
