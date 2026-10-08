@@ -1,8 +1,8 @@
 import { defineCommand } from "@titan-design/registry";
+import { countNormalizedEvents, countNormalizedSessions } from "@titan-design/session-graph";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { hasMinerTables } from "../miner-tables.js";
-import { countNormalizedSessions, hasNormalized } from "../normalized-tables.js";
 
 export interface MinerStatus {
   dbPath: string;
@@ -37,7 +37,7 @@ export const status = defineCommand<Record<string, never>, MinerStatus, MinerCon
       corpusRoot: ctx.config.corpusRoot,
       transcripts,
       sessions: count("session") + countNormalizedSessions(graph),
-      facts: count("fact") + (hasNormalized(graph) ? count("normalized_event") : 0),
+      facts: count("fact") + countNormalizedEvents(graph),
       edges: count("edge"),
       templates: hasMinerTables(graph, ["template"]) ? count("template") : 0,
       ftsOrphanRatio: graph.spans.orphanRatio(),
