@@ -17,22 +17,18 @@ export function openRunsSignature(headSha: string, runs: readonly CheckRun[]): s
   return ids.sort((a, b) => a - b).join(",");
 }
 
-interface HoldableRead {
-  verdict: string;
-  openRuns?: string;
-  waitingOn?: string[];
+/** What the previous poll of one `ci-wait` saw; the caller owns it so the judgement stays a function of the runs. */
+export interface OpenSeen {
+  previous?: string;
 }
 
 /**
  * GitHub creates a job's check-run when the job is queued, so a job behind `needs:` has none while an earlier job is
- * green. An open repo's green therefore stands only when the previous poll saw the same runs; the first green becomes
- * a pending read, and so does any green whose runs changed since.
+ * green. A run set is settled only when the previous poll saw the same one; a first or changed set is not.
  */
-export function holdOpenGreen(): <T extends HoldableRead>(read: T) => T {
-  let previous: string | undefined;
-  return (read) => {
-    const held = read.openRuns !== undefined && read.openRuns !== previous;
-    previous = read.openRuns;
-    return held ? { ...read, verdict: "pending", waitingOn: ["a second read that sees the same check-runs"] } : read;
-  };
+export function openRunsSettled(seen: OpenSeen, headSha: string, runs: readonly CheckRun[]): boolean {
+  const signature = openRunsSignature(headSha, runs);
+  const settled = signature === seen.previous;
+  seen.previous = signature;
+  return settled;
 }

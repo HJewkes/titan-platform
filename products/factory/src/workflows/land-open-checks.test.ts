@@ -1,8 +1,9 @@
-import { fakeSha, successRun, type CheckRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, approveUntilSettled, landScenario, type LandScenario } from "../test-support/land.js";
-import { holdOpenGreen, openRepoFindings, openRunsSignature } from "./land-open-checks.js";
+import { readCi } from "./land-ci.js";
+import { openRepoFindings, openRunsSettled, openRunsSignature } from "./land-open-checks.js";
 
 const HEAD = fakeSha("open-head");
 const OTHER_APP = 99;
@@ -46,15 +47,49 @@ describe("holding an open repo's green for a second read", () => {
     expect(openRunsSignature(HEAD, runs)).toBe("1,2");
   });
 
-  it("holds the first green and any green whose runs changed, and releases an unchanged one", () => {
-    const hold = holdOpenGreen();
-    const green = (openRuns: string) => ({ verdict: "green", openRuns });
-    expect([green("1"), green("1,2"), green("1,2")].map((read) => hold(read).verdict)).toEqual(["pending", "pending", "green"]);
+  it("settles a run set only when the previous poll saw the same one", () => {
+    const seen = {};
+    const settled = [[run("a", 1)], [run("a", 1), run("b", 2)], [run("a", 1), run("b", 2)]].map((runs) => openRunsSettled(seen, HEAD, runs));
+    expect(settled).toEqual([false, false, true]);
+  });
+});
+
+describe("readCi on a repo whose base requires no status checks", () => {
+  const input = { repo: "octo/demo", pr: 1, contexts: [], strict: false };
+
+  function world(state: { mergeableState: string; behind: boolean }) {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1, ...state });
+    fake.setRuns(H1, [successRun("lint", 1)]);
+    return { fake, port: githubPort(fake.wire) };
+  }
+
+  it("reads pending on the first poll and green once the next poll sees the same runs", async () => {
+    const { port } = world({ mergeableState: "clean", behind: false });
+    const seen = {};
+    const verdicts = [(await readCi(port, input, undefined, { openSeen: seen })).verdict, (await readCi(port, input, undefined, { openSeen: seen })).verdict];
+    expect(verdicts).toEqual(["pending", "green"]);
   });
 
-  it("passes a read of a repo that names required contexts through untouched", () => {
-    const read = { verdict: "green" };
-    expect(holdOpenGreen()(read)).toBe(read);
+  it("holds a behind head whose base moved just as it holds a green one, so a late run is read before any refresh", async () => {
+    const { fake, port } = world({ mergeableState: "clean", behind: true });
+    const seen = {};
+
+    const first = await readCi(port, input, undefined, { openSeen: seen });
+    fake.setRuns(H1, [successRun("lint", 1), successRun("test", 2, undefined, "failure")]);
+    const second = await readCi(port, input, undefined, { openSeen: seen });
+
+    expect(first.verdict).toBe("pending");
+    expect(second).toMatchObject({ verdict: "red", failing: [{ name: "test" }] });
+  });
+
+  it("reaches behind with baseMoved only on a poll that repeats the previous run set", async () => {
+    const { port } = world({ mergeableState: "clean", behind: true });
+    const seen = {};
+
+    await readCi(port, input, undefined, { openSeen: seen });
+
+    expect(await readCi(port, input, undefined, { openSeen: seen })).toMatchObject({ verdict: "behind", checksGreen: true, baseMoved: true });
   });
 });
 

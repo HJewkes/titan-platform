@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, latestPerName, type CheckFinding, type CheckRun, type GitHubPort, type PullRequest } from "@titan-design/github";
 import type { CiSnapshotResult } from "./land-steps.js";
-import { openRepoFindings, openRunsSignature } from "./land-open-checks.js";
+import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-checks.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
@@ -29,8 +29,6 @@ export interface CiSnapshot {
   checksGreen?: boolean;
   /** On a `behind` read in a repo that does not require up-to-date heads: green, but the base moved after its CI started. */
   baseMoved?: boolean;
-  /** On a green read of a base that requires no check: the Actions runs it judged, so `ci-wait` can hold the green for a second read. */
-  openRuns?: string;
   /** When `ci-wait` returned this read, so the update budget can tell how long the base has been chased. */
   readAt?: number;
 }
@@ -43,6 +41,8 @@ export interface CiInput {
 }
 
 export interface CiReadOptions {
+  /** Where a base that requires no check keeps the run set the last poll saw; absent means no second read is asked for. */
+  openSeen?: OpenSeen;
   /** Reads true once a required check that never reported has waited out its grace; a running check still blocks. */
   missingSettled?: (headSha: string) => boolean;
 }
@@ -76,13 +76,19 @@ async function readCiFrom(port: GitHubPort, input: CiInput, reads: PrReads, opti
   if (pr.state === "closed") return { ...base, verdict: "closed" };
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
   const findings = findingsAt(input, pr.headSha, runs);
+  if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: ["a second read that sees the same check-runs"] };
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft, options.missingSettled?.(pr.headSha) ?? false);
   const failing = findings.flatMap((finding) => (finding.kind === "failed" ? [failingCheck(finding.run)] : []));
   if (failing.length > 0) return { ...base, verdict: "red", failing };
   if (findings.length > 0) return { ...base, verdict: "pending", waitingOn: findings.map(findingName), ...backlogFlag(findings) };
   const verdict = await settledVerdict(port, input, pr);
   if (verdict === "green" && pr.behind && (await baseMovedSinceGreen(port, input, pr, runs))) return { ...base, verdict: "behind", checksGreen: true, baseMoved: true };
-  return { ...base, verdict, ...(verdict === "green" && input.contexts.length === 0 && { openRuns: openRunsSignature(pr.headSha, runs) }) };
+  return { ...base, verdict };
+}
+
+/** Every verdict path reads the same runs, so an open repo's first or changed run set is pending before any behind or green branching. */
+function awaitsSecondRead(input: CiInput, options: CiReadOptions, headSha: string, runs: readonly CheckRun[]): boolean {
+  return input.contexts.length === 0 && options.openSeen !== undefined && !openRunsSettled(options.openSeen, headSha, runs);
 }
 
 /** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */
