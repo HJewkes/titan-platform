@@ -104,9 +104,9 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
   {
     id: 7,
     gate: "approve-merge",
-    story: "two updates, FIX_FIRST, a behind fix, MERGE, a fourth update across rounds stops at the bound",
+    story: "two updates, FIX_FIRST, a behind fix, MERGE, a fourth update across rounds is an automatic retry that lands",
     heads: [{ state: "behind" }, { state: "behind" }, { reviews: ["FIX_FIRST"] }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
-    today: { outcome: "gated", gates: ["stuck-behind"], reviewers: 2, fixers: 0 },
+    today: merged(2),
   },
   {
     id: 8,
@@ -177,8 +177,8 @@ export const LEDGER_FIXTURES: readonly LedgerFixture[] = [
   {
     id: 17,
     gate: "approve-merge",
-    story: "three updates, MERGE, a fourth update across rounds stops at the bound",
+    story: "three updates, MERGE, a fourth update across rounds is an automatic retry that lands",
     heads: [{ state: "behind" }, { state: "behind" }, { state: "behind" }, { reviews: ["MERGE"], goesBehind: true }, { treeEqual: true }],
-    today: { outcome: "gated", gates: ["stuck-behind"], reviewers: 1, fixers: 0 },
+    today: merged(1),
   },
 ];

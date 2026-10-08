@@ -2,6 +2,7 @@ import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow"
 import type { FactoryHost } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
+import { openOrRead } from "./snapshot-reads.js";
 import { POST_MERGE_STEPS } from "./post-merge.js";
 
 /** How often `titan-factory serve` checks the PRs of runs waiting on a gate. */
@@ -53,7 +54,7 @@ async function goneReason(services: ShepherdServices, runId: string): Promise<st
   if (!registration || registration.pr === null) return undefined;
   const target = `${registration.repo}#${registration.pr}`;
   let notFound = false;
-  const pr = await services.port.getPr(registration.repo, registration.pr).catch((error: unknown) => {
+  const pr = await openOrRead(services.port, services.snapshot, registration.repo, registration.pr).catch((error: unknown) => {
     if (!isNotFound(error)) throw new UnreadablePr(failureOf(error));
     notFound = true;
     return undefined;

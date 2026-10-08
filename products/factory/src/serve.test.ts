@@ -113,6 +113,17 @@ describe("titan-factory serve", () => {
     expect(health.busy).toEqual([{ runId, step: "chore", phase: "park" }]);
   });
 
+  it("health reports the snapshot tick and that it slowed under a low rate limit", async () => {
+    const scenario = landScenario();
+    const pacing = { tickMs: () => 300_000, status: () => ({ tickMs: 300_000, slowed: true, remaining: 900 }) };
+    Object.assign(scenario.routes, { shepherd: { pacing } as never });
+    const server = await serve(dbFile(), scenario);
+
+    const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+    expect(health.snapshotTick).toEqual({ tickMs: 300_000, slowed: true, remaining: 900 });
+  });
+
   it("health carries the github probe result", async () => {
     const server = await serve(dbFile(), landScenario(), { github: { status: () => "gh: HTTP 401", refresh: async () => undefined } });
 
