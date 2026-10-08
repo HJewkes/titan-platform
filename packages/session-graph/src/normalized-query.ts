@@ -35,13 +35,35 @@ async function readSourceText(graph: SessionGraph, span: IndexedSpan, homeDir: s
   return legacy ? readSessionText({ path: expandHome(legacy.sourceKey, homeDir), byteOffset: span.byteOffset, byteLength: span.byteLength, field: span.field as SpanField }) : null;
 }
 
+/** A graph opened read-only may have lost its `normalized_*` tables to migration 9; every normalized reader then sees nothing. */
+export function hasNormalizedTables(graph: SessionGraph): boolean {
+  return hasTable(graph.db, "normalized_event") && hasTable(graph.db, "normalized_source");
+}
+
+export function countNormalizedSessions(graph: SessionGraph): number {
+  if (!hasNormalizedTables(graph)) return 0;
+  return (graph.db.prepare("SELECT count(DISTINCT conversation_ref) AS n FROM normalized_source").get() as { n: number }).n;
+}
+
+export function countNormalizedEvents(graph: SessionGraph): number {
+  if (!hasNormalizedTables(graph)) return 0;
+  return (graph.db.prepare("SELECT count(*) AS n FROM normalized_event").get() as { n: number }).n;
+}
+
+/** The transcript's own file for a normalized source, or null when the transcript is not one. */
+export function normalizedSourcePath(graph: SessionGraph, transcriptId: number): string | null {
+  if (!hasNormalizedTables(graph)) return null;
+  const row = graph.db.prepare("SELECT descriptor FROM normalized_source WHERE transcript_id = ?").get(transcriptId) as { descriptor: string } | undefined;
+  return row ? (JSON.parse(row.descriptor) as SessionSourceDescriptor).path : null;
+}
+
 export interface ConversationSummary {
   sessionId: string; harness: string; nativeId: string; namespace: string;
   title: string | null; startedAt: string | null; endedAt: string | null;
   cwd: string | null; gitBranch: string | null; turnCount: number; commitCount: number | null; pushCount: number | null;
 }
 export function normalizedSessions(graph: SessionGraph, options: { ref?: string; limit?: number; since?: string } = {}): ConversationSummary[] {
-  if (!hasTable(graph.db, "normalized_event")) return [];
+  if (!hasNormalizedTables(graph)) return [];
   const rows = graph.db.prepare(`SELECT c.ref,c.harness,c.native_id,c.namespace,MIN(e.ts) AS started,
     COUNT(DISTINCT CASE WHEN e.kind = 'native_turn' THEN e.turn_ref END) AS turns
     FROM conversation c JOIN (SELECT DISTINCT conversation_ref FROM normalized_source) s ON s.conversation_ref = c.ref
@@ -63,7 +85,7 @@ export function normalizedSessions(graph: SessionGraph, options: { ref?: string;
 export type NormalizedUsageSummary = SessionUsageSummary;
 /** Shared storage-free usage policy keeps graph and direct readers consistent. */
 export function normalizedUsage(graph: SessionGraph, ref: string): NormalizedUsageSummary[] {
-  if (!hasTable(graph.db, "normalized_event")) return [];
+  if (!hasNormalizedTables(graph)) return [];
   // Snapshot epochs are local to a physical source; never add copies from different files.
   // Pick the source with the latest native timestamp (then fullest coverage, then stable ID).
   const preferred = graph.db.prepare(`SELECT transcript_id FROM normalized_event
@@ -78,4 +100,43 @@ export function normalizedUsage(graph: SessionGraph, ref: string): NormalizedUsa
     accumulator.add(JSON.parse(row.usage) as UsageMeasurement);
   }
   return accumulator.summaries();
+}
+
+export interface NormalizedTurn { turnRef: string; startedAt: string | null; endedAt: string | null; toolCalls: number }
+export interface NormalizedConversationDetail {
+  turns: NormalizedTurn[];
+  edges: { relation: string; targetRef: string }[];
+  inbound: { relation: string; sourceRef: string }[];
+}
+/** Turns in start order with their distinct tool calls, plus lineage both ways. */
+export function normalizedConversationDetail(graph: SessionGraph, ref: string): NormalizedConversationDetail {
+  if (!hasNormalizedTables(graph)) return { turns: [], edges: [], inbound: [] };
+  const turns = graph.db.prepare(`SELECT t.turn_ref,t.started,t.ended,COALESCE(c.n,0) AS tool_calls
+    FROM (SELECT turn_ref,MIN(ts) AS started,MAX(ts) AS ended FROM normalized_event
+      WHERE conversation_ref = ? AND history_origin IS NULL AND kind = 'native_turn' GROUP BY turn_ref) t
+    LEFT JOIN (SELECT turn_ref,count(DISTINCT call_ref) AS n FROM normalized_event
+      WHERE conversation_ref = ? AND history_origin IS NULL AND kind = 'tool_call' GROUP BY turn_ref) c USING(turn_ref)
+    ORDER BY t.started,t.turn_ref`).all(ref, ref) as { turn_ref: string; started: string | null; ended: string | null; tool_calls: number }[];
+  const edges = graph.db.prepare("SELECT DISTINCT relationship,related_ref FROM normalized_event WHERE conversation_ref = ? AND kind = 'lineage'").all(ref) as { relationship: string; related_ref: string }[];
+  const inbound = graph.db.prepare("SELECT DISTINCT relationship,conversation_ref FROM normalized_event WHERE related_ref = ? AND kind = 'lineage'").all(ref) as { relationship: string; conversation_ref: string }[];
+  return {
+    turns: turns.map(t => ({ turnRef: t.turn_ref, startedAt: t.started, endedAt: t.ended, toolCalls: t.tool_calls })),
+    edges: edges.map(e => ({ relation: e.relationship, targetRef: e.related_ref })),
+    inbound: inbound.map(e => ({ relation: e.relationship, sourceRef: e.conversation_ref })),
+  };
+}
+
+export interface NormalizedErrorFact {
+  transcriptId: number; byteOffset: number; byteLength: number; conversationRef: string;
+  ts: string; path: string; sourceHash: string;
+}
+/** Error tool results of readable transcripts, one per source line, oldest first. */
+export function normalizedErrorFacts(graph: SessionGraph): NormalizedErrorFact[] {
+  if (!hasNormalizedTables(graph)) return [];
+  return graph.db.prepare(`SELECT n.transcript_id AS transcriptId,n.byte_offset AS byteOffset,MAX(n.byte_length) AS byteLength,
+      n.conversation_ref AS conversationRef,COALESCE(MIN(n.ts),t.created_at) AS ts,t.source_key AS path,
+      COALESCE(t.content_hash,t.prefix_hash,'') AS sourceHash
+    FROM normalized_event n JOIN transcript t ON t.source_id = n.transcript_id
+    WHERE n.kind = 'tool_result' AND n.is_error IS NOT 0 AND t.status = 'ok'
+    GROUP BY n.transcript_id,n.byte_offset ORDER BY ts`).all() as NormalizedErrorFact[];
 }
