@@ -29,7 +29,10 @@ export const REMERGE_STEP = "sh-remerge";
 /** Which probe carried a verdict or an approval to a new head; the evidence and the review check name it. */
 export type CarryRule = "tree-equal" | "remerge-empty" | "remerge-generated-only";
 
-/** Per repo, lowercased, the globs of files a tool regenerates; a merge that touched only these resolved nothing a reviewer reads. */
+/**
+ * Per repo, lowercased, the globs of files a tool rewrites whole; a merge that touched only these resolved nothing a reviewer reads.
+ * A file a person edits, even one a tool also reads or stamps once, never belongs here: its resolution needs a review.
+ */
 const GENERATED_PATHS: Readonly<Record<string, readonly string[]>> = generatedPathsJson;
 
 export function generatedPathsFor(repo: string): string[] {

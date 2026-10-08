@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generatedPathsFor, remerge, remergeFact, type RemergeResult } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
-const GENERATED = ["CAPABILITIES.md", "site/reference/**"];
+const GENERATED = ["CAPABILITIES.md", "site/generated/**"];
 const TEST_GIT_ENV = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: "1",
@@ -110,10 +110,19 @@ describe("remerge", { timeout: 30_000 }, () => {
   });
 
   it("carries a merge that regenerated files under a declared glob", async () => {
-    const reviewed = conflictingOn("site/reference/widgets.md");
-    const head = resolveMerge({ "site/reference/widgets.md": "regenerated\n" });
+    const reviewed = conflictingOn("site/generated/widgets.md");
+    const head = resolveMerge({ "site/generated/widgets.md": "regenerated\n" });
 
-    expect(await probe(reviewed, head)).toMatchObject({ carries: true, rule: "remerge-generated-only", paths: ["site/reference/widgets.md"] });
+    expect(await probe(reviewed, head)).toMatchObject({ carries: true, rule: "remerge-generated-only", paths: ["site/generated/widgets.md"] });
+  });
+
+  it.each(["site/reference/widgets.md", ".codewatch/check.json"])("does not carry a titan-platform merge that resolved hand-written %s", async (file) => {
+    const reviewed = conflictingOn(file);
+    const head = resolveMerge({ [file]: "resolved\n" });
+
+    const result = await remerge({ repo: REPO, baseRef: "main", fromHead: reviewed, head, generated: generatedPathsFor("HJewkes/titan-platform") }, { stateDir, remote: () => origin });
+
+    expect(result).toMatchObject({ carries: false, paths: [file], generatedPaths: [] });
   });
 
   it("does not carry a merge that resolved a conflict in a reviewed file", async () => {
@@ -201,7 +210,7 @@ describe("remerge", { timeout: 30_000 }, () => {
 
 describe("generatedPathsFor", () => {
   it("reads titan-platform's declared generated files from data, whatever the repo's case", () => {
-    expect(generatedPathsFor("HJewkes/titan-platform")).toEqual(["CAPABILITIES.md", "site/reference/**", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"]);
+    expect(generatedPathsFor("HJewkes/titan-platform")).toEqual(["CAPABILITIES.md", "site/guides/capabilities.md", "site/reference/index.md", "site/.vitepress/reference-sidebar.json"]);
   });
 
   it("declares nothing for a repo it does not list", () => {
