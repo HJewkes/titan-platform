@@ -170,4 +170,61 @@ describe("watchTree", () => {
 
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it("swallows a missing-root error when no onError is given", () => {
+    const missing = watchTree(path.join(root, "absent"), () => undefined);
+
+    expect(missing.isWatching(path.join(root, "absent"))).toBe(false);
+    missing.close();
+  });
+
+  it("reports paths outside the root or not on disk as unwatched", () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+
+    expect(watcher.isWatching(path.dirname(root))).toBe(false);
+    expect(watcher.isWatching(path.join(root, "missing"))).toBe(false);
+  });
+
+  it("resolves whenWatching false when the attach timeout elapses", async () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+
+    const watching = await watcher.whenWatching(path.join(root, "never"), DEBOUNCE_MS);
+
+    expect(watching).toBe(false);
+  });
+
+  it("resolves every waiter on the same late directory", async () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+    const late = path.join(root, "late");
+    const waiting = [watcher.whenWatching(late, 4000), watcher.whenWatching(late, 4000)];
+
+    await mkdir(late);
+
+    expect(await Promise.all(waiting)).toEqual([true, true]);
+  });
+
+  it("keeps attaching new directories after a watched one is removed", { timeout: 15_000 }, async () => {
+    const doomed = path.join(root, "doomed", "inner");
+    await mkdir(doomed, { recursive: true });
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS, onError: () => undefined });
+    expect(watcher.isWatching(doomed)).toBe(true);
+
+    await rm(path.join(root, "doomed"), { recursive: true, force: true });
+    const fresh = path.join(root, "fresh");
+    await mkdir(fresh);
+
+    expect(await watcher.whenWatching(fresh, 4000)).toBe(true);
+  });
+
+  it("never fires once closed, even with a change already pending", async () => {
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+    await writeFile(path.join(root, "pending.md"), "hello");
+    await sleep(DEBOUNCE_MS / 2);
+
+    watcher.close();
+    await sleep(DEBOUNCE_MS * 5);
+
+    expect(counter.count).toBe(0);
+  });
 });
