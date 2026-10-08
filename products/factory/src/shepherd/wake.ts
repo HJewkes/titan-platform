@@ -7,9 +7,10 @@ import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
+import { EXIT_NOTICE_STEPS, exitNoticeRoute } from "./exit-notice.js";
 import { FLAKE_CHECK_STEPS, flakeCheckRoute } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
-import type { ShepherdDeps, ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
@@ -28,6 +29,7 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: FIX_FIRST_STEP, kind: "dispatch" },
   { id: REPAIR_STEP, kind: "dispatch" },
   ...FLAKE_CHECK_STEPS,
+  ...EXIT_NOTICE_STEPS,
 ];
 
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
@@ -91,7 +93,7 @@ export type WakeInput = z.infer<typeof WakeInputSchema>;
 type Mode = "resume" | "successor" | "live";
 type Fallback = "resume" | "message";
 /** The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. */
-export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback } | { kind: "unhandled"; reason: string };
+export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number } | { kind: "unhandled"; reason: string };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 
@@ -220,7 +222,7 @@ async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, ta
  */
 async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, asked: Asked, signal: AbortSignal): Promise<WakeStepResult> {
   await recordSuccessor(deps, agents, task, asked.choice, signal);
-  const woke = wokenBy(asked.choice);
+  const woke = { ...wokenBy(asked.choice), askedAt: asked.at };
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), asked.at, signal)) return woke;
   const roster = await rosterWhileBrokerDown(deps, agents, signal);
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
@@ -354,10 +356,11 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
   flakeCheckRoute(deps.port, deps.now),
+  exitNoticeRoute(deps.now, deps.exitNotice),
 ];
 
 const Woke = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional() }),
+  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string() }),
 ]);
 
@@ -382,12 +385,12 @@ export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
 };
 
 /** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
-export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: { agent: string; sessionId?: string }): Promise<WakeOutcome> {
+export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence): Promise<WakeOutcome> {
   const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
   const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
   if (head.green) return { ...woken, sameHead: true };
-  if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}` };
+  if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}`, wake: woke };
   if (head.headSha === request.headSha) return { kind: "unhandled", reason: `${request.repo}#${request.pr} closed at head ${request.headSha} before a new head` };
   return woken;
 }

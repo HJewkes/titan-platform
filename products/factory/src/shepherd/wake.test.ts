@@ -111,7 +111,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     const { result } = await run("review", fixFirst("fix the parser"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
   });
 
@@ -120,7 +120,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     const { result } = await run("review", fixFirst("fix the parser"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
     const [spawn] = agents.asked;
     expect(spawn).toMatchObject({ verb: "spawn", name: "impl-a-s1", cwd: MAIN_CHECKOUT });
     expect(spawn!.message).toContain("taking over octo/demo#1 from impl-a");
@@ -149,7 +149,7 @@ describe("sh-wake-implementer: who is woken", () => {
     const { result } = await run("review", fixFirst("fix the parser"));
 
     expect(existsSync(parked)).toBe(false);
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["resume", "impl-a"]]);
     expect(agents.asked[0]!.message).toContain(`An independent review of head ${H1} returned FIX_FIRST.`);
     expect(agents.asked[0]!.message).toContain("Fix it on branch `feat/demo-fix`");
@@ -250,7 +250,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     const { result } = await run("review", fixFirst("fix the parser"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
     expect(agents.asked[0]!.message).toContain("fix the parser");
   });
@@ -277,7 +277,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(scene.clock.sleeps).toEqual([1_000]);
     expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
   });
@@ -307,7 +307,7 @@ describe("sh-wake-implementer: who is woken", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(scene.clock.now - T0).toBeGreaterThan(HEAD_READ_GIVE_UP_MS);
     expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["message", "impl-a"]]);
   });
@@ -332,7 +332,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", fallback: "message" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", fallback: "message", askedAt: expect.any(Number) });
     expect(asks(scene.agents)).toEqual([
       ["message", "impl-a"],
       ["message", "impl-a"],
@@ -389,7 +389,7 @@ describe("sh-wake-implementer: the woken agent must start a turn", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live", sessionId: "s-impl-a", askedAt: expect.any(Number) });
     expect(asks(scene.agents)).toEqual([["message", "impl-a"]]);
   });
 });
@@ -413,7 +413,7 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     const { outcome, result } = await scene.run("review", fixFirst("fix it"));
 
     expect(outcome.ok).toBe(true);
-    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
     expect(scene.clock.sleeps).toContain(1_000);
     expect(scene.agents.rows.filter((agent) => agent.name === "impl-a-s1")).toHaveLength(1);
   });
@@ -427,7 +427,7 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     const { result } = await scene.run("review", fixFirst("fix it"));
 
-    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
     expect(scene.agents.rows.filter((agent) => agent.name === "impl-a-s1")).toHaveLength(1);
   });
 
@@ -443,7 +443,7 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     const { result } = await scene.run("review", fixFirst("fix it"));
 
     expect(resumes).toBe(2);
-    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a" });
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
   });
 
   it("returns unhandled with the refusal class, and the step itself succeeds", async () => {
@@ -694,7 +694,7 @@ describe("wakePhase", () => {
 
     const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }));
 
-    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}` });
+    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: expect.objectContaining({ agent: "impl-a", mode: "resume" }) });
   });
 
   it("is unhandled when the PR closes at the same head", async () => {
