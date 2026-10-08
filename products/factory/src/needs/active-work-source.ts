@@ -79,7 +79,7 @@ export function createActiveWorkSource(options: ActiveWorkSourceOptions): QueueS
   return {
     system: "active-work",
     open,
-    tail: (cursor, signal) => pollTail(open, cursor, signal, options.pollMs),
+    tail: pollTail({ open, intervalMs: options.pollMs }),
     resolve: async () => ({ ok: false, reason: "rejected", detail: "needs-decision tasks are answered by a note on the task" }),
   };
 }

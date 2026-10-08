@@ -9,6 +9,8 @@ export {
   sourceRefSchema,
 } from "./schema.js";
 export type { ItemStatus, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
+export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
+export type { OwnerItemDeposit } from "./deposit.js";
 export type { ClosedStatus, QueueSource, ResolveResult, SourceEvent } from "./port.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
 export { rank } from "./rank.js";

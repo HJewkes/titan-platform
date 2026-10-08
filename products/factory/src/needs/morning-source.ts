@@ -42,7 +42,7 @@ export function createMorningSource({ dir, seats, pollMs }: MorningSourceOptions
   return {
     system: "morning",
     open,
-    tail: (cursor, signal) => pollTail(open, cursor, signal, pollMs),
+    tail: pollTail({ open, intervalMs: pollMs }),
     resolve: async () => ({ ok: false, reason: "rejected", detail: "Morning items are answered in the seat's queue file" }),
   };
 }
