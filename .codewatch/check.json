@@ -50,7 +50,8 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel"
         ],
         "ui": [
           "packages/react-app"
@@ -110,7 +111,8 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel"
         ],
         [
           "packages/react-app"

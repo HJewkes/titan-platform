@@ -32,6 +32,10 @@
         "link": "/reference/embed"
       },
       {
+        "text": "eslint-plugin",
+        "link": "/reference/eslint-plugin"
+      },
+      {
         "text": "evidence",
         "link": "/reference/evidence"
       },
@@ -142,6 +146,10 @@
       {
         "text": "queue-mirror",
         "link": "/reference/queue-mirror"
+      },
+      {
+        "text": "review-panel",
+        "link": "/reference/review-panel"
       },
       {
         "text": "session-analytics",
