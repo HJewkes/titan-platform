@@ -7,7 +7,7 @@ export type TaskStage = (typeof TASK_STAGES)[number];
 /** Which rule produced a stage. Only `default` is a guess: it means no evidence was found either way. */
 export type StageRule = "status-done" | "open-pr" | "live-ref" | "dependency" | "unresolved-dependency" | "hold" | "open-slices" | "merged-commit" | "default";
 
-export interface StageVerdict {
+interface StageVerdict {
   stage: TaskStage;
   rule: StageRule;
   reason: string;

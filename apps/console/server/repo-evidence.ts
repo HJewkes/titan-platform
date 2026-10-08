@@ -19,7 +19,7 @@ export interface RepoEvidence {
 /** Reads evidence for the given clones, deduplicated by repository so a worktree path costs nothing extra. */
 export type EvidenceReader = (repoPaths: readonly string[]) => Promise<RepoEvidence[]>;
 
-export interface GitEvidenceOptions {
+interface GitEvidenceOptions {
   git?: GitRunner;
   github?: Pick<GitHubPort, "listOpenPrs">;
   ttlMs?: number;

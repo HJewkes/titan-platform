@@ -15,7 +15,7 @@ export interface TasksSource {
   work?: WorkOptions;
 }
 
-export type TaskRow = ReturnType<typeof taskRowOf> & {
+type TaskRow = ReturnType<typeof taskRowOf> & {
   status: "open" | "done";
   stage: TaskStage;
   stageRule: StageRule;
