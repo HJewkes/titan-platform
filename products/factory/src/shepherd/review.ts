@@ -316,7 +316,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 
 /** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
 export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
-  await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead }) });
+  await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) });
   const { visualPaths } = effectivePolicy(ctx);
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }) };
   const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);

@@ -6,6 +6,7 @@ import { ciFailedDecision } from "../gate-brief.js";
 import { gateEverything } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
+import { localMergeTree } from "../shepherd/tree-carry.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
@@ -111,7 +112,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const now = deps.now ?? Date.now;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000 };
   return [
-    ...landRoutes(deps),
+    ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal }), ...deps }),
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs, snapshot: deps.snapshot }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),

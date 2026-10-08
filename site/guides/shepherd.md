@@ -56,7 +56,8 @@ reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back uncha
 
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
-a tree-equal update (MRG-AU-RC); `security` and `unknown` always get a fresh review. The kind
+a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
+nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. The kind
 does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
 replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
 `unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a

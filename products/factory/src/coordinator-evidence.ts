@@ -152,7 +152,7 @@ function runEligible(run: RunFacts, land: LandGate): boolean {
 
 const POLICY_DENIAL = escalationReason("policy-denial", "");
 const CONDITION_LIST = "[a-z-]+(?:, [a-z-]+)*";
-const MRG_AU_REASON = new RegExp(`^MRG-AU gates merge by automation; MRG-AU-RV unmet: (${CONDITION_LIST})(?:; MRG-AU-RC unmet: ${CONDITION_LIST})?$`);
+const MRG_AU_REASON = new RegExp(`^MRG-AU gates merge by automation; MRG-AU-RV unmet: (${CONDITION_LIST})(?:; MRG-AU-RC unmet: ${CONDITION_LIST})?(?:; MRG-AU-RM unmet: ${CONDITION_LIST})?$`);
 /** Owner decision 2026-10-07: a reviewer MERGE at the head, green required checks and MERGEABLE, each re-read at resolve time. */
 const MECHANICAL_CONDITIONS: ReadonlySet<string> = new Set(["verdict-merge-at-head", "required-contexts-green", "no-non-green-run", "merge-tree-clean"]);
 

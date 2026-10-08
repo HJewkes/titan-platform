@@ -8,6 +8,7 @@
  * On a required check GitHub counts `neutral` and `skipped` as satisfied, so the conclusion type has neither. A review
  * that could not speak blocks with `action_required`, and `success` is kept for a proven MERGE at this exact head.
  */
+import type { CarryRule } from "./remerge-carry.js";
 import type { ReviewOutcome } from "./route-table.js";
 
 export type ReviewConclusion = "success" | "failure" | "action_required";
@@ -18,8 +19,10 @@ export interface ReviewCheckInput {
   verdictHead?: string;
   /** Where the run is posted: the PR's current head. */
   head: string;
-  /** Set only for a verified tree-equal carry: the reviewed head the MERGE was carried from to `head`. */
+  /** Set only for a verified carry: the reviewed head the MERGE was carried from to `head`. */
   carriedFrom?: string;
+  /** Which probe verified the carry; absent reads as `tree-equal`. */
+  carryRule?: CarryRule;
   /** A success would let GitHub merge past Shepherd's other guards, so an armed auto-merge blocks it. */
   autoMergeArmed: boolean;
   /** Set for the Version Packages PR, whose preflight stands in for the reviewer. */
@@ -45,6 +48,12 @@ const NO_VERDICT: Record<NoVerdictOutcome, string> = {
 
 const short = (sha: string): string => sha.slice(0, 12);
 
+const CARRIED_BECAUSE: Record<CarryRule, string> = {
+  "tree-equal": "The review of a tree-equal head stands for this head.",
+  "remerge-empty": "This head merges the base into the reviewed head and its remerge-diff is empty, so the review stands.",
+  "remerge-generated-only": "This head merges the base into the reviewed head and its remerge-diff touches only declared generated files, so the review stands.",
+};
+
 export function reviewCheck(input: ReviewCheckInput): ReviewCheck {
   const { outcome, head, verdictHead, carriedFrom } = input;
   const at = (conclusion: ReviewConclusion, title: string, summary: string): ReviewCheck => ({ headSha: head, conclusion, title, summary });
@@ -58,6 +67,7 @@ export function reviewCheck(input: ReviewCheckInput): ReviewCheck {
   if (input.autoMergeArmed) return at("action_required", `MERGE at ${short(head)} held: auto-merge is armed`, "Disarm GitHub auto-merge so Shepherd's guards decide the merge.");
   const blockers = input.releaseBlockers;
   if (blockers !== undefined && blockers !== 0) return at("action_required", `Release preflight at ${short(head)}: ${blockers} blockers`, "The release preflight found blockers at this head.");
-  if (carried) return at("success", `MERGE at ${short(head)}, carried from ${short(carriedFrom)}`, "The review of a tree-equal head stands for this head.");
+  const rule = input.carryRule ?? "tree-equal";
+  if (carried) return at("success", `MERGE at ${short(head)}, carried from ${short(carriedFrom)} (${rule})`, CARRIED_BECAUSE[rule]);
   return at("success", `MERGE at ${short(head)}`, blockers === undefined ? "The review passed at this exact head." : "The release preflight passed at this exact head.");
 }

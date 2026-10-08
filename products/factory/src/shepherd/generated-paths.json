@@ -1,0 +1,8 @@
+{
+  "hjewkes/titan-platform": [
+    "CAPABILITIES.md",
+    "site/guides/capabilities.md",
+    "site/reference/index.md",
+    "site/.vitepress/reference-sidebar.json"
+  ]
+}
