@@ -508,10 +508,13 @@ are leads, not verdicts, and both drop files that `keepNode` rejects:
   descending, each row carrying the export's own `loc` (`symbol_loc`, 0 when unmeasured).
   `publicApiFiles(nodes, edges)` builds `publicApi`: the files a `barrel`-role
   node re-exports one hop away, whose exports may still have npm consumers.
-- `topDeadModules(nodes, edges, ctx, limit)` lists files that a forward walk over `imports`
-  and `re-exports` edges never reaches, ranked by `loc`. The walk starts from files with the
-  role `entry`, `barrel`, `test`, `script`, `config` or `fixture`, and from any
-  `main.{ts,tsx,js,jsx}`.
+- `topDeadModules(nodes, edges, ctx, limit, { view })` lists files that a forward walk over
+  `imports` and `re-exports` edges never reaches, ranked by `loc`. Files with the role `test`,
+  `fixture`, `story` or `lab` are never rows. The default view, `"all-consumers"`, starts the
+  walk from files with the role `entry`, `barrel`, `test`, `fixture`, `story`, `lab`, `script`
+  or `config`, and from any `main.{ts,tsx,js,jsx}`. The `"public"` view starts it only from
+  `entry`, `barrel`, `config`, `script` and `main.*` files. A row that test, story or lab
+  files still reach carries `reachableOnlyFrom`, naming `lab` before `story` before `test`.
 
 These differ from `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.

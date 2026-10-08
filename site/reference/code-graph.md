@@ -351,9 +351,14 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
   still use them, and rank after internal ones; ties break on `symbol_cognitive`. Each row also carries `loc`, the export's own
   `symbol_loc` (0 when unmeasured).
 - `topDeadModules` lists files a forward walk over `imports` and `re-exports` never reaches,
-  ranked by `loc`. The walk starts at files with the role `entry`, `barrel`, `test`,
-  `script`, `config` or `fixture`, and at any `main.{ts,tsx,js,jsx}`. A computed
-  `import(variable)` or a registry string escapes it, so a live file can show up here.
+  ranked by `loc`. Files with the role `test`, `fixture`, `story` or `lab` are never rows. The
+  default view, `"all-consumers"`, starts the walk at files with the role `entry`, `barrel`,
+  `test`, `fixture`, `story`, `lab`, `script` or `config`, and at any `main.{ts,tsx,js,jsx}`.
+  Pass `{ view: "public" }` as a fifth argument to start it only at `entry`, `barrel`,
+  `config`, `script` and `main.*` files. Then a file that only a story, lab page or test
+  reaches is a row with `reachableOnlyFrom` set to `"lab"`, `"story"` or `"test"`, in that
+  order of precedence. A computed `import(variable)` or a registry string escapes the walk,
+  so a live file can show up here.
 
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
