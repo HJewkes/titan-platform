@@ -4,7 +4,7 @@ import { TranscriptParseError } from "./read.js";
 import { asObject, type Json } from "./text.js";
 
 /** Receives each non-blank line with the verified prefix boundary that precedes it. */
-export type HandleDecodedLine = (line: LocatedSourceLine, before: ResumeBoundary) => void;
+type HandleDecodedLine = (line: LocatedSourceLine, before: ResumeBoundary) => void;
 
 /** Replay every line into the prefix digest so the returned boundary covers exactly what was read. */
 export async function decodeLines(lines: AsyncIterable<LocatedSourceLine>, handle: HandleDecodedLine): Promise<ResumeBoundary> {
