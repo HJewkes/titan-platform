@@ -18,6 +18,7 @@ import {
   VERSION_PATH,
   rpcFailureStatus,
 } from "@titan-design/rpc-protocol";
+import { getRequestAuth } from "./auth.js";
 import type { EventHub } from "./events.js";
 import { CLIENT_HEADER, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
@@ -115,7 +116,8 @@ function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions
     const rawArgs = await readJsonBody(c);
     if (rawArgs === INVALID_JSON) return c.json(errorEnvelope("Invalid JSON body", EXIT.USAGE), RPC_STATUS.BAD_REQUEST);
 
-    const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, options.createContext("http"), {
+    const context = options.createContext("http", getRequestAuth(c.req.raw));
+    const { envelope, exitCode } = await invokeCommand(cmd, rawArgs, context, {
       invalidArgsCode: EXIT.DATAERR,
       formatError: options.formatError,
     });

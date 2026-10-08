@@ -224,7 +224,7 @@ export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | und
 }
 
 /** A green merge clears the freeze only if it descends from the red sha and re-ran green every check that was red there. */
-export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "mergeSha">): Promise<z.infer<typeof UnfreezeResult>> {
+export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: Pick<RedInput, "repo" | "pr" | "mergeSha">): Promise<z.infer<typeof UnfreezeResult>> {
   const freezes = wiring?.freezes();
   const live = freezes?.get(input.repo);
   if (!freezes || !live) return { unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" };
@@ -232,7 +232,8 @@ export async function unfreezeStep(deps: ShepherdDeps, wiring: MainRedWiring | u
   try {
     const after = (await deps.port.compareFiles(input.repo, live.redSha, input.mergeSha)).mergeBaseSha === live.redSha;
     if (!after) return stays(`${input.mergeSha} does not descend from the red sha ${live.redSha}`);
-    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
+    const { baseRef } = await deps.port.getPr(input.repo, input.pr);
+    if (!(await greenAfterRed(deps.port, input.repo, input.mergeSha, live, baseRef))) return stays(`a check red at ${live.redSha} has not run green at ${input.mergeSha}`);
   } catch (error) {
     return stays(`main could not be read: ${failureOf(error)}`);
   }

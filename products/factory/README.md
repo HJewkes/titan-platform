@@ -62,7 +62,7 @@ gate classes, each only on evidence the command reads fresh through the GitHub p
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
-| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every Actions run on it passing |
+| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
 | `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
 
 The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
@@ -525,9 +525,13 @@ validation.
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:
 
-- `land-rules`: required checks and the strict flag for the PR's base, read at run start.
+- `land-rules`: required checks and the strict flag for the PR's base, read at run start. A base that requires no
+  status check does not refuse: `ci-wait` then waits on every check-run at the head from the GitHub Actions app and
+  lands only when there is at least one and all are complete and green (success, neutral or skipped). The first green read is held until a
+  second poll sees the same runs, because a job behind `needs:` has no run yet. Zero runs wait
+  and time out; another app's runs neither count nor block. A rules read that errors still fails the run.
 - `ci-wait:<n>`: one blocking step that polls every 30 s (45 min timeout) until every required
-  check's latest run completed. An empty rollup is pending. `mergeable_state` `unknown` or
+  check's latest run completed (every Actions run, for a base that requires none). An empty rollup is pending. `mergeable_state` `unknown` or
   `blocked` keeps it waiting; it is never treated as clean.
 - `update-branch:<n>`: only when the PR is behind, under `expected_head_sha`. After
   `MAX_UPDATE_CYCLES` (3) updates the run opens gate `stuck-behind` (retry or abandon).

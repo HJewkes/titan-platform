@@ -51,20 +51,6 @@ describe.each(UNREADABLE)("land when the required checks read fails with %s", (_
   });
 });
 
-describe("land when the repo has no rules", () => {
-  it("still refuses a successful empty read, as before", async () => {
-    const scenario = landScenario();
-    scenario.fake.rules.contexts = [];
-    const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
-    hosts.push(host);
-
-    const runId = host.runtime.start("land-test");
-    await host.runtime.wait(runId).catch(() => undefined);
-
-    expect(JSON.stringify(host.runtime.status(runId))).toContain("requires no status checks");
-  });
-});
-
 describe.each(UNREADABLE)("merge facts when the required checks read fails with %s", (_name, error, status) => {
   it("gates and records the required checks as unknown, naming the repo and the status", async () => {
     const fake = greenWorld();
