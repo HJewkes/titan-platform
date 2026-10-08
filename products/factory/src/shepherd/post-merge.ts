@@ -273,7 +273,7 @@ async function readAt(port: GitHubPort, input: MainCiInput, sha: string, rules: 
   const routed = routeOf(classified);
   switch (routed.route) {
     case "done":
-      return { verdict: "green", detail: read.detail, ...(read.warning && { warning: read.warning }) };
+      return { verdict: "green", detail: read.detail, ...("warning" in read && read.warning && { warning: read.warning }) };
     case "main-red":
       return { verdict: "red", detail: read.detail };
     case "read-newer-run":

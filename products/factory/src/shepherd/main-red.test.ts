@@ -273,7 +273,7 @@ describe("sh-freeze", () => {
     const first = freezeStep(r.wiring, red);
     const replay = freezeStep(r.wiring, red);
     r.freezes.setFixer(REPO, 1, "fix-widget-aaaaaaa");
-    const second = freezeStep(r.wiring, { repo: REPO, pr: 1, mergeSha: LATER });
+    const second = freezeStep(r.wiring, { repo: REPO, mergeSha: LATER });
 
     expect([first.state, replay.state, second.state]).toEqual(["new", "new", "again"]);
   });
