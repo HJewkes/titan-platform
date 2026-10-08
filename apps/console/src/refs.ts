@@ -2,7 +2,7 @@ import type { Route } from "./router.js";
 
 /** The ref classes: active-work's three, and the four the console adds. */
 export const REF_CLASSES = ["task", "note", "source", "session", "agent", "pr", "code"] as const;
-export type RefClass = (typeof REF_CLASSES)[number];
+type RefClass = (typeof REF_CLASSES)[number];
 
 /** Where a ref leads: a console route, a pull request on GitHub, or a file in the codewatch app. */
 export type RefTarget =
@@ -48,7 +48,7 @@ export function refToRoute(ref: string): RefTarget | undefined {
 const TASK_ID = /^([A-Z][A-Z0-9]*)-\d+[a-z]?$/;
 
 /** `TP-830` gives `TP`; active-work stamps every task id with its initiative's prefix. */
-export function taskPrefix(id: string): string | undefined {
+function taskPrefix(id: string): string | undefined {
   return TASK_ID.exec(id)?.[1];
 }
 

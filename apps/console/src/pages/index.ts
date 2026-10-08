@@ -4,7 +4,7 @@ import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { StatusPage } from "./StatusPage.js";
 
-export type PageComponent = (props: { route: Route }) => ReactNode;
+type PageComponent = (props: { route: Route }) => ReactNode;
 
 const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(InitiativeDetailPage, { slug: route.id }) : createElement(InitiativesPage));
 
