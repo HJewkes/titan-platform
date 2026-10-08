@@ -121,11 +121,11 @@ export const agentRosterSnapshot = z.object({
 export type AgentRosterSnapshot = z.infer<typeof agentRosterSnapshot>;
 
 export const ACTIVITY_CATEGORIES = ["message", "question", "notice", "thinking"] as const;
-export const activityCategorySchema = z.enum(ACTIVITY_CATEGORIES);
-export type ActivityCategory = z.infer<typeof activityCategorySchema>;
+export const agentActivityCategory = z.enum(ACTIVITY_CATEGORIES);
+export type ActivityCategory = z.infer<typeof agentActivityCategory>;
 
-export const nodeActivitySchema = z.object({ category: activityCategorySchema, at: z.number() });
-export type NodeActivity = z.infer<typeof nodeActivitySchema>;
+export const agentGraphNodeActivity = z.object({ category: agentActivityCategory, at: z.number() });
+export type NodeActivity = z.infer<typeof agentGraphNodeActivity>;
 
 export const agentGraphNode = z.object({
   /** Stable across a respawn of the same name: the roster id, else the broker agent id, else `name:<name>`. */
@@ -137,7 +137,7 @@ export const agentGraphNode = z.object({
   /** Spawn-tree column and row from `layoutSpawnTree`; pixels are the renderer's business. */
   depth: z.number().int().nonnegative(),
   row: z.number(),
-  activity: nodeActivitySchema.nullable(),
+  activity: agentGraphNodeActivity.nullable(),
 });
 export type AgentGraphNode = z.infer<typeof agentGraphNode>;
 
