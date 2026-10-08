@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { REVIEW_STEPS } from "./review.js";
-import { CARRY_STEP, carry, carryCacheDir, type CarryResult } from "./tree-carry.js";
+import { CARRY_STEP, carry, carryCacheDir, localMergeTree, type CarryResult } from "./tree-carry.js";
 
 const REPO = "acme/widgets";
 const TEST_GIT_ENV = {
@@ -168,5 +168,34 @@ describe("carry", { timeout: 30_000 }, () => {
 
   it("is declared as a durable shepherd step", () => {
     expect(REVIEW_STEPS).toContainEqual({ id: CARRY_STEP, kind: "dispatch" });
+  });
+});
+
+describe("localMergeTree", { timeout: 30_000 }, () => {
+  const mergeTree = (headSha: string, remote = origin): Promise<string> => localMergeTree({ repo: REPO, baseRef: "main", headSha }, { stateDir, remote: () => remote });
+
+  it("answers clean when the head merges onto the base tip with no conflict", async () => {
+    const { h1 } = reviewedHead();
+
+    expect(await mergeTree(h1)).toBe("clean");
+  });
+
+  it("answers conflict when the head and the base tip edit the same lines", async () => {
+    const { h1 } = reviewedHead();
+    branchAt("main", "main");
+    commit("a.txt", "a-main\n");
+
+    expect(await mergeTree(h1)).toBe("conflict");
+  });
+
+  it("answers unread with the failing git command when the fetch fails, and never throws", async () => {
+    const { h1 } = reviewedHead();
+
+    expect(await mergeTree(h1, join(root, "missing"))).toBe("unread: git fetch exited 128");
+  });
+
+  it("answers unread for a head that is not a sha without touching git", async () => {
+    expect(await mergeTree("--upload-pack=x")).toMatch(/^unread: invalid input/);
+    expect(existsSync(join(stateDir, "git-cache"))).toBe(false);
   });
 });
