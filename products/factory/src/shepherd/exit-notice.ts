@@ -10,7 +10,7 @@ import { toPresence } from "./presence.js";
 import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 
-export const EXIT_NOTICE_STEP = "sh-exit-notice";
+const EXIT_NOTICE_STEP = "sh-exit-notice";
 export const EXIT_NOTICE_STEPS: readonly StepDeclaration[] = [{ id: EXIT_NOTICE_STEP, kind: "dispatch" }];
 
 /** Long enough for a DONE report's status lines, short enough for one chat message. */
@@ -31,7 +31,7 @@ export interface ExitNoticePorts {
 }
 
 /** `unread`: a live wake the agent exited before reading, because its last report predates the ask. `read-no-push`: it took the wake and pushed nothing. */
-export type ExitCause = "unread" | "read-no-push";
+type ExitCause = "unread" | "read-no-push";
 
 const ExitNoticeInput = z.object({
   repo: z.string().min(1),
@@ -44,7 +44,7 @@ const ExitNoticeInput = z.object({
 type ExitNoticeInput = z.infer<typeof ExitNoticeInput>;
 
 const ExitNoticeResult = z.looseObject({ sent: z.boolean(), cause: z.enum(["unread", "read-no-push"]), detail: z.string(), seat: z.string().optional(), report: z.string().optional() });
-export type ExitNoticeResult = z.infer<typeof ExitNoticeResult>;
+type ExitNoticeResult = z.infer<typeof ExitNoticeResult>;
 
 /**
  * A message to a live agent waits for its next turn, so an agent that ends the turn it was already in and exits never
@@ -133,7 +133,7 @@ function latestSession(rows: readonly AgentRow[], agent: string, sessionId: stri
 }
 
 /** The agent's last message through the reviewer reader, which reads a seat's transcript whatever its presence. */
-export function transcriptLastReport(roster: () => Promise<readonly AgentRow[]>): ExitNoticePorts["lastReport"] {
+function transcriptLastReport(roster: () => Promise<readonly AgentRow[]>): ExitNoticePorts["lastReport"] {
   const reader = transcriptReviewerReader({ roster: async () => (await roster()).map((row) => ({ ...row, presence: toPresence(row.presence) })) });
   return async (target, agent, sessionId) => {
     const row = latestSession(await roster(), agent, sessionId);
@@ -143,7 +143,7 @@ export function transcriptLastReport(roster: () => Promise<readonly AgentRow[]>)
   };
 }
 
-export interface ExitNoticeAgents {
+interface ExitNoticeAgents {
   roster(): Promise<readonly AgentRow[]>;
   message(name: string, message: string): Promise<void>;
 }
