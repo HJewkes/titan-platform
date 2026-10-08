@@ -15,7 +15,7 @@ import {
   createLoginCodeLedger,
   ensureTokenFile,
   mintLoginCode,
-  mountAuthRoutes,
+  mountLogoutRoute,
   rotateTokenFile,
   signSession,
   verifySession,
@@ -248,10 +248,14 @@ describe("mintLoginCode / consumeLoginCode", () => {
 function buildGatedApp(auth: DaemonAuth): Hono {
   const app = new Hono();
   app.use("*", authGate(auth));
-  mountAuthRoutes(app, auth);
+  mountLogoutRoute(app);
   app.get("/", (c) => c.text("home"));
   app.post("/rpc/thing", (c) => c.json({ ok: true }));
   return app;
+}
+
+function buildDaemonApp(auth: DaemonAuth, mountRoutes?: (app: Hono) => void, createContext = createTestContext): Hono {
+  return buildHttpApp({ registry: createTestRegistry(), createContext, version: "0.0.0", port: () => 7500, gate: auth, mountRoutes });
 }
 
 function setup(startedAt = T0): { app: Hono; auth: DaemonAuth; secret: string } {
@@ -435,6 +439,31 @@ describe("two-step login", () => {
     expect((await postLogin(app, { code })).status).toBe(200);
   });
 
+  it("HEAD answers like GET with no body", async () => {
+    const { app } = setup();
+
+    const res = await app.request("/auth/login", { method: "HEAD" });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.text()).toBe("");
+  });
+
+  it.each(["PUT", "DELETE", "OPTIONS", "PATCH"])("answers %s with 405 before any product catch-all", async (method) => {
+    const { auth } = setup();
+    const app = buildDaemonApp(auth, (inner) => inner.all("*", (c) => c.text("catch-all")));
+
+    const res = await app.request("/auth/login", {
+      method,
+      headers: { host: "localhost:7500", "content-type": "application/json", "x-titan-client": "test" },
+      body: method === "OPTIONS" ? undefined : "{}",
+    });
+
+    expect(res.status).toBe(405);
+    expect(res.headers.get("allow")).toBe("GET, HEAD, POST");
+    expect(await res.text()).not.toBe("catch-all");
+  });
+
   it("GET does not reflect its query into the page", async () => {
     const { app } = setup();
     const res = await app.request(`/auth/login?code=${encodeURIComponent('"><script>alert(1)</script>')}`);
@@ -525,18 +554,8 @@ describe("POST /auth/logout", () => {
   });
 
   it("is answered 415 for a non-JSON body behind the request guard", async () => {
-    const secret = ensureTokenFile(tokenFile);
-    const auth = createDaemonAuth({ tokenFile, startedAt: T0 });
-    const app = buildHttpApp({
-      registry: createTestRegistry(),
-      createContext: createTestContext,
-      version: "0.0.0",
-      port: () => 7500,
-      mountRoutes: (inner) => {
-        inner.use("*", authGate(auth));
-        mountAuthRoutes(inner, auth);
-      },
-    });
+    const { auth, secret } = setup();
+    const app = buildDaemonApp(auth);
     const headers = { host: "localhost:7500", origin: "http://localhost:7500", cookie: `${SESSION_COOKIE}=${signSession(secret, T0)}` };
 
     const form = await app.request("/auth/logout", { method: "POST", headers: { ...headers, "content-type": "text/plain" } });
@@ -550,12 +569,8 @@ describe("POST /auth/logout", () => {
 describe("createContext receives what the gate recorded", () => {
   function buildRpcApp(auth?: DaemonAuth) {
     const createContext = vi.fn((surface: Surface) => createTestContext(surface));
-    const inner = buildHttpApp({ registry: createTestRegistry(), createContext, version: "0.0.0", port: () => 7500 });
-    if (!auth) return { app: inner, createContext };
-    const outer = new Hono();
-    outer.use("*", authGate(auth));
-    outer.route("/", inner);
-    return { app: outer, createContext };
+    if (!auth) return { app: buildHttpApp({ registry: createTestRegistry(), createContext, version: "0.0.0", port: () => 7500 }), createContext };
+    return { app: buildDaemonApp(auth, undefined, createContext), createContext };
   }
 
   const rpc = (app: Hono, headers: Record<string, string>) =>

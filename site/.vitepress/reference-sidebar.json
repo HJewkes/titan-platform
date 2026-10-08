@@ -148,6 +148,10 @@
         "link": "/reference/owner-queue"
       },
       {
+        "text": "pm",
+        "link": "/reference/pm"
+      },
+      {
         "text": "queue-mirror",
         "link": "/reference/queue-mirror"
       },

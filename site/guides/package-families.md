@@ -61,6 +61,7 @@ composes all three.
   per-repository budget, with release, park, re-create and sweep.
 - [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
   autonomy coordinator reads.
+- [`pm`](/reference/pm): the zod schema and type for an active-work task record.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
   and `assisted` steps are memoized, with `mapItems` fan-out under a budget.
