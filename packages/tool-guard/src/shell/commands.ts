@@ -69,6 +69,11 @@ export interface ExtractOptions {
    * when neither its name nor the command's as written is one. Omitted: every name.
    */
   guarded?: ReadonlySet<string>;
+  /**
+   * Past the budget of dynamic wrapper readings, read the rest as if it had none, as main does, instead of throwing
+   * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
+   */
+  stopPastCap?: boolean;
 }
 
 interface Scope {
@@ -112,7 +117,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded) } });
+  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
   return out;
 }
 

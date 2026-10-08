@@ -9,7 +9,7 @@ import { INTERPRETERS } from "./mentions.js";
 import { scriptTarget, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
 import { extractCommands } from "./shell/commands.js";
-import type { SimpleCommand } from "./shell/commands.js";
+import type { ExtractOptions, SimpleCommand } from "./shell/commands.js";
 import { ParseError } from "./shell/lexer.js";
 import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
@@ -42,8 +42,13 @@ interface ScriptMemo {
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
-  const asWritten = classifyLine(extractCommands(src, { cwd, home: ctx.home, guarded: GUARDED }), ctx, scripts);
+  const asWritten = classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, false)), ctx, scripts);
   return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, scripts)]) : asWritten;
+}
+
+/** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */
+function extractOptions(cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null, foldCase: boolean): ExtractOptions {
+  return { cwd, home: ctx.home, foldCase, guarded: GUARDED, stopPastCap: scripts === null };
 }
 
 /**
@@ -54,7 +59,7 @@ function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, 
  */
 function foldedActions(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   try {
-    return classifyLine(extractCommands(src, { cwd, home: ctx.home, foldCase: true, guarded: GUARDED }), ctx, scripts);
+    return classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, true)), ctx, scripts);
   } catch (error) {
     if (error instanceof ReadingLimitError) throw error;
     return [];

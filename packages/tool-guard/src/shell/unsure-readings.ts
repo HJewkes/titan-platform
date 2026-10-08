@@ -48,6 +48,8 @@ export class ScriptBudgetError extends ReadingLimitError {
 
 export interface UnsureBudget {
   left: number;
+  /** Past the budget, walk no more readings instead of throwing, so the rest is read as main reads it. */
+  stopPastCap: boolean;
   /** Whether classify reads this command other than by its arguments' default treatment: a dynamic, guarded or exempting name. */
   decides: (cmd: Unwrapped) => boolean;
 }
@@ -58,7 +60,8 @@ export interface UnsureBudget {
  * (`timeout $P git push`), a later reading moves `git` into the value slot, so no reading stands in for another.
  * A reading's arguments are a suffix of the command's as written, so it adds nothing only when both its name and
  * the written one get every family's default treatment (`flock $F ls sort key` runs `sort`, which `ls` hid). Such a
- * reading is skipped for free; any other is walked, or throws when the line's budget cannot cover it.
+ * reading is skipped for free; any other is walked, or throws when the line's budget cannot cover it, unless the
+ * budget stops there instead.
  */
 export function unsureReadings(cmd: Unwrapped | undefined, budget: UnsureBudget): Unwrapped[][] {
   const out: Unwrapped[][] = [];
@@ -66,6 +69,7 @@ export function unsureReadings(cmd: Unwrapped | undefined, budget: UnsureBudget)
   for (let unsure = cmd?.unsure; unsure; ) {
     const runs = caseNamed(unsure);
     if (special || runs.some(budget.decides)) {
+      if (unsure.length > budget.left && budget.stopPastCap) return out;
       if (unsure.length > budget.left) throw new ReadingLimitError();
       budget.left -= unsure.length;
       out.push(runs);
