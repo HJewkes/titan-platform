@@ -421,7 +421,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
 
     await host.runtime.wait(runId);
 
-    expect(activeWork.calls).toEqual(["task.list", "task.done"]);
+    expect(activeWork.calls).toEqual(["task.list", "task.list", "task.edit", "task.done"]);
     expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
     expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
   });
