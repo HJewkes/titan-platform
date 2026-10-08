@@ -20,7 +20,7 @@ export interface DigestSources {
   gates(): Promise<GateFact[]>;
   /** Throws when agent-chat is missing, slow, or too old to print JSON. */
   agentChat(windowMinutes: number): Promise<AgentChatDigest>;
-  queueAsks(): Ask[];
+  queueAsks(): Ask[] | Promise<Ask[]>;
   seatCosts(since: Date): SeatLine[];
 }
 
