@@ -86,4 +86,24 @@ describe("a heredoc opened inside a process substitution", () => {
     const command = `${Array.from({ length: 300 }, () => "cat <(cat <<EOF)\nb\nEOF").join("\n")}\n${PUSH}`;
     expect(await hookDenies(command)).toBe(true);
   });
+
+  it("the hook denies a push after a pending heredoc inside an arithmetic command that holds a quote in its body", async () => {
+    expect(await hookDenies(`((cat <(cat <<EOF)) )\nit's\nEOF\n${PUSH}\necho \\'`)).toBe(true);
+  });
+
+  it("the hook denies a push after a pending heredoc inside an arithmetic command with a trailing command", async () => {
+    expect(await hookDenies(`((cat <(cat <<EOF)); true )\nit's\nEOF\n${PUSH}\necho \\'`)).toBe(true);
+  });
+
+  it.each([
+    ["an arithmetic expansion", "cat <(cat <<E)\nE\n$((1))\n"],
+    ["a backtick substitution", "cat <(cat <<E)\nE\n`echo x`\n"],
+    ["three arithmetic expansions", "cat <(cat <<E)\nE\necho $((2<<1)) $((3)) $((4))\n"],
+  ])("the hook denies a push after eight kilobytes of pending heredocs with %s, in under two seconds", async (_name, unit) => {
+    const command = `${unit.repeat(Math.floor(7900 / unit.length))}${PUSH}`;
+    const started = performance.now();
+    const denied = await hookDenies(command);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(denied).toBe(true);
+  });
 });
