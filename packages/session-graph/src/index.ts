@@ -27,5 +27,9 @@ export { reconcilePrices, syncPrices, type PriceInput, type ReconcileResult, typ
 
 export { indexCodexSource, type NormalizedIndexResult } from "./normalized-index.js";
 export { isInjectedCause, isUntypedPrompt, stripInjected } from "./injected-text.js";
-export { normalizedSessions, normalizedUsage, readIndexedText, type ConversationSummary, type IndexedSpan, type NormalizedUsageSummary } from "./normalized-query.js";
+export {
+  countNormalizedEvents, countNormalizedSessions, hasNormalizedTables, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions,
+  normalizedSourcePath, normalizedUsage, readIndexedText,
+  type ConversationSummary, type IndexedSpan, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedTurn, type NormalizedUsageSummary,
+} from "./normalized-query.js";
 export { ensureNormalizedSchema, resolveConversationAlias } from "./normalized-schema.js";

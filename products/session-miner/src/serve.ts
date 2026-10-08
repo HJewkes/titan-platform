@@ -1,7 +1,7 @@
 import { runDaemonUntilSignal, runMcpStdio, startDaemon, type DaemonHandle, type StartDaemonOptions } from "@titan-design/daemon";
+import { countNormalizedSessions } from "@titan-design/session-graph";
 import { createMinerContext, type MinerContext } from "./context.js";
 import type { MinerConfig } from "./config.js";
-import { countNormalizedSessions } from "./normalized-tables.js";
 import { MINER_VERSION, TOOL_PREFIX, createMinerRegistry } from "./registry.js";
 import { status } from "./commands/status.js";
 
