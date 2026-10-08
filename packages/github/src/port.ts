@@ -24,6 +24,8 @@ export interface PullRequest {
   merged: boolean;
   /** Meaningful once `merged`; GitHub also fills it with a test merge while the PR is open. */
   mergeSha: string | null;
+  /** ISO timestamp GitHub recorded when the PR merged; null while it has not. */
+  mergedAt: string | null;
   headRef: string;
   headSha: string;
   /** `owner/name` of the repo the head lives in; null when that fork was deleted. */

@@ -16,17 +16,6 @@ export interface SessionRow {
   pushDelta: number;
 }
 
-export interface UsageRow {
-  sessionId: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  thinkingTokens: number;
-  requestCount: number;
-}
-
 export interface BranchRow {
   branchRef: string;
   repo: string | null;
@@ -39,7 +28,6 @@ export interface BranchRow {
 /** One transcript chunk's events, merged so that applying N chunks equals one whole-file pass. */
 export interface TranscriptDelta {
   sessions: SessionRow[];
-  usage: UsageRow[];
   turns: EventOf<"turn">[];
   facts: EventOf<"fact">[];
   spans: EventOf<"span">[];
@@ -80,7 +68,6 @@ function emptySession(sessionId: string): SessionRow {
 export class EventFolder {
   private readonly sessions = new Map<string, SessionRow>();
   private readonly startTypeAt = new Map<string, string>();
-  private readonly usage = new Map<string, UsageRow>();
   private readonly branches = new Map<string, BranchRow>();
   private readonly byKey = new Map<string, Map<string, SessionEvent>>();
   private readonly lists = new Map<string, SessionEvent[]>();
@@ -90,8 +77,6 @@ export class EventFolder {
     switch (event.kind) {
       case "session":
         return this.foldSession(event);
-      case "usage":
-        return this.foldUsage(event);
       case "branch":
         return this.foldBranch(event);
       case "turn":
@@ -122,7 +107,6 @@ export class EventFolder {
       ([...(this.byKey.get(name)?.values() ?? [])] as unknown[]) as TranscriptDelta[K];
     return {
       sessions: [...this.sessions.values()],
-      usage: [...this.usage.values()],
       branches: [...this.branches.values()],
       turns: keyed("turns"),
       prs: keyed("prs"),
@@ -187,18 +171,6 @@ export class EventFolder {
     if (seenAt !== undefined && seenAt <= ts) return;
     this.startTypeAt.set(row.sessionId, ts);
     row.startType = entrypoint;
-  }
-
-  private foldUsage(event: EventOf<"usage">): void {
-    const key = `${event.sessionId}\0${event.model}`;
-    const row = this.usage.get(key) ?? { sessionId: event.sessionId, model: event.model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, thinkingTokens: 0, requestCount: 0 };
-    row.inputTokens += event.inputTokens;
-    row.outputTokens += event.outputTokens;
-    row.cacheReadTokens += event.cacheReadTokens;
-    row.cacheCreationTokens += event.cacheCreationTokens;
-    row.thinkingTokens += event.thinkingTokens;
-    row.requestCount += 1;
-    this.usage.set(key, row);
   }
 
   /** Timestamps merge as min/max: a branch is seen from many chunks and many transcripts. */

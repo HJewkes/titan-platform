@@ -69,6 +69,8 @@ export interface LayeredDepsRule {
   severity?: Severity;
   /** An import is dropped when its source or destination file has one of these roles. */
   excludeRoles?: NodeRole[];
+  /** Skip `import type` / `export type … from` edges; defaults to false so a type-only reach upward still counts. */
+  exemptTypeOnly?: boolean;
 }
 
 export interface NoInternalOnlyBarrelsRule {

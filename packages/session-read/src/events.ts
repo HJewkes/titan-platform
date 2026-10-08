@@ -29,15 +29,6 @@ export type SessionEvent =
   | (EventBase & { kind: "span"; field: SpanField; text: string })
   | (EventBase & { kind: "session"; patch: SessionPatch; turnDelta: number; commitDelta: number; pushDelta: number })
   | (EventBase & { kind: "turn"; promptId: string })
-  | (EventBase & {
-      kind: "usage";
-      model: string;
-      inputTokens: number;
-      outputTokens: number;
-      cacheReadTokens: number;
-      cacheCreationTokens: number;
-      thinkingTokens: number;
-    })
   | (EventBase & { kind: "phase"; trigger: "mode" | "permission-mode"; toMode: string })
   | (EventBase & { kind: "human_edit"; filePath: string })
   | (EventBase & { kind: "file_checkpoint"; filePath: string; backupFileName: string; version: number; backupTime: string })

@@ -1,10 +1,12 @@
+import type { Presence } from "@titan-design/review-panel";
+
 /**
  * Whether a session holds an agent's name. `agent ls --json` reports `live`, `detached` and `exited`; `exiting` is the
  * short stretch while a session closes, `deregistered` is the broker's word for a name with no row at all, and `unknown`
  * is any other value the roster reports.
  */
-const PRESENCES = ["live", "detached", "exiting", "exited", "deregistered", "unknown"] as const;
-export type Presence = (typeof PRESENCES)[number];
+const PRESENCES = ["live", "detached", "exiting", "exited", "deregistered", "unknown"] as const satisfies readonly Presence[];
+export type { Presence };
 
 const KNOWN: ReadonlySet<string> = new Set(PRESENCES);
 

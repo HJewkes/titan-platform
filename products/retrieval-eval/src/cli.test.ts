@@ -1,5 +1,34 @@
+import path from "node:path";
+import type { PathOptions } from "@titan-design/app-paths";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runCli } from "./cli.js";
+import { buildCli, runCli } from "./cli.js";
+
+describe("buildCli path defaults", () => {
+  const home = "/fixture-home";
+
+  function defaultOf(paths: PathOptions, command: string, flag: string): unknown {
+    const sub = buildCli(paths).commands.find((c) => c.name() === command);
+    return sub?.options.find((o) => o.long === flag)?.defaultValue;
+  }
+
+  it("moves --active-root and --graph on every verb when ACTIVE_ROOT is set", () => {
+    const root = path.resolve("/srv/active");
+    const paths: PathOptions = { env: { ACTIVE_ROOT: root }, home, platform: "darwin" };
+
+    for (const command of ["mine", "run", "served"]) expect(defaultOf(paths, command, "--active-root")).toBe(root);
+    for (const command of ["mine", "run"]) {
+      expect(defaultOf(paths, command, "--graph")).toBe(path.join(root, ".miner", "graph.sqlite3"));
+    }
+  });
+
+  it("falls back to the platform data dir when ACTIVE_ROOT is unset", () => {
+    const paths: PathOptions = { env: {}, home, platform: "linux" };
+    const dataRoot = path.join(home, ".local", "share", "active-work");
+
+    expect(defaultOf(paths, "run", "--active-root")).toBe(dataRoot);
+    expect(defaultOf(paths, "run", "--graph")).toBe(path.join(dataRoot, ".miner", "graph.sqlite3"));
+  });
+});
 
 describe("runCli enum options", () => {
   afterEach(() => vi.restoreAllMocks());

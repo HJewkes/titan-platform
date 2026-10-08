@@ -19,7 +19,8 @@
           "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
-          "packages/eslint-plugin"
+          "packages/eslint-plugin",
+          "packages/app-paths"
         ],
         "1": [
           "packages/retrieval",
@@ -50,7 +51,8 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel"
         ],
         "ui": [
           "packages/react-app"
@@ -79,7 +81,8 @@
           "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
-          "packages/eslint-plugin"
+          "packages/eslint-plugin",
+          "packages/app-paths"
         ],
         [
           "packages/retrieval",
@@ -110,7 +113,8 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel"
         ],
         [
           "packages/react-app"

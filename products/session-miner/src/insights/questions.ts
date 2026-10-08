@@ -10,6 +10,9 @@ import {
   costReportSchema,
   livenessReport,
   livenessSchema,
+  readLastPrompts,
+  readSpawns,
+  readVerdicts,
   renderCacheTtlText,
   renderLivenessText,
   renderBlockedFlowText,
@@ -20,9 +23,9 @@ import {
   type ReportScope,
 } from "@titan-design/session-analytics";
 import { z } from "zod";
-import { fetchPulls, readDenials, readJournal, readPullSnapshot, readVerdicts } from "./blocked-flow-sources.js";
+import { fetchPulls, readDenials, readJournal, readPullSnapshot, withEventsDb } from "./blocked-flow-sources.js";
 import { defineInsight, isoTime, utc, type AnyInsight } from "./define.js";
-import { readBrokerLog, readLastPrompts, readSpawns } from "./liveness-sources.js";
+import { readBrokerLog } from "./liveness-sources.js";
 
 const reportFrame = { window: true, priceTableVersion: true, totals: true, coverage: true } as const;
 
@@ -134,7 +137,7 @@ export const blockedFlow = defineInsight<BlockedFlowOptions, BlockedFlowReport>(
   async answer(_db, report, options, config) {
     refuseSessionScope("blocked-flow", report.scope);
     const window = { since: report.since, until: report.until };
-    const { verdicts, unparsed } = readVerdicts(config.eventsDb, window, options.seat);
+    const { verdicts, unparsed } = withEventsDb(config.eventsDb, (db) => readVerdicts(db, window, options.seat));
     const merges = verdicts.filter((v) => v.verdict === "MERGE");
     const pulls = options.pulls ? readPullSnapshot(options.pulls) : await fetchPulls(merges);
     const denials = (options.transcript ?? []).flatMap(readDenials);
@@ -162,10 +165,11 @@ export const liveness = defineInsight<{ seat?: string[]; brokerLog?: string }, L
   answer(_db, report, options, config) {
     refuseSessionScope("liveness", report.scope);
     const asOf = report.until ?? new Date().toISOString();
+    const broker = readBrokerLog(options.brokerLog ?? config.brokerLog);
+    const events = withEventsDb(config.eventsDb, (db) => ({ spawns: readSpawns(db), lastEvents: readLastPrompts(db, asOf) }));
     const data = livenessReport({
-      broker: readBrokerLog(options.brokerLog ?? config.brokerLog),
-      spawns: readSpawns(config.eventsDb),
-      lastEvents: readLastPrompts(config.eventsDb, asOf),
+      broker,
+      ...events,
       asOf,
       window: { since: report.since, until: report.until },
       seats: options.seat,

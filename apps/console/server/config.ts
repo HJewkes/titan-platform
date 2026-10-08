@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { activeWorkGraphPath } from "@titan-design/app-paths";
 import { expandHome } from "@titan-design/session-read";
 import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 
@@ -24,7 +25,11 @@ export interface ConsoleConfig {
 }
 
 /** `TITAN_CONSOLE_*` overrides win, then the defaults; a port shared with an upstream is refused. */
-export function resolveConfig(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): ConsoleConfig {
+export function resolveConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+  platform: NodeJS.Platform = process.platform,
+): ConsoleConfig {
   const config: ConsoleConfig = {
     port: portFrom(env, "TITAN_CONSOLE_PORT", DEFAULT_CONSOLE_PORT),
     stateDir: expandHome(env.TITAN_CONSOLE_STATE ?? "~/.local/state/titan-console", home),
@@ -32,7 +37,7 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env, home: string
     agentChatPort: portFrom(env, "TITAN_CONSOLE_AGENT_CHAT_PORT", AGENT_CHAT_PORT),
     agentChatTokenPath: expandHome(env.TITAN_CONSOLE_AGENT_CHAT_TOKEN ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "ui.token"), home),
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
-    sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? path.join(activeWorkRoot(env, home), ".miner", "graph.sqlite3"), home),
+    sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
@@ -57,12 +62,5 @@ function seatPrefixesFrom(raw: string | undefined): SeatPrefix[] {
     if (!seat || !prefix || extra !== undefined) throw new Error(`TITAN_CONSOLE_SEATS entries must be seat=prefix, got "${pair}"`);
     return { seat, prefix };
   });
-}
-
-/** active-work's data directory: `ACTIVE_ROOT`, else the env-paths location its own CLI resolves. */
-function activeWorkRoot(env: NodeJS.ProcessEnv, home: string): string {
-  if (env.ACTIVE_ROOT) return path.resolve(expandHome(env.ACTIVE_ROOT, home));
-  if (process.platform === "darwin") return path.join(home, "Library", "Application Support", "active-work");
-  return path.join(env.XDG_DATA_HOME ?? path.join(home, ".local", "share"), "active-work");
 }
 
