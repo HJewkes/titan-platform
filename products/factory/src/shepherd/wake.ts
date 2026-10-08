@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -175,16 +175,16 @@ async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice
 type Sent = "asked" | "wait" | "successor" | WakeStepResult;
 
 /**
- * A refused resume, as of an agent on a model its pool no longer runs, is asked of a successor instead; a refused
- * successor holds the run with the refusal named, so no owner gate opens for a fixer that could not start. A refused
- * message to a live agent stays a refusal, since a successor beside a live agent would race it on the branch.
+ * A resume agent-chat refuses, as of an agent on a model its pool no longer runs, is asked of a successor instead; a
+ * refused successor is `held`, with the refusal named. Any other failure, and a refused message to a live agent, stays
+ * a refusal: a successor beside a live agent would race it on the branch.
  */
 async function askOrFallBack(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, refused: Set<string>, signal: AbortSignal): Promise<Sent> {
   try {
     return (await ask(deps, agents, choice, reask, signal)) ? "asked" : "wait";
   } catch (error) {
     signal.throwIfAborted();
-    if (choice.mode === "live") throw error;
+    if (choice.mode === "live" || !(error instanceof DispatchError)) throw error;
     if (choice.mode === "successor") return held(choice.agent, error);
     refused.add(choice.agent);
     return "successor";
@@ -348,6 +348,9 @@ const Woke = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
 
+/** Only a review's send-back holds; a ci-red or conflict wake no fixer took keeps its own route: the ci-failed gate or the not-mergeable stop. */
+const HOLDING_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "fix-proof"]);
+
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 
 /** Counts a review wake across every head of the run, so the second FIX_FIRST is known however many heads came between. */
@@ -365,8 +368,9 @@ export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
   if (woke.kind === "woken") return awaitFixerHead(ctx, request, woke);
-  // A held wake's refusal is on the step's record; the run waits for any new head, as after a seat's exit notice.
-  return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : awaitFixerHead(ctx, request, woke.held, false);
+  // A held send-back's refusal is on the step's record; the run waits for any new head, as after a seat's exit notice.
+  if (woke.held !== undefined && HOLDING_KINDS.has(request.kind)) return awaitFixerHead(ctx, request, woke.held, false);
+  return { kind: "unhandled", reason: woke.reason };
 };
 
 /** The wait after a wake an agent took, which ends early if that agent exits unless `watch` is false; only a ci-red wake can end on its own head turning green. */

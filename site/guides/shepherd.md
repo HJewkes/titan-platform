@@ -274,8 +274,9 @@ unhandled.
 
 A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
 resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
-it refuses the successor as well, the run holds: `sh-wake-implementer` records the refusal as
-`held`, and the run waits for a new head with no `sh-sent-back` gate. Each such wake still
+it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
+refusal as `held`, and the run waits for a new head with no `sh-sent-back` gate. A ci-red wake
+still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
 spends one repair from the `repair-budget`.
 
 GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base

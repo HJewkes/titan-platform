@@ -195,9 +195,11 @@ about, or the wake was a conflict or fix-proof wake.
 
 A wake never resumes a retired implementer. When agent-chat refuses to resume an ended
 implementer, as for one on a model its pool no longer runs, the same wake spawns a successor
-instead, under the same spawn load gate. If agent-chat refuses the successor too, the run is
-held: `sh-wake-implementer` records the refusal and `held`, and the run waits for a new head
-with no owner gate open. The wake has already spent its one repair, so the `repair-budget` cap
+instead, under the same spawn load gate. Other failures are not refusals and still reach the
+owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
+`sh-wake-implementer` records the refusal and `held`, and the run waits for a new head with no
+owner gate open. A ci-red or conflict wake keeps its own route, the `ci-failed` gate or the
+`not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
 still bounds how many such wakes a run makes. A refused message to a live implementer still
 opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
 

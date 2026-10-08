@@ -508,6 +508,16 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
   });
 
+  it("keeps a resume that fails with anything but a refusal unhandled, and starts no successor", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.fail.resume = [new Error("agent-chat printed no JSON")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "the wake was refused: Error" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
   it("keeps a refused message to a live implementer a refusal, so no successor races it", async () => {
     const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })] });
     scene.agents.fail.message = [new DispatchError("agent-chat refused the message")];
@@ -716,12 +726,12 @@ describe("wakePhase", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1)) {
+  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review") {
     const store = shepherdStoreRef();
     let clock = T0;
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
-    const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
+    const request: WakeRequest = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload: kind === "review" ? fixFirst("fix it") : {} };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
     const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
@@ -785,6 +795,18 @@ describe("wakePhase", () => {
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
     expect(results["sh-wake-implementer:0"]).toMatchObject({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
     expect(results["sh-await-new-head:0"]).not.toHaveProperty("exited", true);
+  });
+
+  it.each(["ci-red", "conflict"] as const)("keeps a %s wake whose successor agent-chat refused unhandled, so its own route decides", async (kind) => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    const { outcome, stepIds } = await runPhase(agents, fake, async () => undefined, kind);
+
+    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError" });
+    expect(stepIds).toEqual(["sh-wake-implementer:0"]);
   });
 
   it("skips the head wait when no agent took the wake", async () => {
