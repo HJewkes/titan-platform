@@ -117,6 +117,29 @@
       ]
     },
     {
+      "id": "MRG-AU-RM",
+      "action": "merge",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Owner decision of 2026-10-07 (TP-1907): a head that is the reviewed head plus one merge of a base-branch commit inherits the run-dispatched reviewer's MERGE when git's remerge-diff of that merge is empty or touches only the repo's declared generated files, attested by the factory's remerge probe, never by the reviewer. Every other MRG-AU-RC condition still holds at the new head. Never kind:security. A separate row, so deleting it revokes the remerge carry alone.",
+      "when": [
+        "resolver-is-dispatched-reviewer",
+        "verdict-merge-carried-remerge-clean",
+        "pr-kind-not-security",
+        "required-contexts-green",
+        "no-non-green-run",
+        "merge-tree-clean",
+        "repo-not-frozen",
+        "no-protected-path-change",
+        "seat-grants-merge-on-green-approve"
+      ],
+      "evidence": [
+        "E-gate",
+        "E-gh",
+        "E-rev"
+      ]
+    },
+    {
       "id": "REL-OT",
       "action": "release",
       "actor": "owner-terminal",

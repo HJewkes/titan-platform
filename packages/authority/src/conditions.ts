@@ -20,7 +20,14 @@ export interface CarryFact {
   /** The head the carry is for. */
   head: string;
   headTree: string;
+  /** For a remerge rule, the tree git's own remerge of the head's two parents writes, conflict markers and all. */
   mergeTree: string;
+  /** Which probe carried the verdict; absent reads as `tree-equal`. */
+  rule?: "tree-equal" | "remerge-empty" | "remerge-generated-only";
+  /** For a remerge rule: every path the head's remerge-diff or the remerge's conflicts touch. */
+  remergePaths?: string[];
+  /** For a remerge rule: the paths among `remergePaths` that the repo declares generated. */
+  generatedPaths?: string[];
 }
 
 /** What the caller observed about a pull request it wants to merge. The evaluator re-derives every condition from these. */
@@ -75,6 +82,26 @@ function verdictMergeCarriedTreeEqual(facts: MergeFacts): boolean {
   if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
   return typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) && verdict.head === carry.fromHead && carry.head === head &&
     isId(carry.headTree) && carry.headTree === carry.mergeTree;
+}
+
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+// Each touched path must be one the collector matched to the repo's declared generated files, and never a protected one.
+function remergeTouchesOnlyGenerated(carry: CarryFact): boolean {
+  const { remergePaths, generatedPaths } = carry;
+  if (!isStringList(remergePaths) || !isStringList(generatedPaths)) return false;
+  if (carry.rule === "remerge-empty") return remergePaths.length === 0 && carry.headTree === carry.mergeTree;
+  if (carry.rule !== "remerge-generated-only" || remergePaths.length === 0) return false;
+  return remergePaths.every((path) => generatedPaths.includes(path) && !isProtectedPath(path));
+}
+
+function verdictMergeCarriedRemergeClean(facts: MergeFacts): boolean {
+  const { head, carry, verdict } = facts;
+  if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
+  return typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) && verdict.head === carry.fromHead && carry.head === head &&
+    isId(carry.headTree) && isId(carry.mergeTree) && remergeTouchesOnlyGenerated(carry);
 }
 
 // Only a known non-security kind passes, so an unregistered or unrecognised kind never carries.
@@ -147,6 +174,7 @@ const MERGE_CHECKS: Record<ConditionKind, (facts: MergeFacts) => boolean> = {
   "resolver-is-dispatched-reviewer": (facts) => sameAgent(facts.resolver, facts.dispatchedReviewer),
   "verdict-merge-at-head": verdictMergeAtHead,
   "verdict-merge-carried-tree-equal": verdictMergeCarriedTreeEqual,
+  "verdict-merge-carried-remerge-clean": verdictMergeCarriedRemergeClean,
   "pr-kind-not-security": prKindNotSecurity,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,
