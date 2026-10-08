@@ -49,7 +49,7 @@ export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string 
 }
 
 /** The run state a superseded approve-merge gate clears. */
-export interface SupersededRun {
+interface SupersededRun {
   reviews: Map<string, unknown>;
   escalations: Map<string, Escalated>;
   failedRounds: number;
