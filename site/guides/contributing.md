@@ -214,16 +214,24 @@ fails the required check rather than the deploy.
 
 ### The reference index {#the-reference-index}
 
-`pnpm docs:reference` (which `docs:build` runs first) reads `.codewatch/check.json` and
-every workspace `package.json`, then writes two files that are committed:
+`pnpm docs:reference` reads `.codewatch/check.json` and every workspace `package.json`, then
+writes these committed files:
 
 - `site/reference/index.md` — the tier tables on [Packages](/reference/)
 - `site/.vitepress/reference-sidebar.json` — the sidebar nav
+- the `<!-- generated:<name> start -->` … `end` blocks in `site/guides/architecture.md` (the
+  dependency graph, the packages with no titan dependencies, the product list) and the
+  session miner's package count there and in `site/guides/index.md`
 
-A new package therefore never needs a hand edit to the nav. The script *fails* if a public
-package has no `site/reference/<name>.md`, which is the mechanism that stops an undocumented
-package from shipping. `pnpm new:package` stamps that page and reruns the script, so the
-default path is green without a hand edit.
+A new package therefore never needs a hand edit to the nav or the graph. The script *fails*
+if a public package has no `site/reference/<name>.md`, which is the mechanism that stops an
+undocumented package from shipping. `pnpm new:package` stamps that page and reruns the
+script, so the default path is green without a hand edit.
+
+`docs:build` runs the script with `--check` instead, which writes nothing. It fails when a
+committed file differs from what the script would write, and when a package under
+`packages/` is not named in [package families](/guides/package-families). The first is
+fixed by running `pnpm docs:reference` and committing; the second needs a line of prose.
 
 ### The capability catalog {#the-capability-catalog}
 

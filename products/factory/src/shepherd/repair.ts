@@ -35,8 +35,8 @@ export function repairGate(run: GateRun, kind: WakeRequest["kind"], headSha: str
   return sentBackGate(run, headSha, prompt, `a human abandoned the PR after the repair budget ran out at a ${kind} wake`);
 }
 
-/** Whether an agent took the wake; a fixer that exited with no push is rerun or sent back by `afterFixerExit` instead. */
+/** Whether an agent took the wake; a fixer that exited with no push is rerun, routed to its seat or sent back by `afterFixerExit` instead. */
 export async function afterWake(run: WakeRun & { state: { round: number; reruns: number } }, kind: WakeRequest["kind"], headSha: string, payload: unknown, outcome: WakeOutcome, leave: (outcome?: LandOutcome) => Error): Promise<boolean> {
-  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome.reason, leave);
+  if (outcome.kind === "unhandled" && outcome.exited) return afterFixerExit(run, kind, headSha, payload, outcome, leave);
   return tookWake(run, headSha, outcome);
 }

@@ -18,7 +18,8 @@ export interface GateRun {
   state: { waits: number };
 }
 
-async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
+/** Waits, with no gate, for the PR to show any other head; undefined lands the next round. */
+export async function awaitNewHead(run: GateRun, headSha: string): Promise<undefined> {
   await step(run.ctx, `await-new-head:${run.state.waits++}`, { ...run.target, headSha }, AwaitHeadResult);
   return undefined;
 }
