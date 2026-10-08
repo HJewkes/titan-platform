@@ -126,6 +126,17 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
+  A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
+  the reason is free text, so no class is validated. Two classes carry the G10 rule:
+  - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
+    configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
+    checks are green at that head, the `sh-g10-release:<head>:<n>` step releases the hold and records the verdict
+    ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
+    profile that is not an opus one keeps the hold.
+  - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
+    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release`.
+
+  Any other class waits for `shepherd release`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 

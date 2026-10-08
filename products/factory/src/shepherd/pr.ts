@@ -15,6 +15,7 @@ import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { verdictIsMergeAt } from "../gate-brief.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { G10_RELEASE_STEPS, g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { narrowToRegistration } from "./registration-policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
@@ -50,6 +51,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...OUTCOME_STEPS,
   ...CONFLICT_CHECK_STEPS,
   ...FREEZE_HOLD_STEPS,
+  ...G10_RELEASE_STEPS,
 ];
 
 export interface ShepherdPrParams {
@@ -222,7 +224,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
-  await narrowToRegistration(run);
+  await releaseG10Hold(run, await narrowToRegistration(run));
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
@@ -352,7 +354,10 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   return [
     awaitPrRoute(deps),
     ...outcomeRoutes(deps.now),
-    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
+    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => {
+      const registration = deps.store.get().byRun(input.runId);
+      return { policy: registration?.policy ?? null, holdReason: registration?.held ? registration.holdReason : null };
+    }),
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
@@ -363,6 +368,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
+    ...g10ReleaseRoutes(deps, wiring.review?.profile),
   ];
 }
 
