@@ -133,7 +133,7 @@ function walk(tokens: Token[], w: Walk): void {
 
 /** Runs the substitutions that arithmetic over the values of known names would run. */
 function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
-  for (const text of valueSubstitutions(arithmeticTexts(op, words), w.scope.vars)) walk(text, child(w, [...w.scope.wrapping, "subshell"]));
+  for (const text of valueSubstitutions(arithmeticTexts(op, words), w.scope, w.out)) walk(text, child(w, [...w.scope.wrapping, "subshell"]));
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */

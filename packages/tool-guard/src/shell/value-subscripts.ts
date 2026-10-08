@@ -1,4 +1,4 @@
-import { tokenize } from "./lexer.js";
+import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
 import type { Token } from "./lexer.js";
 import type { Vars } from "./vars.js";
 
@@ -7,25 +7,74 @@ const MAX_HOPS = 16;
 /** A name in an expression, bare or after a `$`, but not inside a number such as `0x1F` or `16#ff`. */
 const NAME_RE = /(?<![\w#])[A-Za-z_]\w*/g;
 
+/** What decides how a substitution in a value is walked: the working directory, the wrappers and the variables. */
+interface ValueScope {
+  vars: Vars;
+  dir: string | null;
+  wrapping: readonly string[];
+}
+
+/** What one classification has walked so far, keyed by the object that lives as long as it does. */
+interface Walked {
+  reads: Set<string>;
+  lists: number;
+}
+const walked = new WeakMap<object, Walked>();
+/**
+ * A line can change a variable the substitutions use between reads, so each read is a new walk. Past this many
+ * substitutions walked in one classification the rest of the values are left as main reads them, which keeps
+ * the cost of an 8 KiB line far below the hook's timeout.
+ */
+const MAX_LISTS = 1500;
+
 /**
  * Bash evaluates the value of a name in arithmetic as an expression, and runs a `$( )` or backquote in it. Returns
  * the token lists of each such substitution in the values the expressions reach through known names, read with
- * the shell's own lexer; an unknown value, a cycle and a chain past the cap yield nothing more.
+ * the shell's own lexer; an unknown value, a cycle and a chain past the cap yield nothing more. A value read
+ * again under the same scope in one classification (`run`) yields nothing the second time, so the cost stays
+ * linear. A value the lexer rejects yields only the substitutions that can be scanned out of it, as on main.
  */
-export function valueSubstitutions(expressions: string[], vars: Vars): Token[][] {
+export function valueSubstitutions(expressions: string[], scope: ValueScope, run: object): Token[][] {
+  const state = walked.get(run) ?? { reads: new Set<string>(), lists: 0 };
+  walked.set(run, state);
   const found: Token[][] = [];
   const seen = new Set<string>();
   const pending = [...expressions];
   for (let text = pending.pop(); text !== undefined && seen.size <= MAX_HOPS; text = pending.pop()) {
     for (const [name] of text.matchAll(NAME_RE)) {
-      const value = seen.has(name) ? null : vars.get(name);
+      const value = seen.has(name) ? null : scope.vars.get(name);
       if (typeof value !== "string") continue;
       seen.add(name);
-      found.push(...tokenize(value).flatMap(nested));
+      const added = firstRead(state, scope, value) ? substitutionsOf(value).slice(0, MAX_LISTS - state.lists) : [];
+      found.push(...added);
+      state.lists += added.length;
       pending.push(value);
     }
   }
   return found;
+}
+
+/** Notes the read, and says whether this scope has not walked this value before. */
+function firstRead(state: Walked, scope: ValueScope, value: string): boolean {
+  const names = [...value.matchAll(NAME_RE)].map(([n]) => scope.vars.get(n) ?? null);
+  const key = JSON.stringify([value, scope.dir, scope.wrapping, names]);
+  if (state.reads.has(key)) return false;
+  state.reads.add(key);
+  return true;
+}
+
+function substitutionsOf(value: string): Token[][] {
+  try {
+    return tokenize(value).flatMap(nested);
+  } catch (error) {
+    if (!(error instanceof ParseError)) throw error;
+  }
+  try {
+    return scanSubstitutions(value, 0, value.length);
+  } catch (error) {
+    if (error instanceof ParseError) return [];
+    throw error;
+  }
 }
 
 function nested(token: Token): Token[][] {

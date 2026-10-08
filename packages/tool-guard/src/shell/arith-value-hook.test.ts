@@ -50,4 +50,19 @@ describe("the hook verdict on a value that arithmetic reads (TP-1624)", () => {
     expect(result).toBe("deny");
     expect(performance.now() - started).toBeLessThan(2000);
   });
+
+  it("denies a push when a variable the value uses changes before every read", async () => {
+    const head = `X='a[${"$(echo $C)".repeat(150)}]'`;
+    const reads = Array.from({ length: 450 }, (_, i) => `;C=${i};a[X]=1`).join("");
+    const started = performance.now();
+
+    const result = await verdict(`${head}${reads}; ${PUSH}`);
+
+    expect(result).toBe("deny");
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("denies a push hidden in a value that also holds an unbalanced quote", async () => {
+    expect(await verdict(`X="it's a[\\$(${PUSH})]"; (( X ))`)).toBe("deny");
+  });
 });
