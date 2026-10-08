@@ -98,6 +98,7 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
+export { EVENTS_TABLE_DDL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
 export type {
   CompactionMark,
   ModelRequests,

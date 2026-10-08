@@ -24,6 +24,8 @@ export interface PullRequest {
   merged: boolean;
   /** Meaningful once `merged`; GitHub also fills it with a test merge while the PR is open. */
   mergeSha: string | null;
+  /** ISO timestamp GitHub recorded when the PR merged; null while it has not. */
+  mergedAt: string | null;
   headRef: string;
   headSha: string;
   /** `owner/name` of the repo the head lives in; null when that fork was deleted. */
@@ -224,6 +226,8 @@ export interface GitHubPortOptions {
    * token: `GET /user` answers 403 there, and `GET /app` needs an App JWT the installation token is not.
    */
   login?: string;
+  /** Waits between retries of a comment post; tests inject one that does not wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Every argument is validated before any wire call, because each one becomes part of a `gh api` path. */
@@ -256,7 +260,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
-    upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body),
+    upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, options.sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };

@@ -40,6 +40,8 @@ export interface FakeGitHub {
   updateBranchConflict?: boolean;
   /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
   updateBranchFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next comment posts throw, one per call; `lands` means the comment was posted before the answer was lost. */
+  createCommentFaults?: { error: Error; lands?: boolean }[];
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
@@ -87,6 +89,7 @@ export function successRun(name: string, id: number, startedAt = "2026-01-01T00:
 
 /** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
 export const FAKE_APP_ID = 424242;
+const FAKE_MERGED_AT = "2026-01-01T00:00:00Z";
 
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
 export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string; appId?: number } = {}): FakeGitHub {
@@ -119,7 +122,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
     },
@@ -198,9 +202,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
       record("createComment", undefined);
+      const fault = fake.createCommentFaults?.shift();
+      if (fault && !fault.lands) throw fault.error;
       const list = fake.comments.get(number) ?? [];
       const comment = { id: 5000 + ++counter, body, author: fake.actor };
       fake.comments.set(number, [...list, comment]);
+      if (fault) throw fault.error;
       return { id: comment.id };
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
@@ -293,5 +300,6 @@ function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeM
   pr.merged = true;
   pr.state = "closed";
   pr.mergeSha = nextSha("merge");
+  pr.mergedAt = FAKE_MERGED_AT;
   return { sha: pr.mergeSha };
 }

@@ -2,13 +2,14 @@ import { z } from "zod";
 import { hasRefusedHead, latencyStats, latencyStatsSchema, mergeOutcomes, round, type LatencyStats, type MergeOutcome, type PullState, type VerdictRecord } from "./blocked-flow-merge.js";
 import { dedupeDenials, type DenialRecord } from "./blocked-flow-denials.js";
 import { TICK_HOLD_MAX_MIN, idleSlotMinutes, type SeatJournal } from "./blocked-flow-idle.js";
+import { VERDICTS_SQL, eventsDbCommand } from "./events-db.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
 
 /** Where each section's numbers come from: the command that re-reads them and the field it reads. */
 export const BLOCKED_FLOW_SOURCES = {
   verdicts: {
-    command: `sqlite3 -readonly <events.db> "SELECT id, ts, target, body FROM events WHERE kind='message' AND body LIKE 'Verdict:%'"`,
-    field: "events.ts, events.target, events.body lines Verdict:, PR:, Head:",
+    command: eventsDbCommand(VERDICTS_SQL),
+    field: "events.ts, events.target, events.actor (reviewer), events.body lines Verdict:, PR:, Head:",
   },
   pulls: { command: "gh api repos/<owner>/<repo>/pulls/<n>", field: ".state, .merged_at, .head.sha" },
   denials: {

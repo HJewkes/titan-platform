@@ -114,7 +114,7 @@ resolve passes evidence (see the package README's evidence policy). The first tw
 required; a store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so
 one database can host several gate spaces.
 
-`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, `gateEvidenceMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
+`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, `gateEvidenceMigration`, `gateDelegateMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
 not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare
 Workers isolate. `MemoryGateStore` stays on the root.
 
@@ -139,6 +139,15 @@ only that copy. A store's `authorize` option runs after the class check and can 
 never fewer. It must return `{ allowed }` synchronously, or the store throws
 `GateAuthorizeInvalid`.
 Refusals name the gate id and the actor class, never the resolver's other fields.
+
+A gate's `rule` may list `delegates`, drawn only from authority's `DELEGATE_RESOLVER_CLASSES`
+(`coordinator`); `create` throws `GateRuleInvalid` for any other class. A delegate is one more
+widening beside allowances and the evidence policy, and it counts only when the store has
+`authorize`, which still runs last and must allow it. With no rule, no delegates or no
+`authorize`, the delegate is refused as before. On SQLite, `gateDelegateMigration(d)` (version 6
+under `migrate: true`) reinstalls the rule triggers so a direct write admits a delegate class
+only when the row's own rule names it; a pending row's rule, delegates included, still cannot
+change. A store refuses to create a gate with delegates before that migration has run.
 
 hitl records a claim about the resolver; it cannot prove one. Any process that can write
 the database can claim any class.

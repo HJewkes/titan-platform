@@ -50,66 +50,102 @@ export function resolveBarrelEdges(
   nodes: readonly GraphNode[],
   edges: readonly GraphEdge[],
 ): GraphEdge[] {
-  const barrels = new Set<string>();
-  for (const n of nodes) if (n.role === "barrel") barrels.add(n.id);
+  const barrels = collectBarrelIds(nodes);
   if (barrels.size === 0) return [...edges];
+  const ctx: ResolveContext = { barrels, forwards: collectForwards(barrels, edges), cache: new Map() };
+  return edges.flatMap((e) => resolveEdge(ctx, e));
+}
 
-  // Each barrel's outbound forwarding edges (re-exports, and any import it then
-  // re-exports), keyed by barrel id, as {target, weight} to split inbound by.
-  // A `references` edge is per-symbol *usage*, not re-export plumbing (a pure
-  // barrel emits none — it only `export … from`s), so it's excluded from the
-  // forwarding basis and kept as a real edge below (C-68).
-  const forwards = new Map<string, { dst: string; weight: number }[]>();
+interface Forward {
+  dst: string;
+  weight: number;
+}
+
+interface ResolveContext {
+  barrels: ReadonlySet<string>;
+  /** Each barrel's outbound forwarding targets, keyed by barrel id. */
+  forwards: ReadonlyMap<string, Forward[]>;
+  cache: Map<string, Map<string, number>>;
+}
+
+function collectBarrelIds(nodes: readonly GraphNode[]): Set<string> {
+  const ids = new Set<string>();
+  for (const n of nodes) if (n.role === "barrel") ids.add(n.id);
+  return ids;
+}
+
+/**
+ * A barrel's own outbound import/re-export edge is plumbing — captured by
+ * resolving its inbound edges to targets — so it is dropped to avoid
+ * double-crediting. A `references` edge is genuine usage (e.g. a composition
+ * root that the role classifier labels `barrel` but which actually consumes
+ * a symbol via `const { runX } = await import(...)`, C-68), so it is kept.
+ */
+function isBarrelPlumbing(barrels: ReadonlySet<string>, e: GraphEdge): boolean {
+  return barrels.has(e.srcId) && e.kind !== "references";
+}
+
+// Each barrel's outbound forwarding edges (re-exports, and any import it then
+// re-exports), keyed by barrel id, as {target, weight} to split inbound by.
+// A `references` edge is per-symbol *usage*, not re-export plumbing (a pure
+// barrel emits none — it only `export … from`s), so it's excluded from the
+// forwarding basis and kept as a real edge (C-68).
+function collectForwards(
+  barrels: ReadonlySet<string>,
+  edges: readonly GraphEdge[],
+): Map<string, Forward[]> {
+  const forwards = new Map<string, Forward[]>();
   for (const e of edges) {
-    if (!barrels.has(e.srcId) || e.kind === "references") continue;
+    if (!isBarrelPlumbing(barrels, e)) continue;
     const arr = forwards.get(e.srcId) ?? [];
     arr.push({ dst: e.dstId, weight: edgeWeight(e) });
     forwards.set(e.srcId, arr);
   }
+  return forwards;
+}
 
-  const cache = new Map<string, Map<string, number>>();
-  /** Distribution of a target over real (non-barrel) files: realId → fraction (sums to 1). */
-  function resolve(id: string, seen: ReadonlySet<string>): Map<string, number> {
-    if (!barrels.has(id)) return new Map([[id, 1]]);
-    const cached = cache.get(id);
-    if (cached) return cached;
-    const targets = forwards.get(id);
-    const total = targets?.reduce((s, t) => s + t.weight, 0) ?? 0;
-    // Dead-end barrel (forwards nothing resolvable) or a cycle: keep as itself.
-    if (!targets || total === 0 || seen.has(id)) return new Map([[id, 1]]);
-    const out = new Map<string, number>();
-    const nextSeen = new Set(seen).add(id);
-    for (const t of targets) {
-      const share = t.weight / total;
-      for (const [real, frac] of resolve(t.dst, nextSeen)) {
-        out.set(real, (out.get(real) ?? 0) + share * frac);
-      }
+/** Distribution of a target over real (non-barrel) files: realId → fraction (sums to 1). */
+function resolveToRealFiles(
+  ctx: ResolveContext,
+  id: string,
+  seen: ReadonlySet<string>,
+): Map<string, number> {
+  if (!ctx.barrels.has(id)) return new Map([[id, 1]]);
+  const cached = ctx.cache.get(id);
+  if (cached) return cached;
+  const targets = ctx.forwards.get(id);
+  const total = targets?.reduce((s, t) => s + t.weight, 0) ?? 0;
+  // Dead-end barrel (forwards nothing resolvable) or a cycle: keep as itself.
+  if (!targets || total === 0 || seen.has(id)) return new Map([[id, 1]]);
+  const out = splitAcrossTargets(ctx, targets, total, new Set(seen).add(id));
+  ctx.cache.set(id, out);
+  return out;
+}
+
+function splitAcrossTargets(
+  ctx: ResolveContext,
+  targets: readonly Forward[],
+  total: number,
+  seen: ReadonlySet<string>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of targets) {
+    const share = t.weight / total;
+    for (const [real, frac] of resolveToRealFiles(ctx, t.dst, seen)) {
+      out.set(real, (out.get(real) ?? 0) + share * frac);
     }
-    cache.set(id, out);
-    return out;
   }
+  return out;
+}
 
+function resolveEdge(ctx: ResolveContext, e: GraphEdge): GraphEdge[] {
+  if (isBarrelPlumbing(ctx.barrels, e)) return [];
+  if (!ctx.barrels.has(e.dstId)) return [e];
+  const w = edgeWeight(e);
   const resolved: GraphEdge[] = [];
-  for (const e of edges) {
-    // A barrel's own outbound import/re-export edges are plumbing — captured by
-    // resolving its inbound edges to targets — so drop them to avoid
-    // double-crediting. A `references` edge is genuine usage (e.g. a composition
-    // root that the role classifier labels `barrel` but which actually consumes
-    // a symbol via `const { runX } = await import(...)`, C-68), so keep it.
-    if (barrels.has(e.srcId) && e.kind !== "references") continue;
-    if (!barrels.has(e.dstId)) {
-      resolved.push(e);
-      continue;
-    }
-    const w = edgeWeight(e);
-    for (const [real, frac] of resolve(e.dstId, new Set())) {
-      if (real === e.srcId) continue; // a barrel that circles back to the importer
-      resolved.push({
-        ...e,
-        dstId: real,
-        attrs: { ...(e.attrs as object), weight: w * frac },
-      });
-    }
+  for (const [real, frac] of resolveToRealFiles(ctx, e.dstId, new Set())) {
+    if (real === e.srcId) continue; // a barrel that circles back to the importer
+    resolved.push({ ...e, dstId: real, attrs: { ...(e.attrs as object), weight: w * frac } });
   }
   return resolved;
 }

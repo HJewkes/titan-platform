@@ -1,4 +1,4 @@
-import { asObject } from "./text.js";
+import { asObject, booleanOrNull } from "./text.js";
 import type { Json } from "./text.js";
 import type { RecentFormatResult, RecentObservedValue, RecentSessionTurn, RecentTurnProjection } from "./recent-types.js";
 import type { RecentSourceLine } from "./recent-tail.js";
@@ -146,8 +146,5 @@ function updateObserved(
   return value ? observed(value, line) : current;
 }
 
-function booleanOrNull(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
 import { claudeRecordBelongsToSource } from "./claude-source.js";
 import type { SessionSourceDescriptor } from "./normalized.js";

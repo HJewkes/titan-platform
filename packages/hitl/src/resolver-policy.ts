@@ -1,4 +1,11 @@
-import { ACTOR_CLASSES, RESOLVER_CLASSES, type ActorClass, type ResolverClass } from "@titan-design/authority";
+import {
+  ACTOR_CLASSES,
+  DELEGATE_RESOLVER_CLASSES,
+  RESOLVER_CLASSES,
+  type ActorClass,
+  type DelegateResolverClass,
+  type ResolverClass,
+} from "@titan-design/authority";
 import {
   GateAuthorizeInvalid,
   GateEvidenceInvalid,
@@ -31,22 +38,41 @@ export function snapshotAllowances(raw: readonly GateAnswerAllowance[] | undefin
   );
 }
 
-/** What may widen the default refusal for one resolve: the store's allowances, and its evidence policy over the given evidence. */
+/**
+ * What may widen the default refusal for one resolve: the store's allowances, its evidence policy over the given
+ * evidence, and a delegate the gate's rule names, which counts only when the store has `authorize` to run after it.
+ */
 export interface Admission {
   allowances: readonly GateAnswerAllowance[];
   evidence: Readonly<GateEvidence> | undefined;
   evidencePolicy: GateEvidencePolicy | undefined;
+  hasAuthorize: boolean;
 }
 
 /**
  * Like `defaultResolverRefusal`, but a listed (class, step, payload) triple is admitted, and so is a resolve the
- * evidence policy admits on the evidence given. Anything else gets the default refusal unchanged.
+ * evidence policy admits on the evidence given, and a delegate class the gate's rule names. Anything else gets the
+ * default refusal unchanged.
  */
 export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): string | undefined {
   const refusal = defaultResolverRefusal(resolver);
   if (refusal === undefined) return undefined;
-  if (!matchesAllowance(admission.allowances, gate.id, resolver, payload) && !evidenceAdmits(gate, resolver, payload, admission)) return refusal;
+  const admitted =
+    matchesAllowance(admission.allowances, gate.id, resolver, payload) ||
+    evidenceAdmits(gate, resolver, payload, admission) ||
+    delegateAdmits(gate.rule, resolver, admission.hasAuthorize);
+  if (!admitted) return refusal;
   return resolver.id.trim() === "" ? `actor class ${resolver.class} must name itself to resolve this gate` : undefined;
+}
+
+/**
+ * The class must be a delegate class as well as named by the rule, because a SQLite row's rule may have been written
+ * by a raw INSERT that never passed `snapshotRule`. Without `authorize` no delegate is admitted at all.
+ */
+function delegateAdmits(rule: GateRule | undefined, resolver: GateResolver, hasAuthorize: boolean): boolean {
+  if (!hasAuthorize || !isDelegateClass(resolver.class)) return false;
+  const delegates: unknown = rule?.delegates;
+  return Array.isArray(delegates) && (delegates as readonly unknown[]).includes(resolver.class);
 }
 
 /** A policy that throws or answers anything but `true` admits nothing, so a bug in it fails closed. */
@@ -107,17 +133,21 @@ function stepOf(gateId: string): string {
   return gateId.slice(gateId.lastIndexOf("/") + 1).replace(/:\d+$/, "");
 }
 
-/** A rule-bound gate admits only its rule's resolver classes. Runs after the default refusal, so it only narrows. */
-export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver): string | undefined {
+/**
+ * A rule-bound gate admits only its rule's resolver classes, and its delegates when the store has `authorize`.
+ * Runs after the default refusal, so it only narrows.
+ */
+export function ruleResolverRefusal(record: GateRecord, resolver: GateResolver, hasAuthorize = false): string | undefined {
   if (!record.rule) return undefined;
   if ((record.rule.resolvers as readonly string[]).includes(resolver.class)) return undefined;
+  if (delegateAdmits(record.rule, resolver, hasAuthorize)) return undefined;
   return `rule ${record.rule.ruleId} does not let ${resolver.class} resolve this gate`;
 }
 
 /** Reads each declared rule field once into a frozen copy, so a caller cannot widen the rule after `create`. */
 export function snapshotRule(gateId: string, raw: unknown): Readonly<GateRule> {
   if (typeof raw !== "object" || raw === null) throw new GateRuleInvalid(gateId, "the rule is not an object");
-  const { table, version, ruleId, resolvers } = raw as Record<string, unknown>;
+  const { table, version, ruleId, resolvers, delegates } = raw as Record<string, unknown>;
   if (typeof table !== "string" || typeof version !== "string" || typeof ruleId !== "string") {
     throw new GateRuleInvalid(gateId, "the rule's table, version and ruleId must be strings");
   }
@@ -125,7 +155,17 @@ export function snapshotRule(gateId: string, raw: unknown): Readonly<GateRule> {
   if (classes.length === 0 || !classes.every(isResolverClass)) {
     throw new GateRuleInvalid(gateId, "the rule's resolvers must be a non-empty list of resolver classes");
   }
-  return Object.freeze({ table, version, ruleId, resolvers: Object.freeze(classes) as ResolverClass[] });
+  const rule = { table, version, ruleId, resolvers: Object.freeze(classes) as ResolverClass[] };
+  if (delegates === undefined) return Object.freeze(rule);
+  return Object.freeze({ ...rule, delegates: snapshotDelegates(gateId, delegates) });
+}
+
+function snapshotDelegates(gateId: string, raw: unknown): DelegateResolverClass[] {
+  const classes = Array.isArray(raw) ? [...(raw as unknown[])] : [];
+  if (classes.length === 0 || !classes.every(isDelegateClass)) {
+    throw new GateRuleInvalid(gateId, `the rule's delegates must be a non-empty list drawn from ${DELEGATE_RESOLVER_CLASSES.join(", ")}`);
+  }
+  return Object.freeze(classes) as DelegateResolverClass[];
 }
 
 /**
@@ -163,6 +203,10 @@ export function readDecision(gateId: string, decision: unknown): GateAuthorizati
 
 function isResolverClass(value: unknown): value is ResolverClass {
   return typeof value === "string" && (RESOLVER_CLASSES as readonly string[]).includes(value);
+}
+
+function isDelegateClass(value: unknown): value is DelegateResolverClass {
+  return typeof value === "string" && (DELEGATE_RESOLVER_CLASSES as readonly string[]).includes(value);
 }
 
 function isActorClass(value: unknown): value is ActorClass {

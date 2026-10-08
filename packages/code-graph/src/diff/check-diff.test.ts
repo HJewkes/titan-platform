@@ -126,6 +126,35 @@ describe("diffCheckResults", () => {
     }
   });
 
+  it("treats a falling value on a minimum rule as worsened and a rising one as improved", async () => {
+    const minCoverage: CheckRule = { type: "metric-min", id: "min-coverage", metric: "coverage_pct", min: 80 };
+    const coverage = (worse: number, better: number) => (db: CodeGraphStore, snapshotId: number) => {
+      db.insertNodes(snapshotId, [
+        { id: "worse.ts", kind: "file", name: "" },
+        { id: "better.ts", kind: "file", name: "" },
+      ]);
+      db.insertMetrics(snapshotId, [
+        { nodeId: "worse.ts", name: "coverage_pct", value: worse },
+        { nodeId: "better.ts", name: "coverage_pct", value: better },
+      ]);
+    };
+    fixture = await createFixture(coverage(60, 20), coverage(40, 50));
+    const db = openCodeGraph(fixture.dbPath);
+    try {
+      const diff = diffCheckResults(db, {
+        fromSnapshotId: fixture.fromId,
+        toSnapshotId: fixture.toId,
+        rules: [minCoverage, MAX_LOC],
+      });
+      expect(diff.worsened.map((u) => u.to.nodeId)).toEqual(["worse.ts"]);
+      expect(diff.improved.map((u) => u.to.nodeId)).toEqual(["better.ts"]);
+      expect(diff.worsened[0]!.delta).toBe(-20);
+      expect(diff.improved[0]!.delta).toBe(30);
+    } finally {
+      db.close();
+    }
+  });
+
   it("handles forbid-import violations (no metric value) with null delta", async () => {
     fixture = await createFixture(
       (db, snapshotId) => {
