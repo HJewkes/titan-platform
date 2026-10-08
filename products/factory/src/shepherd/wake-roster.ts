@@ -2,7 +2,7 @@ import type { AgentRow } from "@titan-design/agent-dispatch";
 import { isSeat } from "./wake-brief.js";
 
 /** The run's registered implementer and the successors the store's lineage records, earliest first. */
-export interface Lineage {
+interface Lineage {
   implementer: string;
   successors: readonly string[];
 }
