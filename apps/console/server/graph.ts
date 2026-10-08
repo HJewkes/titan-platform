@@ -26,14 +26,14 @@ const RAN_AS = "ran_as";
 type EdgeKind = (typeof STORED_KINDS)[number] | typeof RAN_AS;
 
 /** Past about 150 labelled nodes a node-link view stops being legible; a busy initiative has over 1,400 neighbours. */
-export const EGO_CAPS = { nodes: 150, edges: 300, perKindAtDepth1: 40 } as const;
+const EGO_CAPS = { nodes: 150, edges: 300, perKindAtDepth1: 40 } as const;
 const COLLAPSIBLE = ["file", "branch"] as const;
 
 const REF = /^([a-z_]+):(.+)$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TASK_ID = /^[A-Z][A-Z0-9]*-\d+$/;
 
-export interface EgoNode {
+interface EgoNode {
   ref: string;
   kind: NodeKind;
   /** The session's title where the graph has one, else the ref's tail. */
@@ -45,7 +45,7 @@ export interface EgoNode {
   expanded: boolean;
 }
 
-export interface EgoEdge {
+interface EgoEdge {
   /** Stored direction; `shares_tag` is stored both ways and sent once, lower ref first. */
   source: string;
   target: string;
