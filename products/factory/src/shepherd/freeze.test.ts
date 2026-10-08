@@ -146,7 +146,7 @@ describe("the frozen-merge guard", () => {
     const r = rig();
     r.freezes.freeze(A, RED, true);
     r.fake.refs.set("main", RED);
-    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled")]);
+    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("dag-check", 3)]);
 
     await expect(land(r, openPr(r, A))).resolves.toMatchObject({ done: true });
     expect(r.freezes.isFrozen(A)).toBe(false);
@@ -188,7 +188,7 @@ describe("the frozen-merge guard", () => {
     const pr = openPr(r, A);
     await expect(land(r, pr)).rejects.toThrow();
     r.fake.refs.set("main", GREEN);
-    r.fake.setRuns(GREEN, [successRun("validate", 1)]);
+    r.fake.setRuns(GREEN, [successRun("validate", 1), successRun("dag-check", 2)]);
 
     await expect(land(r, pr)).rejects.toThrow(/frozen/);
     r.clock.at += FREEZE_RECHECK_MS;
