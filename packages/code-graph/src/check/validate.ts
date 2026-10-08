@@ -135,12 +135,16 @@ function assertLayeredDeps(r: Record<string, unknown>, warn: Warn): LayeredDepsR
       seen.add(pkg);
     }
   }
+  if (r.exemptTypeOnly !== undefined && typeof r.exemptTypeOnly !== "boolean") {
+    throw new Error(`${r.id}: exemptTypeOnly must be a boolean`);
+  }
   return {
     type: "layered-deps",
     id: r.id as string,
     layers: r.layers as string[][],
     severity: parseSeverity(r),
     excludeRoles: parseRoleArray(r.id as string, r.excludeRoles, warn),
+    exemptTypeOnly: r.exemptTypeOnly,
   };
 }
 

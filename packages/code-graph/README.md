@@ -264,7 +264,9 @@ The rules engine turns a snapshot into pass/fail against a `check.json`. Eight r
 `metric-max`, `metric-min`, `metric-product-max`, `metric-outlier`, `forbid-import`,
 `layered-deps`, `no-internal-only-barrels`, and `no-import-cycles`. Severity defaults to `error`; only new errors
 fail a check. `layered-deps` takes `excludeRoles`: an import is dropped when its source or
-destination file has an excluded role. `forbid-import` takes `except`: destination patterns
+destination file has an excluded role, and `exemptTypeOnly: true` drops an edge whose every
+import from that file is `import type` (off by default; a file that also imports a value, or
+writes an all-inline `{ type T }`, still counts). `forbid-import` takes `except`: destination patterns
 that `to` matches but the rule allows, such as one sanctioned entry file.
 
 `no-import-cycles` reports each strongly connected component of the file import graph once,
