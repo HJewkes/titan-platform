@@ -196,8 +196,8 @@ already derives:
   holds files below `cutoff` at the baseline and at or above it now; `added` holds files the
   baseline does not hold, generated files left out.
 - **Findings** are bucketed by `bucketViolations`, the store-free core of `diffCheckResults`:
-  new, worsened or improved by value, and resolved. Ids match as they are; following
-  renames is TP-187.
+  new, worsened or improved by `excess` as `findings.list` statuses are, and resolved. Ids
+  match as they are; following renames is TP-187.
 - **Coupling** is unmeasured (`measured: false`) until co-change pairs are stored.
 - **Regressions** are files whose score rose that carry an open finding now.
 - Across index versions `comparable` is false and every list is empty.
