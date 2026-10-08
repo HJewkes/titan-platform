@@ -317,9 +317,11 @@ The deployer never runs `git reset`: a rollback reverts `dist` and leaves the ch
 target.
 
 `serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`
-and compares its build with origin/main. `/health` then carries a `deploy` block: the
-running sha, how many merges it is behind and for how long, the refusals in a row, and the
-last refusal's reason. The alarm goes up on two refusals in a row, or on a build more than 3
+and compares origin/main with its build and with the last target `deploy.json` records as
+deployed or skipped, keeping whichever is closer. A skipped deploy fast-forwards the checkout
+without a rebuild, so unrelated merges do not count as lag. `/health` then carries a `deploy`
+block: the running sha, how many merges it is behind and for how long, the refusals in a row,
+and the last refusal's reason. The alarm goes up on two refusals in a row, or on a build more than 3
 merges or 60 minutes behind. A deploy that lands clears the refusal streak. When the last
 refusal names `index.lock`, its reason ends with a report on the service checkout's
 `.git/index.lock`: its path and age, and whether a process holds it. A lock with no holder that

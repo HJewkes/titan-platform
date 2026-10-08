@@ -4,7 +4,8 @@ import { execGh, type GhExec } from "@titan-design/github";
 import { buildSha, DIRTY_SUFFIX, FACTORY_REPO, UNKNOWN_BUILD_SHA } from "./build-info.js";
 import { configPath, factoryStateDir, loadConfig } from "./config.js";
 import type { MainLag } from "./deploy-health.js";
-import { deployWatch, type DeployWatch } from "./deploy-watch.js";
+import { readLastDeploy } from "./deploy-ports.js";
+import { currentLag, deployWatch, type DeployWatch } from "./deploy-watch.js";
 import { redactForEvidence } from "./redact.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
 import { REDEPLOY_LOG } from "./shepherd/redeploy.js";
@@ -48,6 +49,12 @@ async function mainLag(sha: string, repo: string | undefined = FACTORY_REPO, exe
   }
 }
 
+/** The target the deployer last landed, deployed or skipped; a rolled-back target never ran. */
+function landedTarget(stateDir: string): string | undefined {
+  const last = readLastDeploy(stateDir);
+  return last?.outcome === "deployed" || last?.outcome === "skipped" ? last.target : undefined;
+}
+
 /** Notifies only when both an agent-chat bin and a hub seat are configured. */
 function hubNotify(env: NodeJS.ProcessEnv): ((text: string) => Promise<void>) | undefined {
   const { agentChatBin, hubSeat } = loadConfig(configPath(env)).shepherd ?? {};
@@ -60,10 +67,11 @@ function hubNotify(env: NodeJS.ProcessEnv): ((text: string) => Promise<void>) | 
 export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string): DeployWatch {
   const sha = buildSha();
   const notify = hubNotify(env);
+  const stateDir = factoryStateDir(env);
   return deployWatch({
-    readLog: () => readTail(join(factoryStateDir(env), REDEPLOY_LOG)),
+    readLog: () => readTail(join(stateDir, REDEPLOY_LOG)),
     runningSha: () => sha,
-    lag: () => mainLag(sha),
+    lag: () => currentLag([sha, landedTarget(stateDir)], (candidate) => mainLag(candidate)),
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
     ...(notify && { notify }),
     now: Date.now,

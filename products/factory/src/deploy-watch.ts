@@ -15,6 +15,18 @@ export interface DeployWatchPorts {
   now: () => number;
 }
 
+/**
+ * A skipped deploy fast-forwards the checkout and keeps the build, so the last landed target is as current as the
+ * build is. Main is compared with each candidate, and the least lag wins; a candidate that cannot be read loses.
+ */
+export async function currentLag(candidates: readonly (string | undefined)[], compare: (sha: string) => Promise<MainLag | string>): Promise<MainLag | string> {
+  const shas = [...new Set(candidates.filter((sha): sha is string => sha !== undefined))];
+  const lags = await Promise.all(shas.map(compare));
+  const read = lags.filter((lag): lag is MainLag => typeof lag !== "string");
+  if (read.length === 0) return lags.find((lag): lag is string => typeof lag === "string") ?? "no sha to compare";
+  return read.reduce((least, lag) => (lag.behind < least.behind ? lag : least));
+}
+
 /** Whether the hub seat was told about the alarm that is up now. */
 type AlarmNotice = { sent: string } | { failed: string } | { skipped: string };
 

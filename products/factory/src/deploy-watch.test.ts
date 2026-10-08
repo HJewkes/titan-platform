@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MainLag } from "./deploy-health.js";
-import { deployWatch, type DeployWatchPorts } from "./deploy-watch.js";
+import { currentLag, deployWatch, type DeployWatchPorts } from "./deploy-watch.js";
 import type { IndexLock } from "./stale-lock.js";
 
 const SHA = "a".repeat(40);
@@ -101,6 +101,33 @@ describe("the deploy watch serve runs", () => {
     await watch.tick();
 
     expect(watch.status()).toMatchObject({ alarm: true, behind: 4, consecutiveRefusals: 0, notice: { skipped: "no hub seat is configured" } });
+  });
+
+  it("raises no alarm when unrelated merges follow a skipped deploy that left the build behind", async () => {
+    const lags: Record<string, MainLag> = { [SHA]: { behind: 5, oldestAt: NOW - 2 * 60 * 60_000 }, [NEXT]: { behind: 4, oldestAt: NOW - 90 * 60_000 } };
+    const landed = "c".repeat(40);
+    lags[landed] = { behind: 0 };
+    const { ports, sent, log } = fake();
+    const watch = deployWatch({ ...ports, lag: () => currentLag([SHA, landed], async (sha) => lags[sha]!) });
+
+    log.push(`2026-10-07T10:00:00Z service deploy --expect ${landed}\nskipped ${landed}: no changed path reaches the factory build\n`);
+    await watch.tick();
+
+    expect(watch.status()).toMatchObject({ alarm: false, behind: 0, behindMinutes: 0, runningSha: SHA });
+    expect(sent).toEqual([]);
+  });
+
+  it("still raises the lag alarm when no landed target is any closer than the build", async () => {
+    const lag = await currentLag([SHA, undefined], async () => ({ behind: 4, oldestAt: NOW }));
+
+    expect(lag).toEqual({ behind: 4, oldestAt: NOW });
+  });
+
+  it("takes the readable lag when one candidate cannot be compared, and the reason when none can", async () => {
+    const mixed = await currentLag([SHA, NEXT], async (sha) => (sha === SHA ? "gh compare failed (1): HTTP 502" : { behind: 2 }));
+    const none = await currentLag([SHA], async () => "gh compare failed (1): HTTP 502");
+
+    expect([mixed, none]).toEqual([{ behind: 2 }, "gh compare failed (1): HTTP 502"]);
   });
 
   it("has no block before its first tick", () => {
