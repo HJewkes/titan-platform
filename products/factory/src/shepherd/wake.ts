@@ -16,7 +16,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, REPAIR_STEP, describeWake } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, isSeat, successorBrief } from "./wake-brief.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -108,22 +108,17 @@ interface WakeTask {
   successors: readonly string[];
 }
 
-const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
-
 function resumeMessage(task: WakeTask): string {
   const { input, pr } = task;
   const intro = `Shepherd is waking you on ${input.repo}#${input.pr}. ${task.reason}`;
   return `${intro}\n\n${task.payload}\n\nFix it on branch \`${pr.headRef}\`, push, and ${HEAD_LINE}`;
 }
 
-function successorBrief(task: WakeTask, predecessor: string, name: string): string {
-  const { input, pr } = task;
-  return [
-    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
-    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
-    task.payload,
-    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), then ${HEAD_LINE}`,
-  ].join("\n\n");
+/** The earliest spawner in the lineage that is a session; a successor's own spawner is the human, which names no seat. */
+function lineageSeat(task: WakeTask, roster: readonly AgentRow[]): string | undefined {
+  return chain(task, roster)
+    .flatMap((name) => roster.filter((row) => row.name === name).map((row) => row.spawnedBy))
+    .find(isSeat);
 }
 
 function successorIndex(implementer: string, name: string): number | undefined {
@@ -172,7 +167,7 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */

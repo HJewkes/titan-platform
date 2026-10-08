@@ -725,8 +725,9 @@ Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer 
 Key exports:
 
 - `ports`: `AwaitVerdictInput`, `Presence`, `ReviewTarget`, `ReviewerAgent`, `ReviewerDispatch`, `ReviewerFacts`, `ReviewerMessage`, `ReviewerReader`
-- `types`: `ChangedFile`, `PanelFinding`, `PanelMember`, `PanelOutcome`
-- +7 more in the [reference page](/reference/review-panel)
+- `types`: `ChangedFile`, `PanelFinding`
+- `classify`: `classifyPr`, `DEFAULT_CLASS_RULES`
+- +10 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
@@ -766,7 +767,7 @@ Key exports:
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`
-- +83 more in the [reference page](/reference/session-graph)
+- +92 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
