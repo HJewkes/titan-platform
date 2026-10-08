@@ -172,6 +172,8 @@ graph TD
   console --> reactApp
   console --> registry
   console --> rpcClient
+  console --> sessionAnalytics
+  console --> sessionGraph
   console --> sessionRead
 ```
 <!-- generated:arch-graph end -->
