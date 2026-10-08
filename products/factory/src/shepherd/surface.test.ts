@@ -114,8 +114,9 @@ describe("shepherd surfaces on titan-factory serve", () => {
 
 describe("the deploy block on shepherd status", () => {
   const SHA = "a".repeat(40);
+  const ASKED = `2026-10-07T10:00:00Z service deploy --expect ${"b".repeat(40)}\n`;
   const lagging = (): DeployWatch =>
-    deployWatch({ readLog: () => undefined, runningSha: () => SHA, lag: async () => ({ behind: 4 }), indexLock: async () => ({ state: "absent", path: "" }), now: () => 0 });
+    deployWatch({ readLog: () => ASKED, runningSha: () => SHA, indexLock: async () => ({ state: "absent", path: "" }), now: () => Date.parse("2026-10-07T12:00:00Z") });
 
   async function served(): Promise<{ fixture: ShepherdFixture; port: string }> {
     const fixture = shepherdFixture({ frozen: true });
@@ -131,7 +132,7 @@ describe("the deploy block on shepherd status", () => {
     const withDeploy = await cli(["shepherd", "status", "--json", "--deploy", "--port", port], fixture);
     const bare = await cli(["shepherd", "status", "--json", "--port", port], fixture);
 
-    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], deploy: { alarm: true, behind: 4, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
+    expect(JSON.parse(withDeploy.out)).toMatchObject({ rows: [], deploy: { alarm: true, behind: 1, behindMinutes: 120, runningSha: SHA, consecutiveRefusals: 0, lastRefusal: null } });
     expect(JSON.parse(bare.out)).toEqual([]);
   });
 
@@ -140,7 +141,7 @@ describe("the deploy block on shepherd status", () => {
 
     const status = await cli(["shepherd", "status", "--port", port], fixture);
 
-    expect(status.out.split("\n").filter(Boolean).at(-1)).toMatch(new RegExp(`^deploy: running ${SHA}, 4 behind origin/main, .*ALARM`));
+    expect(status.out.split("\n").filter(Boolean).at(-1)).toMatch(new RegExp(`^deploy: running ${SHA}, 1 asked deploy\\(s\\) not landed, .*ALARM`));
   });
 });
 

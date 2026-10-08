@@ -381,13 +381,16 @@ then held until a newer one arrives.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
 
-`serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`
-and compares origin/main with its build and with the last target `deploy.json` records as
-deployed or skipped, keeping whichever is closer. A skipped deploy fast-forwards the checkout
-without a rebuild, so unrelated merges do not count as lag. `/health` then carries a `deploy`
-block: the running sha, how many merges it is behind and for how long, the refusals in a row,
-and the last refusal's reason. The alarm goes up on two refusals in a row, or on a build more than 3
-merges or 60 minutes behind. A deploy that lands clears the refusal streak. When the last
+`serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`.
+It judges the deployer only on what it was asked to land: each `service deploy --expect`
+line there is an ask, and Shepherd writes one only after a merge's main CI is green. A
+landing (`deployed`, `skipped` or `already deployed`) covers every ask logged before it.
+`/health` carries a `deploy` block: the running sha, the asks that have not landed
+(`behind`, counting only asks older than 20 minutes) and the age of the oldest one, the
+refusals in a row, and the last refusal's reason. The alarm goes up on two refusals in a row,
+on more than 3 waiting asks, or on an ask over 60 minutes old. A merge that never asked, such
+as one with a red main, raises nothing. A refusal because the checkout already landed a newer
+commit from origin/main is a deploy finishing out of order, and does not count. When the last
 refusal names `index.lock`, its reason ends with a report on the service checkout's
 `.git/index.lock`: its path and age, and whether a process holds it. A lock with no holder that
 is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.

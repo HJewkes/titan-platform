@@ -1,4 +1,4 @@
-import { alarmMessage, deployHealth, namesIndexLock, parseRedeployLog, type DeployHealth, type MainLag } from "./deploy-health.js";
+import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, type DeployHealth } from "./deploy-health.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 
 export const DEPLOY_WATCH_MS = 5 * 60_000;
@@ -8,23 +8,10 @@ export interface DeployWatchPorts {
   /** The tail of redeploy.log, or undefined before the first redeploy. */
   readLog: () => string | undefined;
   runningSha: () => string;
-  lag: () => Promise<MainLag | string>;
   indexLock: () => Promise<IndexLock>;
   /** Absent means no hub seat is configured, so the alarm shows only in status. */
   notify?: (text: string) => Promise<void>;
   now: () => number;
-}
-
-/**
- * A skipped deploy fast-forwards the checkout and keeps the build, so the last landed target is as current as the
- * build is. Main is compared with each candidate, and the least lag wins; a candidate that cannot be read loses.
- */
-export async function currentLag(candidates: readonly (string | undefined)[], compare: (sha: string) => Promise<MainLag | string>): Promise<MainLag | string> {
-  const shas = [...new Set(candidates.filter((sha): sha is string => sha !== undefined))];
-  const lags = await Promise.all(shas.map(compare));
-  const read = lags.filter((lag): lag is MainLag => typeof lag !== "string");
-  if (read.length === 0) return lags.find((lag): lag is string => typeof lag === "string") ?? "no sha to compare";
-  return read.reduce((least, lag) => (lag.behind < least.behind ? lag : least));
 }
 
 /** Whether the hub seat was told about the alarm that is up now. */
@@ -39,15 +26,15 @@ export interface DeployWatch {
   status(): DeployStatus | null;
 }
 
-async function lockNote(ports: DeployWatchPorts, outcomes: ReturnType<typeof parseRedeployLog>): Promise<string | undefined> {
-  const last = [...outcomes].reverse().find((outcome) => outcome.kind === "refused");
+async function lockNote(ports: DeployWatchPorts, entries: ReturnType<typeof parseRedeployLog>): Promise<string | undefined> {
+  const last = lastRefused(entries);
   return last && namesIndexLock(last.text) ? describeIndexLock(await ports.indexLock()) : undefined;
 }
 
 async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
-  const outcomes = parseRedeployLog(ports.readLog() ?? "");
-  const [lag, note] = await Promise.all([ports.lag(), lockNote(ports, outcomes)]);
-  return deployHealth({ outcomes, runningSha: ports.runningSha(), lag, now: ports.now(), ...(note !== undefined && { lockNote: note }) });
+  const entries = parseRedeployLog(ports.readLog() ?? "");
+  const note = await lockNote(ports, entries);
+  return deployHealth({ entries, runningSha: ports.runningSha(), now: ports.now(), ...(note !== undefined && { lockNote: note }) });
 }
 
 async function notice(ports: DeployWatchPorts, health: DeployHealth): Promise<AlarmNotice> {
