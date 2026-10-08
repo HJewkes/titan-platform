@@ -12,6 +12,7 @@ import {
   checkNoWarnSeverity,
   checkPnpmPin,
   checkProductIsolation,
+  checkRootLintCoversWorkspaces,
   checkScaffold,
   checkTurboBuildContract,
   checkZodIsPeer,
@@ -44,7 +45,18 @@ function driftedScriptRoot() {
   cpSync(join(fixture("scaffold-gap"), "packages", "a"), pkgDir, { recursive: true });
   writeFileSync(join(pkgDir, "tsup.config.ts"), "export default {};\n");
   const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, lint: "echo skipped" } }));
+  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, typecheck: "echo skipped" } }));
+  return root;
+}
+
+function uncoveredWorkspaceRoot() {
+  const root = tempRoot("structure-lint-");
+  writeFileSync(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n  - "apps/*"\n');
+  writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { lint: 'eslint "packages/*/src/**/*.ts"' } }));
+  for (const dir of ["packages/a", "apps/web"]) {
+    mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, dir, "package.json"), "{}");
+  }
   return root;
 }
 
@@ -96,7 +108,13 @@ const cases = [
     rule: "R43 a script that differs from the template is reported",
     check: checkScaffold,
     root: driftedScriptRoot,
-    message: "`a` has `script lint` that differs from the scaffold (expected `eslint src`).",
+    message: "`a` has `script typecheck` that differs from the scaffold (expected `tsc --noEmit`).",
+  },
+  {
+    rule: "R55 the root lint command reaches every workspace",
+    check: checkRootLintCoversWorkspaces,
+    root: uncoveredWorkspaceRoot,
+    message: "The root `lint` script does not reach `apps/web`. Add `apps/web/src` to it in `package.json`",
   },
   {
     rule: "R46 tests live next to source",

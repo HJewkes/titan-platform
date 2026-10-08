@@ -14,8 +14,7 @@
     "build": "vite build && tsup",
     "serve": "tsx server/cli.ts",
     "export": "tsx server/export.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src server vite.config.ts tsup.config.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/app-paths": "workspace:*",
