@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import {
   checkPnpmPin,
   checkProductIsolation,
   checkScaffold,
+  checkTurboBuildContract,
   checkZodIsPeer,
 } from "./structure-rules.mjs";
 
@@ -44,6 +45,18 @@ function driftedScriptRoot() {
   writeFileSync(join(pkgDir, "tsup.config.ts"), "export default {};\n");
   const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
   writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, lint: "echo skipped" } }));
+  return root;
+}
+
+function turboRoot(prefix, turbo, { runsProcess }) {
+  const root = tempRoot(prefix);
+  writeFileSync(join(root, "turbo.json"), JSON.stringify(turbo));
+  if (runsProcess) {
+    const pkgDir = join(root, "packages", "a");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "@titan-design/a" }));
+    writeFileSync(join(pkgDir, "tsup.config.ts"), 'import { execFileSync } from "node:child_process";\n');
+  }
   return root;
 }
 
@@ -126,6 +139,18 @@ const cases = [
     check: checkAgentsMatchesClaude,
     root: driftedAgentsRoot,
     message: "`AGENTS.md` and `CLAUDE.md` differ. Copy `CLAUDE.md` over `AGENTS.md`.",
+  },
+  {
+    rule: "R54 turbo must not rewrite AGENTS.md",
+    check: checkTurboBuildContract,
+    root: () => turboRoot("structure-turbo-agents-", {}, { runsProcess: false }),
+    message: "`turbo.json` must set `agentGuidance: false`, or turbo rewrites the tracked `AGENTS.md` during `pnpm build` in an agent session.",
+  },
+  {
+    rule: "R54 a build that runs a process is never cached",
+    check: checkTurboBuildContract,
+    root: () => turboRoot("structure-turbo-git-", { agentGuidance: false }, { runsProcess: true }),
+    message: "`packages/a` runs a process in its build config. Add a `turbo.json` that extends `//` and sets `tasks.build.cache` to false.",
   },
   {
     rule: "R10 no lint rule at warn severity",
