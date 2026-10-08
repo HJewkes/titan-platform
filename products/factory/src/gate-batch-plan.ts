@@ -18,7 +18,7 @@ export interface BatchItem {
 }
 
 /** Enough for every Shepherd run waiting at once, and small enough to read before signing. */
-export const MAX_BATCH_ITEMS = 200;
+const MAX_BATCH_ITEMS = 200;
 
 const ItemLine = z.strictObject({ gate: z.string().regex(GATE_ID), pr: z.string(), headSha: z.string().regex(HEAD_SHA) });
 

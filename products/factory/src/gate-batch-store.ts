@@ -29,7 +29,7 @@ export function gateBatchMigration(version = 15): Migration {
 /** `signed` until the item's turn, `firing` while its resolve runs, so a batch that dies mid-run names the item it died on. */
 export type BatchOutcome = "signed" | "firing" | "resolved" | "skipped-moved" | "skipped-closed" | "skipped-unreadable" | "failed";
 
-export interface BatchItemRecord {
+interface BatchItemRecord {
   gate: string;
   repo: string;
   pr: number;
@@ -38,7 +38,7 @@ export interface BatchItemRecord {
   detail?: string;
 }
 
-export interface BatchRecord {
+interface BatchRecord {
   id: string;
   digest: string;
   proof: string;
