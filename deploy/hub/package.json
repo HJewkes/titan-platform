@@ -14,8 +14,7 @@
   },
   "scripts": {
     "setup": "./scripts/setup.sh",
-    "bootstrap": "node src/bootstrap.mjs",
-    "lint": "eslint src"
+    "bootstrap": "node src/bootstrap.mjs"
   },
   "dependencies": {
     "@titan-design/matrix-bus": "workspace:^",

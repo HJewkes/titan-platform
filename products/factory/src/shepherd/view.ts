@@ -4,8 +4,8 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
-import { spawnQueuePosition } from "./spawn-gate.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
 import type { WakeInput, WakeStepResult } from "./wake.js";
@@ -17,6 +17,8 @@ type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 type Tied<List extends readonly string[], Union extends string> = [Same<List[number], Union>] extends [true] ? List : never;
 const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
+
+export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
 export const WatchRowSchema = z.object({

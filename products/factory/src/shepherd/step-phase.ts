@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 
-/** Where a shepherded PR's run stands, as `shepherd.list` and `shepherd.timeline` show it. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
+/** The phases a Shepherd run moves through, as `shepherd.list` and `shepherd.timeline` report them; TP-466 section 2 pins them for the UI. */
+const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
 
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
@@ -40,6 +40,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-account-hold": "review",
   "sh-account-wait": "review",
   "sh-policy": "review",
+  "sh-g10-release": "review",
   "merge-policy": "awaiting-approval",
   "approve-merge": "awaiting-approval",
   "ci-failed": "awaiting-approval",

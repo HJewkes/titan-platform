@@ -16,6 +16,8 @@ domain-free primitives: Drain template mining and embeddings with a hash fallbac
 [`retrieval`](/reference/retrieval) fuses FTS, vector, and graph retrievers over them.
 The [retrieval eval](/guides/retrieval-eval) product scores candidate retrievers against
 labels mined from transcripts, so a retrieval change can be measured.
+[`app-paths`](/reference/app-paths) decides where those files live: an app's per-user data,
+config, cache and log directories, and active-work's data root.
 
 ## Command surfaces
 
@@ -53,6 +55,12 @@ composes all three.
 - [`agent-dispatch`](/reference/agent-dispatch): a client for the `agent-chat` CLI. It starts
   an agent under a named profile with the brief on stdin, resumes an ended session, and reads
   the roster. Use `agent` instead to run one headless turn in process.
+- [`agent-surface`](/reference/agent-surface): where a spawned agent is presented, headless
+  or an iTerm2 pane, tab or window, and the launcher that execs its plan from disk.
+- [`worktree`](/reference/worktree): one branch and one directory per agent under a
+  per-repository budget, with release, park, re-create and sweep.
+- [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
+  autonomy coordinator reads.
 - [`hitl`](/reference/hitl): a durable `gate()` that a human resolves from any process.
 - [`workflow`](/reference/workflow): an ordinary async function whose `dispatch`, `seed`,
   and `assisted` steps are memoized, with `mapItems` fan-out under a budget.
@@ -85,6 +93,8 @@ end.
   audit runners and normalize their diagnostics.
 - [`evidence`](/reference/evidence): checks that a model's citations name lines it was
   shown and quote them exactly, and scores planted controls.
+- [`eslint-plugin`](/reference/eslint-plugin): ESLint rules for the code-quality limits,
+  such as functions of at most 30 lines and TODOs that name a task.
 
 ## Landing a change
 
@@ -102,6 +112,11 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`fix-proof`](/reference/fix-proof): decides whether a fix pull request's new tests fail on
   the merge base and pass at head. It plans the overlay and classifies two vitest reports; a
   runner does the git and test work.
+- [`review-panel`](/reference/review-panel): the review-panel types, the reviewer ports a
+  caller satisfies, and `classifyPr`, which picks a pull request's review class from its
+  signals.
+- `tool-guard` (private, unpublished): classifies a Claude Code tool call into the guarded
+  `authority` actions it would take, such as a merge, a release or a credential read.
 - [`egress-scan`](/reference/egress-scan): refuses home paths, private-workspace paths, and
   private terms in a diff bound for a public repo. The `titan-egress-scan` bin backs this
   repo's pre-push hook and its CI job.
@@ -118,3 +133,7 @@ merge. The [factory](/guides/factory) product composes `github`, `authority`, `h
 - [`queue-mirror`](/reference/queue-mirror): mirrors a local queue of approvals and
   questions, such as pending `hitl` gates, into a Matrix room and folds the owner's
   verdicts back.
+- [`owner-queue`](/reference/owner-queue): one `OwnerItem` schema across every store of
+  record, the `QueueSource` port, and merge-by-keys and rank as pure functions.
+- [`decider`](/reference/decider): the owner-decision ledger. Its row schema, outcome
+  classifier, exclusion check and append-only store record how the owner answered.

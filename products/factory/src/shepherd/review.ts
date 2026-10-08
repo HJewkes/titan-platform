@@ -21,7 +21,9 @@ import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import type { ReviewerFacts } from "./reviewer-roles.js";
+import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { withReviewerProfile } from "./g10-release.js";
+import { provablyIndependent } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
@@ -49,6 +51,7 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
+export { provablyIndependent } from "./lineage.js";
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 export type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader };
@@ -60,7 +63,7 @@ export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string; exhausted?: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
-export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits) | NoReview | NotStarted;
+export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
 export interface AcceptedVerdict {
   kind: "verdict";
@@ -85,32 +88,6 @@ const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), 
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional(), account: z.string().min(1).optional() });
 /** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. */
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema, runId: z.string().min(1).optional(), fixFirsts: z.number().int().positive().optional(), ownerBrief: z.boolean().optional() });
-
-type Parents = (agent: ReviewerAgent) => readonly (string | null | undefined)[];
-const takeovers: Parents = (agent) => [agent.predecessor];
-const descent: Parents = (agent) => [agent.spawnedBy, agent.predecessor];
-
-/** `name` and every name above it; undefined when a link is absent from the roster, has no stored lineage, or loops back. */
-function ancestry(name: string, roster: readonly ReviewerAgent[], parents: Parents, path: readonly string[] = []): ReadonlySet<string> | undefined {
-  if (path.includes(name)) return undefined;
-  const rows = roster.filter((agent) => agent.name === name);
-  if (rows.length === 0 || rows.some((agent) => agent.predecessor === undefined)) return undefined;
-  const found = new Set([name]);
-  for (const parent of rows.flatMap(parents)) {
-    if (parent === null || parent === undefined) continue;
-    const above = ancestry(parent, roster, parents, [...path, name]);
-    if (!above) return undefined;
-    above.forEach((ancestor) => found.add(ancestor));
-  }
-  return found;
-}
-
-/** Proven only from roster facts: nobody who wrote the code is the agent, spawned it, or handed over to it, at any depth. */
-export function provablyIndependent(agent: ReviewerAgent, implementer: string, roster: readonly ReviewerAgent[]): boolean {
-  const wrote = ancestry(implementer, roster, takeovers);
-  const above = ancestry(agent.name, roster, descent);
-  return wrote !== undefined && above !== undefined && ![...wrote].some((author) => above.has(author));
-}
 
 /** The registration's opt-in reviewer, only when it is provably independent of the implementer, has ended, and has room left. */
 function standingReviewer(registration: Registration | undefined, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
@@ -191,6 +168,8 @@ export interface ReviewWiring {
   isFrozen?: IsFrozen;
   /** The App `shepherd/review` is posted as; merge facts count that check only from it. Absent means no app can satisfy it. */
   reviewAppId?: number;
+  /** The profile each class of PR is spawned with; a spawned reviewer's profile travels with its verdict. */
+  roles?: ReviewerRoles;
   /** How the `sh-carry` probe reaches git; absent means the system git against the factory's cache. */
   carry?: Omit<CarryOptions, "signal">;
   /** The reviewer accounts in failover order; absent means no account is checked before a spawn, and a limit holds the one default account. */
@@ -243,20 +222,21 @@ function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerF
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, wired, { intent, runId, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
-  const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs } = wired;
+  const { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles } = wired;
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
   const roster = await whileBrokerDown(timing, signal, () => dispatch.roster());
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
+  const facts = reviewerFacts(deps, runId);
   const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
   if (asking) {
-    const refused = await startReviewer(dispatchFor(wired, intent), intent, target, reviewerFacts(deps, runId), asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
+    const refused = await startReviewer(dispatchFor(wired, intent), intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;
   }
   const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
   if (!started) return notStartedInTime(intent, rosterError);
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && roles && { profile: reviewerRoleFor(facts, roles) }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
 /** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review. */
@@ -332,7 +312,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
-  return takeVerdict(ctx, target, awaiting, dispatchedReviewer, typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT);
+  return withReviewerProfile(await takeVerdict(ctx, target, awaiting, dispatchedReviewer, typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT), dispatched.profile);
 };
 
 type ExternalAwaiting = ReviewTarget & { external: string };

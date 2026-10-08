@@ -40,8 +40,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/hitl": "workspace:^",

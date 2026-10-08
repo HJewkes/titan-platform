@@ -4,8 +4,7 @@ import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
-import { PHASES, stepPhase } from "./step-phase.js";
-import { PrTimelineSchema, TimelineEntrySchema, timelineEntries, watchRow } from "./view.js";
+import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
 
@@ -153,7 +152,7 @@ describe("a run held at registration waiting in its merge step", () => {
   });
 
   it("emits only the phases agent-chat's burndown parses, which rejects the whole status array on any other (CC-791)", () => {
-    expect(PHASES).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
+    expect(PhaseSchema.options).toEqual(["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"]);
   });
 
   it("names a hold with no reviewer by its reason alone", () => {

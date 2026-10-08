@@ -172,7 +172,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
   const { primary: dispatch, accounts } = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
+  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */

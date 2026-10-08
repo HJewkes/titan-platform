@@ -1,58 +1,39 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
-import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
-import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
+import { defineWorkflow, stepIdMatches, type WorkflowDefinition } from "../definition.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import type { SettleHold } from "../workflows/land-settle.js";
-import { LAND_STEPS, codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
+import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
 import { followingApprovals } from "./approval-carry.js";
-import { CARRY_SCOPE_STEPS, carriedVerdict, carryRoutes } from "./carry-merge.js";
-import { FREEZE_HOLD_STEPS, freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
-import { CONFLICT_CHECK_STEPS, conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
+import { carriedVerdict, carryRoutes } from "./carry-merge.js";
+import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
+import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
 import type { MainRedWiring } from "./main-red.js";
-import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
+import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { verdictIsMergeAt } from "../gate-brief.js";
 import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
-import { narrowToRegistration } from "./registration-policy.js";
-import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
-import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
+import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
+import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
+import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
+import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { publishOutcome } from "./publish-review.js";
-import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
-import { OBSERVE_STEPS, observePr, observeRoute, type ObservedPr } from "./observe.js";
+import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
+import { observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
-import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
+import { outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, routeFor, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
-import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
+import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
+import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 
-/** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
-export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
-  ...LAND_STEPS,
-  ...AWAIT_HEAD_STEPS,
-  { id: "rerun", kind: "dispatch" },
-  { id: "ci-failed", kind: "assisted" },
-  { id: "sh-await-pr", kind: "dispatch" },
-  { id: "sh-policy", kind: "dispatch" },
-  { id: "sh-sent-back", kind: "assisted" },
-  { id: "sh-train-leave", kind: "dispatch" },
-  ...WAKE_STEPS,
-  ...PARK_STEPS,
-  ...REVIEW_STEPS,
-  ...CARRY_SCOPE_STEPS,
-  ...RELEASE_STEPS,
-  ...POST_MERGE_STEPS,
-  ...OBSERVE_STEPS,
-  ...OUTCOME_STEPS,
-  ...CONFLICT_CHECK_STEPS,
-  ...FREEZE_HOLD_STEPS,
-];
+export { SHEPHERD_STEPS };
 
 export interface ShepherdPrParams {
   repo: RepoSlug;
@@ -226,7 +207,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
-  await narrowToRegistration(run);
+  await releaseG10Hold(run, await narrowToRegistration(run));
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
@@ -358,7 +339,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
   return [
     awaitPrRoute(deps),
     ...outcomeRoutes(deps.now),
-    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => ({ policy: deps.store.get().byRun(input.runId)?.policy ?? null })),
+    codeRoute("sh-policy", deps.now, async (input: { runId: string }) => registrationPolicy(deps.store.get(), input.runId)),
     ...wakeRoutes(deps),
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
@@ -368,6 +349,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
+    ...g10ReleaseRoutes(deps),
   ];
 }
 
