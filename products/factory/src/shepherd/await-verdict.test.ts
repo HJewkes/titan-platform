@@ -128,6 +128,19 @@ describe("awaitVerdict after a restart", () => {
   });
 });
 
+describe("awaitVerdict on a usage-limit notice", () => {
+  it("ends the wait at the notice, without waiting for the live reviewer to exit", async () => {
+    const clock = restartedAt(0);
+    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+    const reader = { read: async () => [{ ...verdictMessage(DISPATCHED_AT + 1), text: notice }] } satisfies ReviewerReader;
+
+    const result = await awaitVerdict(reader, input, clock.timing, signal, rosterOf(() => "live"));
+
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON, notice });
+    expect(clock.elapsed()).toBe(0);
+  });
+});
+
 describe("awaitLateVerdict after the dispatch-anchored wait ran out", () => {
   it("still reads the late verdict of a live reviewer", async () => {
     const clock = restartedAt(31);

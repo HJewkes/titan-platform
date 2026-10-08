@@ -185,6 +185,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv-readonly", configDir } } })))).toThrow(/shepherd\.review\.configDir: must/);
   });
 
+  it("loads review.fallbackConfigDirs, and refuses a relative one", () => {
+    const review = { profile: "rv", configDir: "/srv/rv-claude", fallbackConfigDirs: ["/srv/rv-spare"] };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review?.fallbackConfigDirs).toEqual(["/srv/rv-spare"]);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { ...review, fallbackConfigDirs: ["rv-spare"] } } })))).toThrow(/shepherd\.review\.fallbackConfigDirs\.0: must/);
+  });
+
   it.each([
     ["no profile", {}, /shepherd\.review\.profile/],
     ["a zero verdict timeout", { profile: "rv", verdictTimeoutMs: 0 }, /shepherd\.review\.verdictTimeoutMs/],

@@ -21,7 +21,7 @@ import { shepherdPrWorkflow, shepherdRoutes } from "./shepherd/pr.js";
 import { redeployRoute, systemDeployer, type Deployer } from "./shepherd/redeploy.js";
 import { codewatchReader, ghCodewatchReport } from "./shepherd/codewatch-questions.js";
 import type { ReviewTarget, ReviewWiring } from "./shepherd/review.js";
-import { agentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
+import { agentChatReviewerDispatch, type AgentChatReviewerDispatch } from "./shepherd/reviewer-dispatch.js";
 import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
@@ -154,11 +154,12 @@ function seatAlert(agentChatBin: string, seats: () => SeatBook, roster: RosterRe
 }
 
 /** `review.configDir` first, then each fallback; every account gets its own dispatch over the one roster and spawn gate. */
-function reviewAccounts(review: ReviewConfigured, dispatchUnder: (configDir: string | undefined) => ReturnType<typeof agentChatReviewerDispatch>, alert: ReviewAccounts["alert"]): ReviewAccounts {
-  const primary = review.configDir ?? DEFAULT_ACCOUNT;
-  const dirs = [...new Set([primary, ...(review.fallbackConfigDirs ?? [])])];
-  const byDir = new Map(dirs.map((dir) => [dir, dispatchUnder(dir === DEFAULT_ACCOUNT ? undefined : dir)]));
-  return { dirs, dispatchUnder: (dir) => byDir.get(dir) ?? byDir.get(primary)!, alert };
+function reviewAccounts(review: ReviewConfigured, under: (configDir: string | undefined) => AgentChatReviewerDispatch, alert: ReviewAccounts["alert"]): { primary: AgentChatReviewerDispatch; accounts: ReviewAccounts } {
+  const first = review.configDir ?? DEFAULT_ACCOUNT;
+  const primary = under(review.configDir);
+  const dirs = [...new Set([first, ...(review.fallbackConfigDirs ?? [])])];
+  const byDir = new Map(dirs.map((dir) => [dir, dir === first ? primary : under(dir)]));
+  return { primary, accounts: { dirs, dispatchUnder: (dir) => byDir.get(dir) ?? primary, alert } };
 }
 
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
@@ -166,8 +167,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
   const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
-  const accounts = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
-  const dispatch = accounts.dispatchUnder(accounts.dirs[0]!);
+  const { primary: dispatch, accounts } = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
   return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
 }

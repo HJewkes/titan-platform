@@ -65,7 +65,7 @@ const USAGE_LIMIT_NOTICE = /^You've hit your [\w -]{0,24}limit\b/;
 const MAX_LIMIT_NOTICE_CHARS = 200;
 const isUsageLimitNotice = (text: string): boolean => text.length <= MAX_LIMIT_NOTICE_CHARS && USAGE_LIMIT_NOTICE.test(text.trim());
 /** A usage-limit result keeps the notice, whose reset time decides how long the account is held. */
-export const isUsageLimit = (result: AwaitVerdictResult): result is { kind: "none"; reason: string; notice: string } =>
+export const isUsageLimit = (result: { kind: string; reason?: unknown; notice?: unknown }): boolean =>
   result.kind === "none" && result.reason === USAGE_LIMIT_REASON && typeof result.notice === "string";
 
 type MalformedNone = { kind: "none"; malformed: Malformed };

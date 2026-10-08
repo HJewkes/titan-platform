@@ -299,7 +299,7 @@ export class ShepherdStore implements HoldLookup {
   /** Holds the run for an exhausted account unless something else already holds it; an owner's own hold is never overwritten. True when the run is held for `reason` now. */
   holdForAccount(runId: string, reason: string): boolean {
     const changed = this.db
-      .prepare(`UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND (held = 0 OR hold_reason LIKE ?)`)
+      .prepare("UPDATE shepherd_registration SET held = 1, hold_reason = ?, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND (held = 0 OR hold_reason LIKE ?)")
       .run(reason, this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
     return changed === 1;
   }
@@ -307,7 +307,7 @@ export class ShepherdStore implements HoldLookup {
   /** Compare-and-swap: releases only a hold an exhausted account placed, so an owner hold placed since stays. */
   releaseAccountHold(runId: string): boolean {
     const changed = this.db
-      .prepare(`UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason LIKE ?`)
+      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason LIKE ?")
       .run(this.stamp(), runId, ACCOUNT_HOLD_LIKE).changes;
     return changed === 1;
   }

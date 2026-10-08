@@ -391,6 +391,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.agentChatBin` | Absolute path of the `agent-chat` executable. Required when `review` or `fixer` is set. Without it a red main spawns no fixer |
 | `shepherd.review.profile` | The one agent-chat profile a reviewer is spawned with. The profile is the reviewer's tool grant |
 | `shepherd.review.configDir` | Optional. The Claude config directory of the reviewer; absent means agent-chat's default. Must be an absolute path under the agent's home, which agent-chat refuses to spawn outside of |
+| `shepherd.review.fallbackConfigDirs` | Optional list. Claude config directories a review moves to, tried in order, while `review.configDir` is out of usage; an account marked exhausted is skipped. Same rules as `review.configDir`. Absent means a review whose account is exhausted holds and alerts only |
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
 | `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
@@ -417,6 +418,30 @@ one on a deny list, gets no reviewer, and `sh-review` records
 
 With no `review` key nothing is built: no `agent-chat` process is started, `sh-review`
 answers `none`, and the owner gate decides every merge.
+
+### A reviewer account out of usage
+
+A reviewer whose final message is Claude Code's usage-limit notice ("You've hit your weekly
+limit · resets Oct 10 at 6pm (America/Denver)") ends `sh-await-verdict` at once, with no late
+read and no correction turn. `sh-account-hold` then:
+
+1. Marks the account (`review.configDir`, or a fallback) exhausted until the reset the notice
+   names. A notice with no reset it can read, a reset that is not in the future, or a store it
+   cannot read all count as an unknown reset, which only a release lifts.
+2. Sends one alert per exhaustion of an account, not per run, to the seat that owns the repo,
+   over `agent-chat`. The fact that it was sent is stored in the factory database, so a restart
+   does not send it again; an alert that fails is tried at the next hold.
+3. Moves the review to the first account in `review.fallbackConfigDirs` with headroom, if any.
+   Otherwise it holds the run through the store hold `titan-factory shepherd hold` uses, with
+   the reason `account-exhausted: <configDir> until <reset>; TP-1955`. An owner's own hold is
+   never overwritten.
+
+While the run is held, `sh-account-wait` waits inside the review, so the run never reaches
+approve-merge on this reason, and `sh-review-intent` starts no reviewer on an exhausted account.
+The wait ends when any account has headroom again (its reset passed), which lifts the hold; when
+the owner runs `titan-factory shepherd release`, which also clears the account's mark; when the
+PR's head moves; or after an hour. Each of these starts a new land round, which reads the PR's
+current head and reviews it again; an account still exhausted holds again without a new alert.
 
 The config file is read when the routes are first built, so restart `serve` after a change to
 these keys. The seat book is read again on every spawn.
