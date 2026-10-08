@@ -36,7 +36,7 @@ Before adding code:
 | [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
-| [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. |
+| [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
@@ -442,7 +442,7 @@ Key exports:
 
 Tier 1, `@titan-design/daemon@0.4.1`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
-**Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities.
+**Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback.
 
 Key exports:
 
@@ -452,7 +452,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +41 more in the [reference page](/reference/daemon)
+- +63 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -689,10 +689,11 @@ Tier 2, `@titan-design/owner-queue@0.0.0`. The owner queue core: one OwnerItem s
 
 Key exports:
 
-- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ROUTE_TARGETS`, `SOURCE_SYSTEMS`, `ownerItemSchema`, `sourceRefSchema`, `ItemStatus`
+- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ownerItemSchema`, `sourceRefSchema`
+- `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `merge`: `isMergeKey`, `mergeByKeys`
 - `rank`: `rank`
-- +7 more in the [reference page](/reference/owner-queue)
+- +12 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-queue-mirror"></a>
 
@@ -782,8 +783,8 @@ Key exports:
 - `line-reader`: `LineReader`
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
-- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `prRef`, `repoForCwd`
-- +197 more in the [reference page](/reference/session-read)
+- `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
+- +198 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

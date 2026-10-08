@@ -35,6 +35,7 @@ titan-factory service plist                                   # print the Launch
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
+titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -123,6 +124,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   branch: a repeat, or a PR registered after its branch, updates the task, implementer,
   reviewer and policy on the existing registration and returns its run. The run's policy only
   ever narrows toward the stored one.
+- Once a run merges, `sh-cleanup` closes the registration's `--task` through active-work's loopback rpc unless
+  the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
+  task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
+  active-work as a caveat on the step's result instead of failing the run.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -237,6 +242,30 @@ about the same PR.
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
 `icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
 `shepherd.seatsDir`. Paths must be absolute.
+
+## Owner-queue sources
+
+`src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
+maps one store of record to `OwnerItem`s and owns its own I/O.
+
+- `agentChatSource` reads agent-chat's `GET /api/queue` on loopback. The port comes from
+  `broker.meta.json`, and the token from the 0600 `ui.token`, both under `AGENT_CHAT_HOME`
+  (default `~/.agent-chat`). The token is only ever sent in the request header. A question
+  becomes a two-way Decide item. A permission prompt or an endorsement becomes a one-way
+  Approve item. A notice or message is a Know item, unless its item shape names an ask.
+  `resolve` posts `/api/answer` (or `/api/dismiss` for a blank answer) on the `factory`
+  channel, and the broker arbitrates.
+- `hitlGateSource` lists the factory's own pending hitl gates as one-way Approve items keyed
+  `gate:<id>` and `run:<runId>`. Its `resolve` refuses. Gates are answered with `gate
+  resolve`, because that verb checks owner presence.
+
+A broker that is not running, is unreachable, refuses the token or returns a malformed body
+throws a `QueueReadError` that names the failure. It is never read as an empty list. Neither
+store has an event stream that the adapters can use, so `tail` polls `open()` every 30 s and
+emits the difference.
+
+`titan-factory queue-counts` prints each source's open count, split by kind. It prints no item
+text. It exits 69 when a source cannot be read and still prints the others.
 
 ## Install as a LaunchAgent
 
@@ -431,7 +460,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest` and `service` |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest`, `queue-counts` and `service` |
+| `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates) and the `queue-counts` verb |
 | `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |

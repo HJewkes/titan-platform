@@ -17,6 +17,8 @@ const initiativeHead = z.object({
 });
 
 const portfolioRow = initiativeHead.extend({
+  /** The brief's `task_prefix`, so a task id maps to its initiative; absent when the brief names none. */
+  taskPrefix: z.string().optional(),
   openTasks: z.number(),
   severityCounts: z.object({ critical: z.number(), high: z.number(), medium: z.number(), low: z.number() }),
   topTask: z.object({ id: z.string(), title: z.string() }).optional(),
@@ -80,8 +82,14 @@ export interface WorkOptions {
 const SESSION_LIMIT = 20;
 const TASK_LIMIT = 200;
 
+/** The list fields only: notes and done_when stay out of a page that shows a table. */
+export function taskRowOf(task: WireTask): z.infer<typeof taskRow> {
+  const { slug, id, title, priority, severity, estimate, tags, updated } = task;
+  return { slug, id, title, priority, ...(severity ? { severity } : {}), ...(estimate !== undefined ? { estimate } : {}), ...(tags ? { tags } : {}), updated };
+}
+
 /** Fails closed twice: when active-work could not say which initiatives are human-only, and when the inventory does not name this one. */
-function isPersonal(known: boolean, inventory: WireInventoryInitiative | undefined): boolean {
+export function isPersonal(known: boolean, inventory: WireInventoryInitiative | undefined): boolean {
   return !known || (inventory?.human_only ?? true);
 }
 
@@ -97,12 +105,13 @@ function headOf(item: WireInitiative, personal: boolean): InitiativeHead {
   };
 }
 
-function rowOf(item: WireInitiative, tasks: readonly WireTask[], inventory: WireInventoryInitiative | undefined, known: boolean): PortfolioRow {
+function rowOf(item: WireInitiative, tasks: readonly WireTask[], inventory: WireInventoryInitiative | undefined, known: boolean, taskPrefix?: string): PortfolioRow {
   const count = (level: (typeof SEVERITIES)[number]): number => tasks.filter((task) => task.severity === level).length;
   const top = tasks[0];
   const classes = inventory?.classes;
   return {
     ...headOf(item, isPersonal(known, inventory)),
+    ...(taskPrefix !== undefined ? { taskPrefix } : {}),
     openTasks: tasks.length,
     severityCounts: { critical: count("critical"), high: count("high"), medium: count("medium"), low: count("low") },
     ...(top ? { topTask: { id: top.id, title: top.title } } : {}),
@@ -121,9 +130,11 @@ export async function readPortfolio(activeWork: ActiveWork, options: WorkOptions
     activeWork.read("inventory"),
   ]);
   const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));
-  const rows = list.sections
-    .flatMap((section) => section.items)
-    .map((item) => rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug), inventory.human_only_known));
+  const items = list.sections.flatMap((section) => section.items);
+  const prefixes = await Promise.all(items.map((item) => taskPrefixOf(activeWork, item.slug)));
+  const rows = items.map((item, index) =>
+    rowOf(item, tasks.tasks.filter((task) => task.slug === item.slug), bySlug.get(item.slug), inventory.human_only_known, prefixes[index]),
+  );
   const kept = options.excludePersonal ? rows.filter((row) => !row.personal) : rows;
   const keptSlugs = new Set(kept.map((row) => row.slug));
   return {
@@ -140,6 +151,15 @@ async function readHead(activeWork: ActiveWork, slug: string): Promise<{ initiat
   if (!item) throw failure(`No initiative named "${slug}"`, EXIT.NOINPUT);
   const counted = inventory.initiatives.find((entry) => entry.slug === slug);
   return { initiative: headOf(item, isPersonal(inventory.human_only_known, counted)), nestedSources: counted?.classes.nested_sources.files ?? 0 };
+}
+
+const TASK_PREFIX = /^task_prefix:\s*["']?([A-Z][A-Z0-9]*)["']?\s*$/m;
+
+/** active-work's `list` does not carry the prefix, so it comes from the brief's frontmatter; an unreadable brief has none. */
+async function taskPrefixOf(activeWork: ActiveWork, slug: string): Promise<string | undefined> {
+  const brief = await activeWork.read("source.read", { slug, path: "brief.md" }).catch(() => null);
+  const frontmatter = brief ? /^---\r?\n([\s\S]*?)\r?\n---/.exec(brief.content)?.[1] : undefined;
+  return frontmatter ? TASK_PREFIX.exec(frontmatter)?.[1] : undefined;
 }
 
 /** The body under the YAML frontmatter; the header already shows what the frontmatter holds. */
@@ -187,7 +207,7 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     initiative,
     brief: { body: briefBody(brief.content), truncated: brief.truncated },
     // active-work answers in priority order, so the cap keeps the most urgent rows.
-    tasks: tasks.tasks.slice(0, options.taskLimit ?? TASK_LIMIT),
+    tasks: tasks.tasks.slice(0, options.taskLimit ?? TASK_LIMIT).map(taskRowOf),
     openTasks: tasks.tasks.length,
     sessions: sessionRows(sessions.sessions),
     loops: loopRows(loops.open),

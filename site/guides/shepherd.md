@@ -125,6 +125,14 @@ result and freezes nothing. A required context with no run yet, or one still run
 green. A repo with no required checks, or a rules read that fails, keeps the rule that every
 Actions run on the commit must pass, so an API failure never thaws a red main.
 
+**Closing the task.** Whatever the verdict, the last step, `sh-cleanup`, closes the registration's
+`--task` over active-work's loopback rpc when the registration names no `--slice`. It first appends
+`closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the task's notes, then marks it done.
+A task that is already done is left alone, so a replay after a restart closes nothing twice and adds no
+second note. If active-work cannot be reached, the step gives up after an hour, records `task <initiative>/<id> not
+closed: <error class>` as a caveat on its result, and the run still completes. A slice registration only
+notes the landing and leaves its task open for the seat to close after live evidence.
+
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
 **Red.** The run freezes the repo, then works through three steps:
