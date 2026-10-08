@@ -12,7 +12,9 @@ Status: 0.1, pure code. The package has no fs, process, network or broker access
 
 Seat files carry front matter (`schema: autonomy-seat/v1`) that several tools read by hand.
 This package adds one primitive: `seatConfigSchema`, a zod schema with inferred types, so a
-host validates a seat's config the same way everywhere.
+host validates a seat's config the same way everywhere. It also folds a seat's event log
+into `SeatState` (`foldSeatEvents`), so seat state is computed from events rather than
+hand-kept, and can be tested with no broker running.
 
 ## When to reach for it
 
@@ -27,6 +29,20 @@ import { seatConfigSchema, type SeatConfig } from "@titan-design/coordinator";
 const seat: SeatConfig = seatConfigSchema.parse(frontMatterObject);
 ```
 
+```ts
+import { foldSeatEvents } from "@titan-design/coordinator";
+
+const state = foldSeatEvents(
+  [
+    { kind: "teleport" },
+    { kind: "claim", owner: "sx-a", worktree: "/w/one", patterns: ["src/a.ts"] },
+    { kind: "background", id: "watch", command: "node watch.js", cwd: "/w/one" },
+  ],
+  { tmpdir: process.env.TMPDIR },
+);
+// state.generation === 1; state.errors lists any refused or malformed event
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and runs nothing. It has no notion of jobs or placement.
@@ -36,6 +52,19 @@ It reads no files, parses no YAML and runs nothing. It has no notion of jobs or 
 `name`, `prefix`, `pool`, `config_dir`, `concurrency` and `spend` are required; everything
 else is optional. Unknown keys pass through (loose objects), so a new seat key never fails
 the parse, but it is also not checked. `spend` may be an empty object.
+
+`foldSeatEvents` never throws. An unknown `kind` only bumps `unknownEvents`; a known kind
+that fails its schema, or a background command whose cwd or any path argument sits under
+`/tmp`, `/private/tmp`, the `tmpdir` option or a `scratchpad` directory, lands in `errors`.
+A claim replaces the earlier claim on the same worktree and a hold the earlier hold on the
+same target; patterns and reasons are never merged. Pass `$TMPDIR` in yourself: the fold
+reads no environment. A literal `$TMPDIR` or `${TMPDIR}` in the command counts as temp
+space, and a `tmpdir` under `/var/` also covers its `/private` real path (macOS).
+
+Paths come from a best-effort split of the command on whitespace, quotes, `=` and shell
+operators (`>`, `2>`, `|`, `&&`, `;`), with an option glued to a path (`-o/tmp/x`) trimmed.
+URLs are skipped. Other variables are not expanded. `errors[].index` counts from the start
+of each call's `events`, so a fold resumed with `from` restarts at 0.
 
 ## Where it came from
 

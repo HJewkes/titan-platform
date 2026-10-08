@@ -58,6 +58,7 @@ graph TD
     decider["decider"]
     memory["memory"]
     ownerQueue["owner-queue"]
+    pm["pm"]
     queueMirror["queue-mirror"]
     reviewPanel["review-panel"]
     sessionAnalytics["session-analytics"]
@@ -177,6 +178,7 @@ graph TD
   console --> sessionAnalytics
   console --> sessionGraph
   console --> sessionRead
+  console --> storeSqlite
   console --> worktree
 ```
 <!-- generated:arch-graph end -->
@@ -185,7 +187,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `coordinator`, `owner-queue`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `coordinator`, `owner-queue`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

@@ -168,6 +168,9 @@ importers:
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
       '@titan-design/worktree':
         specifier: workspace:^
         version: link:../../packages/worktree
@@ -465,6 +468,15 @@ importers:
 
   packages/owner-queue:
     devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/pm:
+    devDependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.4.3
         version: 4.5.4

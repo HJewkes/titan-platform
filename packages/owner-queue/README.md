@@ -13,6 +13,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and requires `asker` and `depositId`. `fromDeposit(deposit, now)` parses one and returns the
   open item it files, with source `deposit:<asker>/<depositId>` and a lens taken from
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
+- `@titan-design/owner-queue/spool` is the only part of the package that touches the
+  filesystem; the root export stays I/O-free. `writeDeposit(dir, deposit)` files a deposit
+  once as `<asker>-<depositId>.json` (0600, temp file then a no-clobber link, 64 KB cap),
+  `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects, and
+  `writeAnswer`/`readAnswer` keep `<id>.answer.json` beside them. File names percent-encode
+  every byte outside `[A-Za-z0-9_]`, so no asker or depositId can name a path outside `dir`.
 - `QueueSource` is the adapter port: `open()`, `tail(cursor, signal)` and `resolve(ref, answer)`.
 - `mergeByKeys(items)` joins items that share an exact key: `pr:<owner>/<repo>#<n>@<sha>`
   with the full 40-hex head sha (compared case-insensitively), `task:<id>`, `gate:<id>` or
