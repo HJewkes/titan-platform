@@ -24,6 +24,8 @@
     "@titan-design/react-ui": "^0.20.0",
     "@titan-design/registry": "workspace:^",
     "@titan-design/rpc-client": "workspace:*",
+    "@titan-design/session-analytics": "workspace:^",
+    "@titan-design/session-graph": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

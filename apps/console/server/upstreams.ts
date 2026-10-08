@@ -98,5 +98,6 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
     upstreams: createUpstreams(config),
     activeWork: activeWorkClient(config.activeWorkPort),
     agents: { broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }), seatPrefixes: config.seatPrefixes },
+    sessions: { graphPath: config.sessionGraphPath },
   };
 }
