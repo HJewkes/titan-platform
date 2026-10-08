@@ -111,4 +111,16 @@ describe("a heredoc opened inside a process substitution", () => {
     const command = `cat <(cat <<EOF)\nit's\nEOF\n${"((x\n".repeat(count)}x'\n(( a ))\n${PUSH}`;
     expect(await hookDenies(command)).toBe(true);
   });
+
+  const NESTED = "$(echo ".repeat(8) + "x" + ")".repeat(8);
+
+  it.each([
+    ["on its own line", `echo ${NESTED}\n${PUSH}`],
+    ["in the push's own argument", `${PUSH} ${NESTED}`],
+    ["after another substitution", `echo <(cat <(cat <<F))\nb\nF\necho ${NESTED}\n${PUSH}`],
+    ["inside double quotes", `echo "${NESTED}"\n${PUSH}`],
+    ["inside a shell -c string", `bash -c "echo ${NESTED}"\n${PUSH}`],
+  ])("the hook denies a push after a pending heredoc and substitutions nested to the limit %s", async (_name, rest) => {
+    expect(await hookDenies(`cat <(cat <<EOF)\nbody\nEOF\n${rest}`)).toBe(true);
+  });
 });
