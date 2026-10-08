@@ -1,7 +1,8 @@
 import type { TraceRecord } from "./index.js";
 
 /**
- * export: kept. digest: replaced by `sha256:<hex>` so joins survive within one export.
+ * export: kept. digest: replaced by `hmac-sha256:<hex>` keyed by the export's key, so equal values join
+ * within one export and a guess can't be confirmed without the key.
  * public: kept only when the record's repo is public, else digested. local: dropped.
  * mcp-local: local when the tool call belongs to an MCP server, else export. actor: digest for `agent:` actors, else export.
  */
@@ -97,10 +98,13 @@ export const REDACTED_LOCAL_VALUE = "[local]";
 export interface RedactTraceOptions {
   /** `owner/name` repos whose ids, paths and shas may leave the machine. */
   publicRepos: readonly string[];
+  /** Secret HMAC key for this export. Reuse it to join across exports; never ship it with the export. */
+  key: string;
 }
 
 interface RedactContext {
   classes: ClassMap;
+  key: CryptoKey;
   isPublic: boolean;
   isMcpTool: boolean;
 }
@@ -113,6 +117,7 @@ export function tracePrivacyScope(record: TraceRecord): TracePrivacyScope {
 export async function redactTraceRecord(record: TraceRecord, options: RedactTraceOptions): Promise<Record<string, unknown>> {
   const context: RedactContext = {
     classes: TRACE_FIELD_PRIVACY[tracePrivacyScope(record)],
+    key: await importDigestKey(options.key),
     isPublic: "repo" in record && options.publicRepos.includes(record.repo),
     isMcpTool: record.kind === "call" && record.callKind === "tool" && (Boolean(record.namespace) || record.name.startsWith("mcp__")),
   };
@@ -141,20 +146,25 @@ async function redactLeaf(value: unknown, privacy: TracePrivacyClass | undefined
     case "export":
       return value;
     case "digest":
-      return digest(value);
+      return digest(value, context.key);
     case "public":
-      return context.isPublic ? value : digest(value);
+      return context.isPublic ? value : digest(value, context.key);
     case "mcp-local":
       return context.isMcpTool ? undefined : value;
     case "actor":
-      return typeof value === "string" && value.startsWith("agent:") ? digest(value) : value;
+      return typeof value === "string" && value.startsWith("agent:") ? digest(value, context.key) : value;
     default:
       return undefined;
   }
 }
 
-async function digest(value: unknown): Promise<unknown> {
+function importDigestKey(key: string): Promise<CryptoKey> {
+  if (typeof key !== "string" || key.length === 0) throw new TypeError("redactTraceRecord needs a non-empty options.key");
+  return crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+}
+
+async function digest(value: unknown, key: CryptoKey): Promise<unknown> {
   if (value === null || value === undefined) return value;
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(value)));
-  return `sha256:${Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(String(value)));
+  return `hmac-sha256:${Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
