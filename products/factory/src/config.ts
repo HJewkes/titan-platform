@@ -106,10 +106,13 @@ export const FactoryConfigSchema = z.object({
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
+      /** The agent-chat seat told once when the deploy alarm goes up; absent means the alarm shows only in status. */
+      hubSeat: z.string().min(1).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 
