@@ -1,9 +1,11 @@
 import { type LexState, lex, newState, ParseError, type Token } from "./lexer.js";
-import type { ArithTrials } from "./arith-trials.js";
+import { type ArithTrials, chargeTrial, newTrials } from "./arith-trials.js";
 
 type Pending = LexState["heredocs"];
 
-const tails = new WeakMap<ArithTrials, Set<number>>();
+const tails = new WeakMap<ArithTrials, Map<number, Token[]>>();
+/** Spent apart from the arithmetic trials, so reading tails can never make a later `((` throw where main would not. */
+const budgets = new WeakMap<ArithTrials["spend"], ArithTrials>();
 
 /** Text readings found while lexing a tail, kept flat so a long run of them does not nest deeper each time. */
 let collected: Token[][] | null = null;
@@ -12,8 +14,8 @@ let collected: Token[][] | null = null;
  * A heredoc still pending when a process substitution closes takes its body from the lines after
  * the current one in bash 5, and not at all in bash 3.2, which lexes those lines as commands. No single
  * reading is safe for both, so both are returned: the first list is the one bash 3.2 gives (and the
- * one this lexer always gave), the others are the text after the body that bash 5 skips. Each such text
- * is returned once, by the first substitution that reaches it.
+ * one this lexer always gave), the others are the text after the body that bash 5 skips. Reading those
+ * is charged by length; once the budget is spent only the first reading is returned, which is what main gives.
  */
 export function readProcessSubstitution(s: LexState, start: number): Token[][] {
   const inner = newState(s.src, start, true, s.trials);
@@ -35,15 +37,21 @@ export function readProcessSubstitution(s: LexState, start: number): Token[][] {
   }
 }
 
-/** The tokens of a text no earlier substitution has returned, or null. */
+/** The tokens of the text after the bodies, or null when there are none or the budget for reading them is spent. */
 function tailAfterBodies(s: LexState, from: number, pending: Pending): Token[] | null {
   const start = skipBodies(s.src, from, pending);
-  if (start === null) return null;
-  const seen = tails.get(s.trials) ?? new Set<number>();
-  tails.set(s.trials, seen);
-  if (seen.has(start)) return null;
-  seen.add(start);
-  return lexTail(s, start);
+  if (start === null || !chargeTrial(budgetOf(s), s.src.length - start)) return null;
+  const known = tails.get(s.trials) ?? new Map<number, Token[]>();
+  tails.set(s.trials, known);
+  const tokens = known.get(start) ?? lexTail(s, start);
+  known.set(start, tokens);
+  return tokens;
+}
+
+function budgetOf(s: LexState): ArithTrials {
+  const own = budgets.get(s.trials.spend) ?? newTrials(s.src);
+  budgets.set(s.trials.spend, own);
+  return own;
 }
 
 /** Tokens of the rest of the source; a tail that does not lex adds nothing beyond the first reading. */
