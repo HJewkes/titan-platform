@@ -44,6 +44,11 @@ export interface SettleState {
   attempt: number;
 }
 
+/** Where the settle state lives; one hold spans every land round at a head, so a new round neither restarts the bound nor skips the refresh. */
+export interface SettleHold {
+  settle?: SettleState;
+}
+
 /** Waits once, or past the bound probes the local merge-tree instead, so the gate that follows can name it. */
 export async function settleRun(input: SettleInput, timing: { now: () => number; sleep: (ms: number, signal: AbortSignal) => Promise<void> }, mergeTree: MergeTreeProbe | undefined, signal: AbortSignal): Promise<Settled> {
   const since = input.since ?? timing.now();
@@ -61,7 +66,7 @@ function unsettledReason(reason: string, settled: Settled): string {
 }
 
 /** A gate a later read may clear waits at this head instead, up to the bound; past it the gate stands and says how long it waited. */
-export async function settleOrGate(holder: { settle?: SettleState }, decision: GateDecision, unsettled: UnsettledMerge | undefined, headSha: string, record: (wait: Omit<SettleInput, "repo" | "baseRef">) => Promise<Settled>): Promise<GateDecision | undefined> {
+export async function settleOrGate(holder: SettleHold, decision: GateDecision, unsettled: UnsettledMerge | undefined, headSha: string, record: (wait: Omit<SettleInput, "repo" | "baseRef">) => Promise<Settled>): Promise<GateDecision | undefined> {
   if (!unsettled?.transient(decision)) return decision;
   const prior = holder.settle?.headSha === headSha ? holder.settle : undefined;
   const attempt = prior ? prior.attempt + 1 : 0;

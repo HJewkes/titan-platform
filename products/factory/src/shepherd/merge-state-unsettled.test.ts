@@ -10,6 +10,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
+import { OBSERVE_STEP } from "./observe.js";
 import type { ReviewRequest, ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -34,6 +35,9 @@ const phases: ShepherdPhases = {
 /** What GitHub answers the evidence step's reads with, by head and by how many collections that head has had. */
 type EvidenceState = (headSha: string, collection: number, now: number) => string;
 
+/** What the observe step's reads answer, by how many observe steps there have been, the first one included. */
+type ObserveState = (observation: number) => string;
+
 interface World {
   fake: FakeGitHub;
   routes: FactoryRoutes;
@@ -47,16 +51,20 @@ interface World {
 /**
  * ci-wait reads a settled clean PR, while the evidence step reads whatever `evidenceState` says: GitHub flips to
  * `unknown` when it recomputes the test merge after the base moves, which is what the evidence read keeps hitting.
+ * The observe step reads whatever `observeState` says.
  */
-function world(evidenceState: EvidenceState): World {
+function world(evidenceState: EvidenceState, observeState: ObserveState = () => "clean"): World {
   const fake = fakeGitHub();
   const clock = { now: 0 };
   const collections = new Map<string, number>();
   const mergeTreeProbes: string[] = [];
   let collecting: string | undefined;
+  let observations = 0;
+  let observing = false;
   fake.onGetPr = (pr) => {
     fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
-    pr.mergeableState = collecting === undefined ? "clean" : evidenceState(pr.headSha, collections.get(collecting) ?? 0, clock.now);
+    if (collecting !== undefined) pr.mergeableState = evidenceState(pr.headSha, collections.get(collecting) ?? 0, clock.now);
+    else pr.mergeableState = observing ? observeState(observations) : "clean";
   };
   const tick = async (ms: number, signal: AbortSignal) => ((clock.now += ms), sleep(1, signal));
   const store = shepherdStoreRef();
@@ -69,23 +77,29 @@ function world(evidenceState: EvidenceState): World {
     registry: async () => true,
     mergeTree: async (input) => (mergeTreeProbes.push(input.headSha), "clean"),
   });
-  const counted = (route: StepRoute): StepRoute => ({
+  const during = (route: StepRoute, enter: (stepId: string) => void, leave: () => void): StepRoute => ({
     ...route,
     runner: {
       run: async (input) => {
-        const head = input.stepId.slice(MERGE_EVIDENCE_STEP.length + 1).split(":")[0]!;
-        collections.set(head, (collections.get(head) ?? 0) + 1);
-        collecting = head;
+        enter(input.stepId);
         try {
           return await route.runner.run(input);
         } finally {
-          collecting = undefined;
+          leave();
         }
       },
     },
   });
+  const collect = (stepId: string) => {
+    const head = stepId.slice(MERGE_EVIDENCE_STEP.length + 1).split(":")[0]!;
+    collections.set(head, (collections.get(head) ?? 0) + 1);
+    collecting = head;
+  };
+  const counted = (route: StepRoute) => during(route, collect, () => (collecting = undefined));
+  const observed = (route: StepRoute) => during(route, () => ((observations += 1), (observing = true)), () => (observing = false));
+  const wrap = (route: StepRoute) => (route.match === MERGE_EVIDENCE_STEP ? counted(route) : route.match === OBSERVE_STEP ? observed(route) : route);
   const routes = Object.assign(
-    base.map((route) => (route.match === MERGE_EVIDENCE_STEP ? counted(route) : route)),
+    base.map(wrap),
     { database: base.database, shepherd: base.shepherd },
   );
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
@@ -145,6 +159,21 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const settles = settleRecords(host, runId);
     expect(settles.at(-1)).toMatchObject({ headSha: H1, spent: true });
     expect(new Set(settles.map((settle) => settle.since)).size).toBe(1);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("keeps one bound at the head across land rounds an unknown observe read starts, and gates once it expires", async () => {
+    const w = world(() => "unknown", (observation) => (observation % 2 === 0 ? "unknown" : "clean"));
+    const host = open(w);
+    const runId = start(host, w);
+
+    const gate = await vi.waitFor(() => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"))!.gate);
+
+    expect(gate.prompt).toMatch(/unsettled for 3\d min/);
+    const settles = settleRecords(host, runId);
+    expect(new Set(settles.map((settle) => settle.since)).size).toBe(1);
+    expect(settles.at(-1)).toMatchObject({ headSha: H1, spent: true });
+    expect(w.collections.get(H1)).toBe(settles.length);
     expect(w.fake.effects.merge).toBe(0);
   });
 

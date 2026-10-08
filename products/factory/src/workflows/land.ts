@@ -11,7 +11,7 @@ import { deadline } from "./deadline.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
-import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleInput, type SettleState, type UnsettledMerge } from "./land-settle.js";
+import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
@@ -46,6 +46,8 @@ export interface LandInput {
   round?: number;
   /** Updates since the last human gate, counted across every round of the run; a caller that re-enters `land` passes the same bound each time. */
   updateBound?: UpdateBound;
+  /** The unsettled-merge wait at a head across every round of the run; a caller that re-enters `land` passes the same hold each time. */
+  settleHold?: SettleHold;
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
@@ -116,7 +118,7 @@ interface LandState {
   refreshed: Set<string>;
   /** Settle waits cost no ci-wait cycle against the backstop; the settle bound ends them. */
   settles: number;
-  settle?: SettleState;
+  hold: SettleHold;
 }
 
 /**
@@ -127,7 +129,7 @@ export async function land(ctx: WorkflowContext, input: LandInput, options: Land
   const round = input.round ?? 0;
   if (!Number.isInteger(round) || round < 0) throw new Error(`land: round must be a non-negative integer, got ${round}`);
   const rules = await step(ctx, roundId("land-rules", round), { repo: input.repo, pr: input.pr }, LandRulesResult);
-  const state: LandState = { round, base: rules.base, settles: 0, cycle: 0, updates: 0, retries: 0, bound: input.updateBound ?? newUpdateBound(), merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
+  const state: LandState = { round, base: rules.base, settles: 0, cycle: 0, updates: 0, retries: 0, bound: input.updateBound ?? newUpdateBound(), hold: input.settleHold ?? {}, merges: 0, decisions: 0, trusted: new Set(), trustedBy: "human", refreshed: new Set() };
   for (;;) {
     if (state.cycle - state.settles >= MAX_CI_CYCLES) throw new Error(`land: PR #${input.pr} did not settle within ${MAX_CI_CYCLES} ci-wait cycles`);
     const ci = await step(ctx, roundId("ci-wait", round, state.cycle++), { repo: input.repo, pr: input.pr, contexts: rules.contexts, strict: rules.strict }, CiSnapshotResult);
@@ -222,12 +224,12 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
 
 /** The payload must name the head shown, so an approval can never carry over to a head the human did not see. */
 async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, state: LandState, options: LandOptions): Promise<LandOutcome | undefined> {
-  if (state.settle?.headSha === ci.headSha) await options.unsettled?.refresh(ctx, ci.headSha);
+  if (state.hold.settle?.headSha === ci.headSha) await options.unsettled?.refresh(ctx, ci.headSha);
   const decided = await decideMerge(ctx, input, ci, state, options);
   if (decided.outcome === "deny") return stopped("merge-denied", ci.headSha, decided.reason);
   if (decided.outcome === "allow") return void trust(state, ci.headSha, "policy");
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.base, ...wait }, SettleResult);
-  const decision = await settleOrGate(state, decided, options.unsettled, ci.headSha, settleStep);
+  const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
   const reviewedMerge = options.reviewedMerge?.(ci.headSha) ?? false;
   const { schema, brief } = approveMergeDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, reason: decision.reason, reviewedMerge });
