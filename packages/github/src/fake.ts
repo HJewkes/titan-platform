@@ -27,6 +27,8 @@ export interface FakeGitHub {
   /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
   notModified: number;
   rules: RequiredChecks;
+  /** What classic branch protection requires; empty reads as a branch with none. */
+  classicRules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
@@ -107,6 +109,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
+    classicRules: { contexts: [], strict: false },
     reviewBypass: false,
     createdCheckRuns: [],
     commits: new Map(),
@@ -170,6 +173,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getPr", { ...pr });
     },
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
+    getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),

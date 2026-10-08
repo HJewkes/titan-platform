@@ -117,6 +117,14 @@ it is not red. When every failed run was cancelled and main's tip is a later pus
 contains the merge commit, Shepherd reads CI at that tip instead (`MAIN_CI_ROUTES` in
 `products/factory/src/shepherd/route-table.ts`). A cancelled run with no newer push is red.
 
+Which runs judge the commit depends on the base branch's rules. When it requires status
+checks (rulesets first, then classic branch protection), only those required contexts judge
+it, each by its newest run from the app it is pinned to (GitHub Actions when unpinned). A red
+job outside them, such as `release` or `deploy`, is recorded as a `warning` on the step's
+result and freezes nothing. A required context with no run yet, or one still running, is not
+green. A repo with no required checks, or a rules read that fails, keeps the rule that every
+Actions run on the commit must pass, so an API failure never thaws a red main.
+
 **Unread.** No run appeared at the merge sha. The run opens `main-red` and freezes nothing.
 
 **Red.** The run freezes the repo, then works through three steps:
@@ -149,7 +157,8 @@ the episode's fixer as its implementer. The guard also re-reads the default bran
 every five minutes, and a green head there thaws the repo.
 
 **Green.** `sh-unfreeze` thaws a frozen repo when the merge commit descends from the red sha
-and every check that was red there ran green again. A path filter that skips a red check
+and every check that was red there ran green again (when the base branch has required
+checks, every required context green). A path filter that skips a red check
 therefore cannot thaw it.
 
 Every outcome that leaves the repo frozen with nothing in place to clear it opens a gate
