@@ -27,7 +27,7 @@
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
     "egress:scan": "node packages/egress-scan/dist/bin.js",
     "docs:dev": "pnpm docs:reference && vitepress dev site",
-    "docs:build": "pnpm docs:reference && vitepress build site",
+    "docs:build": "node scripts/gen-docs-reference.mjs --check && vitepress build site",
     "docs:preview": "vitepress preview site",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/gen-capabilities.mjs",
