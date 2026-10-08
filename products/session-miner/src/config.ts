@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { transcriptsRoot } from "@titan-design/session-read";
+import { expandHome, transcriptsRoot } from "@titan-design/session-read";
 
 export interface MinerConfig {
   /** Holds the index database, the daemon pid file, and the clusterer snapshot. */
@@ -28,19 +28,23 @@ export interface ConfigOverrides {
   graph?: string;
 }
 
-/** Explicit overrides win, then `TITAN_MINER_STATE` / `TITAN_MINER_CORPUS` / `TITAN_MINER_GRAPH` / `TITAN_MINER_EVENTS_DB` / `TITAN_MINER_BROKER_LOG`, then the defaults. */
+/**
+ * Explicit overrides win, then the environment, then the defaults. The variables read are
+ * `TITAN_MINER_STATE`, `TITAN_MINER_CORPUS`, `TITAN_MINER_CODEX_HOME`, `TITAN_MINER_NAMESPACE`,
+ * `TITAN_MINER_GRAPH`, `TITAN_MINER_EVENTS_DB` and `TITAN_MINER_BROKER_LOG`.
+ * A namespace without a Codex home throws, since it would otherwise be dropped silently.
+ */
 export function resolveConfig(overrides: ConfigOverrides = {}, env: NodeJS.ProcessEnv = process.env): MinerConfig {
   const stateDir = expandHome(overrides.stateDir ?? env.TITAN_MINER_STATE ?? path.join(os.homedir(), ".local", "state", "titan-session-miner"));
   const corpusRoot = expandHome(overrides.corpusRoot ?? env.TITAN_MINER_CORPUS ?? transcriptsRoot());
   const codexHome = overrides.codexHome ?? env.TITAN_MINER_CODEX_HOME;
+  const namespace = overrides.namespace ?? env.TITAN_MINER_NAMESPACE;
+  if (namespace !== undefined && !codexHome) throw new Error("--namespace / TITAN_MINER_NAMESPACE names a Codex corpus and needs --codex-home / TITAN_MINER_CODEX_HOME");
   const graph = overrides.graph ?? env.TITAN_MINER_GRAPH;
   const db = graph ? { dbPath: expandHome(graph), readonly: true } : { dbPath: path.join(stateDir, "index.sqlite3") };
   const eventsDb = expandHome(env.TITAN_MINER_EVENTS_DB ?? path.join(os.homedir(), ".agent-chat", "events.db"));
   const brokerLog = expandHome(env.TITAN_MINER_BROKER_LOG ?? path.join(os.homedir(), ".agent-chat", "broker.log"));
   return { stateDir, corpusRoot, eventsDb, brokerLog, ...db,
-    ...(codexHome ? { codexHome: expandHome(codexHome), namespace: overrides.namespace ?? env.TITAN_MINER_NAMESPACE ?? os.hostname() } : {}) };
+    ...(codexHome ? { codexHome: expandHome(codexHome), namespace: namespace ?? os.hostname() } : {}) };
 }
 
-function expandHome(p: string): string {
-  return p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
-}

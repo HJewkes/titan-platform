@@ -54,6 +54,24 @@ agent marker still resolves as `owner-terminal` with no dialog. `CLAUDECODE` doe
 the owner's `!` commands in Claude Code set it too. No flag or environment variable supplies a proof
 or a helper path.
 
+Some answers skip the dialog and resolve as `coordinator`. Owner decision 2026-10-05 (TP-1720) lets a
+coordinator retry a stuck-behind gate. Owner decision 2026-10-07 (TP-1904, "mechanical only") adds three
+gate classes, each only on evidence the command reads fresh through the GitHub port at resolve time:
+
+| Gate and answer | Evidence the command reads |
+|---|---|
+| `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
+| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every Actions run on it passing |
+| `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
+
+The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
+is stored on the gate as `resolvedEvidence`, and the gate store re-checks it against the gate's own
+prompt, schema and brief before it admits the coordinator, so an audit can re-run the same check later.
+Any read that fails or comes back partial, a pending or red check, an unknown mergeable, a payload or PR
+head other than the gate's, or a missing verdict reads no evidence, and the command falls back to the
+dialog above. A visual-path, seat owner-gate, route-escalation or release gate, a round
+pick, and every other gate still need the owner's presence.
+
 The dialog does not yet stop an agent that only runs the CLI. Only `AGENT_CHAT_AGENT_ID` is read, so
 an agent that runs `env -u AGENT_CHAT_AGENT_ID titan-factory gate resolve ...`, or sets the variable
 to an empty string, resolves as `owner-terminal` with no dialog. That path stays open until the owner
@@ -113,6 +131,32 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
 Gate resolution is not a registry command, so no MCP or `/rpc` caller can answer a gate. It
 stays the local `titan-factory gate resolve`.
+
+### Escalations
+
+Shepherd opens `approve-merge` for the owner for five reasons only, listed in `ESCALATIONS` in
+`src/shepherd/route-table.ts`. The gate prompt names the reason.
+
+- `conflict`: a merge conflict survived one fixer attempt. Shepherd finds a conflict in one of
+  three ways: update-branch fails with a 422, the head reads `dirty`, or the check that runs
+  before a gate finds one. It then wakes the implementer once, with the files that likely
+  conflict. The next round reads CI at the fixer's head. If that head is behind, it runs a
+  fresh update-branch first. If that head still conflicts, the gate opens and no second fixer
+  starts. The fixer already had the conflict and failed to settle it, so a second wake would
+  likely fail the same way. The count resets when a head reads green, so a later conflict gets
+  its own fixer. This is by design (TP-1753). Allowing a second fixer would change merge policy,
+  so it needs its own task.
+- `policy-denial`: the seat's authority policy does not allow an automated merge, so only the
+  owner can approve this one.
+- `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
+  timeout or an unanswered hold. Retrying again would only repeat the stall.
+- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
+  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
+  closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
+  other round, resets the count. It is checked before `fix-first-runaway`.
+- `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
+  caps what one PR can spend on agents before a human looks at it.
 
 ## Owner digest
 
@@ -190,7 +234,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd pid with `github` `ok`, and the burndown tick is not failing or stale |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, and the burndown tick is not failing or stale |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -223,8 +267,10 @@ unit's `MainPID`). `status` reads `systemctl --user show` (`ActiveState`, `SubSt
 `restart` and `deploy` restart with `systemctl --user restart`. `service plist` prints the unit.
 `service install --dry-run` prints the unit or plist and the `systemctl` or `launchctl` calls
 install would make, and changes nothing. For the unit to run without a login session, enable
-lingering once: `loginctl enable-linger "$USER"`. `service check` reads launchd's run counters
-and still needs macOS.
+lingering once: `loginctl enable-linger "$USER"`. `service check` reads `systemctl --user show`
+on Linux: `MainPID` (no process unless `ActiveState` is `active`), `NRestarts` in place of
+launchd's run count and `ExecMainStatus` in place of its last exit code, with the same causes
+and exit codes as on macOS.
 
 `service restart` drains first. It polls `/health` every 5 s until its `busy` list is
 empty, and prints the busy runs once a minute. A run is busy when it is `running` and its

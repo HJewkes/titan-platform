@@ -23,9 +23,18 @@ ruleTester.run("max-function-lines", maxFunctionLines, {
   valid: [
     { name: "a 30-line function passes", code: declaration("thirty", 30) },
     { name: "a 30-line function with 3 blank lines passes", code: declaration("spaced", 30, 9) },
+    {
+      name: "a nested function's lines count toward the enclosing function only, as in core max-lines-per-function",
+      code: `function outer() {\n  function inner() {\n${statements(26).join("\n")}\n  }\n}`,
+    },
     { name: "a larger max option admits a longer function", code: declaration("long", 40), options: [{ max: 40 }] },
   ],
   invalid: [
+    {
+      name: "an outer function fails only because of its nested function",
+      code: `function outer() {\n  function inner() {\n${statements(27).join("\n")}\n  }\n}`,
+      errors: [{ message: message("outer", 31) }],
+    },
     {
       name: "a 31-line function fails with its name and line count",
       code: declaration("thirtyOne", 31),
@@ -45,6 +54,21 @@ ruleTester.run("max-function-lines", maxFunctionLines, {
       name: "an object method takes its property's name",
       code: `const api = {\n  load: function () {\n${statements(30).join("\n")}\n  },\n};`,
       errors: [{ message: message("load", 32) }],
+    },
+    {
+      name: "an assigned member function reports as anonymous",
+      code: `obj.m = function () {\n${statements(30).join("\n")}\n};`,
+      errors: [{ message: message("anonymous function", 32) }],
+    },
+    {
+      name: "a default-export function declaration keeps its name",
+      code: `export default function main() {\n${statements(30).join("\n")}\n}`,
+      errors: [{ message: message("main", 32) }],
+    },
+    {
+      name: "an anonymous default-export function is named anonymous",
+      code: `export default function () {\n${statements(30).join("\n")}\n}`,
+      errors: [{ message: message("anonymous function", 32) }],
     },
     {
       name: "a callback with no binding is named anonymous",

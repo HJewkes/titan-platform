@@ -40,7 +40,10 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
   let opened = false;
   try {
     const response = await options.fetch(options.url, { headers: { accept: "text/event-stream" }, signal });
-    if (!response.ok || !response.body) return false;
+    if (!response.ok || !response.body) {
+      reportDialFailure(options.handlers, `HTTP ${response.status}`);
+      return false;
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     const parse = createSseParser();
@@ -49,10 +52,23 @@ async function readUntilDropped(options: EventStreamOptions, signal: AbortSignal
         opened = dispatch(message, options.handlers) || opened;
       }
     }
-  } catch {
-    // A refused dial, a dropped socket, and an abort all end this connection the same way.
+  } catch (err) {
+    // A refused dial, a dropped socket, and an abort all end this connection the same way;
+    // only a dial that failed before `ready`, and not by the caller's abort, is worth reporting.
+    if (!opened && !signal.aborted) reportDialFailure(options.handlers, err instanceof Error ? err.message : String(err));
   }
   return opened;
+}
+
+function reportDialFailure(handlers: EventHandlers, reason: string): void {
+  try {
+    handlers.onDialFailure?.(reason);
+  } catch (err) {
+    // Same isolation as `dispatch`: a bad handler must not end the redial loop.
+    queueMicrotask(() => {
+      throw err;
+    });
+  }
 }
 
 function dispatch(message: SseMessage, handlers: EventHandlers): boolean {

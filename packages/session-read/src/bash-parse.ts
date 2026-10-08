@@ -4,9 +4,9 @@
  * (AW-22 → AW-23).
  */
 
-import os from 'node:os';
 import path from 'node:path';
 import { programStart } from './command-heads.js';
+import { expandHome } from './expand-home.js';
 import { splitCommands, type ShellWord } from './shell-split.js';
 export { commandHeads } from './command-heads.js';
 
@@ -75,10 +75,25 @@ export function gitCommands(raw: string): string[] {
     const args = words.slice(programStart(words));
     const program = args[0];
     if (program && !program.quoted && GIT_OR_GH.test(program.text.replace(/^\(+/, ''))) {
-      commands.push(args.map(rejoinWord).join(' ').replace(/^\(+/, ''));
+      const last = args.length - 1;
+      const bare = args.map((word, i) => (i === last && i > 0 ? withoutSubshellCloser(word) : word));
+      commands.push(bare.map(rejoinWord).join(' ').replace(/^\(+/, ''));
     }
   }
   return commands;
+}
+
+/** Drops `)` that closes an enclosing subshell, keeping those balanced inside the word (`$(…)`). */
+function withoutSubshellCloser(word: ShellWord): ShellWord {
+  if (word.quoted) return word;
+  let text = word.text;
+  const opens = [...text].filter((c) => c === '(').length;
+  let closes = [...text].filter((c) => c === ')').length;
+  while (closes > opens && text.endsWith(')')) {
+    text = text.slice(0, -1);
+    closes--;
+  }
+  return { text, quoted: false };
 }
 
 function rejoinWord(word: ShellWord): string {
@@ -119,7 +134,7 @@ export function commandCwd(raw: string, sessionCwd: string | null): string | nul
   const cd = raw.trim().match(/^cd\s+([^&;|]+?)\s*(?:&&|;|$)/)?.[1];
   const target = (dashC ?? cd)?.trim().replace(/^['"]|['"]$/g, '');
   if (!target) return sessionCwd;
-  const expanded = target.startsWith('~/') ? path.join(os.homedir(), target.slice(2)) : target;
+  const expanded = expandHome(target);
   if (path.isAbsolute(expanded)) return expanded;
   return sessionCwd ? path.resolve(sessionCwd, expanded) : null;
 }

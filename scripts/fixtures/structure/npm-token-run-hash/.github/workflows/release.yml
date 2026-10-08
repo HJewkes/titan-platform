@@ -1,0 +1,7 @@
+name: Release
+on: push
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "step #1" && NODE_AUTH_TOKEN=${{ secrets.NPM_TOKEN }} pnpm publish

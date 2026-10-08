@@ -4,6 +4,8 @@ import {
   GateStoreSchemaOutdated,
   type GateAnswerAllowance,
   type GateAuthorize,
+  type GateEvidence,
+  type GateEvidencePolicy,
   type GateQuestion,
   type GateRecord,
   type GateResolver,
@@ -160,9 +162,23 @@ export function gateBriefMigration(version: number, name: string = DEFAULT_GATE_
   };
 }
 
+/**
+ * Adds `resolved_evidence`. Idempotent and backfill-free: gates resolved before it carry no evidence. A store
+ * refuses a resolve that carries evidence while the table lacks it, rather than drop the evidence.
+ */
+export function gateEvidenceMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:evidence:${name}`,
+    up: (db) => {
+      if (!hasColumn(db, name, "resolved_evidence")) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_evidence TEXT`);
+    },
+  };
+}
+
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration` and `gateBriefMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration` and `gateEvidenceMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -171,6 +187,8 @@ export interface SqliteGateStoreOptions {
   requireBrief?: boolean;
   /** Answers a non-owner class may give, each exact in class, step and payload. Nothing else widens the default class check. */
   allowances?: readonly GateAnswerAllowance[];
+  /** Admits a non-owner class on the evidence its resolve carries; see `GateEvidencePolicy`. Needs `gateEvidenceMigration`. */
+  evidencePolicy?: GateEvidencePolicy;
 }
 
 interface RawGateRow {
@@ -190,6 +208,8 @@ interface RawGateRow {
   summary?: string | null;
   evidence_ref?: string | null;
   questions?: string | null;
+  /** Absent entirely on a table that has not run `gateEvidenceMigration`. */
+  resolved_evidence?: string | null;
 }
 
 /**
@@ -205,7 +225,7 @@ export class SqliteGateStore extends BaseGateStore {
     private readonly db: Db,
     options: SqliteGateStoreOptions = {},
   ) {
-    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances, options.evidencePolicy);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
     if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
     const missing = missingMigration(db, this.table, options.requireBrief ?? false);
@@ -243,15 +263,19 @@ export class SqliteGateStore extends BaseGateStore {
     return row ? toRecord(row) : undefined;
   }
 
+  /** Evidence is written only when given, so a table without `resolved_evidence` still settles every other resolve. */
   protected update(record: GateRecord): boolean {
     const resolvedBy = record.resolvedBy ? JSON.stringify(record.resolvedBy) : null;
+    const values = [record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy];
+    let assignments = "status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?";
+    if (record.resolvedEvidence !== undefined) {
+      this.requireColumn(record.id, "resolved_evidence", "gateEvidenceMigration");
+      assignments += ", resolved_evidence = ?";
+      values.push(JSON.stringify(record.resolvedEvidence));
+    }
     const result = this.db
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)}
-            SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
-          WHERE id = ? AND status = 'pending'`,
-      )
-      .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
+      .prepare(`UPDATE ${quoteIdent(this.table)} SET ${assignments} WHERE id = ? AND status = 'pending'`)
+      .run(...values, record.id);
     return result.changes > 0;
   }
 
@@ -278,7 +302,7 @@ function missingMigration(db: Db, table: string, requireBrief: boolean): string 
 }
 
 function defaultMigrations(table: string): Migration[] {
-  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table)];
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table), gateEvidenceMigration(5, table)];
 }
 
 const BASE_COLUMNS = ["id", "prompt", "schema", "status", "payload", "reason", "created_at", "resolved_at", "expires_at"];
@@ -318,6 +342,7 @@ function toRecord(row: RawGateRow): GateRecord {
     resolvedAt: row.resolved_at ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     resolvedBy: row.resolved_by ? (JSON.parse(row.resolved_by) as GateResolver) : undefined,
+    resolvedEvidence: row.resolved_evidence ? (JSON.parse(row.resolved_evidence) as GateEvidence) : undefined,
     rule: row.rule ? (JSON.parse(row.rule) as GateRule) : undefined,
     summary: row.summary ?? undefined,
     evidenceRef: row.evidence_ref ?? undefined,

@@ -444,6 +444,31 @@ describe("runChecks — forbid-import", () => {
       db.close();
     }
   });
+
+  it("matches a non-glob except entry by exact path, not substring", async () => {
+    fixture = await createFixture((db, snapshotId) => {
+      db.insertNodes(snapshotId, [
+        { id: "render/foo.ts", kind: "file", name: "" },
+        { id: "cli/browser.ts", kind: "file", name: "" },
+        { id: "cli/browser.tsx", kind: "file", name: "" },
+        { id: "cli/old/browser.ts", kind: "file", name: "" },
+      ]);
+      db.insertEdges(snapshotId, [
+        { srcId: "render/foo.ts", dstId: "cli/browser.ts", kind: "imports" },
+        { srcId: "render/foo.ts", dstId: "cli/browser.tsx", kind: "imports" },
+        { srcId: "render/foo.ts", dstId: "cli/old/browser.ts", kind: "imports" },
+      ]);
+    });
+
+    const db = openCodeGraph(fixture.dbPath);
+    try {
+      const rule = { type: "forbid-import" as const, id: "r", from: "render/**", to: "cli/**", except: ["cli/browser.ts"] };
+      const result = runChecks(db, { snapshotId: fixture.snapshotId, rules: [rule] });
+      expect(result.violations.map((v) => v.destinationId).sort()).toEqual(["cli/browser.tsx", "cli/old/browser.ts"]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe("runChecks — layered-deps", () => {
@@ -631,12 +656,13 @@ describe("runChecks — layered-deps", () => {
   });
 
   describe("excludeRoles", () => {
+    type Role = "test" | "source" | "barrel" | "fixture";
     const edge = { srcId: "core/foo.ts", dstId: "cli/bar.ts", kind: "imports" as const };
 
     async function violationCount(
-      srcRole: "test" | "source",
-      dstRole: "test" | "source",
-      excludeRoles?: ("test" | "source")[],
+      srcRole: Role,
+      dstRole: Role,
+      excludeRoles?: Role[],
     ): Promise<number> {
       fixture = await createFixture((db, snapshotId) => {
         db.insertNodes(snapshotId, [
@@ -666,6 +692,15 @@ describe("runChecks — layered-deps", () => {
 
     it("keeps the violation when neither file has an excluded role", async () => {
       expect(await violationCount("source", "source", ["test"])).toBe(1);
+    });
+
+    it("drops violations at a barrel and at a fixture when both roles are excluded", async () => {
+      expect(await violationCount("barrel", "source", ["barrel", "fixture"])).toBe(0);
+      expect(await violationCount("source", "fixture", ["barrel", "fixture"])).toBe(0);
+    });
+
+    it("keeps a barrel violation when only the fixture role is excluded", async () => {
+      expect(await violationCount("barrel", "source", ["fixture"])).toBe(1);
     });
 
     it("keeps the violation when excludeRoles is not set", async () => {

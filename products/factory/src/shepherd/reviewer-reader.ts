@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import os from "node:os";
 import { claudeSourceFromPath, readSessionObservations, type NormalizedSessionObservation } from "@titan-design/session-read";
+import { isInvestigativeCall } from "./depth-floor.js";
 import { DamagedTranscriptError } from "./external-review.js";
 import type { Presence } from "./presence.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
@@ -75,18 +76,22 @@ function continuesPast(final: FinalText, observation: NormalizedSessionObservati
 
 /**
  * The reviewer's messages in file order, or none unless the conversation ends with assistant text: a tool call, a tool
- * result, a user message or a thinking-only record after the last text means the turn was not finished.
+ * result, a user message or a thinking-only record after the last text means the turn was not finished. Each message
+ * carries the count of investigative calls the session made up to it.
  */
 export function finishedTurnMessages(agentId: string) {
   const messages: ReviewerMessage[] = [];
   let final: FinalText | null = null;
   let continued = false;
+  let investigativeCalls = 0;
+  const stamped = (found: ReviewerMessage[]) => found.map((message) => ({ ...message, investigativeCalls }));
   return {
     add(observation: NormalizedSessionObservation): void {
+      if (isInvestigativeCall(observation)) investigativeCalls += 1;
       // A sent message is kept but is never the final text, so a turn that ends on the call is still unfinished.
-      const sent = sentMessages(agentId, observation);
+      const sent = stamped(sentMessages(agentId, observation));
       messages.push(...sent);
-      const found = reviewerMessages(agentId, observation);
+      const found = stamped(reviewerMessages(agentId, observation));
       if (found.length === 0) {
         continued ||= sent.length > 0 || (final !== null && continuesPast(final, observation));
         return;

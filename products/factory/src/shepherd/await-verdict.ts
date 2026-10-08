@@ -1,6 +1,7 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
+import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
 import { parseOwnerBrief, type Malformed } from "./review-schemas.js";
@@ -65,7 +66,8 @@ const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): Malfor
  * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
  * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
  * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
- * `malformed` record; silence, a foreign or earlier message and `WAIT` carry none.
+ * `malformed` record; silence, a foreign or earlier message and `WAIT` carry none. A MERGE or FIX_FIRST from a session that
+ * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
  */
 export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
   const final = messages.at(-1);
@@ -78,8 +80,9 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
   if (!block.ok) return { kind: "none", reason: "wait" };
+  if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text), ...(block.closer && { closer: block.closer }) };
 }
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */

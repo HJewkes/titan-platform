@@ -105,7 +105,7 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
   });
 
   it("gates a carried head that touches a protected path", () => {
-    const facts = patched((f) => { f.changedPaths.push(".github/workflows/ci.yml"); });
+    const facts = patched((f) => { f.changedPaths.push("CODEOWNERS"); });
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
   });
 

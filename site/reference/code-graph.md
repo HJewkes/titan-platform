@@ -61,8 +61,8 @@ source answers for the same absolute paths a checkout would, so node ids do not 
 
 Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
 glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
-`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture`, `script`, `entry`, `barrel`, `types`,
-`config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` and `*.fixture.*`),
+`script`, `entry`, `barrel`, `types`, `config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
 `.gitattributes` syntax:
 
 ```json
@@ -95,13 +95,20 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 ```
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
-`forbid-import` (`except` lists destination patterns `to` matches but the rule allows), `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
-nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
+`forbid-import` (`except` lists destination patterns `to` matches but the rule allows),
+`layered-deps` (layers are path prefixes; an import may point only to its own layer or a lower
+one; `excludeRoles` drops an import whose source or destination file has one of the roles), and
+`no-internal-only-barrels`. A seventh, `metric-outlier`, flags nodes of one `kind` strictly
+above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
 absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
-zero-valued node is never flagged. Severity defaults to `error`.
+zero-valued node is never flagged. An eighth, `no-import-cycles`, reports each strongly
+connected component of the file import graph once, with its sorted member files in `members`;
+`import type` and `export type … from` edges are left out unless `includeTypeOnly: true` (an
+all-inline `{ type T }` import still loads the module, so it counts), and `exclude` and `excludeRoles`
+take files out of the graph. Against a baseline, a cycle inside one known cycle carries over,
+and a cycle that gains a file is new. Severity defaults to `error`.
 
 `validateRules` and `loadCheckRules` throw on a `severity` other than `error` or `warning`, a
 `kind` outside the node kinds, and an `exclude` that is not a string array. Before this
@@ -275,7 +282,8 @@ and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 A browser imports the report, dashboard, and package-architecture derivations from
 `@titan-design/code-graph/analysis`, which leaves out the root's ts-morph, tree-sitter, and
 SQLite. A test keeps the subpath's import closure free of packages and Node builtins.
-Symbol coupling is not on it yet, because `symbol-coupling.ts` still reaches `node:path`.
+`computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so import it from
+the root, which needs Node.
 
 ### Dashboard derivations
 
@@ -284,12 +292,11 @@ you have already read, so they also run in a browser:
 
 ```ts
 import {
-  buildSymbolCouplingPayload,
   classifyCoupling,
   collectNodeMetrics,
   computeHealth,
   pairKey,
-} from "@titan-design/code-graph";
+} from "@titan-design/code-graph/analysis";
 
 collectNodeMetrics([{ nodeId: "a.ts", name: "cognitive_max", value: 18 }]).get("a.ts");
 // { cognitiveMax: 18 }
@@ -307,7 +314,8 @@ classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
 
 `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
 node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
-caps symbol coupling at 40 pairs and 15 consumer groups.
+caps symbol coupling at 40 pairs and 15 consumer groups; it ships from the root export only,
+so it needs Node.
 
 ### Unused exports and dead modules
 
@@ -320,7 +328,7 @@ import {
   publicApiFiles,
   topDeadModules,
   topUnusedExports,
-} from "@titan-design/code-graph";
+} from "@titan-design/code-graph/analysis";
 
 const nodes = [
   { id: "index.ts", kind: "file", name: "index.ts", role: "barrel" },
@@ -358,7 +366,7 @@ The scaling-smell and under-tested-hotspot sections of codewatch's `graph report
 functions over a `ReportContext`, so they run in a browser too:
 
 ```ts
-import { buildReportContext, topGrowthRisks, topUntestedRisks } from "@titan-design/code-graph";
+import { buildReportContext, topGrowthRisks, topUntestedRisks } from "@titan-design/code-graph/analysis";
 
 const nodes = [{ id: "loopy.ts", kind: "file", name: "loopy.ts" }];
 const metric = (name: string, value: number) => ({ nodeId: "loopy.ts", name, value, unit: "count" });
@@ -592,7 +600,7 @@ exactly one declaration in the file carries that name.
 A file-membership delta (a file added or removed) forces the files whose imports it
 re-resolves back to full extraction even when they are byte-identical. Degree metrics are
 always recomputed over the whole assembled graph, so a heavily-reused run and an
-`incremental: false` run produce the same snapshot — `indexer.test.ts` asserts that.
+`incremental: false` run produce the same snapshot — `incremental-index.test.ts` asserts that.
 
 ## Git history
 
@@ -617,6 +625,11 @@ plus `churnWindowDays` (the primary, default 30); `churnWindows` replaces the de
 `lifetime: true` adds an all-history window with its own ownership. `computeChurn: false`
 turns all of it off. Outside git, or without a git binary, the index simply has no history
 metrics.
+
+When git is present but its log overflowed or failed, the index has no (or partial) history
+metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and
+outside git. `buildIndexerMetrics` still returns only the metrics; `assembleIndexerMetrics`
+returns `{ metrics, warnings }`.
 
 **The adapter is a root export, not a `./history` one.** A product that runs its own indexing
 pass needs the same `GraphMetric` rows `indexPaths` writes, and `./history` may not speak

@@ -96,11 +96,11 @@ declared name, or a row recorded before names were kept, is never compared.
 | Factory | Helper class | Use when |
 | --- | --- | --- |
 | `edgeTableDdl` | `EdgeTable`: `assert`, `expire`, `supersede`, `current`, `from`, `to` | the cross-domain graph. Interval bi-temporal rows; relation names are free strings; corrections expire rather than delete |
-| `entityTableDdl` | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) |
+| `entityTableDdl` | `EntityTable`: `upsert`, `get`, `expire`, `listByKind` | facts that change one at a time (memory, sessions) and only need their latest state. Current-state rows with soft expiry, not interval bi-temporal |
 | `snapshotTableDdl` + `entitySnapTableDdl` | none yet | a whole population re-indexed together (a code graph) |
 | `cacheBlobTableDdl` | `CacheBlobTable`: `get`, `put`, `getOrCompute`, `count` | embeddings and summaries: pure functions of text, stored once, keyed by `(namespace, model, content_hash)` |
-| `spanFtsTablesDdl` | `SpanFtsTables`: `index`, `search`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere |
-| `watermarkTableDdl` | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list` | incremental ingest of append-mostly sources |
+| `spanFtsTablesDdl` | `SpanFtsTables`: `index`, `search(query, limit?, scope?)`, `purgeOwner`, `orphanRatio`, `clearIndex` | full-text search where the text lives elsewhere. `SpanScope` narrows a search to one class of owner |
+| `watermarkTableDdl` | `WatermarkTable`: `ensure`, `advance`, `rewind`, `markStatus`, `list` | incremental ingest of append-mostly sources. Call `ensure` first |
 
 ## Refs
 
@@ -114,15 +114,30 @@ either knowing about the other.
 
 ## Gotchas
 
-**Two time models, and you must pick.** Interval rows (`entityTableDdl`, `edgeTableDdl`) are
+**Two time models, and you must pick.** Per-row time (`entityTableDdl`, `edgeTableDdl`) is
 right when facts change independently. Snapshot rows (`entitySnapTableDdl`) are right when a
 whole population is re-indexed at once. Forcing snapshots on live single-event ingestion
-breaks it; forcing interval rows on a snapshot graph writes an unchanged row per node per
+breaks it; forcing per-row time on a snapshot graph writes an unchanged row per node per
 run. One physical table cannot serve both, so both ship. See
 [Architecture](/guides/architecture#two-time-models-on-purpose).
 
-**`SpanFtsTables.search` takes `(query, limit)`**, positionally, and the query is passed to
-FTS5 — `"daemon OR 503"`, not `"daemon 503"`, unless you want the implicit AND.
+**The entity table is current state, not history.** Only edges are interval bi-temporal.
+An entity `upsert` overwrites its row in place and keeps no history; `expire` sets
+`t_expired`, a soft delete. Upserting an expired ref revives it with its first `t_valid` and
+`t_created`, not new ones. Keep history in edges, or in a table of your own.
+
+**`SpanFtsTables.search` takes `(query, limit = 50, scope?)`**, positionally, and the query
+is passed to FTS5 — `"daemon OR 503"`, not `"daemon 503"`, unless you want the implicit AND.
+The optional `SpanScope` narrows the search to one class of owner, and `limit` applies after
+it, so a scoped search returns its own top N. `ownerPrefix` keeps owners whose ref starts
+with it (`"note:"`; an empty string means every owner). `fields` keeps spans whose field is
+listed; an empty array matches nothing. The two apply together, both, not either: when two
+kinds of owner share a prefix, a prefix alone lets all of them through, and only `fields`
+separates them.
+
+**`WatermarkTable`: `ensure` comes first.** `advance`, `rewind` and `markStatus` only update
+an existing row. They return `true` when a row matched, and `false`, writing nothing, for a
+key that was never ensured.
 
 **Contentless FTS strands rows.** `search` always joins the FTS table through the span
 table, because a contentless FTS5 table cannot delete a row without its original text. Purges

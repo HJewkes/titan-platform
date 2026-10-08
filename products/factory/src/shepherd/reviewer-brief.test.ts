@@ -20,6 +20,29 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it("keeps the full suite off the Mac", () => {
+    const brief = reviewerBrief(target);
+
+    expect(brief).toContain("ssh basement basement-suite");
+    expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+});
+
+describe("reviewerBrief Closer line", () => {
+  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567" };
+
+  it("asks a re-review for Closer: yes|no after Head on FIX_FIRST only", () => {
+    const brief = reviewerBrief({ ...input, fixFirsts: 1 });
+
+    expect(brief).toContain("add a fourth line directly after the Head line: `Closer: yes`");
+    expect(brief).toContain("`Closer: no`");
+    expect(brief).toContain("Never add it to a MERGE.");
+  });
+
+  it("does not ask a first review for it", () => {
+    expect(reviewerBrief(input)).not.toContain("Closer");
+    expect(reviewerBrief({ ...input, fixFirsts: 0 })).not.toContain("Closer");
+  });
 });
 
 describe("correctionPrompt", () => {

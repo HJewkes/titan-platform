@@ -1,6 +1,6 @@
 import type { ParsedFile } from "@titan-design/code-parser";
 import type { Node } from "web-tree-sitter";
-import { TS_CLASS_TYPES } from "./scope-path.js";
+import { TS_CLASS_TYPES } from "./node-kinds.js";
 import type { GraphMetric } from "./types.js";
 
 /**

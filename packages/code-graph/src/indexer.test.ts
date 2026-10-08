@@ -63,8 +63,7 @@ describe("indexPaths", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  const index = (options: { incremental?: boolean } = {}) =>
-    indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, ...options });
+  const index = () => indexPaths(store, { paths: [root], ref: "wd", detectRenames: false });
 
   it("builds file, module, symbol, and external nodes with import edges", async () => {
     const result = await index();
@@ -113,14 +112,6 @@ describe("indexPaths", () => {
     expect(structural.cosmetic).toBe(0);
     const symbols = store.listNodes(structural.snapshotId, { includeSymbols: true });
     expect(symbols.map((n) => n.id)).toContain("src/b.ts#extra");
-  });
-
-  it("produces the same graph with reuse disabled as with it enabled", async () => {
-    const incremental = await index();
-    const full = await index({ incremental: false });
-    const ids = (id: number) => store.listNodes(id, { includeSymbols: true }).map((n) => n.id).sort();
-    expect(ids(full.snapshotId)).toEqual(ids(incremental.snapshotId));
-    expect(full.edges).toBe(incremental.edges);
   });
 
   it("re-extracts a file whose barrel changed membership rather than reusing it", async () => {

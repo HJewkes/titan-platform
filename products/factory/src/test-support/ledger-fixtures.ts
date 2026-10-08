@@ -45,7 +45,7 @@ export interface Pinned {
 
 export interface LedgerFixture {
   id: number;
-  gate: "approve-merge" | "main-red";
+  gate: "approve-merge" | "main-red" | "main-ci-timeout";
   story: string;
   heads: HeadScript[];
   main?: MainScript;
