@@ -12,6 +12,7 @@ import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
+import { registerQueueCounts } from "./needs/counts.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
@@ -89,7 +90,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
