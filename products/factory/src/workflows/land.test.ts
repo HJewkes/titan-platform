@@ -7,7 +7,7 @@ import { GATE_EVERYTHING_RULE } from "../gate-policy.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { expectBrief } from "../test-support/brief.js";
 import { H1, approveUntilSettled, gateId, gateOpened, landScenario, swallowUpdates, type LandScenario } from "../test-support/land.js";
-import { MAX_UPDATE_CYCLES, landRoutes, readCi } from "./land.js";
+import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, landRoutes, readCi } from "./land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "../test-support/resolver.js";
 
@@ -158,7 +158,7 @@ describe("land core", () => {
     expectBrief(host.gates.get(gateId(runId, "stuck-behind")), scenario.fake.pr(1).headSha, /^https:\/\/github\.com\/octo\/demo\/pull\/1$/);
   });
 
-  it(`opens stuck-behind instead of a ${MAX_UPDATE_CYCLES + 1}th update when the base keeps moving, and never merges`, async () => {
+  it(`retries ${MAX_UPDATE_RETRIES} times with a growing wait, then opens stuck-behind naming the retries, and never merges`, async () => {
     const scenario = landScenario();
     const keepGreen = scenario.fake.onGetPr!;
     scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true));
@@ -166,13 +166,43 @@ describe("land core", () => {
     const runId = host.runtime.start("land-test");
     await gateOpened(host, gateId(runId, "stuck-behind"));
 
+    expect(host.gates.get(gateId(runId, "stuck-behind"))?.prompt).toContain(`after ${MAX_UPDATE_CYCLES} updates and ${MAX_UPDATE_RETRIES} automatic retries with backoff`);
     host.runtime.signal(runId, "stuck-behind", { decision: "abandon" }, OWNER);
     const run = await host.runtime.wait(runId);
 
-    expect(run.status).toBe("completed");
-    expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    const waits = Object.entries(run.stepResults).filter(([id]) => id.startsWith("update-backoff")).map(([, result]) => (result.data as { result: { waitMs: number } }).result.waitMs);
+    expect(waits).toEqual([2, 4, 8].map((min) => min * 60_000));
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "stuck-behind" });
-    expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it("opens no stuck-behind gate when a retry lands and the base holds, then restarts the budget", async () => {
+    const scenario = landScenario();
+    const keepGreen = scenario.fake.onGetPr!;
+    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = scenario.fake.effects.updateBranch < MAX_UPDATE_CYCLES + 1));
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+    await gateOpened(host, gateId(runId, "approve-merge"));
+
+    expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
+    expect(scenario.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + 1, merge: 0 });
+    expect(Object.keys(host.runtime.status(runId)!.stepResults).filter((id) => id.startsWith("update-"))).toEqual(
+      expect.arrayContaining(["update-backoff:0:0", "update-branch:3:0"]),
+    );
+  });
+
+  it("stops with conflict, not a gate, when a retry's update hits a merge conflict", async () => {
+    const scenario = landScenario();
+    const keepGreen = scenario.fake.onGetPr!;
+    scenario.fake.onGetPr = (pr, reads) => (keepGreen(pr, reads), (pr.behind = true), (scenario.fake.updateBranchConflict = scenario.fake.effects.updateBranch >= MAX_UPDATE_CYCLES));
+    const host = hostFor(scenario);
+    const runId = host.runtime.start("land-test");
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.status).toBe("completed");
+    expect(host.gates.get(gateId(runId, "stuck-behind"))).toBeUndefined();
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "stopped", reason: "conflict" });
   });
 
   it("updates the branch and merges again when GitHub refuses a merge because the base moved", async () => {

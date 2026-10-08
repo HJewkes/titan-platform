@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
-import { SERVICE_LABEL } from "./service.js";
+import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
 import { CRASH_LOOP_WINDOW_MS, type CheckPorts } from "./service-check.js";
 
 const UID = 501;
@@ -12,6 +12,9 @@ const tickFixture = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({ version: 1, loop: "burndown-tick", heartbeatAt: new Date(NOW - 60_000).toISOString(), outcome: "failed", consecutiveFailures: 1, lastErrorClass: "LedgerMalformedError", intervalSeconds: 600, ...over });
 
 interface Machine {
+  platform?: NodeJS.Platform;
+  /** `systemctl --user show` output on Linux. */
+  unit?: string;
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
@@ -29,7 +32,7 @@ const healthy = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 function fakePorts(init: Machine) {
   const calls: string[] = [];
   const ports: CheckPorts = {
-    platform: "darwin",
+    platform: init.platform ?? "darwin",
     uid: UID,
     home: "/srv/tester",
     launchctl: async (args) => {
@@ -38,7 +41,7 @@ function fakePorts(init: Machine) {
     },
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
-      return { code: 127, stdout: "", stderr: "systemctl not found" };
+      return init.unit === undefined ? { code: 127, stdout: "", stderr: "systemctl not found" } : { code: 0, stdout: init.unit, stderr: "" };
     },
     claude: async () => undefined,
     isDirectory: () => false,
@@ -209,6 +212,73 @@ describe("titan-factory service check", () => {
     const { calls } = await check({ print: running, health: healthy() });
 
     expect(calls.every((call) => call.startsWith("print "))).toBe(true);
+  });
+
+  it("prints byte-identical launchd lines on macOS", async () => {
+    const dead = await check({ print: running, health: null, dead: [PID] });
+    const empty = await check({ print: printed(["state = not running", "runs = 1", "last exit code = 0"]), health: null });
+    const loop = await check({ print: printed(["state = spawn scheduled", "runs = 9", "last exit code = 1"]), health: null });
+
+    expect(dead.out).toBe(`stale pid: launchd pid ${PID} is dead; stop any other process on the port, then run titan-factory service restart\n`);
+    expect(empty.out).toBe("stale pid: launchd holds no process; stop any other process on the port, then run titan-factory service restart\n");
+    expect(loop.out).toBe(
+      `crash loop: ${SERVICE_LABEL} is crash-looping: last exit 1, 9 runs; read serve.err.log in the service log directory, fix it, then run titan-factory service restart\n`,
+    );
+  });
+
+  describe("on Linux", () => {
+    const unit = (fields: Record<string, string | number>): string =>
+      Object.entries({ LoadState: "loaded", ActiveState: "active", MainPID: PID, NRestarts: 0, ExecMainStatus: 0, ...fields })
+        .map(([key, value]) => `${key}=${value}\n`)
+        .join("");
+    const linux = (init: Machine, ...flags: string[]) => check({ platform: "linux", ...init }, ...flags);
+
+    it("exits 0 when /health answers from the unit's MainPID with github ok", async () => {
+      const { code, out, calls } = await linux({ unit: unit({}), health: healthy() });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+      expect(calls).toEqual([`systemctl --user show ${UNIT_NAME} --property=LoadState,ActiveState,MainPID,NRestarts,ExecMainStatus`]);
+    });
+
+    it("reports a crash loop when the unit keeps restarting after non-zero exits and holds no process", async () => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: "activating", MainPID: 0, NRestarts: 7, ExecMainStatus: 1 }), health: null });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toBe(
+        `crash loop: ${UNIT_NAME} is crash-looping: last exit 1, 7 restarts; read serve.err.log in the service log directory, fix it, then run titan-factory service restart\n`,
+      );
+    });
+
+    it("reports a crash loop when a young MainPID does not answer /health", async () => {
+      const { code, out } = await linux({ unit: unit({ NRestarts: 4, ExecMainStatus: 15 }), health: null, startedAgoMs: 10_000 });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^crash loop: /);
+    });
+
+    it.each(["failed", "inactive"])("reports a dead unit whose ActiveState is %s as holding no process", async (state) => {
+      const { code, out } = await linux({ unit: unit({ ActiveState: state, MainPID: 0, NRestarts: 0, ExecMainStatus: 1 }), health: null });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toBe("stale pid: systemd holds no process; stop any other process on the port, then run titan-factory service restart\n");
+    });
+
+    it("reports not loaded when systemd has no unit file", async () => {
+      const { code, out } = await linux({ unit: unit({ LoadState: "not-found", ActiveState: "inactive", MainPID: 0 }), health: healthy() });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toBe(`not loaded: ${UNIT_NAME} is not loaded; run titan-factory service install\n`);
+    });
+
+    it("names systemd, never launchd, for a dead or foreign pid", async () => {
+      const dead = await linux({ unit: unit({}), health: null, dead: [PID] });
+      const foreign = await linux({ unit: unit({}), health: healthy({ pid: 999 }) });
+
+      expect(dead.out).toContain(`stale pid: systemd pid ${PID} is dead`);
+      expect(foreign.out).toContain(`not systemd pid ${PID}`);
+      expect(dead.out + foreign.out).not.toContain("launchd");
+    });
   });
 
   describe("burndown tick status", () => {

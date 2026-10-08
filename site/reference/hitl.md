@@ -109,11 +109,12 @@ suite.
 `SqliteGateStore` installs a `hitl_gate` table through `runMigrations` on construction. Pass
 `migrate: false` and put `gateMigration(n)`, `gateResolverMigration(m)` and `gateRuleMigration(r)` in your own migration list when hitl
 shares a database with domain tables — which is what [`workflow`](/reference/workflow) does. Add `gateBriefMigration(b)`
-too if you set `requireBrief` or create gates with a `summary`, `evidenceRef` or `questions`. The first two are always
+too if you set `requireBrief` or create gates with a `summary`, `evidenceRef` or `questions`, and `gateEvidenceMigration(e)` if any
+resolve passes evidence (see the package README's evidence policy). The first two are always
 required; a store missing a migration it needs throws `GateStoreSchemaOutdated` naming it. `table` renames the table so
 one database can host several gate spaces.
 
-`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
+`SqliteGateStore`, `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, `gateEvidenceMigration`, and `gateTableDdl` come from `@titan-design/hitl/sqlite`,
 not the root — the root has no `node:*` import or native addon, so it loads in a Cloudflare
 Workers isolate. `MemoryGateStore` stays on the root.
 

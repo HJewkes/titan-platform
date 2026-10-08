@@ -164,9 +164,21 @@ function graft(near: string, relative: string): string {
 const MATCH_ANY = /^/;
 const MATCH_NONE = /$^/;
 
+/** Compiled configured patterns by home and fallback; every path a script names is tested against each of them. */
+const PATTERN_CACHE = new Map<string, RegExp>();
+
 function patternRegExp(pattern: string, home: string, onFail: RegExp): RegExp {
-  if (pattern.startsWith("~/")) return globRegExp(home + pattern.slice(1), onFail);
-  return globRegExp(pattern.startsWith("**/") ? `/${pattern}` : pattern, onFail);
+  const key = `${onFail === MATCH_ANY ? "any" : "none"}\u0000${home}\u0000${pattern}`;
+  const cached = PATTERN_CACHE.get(key);
+  if (cached) return cached;
+  const re = globRegExp(absoluteGlob(pattern, home), onFail);
+  PATTERN_CACHE.set(key, re);
+  return re;
+}
+
+function absoluteGlob(pattern: string, home: string): string {
+  if (pattern.startsWith("~/")) return home + pattern.slice(1);
+  return pattern.startsWith("**/") ? `/${pattern}` : pattern;
 }
 
 /** Never throws: `onFail` is the safe reading for the call site if the source still does not compile. */

@@ -24,12 +24,13 @@ import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
+import type { SnapshotServices } from "./snapshot-reads.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
 /** What the shepherd commands read beyond the host; the route set that binds the store carries it. */
-export interface ShepherdServices {
+export interface ShepherdServices extends SnapshotServices {
   store: ShepherdStoreRef;
   port: GitHubPort;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */

@@ -139,6 +139,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
     health: () => ({
       ...factoryHealth(host, routeFor, heldRun(options.routes.shepherd)),
       github: github.status(),
+      ...(options.routes.shepherd?.pacing && { snapshotTick: options.routes.shepherd.pacing.status() }),
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
     }),

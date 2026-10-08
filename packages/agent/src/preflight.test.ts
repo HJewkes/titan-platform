@@ -120,6 +120,19 @@ describe("dispatchHarnessRun preflight", () => {
     expect(result).toMatchObject({ ok: false, harness: "codex", failure: { kind: "runtime_error", reason: "transport exploded" }, usage: [] });
   });
 
+  it("rejects wallTimeMs beyond the timer range without invoking the adapter", async () => {
+    const fake = fakeAdapter();
+    const result = await dispatchHarnessRun(request({ wallTimeMs: 2 ** 31 }), fake.adapter);
+    expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: "wallTimeMs exceeds the local timer range" } });
+    expect(fake.run).not.toHaveBeenCalled();
+  });
+
+  it("accepts wallTimeMs at the timer range limit", async () => {
+    const fake = fakeAdapter();
+    await dispatchHarnessRun(request({ wallTimeMs: 2 ** 31 - 1 }), fake.adapter);
+    expect(fake.run).toHaveBeenCalled();
+  });
+
   it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
     "rejects malformed wallTimeMs %s without invoking the adapter",
     async (wallTimeMs) => {

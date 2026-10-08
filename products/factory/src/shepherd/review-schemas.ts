@@ -19,6 +19,7 @@ const MergeFactsSchema = z.looseObject({
   verdict: z.looseObject({ value: z.string(), head: z.string() }),
   requiredContexts: z.array(z.string()),
   allowedApps: z.array(z.number()),
+  contextApps: z.record(z.string(), z.array(z.number())).optional(),
   checkRuns: z.array(CheckRunFact),
   mergeTreeClean: z.boolean(),
   repoFrozen: z.boolean(),

@@ -98,4 +98,120 @@ describe("component prop metrics (C-97 S3)", () => {
 
     expect(metrics.some((m) => m.name.includes("prop"))).toBe(false);
   });
+
+  it("does not count an inner binding that shadows a prop name as a read of that prop", async () => {
+    const metrics = await metricsOf(
+      "export function Item({ label, count }: { label: string; count: number }) {\n" +
+        "  const total = [1].map((count) => count + 1);\n  return <i>{label}{total}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(1);
+  });
+
+  it("counts a parenthesized boolean | undefined member as bool", async () => {
+    const metrics = await metricsOf(
+      "type P = { on?: (boolean | undefined); name: string };\n" +
+        "export function Sw({ on, name }: P) {\n  return <b>{on}{name}</b>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Sw")).toEqual({ count: 2, bool: 1, unread: 0 });
+  });
+
+  it("gives the same absent answer for an interface extending only imported types and an all-imported intersection", async () => {
+    const metrics = await metricsOf(
+      'import type { A, B } from "./types";\n' +
+        "interface Ext extends A, B {}\n" +
+        "type Inter = A & B;\n" +
+        "export function One({ x }: Ext) {\n  return <i>{x}</i>;\n}\n" +
+        "export function Two({ x }: Inter) {\n  return <i>{x}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "One")).toEqual({ count: undefined, bool: undefined, unread: undefined });
+    expect(propsOf(metrics, "Two")).toEqual({ count: undefined, bool: undefined, unread: undefined });
+  });
+
+  it("does not score PascalCase class methods or getters as components", async () => {
+    const metrics = await metricsOf(
+      "export class View {\n  Render({ a }: { a: string }) {\n    return <b>{a}</b>;\n  }\n" +
+        "  get Body() {\n    return <b />;\n  }\n}\n",
+    );
+
+    expect(metrics.some((m) => m.name.includes("prop"))).toBe(false);
+  });
+
+  it("leaves props absent for FC<P> and Readonly<P> annotations, whether or not P is declared here", async () => {
+    const metrics = await metricsOf(
+      "type P = { a: string };\n" +
+        "export function Wrapped({ a }: Readonly<P>) {\n  return <i>{a}</i>;\n}\n" +
+        "export const Typed: FC<P> = ({ a }) => <i>{a}</i>;\n",
+    );
+
+    expect(propsOf(metrics, "Wrapped").count).toBeUndefined();
+    expect(propsOf(metrics, "Typed").count).toBeUndefined();
+  });
+
+  it("counts a prop read in a nested function's default parameter value as a read", async () => {
+    const metrics = await metricsOf(
+      "export function A({ label, x }: { label: string; x: number }) {\n" +
+        "  const f = (y: string = label) => y;\n  return <i>{f()}{x}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "A").unread).toBe(0);
+  });
+
+  it.each([
+    ["a function parameter", "const f = (label: string) => label;"],
+    ["a const in a block", "{ const label = 1; use(label); }"],
+    ["a switch case declaration", "switch (x) { case 1: const label = 2; use(label); }"],
+    ["a for-of variable", "for (const label of xs) use(label);"],
+    ["a for-in variable", "for (const label in xs) use(label);"],
+    ["a classic for variable", "for (let label = 0; label < 2; label++) use(label);"],
+    ["a catch parameter", "try { go(); } catch (label) { use(label); }"],
+    ["an inner function name", "function label() {} use(label);"],
+    ["an inner class name", "class label {} use(label);"],
+    ["a named function expression", "const g = function label() { return label; };"],
+    ["a generator parameter", "function* g(label: string) { yield label; }"],
+    ["a generator expression parameter", "const g = function* (label: string) { yield label; };"],
+    ["a named generator expression", "const g = function* label() { yield label; };"],
+    ["a class expression name", "const K = class label { m() { return label; } };"],
+    ["an abstract class name", "abstract class label {} use(label);"],
+  ])("does not count %s that shadows a prop as a read of it", async (_kind, inner) => {
+    const metrics = await metricsOf(
+      "export function Item({ label, x }: { label: string; x: number }) {\n" +
+        `  ${inner}\n  return <i>{x}</i>;\n}\n`,
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(1);
+  });
+
+  it("still counts a for-of that assigns to the prop binding without declaring one as no shadow", async () => {
+    const metrics = await metricsOf(
+      "export function Item({ label }: { label: string }) {\n  for (label of []) use(label);\n  return <i />;\n}\n",
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(0);
+  });
+
+  it("does not count a props.<name> read inside a nested function that shadows props", async () => {
+    const metrics = await metricsOf(
+      "export function E(props: { a: string; b: string }) {\n" +
+        "  const f = (props: { a: number }) => props.a;\n  return <i>{f({ a: 1 })}{props.b}</i>;\n}\n",
+    );
+
+    expect(propsOf(metrics, "E").unread).toBe(1);
+  });
+
+  it.each([
+    ["an object method", "const o = { [label]() { return 1; } };"],
+    ["a class method", "class K { [label]() {} }"],
+    ["a destructuring default", "const f = ({ a = label }: { a?: string }) => a;"],
+    ["a destructuring computed key", "const { [label]: z } = obj;"],
+  ])("still counts a prop read in a computed key or default of %s", async (_kind, inner) => {
+    const metrics = await metricsOf(
+      "export function Item({ label, x }: { label: string; x: number }) {\n" +
+        `  ${inner}\n  return <i>{x}</i>;\n}\n`,
+    );
+
+    expect(propsOf(metrics, "Item").unread).toBe(0);
+  });
 });

@@ -28,6 +28,23 @@ describe("reviewerBrief", () => {
   });
 });
 
+describe("reviewerBrief Closer line", () => {
+  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567" };
+
+  it("asks a re-review for Closer: yes|no after Head on FIX_FIRST only", () => {
+    const brief = reviewerBrief({ ...input, fixFirsts: 1 });
+
+    expect(brief).toContain("add a fourth line directly after the Head line: `Closer: yes`");
+    expect(brief).toContain("`Closer: no`");
+    expect(brief).toContain("Never add it to a MERGE.");
+  });
+
+  it("does not ask a first review for it", () => {
+    expect(reviewerBrief(input)).not.toContain("Closer");
+    expect(reviewerBrief({ ...input, fixFirsts: 0 })).not.toContain("Closer");
+  });
+});
+
 describe("correctionPrompt", () => {
   const refusals = Object.keys(MALFORMED_REFUSALS) as (keyof typeof MALFORMED_REFUSALS)[];
   const longTarget = { repo: `${"o".repeat(39)}/${"r".repeat(100)}` as const, pr: Number.MAX_SAFE_INTEGER, head: "f".repeat(40) };

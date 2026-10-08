@@ -1,11 +1,10 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
-import { z } from "zod";
 import { defineWorkflow, stepIdMatches, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { AWAIT_HEAD_STEPS } from "../workflows/await-head.js";
 import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
-import { LAND_STEPS, codeRoute, land, newUpdateBound, step, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
+import { LAND_STEPS, codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
 import { CARRY_SCOPE_STEPS, carriedVerdict, carryScopeRoute, carrySeatRoute } from "./carry-merge.js";
@@ -15,7 +14,8 @@ import type { MainRedWiring } from "./main-red.js";
 import { PARK_STEPS, parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { verdictIsMergeAt } from "../gate-brief.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { narrowToRegistration } from "./registration-policy.js";
 import { POST_MERGE_STEPS, afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { RELEASE_STEPS, VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { publishOutcome } from "./publish-review.js";
@@ -25,7 +25,7 @@ import { recordedRoute } from "./recorded-route.js";
 import { expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { OUTCOME_STEPS, outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_FIX_FIRSTS, roundKind, routeFor, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, routeFor, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
@@ -92,8 +92,8 @@ interface ShepherdRun extends WakeRun {
   lastCi?: CiSnapshot;
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
-  /** FIX_FIRST reviews at this task; each is progress until the runaway cap. */
-  fixFirsts: number;
+  /** FIX_FIRST reviews at this task, and the consecutive ones that said Closer: no; each is progress until a cap. */
+  fixFirsts: number; closer: CloserStreak;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   conflictChecks: number;
@@ -122,7 +122,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), escalations: new Map(), wokenPast: new Set() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
@@ -199,6 +199,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     param: (key) => ctx.param(key),
     iteration: (stepId) => ctx.iteration(stepId),
     historyNext: () => ctx.historyNext(),
+    resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
     assisted: conflictCheckedGates(supersedingGates(ctx, (rereview) => (rereview === undefined || run.reviews.delete(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict),
@@ -248,7 +249,8 @@ interface Routed {
 function countRound(run: ShepherdRun, routed: Routed): Escalated | undefined {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
-  if (kind === "fix-first") return ++run.fixFirsts >= MAX_FIX_FIRSTS ? { escalation: "fix-first-runaway", detail: `the last at ${headSha}` } : undefined;
+  run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
+  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.closer.streak, headSha);
   if (kind !== "stuck") return undefined;
   run.failedRounds += 1;
   if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
@@ -324,14 +326,6 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
 function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
   const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake. Await a new head or abandon?`;
   return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`);
-}
-
-const RegistrationPolicyResult = z.looseObject({ policy: EffectivePolicySchema.nullable() });
-
-/** Read before every merge decision, because the registration may land after the run starts. */
-async function narrowToRegistration(run: ShepherdRun): Promise<void> {
-  const { policy } = await step(run.ctx, `sh-policy:${run.policyReads++}`, { runId: run.ctx.runId }, RegistrationPolicyResult);
-  if (policy) run.policy = stricterPolicy(policy, run.policy);
 }
 
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */

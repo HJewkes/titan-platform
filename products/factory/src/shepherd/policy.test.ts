@@ -164,13 +164,13 @@ describe("shepherdGatePolicy under merge:auto", () => {
     expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "head-mismatch" } });
   });
 
-  it("gates a .github/ path before authority is asked", () => {
+  it("allows a .github/ workflow change when authority allows (TP-1886)", () => {
     vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
 
-    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/ci.yml"]))).decide("merge", { headSha: HEAD });
+    const decision = shepherdGatePolicy(effective("acme/gizmos"), reviewed(evidenceAt(HEAD, [".github/workflows/release.yml"]))).decide("merge", { headSha: HEAD });
 
-    expect(decision).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
-    expect(evaluate).not.toHaveBeenCalled();
+    expect(decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
+    expect(evaluate).toHaveBeenCalled();
   });
 
   it("never asks authority under owner-gate or never, so the table cannot lift the seat ceiling", () => {

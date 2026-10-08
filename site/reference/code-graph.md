@@ -95,9 +95,11 @@ checkSnapshot(store, { snapshot: "head", baseline: "main", rules: tight }).resul
 ```
 
 Six rule types came from codewatch: `metric-max`, `metric-min`, `metric-product-max`,
-`forbid-import` (`except` lists destination patterns `to` matches but the rule allows), `layered-deps` (layers are path prefixes; an import may point only to its
-own layer or a lower one; `excludeRoles` drops an import whose source or destination file has one of the roles), and `no-internal-only-barrels`. A seventh, `metric-outlier`, flags
-nodes of one `kind` strictly above a `percentile` (50 to 100) of a metric over that kind in the
+`forbid-import` (`except` lists destination patterns `to` matches but the rule allows),
+`layered-deps` (layers are path prefixes; an import may point only to its own layer or a lower
+one; `excludeRoles` drops an import whose source or destination file has one of the roles), and
+`no-internal-only-barrels`. A seventh, `metric-outlier`, flags nodes of one `kind` strictly
+above a `percentile` (50 to 100) of a metric over that kind in the
 snapshot, once `minSample` nodes (default 20) carry it. Two options guard sparse metrics whose
 percentile sits at or near zero: `floor` flags a node only if its value also exceeds that
 absolute number, and `rankNonZero: true` ranks and gates on non-zero carriers only, so a
@@ -280,7 +282,8 @@ and `listEdgesTouching` hide `calls` edges, like `references`, unless you pass
 A browser imports the report, dashboard, and package-architecture derivations from
 `@titan-design/code-graph/analysis`, which leaves out the root's ts-morph, tree-sitter, and
 SQLite. A test keeps the subpath's import closure free of packages and Node builtins.
-Symbol coupling is not on it yet, because `symbol-coupling.ts` still reaches `node:path`.
+`computeSymbolConsumers` is on it; `buildSymbolCouplingPayload` is not yet, so import it from
+the root, which needs Node.
 
 ### Dashboard derivations
 
@@ -289,12 +292,11 @@ you have already read, so they also run in a browser:
 
 ```ts
 import {
-  buildSymbolCouplingPayload,
   classifyCoupling,
   collectNodeMetrics,
   computeHealth,
   pairKey,
-} from "@titan-design/code-graph";
+} from "@titan-design/code-graph/analysis";
 
 collectNodeMetrics([{ nodeId: "a.ts", name: "cognitive_max", value: 18 }]).get("a.ts");
 // { cognitiveMax: 18 }
@@ -312,7 +314,8 @@ classifyCoupling("a.ts", "b.ts", ctx); // { hidden: false, unindexed: false }
 
 `buildNodeMetrics`, `buildCentralFiles`, `buildHotExports`, and `buildBlastRadius` shape
 node metrics for the files a `GraphReportResult` references. `buildSymbolCouplingPayload`
-caps symbol coupling at 40 pairs and 15 consumer groups.
+caps symbol coupling at 40 pairs and 15 consumer groups; it ships from the root export only,
+so it needs Node.
 
 ### Unused exports and dead modules
 
@@ -325,7 +328,7 @@ import {
   publicApiFiles,
   topDeadModules,
   topUnusedExports,
-} from "@titan-design/code-graph";
+} from "@titan-design/code-graph/analysis";
 
 const nodes = [
   { id: "index.ts", kind: "file", name: "index.ts", role: "barrel" },
@@ -363,7 +366,7 @@ The scaling-smell and under-tested-hotspot sections of codewatch's `graph report
 functions over a `ReportContext`, so they run in a browser too:
 
 ```ts
-import { buildReportContext, topGrowthRisks, topUntestedRisks } from "@titan-design/code-graph";
+import { buildReportContext, topGrowthRisks, topUntestedRisks } from "@titan-design/code-graph/analysis";
 
 const nodes = [{ id: "loopy.ts", kind: "file", name: "loopy.ts" }];
 const metric = (name: string, value: number) => ({ nodeId: "loopy.ts", name, value, unit: "count" });
@@ -597,7 +600,7 @@ exactly one declaration in the file carries that name.
 A file-membership delta (a file added or removed) forces the files whose imports it
 re-resolves back to full extraction even when they are byte-identical. Degree metrics are
 always recomputed over the whole assembled graph, so a heavily-reused run and an
-`incremental: false` run produce the same snapshot — `indexer.test.ts` asserts that.
+`incremental: false` run produce the same snapshot — `incremental-index.test.ts` asserts that.
 
 ## Git history
 
