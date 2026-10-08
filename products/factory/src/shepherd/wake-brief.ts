@@ -239,7 +239,7 @@ function reportLine(seat: string | undefined): string {
   return `then send your report with chat_send to ${seat}, the seat that started this PR's lineage, and to no other session. In it,`;
 }
 
-export interface SuccessorTask {
+interface SuccessorTask {
   input: { repo: string; pr: number };
   pr: PullRequest;
   reason: string;
