@@ -1,5 +1,6 @@
 import { GATE_CANCELLED_SIGNAL, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
+import type { Escalated } from "./route-table.js";
 
 const HEAD_GATES = /\/(approve-merge|sh-sent-back)(:\d+)?$/;
 const HEAD_IN_PROMPT = /\bat head ([0-9a-f]{40})\b/;
@@ -45,4 +46,17 @@ export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string 
     const gated = gateHead(prompt);
     throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated);
   };
+}
+
+/** The run state a superseded approve-merge gate clears. */
+export interface SupersededRun {
+  reviews: Map<string, unknown>;
+  escalations: Map<string, Escalated>;
+  failedRounds: number;
+}
+
+/** A re-review drops the head's review; a failed-rounds gate the head moved past hands the owner's question to the new head, whose rounds count afresh or it would gate at once. */
+export function clearSuperseded(run: SupersededRun, rereview: string | undefined, gated: string | undefined): void {
+  if (rereview !== undefined) run.reviews.delete(rereview);
+  else if (gated !== undefined && run.escalations.get(gated)?.escalation === "failed-rounds") run.failedRounds = 0;
 }
