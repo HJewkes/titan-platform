@@ -61,7 +61,7 @@ function world(ports: ExitNoticePorts, fake: FakeGitHub, dbPath = ":memory:", ph
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
   const port = githubPort(fake.wire);
-  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
+  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const ref = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, exitNotice: ports });

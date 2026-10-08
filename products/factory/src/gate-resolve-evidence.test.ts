@@ -329,6 +329,18 @@ describe("coordinator acknowledgement of a red main a green main commit contains
     expect(result.gate?.resolvedEvidence).toMatchObject({ kind: "main-green", mergeSha: MERGE_SHA, base: "main", greenSha: TIP, mergeBaseSha: MERGE_SHA, runs: [{ id: 21 }, { id: 22 }] });
   });
 
+  it("acknowledges main-red when only a job outside the required contexts is red on the tip, recording the required runs", async () => {
+    const world = await paused({ gate: "main-red" });
+    mergedPr(world.gh);
+    world.gh.compares.set(`${MERGE_SHA}...${TIP}`, { mergeBaseSha: MERGE_SHA, files: [] });
+    world.gh.setRuns(TIP, [successRun("validate", 21), successRun("dag-check", 22), successRun("release", 23, undefined, "failure")]);
+
+    const result = await resolveAs(world, "main-red", { decision: "acknowledged", mergeSha: MERGE_SHA });
+
+    expect(result.reasons).toEqual([]);
+    expect(result.gate?.resolvedEvidence).toMatchObject({ kind: "main-green", runs: [{ id: 21 }, { id: 22 }] });
+  });
+
   it("unfreezes main-frozen on the same evidence, and falls back on stay-frozen", async () => {
     const unfreeze = await paused({ gate: "main-frozen" });
     mergedPr(unfreeze.gh);
