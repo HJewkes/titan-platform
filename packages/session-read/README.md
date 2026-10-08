@@ -162,7 +162,9 @@ projections; unmatched projections become explicit fallbacks at a turn boundary.
 usage is emitted as idempotent deltas, while turn/thread totals remain ordered snapshots in
 reset epochs.
 
-`readCodexText(locator, { sources })` resolves moved sources by stable source ID and checks
+`readCodexText(locator, { sources })` and `readClaudeText` resolve a moved source by one
+identity rule. Exactly one fresh source must match the locator's source ID, harness, format,
+namespace, conversation and provenance; only the path may differ. The reader then checks
 the exact source-line hash before returning the selected value. It returns `null` only for
 a stale locator: the file is gone or shorter than the span, or the bytes there no longer
 match the hash, decode as UTF-8 or parse as JSON. Any other I/O error rejects, and

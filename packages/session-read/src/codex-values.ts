@@ -1,7 +1,5 @@
-import type { createHash } from "node:crypto";
-import type { LocatedSourceLine, ResumeBoundary, SessionSourceDescriptor } from "./normalized.js";
+import type { SessionSourceDescriptor } from "./normalized.js";
 import { CODEX_ROLLOUT_FORMAT } from "./codex-discover.js";
-import { TranscriptParseError } from "./read.js";
 import { SessionIdentityError } from "./recent-claude.js";
 import { asObject, str, type Json } from "./text.js";
 
@@ -18,16 +16,6 @@ export function validateCodexDescriptor(source: SessionSourceDescriptor): void {
   const valid = source.harness === "codex" && source.format === CODEX_ROLLOUT_FORMAT && source.namespace === source.conversation.namespace;
   if (!valid || source.conversation.harness !== "codex" || source.provenance.kind !== "codex-rollout") {
     throw new TypeError("Codex decoder requires a consistent codex-rollout source descriptor");
-  }
-}
-
-export function parseCodexRecord(filePath: string, line: LocatedSourceLine): Json {
-  try {
-    const parsed = asObject(JSON.parse(line.raw));
-    if (!parsed) throw new TypeError("record is not an object");
-    return parsed;
-  } catch (error) {
-    throw new TranscriptParseError(filePath, line.evidence.byteOffset, error);
   }
 }
 
@@ -48,17 +36,9 @@ export function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function booleanOrNull(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
 export function hasEncryptedContent(payload: Json | null): boolean | null {
   if (!payload) return null;
   return "encrypted_content" in payload || "encryptedContent" in payload ? true : null;
-}
-
-export function boundaryAt(byteOffset: number, digest: ReturnType<typeof createHash>): ResumeBoundary {
-  return { byteOffset, prefixHash: digest.copy().digest("hex") };
 }
 
 export function sourceMismatch(source: SessionSourceDescriptor, observed: string | null): SessionIdentityError {
