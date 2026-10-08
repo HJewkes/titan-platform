@@ -76,7 +76,7 @@ export function seatPolicyHead(run: WorkflowRun, prompt: string): string | undef
 }
 
 /** The head a merge-guard gate (visual path, unread files, unknown required checks, head mismatch) asks about: the run's last decision gated that head under the guard table. */
-export function guardGateHead(run: WorkflowRun, prompt: string): string | undefined {
+function guardGateHead(run: WorkflowRun, prompt: string): string | undefined {
   const decision = gatingDecision(run, prompt);
   return decision?.rule?.table === MERGE_GUARD_TABLE ? decision.headSha : undefined;
 }
