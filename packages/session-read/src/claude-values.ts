@@ -66,10 +66,6 @@ export function cacheWriteSplit(usage: Json): CacheWriteSplit | null {
   return { ttl5m: ttl5m ?? 0, ttl1h: ttl1h ?? 0 };
 }
 
-export function booleanOrNull(value: unknown): boolean | null {
-  return typeof value === "boolean" ? value : null;
-}
-
 export function selectedSystemFields(record: Json): Json {
   const selected: Json = {};
   for (const name of ["subtype", "level", "message", "hookCount", "hookInfos", "preventedContinuation", "toolUseID", "toolUseId", "stopReason"] as const) {

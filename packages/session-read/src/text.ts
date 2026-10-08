@@ -16,6 +16,10 @@ export function int(source: Json | null, key: string): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+export function booleanOrNull(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 export function blocks(message: Json | null): Json[] {
   const content = message?.content;
   if (!Array.isArray(content)) return [];

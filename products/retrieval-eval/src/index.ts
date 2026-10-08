@@ -9,7 +9,7 @@ export {
   textOf,
   transcriptId,
 } from "./corpus/transcripts.js";
-export { dedupeLabels, defaultActiveRoot, labelledPathOf, normaliseLabel } from "./mine/labels.js";
+export { dedupeLabels, labelledPathOf, normaliseLabel } from "./mine/labels.js";
 export { listOfMaps, readFrontmatter, scalarField } from "./mine/frontmatter.js";
 export type { Link, Spawn, SpawnMining } from "./mine/spawn-arm.js";
 export { briefingSlug, briefProbe, collectSpawns, linkSpawn, mineSpawnArm } from "./mine/spawn-arm.js";
@@ -25,7 +25,7 @@ export {
 export type { QueryVariant } from "./query/variants.js";
 export { deriveQuery, documentFrequency, headingAndLead, QUERY_VARIANTS, terms, topTermsByDf } from "./query/variants.js";
 export type { Candidate, SearchContext } from "./candidates/candidate.js";
-export { defaultGraphPath, noteAliases } from "./candidates/candidate.js";
+export { noteAliases } from "./candidates/candidate.js";
 export { activeWorkSearch, hitsOf } from "./candidates/active-work-search.js";
 export type { DateOrderOptions } from "./candidates/date-order.js";
 export { dateOrderNotes, INJECTED_TODAY, newestNotes } from "./candidates/date-order.js";

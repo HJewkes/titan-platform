@@ -3,10 +3,5 @@
     "titan/max-function-lines": {
       "count": 1
     }
-  },
-  "src/file-watch.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
   }
 }

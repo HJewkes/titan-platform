@@ -1,6 +1,6 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./review-schemas.js";
@@ -214,6 +214,21 @@ describe("acceptVerdict malformed record", () => {
 
     expect(result).toEqual({ kind: "none", malformed: { refusal, writtenAt: WRITTEN_AT } });
     expect(readMalformed(result)).toEqual({ refusal, writtenAt: WRITTEN_AT });
+  });
+
+  it("reads the Claude Code weekly-limit notice as a usage limit, not a missing Verdict line", () => {
+    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+
+    const result = acceptVerdict(input, [said(notice)]);
+
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON });
+    expect(readMalformed(result)).toBeNull();
+  });
+
+  it("still records a review that merely quotes a limit as malformed", () => {
+    const review = `I looked at it. The reviewer note says: You've hit your weekly limit. ${"x".repeat(400)}`;
+
+    expect(acceptVerdict(input, [said(review)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
   });
 
   it("covers every refusal the schema lists", () => {

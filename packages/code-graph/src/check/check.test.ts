@@ -707,6 +707,41 @@ describe("runChecks — layered-deps", () => {
       expect(await violationCount("test", "test")).toBe(1);
     });
   });
+
+  describe("exemptTypeOnly", () => {
+    // The extractor folds `import type { A }` and `import { b }` from one module
+    // into a single edge without typeOnly; a file with only `import type` keeps it.
+    async function violationSources(exemptTypeOnly?: boolean): Promise<string[]> {
+      fixture = await createFixture((db, snapshotId) => {
+        db.insertNodes(snapshotId, [
+          { id: "core/types-only.ts", kind: "file", name: "" },
+          { id: "core/mixed.ts", kind: "file", name: "" },
+          { id: "cli/api.ts", kind: "file", name: "" },
+        ]);
+        db.insertEdges(snapshotId, [
+          { srcId: "core/types-only.ts", dstId: "cli/api.ts", kind: "imports", attrs: { weight: 1, typeOnly: true } },
+          { srcId: "core/mixed.ts", dstId: "cli/api.ts", kind: "imports", attrs: { weight: 2 } },
+        ]);
+      });
+      const db = openCodeGraph(fixture.dbPath);
+      try {
+        return runChecks(db, {
+          snapshotId: fixture.snapshotId,
+          rules: [{ id: "layers", type: "layered-deps", layers, exemptTypeOnly }],
+        }).violations.map((v) => v.nodeId).sort();
+      } finally {
+        db.close();
+      }
+    }
+
+    it("drops a type-only edge but keeps a mixed one when set", async () => {
+      expect(await violationSources(true)).toEqual(["core/mixed.ts"]);
+    });
+
+    it("keeps both edges by default", async () => {
+      expect(await violationSources()).toEqual(["core/mixed.ts", "core/types-only.ts"]);
+    });
+  });
 });
 
 describe("runChecks — no-internal-only-barrels", () => {

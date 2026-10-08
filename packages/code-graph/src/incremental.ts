@@ -214,6 +214,99 @@ export interface ReuseBasis {
   symbolsByFile: Map<string, GraphNode[]>;
 }
 
+function pushBucket<V>(buckets: Map<string, V[]>, key: string, value: V): void {
+  const bucket = buckets.get(key);
+  if (bucket) bucket.push(value);
+  else buckets.set(key, [value]);
+}
+
+function indexNodes(nodes: readonly GraphNode[]): {
+  nodesById: Map<string, GraphNode>;
+  symbolsByFile: Map<string, GraphNode[]>;
+} {
+  const nodesById = new Map<string, GraphNode>();
+  const symbolsByFile = new Map<string, GraphNode[]>();
+  for (const n of nodes) {
+    nodesById.set(n.id, n);
+    if (n.kind === "symbol" && n.parentId) pushBucket(symbolsByFile, n.parentId, n);
+  }
+  return { nodesById, symbolsByFile };
+}
+
+function groupEdgesBySource(edges: readonly GraphEdge[]): Map<string, GraphEdge[]> {
+  const edgesBySrc = new Map<string, GraphEdge[]>();
+  for (const e of edges) {
+    // A `calls` edge leaves a symbol (TP-323); file it under the declaring file so reuse carries it.
+    pushBucket(edgesBySrc, parseSymbolId(e.srcId)?.fileId ?? e.srcId, e);
+  }
+  return edgesBySrc;
+}
+
+// Source-content, dead-code, and growth-risk metrics are pure functions of
+// a file's bytes, so they carry forward verbatim for an unchanged file.
+function isCarriedMetric(name: string): boolean {
+  return (
+    SOURCE_METRIC_NAMES.has(name) ||
+    DEAD_CODE_METRIC_NAMES.has(name) ||
+    GROWTH_RISK_METRIC_NAMES.has(name)
+  );
+}
+
+// Per-symbol metrics (C-58) live on `<fileId>#<name>` nodes; bucket them
+// under their parent file so an unchanged file carries its symbol
+// complexity forward alongside its file-level source metrics.
+function metricFileKey(m: GraphMetric, nodesById: ReadonlyMap<string, GraphNode>): string {
+  const node = nodesById.get(m.nodeId);
+  return node?.kind === "symbol" && node.parentId ? node.parentId : m.nodeId;
+}
+
+function groupSourceMetrics(
+  metrics: readonly GraphMetric[],
+  nodesById: ReadonlyMap<string, GraphNode>,
+): Map<string, GraphMetric[]> {
+  const sourceMetricsByFile = new Map<string, GraphMetric[]>();
+  for (const m of metrics) {
+    if (!isCarriedMetric(m.name)) continue;
+    pushBucket(sourceMetricsByFile, metricFileKey(m, nodesById), m);
+  }
+  return sourceMetricsByFile;
+}
+
+function indexStructuralHashes(
+  fingerprints: readonly FileFingerprint[],
+): Map<string, string> {
+  const structuralHashes = new Map<string, string>();
+  for (const f of fingerprints) {
+    if (f.structuralHash) structuralHashes.set(f.fileId, f.structuralHash);
+  }
+  return structuralHashes;
+}
+
+function readReuseBasis(
+  db: CodeGraphStore,
+  snapshotId: number,
+  fingerprints: readonly FileFingerprint[],
+): ReuseBasis {
+  // Opt into the symbol layer: reuse must carry symbol nodes and their inbound
+  // reference edges forward for unchanged files (C-53).
+  const { nodesById, symbolsByFile } = indexNodes(
+    db.listNodes(snapshotId, { includeSymbols: true }),
+  );
+  const edgesBySrc = groupEdgesBySource(
+    db.listEdges(snapshotId, { includeReferences: true }),
+  );
+  const sourceMetricsByFile = groupSourceMetrics(db.listMetrics(snapshotId), nodesById);
+  return {
+    snapshotId,
+    fingerprints: new Map(fingerprints.map((f) => [f.fileId, f.contentHash])),
+    structuralHashes: indexStructuralHashes(fingerprints),
+    nodesById,
+    edgesBySrc,
+    sourceMetricsByFile,
+    symbolsByFile,
+  };
+}
+
 /**
  * Pick the most recent snapshot usable as a reuse basis: same index version and
  * carrying file fingerprints. Older snapshots predate the fingerprint table and
@@ -227,64 +320,7 @@ export function loadReuseBasis(
     if (snap.indexVersion !== indexVersion) continue;
     const fingerprints = db.listFingerprints(snap.id);
     if (fingerprints.length === 0) continue;
-
-    const nodesById = new Map<string, GraphNode>();
-    const symbolsByFile = new Map<string, GraphNode[]>();
-    // Opt into the symbol layer: reuse must carry symbol nodes and their inbound
-    // reference edges forward for unchanged files (C-53).
-    for (const n of db.listNodes(snap.id, { includeSymbols: true })) {
-      nodesById.set(n.id, n);
-      if (n.kind === "symbol" && n.parentId) {
-        const bucket = symbolsByFile.get(n.parentId);
-        if (bucket) bucket.push(n);
-        else symbolsByFile.set(n.parentId, [n]);
-      }
-    }
-
-    const edgesBySrc = new Map<string, GraphEdge[]>();
-    for (const e of db.listEdges(snap.id, { includeReferences: true })) {
-      // A `calls` edge leaves a symbol (TP-323); file it under the declaring file so reuse carries it.
-      const fileKey = parseSymbolId(e.srcId)?.fileId ?? e.srcId;
-      const bucket = edgesBySrc.get(fileKey);
-      if (bucket) bucket.push(e);
-      else edgesBySrc.set(fileKey, [e]);
-    }
-
-    const sourceMetricsByFile = new Map<string, GraphMetric[]>();
-    for (const m of db.listMetrics(snap.id)) {
-      // Source-content, dead-code, and growth-risk metrics are pure functions of
-      // a file's bytes, so they carry forward verbatim for an unchanged file.
-      if (
-        !SOURCE_METRIC_NAMES.has(m.name) &&
-        !DEAD_CODE_METRIC_NAMES.has(m.name) &&
-        !GROWTH_RISK_METRIC_NAMES.has(m.name)
-      )
-        continue;
-      // Per-symbol metrics (C-58) live on `<fileId>#<name>` nodes; bucket them
-      // under their parent file so an unchanged file carries its symbol
-      // complexity forward alongside its file-level source metrics.
-      const node = nodesById.get(m.nodeId);
-      const fileKey =
-        node?.kind === "symbol" && node.parentId ? node.parentId : m.nodeId;
-      const bucket = sourceMetricsByFile.get(fileKey);
-      if (bucket) bucket.push(m);
-      else sourceMetricsByFile.set(fileKey, [m]);
-    }
-
-    const structuralHashes = new Map<string, string>();
-    for (const f of fingerprints) {
-      if (f.structuralHash) structuralHashes.set(f.fileId, f.structuralHash);
-    }
-
-    return {
-      snapshotId: snap.id,
-      fingerprints: new Map(fingerprints.map((f) => [f.fileId, f.contentHash])),
-      structuralHashes,
-      nodesById,
-      edgesBySrc,
-      sourceMetricsByFile,
-      symbolsByFile,
-    };
+    return readReuseBasis(db, snap.id, fingerprints);
   }
   return null;
 }

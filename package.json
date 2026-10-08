@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "typecheck": "pnpm -r run typecheck",
+    "typecheck": "turbo run typecheck",
     "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
