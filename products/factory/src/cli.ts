@@ -4,6 +4,9 @@ import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
+import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
+import type { DeployWatch } from "./deploy-watch.js";
+import { configuredDeployWatch } from "./deploy-watch-ports.js";
 import { EXIT } from "./exit-codes.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
@@ -14,7 +17,7 @@ import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, star
 import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
-import { registerService } from "./cli-service.js";
+import { ownCheckout, registerService } from "./cli-service.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
@@ -52,10 +55,12 @@ export interface CliDeps {
   presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
+  deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, ownCheckout()) };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
 export interface Verbs {
@@ -107,13 +112,13 @@ function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
     );
 }
 
-function registerServe(program: Command, { deps, dbPath }: Verbs): void {
+function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
   program
     .command("serve")
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) =>
-      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger }, deps.stop),
+      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env) }, deps.stop),
     );
 }
 
@@ -130,6 +135,7 @@ interface ShepherdOpts {
   port: number;
   json?: boolean;
   offline?: boolean;
+  deploy?: boolean;
 }
 
 type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
@@ -154,7 +160,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
-  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N")
+  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line")
+    .option("--deploy", "with --json, print { rows, deploy } so the deploy block rides along; without it --json stays the bare row array")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
@@ -201,7 +208,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${(err as Error).message}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
-  if (await probeHealth(opts.port)) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts.json));
+  const health = await probeHealth(opts.port);
+  const deploy = name === "shepherd.status" ? deployBlockOf(health) : undefined;
+  if (health) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts, deploy));
   if (name === "shepherd.register" && !opts.offline) {
     verbs.io.stderr(`error: no titan-factory serve answered on port ${opts.port}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
@@ -209,16 +218,18 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   await verbs.withHost(async (host, routes) => {
     const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
     if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
-    return printShepherd(verbs.io, name, envelope, opts.json);
+    return printShepherd(verbs.io, name, envelope, opts, deploy);
   });
 }
 
-function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, json: boolean | undefined): number {
+/** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
+function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
     return EXIT.FAILURE;
   }
-  io.stdout(json ? `${JSON.stringify(envelope.data, null, 2)}\n` : formatShepherd(name, envelope.data));
+  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
+  else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
   return EXIT.OK;
 }
 
