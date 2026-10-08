@@ -7,8 +7,8 @@ import { accountAlertText, accountHoldReason, isAccountHold, parseLimitReset, ty
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 
-export const ACCOUNT_HOLD_STEP = "sh-account-hold";
-export const ACCOUNT_WAIT_STEP = "sh-account-wait";
+const ACCOUNT_HOLD_STEP = "sh-account-hold";
+const ACCOUNT_WAIT_STEP = "sh-account-wait";
 export const ACCOUNT_STEPS: readonly StepDeclaration[] = [
   { id: ACCOUNT_HOLD_STEP, kind: "dispatch" },
   { id: ACCOUNT_WAIT_STEP, kind: "dispatch" },
@@ -21,7 +21,7 @@ export const ACCOUNT_WAIT_LIMIT_MS = 60 * 60_000;
 export type AccountsView = Pick<ReviewAccounts, "dirs" | "alert">;
 
 /** The account a review would bill, and the reviewer's limit notice when one ended its turn. */
-export interface Exhausted {
+interface Exhausted {
   account: string;
   notice?: string;
 }

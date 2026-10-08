@@ -15,7 +15,7 @@ export function accountLimitMigration(version = 15): Migration {
 }
 
 /** A live exhaustion of one account: its reset, or null for one only a release lifts. */
-export interface Exhaustion {
+interface Exhaustion {
   resetsAt: number | null;
   alerted: boolean;
 }

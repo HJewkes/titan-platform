@@ -270,9 +270,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
     case "merge":
       return true;
     case "await-account":
-      // The hold step already waited; a new round reads the head as it is now and reviews it again.
-      run.reviews.delete(headSha);
-      throw new LeaveLand();
+      return reviewAgain(run, headSha);
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":
@@ -290,6 +288,12 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
+}
+
+/** The account hold already waited inside the review; a new round reads the head as it is now and reviews it again. */
+function reviewAgain(run: ShepherdRun, headSha: string): never {
+  run.reviews.delete(headSha);
+  throw new LeaveLand();
 }
 
 function endedOutcome({ observed, headSha }: Routed): LandOutcome {

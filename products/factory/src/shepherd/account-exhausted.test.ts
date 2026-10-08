@@ -61,10 +61,9 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   const store = shepherdStoreRef(() => clock);
   const holds = new Set<string>();
   let runId = "";
-  let host: FactoryHost | undefined;
   /** Whether an approve-merge gate stood when each reviewer was spawned. */
   const approveAtSpawn: boolean[] = [];
-  const reviewers = fakeAccounts(dirs, limited, () => clock, () => void approveAtSpawn.push(host?.gates.get(gateId(runId, "approve-merge")) !== undefined));
+  const reviewers = fakeAccounts(dirs, limited, () => clock, () => void approveAtSpawn.push(host.gates.get(gateId(runId, "approve-merge")) !== undefined));
   const tick = async (ms: number, signal: AbortSignal) => {
     clock += ms;
     const reason = runId === "" ? undefined : store.get().byRun(runId)?.holdReason;
@@ -73,7 +72,7 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   };
   const review = { reader: reviewers.reader, dispatch: reviewers.dispatch, accounts: reviewers.accounts, timeoutMs: 5 * 60_000 };
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: tick, review });
-  host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) })], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) })], routes, gatePollMs: 5 });
   hosts.push(host);
   runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
