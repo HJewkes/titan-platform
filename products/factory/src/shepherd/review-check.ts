@@ -40,6 +40,7 @@ const NO_VERDICT: Record<NoVerdictOutcome, string> = {
   timeout: "The wait for the reviewer's verdict ran out.",
   "external-hold": "The hold's reviewer has not answered.",
   "not-started": "No reviewer started at this head.",
+  "account-exhausted": "The reviewer's account is out of usage; the review waits for it.",
 };
 
 const short = (sha: string): string => sha.slice(0, 12);

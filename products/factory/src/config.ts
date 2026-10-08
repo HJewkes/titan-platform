@@ -28,6 +28,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
   roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
   /** Repos whose CI uploads a `codewatch-report` artifact; their reviewer briefs get its questions. */

@@ -114,6 +114,8 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-carry-scope": "review",
   "sh-carry-seat": "review",
   "sh-await-verdict": "review",
+  "sh-account-hold": "review",
+  "sh-account-wait": "review",
   "sh-policy": "review",
   "merge-policy": "awaiting-approval",
   "approve-merge": "awaiting-approval",

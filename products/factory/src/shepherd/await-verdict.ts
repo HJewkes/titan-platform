@@ -64,6 +64,9 @@ export const USAGE_LIMIT_REASON = "the reviewer hit the account usage limit and 
 const USAGE_LIMIT_NOTICE = /^You've hit your [\w -]{0,24}limit\b/;
 const MAX_LIMIT_NOTICE_CHARS = 200;
 const isUsageLimitNotice = (text: string): boolean => text.length <= MAX_LIMIT_NOTICE_CHARS && USAGE_LIMIT_NOTICE.test(text.trim());
+/** A usage-limit result keeps the notice, whose reset time decides how long the account is held. */
+export const isUsageLimit = (result: AwaitVerdictResult): result is { kind: "none"; reason: string; notice: string } =>
+  result.kind === "none" && result.reason === USAGE_LIMIT_REASON && typeof result.notice === "string";
 
 type MalformedNone = { kind: "none"; malformed: Malformed };
 const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): MalformedNone => ({ kind: "none", malformed: { refusal, writtenAt } });
@@ -83,7 +86,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
   if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
   if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
-  if (isUsageLimitNotice(final.text)) return { kind: "none", reason: USAGE_LIMIT_REASON };
+  if (isUsageLimitNotice(final.text)) return { kind: "none", reason: USAGE_LIMIT_REASON, notice: final.text.trim() };
   const block = parseVerdictBlock(final.text);
   if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
@@ -141,7 +144,8 @@ export async function awaitVerdict(
   const poll = async () => (last = acceptVerdict(input, await reader.read(input).catch(() => [])));
   for (;;) {
     const result = await poll();
-    if (result.kind === "verdict") return result;
+    // A limit notice is the reviewer's last word, so waiting for its exit adds nothing.
+    if (result.kind === "verdict" || isUsageLimit(result)) return result;
     // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
     if (await silent(input)) return poll();
     if (clock.expired()) return last;

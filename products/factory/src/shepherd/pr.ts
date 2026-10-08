@@ -269,6 +269,10 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   switch (route) {
     case "merge":
       return true;
+    case "await-account":
+      // The hold step already waited; a new round reads the head as it is now and reviews it again.
+      run.reviews.delete(headSha);
+      throw new LeaveLand();
     case "fresh-reviewer":
     case "retry-review":
     case "await-external":

@@ -221,7 +221,7 @@ describe("acceptVerdict malformed record", () => {
 
     const result = acceptVerdict(input, [said(notice)]);
 
-    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON });
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON, notice });
     expect(readMalformed(result)).toBeNull();
   });
 

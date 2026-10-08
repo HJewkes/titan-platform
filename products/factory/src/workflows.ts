@@ -26,6 +26,8 @@ import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
+import { accountLimitMigration } from "./shepherd/account-store.js";
+import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
@@ -74,8 +76,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
-/** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12)];
+/** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these, and 13-14 are the host's. */
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), accountLimitMigration(15)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -139,13 +141,35 @@ function fixerReview(freeze: FreezeStoreRef, store: ShepherdStoreRef) {
   };
 }
 
+type ReviewConfigured = NonNullable<NonNullable<FactoryConfig["shepherd"]>["review"]>;
+
+/** Tells every seat that owns `repo` over agent-chat; a repo no seat owns has nobody to tell, which throws so the alert is tried again. */
+function seatAlert(agentChatBin: string, seats: () => SeatBook, roster: RosterReader | undefined) {
+  const agents = agentChatAgents(agentChatBin, { roster });
+  return async (repo: string, text: string): Promise<void> => {
+    const found = lookupSeat(seats(), repo);
+    if (found.kind !== "seat") throw new Error(`no seat owns ${repo}`);
+    for (const name of found.seat.name.split("+")) await agents.message(name, text);
+  };
+}
+
+/** `review.configDir` first, then each fallback; every account gets its own dispatch over the one roster and spawn gate. */
+function reviewAccounts(review: ReviewConfigured, dispatchUnder: (configDir: string | undefined) => ReturnType<typeof agentChatReviewerDispatch>, alert: ReviewAccounts["alert"]): ReviewAccounts {
+  const primary = review.configDir ?? DEFAULT_ACCOUNT;
+  const dirs = [...new Set([primary, ...(review.fallbackConfigDirs ?? [])])];
+  const byDir = new Map(dirs.map((dir) => [dir, dispatchUnder(dir === DEFAULT_ACCOUNT ? undefined : dir)]));
+  return { dirs, dispatchUnder: (dir) => byDir.get(dir) ?? byDir.get(primary)!, alert };
+}
+
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
 function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
-  const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
+  const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
+  const accounts = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
+  const dispatch = accounts.dispatchUnder(accounts.dirs[0]!);
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
+  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
