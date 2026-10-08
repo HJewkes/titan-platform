@@ -100,8 +100,7 @@ Usage is either an idempotent response delta or an ordered snapshot within an ep
 Keep unknown model/token/cost fields unknown. Normalize input totals consistently:
 input includes cached and cache-write input when those are reported separately by a
 harness; output includes reasoning output. Never add those subsets a second time.
-A source lacking enough data leaves the normalized total null. Legacy UsageRow stays
-unchanged. Codex token_usage_record.usage is a response delta; neighboring cumulative
+A source lacking enough data leaves the normalized total null. Codex token_usage_record.usage is a response delta; neighboring cumulative
 snapshots are not additional usage. Model attribution comes from turn_context.
 
 ## Compatibility migration contract for TP-47
