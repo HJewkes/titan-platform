@@ -149,11 +149,11 @@ const MAIN_RUNS: Record<MainScript, ReturnType<typeof successRun>> = {
 function mainCi(fake: FakeGitHub, main: MainScript): GitHubPort {
   const port = githubPort(fake.wire);
   const atMerge = (sha: string): void => {
-    fake.setRuns(sha, [MAIN_RUNS[main]]);
+    fake.setRuns(sha, [MAIN_RUNS[main], successRun("dag-check", 11)]);
     if (main !== "cancelled-superseded") return;
     fake.refs.set("main", NEWER_MAIN);
     fake.compares.set(`${sha}...${NEWER_MAIN}`, { mergeBaseSha: sha, files: [] });
-    fake.setRuns(NEWER_MAIN, [successRun("validate", 10)]);
+    fake.setRuns(NEWER_MAIN, [successRun("validate", 10), successRun("dag-check", 12)]);
   };
   return { ...port, checkRuns: async (repo, sha) => (fake.pr(1).merged && sha === fake.pr(1).mergeSha && atMerge(sha), port.checkRuns(repo, sha)) };
 }
