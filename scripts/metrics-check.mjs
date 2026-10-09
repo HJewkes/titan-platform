@@ -12,7 +12,8 @@ const REGISTRY = "metrics";
 const ENTRY_FILE = /\.yml$/;
 
 // Imported from the built package so the schema lives only in health; the root does not depend on it.
-const loadSchema = () => import(pathToFileURL(join(ROOT, "packages", "health", "dist", "metrics", "index.js")).href);
+const SCHEMA_ENTRY = join(ROOT, "packages", "health", "dist", "metrics", "index.js");
+const loadSchema = () => import(pathToFileURL(SCHEMA_ENTRY).href);
 
 const registryFiles = (root) => (existsSync(join(root, REGISTRY)) ? readdirSync(join(root, REGISTRY)).sort() : []);
 const entryFiles = (root) => registryFiles(root).filter((name) => ENTRY_FILE.test(name));
@@ -57,6 +58,11 @@ export function metricsCoverageGaps(root, areas) {
 }
 
 async function main() {
+  if (!existsSync(SCHEMA_ENTRY)) {
+    console.error(`${SCHEMA_ENTRY} not found; run pnpm build first`);
+    process.exitCode = 2;
+    return;
+  }
   const errors = await checkMetrics(ROOT, loadAreas(ROOT));
   errors.forEach((error) => console.error(error));
   if (errors.length > 0) process.exitCode = 1;
