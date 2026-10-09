@@ -11,11 +11,11 @@ import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./cod
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { Awaited, Dispatched, Intended, MergeEvidenceSchema, type OwnerBrief } from "./review-schemas.js";
+import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema, type OwnerBrief } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import { dispatchedNoVerdictCause } from "./depth-floor.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
-import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
+import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
@@ -79,7 +79,7 @@ export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (Acc
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
-const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional() });
+const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional(), cause: ReviewCauseSchema.optional() });
 /** `at` is epoch milliseconds. `agentId` is known only for a resume; a spawned agent gets its id from the broker. `external` starts nobody. */
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional() });
 /** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. */
@@ -189,11 +189,11 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     });
   };
 
-/** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing. */
+/** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing; it records why the head is reviewed. */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
   const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster, input.fresh);
-  return { kind: "intent", head: input.head, ...choice, at: deps.now() };
+  return { kind: "intent", head: input.head, ...choice, at: deps.now(), ...(input.cause && { cause: input.cause }) };
 };
 
 /** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
@@ -273,7 +273,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
 }
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
-const effectivePolicy = (ctx: WorkflowContext) => (ctx.param("policy") === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(ctx.param("policy")!)));
+const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
 const seatGrants = (ctx: WorkflowContext): string[] => (effectivePolicy(ctx).merge === "auto" ? [MERGE_ON_GREEN_GRANT] : []);
 
 /**
@@ -282,7 +282,7 @@ const seatGrants = (ctx: WorkflowContext): string[] => (effectivePolicy(ctx).mer
  */
 export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const target: ReviewTarget = { repo: request.repo, pr: request.pr, head: request.headSha };
-  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }) }, Intended);
+  const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const fixFirsts = ctx.iteration(FIX_FIRST_STEP);

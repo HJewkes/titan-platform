@@ -67,6 +67,11 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
 /** What a repo no seat lists resolves to: the owner gates every merge. */
 export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" };
 
+/** The ceiling a run carries in its `policy` param; a run with none gets the owner gate. */
+export function runPolicyCeiling(rawPolicy: string | undefined): EffectivePolicy {
+  return rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
+}
+
 export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }

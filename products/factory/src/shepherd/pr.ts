@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, stepIdMatches, type WorkflowDefinition } from "../definition.js";
 import type { LandPrState } from "../workflows/land-pr.js";
-import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { CiSnapshotResult, UpdateResultResult } from "../workflows/land-steps.js";
 import type { SettleHold } from "../workflows/land-settle.js";
 import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
@@ -16,7 +16,7 @@ import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { verdictIsMergeAt } from "../gate-brief.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
@@ -25,6 +25,7 @@ import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
+import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
 import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
@@ -57,8 +58,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   const pr = rawPr === undefined ? undefined : Number(rawPr);
   if (pr !== undefined && (!Number.isInteger(pr) || pr <= 0)) throw new Error(`shepherd-pr: param pr must be a positive integer, got ${rawPr}`);
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
-  const rawPolicy = ctx.param("policy");
-  const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
+  const policy = runPolicyCeiling(ctx.param("policy"));
   return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
@@ -92,6 +92,8 @@ interface ShepherdRun extends WakeRun {
   settleHold: SettleHold;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
+  /** What names the next review's cause. */
+  trail: CauseTrail;
 }
 
 /** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
@@ -109,7 +111,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
-    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set() },
+    ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
@@ -167,6 +169,7 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
  * a wake past the budget asks the owner instead and leaves the round.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  run.trail.woken = kind;
   if (await awaitedPast(run, headSha)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
@@ -190,15 +193,21 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview, gated, stepId) => (clearSuperseded(run, rereview, gated, stepId), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) })),
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview, gated, stepId) => (clearSuperseded(run, rereview, gated, stepId), rereview && run.trail.ownerAsked.add(rereview), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) })),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
       if (stepIdMatches("ci-wait", stepId)) await onCiRead(run, done.data?.result);
-      if (stepIdMatches("update-branch", stepId)) inheritEscalation(run.escalations, run.lastCi, done.data?.result);
+      if (stepIdMatches("update-branch", stepId)) onUpdated(run, done.data?.result);
       return done;
     },
   };
+}
+
+function onUpdated(run: ShepherdRun, result: unknown): void {
+  inheritEscalation(run.escalations, run.lastCi, result);
+  const update = UpdateResultResult.safeParse(result);
+  if (update.success && update.data.own) run.trail.updated.add(update.data.headSha);
 }
 
 /** A reviewable head is reviewed once, then routed by the table; only the `merge` route reaches `land`'s merge decision. */
@@ -220,6 +229,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
     run.reviews.set(headSha, verdict);
     const observed = await observePr(run.ctx, run.target, headSha);
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
+    run.trail.last = { headSha, outcome, verdict };
     const routed: Routed = { headSha, verdict, observed, outcome, route: recordedRoute(run.ctx, headSha, routeFor(observed.runState, observed.mergeableState, outcome)) };
     if (await takeRoute(run, routed)) return;
   }
@@ -285,9 +295,11 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
 /** A tree-equal update of a reviewed head carries its MERGE; otherwise a verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
-  const carried = await carriedVerdict(run.ctx, run.target, run.reviews, headSha, run.carryScopeReads++);
+  const probe: CarryProbe = {};
+  const carried = await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
-  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }) });
+  const cause = takeCause(run.trail, headSha, probe);
+  const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause });
   return verdict.kind === "none" || verdict.headSha === headSha ? verdict : { kind: "none", cause: "no-verdict" };
 }
 
