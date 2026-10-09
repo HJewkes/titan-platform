@@ -4,7 +4,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { defineInsight } from "./define.js";
 import { OUR_CLIS, patternId, postFilters, type PostFilterUse } from "./post-filter.js";
-import { outputCharsReader, readAgentNames, readBashCalls, readBashCommand, runHelp, type BashCall } from "./tool-gaps-sources.js";
+import { outputCharsReader, readAgentNames, readBashCalls, readBashCommand, readCommands, runHelp, type BashCall } from "./tool-gaps-sources.js";
 
 /** Where the question reads what agents ran and what our CLIs offer; tests inject fixtures for both. */
 export interface ToolGapsPorts {
@@ -46,7 +46,6 @@ const REPLACEMENTS: Record<string, readonly string[]> = {
   jq: SHAPE, python: SHAPE, python3: SHAPE, node: SHAPE, cut: SHAPE, column: SHAPE, sort: ["--sort"], uniq: COUNT, wc: COUNT,
 };
 const DEFAULT_TOP = 50;
-const READ_CONCURRENCY = 32;
 const NAMES_OUR_CLI = new RegExp(OUR_CLIS.join("|"));
 
 export function replacementFlags(stage: string): readonly string[] {
@@ -62,15 +61,9 @@ interface Use extends PostFilterUse {
 /** Every post-filter use among the calls; a call whose recorded heads name none of our CLIs is never read back. */
 async function readUses(calls: readonly BashCall[], command: ToolGapsPorts["command"]) {
   const candidates = calls.filter((c) => c.heads === null || NAMES_OUR_CLI.test(c.heads));
-  const uses: Use[] = [];
-  let unreadable = 0;
-  for (let i = 0; i < candidates.length; i += READ_CONCURRENCY) {
-    const texts = await Promise.all(candidates.slice(i, i + READ_CONCURRENCY).map((call) => command(call)));
-    texts.forEach((text, j) => {
-      if (text === null) unreadable += 1;
-      else uses.push(...postFilters(text).map((use) => ({ ...use, call: candidates[i + j]! })));
-    });
-  }
+  const read = await readCommands(candidates, command);
+  const uses = read.flatMap(({ call, text }) => (text === null ? [] : postFilters(text).map((use): Use => ({ ...use, call }))));
+  const unreadable = read.filter((r) => r.text === null).length;
   return { uses, unreadable, skippedByHeads: calls.length - candidates.length };
 }
 

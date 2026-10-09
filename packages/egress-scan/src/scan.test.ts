@@ -63,7 +63,7 @@ describe("scan", () => {
       { location: "REPORT.md:2", rule: "home-path" },
       { location: "other.md:1", rule: "aw-data-path" },
     ]);
-    expect(result.allowed).toEqual({ "home-path": 0, "aw-data-path": 1, "private-term": 0 });
+    expect(result.allowed).toEqual({ "home-path": 0, "aw-data-path": 1, "private-term": 0, "credential-token": 0 });
   });
 
   it("sums binary files across sources", () => {

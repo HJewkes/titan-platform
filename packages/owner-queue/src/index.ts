@@ -14,5 +14,7 @@ export type { OwnerItemDeposit } from "./deposit.js";
 export type { ClosedStatus, QueueSource, ResolveResult, SourceEvent } from "./port.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
 export { rank } from "./rank.js";
+export { buildOwnerRounds } from "./rounds.js";
+export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";
 export { PARKED, STALE_RULES, staleLabel } from "./stale.js";
 export type { StaleEvidence, StaleLabel, StaleRule } from "./stale.js";

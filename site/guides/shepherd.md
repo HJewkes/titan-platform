@@ -441,13 +441,38 @@ as `stage` and `totalMinutes`.
 each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
+### Review causes {#review-causes}
+
+Each `sh-review-intent` step records why Shepherd dispatched a reviewer at that head, as
+`cause` and, for some causes, `reason`. The run derives it from its own steps, with no extra
+GitHub call:
+
+| Cause | When |
+|---|---|
+| `first` | The run's first review. |
+| `fix-round` | A new head after a `FIX_FIRST` or `NO_REPRO` send-back. |
+| `conflict`, `ci-fix` | A new head after a conflict or red-CI wake. |
+| `superseded` | The head moved while the last review ran. |
+| `update-branch` | Shepherd's own update-branch moved the head, and there was no `MERGE` to carry. |
+| `merge-up-not-carried` | Shepherd's update-branch moved a head with a `MERGE`, and the carry refused. `reason` is `not-one-merge`, `base-off-branch`, `remerge-touched`, `seat`, `base-unknown` or `probe-failed`. |
+| `kind-no-carry` | The `MERGE` could not carry because of the registration's kind. `reason` is that kind, or `unregistered`. |
+| `seat-push` | A push Shepherd did not make moved the head; after a `MERGE`, `reason` says why it did not carry. |
+| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
+| `hold` | The hold's reviewer is read again. |
+| `owner-request` | A resync asked for the review again. |
+| `unknown` | Recorded before causes existed, or nothing explains it. |
+
+`stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
+by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
+`--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
+
 ### Review cost {#review-cost}
 
 ```
 titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
 ```
 
-`--cost` prints this report instead of the reports above. For each merged PR it reads the reviewer
+`--cost` prints this report instead of the sections above. For each merged PR it reads the reviewer
 transcript every `sh-await-verdict` locator names, across all the PR's runs and rounds, and prices
 each request with session-analytics `priceRequest`. It reports list-price dollars and tokens
 (input, cache read, cache write, output) per PR, then per repo and ISO week of the merge, then in
@@ -555,15 +580,28 @@ cannot loosen it.
 ## Hold and release
 
 ```sh
-titan-factory shepherd hold owner/repo#123 --reason "waiting on a schema decision"
-titan-factory shepherd hold owner/repo#123 --reason "security audit" --reviewer sec-audit-review
+titan-factory shepherd hold owner/repo#123 --reason "stalled: no step progress for 70 minutes; TP-123"
+titan-factory shepherd hold owner/repo#123 --reason "g10-adversary: merge-policy change" --reviewer sec-audit-review
 titan-factory shepherd release owner/repo#123
 ```
 
 ```
-run ab0f9228-…: held (waiting on a schema decision)
+run ab0f9228-…: held (stalled: no step progress for 70 minutes; TP-123)
 run ab0f9228-…: released
 ```
+
+A reason has the shape `<class>: <detail>; <task id>`. Its class is the text before the
+first colon, matched exactly, and must be one of the seven break-glass classes:
+`serve-down`, `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or
+`g10-adversary`. The first four are factory defects, so their reason must also cite the
+task for the defect, an ID like `TP-123` or `CC-45`. Only the ID's syntax is checked, not
+whether the task is open. The three gate classes need no task ID. A seat path or an interim
+procedure is not a hold reason. Any other reason is refused with exit 65 before anything is
+read or written: nothing is held, so the pull request stays unheld and Shepherd may still
+merge it. The refusal message lists the classes and the task-ID rule
+(`products/factory/src/shepherd/hold-reason.ts`). Only `shepherd hold` checks the reason.
+`release` clears any hold, and a typed `hold` replaces an existing one, including one
+stored before the check existed.
 
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits

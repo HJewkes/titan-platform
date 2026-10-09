@@ -1,5 +1,65 @@
 # @titan-design/code-graph
 
+## 0.15.0
+
+### Minor Changes
+
+- 640a020: Add component prop metrics. A component is a PascalCase function with `symbol_jsx_depth > 0`, and its props are its first parameter. The props type resolves within the file only: an inline object type, or a same-file `interface`/`type`, following `extends` and `&` clauses that name same-file types; types the file does not declare (`HTMLAttributes<…>`) add nothing. `symbol_prop_count` counts the own-declared members, `symbol_bool_prop_count` the ones typed `boolean` or a union of `true`/`false`/`boolean` with `undefined`, and `symbol_unread_props` the ones the body never reads (a destructured binding with no references, or no `props.<name>` access); a `...rest` element or forwarding the whole props object gives 0. All three are absent when the props type is imported or the parameter is untyped, so each stays a pure function of one file. `INDEX_VERSION` moves to 0.24.0, so the next index of an existing store is a full re-index.
+- 25ac9ce: `diffCheckResults` and `bucketViolations` now count a violation as worsened when it moves
+  further past its threshold, rather than when its value rises. Before, a `metric-min` violation
+  whose value fell, such as `coverage_pct` dropping from 60 to 40 under a minimum of 80, was
+  counted as improved.
+
+  New exports, from the root and from `@titan-design/code-graph/analysis`:
+
+  - `violationExcess(ruleType, value, threshold)` returns how far past its threshold a violation
+    sits. Larger is always worse: value over threshold for a maximum, threshold over value for a
+    minimum. It returns null when the value or threshold is missing, or when the ratio has no
+    meaning (a maximum of 0 or less, or a minimum rule's value of 0 or less).
+  - `compareExcess(before, after)` returns `"worsened"`, `"improved"` or `"unchanged"`, or null
+    when either excess is null.
+
+  `bucketViolations` takes an optional fourth argument, `ruleTypeOf(ruleId)`; without it every
+  rule is read as a maximum. `BucketableViolation` now includes `threshold`. A pair whose excess
+  is null on either side stays in `unchanged` only, so it is neither worsened nor improved. A
+  caller that passes values without thresholds therefore gets no worsened or improved entries.
+  `delta` is still the raw `to.value - from.value`.
+
+- 0bd5cd7: Stop counting each TS/JS `else if` as a nesting level. `nestingDepthOf` now adds no depth for an `if_statement` that is the direct child of an `else_clause`, matching ESLint `max-depth` and Sonar. `max_nesting_depth` and `symbol_max_nesting` drop for functions with else-if chains (a loop over a flat four-arm chain goes from 5 to 2). Python `elif` was already flat and is now pinned by tests. `INDEX_VERSION` is now 0.26.0 so stored nesting values are not reused.
+- e54ada8: Carry git-history warnings from `indexPaths` into a new optional `IndexResult.warnings`, and add `assembleIndexerMetrics`, which returns the metrics with those warnings. A churn log overflow or git failure was previously dropped.
+- ba007f1: `layered-deps` gains an `exemptTypeOnly` option. When true, an import edge whose every import
+  from the source file is `import type` (or `export type … from`) no longer counts as a layer
+  violation. A file that also imports a value from the same module still counts. The option is
+  off by default and must be a boolean.
+- 53460b5: Split cognitive complexity into logic and markup for functions that render JSX. `cognitiveSplitOf` returns the total and the share charged inside JSX `{…}` expressions. New metrics `symbol_markup_cognitive`, `symbol_logic_cognitive` and the file-level `logic_cognitive_max` are written where `symbol_jsx_depth > 0`; hook callbacks stay logic, only callbacks inline in JSX count as markup. `INDEX_VERSION` is now 0.23.0.
+- 175c7a9: `topDeadModules` takes an optional fifth argument, `{ view }`. The default `"all-consumers"` view is unchanged. The `"public"` view seeds reachability only from entry, barrel, config, script and `main.*` files, and tags a row that test, story or lab files still reach with the new optional `DeadModuleRow.reachableOnlyFrom` (`"lab"` beats `"story"` beats `"test"`). Story, lab, fixture and test files are never rows in either view. New types: `DeadModuleView`, `DeadModulesOptions`, `DeadModuleConsumer`, on the root and on `./analysis`.
+- cbe3679: Export `buildSymbolCouplingPayload` and its payload types from the browser-safe `./analysis` subpath, so a browser bundle no longer needs the Node-only root for it. The root export stays.
+- 2159a49: The context dossier shows each symbol's own LOC beside its complexity. `collectNodeMetrics` reads `symbol_loc` onto a symbol's `loc`; `SymbolLine`, `SymbolDossier` and `BlastRadiusEntry` gain an optional `loc`; and `renderContextMarkdown` prints it on the symbol complexity line (`· **loc** N`), on file symbol rows (`, loc N`) and on blast-radius rows (`; loc N`), with a dash when unmeasured.
+- f4b785f: Add a `no-import-cycles` check rule to code-graph. It reports each strongly connected component of the file import graph once, with its sorted member files in the new `members` field, and leaves type-only imports out unless `includeTypeOnly: true`. Against a baseline, a cycle inside one known cycle carries over and a cycle that gains a file is new. The TypeScript extractor now marks type-only import and re-export edges with `attrs.typeOnly`, and `INDEX_VERSION` moves to 0.25.0 so no snapshot without that mark is reused. code-read describes the new rule in plain language.
+- 3428e45: Tell a git log that overflowed its buffer apart from a non-repo. `loadChurnResult` and `loadFirstSeenResult` return a typed `not-git | overflow | git-error` outcome; `loadChurnEntries` and `loadFileFirstSeen` keep returning null outside git but throw `GitHistoryError` on overflow or git failure; `LoadedHistory` gains `warnings`, so `loadHistoryMetrics` no longer drops churn, ownership and age metrics silently.
+
+### Patch Changes
+
+- ea8ce65: Split `resolveBarrelEdges` into small named helpers to lower its cognitive complexity; behaviour is unchanged.
+- 648d9af: Correct the README's browser-safety notes: `computeSymbolConsumers` is on the `./analysis` subpath, and `buildSymbolCouplingPayload` is still root-only.
+- 1f1600b: Add a test pinning that `filteredFileIds` drops `test` and `fixture` roles by default, with no `excludeRole` option.
+- 8f05c8d: Rethrow non-ENOENT errors from the `.gitattributes` read in `loadGeneratedPatterns` and the realpath in the indexer, instead of treating an unreadable file or root as absent.
+- c8e978e: `classifyRole` now gives a `*.fixture.*` file (for example `big.fixture.ts` beside its test) the `fixture` role, as it already did for files under a `fixtures/` directory. `INDEX_VERSION` is now 0.25.0, so a snapshot indexed with the old roles is never reused.
+- f42e765: Reword the dashboard hotspot label and report comments neutrally, and credit Adam Tornhill and CodeScene for the hotspot score. No id, key or exported name changes.
+- 9228402: Tighten component prop metrics. An inner binding that shadows a prop name is no longer a read of that prop, a parenthesized `(boolean | undefined)` member counts as bool, an interface that extends only imported types is absent like an all-imported `&` intersection, and PascalCase class methods and getters are not scored as components. `FC<P>` and `Readonly<P>` are not unwrapped, so their props stay absent.
+- 04561ad: Split the Python dead-code binding collectors into small named helpers. Counts are unchanged.
+- 1f1ca13: Document the graph report derivations in the README: `buildReportContext`, `topHotspots`, `hotspotScoreOf`, `topBusFactorRisks`, `busFactorOf`, `topTestCoverageRisks`, `topCentralFiles`, `keepNode`, `lookupMetric`, and `computeReportDrift`, with an example on the browser-safe `./analysis` subpath and a note that coupling clusters stay in codewatch.
+- 20af8a3: Split `loadReuseBasis` into small named helpers to cut its cognitive complexity. Behavior is unchanged.
+- 9fcd1b3: Remove an `indexer.test.ts` case that claimed to assert incremental-reuse equivalence but ran two full indexes, and point the README and reference page at `incremental-index.test.ts`, which compares full snapshots against a fresh full index.
+- 6ecc31d: Share one tree-sitter node-kind table (`node-kinds.ts`) across declared-names, scope-path, source-metrics, cognitive-complexity, dead-code and growth-risk. Each module keeps its exact former set; no metric output changes.
+- 388d791: Review nits: code-graph gains `excludeRoles` barrel and fixture test cases and a virtual-source index test that fails on any direct filesystem read; the session-graph price-prefix doc now names the combined `-YYYYMMDD[..]` form.
+- c043041: A forbid-import `except` entry now matches one exact path unless it contains `*`, instead of any path containing it, and an empty `except` entry is refused when rules load instead of silently disabling the rule.
+- ff6ff86: Type the graph-report README example against `GraphNode`, and pin more behavior in tests: a braced `else { if }` in a loop nests at depth 3, carried reuse-basis metrics include dead-code and growth-risk names. No runtime change.
+- Updated dependencies [5fe09ab]
+- Updated dependencies [1f7de27]
+  - @titan-design/retrieval@0.3.1
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.14.0
 
 ### Minor Changes

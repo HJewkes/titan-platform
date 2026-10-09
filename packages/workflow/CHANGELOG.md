@@ -1,5 +1,35 @@
 # @titan-design/workflow
 
+## 0.10.0
+
+### Minor Changes
+
+- ff6424a: A Shepherd run replayed after a serve restart now follows the route its record took after each review, so a route table changed by a redeploy no longer sends it back to review or publish at a head it already left. Resync answers an active reviewer-starting step whose head the PR has moved past, and supersedes nothing when the PR cannot be read (TP-1831). The workflow context gains `historyNext()`, and the runtime gains `completeStep()` for a run no runtime holds.
+- 7f4e467: Add `runtime.annotate(runId, stepId, data)` and `WorkflowRunStore.annotate(id, key, result)`: record a step result on a run that already finished, once, without a fence. Unfinished runs and existing keys are refused with false.
+- 34066da: Add `WorkflowContext.resumedGate()`: the step a resumed run was paused on and has not reached again, so a workflow that changed since the record can tell a still-pending gate from live code.
+
+### Patch Changes
+
+- 534cec8: Give each run-state rule one definition inside the package: parking a run for recovery, the active-status list, gate ownership, the step outcome mapping, and `messageOf`. No behavior change.
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [d020cf9]
+- Updated dependencies [2ff0840]
+- Updated dependencies [69db518]
+- Updated dependencies [c517313]
+- Updated dependencies [69db518]
+- Updated dependencies [cff7a11]
+- Updated dependencies [bc96ab3]
+- Updated dependencies [1f7de27]
+- Updated dependencies [dcde08d]
+- Updated dependencies [20778a2]
+- Updated dependencies [ff6ff86]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/agent@0.4.6
+  - @titan-design/authority@0.4.0
+  - @titan-design/hitl@0.8.0
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.9.1
 
 ### Patch Changes

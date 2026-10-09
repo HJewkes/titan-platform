@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
 import { coordinatorEvidencePolicy } from "./coordinator-evidence.js";
+import { deviceGateAuthorize } from "./device-gates.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
@@ -26,7 +27,12 @@ export interface DatabaseTenant {
 }
 
 /** Routes travel with the tenant they read, so every caller that passes the routes also opens their tables. */
-export type FactoryRoutes = readonly StepRoute[] & { readonly database?: DatabaseTenant; readonly shepherd?: ShepherdServices };
+export type FactoryRoutes = readonly StepRoute[] & {
+  readonly database?: DatabaseTenant;
+  readonly shepherd?: ShepherdServices;
+  /** Hands routes that start or read other runs the host they run on; returns the unbind, called on close. */
+  readonly bindHost?: (host: FactoryHost) => () => void;
+};
 
 export interface FactoryHostOptions {
   dbPath: string;
@@ -78,11 +84,11 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const db = openDatabase(options.dbPath);
   const tenant = options.routes.database;
   runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), ...(tenant?.extraMigrations ?? [])]);
-  const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: coordinatorEvidencePolicy });
+  const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: coordinatorEvidencePolicy, authorize: deviceGateAuthorize });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
-  return {
+  const host: FactoryHost = {
     runtime,
     gates,
     batches: new GateBatchStore(db, options.now),
@@ -91,10 +97,13 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
     close: () => {
       runtime.shutdown();
+      unbindHost?.();
       unbind?.();
       db.close();
     },
   };
+  const unbindHost = options.routes.bindHost?.(host);
+  return host;
 }
 
 function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptions): WorkflowRuntime {
