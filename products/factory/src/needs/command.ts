@@ -20,13 +20,18 @@ interface NeedsVerbs {
   withHost: (fn: (host: FactoryHost) => Promise<number> | number) => Promise<void>;
 }
 
+interface SourceOptions {
+  morningDir?: string;
+  includePersonal?: boolean;
+}
+
 /** The four owner-queue adapters over their live homes; the gates come from whoever holds them. */
-export function ownerQueueSources(env: NodeJS.ProcessEnv, gates: GateReader, morningDir = morningQueuesDir(env)): QueueSource[] {
+export function ownerQueueSources(env: NodeJS.ProcessEnv, gates: GateReader, { morningDir = morningQueuesDir(env), includePersonal = false }: SourceOptions = {}): QueueSource[] {
   return [
     agentChatSource(localBrokerEndpoint(env)),
     hitlGateSource({ gates }),
     createMorningSource({ dir: morningDir }),
-    createActiveWorkSource({ origin: activeWorkOrigin(env) }),
+    createActiveWorkSource({ origin: activeWorkOrigin(env), includePersonal }),
   ];
 }
 

@@ -6,8 +6,8 @@
 npm install @titan-design/tool-guard
 ```
 
-Status: private and unpublished while TP-403 lands. The owner publishes the first version and
-installs the hook by hand.
+Status: public on npm. The owner publishes the first version and installs the hook by
+hand.
 
 ## The problem it solves
 
