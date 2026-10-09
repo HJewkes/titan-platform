@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { cancelGate, type GateResolver } from "@titan-design/hitl";
+import type { GateResolver } from "@titan-design/hitl";
+import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
-import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
+import { announceRecovery, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
 import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
-import { WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
+import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import {
   WorkflowCancelledError,
   WorkflowNotOwnedError,
@@ -81,7 +82,7 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]).filter((run) => !options.exclude?.has(run.id));
+    const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
@@ -126,9 +127,8 @@ export class WorkflowRuntime {
 
   private markRecovery(run: WorkflowRun, step: ActiveStep, kind: NonNullable<ActiveStep["recovery"]>["kind"], evidence: string): true {
     markStepRecovery(step, kind, evidence, this.isoNow());
-    run.status = "recovery_required";
-    run.error = evidence;
-    this.baseDeps.emit({ type: "workflow_recovery_required", runId: run.id, stepId: step.stepId, evidence });
+    parkForRecovery(run, evidence);
+    announceRecovery(this.baseDeps.emit, run.id, step.stepId, evidence);
     return true;
   }
 
@@ -217,7 +217,7 @@ export class WorkflowRuntime {
   status(runId: string): WorkflowRun | undefined {
     return this.live.get(runId)?.ctx.run ?? this.store.get(runId);
   }
-  list(statuses: WorkflowRun["status"][] = ["running", "paused", "cancelling", "recovery_required"]): WorkflowRun[] {
+  list(statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
     return this.store.listByStatus(statuses);
   }
 
@@ -278,9 +278,7 @@ export class WorkflowRuntime {
   }
 
   private cancelGates(runId: string, reason: string): void {
-    for (const gate of this.options.gates.listPending()) {
-      if (gate.id.startsWith(`${runId}/`)) cancelGate(this.options.gates, gate.id, reason);
-    }
+    cancelOwnPending(this.options.gates, runId, reason, () => true);
   }
 
   private startRenewal(run: WorkflowRun, controller: AbortController): ReturnType<typeof setInterval> {
@@ -350,8 +348,7 @@ export class WorkflowRuntime {
     if (!originalFence || !authoritative?.owner || !sameFence(authoritative.owner, originalFence)) return;
     if (step) this.markRecovery(authoritative, step, "unknown", failure.message);
     else {
-      authoritative.status = "recovery_required";
-      authoritative.error = failure.message;
+      parkForRecovery(authoritative, failure.message);
     }
     try {
       const lease = this.leaseWindow();
@@ -377,5 +374,5 @@ export class WorkflowRuntime {
 }
 
 function isTerminal(status: WorkflowRun["status"]): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
+  return !ACTIVE_STATUSES.includes(status);
 }
