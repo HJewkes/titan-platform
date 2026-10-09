@@ -4,7 +4,7 @@ import type { NoVerdictCause } from "./phases.js";
 /** The closed set of read families that show a reviewer looked at the change: file reads and searches, and Bash read verbs. */
 export const INVESTIGATIVE_CALLS = {
   tools: ["Read", "Grep", "Glob"],
-  bashVerbs: ["git log", "git show", "git diff", "git grep", "gh pr view", "gh pr diff", "gh pr checks", "cat", "sed -n", "rg", "npx vitest", "grep", "ls", "head", "tail", "wc", "find", "git ls-files", "git merge-tree", "pnpm exec vitest", "pnpm vitest", "npm run verify", "npm test", "node --test"],
+  bashVerbs: ["git log", "git show", "git diff", "git grep", "gh pr view", "gh pr diff", "gh pr checks", "cat", "sed -n", "rg", "npx vitest", "grep", "head", "tail", "wc", "git ls-files", "git merge-tree", "pnpm exec vitest", "pnpm vitest", "npm run verify", "npm test", "node --test"],
 } as const;
 
 /** Why a parsed MERGE or FIX_FIRST was set aside: nothing in the reviewer's own session read the change first. */
@@ -12,23 +12,46 @@ export const DEPTH_FLOOR_REASON = "below the review depth floor: the reviewer ma
 
 const startsWithVerb = (command: string, verb: string) => command === verb || command.startsWith(`${verb} `);
 
-/** Splits into pipelines on `&&`, `||`, `;` and newlines outside single and double quotes; a single `|` stays inside its pipeline so a trailing filter cannot vouch for the command it reshapes. Not a full shell parser. */
+const HEREDOC_OPENER = /^<<-?\s*(?:"([^"]+)"|'([^']+)'|([^\s<>|&;()]+))/;
+
+/** The index just past the body of the heredocs opened on this line, so body text is never read as commands. */
+function skipHeredocBodies(command: string, from: number, delimiters: string[]): number {
+  let index = from;
+  for (const delimiter of delimiters) {
+    while (index < command.length) {
+      const end = command.indexOf("\n", index);
+      const line = command.slice(index, end === -1 ? command.length : end);
+      index = end === -1 ? command.length : end + 1;
+      if (line.trim() === delimiter) break;
+    }
+  }
+  return index;
+}
+
+/** Splits into pipelines at command positions: `&&`, `||`, `;` and newlines outside quotes and heredoc bodies. A single `|` stays inside its pipeline so a trailing filter cannot vouch for the command it reshapes. Not a full shell parser. */
 function splitSegments(command: string): string[] {
   const segments: string[] = [];
+  const delimiters: string[] = [];
   let current = "";
   let quote: string | null = null;
   for (let i = 0; i < command.length; i++) {
     const char = command[i] as string;
+    const opener = quote === null && char === "<" && command[i + 1] === "<" && command[i + 2] !== "<" ? HEREDOC_OPENER.exec(command.slice(i)) : null;
     if (quote !== null) {
       if (char === quote) quote = null;
       current += char;
+    } else if (opener !== null) {
+      delimiters.push(opener[1] ?? opener[2] ?? opener[3] ?? "");
+      current += opener[0];
+      i += opener[0].length - 1;
     } else if (char === '"' || char === "'") {
       quote = char;
       current += char;
     } else if (char === ";" || char === "\n" || (char === "&" && command[i + 1] === "&") || (char === "|" && command[i + 1] === "|")) {
       segments.push(current);
       current = "";
-      if (char !== ";" && char !== "\n") i++;
+      if (char === "\n") i = skipHeredocBodies(command, i + 1, delimiters.splice(0)) - 1;
+      else if (char !== ";") i++;
     } else current += char;
   }
   segments.push(current);
@@ -47,7 +70,7 @@ function effectiveCommand(segment: string): string {
 
 const isReadSegment = (segment: string): boolean => {
   const command = effectiveCommand(segment);
-  return command !== "ls" && INVESTIGATIVE_CALLS.bashVerbs.some((verb) => startsWithVerb(command, verb));
+  return INVESTIGATIVE_CALLS.bashVerbs.some((verb) => startsWithVerb(command, verb));
 };
 
 /** A Read, Grep or Glob call, or a Bash call in which some `&&`, `||`, `;` or newline separated pipeline starts with a read verb, made in this conversation rather than copied in. */

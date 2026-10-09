@@ -595,7 +595,7 @@ describe("isInvestigativeCall", () => {
     "dir=/tmp/r1 && git fetch origin && git -C \"$dir\" diff main",
     "pnpm exec vitest run src/a.test.ts",
     "cd /tmp/r && FOO=1 pnpm vitest run",
-    "git fetch origin; ls -la",
+    "git fetch origin; head -3 README.md",
     "cd /tmp/r\ngit diff main",
     "grep -rn foo src | head -5",
     "cd x && npm run verify",
@@ -604,7 +604,8 @@ describe("isInvestigativeCall", () => {
     "git -C /tmp/r log --oneline",
     "git -C /tmp/r merge-tree a b",
     "git -C /tmp/r ls-files",
-    "wc -l a && find . -name x && tail -n 3 a",
+    "wc -l a && tail -n 3 a",
+    "gh pr comment 1 --body-file - <<EOF\nbody\nEOF\ngrep -rn foo src",
     "echo 'a && b' && grep 'x && y' f",
   ])("counts the reviewer shape %s", async (command) => {
     expect(await bashCommand(command)).toBe(true);
@@ -624,6 +625,11 @@ describe("isInvestigativeCall", () => {
     "echo hi | head -1",
     "git status | wc -l",
     "mkdir -p /tmp/x && ls",
+    "mkdir -p /tmp/x && ls -la /tmp/x",
+    "ls /",
+    "true && find . -name x",
+    "gh pr comment 1 --body-file - <<'EOF'\nfind nothing here\nEOF",
+    "agent-chat gh-write -- pr review 1 --body-file - <<'EOF'\nhead looks good\ngrep found no other callers\nit's fine\nEOF",
   ])("does not count the session-setup shape %s", async (command) => {
     expect(await bashCommand(command)).toBe(false);
   });
