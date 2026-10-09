@@ -10,11 +10,11 @@ const isValidIsoDate = (value: string): boolean => {
   return parsed.toISOString().slice(0, 10) === value;
 };
 
-const isoDate = z
+export const isoDate = z
   .string()
   .refine(isValidIsoDate, { message: "Must be a valid zero-padded YYYY-MM-DD date" });
 
-const isoDateOrNull = z.union([isoDate, z.null()]);
+export const isoDateOrNull = z.union([isoDate, z.null()]);
 
 export const TASK_ID_REGEX = /^[A-Z][A-Z0-9]*-\d+$/;
 
@@ -22,14 +22,24 @@ const taskId = z.string().regex(TASK_ID_REGEX, {
   message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
 });
 
-const uniqueTaskIds = z
-  .array(taskId)
-  .refine((ids) => new Set(ids).size === ids.length, { message: "dep ids must be unique" });
+// Lives here, not in deliverable.ts, because deliverable.ts imports the date schemas from this file.
+export const DELIVERABLE_ID_REGEX = /^[A-Za-z][A-Za-z0-9-]*$/;
+
+export const deliverableId = z.string().regex(DELIVERABLE_ID_REGEX, {
+  message: "deliverable id must match /^[A-Za-z][A-Za-z0-9-]*$/ (e.g. console-v1)",
+});
+
+const isUnique = (ids: string[]): boolean => new Set(ids).size === ids.length;
+
+const uniqueTaskIds = z.array(taskId).refine(isUnique, { message: "dep ids must be unique" });
+
+const uniqueDeliverableIds = z.array(deliverableId).refine(isUnique, { message: "deliverable ids must be unique" });
 
 export const TaskSchema = z.object({
   id: taskId,
   parent: taskId.optional(),
   dep: uniqueTaskIds.optional(),
+  deliverables: uniqueDeliverableIds.optional(),
   title: z.string().min(1),
   priority: z.number().int().positive(),
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),

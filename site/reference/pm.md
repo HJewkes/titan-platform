@@ -18,11 +18,14 @@ of a task's shape. This package holds those primitives once, so every reader agr
 - `checkEdges(tasks, change)`, which checks a proposed edge change before it is written.
 - `CategoryRegistrySchema` and `checkCategories(task, registry)`, which validate a task's
   `kind`, `status`, `cos` and `area` against one registry file.
+- `DeliverableSchema` and `parseDeliverableRegistry(entries)`, which validate the one
+  platform-wide deliverable registry, one file per deliverable.
 
 ## When to reach for it
 
 Use it to validate or type a task record after you have parsed its YAML yourself, to read
-a task's edges, to check an edge change on write, or to check a task's categories on write. Loading task files, loops and the other
+a task's edges, to check an edge change on write, to check a task's categories on write,
+or to validate the deliverable files you have read. Loading task files, loops and the other
 active-work records are not here yet. For a seat's front matter use
 [`coordinator`](/reference/coordinator).
 
@@ -112,9 +115,56 @@ A `null` registry is a root with no categories file. It checks `status` against
 `TaskSchema` itself only requires a non-empty `status` string, so the value is closed by
 `checkCategories`, not by the parse. `due` is a `YYYY-MM-DD` date like the others.
 
+## Deliverables
+
+A deliverable is an outcome that several tasks contribute to. There is one registry for
+the whole platform, `deliverablesDir(activeRoot)`, which is
+`<activeRoot>/titan-platform/deliverables`, holding one `<id>.yml` per deliverable
+(`deliverablePath(activeRoot, id)`):
+
+```yaml
+id: console-v1
+title: Console v1
+done_when: the console shows every active deliverable
+target: 2026-11-30
+status: active
+owner_seat: example-seat
+tags: [console]
+created: 2026-10-08
+updated: 2026-10-08
+shipped_at: null
+```
+
+An id matches `DELIVERABLE_ID_REGEX`, `/^[A-Za-z][A-Za-z0-9-]*$/`. `target` is a
+`YYYY-MM-DD` date or `null`. `status` is one of `DELIVERABLE_STATUSES`: `planned`,
+`active`, `shipped` or `dropped`. `shipped_at` is required and nullable like a task's
+`done_at`, and it is set exactly when `status` is `shipped`.
+
+Tasks link to deliverables through the optional `deliverables` field, a list of unique
+deliverable ids, so the relation is many-to-many. A deliverable's `tags` are for retrieval
+only: nothing selects, orders or lints on them, and no code here reads a `deliverable:`
+task tag. A test enforces that.
+
+The host reads the directory. `parseDeliverableRegistry(entries)` takes one
+`{ file, parsed }` per `.yml` file, `file` being the basename and `parsed` its parsed YAML,
+and returns the deliverables in the order given. A missing directory is an empty registry:
+pass `[]` and get `[]` back. Each file must be named after the id it holds, which keeps
+ids unique. The first bad file throws an error that starts with its name.
+
+```ts
+import { deliverablesDir, parseDeliverableRegistry } from "@titan-design/pm";
+
+const dir = deliverablesDir(activeRoot);
+const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".yml")) : [];
+const deliverables = parseDeliverableRegistry(
+  files.map((file) => ({ file, parsed: parse(readFileSync(join(dir, file), "utf8")) })),
+);
+```
+
 ## What it deliberately does not do
 
-It reads no files, parses no YAML and writes nothing, the category registry included. It
+It reads no files, parses no YAML and writes nothing, the category and deliverable
+registries included. It does not check that a task's `deliverables` ids exist. It
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 
