@@ -46,9 +46,8 @@ export interface OpToken {
 export interface SubsToken {
   type: "subs";
   subs: Token[][];
-  /** The lines after a pending heredoc's body, read as bash 5 does; walked at the depth of the token itself. */
+  /** The lines after a pending heredoc's body, read as bash 5 does; walked at the depth of the token itself. `tailsUnread`: one could not be read, so the line is refused. */
   tails: Token[][];
-  /** A tail could not be read (budget spent), so the bash 5 reading is unknown and the line must be refused. */
   tailsUnread?: boolean;
 }
 
