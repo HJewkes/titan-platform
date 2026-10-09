@@ -969,13 +969,14 @@ Tier product, private, `products/session-miner`. The session miner: index Claude
 
 Key exports:
 
-- `config`: `ConfigOverrides`, `resolveConfig`
+- `config`: `resolveConfig`
 - `context`: `createMinerContext`
 - `schema`: `MINER_MIGRATIONS`
-- `registry`: `MINER_VERSION`, `TOOL_PREFIX`, `createMinerRegistry`
+- `registry`: `createMinerRegistry`
 - `serve`: `runMinerMcpStdio`, `serveMinerUntilSignal`, `serveOptions`, `startMiner`
 - `cli`: `runCli`
-- +11 more in `products/session-miner/src/index.ts`
+- `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
+- +18 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 
