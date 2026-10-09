@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { registerHealth } from "./health/cli-health.js";
 
@@ -7,6 +8,9 @@ export interface CliIo {
   stderr: (text: string) => void;
   env?: NodeJS.ProcessEnv;
   home?: string;
+  platform?: NodeJS.Platform;
+  /** The titan bin's absolute path; `bin.ts` passes its own. */
+  titanBin?: string;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -24,6 +28,8 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     stderr: io.stderr,
     env: io.env ?? process.env,
     home: io.home ?? homedir(),
+    platform: io.platform ?? process.platform,
+    titanBin: io.titanBin ?? resolve(process.argv[1] ?? "titan"),
     setExitCode: (code) => (exitCode = code),
   });
   try {
