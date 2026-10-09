@@ -135,6 +135,7 @@ graph TD
   workflow --> hitl
   workflow --> storeSqlite
   factory --> agentDispatch
+  factory --> appPaths
   factory --> authority
   factory --> daemon
   factory --> fixProof
@@ -178,6 +179,7 @@ graph TD
   console --> sessionAnalytics
   console --> sessionGraph
   console --> sessionRead
+  console --> storeSqlite
   console --> worktree
 ```
 <!-- generated:arch-graph end -->

@@ -84,9 +84,52 @@ depositId)`: `deposit:` and the first 32 hex characters of the SHA-256 of the JS
 `[asker, depositId]`. Filing the same `depositId` again yields the same id, so a retried deposit
 names the item it already filed, and two askers using one `depositId` never collide.
 
+## The deposit spool
+
+The root export does no I/O. The `@titan-design/owner-queue/spool` subpath is the one
+exception: a directory of files that is the store of record for deposits and the owner's
+answers to them. Agents write it; the console and the factory read it.
+
+```ts
+import { readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+
+const dir = "/path/to/console-state/inbox/deposits";
+await writeDeposit(dir, {
+  depositId: "d-1", asker: "agent-a", kind: "know", door: "two-way",
+  summary: "Nightly build moved to 02:00", context: "",
+});
+// { file: ".../agent%2Da-d%2D1.json", created: true }
+
+const { items, rejects } = await readSpool(dir);
+for (const item of items) {
+  await writeAnswer(dir, item.id, { text: "ok", by: { class: "owner", id: "o", channel: "web" }, at: new Date().toISOString() });
+}
+```
+
+- `writeDeposit(dir, deposit)` parses with `ownerItemDepositSchema` and throws on a refused
+  deposit or one whose JSON is over `MAX_DEPOSIT_BYTES` (64 KB). It creates `dir` at 0700 if
+  needed, writes a 0600 temp file and links it into place. A link, unlike a rename, refuses
+  to replace an existing file, so the first write of an asker and `depositId` wins; a repeat
+  returns `created: false` and changes nothing, even when many writers race.
+- `readSpool(dir)` returns `{ items, rejects }`. Each valid deposit becomes an open item
+  through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
+  over the cap, a symlink, or a file whose name does not match its own asker and
+  `depositId` goes to `rejects` as `{ file, reason }`; reasons never quote file contents. A
+  missing `dir` reads as empty.
+- `writeAnswer(dir, id, answer)` and `readAnswer(dir, id)` keep `<id>.answer.json` beside the
+  deposits, written the same way. The first answer stays; `readAnswer` returns `undefined`
+  when none is filed and throws on a malformed one.
+
+File names come from untrusted values. `depositFileName(asker, depositId)` and
+`answerFileName(id)` percent-encode every UTF-8 byte outside `[A-Za-z0-9_]`, so `/`, `\`,
+`.`, `-` and NUL never reach the name raw. A name can never leave `dir`, `-` stays an
+unambiguous separator (`a-b` + `c` and `a` + `b-c` get different files), and a name over 255
+bytes is refused.
+
 ## What it deliberately does not do
 
-- No I/O. Adapters, the projection store and the schedule belong to the product that runs them.
+- No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
+  the product that runs them.
 - No stale rules, routing or answer forwarding yet. Those land in later releases or in decider.
 - No fuzzy matching. Two items that describe the same thing in different words stay apart
   until a source gives them a shared key.
