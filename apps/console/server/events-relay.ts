@@ -40,9 +40,11 @@ export interface RelayTiming {
   dialTimeoutMs: number;
   /** Both upstreams send a heartbeat every 25 s, so a stream silent this long is dead. */
   idleTimeoutMs: number;
+  /** A stream must stay up this long before the backoff resets, so a flapping upstream keeps backing off. */
+  stableMs: number;
 }
 
-const DEFAULT_RELAY_TIMING: RelayTiming = { baseDelayMs: 500, maxDelayMs: 30_000, dialTimeoutMs: 3000, idleTimeoutMs: 60_000 };
+const DEFAULT_RELAY_TIMING: RelayTiming = { baseDelayMs: 500, maxDelayMs: 30_000, dialTimeoutMs: 3000, idleTimeoutMs: 60_000, stableMs: 10_000 };
 
 /** An unterminated frame past this many characters drops the connection rather than growing the parser's buffer. */
 export const MAX_FRAME_CHARS = 1 << 20;
@@ -133,15 +135,17 @@ async function keepRelaying(upstream: RelayUpstream, context: RelayContext, sign
     const outcome = await relayOnce(upstream, context, signal, everOpened);
     if (signal.aborted) return;
     everOpened ||= outcome.opened;
-    failures = outcome.opened ? 0 : failures + 1;
+    failures = outcome.stable ? 0 : failures + 1;
     if (!down) logger.warn({ source: upstream.source, reason: outcome.reason }, "events relay: upstream stream down; redialling with backoff");
-    down = !outcome.opened;
+    down = !outcome.stable;
     await sleep(Math.min(timing.baseDelayMs * 2 ** failures, timing.maxDelayMs), signal);
   }
 }
 
 interface Outcome {
   opened: boolean;
+  /** Opened and stayed up for `stableMs`; only this resets the backoff. */
+  stable: boolean;
   reason: string;
 }
 
@@ -151,7 +155,11 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
   const stop = (): void => connection.abort();
   signal.addEventListener("abort", stop, { once: true });
   const watchdog = createWatchdog(stop);
-  let opened = false;
+  let openedAt: number | null = null;
+  const outcome = (reason: string): Outcome => {
+    const stable = openedAt !== null && Date.now() - openedAt >= context.timing.stableMs;
+    return { opened: openedAt !== null, stable, reason };
+  };
   try {
     const headers = await upstream.headers();
     watchdog.arm(context.timing.dialTimeoutMs);
@@ -159,14 +167,14 @@ async function relayOnce(upstream: RelayUpstream, context: RelayContext, signal:
     const response = await context.fetch(upstream.url, { headers, redirect: "error", signal: connection.signal });
     if (!response.ok || !response.body) {
       await response.body?.cancel();
-      return { opened, reason: `HTTP ${response.status}` };
+      return outcome(`HTTP ${response.status}`);
     }
-    opened = true;
+    openedAt = Date.now();
     if (reopening) broadcast(context.hub, upstream.source, { kind: RECONNECTED_KIND });
     await pump(response.body, upstream, context, watchdog);
-    return { opened, reason: "stream ended" };
+    return outcome("stream ended");
   } catch (err) {
-    return { opened, reason: err instanceof Error ? err.message : String(err) };
+    return outcome(err instanceof Error ? err.message : String(err));
   } finally {
     watchdog.clear();
     signal.removeEventListener("abort", stop);

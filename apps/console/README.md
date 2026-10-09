@@ -142,13 +142,16 @@ The frame's SSE event name is its source and its data is a small JSON object:
 - **Tokens stay in the daemon.** The broker token is read from `TITAN_CONSOLE_AGENT_CHAT_TOKEN`
   on every dial and sent only to the broker, as a header, with redirects refused.
 - **Bounded.** One connection per upstream; a refused or dropped dial redials after 0.5 s,
-  doubling to 30 s. A dial with no answer in 3 s, a stream silent for 60 s (both upstreams
+  doubling to 30 s. The backoff resets only after a stream has stayed up for 10 s, so an
+  upstream that drops every stream at once keeps backing off and is warned about once. A dial with no answer in 3 s, a stream silent for 60 s (both upstreams
   heartbeat every 25 s) and a frame over 1 MiB end the connection. Browser streams are capped
   as in the table above. Stopping the daemon closes every upstream socket and timer.
 
 `useRelayInvalidation` (`src/data/live.ts`), mounted once by the shell, refetches the open
 pages' active-work reads (`work.*`, `graph.ego`) on an `active-work` frame and their `agents.*`
-reads on an `agent-chat` frame, and all of them after the browser's own stream reopens.
+reads on an `agent-chat` frame, and all of them after the browser's own stream reopens. Each
+source refetches at most once per 300 ms, at the end of the window, so a burst of broker
+appends costs one refetch per tab rather than one per append.
 
 ## Who may run a command
 

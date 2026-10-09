@@ -179,6 +179,41 @@ describe("the events relay", () => {
     ]);
   });
 
+  /** Drops each of the first `count` streams the moment it opens; returns the gaps between dials. */
+  async function flap(broker: FakeStream, count: number): Promise<number[]> {
+    for (let dial = 1; dial <= count; dial++) {
+      await until(() => broker.dials.length === dial && broker.openCount() === 1);
+      broker.drop();
+    }
+    return broker.dials.slice(1).map((dial, i) => dial.at - broker.dials[i]!.at);
+  }
+
+  it("keeps backing off an upstream that drops every stream at once, warning once rather than per drop", async () => {
+    const broker = await fake(TOKEN);
+    const warnings: string[] = [];
+    const logger = { ...silentLogger, warn: (_fields: Record<string, unknown>, message: string) => void warnings.push(message) };
+    relays.push(startEventsRelay({ hub: { broadcast: () => undefined }, upstreams: [brokerAt(broker.port)], logger, timing: { baseDelayMs: 20, maxDelayMs: 320 } }));
+
+    const gaps = await flap(broker, 5);
+
+    expect(gaps.map((gap, i) => gap >= 0.9 * Math.min(20 * 2 ** (i + 1), 320))).toEqual([true, true, true, true]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("resets the backoff only after a stream has stayed up for stableMs", async () => {
+    const broker = await fake(TOKEN);
+    startRelay(brokerAt(broker.port), { baseDelayMs: 20, maxDelayMs: 320, stableMs: 30 });
+    await flap(broker, 2);
+
+    await until(() => broker.dials.length === 3 && broker.openCount() === 1);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    broker.drop();
+    await until(() => broker.dials.length === 4);
+
+    const afterStable = broker.dials[3]!.at - broker.dials[2]!.at - 60;
+    expect(afterStable).toBeLessThan(80);
+  });
+
   it("backs off between refused dials, doubling to the cap, and relays nothing", async () => {
     const broker = await fake(TOKEN);
     const relayed = startRelay(brokerAt(broker.port, "wrong-token"), { baseDelayMs: 20, maxDelayMs: 80 });
