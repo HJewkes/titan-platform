@@ -487,7 +487,7 @@ Key exports:
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- +60 more in the [reference page](/reference/github)
+- +61 more in the [reference page](/reference/github)
 
 <a id="cap-hitl"></a>
 

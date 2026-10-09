@@ -251,6 +251,11 @@ export class WorkflowRuntime {
     else this.release(run);
   }
 
+  /** Records `data` as step `stepId` of a finished run, a fact learnt after it ended; false when the run is unfinished or already has it. */
+  annotate(runId: string, stepId: string, data: Record<string, unknown>): boolean {
+    return this.store.annotate(runId, stepId, { stepId, iteration: 0, agentId: null, signal: null, completedAt: this.isoNow(), data });
+  }
+
   /**
    * Records `output` as the answer of a run's active dispatch step, so the run's replay reads it instead of dispatching
    * the step again. Only a run no runtime holds can be answered this way; false when the run is held or has no such step.

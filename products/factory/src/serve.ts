@@ -20,6 +20,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
+import { markRevertedRuns } from "./shepherd/reverts.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -264,10 +265,25 @@ async function endGone(host: FactoryHost, services: ShepherdServices, log: Logge
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
-  for (const repo of thawed) {
-    thawed.delete(repo);
-    for (const gate of await supersedeTransientGates(host, services, { repo })) log.info({ ...gate, repo }, "superseded an approve-merge gate a freeze caused once the repo thawed");
+  for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
+}
+
+/** Dequeued before the sweep, so a thaw that lands during it queues the repo again; a PR head that cannot be read, or a sweep that throws, requeues it for the next tick. */
+async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>, repo: string): Promise<void> {
+  thawed.delete(repo);
+  const onUnreadable = (runId: string) => {
+    thawed.add(repo);
+    log.warn({ runId, repo }, "could not read the PR head of a thawed repo's gate; the next sweep tries again");
+  };
+  try {
+    for (const gate of await supersedeTransientGates(host, services, { repo, onUnreadable })) log.info({ ...gate, repo }, "superseded an approve-merge gate a freeze caused once the repo thawed");
+  } catch (err) {
+    thawed.add(repo);
+    throw err;
   }
+  const reverts = await markRevertedRuns(host, services);
+  for (const reverted of reverts.reverted) log.info({ ...reverted }, "marked a merged run reverted");
+  for (const failed of reverts.errors) log.warn({ ...failed }, "could not read main for reverts");
 }
 
 interface ThawWatch {
