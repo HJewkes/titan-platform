@@ -79,7 +79,7 @@ function eventOf(run: WorkflowRun): Event | undefined {
   return outside === undefined ? undefined : { repo, at: outside, outside: true };
 }
 
-function inRange(at: number, { from, to }: StatsRange): boolean {
+export function inRange(at: number, { from, to }: StatsRange): boolean {
   if (from !== undefined && at < Date.parse(`${from}T00:00:00Z`)) return false;
   return to === undefined || at < Date.parse(`${to}T00:00:00Z`) + MS_PER_DAY;
 }

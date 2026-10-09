@@ -8,6 +8,8 @@ import type { SeatPrefix } from "@titan-design/chat-protocol/agents";
 export const DEFAULT_CONSOLE_PORT = 7500;
 const ACTIVE_WORK_PORT = 7400;
 const AGENT_CHAT_PORT = 7600;
+/** Codewatch's `CODE_REPORT_PORT`. */
+export const DEFAULT_CODEWATCH_URL = "http://127.0.0.1:7433";
 
 export interface ConsoleConfig {
   /** 0 binds an ephemeral port. */
@@ -24,6 +26,8 @@ export interface ConsoleConfig {
   /** Which seat owns the agents named `<prefix>-...`. */
   seatPrefixes: SeatPrefix[];
   sessionGraphPath: string;
+  /** Where a touched file's code-graph node link points; the console never starts codewatch. */
+  codewatchUrl: string;
 }
 
 /** `TITAN_CONSOLE_*` overrides win, then the defaults; a port shared with an upstream is refused. */
@@ -41,6 +45,7 @@ export function resolveConfig(
     agentChatEventsDbPath: expandHome(env.TITAN_CONSOLE_EVENTS_DB ?? path.join(env.AGENT_CHAT_HOME ?? "~/.agent-chat", "events.db"), home),
     seatPrefixes: seatPrefixesFrom(env.TITAN_CONSOLE_SEATS),
     sessionGraphPath: expandHome(env.TITAN_CONSOLE_SESSION_GRAPH ?? activeWorkGraphPath({ env, home, platform }), home),
+    codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
@@ -55,6 +60,15 @@ function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): numbe
   // A typo that silently bound another port would be worse than a refusal.
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`${name} must be a port number, got "${raw}"`);
   return port;
+}
+
+/** The address is used as a link prefix, so a value with a hash would put `#/node/` inside the existing fragment. */
+function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string {
+  const raw = env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const url = URL.canParse(raw) ? new URL(raw) : null;
+  if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
+  return raw;
 }
 
 /** `TITAN_CONSOLE_SEATS` is `seat=prefix` pairs separated by commas, e.g. `titan-coord=tpc`. */

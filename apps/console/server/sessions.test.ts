@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
+import { clearRepoCache } from "@titan-design/session-read";
 import { sessionsCommands, type SessionsListResult, type SessionsSource, type SessionTimelineResult } from "./sessions.js";
 
 const FINISHED = "0a1b2c3d-0000-4000-8000-000000000001";
@@ -11,6 +12,7 @@ const OLDER = "0a1b2c3d-0000-4000-8000-000000000002";
 const GONE = "0a1b2c3d-0000-4000-8000-000000000003";
 const LIVE = "0a1b2c3d-0000-4000-8000-000000000004";
 const PROJECT = "-work-example";
+const CODEWATCH = "http://codewatch.test:7433";
 
 let dir: string;
 let home: string;
@@ -26,24 +28,35 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** Invented lines in Claude Code's transcript format: one prompt, one reply with a tool call, its result. */
-function transcriptLines(sessionId: string): string {
+/** A touched path is edited unless the entry names another file tool. */
+type Touch = string | { tool: "Read" | "Edit"; file: string };
+
+/** Invented lines in Claude Code's transcript format: one prompt, one reply with a Bash call and a call per touch, their results. */
+function transcriptLines(sessionId: string, touched: readonly Touch[] = []): string {
   const line = (fields: Record<string, unknown>) => JSON.stringify({ sessionId, ...fields });
+  const calls = [
+    { type: "tool_use", id: "call-1", name: "Bash", input: { command: "ls" } },
+    ...touched.map((touch, i) => {
+      const { tool, file } = typeof touch === "string" ? { tool: "Edit", file: touch } : touch;
+      return { type: "tool_use", id: `touch-${i}`, name: tool, input: { file_path: file } };
+    }),
+  ];
+  const results = calls.map((call) => ({ type: "tool_result", tool_use_id: call.id, content: "ok" }));
   return [
     line({ type: "user", uuid: "u1", timestamp: "2026-09-01T10:00:00Z", message: { role: "user", content: "list the files" } }),
     line({
       type: "assistant", uuid: "a1", timestamp: "2026-09-01T10:00:05Z",
-      message: { role: "assistant", id: "msg-1", model: "claude-opus-5", usage: { input_tokens: 10, output_tokens: 5 }, content: [{ type: "tool_use", id: "call-1", name: "Bash", input: { command: "ls" } }] },
+      message: { role: "assistant", id: "msg-1", model: "claude-opus-5", usage: { input_tokens: 10, output_tokens: 5 }, content: calls },
     }),
-    line({ type: "user", uuid: "u2", timestamp: "2026-09-01T10:00:07Z", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "call-1", content: "a.txt" }] } }),
+    line({ type: "user", uuid: "u2", timestamp: "2026-09-01T10:00:07Z", message: { role: "user", content: results } }),
   ].join("\n") + "\n";
 }
 
 /** A transcript under `<home>/<configDir>/projects/<project>/`; returns its `~`-relative key as the graph stores it. */
-async function writeTranscript(sessionId: string, configDir = ".claude"): Promise<string> {
+async function writeTranscript(sessionId: string, configDir = ".claude", touched: readonly Touch[] = []): Promise<string> {
   const projectDir = path.join(home, configDir, "projects", PROJECT);
   await mkdir(projectDir, { recursive: true });
-  await writeFile(path.join(projectDir, `${sessionId}.jsonl`), transcriptLines(sessionId));
+  await writeFile(path.join(projectDir, `${sessionId}.jsonl`), transcriptLines(sessionId, touched));
   return `~/${configDir}/projects/${PROJECT}/${sessionId}.jsonl`;
 }
 
@@ -88,6 +101,7 @@ function source(): SessionsSource {
   return {
     graphPath,
     home,
+    codewatchUrl: CODEWATCH,
     roots: () => [
       { root: path.join(home, ".claude", "projects"), account: "default" },
       { root: path.join(home, ".claude-profiles", "work", "projects"), account: "work" },
@@ -221,5 +235,75 @@ describe("sessions.timeline", () => {
     const { envelope } = await invoke("sessions.timeline", { sessionId: "../escape" });
 
     expect(envelope.ok).toBe(false);
+  });
+});
+
+/** A clone named by its origin remote, with one live linked worktree at `.worktrees/live`. */
+async function fakeRepo(): Promise<string> {
+  const root = path.join(dir, "checkout");
+  const worktreeGitDir = path.join(root, ".git", "worktrees", "live");
+  await mkdir(worktreeGitDir, { recursive: true });
+  await writeFile(path.join(root, ".git", "config"), '[remote "origin"]\n\turl = https://example.com/acme/widget.git\n');
+  await writeFile(path.join(worktreeGitDir, "commondir"), "../..\n");
+  await mkdir(path.join(root, ".worktrees", "live", "packages", "core"), { recursive: true });
+  await writeFile(path.join(root, ".worktrees", "live", ".git"), `gitdir: ${worktreeGitDir}\n`);
+  return root;
+}
+
+describe("sessions.timeline touched files", () => {
+  beforeEach(() => clearRepoCache());
+
+  async function touchedFiles(touched: readonly Touch[]) {
+    await writeTranscript(LIVE, ".claude", touched);
+    const result = await timeline(LIVE);
+    if (result.status !== "ok") throw new Error("expected a timeline");
+    return result.touchedFiles;
+  }
+
+  it("maps a live worktree's path to its repo-relative node id and codewatch link", async () => {
+    const repo = await fakeRepo();
+    const live = path.join(repo, ".worktrees", "live", "packages", "core", "index.ts");
+
+    const [file] = await touchedFiles([live]);
+
+    expect(file).toEqual({
+      touchPath: live,
+      ref: "file:widget/packages/core/index.ts",
+      repo: "widget",
+      path: "packages/core/index.ts",
+      nodeId: "packages/core/index.ts",
+      href: `${CODEWATCH}#/node/packages%2Fcore%2Findex.ts`,
+    });
+  });
+
+  it("strips the worktree prefix from a deleted worktree's path", async () => {
+    const repo = await fakeRepo();
+
+    const [file] = await touchedFiles([path.join(repo, ".worktrees", "gone", "scripts", "gen.mjs")]);
+
+    expect(file).toMatchObject({ repo: "widget", nodeId: "scripts/gen.mjs", href: `${CODEWATCH}#/node/scripts%2Fgen.mjs` });
+  });
+
+  it("strips a leaked worktree prefix from a stored file ref", async () => {
+    const [file] = await touchedFiles(["file:widget/.worktrees/old/src/b.ts"]);
+
+    expect(file).toMatchObject({ ref: "file:widget/src/b.ts", repo: "widget", nodeId: "src/b.ts" });
+  });
+
+  it("leaves a path outside any repo unmapped, as plain text", async () => {
+    const outside = path.join(dir, "notes", "plan.md");
+
+    const [file] = await touchedFiles([outside]);
+
+    expect(file).toEqual({ touchPath: outside, ref: `file:${outside}`, repo: null, path: outside, nodeId: null, href: null });
+  });
+
+  it("lists a path read and edited in one session once", async () => {
+    const repo = await fakeRepo();
+    const live = path.join(repo, ".worktrees", "live", "packages", "core", "index.ts");
+
+    const files = await touchedFiles([{ tool: "Read", file: live }, live]);
+
+    expect(files.map((file) => file.nodeId)).toEqual(["packages/core/index.ts"]);
   });
 });
