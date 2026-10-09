@@ -52,6 +52,9 @@ composes all three.
   fenced ownership, for supervisors that must survive a restart.
 - [`agent`](/reference/agent): headless Claude Code and Codex runs with an environment
   scrub, required budgets, a failure taxonomy, and a durable dispatcher.
+- [`anthropic-account`](/reference/anthropic-account): a Claude Code account's state with no
+  token in it: usage readings in the status-line shape, login state and its expiry, account
+  labels, and secret redaction.
 - [`agent-dispatch`](/reference/agent-dispatch): a client for the `agent-chat` CLI. It starts
   an agent under a named profile with the brief on stdin, resumes an ended session, and reads
   the roster. Use `agent` instead to run one headless turn in process.

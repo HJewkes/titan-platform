@@ -20,7 +20,8 @@
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
-          "packages/app-paths"
+          "packages/app-paths",
+          "packages/anthropic-account"
         ],
         "1": [
           "packages/retrieval",
@@ -83,7 +84,8 @@
           "packages/fix-proof",
           "packages/tool-guard",
           "packages/eslint-plugin",
-          "packages/app-paths"
+          "packages/app-paths",
+          "packages/anthropic-account"
         ],
         [
           "packages/retrieval",
