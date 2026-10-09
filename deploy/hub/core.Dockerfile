@@ -1,8 +1,8 @@
 # broker-core image: dependencies baked in so the VPS needs no Node on the host.
 # Built from the repo root so the root pnpm-lock.yaml pins every dependency, matrix-bus included.
-# Node 24 matches the root engines pin. CI overrides the image with a Docker Hub mirror, because anonymous
-# Docker Hub pulls hit 429 on shared runners.
-ARG NODE_IMAGE=node:24-alpine
+# Pulled from the ECR Public mirror of the official image: anonymous Docker Hub pulls from CI
+# runners hit 429 rate limits.
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node:22-alpine
 FROM ${NODE_IMAGE} AS build
 RUN corepack enable
 WORKDIR /repo
