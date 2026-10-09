@@ -61,6 +61,9 @@ describe("a subscript in a variable's value that holds code, whichever way the v
     ["the output of a heredoc that types the payload", `X=$(cat <<'EOT'\na[$(${PUSH})]\nEOT\n); (( X ))`],
     ["an array element that is partly known", `arr=("a[\\$(${PUSH})]$RANDOM"); (( arr[0] ))`],
     ["an append of a partly known part", `X='a['; X+="$(true)\\$(${PUSH})]"; (( X ))`],
+    ["declare -g in a function", `f() { declare -g X='a[$(${PUSH})]'; }; f; (( X ))`],
+    ["typeset -g in a function", `f() { typeset -g X='a[$(${PUSH})]'; }; f; (( X ))`],
+    ["export in a function", `f() { export X='a[$(${PUSH})]'; }; f; (( X ))`],
     ["an append to a declared value", `declare X='a['; declare X+='$(${PUSH})]'; (( X ))`],
   ])("denies a push behind %s", (_, command) => {
     expect(verdict(command)).toBe("deny");
