@@ -16,7 +16,7 @@ type Row = TasksResult["tasks"][number];
 // Synthetic rows in `work.tasks` shape; nothing here comes from a real workspace.
 const row = (id: string, fields: Partial<Row>): Row => ({
   slug: "orbit-relay", id, title: `Task ${id}`, priority: 1, updated: "2031-03-01", status: "open",
-  stage: "ready", stageRule: "default", stageReason: "No pull request, live branch, worktree, open dependency or hold found", stageGuessed: true, ...fields,
+  stage: "ready", stageRule: "default", stageReason: "No pull request, live branch, worktree, open dependency or hold found", stageGuessed: true, parent: null, dep: [], deliverables: [], ...fields,
 });
 
 const TASKS: TasksResult = {
@@ -47,6 +47,9 @@ const DETAIL: TaskDetail = {
     transcript: null, agentName: "impl-a", parentSessionId: null, taskIds: ["OR-1"], prs: [], usage: [], costUsd: 0,
   }],
   sessionsDegraded: null,
+  children: [],
+  deliverables: [],
+  deliverablesDegraded: null,
   evidence: { repos: ["example/orbit"], degraded: [] },
 };
 
