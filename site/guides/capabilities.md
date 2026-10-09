@@ -146,7 +146,7 @@ Key exports:
 
 ### [`anthropic-account`](/reference/anthropic-account)
 
-Tier 0, `@titan-design/anthropic-account@0.1.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
+Tier 0, `@titan-design/anthropic-account@0.2.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh
 
 **Use this when:** You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`, and `pollUsage` and `pollAll` fetch a fresh reading from the OAuth usage endpoint through an injected `fetch`, never refreshing a token. `refreshIfNeeded` is the one writer of credentials: it renews a due access token under Claude Code's refresh lock, replaces `.credentials.json` atomically without overwriting another writer, and hands each failure to an `onFailure` callback as an owner-queue deposit. The `anthropic-account` bin runs `poll [--write [--refresh]]` from a systemd user timer (templates in `systemd/`, installed by hand) and `status [--json|--statusline]` for the status line and the pace pass; a login that is not present exits 2. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
 
@@ -224,7 +224,7 @@ Key exports:
 
 ### [`code-parser`](/reference/code-parser)
 
-Tier 0, `@titan-design/code-parser@0.1.0`. Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract
+Tier 0, `@titan-design/code-parser@0.2.0`. Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract
 
 **Use this when:** You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph.
 
@@ -238,7 +238,7 @@ Key exports:
 
 ### [`egress-scan`](/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.6.0`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.6.1`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -458,7 +458,7 @@ Key exports:
 
 ### [`daemon`](/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.5.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.6.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback.
 
@@ -470,7 +470,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +67 more in the [reference page](/reference/daemon)
+- +69 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -494,7 +494,7 @@ Key exports:
 
 ### [`health`](/reference/health)
 
-Tier 1, `@titan-design/health@0.1.0`. health/v1 contract, probes, append-only sample store and uptime
+Tier 1, `@titan-design/health@0.2.0`. health/v1 contract, probes, append-only sample store and uptime
 
 **Use this when:** You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. `probeHttp` takes one such sample of a health route, with a timeout and a pid/port identity check, and never throws for a target that is down. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" | "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry.
 
@@ -559,7 +559,7 @@ Key exports:
 
 ### [`registry`](/reference/registry)
 
-Tier 1, `@titan-design/registry@0.3.3`. zod command registry projected to CLI, MCP, and HTTP surfaces
+Tier 1, `@titan-design/registry@0.4.0`. zod command registry projected to CLI, MCP, and HTTP surfaces
 
 **Use this when:** You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible.
 
@@ -595,18 +595,19 @@ Key exports:
 
 ### [`rpc-client`](/reference/rpc-client)
 
-Tier 1, `@titan-design/rpc-client@0.3.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
+Tier 1, `@titan-design/rpc-client@0.4.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
 
 **Use this when:** Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands.
 
 Key exports:
 
-- `client/client`: `CallArgs`, `CommandName`, `RpcError`, `createRpcClient`
+- `client/client`: `CallArgs`, `RpcError`, `createRpcClient`
 - `client/live-source`: `liveSource`
 - `client/static-source`: `staticSource`
 - `client/snapshot`: `SNAPSHOT_FORMAT`, `buildSnapshot`, `parseSnapshot`
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
-- +11 more in the [reference page](/reference/rpc-client)
+- `client/sse-parser`: `createSseParser`
+- +12 more in the [reference page](/reference/rpc-client)
 
 <a id="cap-worktree"></a>
 
@@ -635,7 +636,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.15.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.15.1`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -654,7 +655,7 @@ Key exports:
 
 ### [`code-read`](/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.3.0`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.3.1`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -672,7 +673,7 @@ Key exports:
 
 ### [`coordinator`](/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.1.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.2.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims.
 
@@ -721,7 +722,7 @@ Key exports:
 
 ### [`owner-queue`](/reference/owner-queue)
 
-Tier 2, `@titan-design/owner-queue@0.1.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
+Tier 2, `@titan-design/owner-queue@0.2.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
 
 **Use this when:** You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired), and `buildOwnerRounds`, which turns open Decide items into titan-review round@2 manifests with `Principle:` batching and shadow-mode picks revealed only after the answer. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror.
 
@@ -776,7 +777,7 @@ Key exports:
 
 ### [`review-panel`](/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.1.0`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.2.0`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, and `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
@@ -835,7 +836,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.11.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.11.1`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -851,7 +852,7 @@ Key exports:
 
 ### [`style-analyzer`](/reference/style-analyzer)
 
-Tier 2, `@titan-design/style-analyzer@0.1.5`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
+Tier 2, `@titan-design/style-analyzer@0.1.6`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
 
 **Use this when:** You measure how a codebase is actually written and build a style profile from real code.
 
@@ -930,7 +931,7 @@ React bindings for the daemon wire. The design system, react-ui, is listed here 
 
 ### [`react-app`](/reference/react-app)
 
-Tier ui, `@titan-design/react-app@0.1.2`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
+Tier ui, `@titan-design/react-app@0.1.3`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
 
 **Use this when:** A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui.
 
