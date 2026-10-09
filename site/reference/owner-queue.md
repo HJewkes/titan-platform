@@ -126,11 +126,44 @@ File names come from untrusted values. `depositFileName(asker, depositId)` and
 unambiguous separator (`a-b` + `c` and `a` + `b-c` get different files), and a name over 255
 bytes is refused.
 
+## Stale rules
+
+An item can stop being a question without anyone answering it: its PR merged, a new commit
+moved the head it was pinned to, its task is done, or its asker retired and took its own
+default. `staleLabel(item, evidence)` says so from facts the caller has already read; it does
+no I/O and never guesses.
+
+```ts
+import { staleLabel } from "@titan-design/owner-queue";
+
+const label = staleLabel(gate, {
+  prs: { "org-a/repo-1#12": { state: "open", head: "0f1e2d3c4b5a69788796a5b4c3d2e1f098765432" } },
+});
+// { status: "gone-elsewhere", rule: "head-moved", reason: "new-head:0f1e2d3c4b5a69788796a5b4c3d2e1f098765432" }
+```
+
+| Rule | Fires when | Reason |
+|---|---|---|
+| `pr-merged` | any `pr:` key names a PR whose state is `merged` | `pr-merged:<owner>/<repo>#<n>` |
+| `head-moved` | a `pr:…@<sha>` key pins a full sha and the PR's live head is a different full sha | `new-head:<sha>` |
+| `task-done` | a `task:<id>` key names a task whose status is `done` | `task-done:<id>` |
+| `asker-retired` | `askers[item.asker].retired` and the asker declared an `onNoAnswer` other than `parked` | `asker-retired:<asker>` |
+
+- Rules run in that order and the first match wins, so a PR that merged on a newer head
+  reads as merged.
+- `onNoAnswer` is what the asker said it would do unanswered. A declared default means it
+  has acted, so the question is gone. `parked`, or no declaration, means the work waits on the
+  answer, so the item stays open for whoever resumes it.
+- A missing fact (no entry for the PR, task or asker, or a short sha on either side) never
+  labels an item. An item that is not `open` is never relabelled.
+- PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
+  ref as a merge key without its `@<sha>`.
+
 ## What it deliberately does not do
 
 - No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
-  the product that runs them.
-- No stale rules, routing or answer forwarding yet. Those land in later releases or in decider.
+  the product that runs them. Stale rules read evidence the caller fetched.
+- No routing or answer forwarding yet. Those land in later releases or in decider.
 - No fuzzy matching. Two items that describe the same thing in different words stay apart
   until a source gives them a shared key.
 
