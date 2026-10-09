@@ -1,5 +1,4 @@
 import type { NormalizedSessionObservation } from "@titan-design/session-read";
-import type { NoVerdictCause } from "./phases.js";
 
 /** The closed set of read families that show a reviewer looked at the change: file reads and searches, and Bash read verbs. */
 export const INVESTIGATIVE_CALLS = {
@@ -82,6 +81,3 @@ export function isInvestigativeCall(observation: NormalizedSessionObservation): 
   if (typeof command !== "string") return false;
   return splitSegments(command).some(isReadSegment);
 }
-
-/** A dispatched reviewer that wrote a verdict below the floor gave no verdict; any other silence is a timeout. */
-export const dispatchedNoVerdictCause = (reason: unknown): NoVerdictCause => (reason === DEPTH_FLOOR_REASON ? "no-verdict" : "timeout");

@@ -4,9 +4,9 @@ import type { DeadlineTiming } from "../workflows/deadline.js";
 import { step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
-import { Awaited, MalformedSchema, readMalformed } from "./review-schemas.js";
+import { Awaited } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { correctionPrompt } from "@titan-design/review-panel";
+import { MalformedSchema, correctionPrompt, readMalformed } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 

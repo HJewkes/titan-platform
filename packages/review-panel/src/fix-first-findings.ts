@@ -1,5 +1,5 @@
 import { parseVerdictBlock } from "@titan-design/session-read";
-import type { ReviewTarget, ReviewerMessage } from "@titan-design/review-panel";
+import type { ReviewTarget, ReviewerMessage } from "./ports.js";
 import { namesTarget } from "./verdict-target.js";
 
 /** The most of a FIX_FIRST's findings the step output keeps, marker included. */

@@ -5,7 +5,9 @@ Review-panel types and the reviewer ports a caller satisfies
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Status: types, ports, `classifyPr` and `planPanel`. Tracked by TP-1916.
+Status: types, ports, `classifyPr`, `planPanel`, the reviewer briefs and the verdict acceptor. Tracked by TP-1916.
+
+`acceptVerdict(input, messages)` decides whether a reviewer's final message is its verdict for this PR at this head: the dispatched agent and session, written after dispatch, a block that names the target, and at least one investigative call (`isInvestigativeCall`) unless the reader could not count. Anything else is `{ kind: "none" }`, with a `malformed` record (`readMalformed`) when the block was refused or named another target. A FIX_FIRST carries its findings, bounded by `boundedFindings`; a verdict carries the reviewer's OWNER-BRIEF block as `parseOwnerBrief` reads it.
 
 `classifyPr(facts, rules?)` returns the review class (`g10` or `standard`) and the touch flags, from signals alone. `DEFAULT_CLASS_RULES` holds the glob tables and the large threshold (400 lines; more than 12 files when a file lacks line counts); pass `rules` to override them. `changedLineCount(files, rules?)` is the size it compares, with the `generated` globs (registry files a script rewrites) left out, unless those lines alone pass `largeLines` or a rename brought the file in from a non-generated path.
 
