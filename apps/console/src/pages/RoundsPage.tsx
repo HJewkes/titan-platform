@@ -85,13 +85,7 @@ function RoundRow({ round }: { round: RoundSummary }): ReactNode {
         </HStack>
       </TableCell>
       <TableCell>
-        {round.valid ? (
-          <Typography variant="body2">{`${round.unit} · round ${round.round}`}</Typography>
-        ) : (
-          <Typography variant="caption" color="error">
-            {round.reason}
-          </Typography>
-        )}
+        <UnitOrReason round={round} />
       </TableCell>
       <TableCell width={COUNT_WIDTH} align="right">
         {round.valid ? String(round.questions) : "–"}
@@ -101,4 +95,16 @@ function RoundRow({ round }: { round: RoundSummary }): ReactNode {
       </TableCell>
     </TableRow>
   );
+}
+
+/** An invalid round has no unit to show, so its row carries the schema's reason instead. */
+function UnitOrReason({ round }: { round: RoundSummary }): ReactNode {
+  if (!round.valid) {
+    return (
+      <Typography variant="caption" color="error">
+        {round.reason}
+      </Typography>
+    );
+  }
+  return <Typography variant="body2">{`${round.unit} · round ${round.round}`}</Typography>;
 }

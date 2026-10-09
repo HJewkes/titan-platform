@@ -1,16 +1,15 @@
 // @vitest-environment jsdom
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { errorEnvelope, successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { FIXTURE_ROUNDS as source } from "../server/round-fixtures.js";
 import { getRound, listRounds } from "../server/rounds.js";
 import { App } from "./App.js";
 
 afterEach(cleanup);
 
-const source = { dir: path.join(import.meta.dirname, "..", "fixtures", "rounds") };
 const ROUND_IDS = ["kiln-schedule-r2", "kiln-schedule-r1", "orbit-retry-r1", "lantern-cards-r1", "legacy-r1"];
 
 /** The answers the console daemon gives over the synthetic rounds in `fixtures/rounds`. */

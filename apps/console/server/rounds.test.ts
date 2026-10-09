@@ -6,10 +6,11 @@ import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { EXIT } from "@titan-design/registry";
 import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
+import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { MAX_ROUND_BYTES, getRound, listRounds, roundsCommands, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
-const FIXTURES = path.join(import.meta.dirname, "..", "fixtures", "rounds");
+const FIXTURES = FIXTURE_ROUNDS.dir;
 
 let root: string;
 let dir: string;

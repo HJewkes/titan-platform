@@ -90,27 +90,35 @@ function QuestionRound({ round }: { round: ValidRound }): ReactNode {
       <Alert status="info" size="compact" message="Read-only: picks stay in this page and are not sent." />
       {round.recommendationsWithheld ? <Typography variant="caption" color="secondary">Recommendations show once the round is answered.</Typography> : null}
       {groups.map(({ section, questions: inGroup }) => (
-        <Section key={section?.id ?? "unsectioned"}>
-          <SectionHeader title={section?.title ?? "Other questions"} subtitle={section?.deciding} />
-          <SectionContent>
-            <VStack gap={3}>
-              {section ? <SectionNotes section={section} /> : null}
-              {inGroup.map((question) => (
-                <RoundQuestion
-                  key={question.id}
-                  question={question}
-                  position={questions.indexOf(question) + 1}
-                  answer={answers[question.id]}
-                  onChoose={(choice) => choose(question, choice)}
-                  active={question.id === activeId}
-                  onActivate={() => setActiveId(question.id)}
-                />
-              ))}
-            </VStack>
-          </SectionContent>
-        </Section>
+        <QuestionSection key={section?.id ?? "unsectioned"} section={section}>
+          {inGroup.map((question) => (
+            <RoundQuestion
+              key={question.id}
+              question={question}
+              position={questions.indexOf(question) + 1}
+              answer={answers[question.id]}
+              onChoose={(choice) => choose(question, choice)}
+              active={question.id === activeId}
+              onActivate={() => setActiveId(question.id)}
+            />
+          ))}
+        </QuestionSection>
       ))}
     </VStack>
+  );
+}
+
+function QuestionSection({ section, children }: { section: RoundSection | null; children: ReactNode }): ReactNode {
+  return (
+    <Section>
+      <SectionHeader title={section?.title ?? "Other questions"} subtitle={section?.deciding} />
+      <SectionContent>
+        <VStack gap={3}>
+          {section ? <SectionNotes section={section} /> : null}
+          {children}
+        </VStack>
+      </SectionContent>
+    </Section>
   );
 }
 

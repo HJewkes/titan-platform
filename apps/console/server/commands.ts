@@ -30,8 +30,7 @@ export interface ConsoleSources {
   work?: WorkOptions;
 }
 
-/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, work }: ConsoleSources) {
+function upstreamsCommands(upstreams: readonly Upstream[]) {
   return {
     "upstreams.health": readCommand({
       name: "upstreams.health",
@@ -40,6 +39,13 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
       result: z.object({ checkedAt: z.string(), upstreams: z.array(upstreamHealth) }),
       run: async () => ({ checkedAt: new Date().toISOString(), upstreams: await probeUpstreams(upstreams) }),
     }),
+  };
+}
+
+/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, work }: ConsoleSources) {
+  return {
+    ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
