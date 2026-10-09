@@ -140,7 +140,10 @@ credential and every same-user process can read `lan.token`, so loopback and
 the LAN address, so a cookie arriving from one of this machine's own addresses is refused
 too. With the switch off, owner writes answer "owner writes disabled until TLS". The handler
 receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
-presence proof. Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
+presence proof. An owner-write handler is defined with `ownerWrite: true` and wrapped by
+`ownerWriteCommand`. `readCommand` and `depositCommand` refuse it: a handler whose `run` needs
+`ctx.ownerPresence` fails to compile, and a marked one throws at definition and at registry
+build. Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
 
