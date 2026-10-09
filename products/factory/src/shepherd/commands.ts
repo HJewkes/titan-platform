@@ -16,6 +16,7 @@ import {
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
+import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -325,12 +326,7 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   },
 });
 
-interface HoldResult {
-  runId: string;
-  held: { reason: string; reviewer?: string } | null;
-}
-
-const HoldArgs = PrRefArgs.extend({ reason: z.string().min(1), reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
 
 const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",

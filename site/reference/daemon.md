@@ -72,11 +72,17 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 429 a command refusing a caller over its limit (code 75), 500 on any other thrown error |
+| `POST /rpc/:name` | 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 413 a body over its cap (code 64), 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 429 a command refusing a caller over its limit (code 75), 500 on any other thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope and
 exit codes are identical across surfaces.
+
+A `/rpc` body is capped before it is buffered: 1 MiB (`DEFAULT_RPC_BODY_LIMIT`) unless
+`rpcBodyLimit: { maxBytes, perCommand }` says otherwise, with `perCommand` keyed by command
+name. A `Content-Length` over the cap gets 413 at once. A chunked body is counted as it
+arrives and gets 413 as soon as it passes the cap; the server then discards the rest of it
+for at most 500 ms before it closes the socket, and never holds it in memory.
 
 ## Request guards
 

@@ -9,9 +9,9 @@ import { provablyIndependent, type ReviewerAgent, type ReviewerMessage, type Rev
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
-import { namesPr } from "./verdict-target.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
+import { namesPr } from "@titan-design/review-panel";
 
 export const HOLD_POLL_MS = 10_000;
 

@@ -1,5 +1,17 @@
 # @titan-design/rpc-client
 
+## 0.3.0
+
+### Minor Changes
+
+- f88ac00: Add an optional `onDialFailure` handler to `EventHandlers`. It receives `HTTP <status>` for a refused `/events` dial, or the fetch error's message, so a 403 Host refusal is no longer indistinguishable from a down daemon. A caller's own abort is not reported.
+
+### Patch Changes
+
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

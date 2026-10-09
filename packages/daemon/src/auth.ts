@@ -158,6 +158,12 @@ export function getRequestAuth(request: Request): RequestAuth | undefined {
   return requestAuth.get(request);
 }
 
+/** Keeps the gate's record when middleware replaces the raw request, as hono's bodyLimit does. */
+export function carryRequestAuth(from: Request, to: Request): void {
+  const auth = requestAuth.get(from);
+  if (auth && from !== to) requestAuth.set(to, auth);
+}
+
 const LOGIN_METHODS = "GET, HEAD, POST";
 
 /**

@@ -150,14 +150,15 @@ too. With the switch off, owner writes answer "owner writes are off". The handle
 receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
 presence proof. An owner-write handler is defined with `ownerWrite: true` and wrapped by
 `ownerWriteCommand`. `readCommand` and `depositCommand` refuse a marked handler at runtime,
-when they wrap it and again at registry build. The type check is narrower. Passing a handler
-whose `run` needs `ctx.ownerPresence` under its own type fails to compile. Once the handler is
-widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's return type,
-an array) or cast, it compiles, because `run` is a bivariant method in
-`@titan-design/registry`. The `ownerWrite` mark is then the only guard. An unmarked handler that
-reads a required `ownerPresence` fails closed, since the field is absent. One that declares it
-optional is served as a read or deposit, with no presence proof. That is the known open gap,
-tracked by TP-2115, which also makes `run` a property so widening no longer compiles.
+when they wrap it and again at registry build. The types refuse it too. `run` is a property in
+`@titan-design/registry`, so a handler whose `run` needs `ctx.ownerPresence` neither passes to
+`readCommand` or `depositCommand` nor widens to `Command<…, ConsoleContext>` or `AnyCommand`
+(an annotation, a factory's return type, an array). Both helpers also refuse a handler whose
+context has any key `ConsoleContext` lacks, checked in every member of a union context. One
+that declares `ownerPresence` optional, or takes `ConsoleContext | OwnerWriteContext`, fails to
+compile too. Only widening or a cast gets past the types, and the `ownerWrite` mark is the guard then.
+TypeScript has no exact types, so an optional-presence handler widened before it reaches a
+helper still compiles; it runs with no proof, because only `ownerWriteCommand` adds one.
 Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
@@ -179,16 +180,21 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   `recommended.hidden`. Each answers 400 and files nothing.
 - **One file per deposit.** `owner-queue/spool`'s `writeDeposit` writes it at 0600 under
   `TITAN_CONSOLE_INBOX_DIR`. The file name percent-encodes `asker` and `depositId`, so `../`, `/`
-  and NUL cannot leave the spool.
+  and NUL cannot leave the spool, and `Bob` and `bob` get two files. An `asker` or `depositId`
+  holding a lone surrogate answers 400.
 - **Idempotent.** A repeat of an asker's `depositId` keeps the first body and answers its item
   id with `created: false`.
-- **Caps.** A deposit over 64 KB, measured as the spool stores it, answers 400. An asker with
-  200 open deposits, those with no answer file beside them, gets 429 (`EXIT.TEMPFAIL`) until one
-  is answered. Deposits run one at a time, so racing calls cannot pass the cap together.
+- **Caps.** A request body over 128 KB answers 413 before the daemon buffers it. A deposit over
+  64 KB, measured as the spool stores it, answers 400. The body cap is twice the stored one
+  because a client that writes non-ASCII as `\uXXXX` escapes sends up to twice the bytes. An
+  asker with 200 open deposits, those with no answer file beside them, gets 429
+  (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
+  open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.
 - **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
   identity, and a LAN credential names no agent. One agent can file under another's name, and
-  can spread past the cap across invented names. A deposit still cannot answer or resolve
-  anything, so this costs inbox noise, not owner authority.
+  can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
+  deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
+  authority.
 
 ## active-work reads
 

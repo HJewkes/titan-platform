@@ -472,13 +472,13 @@ describe("shepherd.merge", () => {
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
 
-    const hold = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "owner wants a look" });
+    const hold = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "no-reviewer: review step recorded none; TP-1" });
     const whileHeld = await w.call<MergeEvaluation>("shepherd.merge", { repo: REPO, pr: 1 });
     await w.call("shepherd.release", { repo: REPO, pr: 1 });
     const released = await w.call<MergeEvaluation>("shepherd.merge", { repo: REPO, pr: 1 });
 
-    expect(hold).toEqual({ ok: true, data: { runId, held: { reason: "owner wants a look" } } });
-    expect(whileHeld).toMatchObject({ ok: true, data: { held: { reason: "owner wants a look" } } });
+    expect(hold).toEqual({ ok: true, data: { runId, held: { reason: "no-reviewer: review step recorded none; TP-1" } } });
+    expect(whileHeld).toMatchObject({ ok: true, data: { held: { reason: "no-reviewer: review step recorded none; TP-1" } } });
     expect(released).toMatchObject({ ok: true, data: { held: null } });
   });
 
@@ -487,11 +487,76 @@ describe("shepherd.merge", () => {
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
 
-    const named = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "awaiting the audit", reviewer: "sec-audit-review" });
-    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "awaiting the audit", reviewer: "two words" });
+    const named = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: awaiting the audit", reviewer: "sec-audit-review" });
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: awaiting the audit", reviewer: "two words" });
 
-    expect(named).toEqual({ ok: true, data: { runId, held: { reason: "awaiting the audit", reviewer: "sec-audit-review" } } });
+    expect(named).toEqual({ ok: true, data: { runId, held: { reason: "g10-adversary: awaiting the audit", reviewer: "sec-audit-review" } } });
     expect(refused).toMatchObject({ ok: false });
+  });
+});
+
+describe("shepherd.hold reason classes", () => {
+  const LEGACY = "seat merges by the interim procedure";
+  const TYPED = "run-failed: land-rules refuses; TP-2";
+
+  async function heldWorld(): Promise<{ w: World; runId: string; heldReason: () => string | null | undefined }> {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    return { w, runId, heldReason: () => w.routes.shepherd!.store.get().byRun(runId)?.holdReason };
+  }
+
+  it.each([
+    ["an untyped seat-path reason", LEGACY, "is not a hold class"],
+    ["a defect class with no task ID", "serve-down: no answer for 60 minutes", "a serve-down hold names no task ID"],
+  ])("refuses %s with exit 65 and leaves the run unheld", async (_case, reason, why) => {
+    const { w, heldReason } = await heldWorld();
+
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason });
+    const merge = await w.call<MergeEvaluation>("shepherd.merge", { repo: REPO, pr: 1 });
+
+    expect(refused).toMatchObject({ ok: false, code: 65, error: expect.stringContaining(why) });
+    expect(refused).toMatchObject({ error: expect.stringContaining("serve-down, stalled, no-reviewer, run-failed, visual-gate2, g10-review, g10-adversary") });
+    expect(heldReason()).toBeNull();
+    expect(merge).toMatchObject({ ok: true, data: { held: null } });
+  });
+
+  it("a refused hold leaves an existing hold exactly as it was", async () => {
+    const { w, runId, heldReason } = await heldWorld();
+    w.routes.shepherd!.store.get().hold(runId, LEGACY);
+
+    const refused = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "interim: bin/merge" });
+
+    expect(refused).toMatchObject({ ok: false, code: 65 });
+    expect(heldReason()).toBe(LEGACY);
+  });
+
+  it("releases a hold whose stored reason is untyped", async () => {
+    const { w, runId, heldReason } = await heldWorld();
+    w.routes.shepherd!.store.get().hold(runId, LEGACY);
+
+    const released = await w.call("shepherd.release", { repo: REPO, pr: 1 });
+
+    expect(released).toEqual({ ok: true, data: { runId, held: null } });
+    expect(heldReason()).toBeNull();
+  });
+
+  it("replaces an untyped stored hold with a typed one", async () => {
+    const { w, runId, heldReason } = await heldWorld();
+    w.routes.shepherd!.store.get().hold(runId, LEGACY);
+
+    const replaced = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: TYPED });
+
+    expect(replaced).toEqual({ ok: true, data: { runId, held: { reason: TYPED } } });
+    expect(heldReason()).toBe(TYPED);
+  });
+
+  it("accepts a taskless gate class with no task ID", async () => {
+    const { w, runId } = await heldWorld();
+
+    const held = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "visual-gate2: owner sign-off quoted in the body" });
+
+    expect(held).toEqual({ ok: true, data: { runId, held: { reason: "visual-gate2: owner sign-off quoted in the body" } } });
   });
 });
 

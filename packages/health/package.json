@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/health",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "health/v1 contract, probes, append-only sample store and uptime",
   "type": "module",
   "main": "./dist/index.js",
