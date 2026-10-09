@@ -11,8 +11,8 @@ const DEVICE_CONFIRM = "device-confirm";
 
 const MAX_DEVICE_STEP = 280;
 const MAX_SUMMARY = 280;
-// eslint-disable-next-line no-control-regex -- a control character is exactly what a one-line field refuses
-const CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
+/** C0 and C1 controls, format characters such as bidi overrides, and line or paragraph separators: none may reach the owner's prompt. */
+const NOT_ONE_LINE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
 const DEVICE_PR_STEPS: readonly StepDeclaration[] = [...LAND_PR_STEPS, { id: DEVICE_CONFIRM, kind: "assisted" }];
 
@@ -26,7 +26,7 @@ function devicePrParams(ctx: WorkflowContext): DevicePrParams {
   const deviceStep = ctx.param("deviceStep")?.trim() ?? "";
   if (deviceStep === "") throw new Error("device-pr: param deviceStep is required");
   if (deviceStep.length > MAX_DEVICE_STEP) throw new Error(`device-pr: param deviceStep is over ${MAX_DEVICE_STEP} characters`);
-  if (CONTROL_CHAR.test(deviceStep)) throw new Error("device-pr: param deviceStep must be one line");
+  if (NOT_ONE_LINE.test(deviceStep)) throw new Error("device-pr: param deviceStep must be one line");
   return { ...landPrParams(ctx), deviceStep };
 }
 

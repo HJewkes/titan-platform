@@ -96,6 +96,16 @@ describe("device-pr", () => {
     expect(fake.effects.merge).toBe(0);
   });
 
+  it("refuses the owner's answer from any channel but the terminal at the device", async () => {
+    const { host, fake, runId } = devicePrWorld();
+    await gateOpened(host, gateId(runId, "device-confirm"));
+
+    expect(() => host.runtime.signal(runId, "device-confirm", { decision: "pass", headSha: H1 }, OWNER)).toThrow(/only through factory-cli/);
+
+    expect(host.gates.get(gateId(runId, "device-confirm"))?.status).toBe("pending");
+    expect(fake.effects.merge).toBe(0);
+  });
+
   it("stops abandoned without merging when the owner abandons at the device", async () => {
     const { host, fake, runId } = devicePrWorld();
     await gateOpened(host, gateId(runId, "device-confirm"));
@@ -111,6 +121,12 @@ describe("device-pr", () => {
     ["missing", {}],
     ["over 280 characters", { deviceStep: "x".repeat(281) }],
     ["more than one line", { deviceStep: "Flash the board\nthen reboot it" }],
+    ["split by a next-line control", { deviceStep: "Flash the board\u0085then reboot it" }],
+    ["split by a line separator", { deviceStep: "Flash the board then reboot it" }],
+    ["split by a paragraph separator", { deviceStep: "Flash the board then reboot it" }],
+    ["carrying a C1 control sequence introducer", { deviceStep: "Flash the board\u009b2J" }],
+    ["carrying a right-to-left override", { deviceStep: "Flash the board ‮ti toober" }],
+    ["carrying a bidi isolate", { deviceStep: "Flash the board ⁦then⁩ reboot it" }],
   ])("fails the run before any step when deviceStep is %s", async (_why, params) => {
     const { host, fake, runId } = devicePrWorld(params);
 
