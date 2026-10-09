@@ -26,15 +26,16 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 | Served | `pnpm --filter titan-console serve`, or `node apps/console/dist/cli.js` (the `titan-console` bin) | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
 | From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon. It records the status and the portfolio, with no personal initiative |
 
-`serve` prints the address and answers until SIGINT or SIGTERM:
+`serve` prints the address, and the LAN address too in LAN mode, and answers until SIGINT or SIGTERM:
 
 ```
 titan console: http://127.0.0.1:7500/ (pid 4242)
+titan console on the LAN: http://lan-box:7500/ (sign in with `titan-console login-link`)
 ```
 
 ## Ports and settings
 
-The console listens on **7500**, loopback only. It never uses 7400, because the active-work
+The console listens on **7500**, on loopback only unless LAN mode is on (see below). It never uses 7400, because the active-work
 daemon and `titan-miner serve` both default to it. It refuses to start on a port that one of
 its upstreams uses, and on a port value that is not a number.
 
@@ -48,10 +49,45 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
+| `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, served behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
+| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
 directory, under the name `active-work`.
+
+## LAN mode
+
+With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,
+the console adds a second listener on that address and the same port, through the daemon
+package's `remote` option. There is no setting that binds the LAN without auth. The loopback
+listener is unchanged and needs no credentials.
+
+On the LAN listener the Host guard runs first: only `TITAN_CONSOLE_HOST` and the LAN names,
+each with the bound port, are answered, and anything else, `localhost` included, gets 403.
+Then every route, the page and `/health` included, needs a session cookie or
+`Authorization: Bearer <secret>`, and answers 401 without one. `/mcp` is never served there.
+
+```sh
+titan-console login-link     # prints http://<first LAN name>:7500/auth/login?code=...
+titan-console token rotate   # rewrites lan.token at 0600; every session and link ends
+```
+
+- **`login-link`** mints a code from the token file, so it needs no running daemon. It works
+  once and for ten minutes, and a daemon that restarts after minting refuses it. Run it with
+  the same `TITAN_CONSOLE_PORT`, `_STATE`, `_TOKEN` and `_LAN_NAMES` as the service. The link
+  is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
+  nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
+  code as JSON, and that sets an HttpOnly, SameSite=Strict cookie that lasts 30 days.
+- **`token rotate`** writes a fresh secret by rename. The running daemon re-reads the file,
+  so every session and outstanding link ends with no restart. This is how to revoke a lost
+  device.
+- **Logout** is `POST /auth/logout` with a JSON body. It clears that browser's cookie only;
+  a copied cookie stays valid until a rotation.
+
+The LAN is plain HTTP, so a cookie crosses the network in clear text. Nothing is exposed until
+the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step (TP-1981).
 
 ## The daemon
 

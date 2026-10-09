@@ -103,16 +103,18 @@ function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | un
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
 /**
- * The tree probe's git, answering from the fixture: a head scripted `treeEqual` has the tree of its parent merged onto
- * main, any other head has a tree of its own. Heads are told apart by the order the run first read them.
+ * The tree probe's git, answering from the fixture: every head is the reviewed head merged with main, and a head scripted
+ * `treeEqual` has the tree of that clean merge, any other head a tree of its own. Heads are told apart by the order the run
+ * first read them.
  */
 function scriptedGit(replay: Replay): Git {
   let head = "";
+  let reviewed = "";
   let merged = "";
   return async (_dir, args) => {
     const [command, flag] = args;
-    if (command === "fetch") head = args[6] ?? "";
-    if (command === "rev-list") return ok(`${head} ${fakeSha("reviewed-parent")} ${fakeSha("main-base")}`);
+    if (command === "fetch") [reviewed = "", head = ""] = args.slice(5, 7);
+    if (command === "rev-list") return ok(`${head} ${reviewed} ${fakeSha("main-base")}`);
     if (command === "merge-tree") return ok(`${(merged = `merged-${args[4]}`)}\n`);
     if (command !== "rev-parse" || flag === undefined) return ok();
     const script = headOf(replay, head);
