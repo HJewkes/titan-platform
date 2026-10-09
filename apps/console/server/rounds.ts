@@ -22,7 +22,7 @@ export interface RoundsSource {
 
 export const MAX_ROUND_BYTES = 1024 * 1024;
 /** The list stops here, so a dir full of junk cannot make one read unbounded. */
-export const MAX_ROUNDS = 500;
+const MAX_ROUNDS = 500;
 const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const ROUND_FILE = "round.json";
 const FEEDBACK_FILE = "feedback.json";

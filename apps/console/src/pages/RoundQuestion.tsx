@@ -51,7 +51,7 @@ export function useChoiceKeys(question: Question | undefined, onChoose: (choice:
   }, [question, onChoose]);
 }
 
-export interface RoundQuestionProps {
+interface RoundQuestionProps {
   question: Question;
   /** The question's place in the round, shown as Q<n>. */
   position: number;
