@@ -2,7 +2,7 @@ import type { Logger } from "@titan-design/daemon";
 import type { AnyCommand } from "@titan-design/registry";
 import type { FactoryContext } from "./registry.js";
 
-export const SLOW_REGISTER_MS = 5000;
+const SLOW_REGISTER_MS = 5000;
 
 /** A register that takes this long is what makes a client's /health probe time out, so serve says so. */
 export function logSlowRegister<C extends AnyCommand<FactoryContext>>(cmd: C, log: Logger, now: () => number = Date.now): C {

@@ -1,7 +1,7 @@
 const HEALTH_PATH = "/health";
 
 /** Two attempts of `DEFAULT_SERVE_WAIT_MS / 2` each, so a busy serve gets the whole bound and one retry. */
-export const DEFAULT_SERVE_WAIT_MS = 20_000;
+const DEFAULT_SERVE_WAIT_MS = 20_000;
 
 export type ServeProbe =
   | { state: "up"; health: Record<string, unknown> }
