@@ -47,7 +47,7 @@ interface World {
 }
 
 /** A security PR held as `g10-review`, reviewed for real by a reviewer spawned with the profile `roles` gives its class. */
-function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_POLICY): World {
+function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_POLICY, hold = G10_HOLD): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
@@ -60,12 +60,12 @@ function heldSecurityRun(roles: ReviewerRoles, policy: EffectivePolicy = AUTO_PO
   const store = ref.get();
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
-  store.hold(runId, G10_HOLD);
+  store.hold(runId, hold);
   return { host, fake, store, runId };
 }
 
 const stepIds = (w: World): string[] => Object.values(w.host.runtime.status(w.runId)!.stepResults).map((result) => result.stepId);
-const reviewMode = (w: World): unknown => Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data?.["result"];
+const reviewMode = (w: World, head = H1): unknown => Object.values(w.host.runtime.status(w.runId)!.stepResults).find((result) => result.stepId === `sh-review:${head}`)?.data?.["result"];
 
 describe("a g10-review hold on a run Shepherd reviews itself", () => {
   it("releases itself on the spawned opus reviewer's MERGE at a green head, and the PR merges", async () => {
@@ -88,6 +88,26 @@ describe("a g10-review hold on a run Shepherd reviews itself", () => {
     expect(reviewMode(w)).toMatchObject({ kind: "dispatched", mode });
     expect(stepIds(w).filter((id) => id.startsWith(G10_RELEASE_STEP))).toEqual([]);
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: G10_HOLD });
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+describe("a hold no reviewer of Shepherd's releases, on a run waiting at merge whose head moves", () => {
+  const H2 = fakeSha("g10-moved-h2");
+
+  it.each([
+    ["an owner's", "owner wants a look"],
+    ["a g10-adversary", "g10-adversary: merge-policy change; TP-1"],
+  ])("keeps %s hold through a fresh opus review and green CI at the new head, and merges neither head", async (_case, hold) => {
+    const w = heldSecurityRun({ g10: "bd-reviewer", standard: "reviewer" }, AUTO_POLICY, hold);
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:0"), { timeout: 5_000 });
+
+    w.fake.pushHead(1, H2);
+
+    await vi.waitFor(() => expect(w.host.runtime.status(w.runId)?.currentStep).toBe("merge:1"), { timeout: 5_000 });
+    expect(reviewMode(w, H2)).toMatchObject({ kind: "dispatched" });
+    expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: hold });
+    expect(w.fake.calls).not.toContain("merge");
     expect(w.fake.pr(1).merged).toBe(false);
   });
 });
