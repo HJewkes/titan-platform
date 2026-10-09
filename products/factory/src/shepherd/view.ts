@@ -156,13 +156,26 @@ function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | 
 
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
-const HeldWakeData = z.object({ result: z.object({ kind: z.literal("unhandled"), reason: z.string(), held: z.unknown() }) });
+function lastIndexWhere<T>(items: readonly T[], match: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index--) if (match(items[index]!)) return index;
+  return -1;
+}
 
-/** While a held send-back waits for a new head, the refusal that held it is the next action, not an implementer's push. */
+const HeldWakeData =z.object({ result: z.object({ kind: z.literal("unhandled"), reason: z.string(), held: z.unknown() }) });
+const SentNoticeData = z.object({ result: z.object({ sent: z.literal(true) }) });
+
+/**
+ * While a held send-back waits for a new head, the refusal that held it is the next action, not an implementer's push.
+ * The seat counts as told only by a sent notice recorded after that wake: a NO_REPRO, or a failed notice, reached the
+ * wait through the owner's sent-back gate instead.
+ */
 function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
   if (run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
-  const wake = HeldWakeData.safeParse(steps.filter((result) => stepIdMatches("sh-wake-implementer", result.stepId)).at(-1)?.data);
-  return wake.success && wake.data.result.held !== undefined ? `no fixer could start (${wake.data.result.reason}); the seat was told, waiting for a new head` : undefined;
+  const at = lastIndexWhere(steps, (result) => stepIdMatches("sh-wake-implementer", result.stepId));
+  const wake = HeldWakeData.safeParse(steps[at]?.data);
+  if (!wake.success || wake.data.result.held === undefined) return undefined;
+  const told = steps.slice(at + 1).some((result) => stepIdMatches("sh-exit-notice", result.stepId) && SentNoticeData.safeParse(result.data).success);
+  return `no fixer could start (${wake.data.result.reason})${told ? "; the seat was told" : ""}, waiting for a new head`;
 }
 
 /** While a red head waits out a frozen main, the hold's own reason is the next action. */

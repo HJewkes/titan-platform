@@ -800,9 +800,11 @@ describe("wakePhase", () => {
     const agents = fakeAgents([row("impl-a")]);
     agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
 
-    const { outcome, stepIds } = await runPhase(agents, fake, async () => undefined, kind);
+    const { outcome, stepIds, results } = await runPhase(agents, fake, async () => undefined, kind);
 
-    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError" });
+    const unheld = { kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError" };
+    expect(outcome).toEqual(unheld);
+    expect(results["sh-wake-implementer:0"]).toEqual(unheld);
     expect(stepIds).toEqual(["sh-wake-implementer:0"]);
   });
 

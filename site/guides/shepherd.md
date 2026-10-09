@@ -285,8 +285,9 @@ resume an ended implementer, the same wake spawns a successor, under the spawn l
 it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
 refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
 started and the run waits for a new head; if no notice is sent, `sh-sent-back` opens and names
-the refusal. The watch row's next action and the timeline's wake entry carry the refusal. A ci-red wake
-still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
+the refusal. The watch row's next action and the timeline's wake entry carry the refusal, and the
+row says the seat was told only when a notice was sent after that wake. A ci-red or conflict wake
+records no `held`. A ci-red wake still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
 spends one repair from the `repair-budget`.
 
 GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base

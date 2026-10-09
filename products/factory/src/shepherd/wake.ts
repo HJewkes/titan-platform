@@ -327,11 +327,19 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
     if (registration === undefined) return unhandled(`run ${input.runId} has no shepherd registration`);
     if (!registration.policy.fixer) return unhandled("seat grants no fixer");
     const task = await wakeTask(deps, input, registration);
-    return typeof task === "string" ? unhandled(task) : await wakeAgent(deps, wiring, agents, task, signal);
+    return typeof task === "string" ? unhandled(task) : heldOnlyIfHolding(input.kind, await wakeAgent(deps, wiring, agents, task, signal));
   } catch (error) {
     signal.throwIfAborted();
     return unhandled(`the wake was refused: ${failureOf(error)}`);
   }
+}
+
+/** Only a review's send-back holds; a ci-red or conflict wake no fixer took keeps its own route: the ci-failed gate or the not-mergeable stop. */
+const HOLDING_KINDS: ReadonlySet<WakeInput["kind"]> = new Set(["review", "fix-proof"]);
+
+/** The step's record is what `wakePhase` and the view both read, so a kind that never holds records no `held`. */
+function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): WakeStepResult {
+  return result.kind === "unhandled" && result.held !== undefined && !HOLDING_KINDS.has(kind) ? unhandled(result.reason) : result;
 }
 
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
@@ -356,9 +364,6 @@ export type HeldWake = Extract<WakeOutcome, { kind: "unhandled" }> & { held: { a
 
 export const isHeld = (outcome: WakeOutcome): outcome is HeldWake => "held" in outcome && outcome.held !== undefined;
 
-/** Only a review's send-back holds; a ci-red or conflict wake no fixer took keeps its own route: the ci-failed gate or the not-mergeable stop. */
-const HOLDING_KINDS: ReadonlySet<WakeRequest["kind"]> = new Set(["review", "fix-proof"]);
-
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 
 /** Counts a review wake across every head of the run, so the second FIX_FIRST is known however many heads came between. */
@@ -376,7 +381,7 @@ export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
   if (woke.kind === "woken") return awaitFixerHead(ctx, request, woke);
-  if (woke.held === undefined || !HOLDING_KINDS.has(request.kind)) return { kind: "unhandled", reason: woke.reason };
+  if (woke.held === undefined) return { kind: "unhandled", reason: woke.reason };
   const heldWake: HeldWake = { kind: "unhandled", reason: woke.reason, held: woke.held };
   return heldWake;
 };

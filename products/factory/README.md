@@ -206,8 +206,9 @@ owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-bac
 fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
 the run waits for a new head with no owner gate open. When that notice is not sent, and for a
 held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
-next action and the wake's timeline entry name the refusal. A ci-red or conflict wake keeps its own route, the `ci-failed` gate or the
-`not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
+next action and the wake's timeline entry name the refusal; the row says the seat was told only when
+`sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`
+and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
 still bounds how many such wakes a run makes. A refused message to a live implementer still
 opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
 
