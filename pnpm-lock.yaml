@@ -596,6 +596,10 @@ importers:
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/rpc-client:
     dependencies:
