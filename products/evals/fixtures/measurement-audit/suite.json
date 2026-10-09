@@ -2,12 +2,12 @@
   "schema": "titan.suite/v1",
   "unit": {
     "id": "measurement-audit",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "id": "measurement-audit-capability",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "cases": [
-    "6ad8317414ac4aae7e994d029e6b4422ae7632ba65a6563d45e83424a4dd7081"
+    "debbbc4b97c595a445c1950b8ce7af9c8f12e78f12f49bd90de7561ce110b3c5"
   ],
   "checks": [
     {

@@ -19,10 +19,22 @@ means re-running `validate` and updating the digests it reports.
 
 Full reference: `site/reference/evals.md`.
 
-`fixtures/measurement-audit/` is the second unit. Its gold case is the Shepherd measurement
-audit: 44 metrics and 11 capture gaps. `scoreMeasurementAudit(gold, output)` returns metric
-recall, gap recall and cost in usd for a run's output; `samples/` holds a perfect, a partial
-and an empty output the tests score without running a model. The audit's twelfth slice, the
-metrics-registry entry, is left out of the gold gaps because every audit appends it, so it
-cannot tell runs apart. Gap recall matches slices to gaps one to one with the assignment that
-finds the most gaps, so slice order never changes the score.
+`fixtures/measurement-audit/` is the second unit. It scores the `titan.measurement-audit/v1`
+report that `titan-factory audit <area>` writes. The gold case is the Shepherd measurement audit:
+44 named metrics and 11 capture gaps.
+
+`scoreMeasurementAudit(gold, report, run)` parses the report with the read schema from
+`@titan-design/health/metrics`. It returns recall, precision and F1 for metrics and for gaps, and
+it takes `costUsd` from the run's recorded cost, since the report holds none.
+
+- A report metric matches a gold metric when its title shares enough content words with the
+  gold name or an alias. Report ids are ignored, so listing the source audit's ids scores nothing.
+- A slice closes a gold gap only when at least a third of the metrics it names are that gap's
+  key metrics. A slice that names every metric therefore closes no gap.
+- Both matchings are one to one and maximal, so slice order never changes the score. Padding
+  with extra metrics or slices lowers precision.
+- The audit's twelfth slice, the metrics-registry entry, names no metric and is not a gold gap.
+  Every audit appends it, so it cannot tell runs apart.
+
+`samples/` holds a perfect report with reworded titles, a partial report and an empty report.
+The tests score all three without running a model.

@@ -3,67 +3,346 @@
   "id": "shepherd-measurement-audit",
   "unit": {
     "id": "measurement-audit",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "input": {
     "area": "shepherd"
   },
   "expected": {
     "metrics": [
-      "A1",
-      "A2",
-      "A3",
-      "A4",
-      "A5",
-      "A6",
-      "A7",
-      "A8",
-      "F1",
-      "F2",
-      "F3",
-      "F4",
-      "F5",
-      "F6",
-      "F7",
-      "F8",
-      "F9",
-      "F10",
-      "F11",
-      "F12",
-      "Q1",
-      "Q2",
-      "Q3",
-      "Q4",
-      "Q5",
-      "Q6",
-      "O1",
-      "O2",
-      "O3",
-      "O4",
-      "O5",
-      "C1",
-      "C2",
-      "C3",
-      "C4",
-      "C5",
-      "B1",
-      "B2",
-      "B3",
-      "B4",
-      "B5",
-      "B6",
-      "B7",
-      "B8"
+      {
+        "id": "A1",
+        "name": "Service up",
+        "aliases": [
+          "uptime",
+          "service availability"
+        ]
+      },
+      {
+        "id": "A2",
+        "name": "Build lag vs main",
+        "aliases": [
+          "deploy lag behind main"
+        ]
+      },
+      {
+        "id": "A3",
+        "name": "Restarts and unclean exits",
+        "aliases": [
+          "daemon restarts",
+          "unclean starts"
+        ]
+      },
+      {
+        "id": "A4",
+        "name": "Stuck runs",
+        "aliases": [
+          "stalled runs",
+          "orphan paused runs"
+        ]
+      },
+      {
+        "id": "A5",
+        "name": "Failure classes",
+        "aliases": [
+          "failed runs by error class",
+          "failure class"
+        ]
+      },
+      {
+        "id": "A6",
+        "name": "GitHub API health",
+        "aliases": [
+          "GitHub rate-limit headroom"
+        ]
+      },
+      {
+        "id": "A7",
+        "name": "Spawn-gate deferrals",
+        "aliases": [
+          "reviewer spawn deferrals"
+        ]
+      },
+      {
+        "id": "A8",
+        "name": "Main-freeze episodes",
+        "aliases": [
+          "main freeze duration",
+          "freeze episodes"
+        ]
+      },
+      {
+        "id": "F1",
+        "name": "Queued",
+        "aliases": [
+          "queue wait before review",
+          "time to first review"
+        ]
+      },
+      {
+        "id": "F2",
+        "name": "Review",
+        "aliases": [
+          "review duration",
+          "review latency"
+        ]
+      },
+      {
+        "id": "F3",
+        "name": "CI per head",
+        "aliases": [
+          "CI duration per head",
+          "CI wait time"
+        ]
+      },
+      {
+        "id": "F4",
+        "name": "Re-reviews per merged PR, by cause",
+        "aliases": [
+          "re-review cause",
+          "re-reviews per PR"
+        ]
+      },
+      {
+        "id": "F5",
+        "name": "Hold time",
+        "aliases": [
+          "hold duration"
+        ]
+      },
+      {
+        "id": "F6",
+        "name": "Owner merge-gate wait",
+        "aliases": [
+          "approve-merge gate wait"
+        ]
+      },
+      {
+        "id": "F7",
+        "name": "MERGE to merged",
+        "aliases": [
+          "merge verdict to merged latency"
+        ]
+      },
+      {
+        "id": "F8",
+        "name": "Register to merged",
+        "aliases": [
+          "end-to-end cycle time",
+          "registration to merge"
+        ]
+      },
+      {
+        "id": "F9",
+        "name": "Merged outside Shepherd",
+        "aliases": [
+          "merged by someone else"
+        ]
+      },
+      {
+        "id": "F10",
+        "name": "Flake rate",
+        "aliases": [
+          "flaky CI rate",
+          "CI flake share"
+        ]
+      },
+      {
+        "id": "F11",
+        "name": "Merge-ups per run",
+        "aliases": [
+          "update-branch count per run"
+        ]
+      },
+      {
+        "id": "F12",
+        "name": "Carry hit rate",
+        "aliases": [
+          "review carry rate"
+        ]
+      },
+      {
+        "id": "Q1",
+        "name": "FIX_FIRST rate",
+        "aliases": [
+          "fix-first verdict share"
+        ]
+      },
+      {
+        "id": "Q2",
+        "name": "Escaped defects",
+        "aliases": [
+          "red main after merge",
+          "post-merge main CI red"
+        ]
+      },
+      {
+        "id": "Q3",
+        "name": "Reverts",
+        "aliases": [
+          "reverted merges"
+        ]
+      },
+      {
+        "id": "Q4",
+        "name": "Reviewer agreement",
+        "aliases": [
+          "owner override rate",
+          "reviewer disagreement"
+        ]
+      },
+      {
+        "id": "Q5",
+        "name": "No-verdict rate",
+        "aliases": [
+          "reviews ending without verdict"
+        ]
+      },
+      {
+        "id": "Q6",
+        "name": "Fix rounds to MERGE",
+        "aliases": [
+          "fix rounds before merge"
+        ]
+      },
+      {
+        "id": "O1",
+        "name": "Waiting on the owner now",
+        "aliases": [
+          "pending owner gates"
+        ]
+      },
+      {
+        "id": "O2",
+        "name": "Owner touches per day",
+        "aliases": [
+          "owner gate resolutions per day"
+        ]
+      },
+      {
+        "id": "O3",
+        "name": "Wait by kind (p50, p90)",
+        "aliases": [
+          "gate wait by kind"
+        ]
+      },
+      {
+        "id": "O4",
+        "name": "Superseded gates",
+        "aliases": [
+          "cancelled gates after head moved"
+        ]
+      },
+      {
+        "id": "O5",
+        "name": "Delegation share",
+        "aliases": [
+          "gates resolved by delegate"
+        ]
+      },
+      {
+        "id": "C1",
+        "name": "Reviewer dollars per merged PR",
+        "aliases": [
+          "reviewer cost per merged PR"
+        ]
+      },
+      {
+        "id": "C2",
+        "name": "Reviewer tokens per merged PR, per repo",
+        "aliases": [
+          "reviewer token usage"
+        ]
+      },
+      {
+        "id": "C3",
+        "name": "Reviews per merged PR",
+        "aliases": [
+          "review count per merge"
+        ]
+      },
+      {
+        "id": "C4",
+        "name": "Wasted reviews",
+        "aliases": [
+          "reviews on superseded heads"
+        ]
+      },
+      {
+        "id": "C5",
+        "name": "Fixer spawn cost",
+        "aliases": [
+          "fixer session cost"
+        ]
+      },
+      {
+        "id": "B1",
+        "name": "Merges per day",
+        "aliases": [
+          "daily merge count"
+        ]
+      },
+      {
+        "id": "B2",
+        "name": "Shepherd share of all merges",
+        "aliases": [
+          "share of merges through Shepherd"
+        ]
+      },
+      {
+        "id": "B3",
+        "name": "Task-to-merge cycle time",
+        "aliases": [
+          "task created to merged"
+        ]
+      },
+      {
+        "id": "B4",
+        "name": "Throughput versus capacity",
+        "aliases": [
+          "merges per implementer slot-hour"
+        ]
+      },
+      {
+        "id": "B5",
+        "name": "Review queue depth",
+        "aliases": [
+          "runs waiting on review"
+        ]
+      },
+      {
+        "id": "B6",
+        "name": "Task closes on land",
+        "aliases": [
+          "task closed on merge"
+        ]
+      },
+      {
+        "id": "B7",
+        "name": "Version Packages latency",
+        "aliases": [
+          "release PR to publish latency"
+        ]
+      },
+      {
+        "id": "B8",
+        "name": "Unattended merges",
+        "aliases": [
+          "merges with no owner touch"
+        ]
+      }
     ],
     "gaps": [
       {
         "id": "S1",
+        "title": "Step start times are dropped",
         "keyMetrics": [
           "F3"
         ]
       },
       {
         "id": "S2",
+        "title": "No waiting on the owner view",
         "keyMetrics": [
           "O1",
           "O3"
@@ -71,6 +350,7 @@
       },
       {
         "id": "S3",
+        "title": "Re-review cause not recorded",
         "keyMetrics": [
           "F4",
           "F12",
@@ -79,6 +359,7 @@
       },
       {
         "id": "S4",
+        "title": "Hold and freeze history overwritten",
         "keyMetrics": [
           "F5",
           "A8"
@@ -86,6 +367,7 @@
       },
       {
         "id": "S5",
+        "title": "Restarts not dated; no uptime",
         "keyMetrics": [
           "A1",
           "A3"
@@ -93,6 +375,7 @@
       },
       {
         "id": "S6",
+        "title": "No reviewer cost",
         "keyMetrics": [
           "C1",
           "C2",
@@ -101,6 +384,7 @@
       },
       {
         "id": "S7",
+        "title": "Escaped defects and reverts not reported",
         "keyMetrics": [
           "Q2",
           "Q3"
@@ -108,18 +392,21 @@
       },
       {
         "id": "S8",
+        "title": "Reviewer agreement not measured",
         "keyMetrics": [
           "Q4"
         ]
       },
       {
         "id": "S9",
+        "title": "Failure classes free text",
         "keyMetrics": [
           "A5"
         ]
       },
       {
         "id": "S10",
+        "title": "No task or capacity join",
         "keyMetrics": [
           "B3",
           "B4"
@@ -127,6 +414,7 @@
       },
       {
         "id": "S11",
+        "title": "reviewerProfile not visible",
         "keyMetrics": [
           "C1"
         ]
@@ -141,7 +429,7 @@
   "provenance": {
     "source": "history",
     "ref": "shepherd-measurement-audit-2026-10-08",
-    "labelVersion": 1
+    "labelVersion": 2
   },
   "visibility": "public"
 }

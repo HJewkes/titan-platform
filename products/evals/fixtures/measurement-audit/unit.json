@@ -1,9 +1,9 @@
 {
   "schema": "titan.unit/v1",
   "id": "measurement-audit",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": "Audit a system's measurement",
-  "description": "Propose the metrics a system should record and rank the capture gaps that block them. Scored by recall against a gold audit, plus cost.",
+  "description": "Propose the metrics a system should record and rank the capture gaps that block them, as a titan.measurement-audit/v1 report. Metrics match the gold by name; scored by gap F1 and metric F1 against a gold audit, plus the run's recorded cost.",
   "input": {
     "type": "object",
     "required": [
@@ -18,56 +18,72 @@
   "output": {
     "type": "object",
     "required": [
+      "schema",
       "metrics",
-      "slices",
-      "costUsd"
+      "gaps"
     ],
     "properties": {
+      "schema": {
+        "const": "titan.measurement-audit/v1"
+      },
       "metrics": {
         "type": "array",
         "items": {
           "type": "object",
           "required": [
-            "id"
+            "id",
+            "title"
           ],
           "properties": {
             "id": {
               "type": "string"
+            },
+            "title": {
+              "type": "string"
             }
           }
         }
       },
-      "slices": {
+      "gaps": {
         "type": "array",
         "items": {
           "type": "object",
           "required": [
-            "title",
-            "metrics"
+            "rank",
+            "metric",
+            "slice"
           ],
           "properties": {
-            "title": {
-              "type": "string"
+            "rank": {
+              "type": "integer"
             },
-            "metrics": {
+            "metric": {
               "type": "array",
               "items": {
                 "type": "string"
               }
+            },
+            "slice": {
+              "type": "object",
+              "required": [
+                "title"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
-      },
-      "costUsd": {
-        "type": "number"
       }
     }
   },
   "objective": {
     "constraints": [
       {
-        "metric": "metric-recall",
-        "min": 0.8
+        "metric": "metric-f1",
+        "min": 0.7
       },
       {
         "metric": "cost_usd",
@@ -76,7 +92,7 @@
     ],
     "noCriticalFailures": true,
     "primary": {
-      "name": "gap-recall",
+      "name": "gap-f1",
       "direction": "maximize"
     }
   },

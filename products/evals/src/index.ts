@@ -36,4 +36,4 @@ export type { SpecValidation } from "./validate.js";
 export { scorecardKeysFor, startTrial } from "./trial.js";
 export type { ChampionOf, TrialStart, UnitRef } from "./trial.js";
 export { scoreMeasurementAudit } from "./measurement-audit.js";
-export type { AuditGold, AuditOutput, AuditScore } from "./measurement-audit.js";
+export type { AuditGold, AuditRun, AuditScore, GoldGap, GoldMetric } from "./measurement-audit.js";
