@@ -7,6 +7,7 @@ import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { REREVIEW } from "./stale-gates.js";
+import { supersedeStaleMerges, type SupersededMerge } from "./stale-merges.js";
 import { supersedeStaleReviews, type SupersededReview } from "./stale-reviews.js";
 
 export const ORPHANED = "orphaned: the run already ended";
@@ -30,6 +31,8 @@ export interface ResyncReport {
   superseded: SupersededGate[];
   /** Active review steps of runs no runtime holds, answered because the PR moved past their head. */
   supersededReviews: SupersededReview[];
+  /** Active merge steps of runs no runtime holds, answered with no merge because the PR moved past their head. */
+  supersededMerges: SupersededMerge[];
   /** Why superseding moved gates failed; the rest of the report still stands. */
   supersedeError?: string;
 }
@@ -118,8 +121,8 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
 
 /**
  * Brings Shepherd's runs and gates in line with GitHub after time away: ends live runs whose PR left Shepherd, cancels
- * the gates of runs that already ended, then supersedes gates whose open PR moved head and MRG-AU gates whose only unmet
- * conditions were transient, on a PR no longer frozen. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
+ * the gates of runs that already ended, then supersedes gates, review steps and merge steps whose open PR moved head, and
+ * MRG-AU gates whose only unmet conditions were transient, on a PR no longer frozen. A PR that cannot be read leaves its run alone. A gate is only ever cancelled, never
  * resolved: the run's new cycle asks again. `dryRun` computes the same report and writes nothing.
  */
 export async function resyncShepherd(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<ResyncReport> {
@@ -132,11 +135,12 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   const ended = await endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed });
   const orphans = orphanGates(host);
   if (!dryRun) for (const gateId of orphans) host.gates.cancel(gateId, ORPHANED);
-  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [], supersededReviews: [] };
+  const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [], supersededReviews: [], supersededMerges: [] };
   try {
     report.superseded = await supersedeMovedGates(host, services, { dryRun });
     report.superseded.push(...(await supersedeTransientGates(host, services, { dryRun })));
     report.supersededReviews = await supersedeStaleReviews(host, services, { dryRun });
+    report.supersededMerges = await supersedeStaleMerges(host, services, { dryRun });
   } catch (err) {
     report.supersedeError = failureOf(err);
   }
