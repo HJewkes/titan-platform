@@ -16,7 +16,8 @@ interface ValueScope {
 
 /** What one classification has walked so far, keyed by the object that lives as long as it does. */
 interface Walked {
-  reads: Set<string>;
+  /** Each read, and whether its substitutions could be had in full. */
+  reads: Map<string, boolean>;
   lists: number;
 }
 const walked = new WeakMap<object, Walked>();
@@ -32,10 +33,11 @@ const MAX_LISTS = 1500;
  * the token lists of each such substitution in the values the expressions reach through known names, read with
  * the shell's own lexer; an unknown value, a cycle and a chain past the cap yield nothing more. A value read
  * again under the same scope in one classification (`run`) yields nothing the second time, so the cost stays
- * linear. A value the lexer rejects yields only the substitutions that can be scanned out of it, as on main.
+ * linear. When `sure` is set, expressions arithmetic surely evaluates: a value whose substitutions cannot all be
+ * had, because the lexer rejects it or the budget is spent, throws a ParseError rather than yielding fewer.
  */
-export function valueSubstitutions(expressions: string[], scope: ValueScope, run: object): Token[][] {
-  const state = walked.get(run) ?? { reads: new Set<string>(), lists: 0 };
+export function valueSubstitutions(expressions: string[], scope: ValueScope, run: object, sure: boolean): Token[][] {
+  const state = walked.get(run) ?? { reads: new Map<string, boolean>(), lists: 0 };
   walked.set(run, state);
   const found: Token[][] = [];
   const seen = new Set<string>();
@@ -45,39 +47,49 @@ export function valueSubstitutions(expressions: string[], scope: ValueScope, run
       const value = seen.has(name) ? null : scope.vars.get(name);
       if (typeof value !== "string") continue;
       seen.add(name);
-      const added = firstRead(state, scope, value) ? substitutionsOf(value).slice(0, MAX_LISTS - state.lists) : [];
-      found.push(...added);
-      state.lists += added.length;
+      const complete = read(state, scope, value, sure, found);
+      if (sure && !complete) throw new ParseError("a value read as arithmetic holds substitutions that cannot be walked");
       pending.push(value);
     }
   }
   return found;
 }
 
-/** Notes the read, and says whether this scope has not walked this value before. */
-function firstRead(state: Walked, scope: ValueScope, value: string): boolean {
-  const names = [...value.matchAll(NAME_RE)].map(([n]) => scope.vars.get(n) ?? null);
-  const key = JSON.stringify([value, scope.dir, scope.wrapping, names]);
-  if (state.reads.has(key)) return false;
-  state.reads.add(key);
-  return true;
+/** Adds the substitutions of a value this scope has not walked before; says whether the value was had in full. */
+function read(state: Walked, scope: ValueScope, value: string, sure: boolean, found: Token[][]): boolean {
+  const key = readKey(scope, value, sure);
+  const before = state.reads.get(key);
+  if (before !== undefined) return before;
+  const { lists, complete } = substitutionsOf(value);
+  const room = MAX_LISTS - state.lists;
+  const added = lists.slice(0, room);
+  found.push(...added);
+  state.lists += added.length;
+  state.reads.set(key, complete && added.length === lists.length);
+  return state.reads.get(key) === true;
 }
 
-function substitutionsOf(value: string): Token[][] {
+/** A walk that a sure read makes is told apart from a maybe read, whose failed walk is dropped and so proves nothing. */
+function readKey(scope: ValueScope, value: string, sure: boolean): string {
+  const names = [...value.matchAll(NAME_RE)].map(([n]) => scope.vars.get(n) ?? null);
+  return JSON.stringify([value, scope.dir, scope.wrapping, names, sure]);
+}
+
+function substitutionsOf(value: string): { lists: Token[][]; complete: boolean } {
   try {
-    return tokenize(value).flatMap(nested);
+    return { lists: tokenize(value).flatMap(nested), complete: true };
   } catch (error) {
     if (!(error instanceof ParseError)) throw error;
   }
   try {
-    return scanSubstitutions(value, 0, value.length);
+    return { lists: scanSubstitutions(value, 0, value.length), complete: true };
   } catch (error) {
-    if (error instanceof ParseError) return [];
+    if (error instanceof ParseError) return { lists: [], complete: false };
     throw error;
   }
 }
 
-/** Runs one walk of a value's substitution, and drops it on a ParseError: a value may only add actions to the line. */
+/** Runs one walk of a value's substitution, and drops it on a ParseError: a name arithmetic only maybe reads may add actions to the line, not refuse it. */
 export function walkOrDrop(walk: () => void): void {
   try {
     walk();

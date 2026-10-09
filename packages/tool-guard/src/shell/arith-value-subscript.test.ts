@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
+import { extractCommands } from "./commands.js";
+import { ParseError } from "./lexer.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
@@ -68,5 +70,23 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
     ["a chain past the hop cap", `${Array.from({ length: 40 }, (_, i) => `V${i}=V${i + 1}`).join("; ")}; (( V0 ))`],
   ])("ends on %s without a hang", (_, command) => {
     expect(() => spellings(command)).not.toThrow();
+  });
+});
+
+describe("a value arithmetic reads that cannot be walked to its end (TP-1624)", () => {
+  const push = "git push origin HEAD:main";
+  it.each([
+    ["a push after an unlexable bash -c", `X='a[$(bash -c "echo \\""; ${push})]'; (( X ))`],
+    ["a push on the first line of a script that then fails to lex", `X='a[$(bash -c $'${push}\\necho "')]'; (( X ))`],
+    ["the same value read by let", `X='a[$(bash -c "echo \\""; ${push})]'; let X`],
+    ["the same value read by a numeric [[ ]]", `X='a[$(bash -c "echo \\""; ${push})]'; [[ X -eq 1 ]]`],
+    ["a push in a later value once the substitution budget is spent", `X='a[${"$(:)".repeat(1500)}]'; (( X )); Y='a[$(${push})]'; (( Y ))`],
+    ["an unlexable value read a second time", `X='a[$(bash -c "echo \\"")]'; [[ -n $X ]]; (( X ))`],
+  ])("refuses %s", (_, line) => {
+    expect(() => extractCommands(line)).toThrow(ParseError);
+  });
+
+  it("drops an unlexable value that arithmetic only maybe reads", () => {
+    expect(() => extractCommands(`msg="don't"; [[ -n $msg ]]`)).not.toThrow();
   });
 });

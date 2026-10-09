@@ -131,9 +131,16 @@ function walk(tokens: Token[], w: Walk): void {
   emit(words, redirects, w, null);
 }
 
-/** Runs the substitutions that arithmetic over the values of known names would run. */
+/**
+ * Runs the substitutions that arithmetic over the values of known names would run. A value arithmetic surely reads
+ * that cannot be walked to its end refuses the line, as the same text written inline does; one it only maybe reads
+ * is dropped, since it may add actions to the line but not take any away.
+ */
 function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
-  for (const text of valueSubstitutions(arithmeticTexts(op, words), w.scope, w.out)) walkOrDrop(() => walk(text, child(w, [...w.scope.wrapping, "subshell"])));
+  const { sure, maybe } = arithmeticTexts(op, words);
+  const into = (text: Token[]) => walk(text, child(w, [...w.scope.wrapping, "subshell"]));
+  for (const text of valueSubstitutions(sure, w.scope, w.out, true)) into(text);
+  for (const text of valueSubstitutions(maybe, w.scope, w.out, false)) walkOrDrop(() => into(text));
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */

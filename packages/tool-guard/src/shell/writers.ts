@@ -99,12 +99,25 @@ function integerValues(words: string[]): string[] {
   return words.slice(at + 1).flatMap((w) => VALUE_RE.exec(w)?.[1] ?? []);
 }
 
-/** The text bash evaluates as arithmetic around an operator: its `$(( ))`, its `(( ))`, and the operands of `let` or `[[`. */
-export function arithmeticTexts(op: Token | null, words: WordToken[]): string[] {
+const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
+
+/** Arithmetic text split by how sure it is: `sure` is always evaluated, `maybe` only if the name turns out numeric. */
+export interface ArithmeticTexts {
+  sure: string[];
+  maybe: string[];
+}
+
+/**
+ * The text bash evaluates as arithmetic around an operator: its `$(( ))`, its `(( ))`, and the operands of `let` or
+ * `[[`. The operands of a `[[` are only sure when it compares numbers; `[[ -n $msg ]]` does not evaluate `msg`.
+ */
+export function arithmeticTexts(op: Token | null, words: WordToken[]): ArithmeticTexts {
   const span = (op ? (compounds.get(op) ?? []) : []).flatMap((t) => (t.type === "word" ? [t.value] : []));
-  const operands = words[0]?.value === "let" || words[0]?.value === "[[" ? words.slice(1).map((w) => w.value) : [];
   const values = words.map((w) => w.value);
-  return [...(op ? (expansions.get(op) ?? []) : []), ...values.flatMap(expansionBodies), ...arithmeticWordTexts(values), span.join(" "), ...operands];
+  const operands = words[0]?.value === "let" || words[0]?.value === "[[" ? values.slice(1) : [];
+  const numeric = words[0]?.value === "let" || operands.some((v) => COMPARISON_RE.test(v));
+  const sure = [...(op ? (expansions.get(op) ?? []) : []), ...values.flatMap(expansionBodies), ...arithmeticWordTexts(values), span.join(" ")];
+  return numeric ? { sure: [...sure, ...operands], maybe: [] } : { sure, maybe: operands };
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */
