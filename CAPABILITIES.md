@@ -469,7 +469,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +63 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
