@@ -44,5 +44,7 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and carry no hidden pick (on an item or its principle) fill rounds with `"shown"`; the rest
   fill rounds with `recommendations: "after-answer"`. Items and principles are parsed first;
   an item that does not parse is skipped as `invalid`, and text questions carry no
-  recommendation. A `binding` maps each question id to its item ids and each
+  recommendation. Invalid options (a non-loopback `storybookUrl`, bad `widths`, a
+  `maxQuestions` or `firstRound` below 1) throw, and each manifest is parsed with `RoundSchema`
+  before it is returned. A `binding` maps each question id to its item ids and each
   shown option label back to the item's option id.

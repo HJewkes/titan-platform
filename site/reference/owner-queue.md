@@ -190,13 +190,18 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
 
 | Option | Meaning | Default |
 |---|---|---|
-| `unit` | the round's unit name | required |
-| `storybookUrl` | a loopback Storybook URL; round@2 needs one even with no frames | required |
-| `firstRound` | the first round's number; later rounds count up | `1` |
-| `widths` | frame widths | `[1280]` |
+| `unit` | the round's unit name, not blank | required |
+| `storybookUrl` | an http(s) URL on `127.0.0.1`, `localhost` or `[::1]`; round@2 needs one even with no frames | required |
+| `firstRound` | the first round's number, an integer of at least 1; later rounds count up | `1` |
+| `widths` | frame widths, distinct integers from 200 to 3840 | `[1280]` |
 | `graduated` | categories out of shadow mode | none |
 | `principles` | `{ id, rule, covers, recommended? }`: asks that share one reason | none |
-| `maxQuestions` | questions per round; a principle counts as one | `10` |
+| `maxQuestions` | questions per round, an integer of at least 1; a principle counts as one | `10` |
+
+- **Configuration errors throw.** Options outside the table's rules throw a `ZodError` before
+  any item is read, and every manifest is parsed with `RoundSchema` before it is returned, so
+  a returned round is always one round@2 accepts. Item and principle problems never throw;
+  they are skipped as below.
 
 - **Which items.** Every item is parsed with `ownerItemSchema` first, and every principle with
   its own schema, so a value only its TypeScript type vouches for never reaches a round. Open
