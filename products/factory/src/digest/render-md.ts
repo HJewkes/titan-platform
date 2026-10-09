@@ -1,3 +1,4 @@
+import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, PoolLine } from "./model.js";
 import type { RankedDigest } from "./rank.js";
@@ -55,6 +56,11 @@ function frictionLines(day: FrictionDay | undefined): string[] {
   return section("Owner friction", [`Owner touches ${day.day}: ${day.ownerTouches}`, wait], "");
 }
 
+function waitingLines(gates: readonly WaitingGate[] | undefined): string[] {
+  if (gates === undefined) return [];
+  return section("Waiting on you, oldest first", gates.map((g) => `- ${g.ageHours}h ${g.gateId} ${g.repo}#${g.pr}`), "");
+}
+
 function body(d: RankedDigest): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
@@ -63,6 +69,7 @@ function body(d: RankedDigest): string[] {
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
     ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
     ...section("Spend", spend, "No pool readings."),
+    ...waitingLines(d.waiting),
     ...frictionLines(d.friction),
     ...(d.gaps.length > 0 ? section("Gaps", d.gaps.map((gap) => `- ${clip(gap, REASON_WORDS)}`), "") : []),
   ];

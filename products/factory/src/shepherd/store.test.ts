@@ -1,11 +1,12 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -266,7 +267,7 @@ describe("a hold satisfied by its reviewer's MERGE", () => {
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   return new ShepherdStore(db, () => clock.now);
 }
 

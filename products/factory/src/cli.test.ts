@@ -9,7 +9,8 @@ import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
-import { H1, REPO } from "./test-support/land.js";
+import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
+import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 
 const dirs: string[] = [];
@@ -163,6 +164,31 @@ describe("gates in the resume report", () => {
     expect(withBrief).toContain("- abandon: Abandon the PR\n");
     expect(before).toContain("gate run-1/approve-merge: Merge PR #1 in octo/demo at head abc?");
     expect(before).not.toContain("evidence:");
+  });
+});
+
+describe("shepherd waiting", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("exits 0 while every owner gate is younger than 24 h and 1 once one is older", async () => {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture();
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const registered = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    await gateOpened(host, gateId(registered.data.runId, "approve-merge"));
+    host.close();
+    const argv = ["--db", dbPath, "shepherd", "waiting", "--port", String(await deadPort())];
+
+    const fresh = await cli(argv, deps);
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 25 * 3_600_000 });
+    const overdue = await cli(argv, deps);
+
+    expect(fresh.code).toBe(EXIT.OK);
+    expect(overdue.code).toBe(EXIT.FAILURE);
+    expect(overdue.out).toContain("1 owner gate(s) over 24 h");
   });
 });
 
