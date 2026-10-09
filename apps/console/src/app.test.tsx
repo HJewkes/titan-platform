@@ -65,24 +65,3 @@ describe("a planned view", () => {
     expect(within(screen.getByRole("tab", { name: view.label })).getByTestId("nav-item-accent")).toBeTruthy();
   });
 });
-
-describe("the home view", () => {
-  it("lists the three upstreams with their reachability", async () => {
-    renderConsole("#/", healthy());
-    expect(await screen.findByText("active-work daemon")).toBeTruthy();
-    expect(screen.getByText("http://127.0.0.1:7600: No answer from /health")).toBeTruthy();
-    expect(screen.getByText("~/data/graph.sqlite3: 2.0 KiB on disk, not opened")).toBeTruthy();
-    expect(screen.getAllByText("reachable")).toHaveLength(2);
-    expect(screen.getAllByText("unreachable")).toHaveLength(1);
-  });
-
-  it("shows a loading state before the first answer", () => {
-    renderConsole("#/", healthy());
-    expect(screen.getByLabelText("Loading upstream health")).toBeTruthy();
-  });
-
-  it("says so when the health command fails", async () => {
-    renderConsole("#/", snapshotOf({}));
-    expect(await screen.findByText(/Could not load upstream health/)).toBeTruthy();
-  });
-});

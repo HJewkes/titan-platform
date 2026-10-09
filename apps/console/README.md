@@ -8,9 +8,10 @@ command definitions. The app is private and publishes nothing.
 
 The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
-the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847), and `agents.messages` and `agents.queue` (TP-1059),
-which no view shows yet. Every other view except Home is a placeholder that names the task
-that builds it.
+the active-work daemon. Home (TP-1061) reads upstream health, the portfolio, `work.tasks`, `agents.roster`,
+`agents.queue` and `sessions.list`, and links each queue item out to agent-chat. The daemon
+also answers `agents.graph` (TP-847) and `agents.messages` (TP-1059), which no view shows yet.
+Every other view is a placeholder that names the task that builds it.
 
 ## Run it
 
@@ -184,7 +185,7 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
-| `#/` | Home | Upstream reachability, until the Home page lands | TP-1061 |
+| `#/` | Home | Upstream health, status counts, a read-only needs-you list and the last day's activity | TP-1061 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
