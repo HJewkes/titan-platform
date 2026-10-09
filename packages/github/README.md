@@ -88,10 +88,13 @@ commit message: a subject of the PR title, any task id the title does not alread
 `(#<pr>)`; a body of `## Summary` (the PR body), `## Changes` (one `- **<subject>.** <body>`
 bullet per commit, each body's paragraphs joined onto one line, lists and fenced code kept as
 lines) and `Refs: <task ids>, #<pr>`. It drops `Co-authored-by` and `Signed-off-by` trailers,
-the "Generated with Claude Code" line, every email address, GitHub's `---------` separator and
-its `* <subject>` commit headers, and any commit merging main into the branch. An empty PR body
-omits `## Summary`. The same input always gives byte-identical output, and formatting its own
-output again (as title and body) changes nothing. The `titan-squash-message` bin reads the same
+the "Generated with Claude Code" line, every email address, and any commit merging main into the
+branch. GitHub's own squash text is recognised only where GitHub puts it: a `---------` line is
+dropped only as the last line before the trailers, and `* <subject>` headers lose their star only
+in a commit body that opens with one, so an author's lists and rules pass through. An empty PR
+body omits `## Summary`. The same input always gives byte-identical output, and formatting its own
+output again (as title and body) changes nothing: only the exact Changes and Refs tail it would
+write is cut from the PR body, so an author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads the same
 input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
 with `--json`; bad input exits 2 naming the field.
 

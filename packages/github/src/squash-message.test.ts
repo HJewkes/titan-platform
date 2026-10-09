@@ -176,6 +176,49 @@ describe("formatSquashMessage", () => {
     expect(twice).toEqual(once);
   });
 
+  it("keeps the last item of a star list that a blank line follows", () => {
+    const list = "Fixes:\n\n* first\n* second\n\nMore text.";
+
+    const result = formatSquashMessage(input({ body: list, commits: [{ subject: "Fix it", body: "* first\n* second\n\nMore." }] }));
+
+    expect(result.body).toContain("## Summary\n\nFixes:\n\n* first\n* second\n\nMore text.\n\n");
+    expect(result.body).toContain("- **Fix it.** * first\n  * second\n\n  More.\n");
+  });
+
+  it("keeps the author's own Changes and Test plan sections, and re-formats them unchanged", () => {
+    const body = "## Summary\n\nAdds it.\n\n## Changes\n\n- did y\n\n## Test plan\n\n- [x] pnpm test";
+    const original = input({ body });
+    const once = formatSquashMessage(original);
+
+    const twice = formatSquashMessage({ ...original, title: once.subject, body: once.body });
+
+    expect(once.body).toContain("Adds it.\n\n## Changes\n\n- did y\n\n## Test plan\n\n- [x] pnpm test\n\n## Changes\n\n- **Add the widget.**");
+    expect(twice).toEqual(once);
+  });
+
+  it("keeps a Refs line the author wrote at the end of the PR body", () => {
+    const result = formatSquashMessage(input({ body: "Adds it.\n\nRefs: TP-1, #42" }));
+
+    expect(result.body).toContain("## Summary\n\nAdds it.\n\nRefs: TP-1, #42\n\n## Changes");
+  });
+
+  it("keeps the author's horizontal rules and setext underlines", () => {
+    const body = "Title\n-------\n\nAbove\n\n----------\n\nBelow";
+
+    const result = formatSquashMessage(input({ body, commits: [{ subject: "Add it", body: "One\n\n----------\n\nTwo" }] }));
+
+    expect(result.body).toContain(`## Summary\n\n${body}\n\n`);
+    expect(result.body).toContain("- **Add it.** One\n\n  ----------\n\n  Two\n");
+  });
+
+  it("drops a merge of main pulled from a remote URL", () => {
+    const result = formatSquashMessage(
+      input({ commits: [{ subject: "Merge branch 'main' of github.com:o/r into feat/x", body: "" }, { subject: "Add it", body: "" }] }),
+    );
+
+    expect(result.body).not.toContain("Merge");
+  });
+
   it("keeps the summary empty when re-formatting a message that had none", () => {
     const once = formatSquashMessage(input({ body: "" }));
 
