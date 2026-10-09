@@ -245,6 +245,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   });
 }
 
+/** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
+const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+
 function unansweredMessage(probe: ServeProbe, port: number): string {
   if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
   if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
@@ -255,7 +258,7 @@ function unansweredMessage(probe: ServeProbe, port: number): string {
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
-    return EXIT.FAILURE;
+    return exitOf(envelope.code);
   }
   if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
   else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
