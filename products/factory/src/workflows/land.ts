@@ -8,6 +8,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
+import { askedApproval, type AskApproval } from "./land-approval.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
@@ -17,6 +18,7 @@ import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
+export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
@@ -71,6 +73,8 @@ export interface LandOptions {
   reviewedMerge?: (headSha: string) => boolean;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
+  /** Asked in place of the approve-merge gate, at the head the policy gated; absent means the gate opens as before. */
+  askApproval?: AskApproval;
 }
 
 export type LandOutcome =
@@ -231,6 +235,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
+  if (options.askApproval) return askedApproval(ctx, options.askApproval, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason }, () => trust(state, ci.headSha, "human"));
   const reviewedMerge = options.reviewedMerge?.(ci.headSha) ?? false;
   const { schema, brief } = approveMergeDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, reason: decision.reason, reviewedMerge });
   const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
