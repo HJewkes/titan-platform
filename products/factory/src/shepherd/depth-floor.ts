@@ -12,7 +12,7 @@ export const DEPTH_FLOOR_REASON = "below the review depth floor: the reviewer ma
 
 const startsWithVerb = (command: string, verb: string) => command === verb || command.startsWith(`${verb} `);
 
-/** Splits on `&&`, `||`, `;` and `|` outside single and double quotes; not a full shell parser. */
+/** Splits into pipelines on `&&`, `||`, `;` and newlines outside single and double quotes; a single `|` stays inside its pipeline so a trailing filter cannot vouch for the command it reshapes. Not a full shell parser. */
 function splitSegments(command: string): string[] {
   const segments: string[] = [];
   let current = "";
@@ -25,10 +25,10 @@ function splitSegments(command: string): string[] {
     } else if (char === '"' || char === "'") {
       quote = char;
       current += char;
-    } else if (char === ";" || char === "|" || (char === "&" && command[i + 1] === "&")) {
+    } else if (char === ";" || char === "\n" || (char === "&" && command[i + 1] === "&") || (char === "|" && command[i + 1] === "|")) {
       segments.push(current);
       current = "";
-      if (command[i + 1] === char) i++;
+      if (char !== ";" && char !== "\n") i++;
     } else current += char;
   }
   segments.push(current);
@@ -38,7 +38,7 @@ function splitSegments(command: string): string[] {
 const LEADING_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s*/;
 const GIT_DIRECTORY_FLAG = /^git -C (?:"[^"]*"|'[^']*'|\S+) /;
 
-/** The command a segment runs once leading `VAR=value` assignments and `git -C <dir>` are dropped; a `cd` runs nothing worth counting. */
+/** The first command of a pipeline once leading `VAR=value` assignments and `git -C <dir>` are dropped. */
 function effectiveCommand(segment: string): string {
   let rest = segment.trim();
   for (let match = LEADING_ASSIGNMENT.exec(rest); match !== null; match = LEADING_ASSIGNMENT.exec(rest)) rest = rest.slice(match[0].length);
@@ -47,10 +47,10 @@ function effectiveCommand(segment: string): string {
 
 const isReadSegment = (segment: string): boolean => {
   const command = effectiveCommand(segment);
-  return !startsWithVerb(command, "cd") && INVESTIGATIVE_CALLS.bashVerbs.some((verb) => startsWithVerb(command, verb));
+  return command !== "ls" && INVESTIGATIVE_CALLS.bashVerbs.some((verb) => startsWithVerb(command, verb));
 };
 
-/** A Read, Grep or Glob call, or a Bash call in which some `&&`, `||`, `;` or `|` segment starts with a read verb, made in this conversation rather than copied in. */
+/** A Read, Grep or Glob call, or a Bash call in which some `&&`, `||`, `;` or newline separated pipeline starts with a read verb, made in this conversation rather than copied in. */
 export function isInvestigativeCall(observation: NormalizedSessionObservation): boolean {
   if (observation.kind !== "tool_call" || observation.historyOrigin !== null) return false;
   if ((INVESTIGATIVE_CALLS.tools as readonly string[]).includes(observation.name)) return true;

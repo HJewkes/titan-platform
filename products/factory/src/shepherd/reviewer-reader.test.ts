@@ -596,7 +596,8 @@ describe("isInvestigativeCall", () => {
     "pnpm exec vitest run src/a.test.ts",
     "cd /tmp/r && FOO=1 pnpm vitest run",
     "git fetch origin; ls -la",
-    "git status | head -5",
+    "cd /tmp/r\ngit diff main",
+    "grep -rn foo src | head -5",
     "cd x && npm run verify",
     "npm test",
     "node --test a.test.js",
@@ -618,6 +619,11 @@ describe("isInvestigativeCall", () => {
     "git worktree add /tmp/r origin/main && git fetch",
     "echo 'x && grep y'",
     "echo \"a ; cat b\"",
+    "git fetch origin abc 2>&1 | tail -2",
+    "git worktree add /tmp/x sha 2>&1 | tail -1",
+    "echo hi | head -1",
+    "git status | wc -l",
+    "mkdir -p /tmp/x && ls",
   ])("does not count the session-setup shape %s", async (command) => {
     expect(await bashCommand(command)).toBe(false);
   });
