@@ -1,12 +1,14 @@
 import { EMPTY_ALLOW, isAllowed, type AllowList } from "./allow.js";
 import type { DiffFile, ScanSource } from "./diff.js";
 import { matchRules, type RuleHit, type RuleId, type TermRule } from "./rules.js";
+import type { TokenKind } from "./tokens.js";
 
 /** Where a rule fired. By construction no field carries the matched text, term or line. */
 export interface Finding {
   readonly location: string;
   readonly rule: RuleId;
   readonly termIndex?: number;
+  readonly kind?: TokenKind;
 }
 
 export type RuleCounts = Record<RuleId, number>;
@@ -30,13 +32,23 @@ interface Context {
 }
 
 export function zeroCounts(): RuleCounts {
-  return { "home-path": 0, "aw-data-path": 0, "private-term": 0 };
+  return { "home-path": 0, "aw-data-path": 0, "private-term": 0, "credential-token": 0 };
+}
+
+/** Copies only the hit's identifying fields, so no stray property reaches a report. */
+export function toFinding(location: string, { rule, termIndex, kind }: RuleHit): Finding {
+  return {
+    location,
+    rule,
+    ...(termIndex === undefined ? {} : { termIndex }),
+    ...(kind === undefined ? {} : { kind }),
+  };
 }
 
 function record(ctx: Context, location: string, hits: readonly RuleHit[], path?: string): void {
-  for (const { rule, termIndex } of hits) {
-    if (path !== undefined && isAllowed(ctx.allow, path, rule)) ctx.allowed[rule]++;
-    else ctx.findings.push(termIndex === undefined ? { location, rule } : { location, rule, termIndex });
+  for (const hit of hits) {
+    if (path !== undefined && isAllowed(ctx.allow, path, hit.rule)) ctx.allowed[hit.rule]++;
+    else ctx.findings.push(toFinding(location, hit));
   }
 }
 
