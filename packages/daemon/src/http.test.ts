@@ -159,6 +159,14 @@ describe("POST /rpc/:name body limit", () => {
     expect(res.status).toBe(413);
   });
 
+  it.each(["abc", "NaN", "12abc"])("answers 413 to a Content-Length of %j, which is no number to compare", async (length) => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "x" }), { headers: { "content-length": length } });
+
+    expect(res.status).toBe(413);
+  });
+
   it("caps every command at 1 MiB by default", async () => {
     const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "x".repeat(1024 * 1024) }));
 
