@@ -23,7 +23,7 @@ import { open, type Route } from "../router.js";
 export type RosterEntry = ConsoleCommands["agents.roster"]["result"]["agents"][number];
 type Message = ConsoleCommands["agents.messages"]["result"]["messages"][number];
 
-export const WINDOW_CAPTION = "Counted over the broker's last 1,000 events.";
+const WINDOW_CAPTION = "Counted over the broker's last 1,000 events.";
 
 const FEED_PAGE = 200;
 
