@@ -69,7 +69,6 @@ export interface LandOptions {
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
   /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
   reviewedMerge?: (headSha: string) => boolean;
-  overridden?: (headSha: string, answer: string) => Promise<void>; // told when the owner declines a gate after a reviewer MERGE at that head
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
 }
@@ -237,7 +236,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
   const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
   if (!answer.success) throw new Error(`approve-merge answer does not approve head ${ci.headSha}: ${answer.error.message}`);
-  if (answer.data.decision === "abandon") return (reviewedMerge && (await options.overridden?.(ci.headSha, "abandon")), stopped("abandoned", ci.headSha, "a human declined the merge"));
+  if (answer.data.decision === "abandon") return stopped("abandoned", ci.headSha, "a human declined the merge");
   trust(state, ci.headSha, "human");
   return undefined;
 }
