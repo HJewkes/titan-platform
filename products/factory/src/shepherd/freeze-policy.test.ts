@@ -35,7 +35,7 @@ interface Scene {
 function scene(): Scene {
   const db = openDatabase(":memory:");
   dbs.push(db);
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef();
   store.bind(db);

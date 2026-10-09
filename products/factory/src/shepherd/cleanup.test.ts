@@ -18,7 +18,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };

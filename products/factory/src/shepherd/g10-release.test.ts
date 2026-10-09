@@ -63,7 +63,7 @@ describe("hold classes and opus profiles", () => {
 
 function rig(reason: string, prHead = HEAD) {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: prHead });

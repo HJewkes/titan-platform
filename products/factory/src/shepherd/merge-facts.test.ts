@@ -484,7 +484,7 @@ const EVIDENCE_RUN = "run-1";
 async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   const store = shepherdStoreRef();
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   if (bind) store.bind(db);
   if (kind !== undefined) new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: EVIDENCE_RUN, task: "demo/1", implementer: "impl-a", policy: AUTO, kind });
   const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };

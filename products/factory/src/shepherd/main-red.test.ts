@@ -47,7 +47,7 @@ function memoryFixers(spawned: Rig["spawned"]): FixerAgents {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });

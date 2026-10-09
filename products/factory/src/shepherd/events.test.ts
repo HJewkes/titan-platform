@@ -11,7 +11,7 @@ const STAMP = Date.parse("2026-01-01T00:00:00Z");
 
 function open(): { db: Db; store: ShepherdStore; freezes: FreezeStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db, () => STAMP);
   store.register({ repo: REPO, pr: 7, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   return { db, store, freezes: new FreezeStore(db, () => STAMP) };
@@ -103,9 +103,9 @@ describe("shepherd event history", () => {
 
   it("applies the migration once and leaves other tables alone", () => {
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), shepherdEventMigration(15)]);
+    runMigrations(db, [shepherdMigration(4), shepherdEventMigration(16)]);
 
-    expect(runMigrations(db, [shepherdMigration(4), shepherdEventMigration(15)])).toEqual([]);
-    expect(appliedVersions(db)).toContain(15);
+    expect(runMigrations(db, [shepherdMigration(4), shepherdEventMigration(16)])).toEqual([]);
+    expect(appliedVersions(db)).toContain(16);
   });
 });
