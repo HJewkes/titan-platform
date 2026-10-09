@@ -184,4 +184,5 @@ jobs:
       - run: printf 'SERVER_NAME=tp301.local\nPUBLIC_BASE_URL=https://tp301.local\n' > .env && ./scripts/setup.sh
       - run: docker compose config --quiet
       - run: docker compose --profile remote --profile core config --quiet
-      - run: docker compose --profile core build core
+      # mirror.gcr.io is Google's public Docker Hub cache, same digests, no anonymous Docker Hub rate limit.
+      - run: docker compose --profile core build --build-arg NODE_IMAGE=mirror.gcr.io/library/node:24-alpine core
