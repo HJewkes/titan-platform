@@ -35,12 +35,20 @@ let dir: string;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "claude-print-test-"));
-  writeFileSync(join(dir, "claude"), FAKE_CLAUDE);
-  chmodSync(join(dir, "claude"), 0o755);
+  installExecutable(join(dir, "claude"), FAKE_CLAUDE);
   writeFileSync(join(dir, "result.json"), JSON.stringify(cannedResult()));
 });
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+// cp writes in a process that has exited before the first exec, so a concurrent fork never holds the target open for writing (ETXTBSY).
+function installExecutable(file: string, contents: string): void {
+  const staging = `${file}.staging`;
+  writeFileSync(staging, contents);
+  chmodSync(staging, 0o755);
+  execFileSync("cp", ["-p", staging, file]);
+  rmSync(staging);
+}
 
 function fakeEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return { PATH: `${dir}:/usr/bin:/bin`, HOME: "/home/tester", FAKE_DIR: dir, ...extra };
