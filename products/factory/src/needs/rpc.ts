@@ -15,15 +15,15 @@ const needsFilterSchema = z.object({
   personal: z.boolean().optional().describe("include personal initiatives; left out unless true"),
 });
 
-export type NeedsFilter = z.infer<typeof needsFilterSchema>;
+type NeedsFilter = z.infer<typeof needsFilterSchema>;
 
-export interface NeedsListResult {
+interface NeedsListResult {
   items: OwnerItem[];
   /** One line per source that could not be read, so an outage is never an empty queue. */
   gaps: string[];
 }
 
-export interface NeedsCountResult {
+interface NeedsCountResult {
   total: number;
   byKind: Record<string, number>;
   byLens: Record<string, number>;
