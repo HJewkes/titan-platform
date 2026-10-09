@@ -2,7 +2,7 @@ import { stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { EXIT, defineCommand } from "@titan-design/registry";
+import { EXIT } from "@titan-design/registry";
 import { SessionTimelineAccumulator, priceRequest, type SessionTimeline } from "@titan-design/session-analytics";
 import { SessionGraphNotMigratedError, openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import {
@@ -10,6 +10,7 @@ import {
   sessionRef, toRepoRelative, type SessionSourceDescriptor, type TranscriptRoot,
 } from "@titan-design/session-read";
 import { DEFAULT_CODEWATCH_URL } from "./config.js";
+import { readCommand } from "./owner-guard.js";
 
 export interface SessionsSource {
   /** The session graph another process writes; it is only ever opened read-only, once per request. */
@@ -105,14 +106,14 @@ const listArgs = z.object({
 /** Both commands open the graph read-only per request and close it before any transcript read. */
 export function sessionsCommands(source: SessionsSource) {
   return {
-    "sessions.list": defineCommand({
+    "sessions.list": readCommand({
       name: "sessions.list",
       description: "Indexed sessions, newest first, with agent, tasks, linked PRs and per-model token usage from the session graph",
       args: listArgs,
       result: z.custom<SessionsListResult>(),
       run: (args) => listSessions(source, args),
     }),
-    "sessions.timeline": defineCommand({
+    "sessions.timeline": readCommand({
       name: "sessions.timeline",
       description: "One session's timeline from its transcript, found through the session graph or, for a live session, the Claude config roots",
       args: z.object({ sessionId: z.string().regex(SESSION_ID) }),

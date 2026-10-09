@@ -7,15 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import * as daemonPackage from "@titan-design/daemon";
 import { silentLogger, type DaemonHandle, type RequestAuth } from "@titan-design/daemon";
-import { EXIT, invokeCommand } from "@titan-design/registry";
+import { EXIT, defineCommand, invokeCommand } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
-import { createLoginLink, startConsoleDaemon } from "./daemon.js";
+import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import {
   REFUSALS,
   depositCommand,
   ownerWriteCommand,
   readCommand,
+  type ClassedCommand,
   type ConsoleContext,
   type ConsoleSurface,
 } from "./owner-guard.js";
@@ -67,6 +68,34 @@ const stubDeposit = depositCommand({
   },
 });
 
+const UNCLASSED = "test.unclassed";
+const unclassed = defineCommand<Record<string, never>, { ok: boolean }, ConsoleContext>({
+  name: UNCLASSED,
+  description: "Test-only command defined without a class",
+  args: z.object({}),
+  result: z.object({ ok: z.boolean() }),
+  run: async () => ({ ok: true }),
+});
+
+/** Sources only hold ports and paths until a command runs, so none of these is opened. */
+function syntheticConfig(): ConsoleConfig {
+  return {
+    port: 0,
+    stateDir: "/nonexistent/state",
+    activeWorkPort: 1,
+    agentChatPort: 1,
+    agentChatTokenPath: "/nonexistent/ui.token",
+    agentChatEventsDbPath: "/nonexistent/events.db",
+    seatPrefixes: [],
+    sessionGraphPath: "/nonexistent/graph.sqlite3",
+    codewatchUrl: "http://codewatch.test:7433",
+    lanHost: null,
+    lanNames: [],
+    lanTokenPath: "/nonexistent/lan.token",
+    ownerWrites: false,
+  };
+}
+
 function context(surface: ConsoleSurface, auth: RequestAuth | null, ownerWrites = true): ConsoleContext {
   return { warnings: [], format: "json", surface, auth, ownerWrites };
 }
@@ -112,10 +141,40 @@ describe("the deposit and read classes", () => {
   });
 
   it("leaves a read command's run untouched", () => {
-    const read = readCommand(stubDeposit);
+    const read = readCommand(unclassed);
 
     expect(read.commandClass).toBe("read");
-    expect(read.run).toBe(stubDeposit.run);
+    expect(read.run).toBe(unclassed.run);
+  });
+});
+
+describe("classes fail closed", () => {
+  it.each([
+    ["an owner-write as a read", () => readCommand(stubOwnerWrite), "read"],
+    ["a deposit as a read", () => readCommand(stubDeposit), "read"],
+    ["a read as a deposit", () => depositCommand(readCommand(unclassed)), "deposit"],
+    ["a deposit as an owner-write", () => ownerWriteCommand(stubDeposit as never), "owner-write"],
+    ["a spread copy of an owner-write as a read", () => readCommand({ ...stubOwnerWrite }), "read"],
+  ])("refuses to re-class %s", (_label, reclass, commandClass) => {
+    expect(reclass).toThrow(new RegExp(`already classed; it cannot be re-classed as ${commandClass}$`));
+  });
+
+  it("fails startup naming a command with no class", () => {
+    const sources = createSources(syntheticConfig());
+
+    expect(() => createConsoleRegistry(sources, [unclassed as ClassedCommand])).toThrow(`Console command ${UNCLASSED} has no class`);
+    expect(() => createConsoleRegistry(sources, [{ ...unclassed, commandClass: "owner_write" } as unknown as ClassedCommand])).toThrow(
+      `Console command ${UNCLASSED} has no class`,
+    );
+  });
+
+  it("classes every console command at its definition, all of them reads today", () => {
+    const classes = createConsoleRegistry(createSources(syntheticConfig()))
+      .list()
+      .map((command) => [command.name, (command as ClassedCommand).commandClass]);
+
+    expect(classes.length).toBeGreaterThan(0);
+    expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([]);
   });
 });
 
@@ -295,14 +354,48 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     expectNoSecretInAnyReply();
   });
 
-  it("classes every console command as a read and keeps reads open on loopback", async () => {
+  it("keeps reads open on loopback", async () => {
     await start();
 
     const health = await loopbackRpc("upstreams.health");
 
     expect(health.status).toBe(200);
-    expect(createConsoleRegistry(createSources(config)).list().map((command) => (command as { commandClass?: string }).commandClass)).toSatisfy(
-      (classes: unknown[]) => classes.length > 0 && classes.every((commandClass) => commandClass === "read"),
-    );
+  });
+
+  it("answers 403 to a bearer and a session cookie sent together, since the bearer cannot answer for the owner", async () => {
+    asRemotePeer();
+    await start();
+    const cookie = await signIn();
+
+    const both = await lanRpc(OWNER_WRITE, { ...bearer(), ...cookie }, { answer: "yes" });
+
+    expect(both.status).toBe(403);
+    expect(errorOf(both)).toBe(`owner-write command refused: ${REFUSALS.bearer}`);
+    expect(ran).toEqual([]);
+    expectNoSecretInAnyReply();
+  });
+
+  it("refuses an owner write with a cookie minted before token rotate, and runs one with a cookie minted after", async () => {
+    asRemotePeer();
+    await start();
+    const before = await signIn();
+
+    rotateLanToken(config);
+    secrets.push(readFileSync(config.lanTokenPath, "utf8").trim());
+    const stale = await lanRpc(OWNER_WRITE, before, { answer: "yes" });
+    const after = await lanRpc(OWNER_WRITE, await signIn(), { answer: "yes" });
+
+    expect([stale.status, after.status]).toEqual([401, 200]);
+    expect(ran.map(({ command }) => command)).toEqual([OWNER_WRITE]);
+    expectNoSecretInAnyReply();
+  });
+
+  it("refuses to start with an unclassed command, naming it, and serves nothing", async () => {
+    const startsBefore = vi.mocked(daemonPackage.startDaemon).mock.calls.length;
+
+    const starting = startConsoleDaemon({ config, extraCommands: [stubDeposit, unclassed as ClassedCommand], logger: silentLogger });
+
+    await expect(starting).rejects.toThrow(`Console command ${UNCLASSED} has no class`);
+    expect(vi.mocked(daemonPackage.startDaemon).mock.calls.length).toBe(startsBefore);
   });
 });

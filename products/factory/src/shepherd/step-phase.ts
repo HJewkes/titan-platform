@@ -67,6 +67,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-file-fix-task": "post-merge",
   "sh-spawn-fixer": "post-merge",
   "sh-cleanup": "post-merge",
+  "sh-reverted": "post-merge",
 };
 
 export function stepPhase(stepId: string): Phase {

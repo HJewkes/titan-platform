@@ -47,8 +47,13 @@ export function gateIsPending(gates: GateStore, gateId: string): boolean {
   return gates.get(gateId)?.status === "pending";
 }
 
+/** Whether `gateId` was opened by `runId`, by the `<runId>/` prefix `gateIdFor` writes. */
+export function isOwnGate(runId: string, gateId: string): boolean {
+  return gateId.startsWith(`${runId}/`);
+}
+
 /** Cancels the pending gates a run opened that `isStale` picks, and returns their ids. */
 export function cancelOwnPending(gates: GateStore, runId: string, reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
-  const own = gates.listPending().filter((gate) => gate.id.startsWith(`${runId}/`) && isStale(gate));
+  const own = gates.listPending().filter((gate) => isOwnGate(runId, gate.id) && isStale(gate));
   return own.map((gate) => gates.cancel(gate.id, reason).id);
 }

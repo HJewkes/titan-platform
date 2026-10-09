@@ -14,3 +14,13 @@ export type {
 } from "./types.js";
 export { classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
 export type { ClassRules } from "./classify.js";
+export {
+  DEFAULT_CLASS_ROLES,
+  DEFAULT_MEMBER_POINTS,
+  DEFAULT_PANEL_POLICY,
+  DEFAULT_PANEL_TABLE,
+  DEFAULT_SHAPE_ROLES,
+  DEFAULT_SONNET_FOR,
+  planPanel,
+} from "./plan.js";
+export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
