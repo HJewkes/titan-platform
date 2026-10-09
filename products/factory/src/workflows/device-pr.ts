@@ -14,15 +14,15 @@ const MAX_SUMMARY = 280;
 // eslint-disable-next-line no-control-regex -- a control character is exactly what a one-line field refuses
 const CONTROL_CHAR = /[\u0000-\u001f\u007f]/;
 
-export const DEVICE_PR_STEPS: readonly StepDeclaration[] = [...LAND_PR_STEPS, { id: DEVICE_CONFIRM, kind: "assisted" }];
+const DEVICE_PR_STEPS: readonly StepDeclaration[] = [...LAND_PR_STEPS, { id: DEVICE_CONFIRM, kind: "assisted" }];
 
-export interface DevicePrParams extends LandPrParams {
+interface DevicePrParams extends LandPrParams {
   /** What the owner performs on the device before confirming; the factory never performs it. */
   deviceStep: string;
 }
 
 /** Read and check the run's params, so a bad `deviceStep` fails the run before any step records it. */
-export function devicePrParams(ctx: WorkflowContext): DevicePrParams {
+function devicePrParams(ctx: WorkflowContext): DevicePrParams {
   const deviceStep = ctx.param("deviceStep")?.trim() ?? "";
   if (deviceStep === "") throw new Error("device-pr: param deviceStep is required");
   if (deviceStep.length > MAX_DEVICE_STEP) throw new Error(`device-pr: param deviceStep is over ${MAX_DEVICE_STEP} characters`);
@@ -46,7 +46,7 @@ function deviceDecision(question: ApprovalQuestion, deviceStep: string) {
 }
 
 /** Asks in place of approve-merge; a `fail` reads as a red head, so land-pr's ci-failed gate decides what follows. */
-export function deviceConfirm(deviceStep: string): AskApproval {
+function deviceConfirm(deviceStep: string): AskApproval {
   return async (ctx, question): Promise<ApprovalAnswer> => {
     const { schema, brief } = deviceDecision(question, deviceStep);
     const prompt = `Perform on the device for PR #${question.pr} in ${question.repo} at head ${question.headSha}: ${deviceStep}. Did it pass?`;
