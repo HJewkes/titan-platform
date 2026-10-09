@@ -149,10 +149,10 @@ export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate
   if (!isFullSha(update.localSha) || !isFullSha(update.remoteSha)) throw new ConfigError("push update is not a full sha");
   if (!isRemoteName(remote)) throw new ConfigError("remote is not a remote name");
   const known = !isZeroSha(update.remoteSha) && hasCommit(cwd, update.remoteSha);
-  // The second `--not` flips back, so the local sha after it counts as included.
-  const range = known
-    ? [END_OF_OPTIONS, `${update.remoteSha}..${update.localSha}`]
-    : ["--not", `--remotes=${remote}`, "--not", END_OF_OPTIONS, update.localSha];
+  // A branch that merged main also carries main commits the remote already has, so its remote refs
+  // are excluded as well as its own old tip. The second `--not` flips back, so the local sha after it counts as included.
+  const excluded = known ? [update.remoteSha, `--remotes=${remote}`] : [`--remotes=${remote}`];
+  const range = ["--not", ...excluded, "--not", END_OF_OPTIONS, update.localSha];
   return lines(git(cwd, ["rev-list", "--reverse", ...range]));
 }
 
