@@ -5,6 +5,7 @@ import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegi
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
+import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
 import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
 
 /** The workflow `factory.land` starts. */
@@ -16,6 +17,8 @@ export interface FactoryContext extends BaseContext {
   shepherd?: ShepherdServices;
   /** The serving factory's name, which an owner proof must carry as its `aud`; defaults to this machine's hostname. */
   aud?: string;
+  /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
+  needsSources?: NeedsSources;
 }
 
 export interface PrRef {
@@ -148,13 +151,20 @@ const gates = defineCommand<Record<string, never>, { gates: GateSummary[]; aud: 
 });
 
 /** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
-export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string): FactoryContext {
-  return { warnings: [], format: "json", host, ...(routes.shepherd && { shepherd: routes.shepherd }), ...(aud !== undefined && { aud }) };
+export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources): FactoryContext {
+  return {
+    warnings: [],
+    format: "json",
+    host,
+    ...(routes.shepherd && { shepherd: routes.shepherd }),
+    ...(aud !== undefined && { aud }),
+    ...(needsSources && { needsSources }),
+  };
 }
 
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof route resolves, never a command. */
 export function createFactoryRegistry(): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS]) registry.register(cmd);
+  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS, ...NEEDS_COMMANDS]) registry.register(cmd);
   return registry;
 }
