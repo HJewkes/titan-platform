@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { failureOf } from "./error-class.js";
-import { MAX_REVIEWER_QUESTIONS, reviewerBrief, type ReviewerBriefInput } from "./reviewer-brief.js";
+import { MAX_REVIEWER_QUESTIONS, reviewerBrief, type ReviewerBriefInput } from "@titan-design/review-panel";
 
 /** The part of a review target the report is looked up by. */
 interface CodewatchTarget {

@@ -1,5 +1,14 @@
-import type { SourceTextLocator, VerdictBlockRefusal } from "@titan-design/session-read";
+import { MAX_OWNER_BRIEF_CHARS, OWNER_BRIEF_END, OWNER_BRIEF_START, type MalformedRefusal } from "@titan-design/review-panel";
+import type { SourceTextLocator } from "@titan-design/session-read";
 import { z } from "zod";
+
+/** Why a review was dispatched at a head; a run recorded before causes existed reads as `unknown`. */
+const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "unknown"] as const;
+export type ReviewCauseKind = (typeof REVIEW_CAUSES)[number];
+
+/** `reason` is a carry refusal, a retry reason, or the registered kind that does not carry. */
+export const ReviewCauseSchema = z.object({ cause: z.enum(REVIEW_CAUSES), reason: z.string().min(1).optional() });
+export type ReviewCause = z.infer<typeof ReviewCauseSchema>;
 
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
 
@@ -59,10 +68,7 @@ export const MergeEvidenceSchema = z.looseObject({
   changedFilesUnread: z.string().optional(),
 });
 
-/** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
-export const MAX_OWNER_BRIEF_CHARS = 2000;
-export const OWNER_BRIEF_START = "OWNER-BRIEF";
-export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
+export { MAX_OWNER_BRIEF_CHARS, OWNER_BRIEF_END, OWNER_BRIEF_START };
 
 const Bullets = z.array(z.string().min(1).max(300)).min(1).max(5);
 
@@ -128,8 +134,7 @@ const Awaited = z.discriminatedUnion("kind", [
 ]);
 export { Awaited, Dispatched, Intended };
 
-/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
-export type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+export type { MalformedRefusal };
 
 /** Keyed by the closed union, so a refusal the parser adds fails to compile here until it is listed. */
 export const MALFORMED_REFUSALS: Record<MalformedRefusal, true> = {
