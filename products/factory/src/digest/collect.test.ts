@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { fakeSources, NOW, SLOT, watchRow } from "../test-support/digest.js";
 import { collectDigest, type GateFact } from "./collect.js";
 import { readAgentChat, type Exec } from "./sources.js";
+import { collectNeeds } from "../needs/merged.js";
+import { sources10_05 } from "../test-support/needs-10-05.js";
 
 const RUN = "33333333-3333-4333-8333-333333333333";
 const RESOLVE = `titan-factory gate resolve ${RUN} approve-merge --json '<payload>'`;
@@ -90,5 +92,26 @@ describe("collectDigest", () => {
     const model = await collectDigest({ sources: fakeSources({ gates: async () => gates }), now: NOW, windowMinutes: 360, slot: SLOT });
 
     expect(model.needsYou.map((ask) => ask.since)).toEqual(["2026-03-10T13:29:00Z", undefined]);
+  });
+});
+
+describe("collectDigest with the merged owner list", () => {
+  it("reads needsYou from the merged list, asks only (no news), not the separate gate, queue and chat reads", async () => {
+    const [first, second] = await sources10_05();
+    const list = await collectNeeds([first!, second!]);
+    const sources = fakeSources({ gates: async () => [gateFact()], needs: async () => list });
+
+    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou).toHaveLength(5 + 36);
+    expect(model.needsYou.map((ask) => ask.text)).not.toContain("widgets#9 approve-merge: raw prompt");
+  });
+
+  it("carries the list's gaps into the digest", async () => {
+    const sources = fakeSources({ needs: async () => ({ items: [], gaps: ["agent-chat: down"], overlaps: [], counts: {} }) });
+
+    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.gaps).toContain("agent-chat: down");
   });
 });

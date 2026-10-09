@@ -27,5 +27,7 @@ export type { ActiveWorkSourceOptions, DecisionTask } from "./needs/active-work-
 export { NEEDS_DECISION_TAG, createActiveWorkSource } from "./needs/active-work-source.js";
 export type { MorningSourceOptions } from "./needs/morning-source.js";
 export { createMorningSource, morningQueuesDir } from "./needs/morning-source.js";
+export type { NeedsList } from "./needs/merged.js";
+export { collectNeeds, renderNeeds } from "./needs/merged.js";
 export type { Overlap, OverlapEntry } from "./needs/overlap.js";
 export { overlapReport, renderOverlapReport } from "./needs/overlap.js";
