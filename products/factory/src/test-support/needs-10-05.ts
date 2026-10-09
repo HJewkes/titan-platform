@@ -10,7 +10,7 @@ import { brokerSnapshot } from "./owner-queue.js";
 
 const range = (count: number): number[] => Array.from({ length: count }, (_, i) => i + 1);
 
-export function staticSource(system: QueueSource["system"], items: OwnerItem[]): QueueSource {
+function staticSource(system: QueueSource["system"], items: OwnerItem[]): QueueSource {
   return {
     system,
     open: async () => items,
