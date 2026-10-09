@@ -1,5 +1,5 @@
-import { type ArithTrials, chargeTrial, newTrials, spent } from "./arith-trials.js";
-import { endWord, type LexState, newState, type OpToken, ParseError, type PendingHeredoc, step, type Token } from "./lexer.js";
+import { type ArithTrials, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
+import { endWord, type LexState, newState, type OpToken, ParseError, type PendingHeredoc, scanSubstitutions, SplitParseError, step, type Token } from "./lexer.js";
 
 /** What is known about one source's tails. The trials are the tails' own: main's `((` positions and budget stay untouched. */
 interface Book {
@@ -15,12 +15,8 @@ const budgets = new WeakMap<ArithTrials["spend"], ArithTrials["spend"]>();
 /** Tail starts met while a tail is being read; null outside of that. */
 let queue: number[] | null = null;
 let known: Set<number> = new Set();
+/** Bash 5 tails taken so far, so a reading that fails after one can be told apart. */
 let taken = 0;
-
-/** How many bash 5 tails have been taken so far, so a reading that fails after one can be told apart. */
-export function tailsTaken(): number {
-  return taken;
-}
 
 /**
  * A heredoc still pending when a `$( )` or `<( )` closes takes its body from the lines after the
@@ -30,9 +26,9 @@ export function tailsTaken(): number {
  * every body pending on the line, read in bash 5's order: each substitution's as it closed, then the
  * line's own. Each such text is lexed once, stops where the next one begins, is returned once,
  * and is charged by the length read; once the budget is spent the newline is marked `tailsUnread`
- * and the walk refuses the line. `tokenize` refuses it too when bash 3.2's reading fails after a tail.
+ * and the walk refuses the line. `lexSplit` refuses it too when bash 3.2's reading fails after a tail.
  */
-export function readBash5Tail(s: LexState, newline: OpToken): void {
+function readBash5Tail(s: LexState, newline: OpToken): void {
   const at = skipBodies(s.src, s.i - 1, [...s.readAhead, ...s.heredocs]);
   if (at === null) return;
   if (queue !== null) {
@@ -121,4 +117,40 @@ function afterDelimiter(src: string, from: number, delim: string, stripTabs: boo
     i = end + 1;
   }
   return -1;
+}
+
+/** At a newline: the bash 5 tail when a substitution left a heredoc open (never for a `((` trial), then the bodies as bash 3.2 reads them. */
+export function readLineEnd(s: LexState, newline: OpToken, real: boolean): void {
+  if (s.readAhead.length > 0 && real) readBash5Tail(s, newline);
+  s.readAhead = [];
+  readHeredocBodies(s);
+}
+
+function readHeredocBodies(s: LexState): void {
+  for (const { token, stripTabs } of s.heredocs) {
+    const delim = token.target?.value;
+    let body = "";
+    while (s.i < s.src.length) {
+      const newline = s.src.indexOf("\n", s.i);
+      const end = newline === -1 ? s.src.length : newline;
+      const line = stripTabs ? s.src.slice(s.i, end).replace(/^\t+/, "") : s.src.slice(s.i, end);
+      s.i = end + 1;
+      if (line === delim) break;
+      body += `${line}\n`;
+    }
+    token.body = body;
+    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length, sameSpend(s.trials));
+  }
+  s.heredocs = [];
+}
+
+/** Runs a lex whose ParseError, once a bash 5 tail was taken, is a `SplitParseError`: bash 5 may still run the line. */
+export function lexSplit(run: () => void): void {
+  const before = taken;
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof ParseError && taken > before) throw new SplitParseError(error.message);
+    throw error;
+  }
 }

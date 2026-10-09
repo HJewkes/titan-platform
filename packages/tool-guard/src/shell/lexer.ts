@@ -1,6 +1,6 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { readBash5Tail, tailsTaken } from "./procsub-heredoc.js";
+import { lexSplit, readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
@@ -48,7 +48,7 @@ export interface WordToken {
 export interface OpToken {
   type: "op";
   value: string;
-  /** On a newline: the text after every body bash 5 reads there, see `readBash5Tail`. `tailsUnread`: one could not be read, so the line is refused. */
+  /** On a newline: the text after every body bash 5 reads there, see `readLineEnd` in procsub-heredoc.ts. `tailsUnread`: one could not be read, so the line is refused. */
   tails?: Token[][];
   tailsUnread?: boolean;
 }
@@ -103,13 +103,7 @@ const SUBSCRIPT_ACTIVE = "\\'\"`$";
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
 export function tokenize(src: string, trials = newTrials(src)): Token[] {
   const s = newState(src, 0, false, trials);
-  const taken = tailsTaken();
-  try {
-    lex(s);
-  } catch (error) {
-    if (error instanceof ParseError && tailsTaken() > taken) throw new SplitParseError(error.message);
-    throw error;
-  }
+  lexSplit(() => lex(s));
   return s.tokens;
 }
 
@@ -226,28 +220,7 @@ function readOperator(s: LexState, op: string): void {
   if (op === ")") s.depth--;
   const token: OpToken = { type: "op", value: op };
   s.tokens.push(token);
-  if (op !== "\n") return;
-  if (s.readAhead.length > 0 && trialDepth === 0) readBash5Tail(s, token);
-  s.readAhead = [];
-  readHeredocBodies(s);
-}
-
-function readHeredocBodies(s: LexState): void {
-  for (const { token, stripTabs } of s.heredocs) {
-    const delim = token.target?.value;
-    let body = "";
-    while (s.i < s.src.length) {
-      const newline = s.src.indexOf("\n", s.i);
-      const end = newline === -1 ? s.src.length : newline;
-      const line = stripTabs ? s.src.slice(s.i, end).replace(/^\t+/, "") : s.src.slice(s.i, end);
-      s.i = end + 1;
-      if (line === delim) break;
-      body += `${line}\n`;
-    }
-    token.body = body;
-    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length, sameSpend(s.trials));
-  }
-  s.heredocs = [];
+  if (op === "\n") readLineEnd(s, token, trialDepth === 0);
 }
 
 function readEscape(s: LexState): void {
