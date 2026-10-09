@@ -34,12 +34,24 @@ export interface ConsoleConfig {
   lanHost: string | null;
   /** Names the LAN listener answers to; the first one goes into a login link. */
   lanNames: string[];
+  /**
+   * The certificate and key the LAN listener serves, from `TITAN_CONSOLE_TLS_CERT` and
+   * `TITAN_CONSOLE_TLS_KEY`. Required whenever `lanHost` is set: the LAN is never plain HTTP.
+   */
+  lanTls: LanTls | null;
   /** The LAN secret; `login-link` and `token rotate` use it even when `lanHost` is null. */
   lanTokenPath: string;
-  /** `TITAN_CONSOLE_OWNER_WRITES=1` lets owner-write commands run on the LAN; off until the LAN carries TLS. */
+  /** `TITAN_CONSOLE_OWNER_WRITES=1` lets owner-write commands run on the LAN; off until the owner turns it on. */
   ownerWrites: boolean;
   /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
   inboxDir: string;
+}
+
+export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
+
+interface LanTls {
+  certFile: string;
+  keyFile: string;
 }
 
 /** What `resolveConfig` asks of the machine it runs on; a seam for tests. */
@@ -78,14 +90,21 @@ export function resolveConfig(
     codewatchUrl: urlFrom(env, "TITAN_CONSOLE_CODEWATCH_URL", DEFAULT_CODEWATCH_URL),
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
+    lanTls: lanTlsFrom(env, home),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
   };
+  assertCoherent(config);
+  return config;
+}
+
+/** Settings that are each valid but unsafe or ambiguous together. */
+function assertCoherent(config: ConsoleConfig): void {
+  if (config.lanHost !== null && config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
   }
-  return config;
 }
 
 function portFrom(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -133,6 +152,15 @@ function lanHostFrom(raw: string | undefined, machine: Machine): string | null {
   const host = raw.toLowerCase();
   if (!machine.addresses().some((address) => address.toLowerCase() === host)) refuse("must be an address on one of this machine's interfaces");
   return host;
+}
+
+/** Both or neither: half a pair is a typo, never a request for plain HTTP. */
+function lanTlsFrom(env: NodeJS.ProcessEnv, home: string): LanTls | null {
+  const cert = env.TITAN_CONSOLE_TLS_CERT ?? "";
+  const key = env.TITAN_CONSOLE_TLS_KEY ?? "";
+  if (cert === "" && key === "") return null;
+  if (cert === "" || key === "") throw new Error("TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY must be set together");
+  return { certFile: expandHome(cert, home), keyFile: expandHome(key, home) };
 }
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;

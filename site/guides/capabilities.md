@@ -38,8 +38,8 @@ Before adding code:
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
-| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits. |
-| [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
+| [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
+| [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. `probeHttp` takes one such sample of a health route, with a timeout and a pid/port identity check, and never throws for a target that is down. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
 | [`messaging`](#cap-messaging) | 1 | A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel. |
@@ -470,7 +470,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +65 more in the [reference page](/reference/daemon)
+- +67 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -478,7 +478,7 @@ Key exports:
 
 Tier 1, `@titan-design/github@0.6.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
-**Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. `formatSquashMessage` (and the `titan-squash-message` bin) builds a deterministic, trailer- and email-free squash commit message from a PR and its commits.
+**Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
 Key exports:
 
@@ -488,7 +488,7 @@ Key exports:
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- +65 more in the [reference page](/reference/github)
+- +61 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
@@ -496,7 +496,7 @@ Key exports:
 
 Tier 1, `@titan-design/health@0.1.0`. health/v1 contract, probes, append-only sample store and uptime
 
-**Use this when:** You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" | "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry.
+**Use this when:** You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. `probeHttp` takes one such sample of a health route, with a timeout and a pid/port identity check, and never throws for a target that is down. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" | "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry.
 
 Key exports:
 
@@ -504,7 +504,7 @@ Key exports:
 - `store`: `appendSamples`, `openHealthStore`, `readSamples`, `storeStats`
 - `uptime`: `foldUptime`, `uptime`
 - `sample`: `healthSampleSchema`
-- +19 more in the [reference page](/reference/health)
+- +22 more in the [reference page](/reference/health)
 
 <a id="cap-hitl"></a>
 
@@ -682,7 +682,7 @@ Key exports:
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
 - `seat-state`: `emptySeatState`, `foldSeatEvents`
-- +39 more in the [reference page](/reference/coordinator)
+- +41 more in the [reference page](/reference/coordinator)
 
 <a id="cap-decider"></a>
 
