@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONSOLE_PORT, resolveConfig } from "./config.js";
+import { DEFAULT_CONSOLE_PORT, resolveConfig, type Machine } from "./config.js";
 
 const HOME = "/srv/tester";
 
@@ -71,5 +71,72 @@ describe("console config", () => {
       { seat: "beta", prefix: "be" },
     ]);
     expect(() => resolveConfig({ TITAN_CONSOLE_SEATS: "alpha" }, HOME)).toThrow(/seat=prefix/);
+  });
+});
+
+describe("console LAN config", () => {
+  const LAN_IP = "192.0.2.10";
+  const machine: Machine = { hostname: () => "Lan-Box", addresses: () => [LAN_IP, "2001:db8::a"] };
+  const lan = (env: NodeJS.ProcessEnv) => resolveConfig(env, HOME, "linux", machine);
+
+  it("stays on loopback alone when TITAN_CONSOLE_HOST is unset or empty", () => {
+    expect(lan({}).lanHost).toBeNull();
+    expect(lan({ TITAN_CONSOLE_HOST: "" }).lanHost).toBeNull();
+  });
+
+  it("takes an address on one of this machine's interfaces", () => {
+    expect(lan({ TITAN_CONSOLE_HOST: LAN_IP }).lanHost).toBe(LAN_IP);
+    expect(lan({ TITAN_CONSOLE_HOST: "2001:DB8::A" }).lanHost).toBe("2001:db8::a");
+  });
+
+  it.each([
+    ["127.0.0.1", /loopback/],
+    ["127.0.0.2", /loopback/],
+    ["::1", /loopback/],
+    ["::ffff:127.0.0.1", /loopback/],
+    ["0.0.0.0", /wildcard/],
+    ["::", /wildcard/],
+    ["0:0:0:0:0:0:0:0", /wildcard/],
+    ["localhost", /bare IP address/],
+    ["lan-box", /bare IP address/],
+    [`${LAN_IP}:7500`, /bare IP address/],
+    ["[2001:db8::a]", /bare IP address/],
+    [" 192.0.2.10", /bare IP address/],
+    ["192.0.2.99", /this machine's interfaces/],
+    [`::ffff:${LAN_IP}`, /this machine's interfaces/],
+  ])("refuses TITAN_CONSOLE_HOST=%j", (host, reason) => {
+    expect(() => lan({ TITAN_CONSOLE_HOST: host })).toThrow(reason);
+  });
+
+  it("defaults the LAN names to the hostname and its .local name", () => {
+    expect(lan({}).lanNames).toEqual(["lan-box", "lan-box.local"]);
+    expect(resolveConfig({}, HOME, "linux", { ...machine, hostname: () => "lan-box.local" }).lanNames).toEqual(["lan-box.local"]);
+  });
+
+  it("drops a default hostname that is not a DNS name instead of refusing to start", () => {
+    expect(resolveConfig({}, HOME, "linux", { ...machine, hostname: () => "lan_box" }).lanNames).toEqual([]);
+  });
+
+  it("parses TITAN_CONSOLE_LAN_NAMES as a lowercased, deduplicated comma list", () => {
+    expect(lan({ TITAN_CONSOLE_LAN_NAMES: " Basement , basement.local,basement " }).lanNames).toEqual(["basement", "basement.local"]);
+  });
+
+  it.each(["localhost", "box.localhost", "basement:7500", "192.0.2.10", "*.lan", "bad_name", "-lead", " , "])("refuses the LAN name %j", (names) => {
+    expect(() => lan({ TITAN_CONSOLE_LAN_NAMES: names })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
+  });
+
+  it("keeps the LAN token in the state directory unless TITAN_CONSOLE_TOKEN is given", () => {
+    expect(lan({}).lanTokenPath).toBe(path.join(HOME, ".local/state/titan-console", "lan.token"));
+    expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).lanTokenPath).toBe("/var/console/lan.token");
+    expect(lan({ TITAN_CONSOLE_TOKEN: "~/secrets/lan.token" }).lanTokenPath).toBe(path.join(HOME, "secrets", "lan.token"));
+  });
+
+  it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
+  });
+
+  it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
+    expect(() => lan({ TITAN_CONSOLE_OWNER_WRITES: value })).toThrow(/TITAN_CONSOLE_OWNER_WRITES/);
   });
 });

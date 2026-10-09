@@ -36,6 +36,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-carry-scope": "review",
   "sh-carry-seat": "review",
   "sh-remerge": "review",
+  "sh-merge-up": "review",
   "sh-approval-carry": "awaiting-approval",
   "sh-await-verdict": "review",
   "sh-policy": "review",
@@ -65,6 +66,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-file-fix-task": "post-merge",
   "sh-spawn-fixer": "post-merge",
   "sh-cleanup": "post-merge",
+  "sh-reverted": "post-merge",
 };
 
 export function stepPhase(stepId: string): Phase {

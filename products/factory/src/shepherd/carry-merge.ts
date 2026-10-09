@@ -10,6 +10,7 @@ import { seatFixFirst } from "./external-review.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
+import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 
@@ -22,6 +23,7 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
   { id: REMERGE_STEP, kind: "dispatch" },
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
+  { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
 
 /** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
@@ -161,11 +163,6 @@ export function carriedSource(reviews: ReadonlyMap<string, Verdict>, headSha: st
   return evidence.success && evidence.data.merge.head === latest.headSha ? evidence.data : undefined;
 }
 
-/** Only an equal answer whose two trees agree is a carry. */
-function treeEqual(result: CarryResult): boolean {
-  return result.equal && !!result.headTree && result.headTree === result.mergeTree;
-}
-
 /** What the evidence step records about a carry: both heads, the tree probe's answer, the rule that carried, and the remerge answer behind a remerge rule. */
 interface CarryEvidence {
   fromHead: string;
@@ -176,16 +173,16 @@ interface CarryEvidence {
 }
 
 /** The tree probe decides first; a head it refuses may still be the reviewed head plus a merge whose remerge-diff resolved nothing reviewed. */
-async function carryRule(ctx: WorkflowContext, input: CarryInput): Promise<CarryEvidence | undefined> {
+async function carryRule(ctx: WorkflowContext, input: CarryInput, reviews: ReadonlyMap<string, Verdict>): Promise<CarryEvidence | undefined> {
   const at = { fromHead: input.fromHead, head: input.head };
   const result = await carryStep(ctx, input);
-  if (treeEqual(result)) return { ...at, result, rule: "tree-equal" };
+  if (treeCarries(result, input.fromHead, reviews)) return { ...at, result, rule: "tree-equal" };
   const remerge = await remergeStep(ctx, input);
   return remerge.carries && remerge.rule ? { ...at, result, rule: remerge.rule, remerge } : undefined;
 }
 
 /**
- * At a new green head, reuse the newest MERGE across a tree-equal or remerge-clean update instead of dispatching a reviewer.
+ * At a new green head, reuse the newest MERGE across a clean merge-up or a remerge-clean update instead of dispatching a reviewer.
  * Undefined means review as usual: no MERGE to carry, a kind that does not carry, or neither probe carried.
  */
 export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, reviews: ReadonlyMap<string, Verdict>, headSha: string, scopeRead: number): Promise<Verdict | undefined> {
@@ -194,13 +191,14 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
   const baseRef = await carryingBase(ctx, target, String(scopeRead));
   if (baseRef === undefined) return undefined;
   const fromHead = source.merge.verdict.head;
-  const carry = await carryRule(ctx, { repo: target.repo, baseRef, fromHead, head: headSha });
+  const carry = await carryRule(ctx, { repo: target.repo, baseRef, fromHead, head: headSha }, reviews);
   if (!carry) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];
   const seats = await step(ctx, `${CARRY_SEAT_STEP}:${headSha}`, { ...target, fromHead, head: headSha, heads }, SeatResult);
   if (!seats.clear) return undefined;
+  const mergeUp = await recordMergeUp(ctx, carry, reviews);
   const { merge } = source;
-  return mergeVerdict(ctx, {
+  const verdict = await mergeVerdict(ctx, {
     ...target,
     head: headSha,
     verdict: { value: "MERGE", head: fromHead, locator: source.record.verdictLocator as unknown as SourceTextLocator },
@@ -209,6 +207,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     seatGrants: merge.seatGrants,
     carry,
   });
+  return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }
 
 /** The routes the carry steps dispatch to; the remerge probe reaches git as the tree probe does. */
@@ -218,5 +217,6 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
     carrySeatRoute(deps, wiring),
     remergeRoute(deps.now, wiring?.carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
+    mergeUpRoute(deps.now),
   ];
 }

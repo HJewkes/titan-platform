@@ -30,7 +30,7 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED): Rig {
+function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
   const asked: Rig["asked"] = [];
   const answer = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
@@ -38,6 +38,7 @@ function rig(scope: { kind: string | null; baseRef: string | null }, probe: Carr
     if (stepId.startsWith("sh-carry-seat:")) return seats;
     if (stepId.startsWith("sh-remerge:")) return remerge;
     if (stepId.startsWith("sh-publish-review:")) return { published: false };
+    if (stepId.startsWith("sh-merge-up:")) return input;
     return { head: input.head, merge: {}, record: {} };
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
@@ -46,7 +47,7 @@ function rig(scope: { kind: string | null; baseRef: string | null }, probe: Carr
     return { data: { result: answer(stepId, input) } };
   };
   return {
-    ctx: { runId: "run-1", dispatch, historyNext: () => undefined, param: () => undefined } as unknown as WorkflowContext,
+    ctx: { runId: "run-1", dispatch, historyNext: () => recordedNext, param: () => undefined } as unknown as WorkflowContext,
     asked,
   };
 }
@@ -120,7 +121,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
   });
 
   it.each([["security"], ["unknown"], [null]])("does not carry for kind %s and does not probe", async (kind) => {
-    const r = rig({ kind, baseRef: "main" }, EQUAL);
+    const r = rig({ kind, baseRef: "main" }, { ...EQUAL, firstParent: REVIEWED });
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
 
@@ -383,5 +384,79 @@ describe("the heads force-pushed away since the reviewed head", () => {
 
   it("counts every push when the reviewed head is in none of them", () => {
     expect(pushedAwaySince([{ before: H0, after: H3 }, { before: null, after: H2 }], H1)).toEqual([H0, null]);
+  });
+});
+
+describe("carrying a MERGE across a clean merge-up of the base", () => {
+  const MERGE_UP: CarryResult = { ...EQUAL, firstParent: REVIEWED };
+  const mergeUpOf = (r: Rig) => r.asked.find((step) => step.stepId === `sh-merge-up:${NEW_HEAD}`)?.input;
+  const SCOPE = { kind: "correctness", baseRef: "main" };
+
+  it("carries with the tree-equal fact, records the merge-up rule before publishing, and marks the verdict", async () => {
+    const r = rig(SCOPE, MERGE_UP);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD, mergeUpFrom: REVIEWED });
+    expect(mergeUpOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, base: EQUAL.base, rule: "clean-merge-up" });
+    expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: MERGE_UP, rule: "tree-equal" });
+    const ids = r.asked.map((step) => step.stepId);
+    expect(ids.indexOf(`sh-merge-up:${NEW_HEAD}`)).toBeLessThan(ids.indexOf(`sh-publish-review:${NEW_HEAD}`));
+  });
+
+  it("does not carry when a seat reviewer said FIX_FIRST, and records no merge-up", async () => {
+    const r = rig(SCOPE, MERGE_UP, { clear: false });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(mergeUpOf(r)).toBeUndefined();
+  });
+
+  it("does not carry equal trees over an extra commit: the first parent is not the reviewed head", async () => {
+    const r = rig(SCOPE, { ...EQUAL, firstParent: fakeSha("extra") });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.map((step) => step.stepId)).toContain(`sh-remerge:${NEW_HEAD}`);
+    expect(mergeUpOf(r)).toBeUndefined();
+  });
+
+  it("follows a chain of merge-ups: H3's first parent is H2, itself a merge-up of the reviewed head", async () => {
+    const second = fakeSha("second");
+    const r = rig(SCOPE, { ...EQUAL, firstParent: second });
+    const carriedToSecond = { ...mergeAt(second, REVIEWED), mergeUpFrom: REVIEWED } as Verdict;
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [second, carriedToSecond]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", mergeUpFrom: REVIEWED });
+  });
+
+  it("does not take a first parent that a carry reached by another rule", async () => {
+    const second = fakeSha("second");
+    const r = rig(SCOPE, { ...EQUAL, firstParent: second });
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [second, mergeAt(second, REVIEWED)]))).resolves.toBeUndefined();
+  });
+});
+
+describe("replaying a run recorded before the clean merge-up rule", () => {
+  it("carries a recorded probe that read no first parent as it did then, with no merge-up step and no mark", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, EQUAL);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
+    expect(verdict).not.toHaveProperty("mergeUpFrom");
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-up:"))).toBe(false);
+  });
+
+  it("keeps a recorded tree-equal carry whose record goes on to publish, with no merge-up step and no mark", async () => {
+    const r = rig({ kind: "correctness", baseRef: "main" }, { ...EQUAL, firstParent: REVIEWED }, { clear: true }, NOT_REMERGED, `sh-publish-review:${NEW_HEAD}`);
+
+    const verdict = await carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]));
+
+    expect(verdict).toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
+    expect(verdict).not.toHaveProperty("mergeUpFrom");
+    expect(r.asked.some((step) => step.stepId.startsWith("sh-merge-up:"))).toBe(false);
   });
 });

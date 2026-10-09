@@ -8,6 +8,7 @@ import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,15 +49,17 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const rows = shepherdStats(runs, range);
   const friction = ownerFriction(readAllGates(db), now, range);
   const stages = stageStats(runs, range);
-  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, reviewCauses: causes }, null, 2)}\n`;
-  return `${formatStats(rows, friction, stages)}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
+  const red = redAfterMerge(runs, range);
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, reviewCauses: causes }, null, 2)}\n`;
+  const redLines = formatRedAfterMerge(red).map((line) => `${line}\n`).join("");
+  return `${formatStats(rows, friction, stages)}${redLines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
     .command("stats")
-    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes, and merges made outside Shepherd; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: review dispatches counted by why each was dispatched")
+    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes, and merges made outside Shepherd; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched")
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")

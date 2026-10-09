@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -65,6 +65,8 @@ export interface FakeGitHub {
   prChangedFiles: Map<number, number>;
   /** PR number to its commit shas, oldest first; unset means the PR's head alone. `listPrCommits` returns at most 250, like GitHub. */
   prCommits: Map<number, string[]>;
+  /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
+  history: (LoggedCommit & { committedAt: string })[];
   /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
   compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
   /** PR number to its issue comments, in posting order. */
@@ -124,6 +126,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prFiles: new Map(),
     prChangedFiles: new Map(),
     prCommits: new Map(),
+    history: [],
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
@@ -207,6 +210,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("listPrFiles", { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length });
     },
     listPrCommits: async (_repo, number) => record("listPrCommits", (fake.prCommits.get(number) ?? [mustPr(prs, number).headSha]).slice(0, PR_COMMITS_CAP)),
+    listCommits: async (_repo, since) => {
+      const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
+      return record("listCommits", after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message })));
+    },
     compareFiles: async (_repo, base, head) => {
       const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
       const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;

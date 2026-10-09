@@ -8,7 +8,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
-import { HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema, type OwnerBrief } from "./review-schemas.js";
@@ -28,7 +28,7 @@ import { FIX_FIRST_STEP } from "./wake-brief.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
-export const AWAIT_VERDICT_STEP = "sh-await-verdict";
+export { AWAIT_VERDICT_STEP };
 export const LATE_VERDICT_STEP = "sh-late-verdict";
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: REVIEW_INTENT_STEP, kind: "dispatch" },
@@ -70,6 +70,8 @@ export interface AcceptedVerdict {
   reviewer: AgentIdentity;
   /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
   ownerBrief?: OwnerBrief | null;
+  /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
+  reviewerProfile?: string;
 }
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
@@ -287,7 +289,14 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(effectivePolicy(ctx).merge === "owner-gate" && { ownerBrief: true }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
-  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
+  const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
+    ...target,
+    reviewerAgentId: dispatched.agentId,
+    reviewerSessionId: dispatched.sessionId,
+    dispatchedAt: dispatched.at,
+    ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }),
+    ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
+  };
   return withReviewerProfile(await takeVerdict(ctx, target, awaiting, dispatchedReviewer), dispatched.profile);
 };
 

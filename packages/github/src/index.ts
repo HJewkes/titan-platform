@@ -1,4 +1,4 @@
-export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
+export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
 export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";

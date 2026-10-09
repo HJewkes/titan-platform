@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
+import { hostname } from "node:os";
 import { dirname } from "node:path";
-import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
+import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
@@ -9,12 +10,17 @@ import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { timestampConsole } from "./serve-log.js";
+import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
+import { mountResolveProof } from "./resolve-proof.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
+import { markRevertedRuns } from "./shepherd/reverts.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -25,6 +31,7 @@ export const FACTORY_PORT = 7410;
 /** Empty so registered commands keep their own names: `shepherd.register` becomes `shepherd__register`, not `factory__shepherd__register`. */
 export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
+const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -51,6 +58,15 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   resyncOnStart?: boolean;
   /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
   deployWatch?: DeployWatch;
+  /** The audience an owner proof must name; defaults to this machine's hostname. */
+  aud?: string;
+  /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
+  ownerKeys?: () => OwnerKeys;
+}
+
+interface OwnerProofs {
+  keys: OwnerKeys;
+  aud: string;
 }
 
 export interface FactoryServer {
@@ -63,19 +79,14 @@ export interface FactoryServer {
 
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
+  const stateDir = stateDirOf(options);
   const host = openFactoryHost(options);
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
-  let daemon: DaemonHandle;
-  try {
-    daemon = await startDaemon(daemonOptions(host, options, github, build));
-  } catch (err) {
-    host.close();
-    throw err;
-  }
-  const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
+  const daemon = await startCountedDaemon(host, options, github, build, log);
+  const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
   const held = new Set<string>();
   const thaws = watchThaws(services);
@@ -103,10 +114,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
-  const server = await startFactoryServer(options);
-  const reason = await untilStopped(stop);
-  (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
-  await server.close();
+  const restoreConsole = timestampConsole();
+  try {
+    const server = await startFactoryServer(options);
+    const reason = await untilStopped(stop);
+    (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
+    await server.close();
+  } finally {
+    restoreConsole();
+  }
 }
 
 function untilStopped(stop?: AbortSignal): Promise<string> {
@@ -125,13 +141,56 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
   });
 }
 
-const stateDirOf = (options: FactoryServerOptions): string => options.stateDir ?? dirname(options.dbPath);
+/** `dirname(":memory:")` is the working directory, so an in-memory database must name its state directory rather than leave the pid file and start record in the cwd. */
+function stateDirOf(options: FactoryServerOptions): string {
+  if (options.stateDir !== undefined) return options.stateDir;
+  if (options.dbPath === IN_MEMORY_DB) throw new Error("titan-factory serve needs a stateDir when the database is in memory");
+  return dirname(options.dbPath);
+}
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
+type BuildHealth = BehindMain & { sha: string };
+
+/** The pid file is read before startDaemon removes a stale one: a leftover file means the last serve exited without cleaning up. A refused start is not counted. */
+async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger): Promise<DaemonHandle> {
+  const stateDir = stateDirOf(options);
+  try {
+    const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
+    const recorded: { start?: ServeStart } = {};
+    const daemon = await startDaemon(daemonOptions(host, options, github, build, { proofs: ownerProofs(options), start: () => recorded.start }));
+    recorded.start = recordStart(stateDir, unclean, options, log);
+    return daemon;
+  } catch (err) {
+    host.close();
+    throw err;
+  }
+}
+
+/** A start record that cannot be written costs /health its start fields, never the start itself. */
+function recordStart(stateDir: string, unclean: boolean, options: FactoryServerOptions, log: Logger): ServeStart | undefined {
+  try {
+    return recordServeStart(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) });
+  } catch (err) {
+    log.warn({ err }, "could not record the serve start");
+    return undefined;
+  }
+}
+
+/** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */
+function ownerProofs(options: FactoryServerOptions): OwnerProofs {
+  return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
+}
+
+interface DaemonExtras {
+  proofs: OwnerProofs;
+  start: () => ServeStart | undefined;
+}
+
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, { proofs, start }: DaemonExtras): StartDaemonOptions<FactoryContext> {
   const { routeFor } = routedRunner(options.routes);
+  const log = options.logger ?? consoleLogger;
   return {
     registry: createFactoryRegistry(),
-    createContext: () => factoryContext(host, options.routes),
+    createContext: () => factoryContext(host, options.routes, proofs.aud),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
@@ -145,12 +204,18 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
+      ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
+      ...startHealth(start(), options),
     }),
+    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, log }),
     logger: options.logger,
   };
 }
 
-function buildHealth(options: FactoryServerOptions): BehindMain & { sha: string } {
+const startHealth = (start: ServeStart | undefined, options: FactoryServerOptions): Record<string, unknown> =>
+  start ? { ...serveStartsHealth(start, new Date((options.now ?? Date.now)())) } : {};
+
+function buildHealth(options: FactoryServerOptions): BuildHealth {
   const sha = options.build?.sha ?? buildSha();
   const probe = options.build?.behindMain ?? behindMain({ sha });
   void probe.refresh();
@@ -200,10 +265,25 @@ async function endGone(host: FactoryHost, services: ShepherdServices, log: Logge
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
   for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
-  for (const repo of thawed) {
-    thawed.delete(repo);
-    for (const gate of await supersedeTransientGates(host, services, { repo })) log.info({ ...gate, repo }, "superseded an approve-merge gate a freeze caused once the repo thawed");
+  for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
+}
+
+/** Dequeued before the sweep, so a thaw that lands during it queues the repo again; a PR head that cannot be read, or a sweep that throws, requeues it for the next tick. */
+async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>, repo: string): Promise<void> {
+  thawed.delete(repo);
+  const onUnreadable = (runId: string) => {
+    thawed.add(repo);
+    log.warn({ runId, repo }, "could not read the PR head of a thawed repo's gate; the next sweep tries again");
+  };
+  try {
+    for (const gate of await supersedeTransientGates(host, services, { repo, onUnreadable })) log.info({ ...gate, repo }, "superseded an approve-merge gate a freeze caused once the repo thawed");
+  } catch (err) {
+    thawed.add(repo);
+    throw err;
   }
+  const reverts = await markRevertedRuns(host, services);
+  for (const reverted of reverts.reverted) log.info({ ...reverted }, "marked a merged run reverted");
+  for (const failed of reverts.errors) log.warn({ ...failed }, "could not read main for reverts");
 }
 
 interface ThawWatch {

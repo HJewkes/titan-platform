@@ -94,3 +94,31 @@ describe("WorkflowRunStore ownership", () => {
 function iso(milliseconds: number): string {
   return new Date(milliseconds).toISOString();
 }
+
+describe("WorkflowRunStore annotate", () => {
+  const fact = (data: Record<string, unknown>) => ({ stepId: "later", iteration: 0, agentId: null, signal: null, completedAt: iso(0), data });
+
+  function storeWith(status: "running" | "completed"): WorkflowRunStore {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1), workflowOwnershipMigration(2)]);
+    const store = new WorkflowRunStore(db);
+    store.create({ ...newRun("run-1", "demo", {}), status });
+    return store;
+  }
+
+  it("adds a later fact to a finished run once, and never rewrites it", () => {
+    const store = storeWith("completed");
+
+    expect(store.annotate("run-1", "later", fact({ n: 1 }))).toBe(true);
+    expect(store.annotate("run-1", "later", fact({ n: 2 }))).toBe(false);
+
+    expect(store.get("run-1")!.stepResults.later?.data).toEqual({ n: 1 });
+  });
+
+  it("leaves a run that has not finished alone", () => {
+    const store = storeWith("running");
+
+    expect(store.annotate("run-1", "later", fact({ n: 1 }))).toBe(false);
+    expect(store.get("run-1")!.stepResults).toEqual({});
+  });
+});

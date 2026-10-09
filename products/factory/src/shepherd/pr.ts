@@ -147,7 +147,8 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
 
 async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
   if (outcome.kind === "ci-failed") {
-    if (await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++)) return undefined;
+    const held = await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++);
+    if (held !== false) return held === true ? undefined : held;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
   }
