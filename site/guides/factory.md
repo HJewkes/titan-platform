@@ -332,7 +332,7 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, and deploys are not stalled |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -356,6 +356,8 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 - **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
 - **stale build**: the build sha in `/health` differs from the sha baked into the installed dist; an `unknown` sha on either side never counts.
 - **GitHub down**: the right pid answers but `github` is not `ok`.
+- **stale index.lock**: the service checkout's `.git/index.lock` has no process holding it and is older than 10 minutes. The line names its path and age. `service check` never removes it; a person does, once no git runs there.
+- **deploy stalled**: the deploy block in `/health` has its alarm up (see [below](#service-deploy-redeploy-from-main)). The line names each cause, with the last refusal's reason; `--json` adds the running sha, the waiting asks, the refusals in a row and the last refusal.
 
 It never starts, stops or restarts the job.
 
@@ -363,7 +365,7 @@ It never starts, stops or restarts the job.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | `/health` answers from the launchd or systemd pid with `github` `ok`, and the build is not stale |
+| `0` | `/health` answers from the launchd or systemd pid with `github` `ok`, the build is not stale, and deploys are not stalled |
 | `1` | One of the causes above holds, or the platform is neither macOS nor Linux |
 | `2` | Usage error, such as an invalid `--port` |
 
