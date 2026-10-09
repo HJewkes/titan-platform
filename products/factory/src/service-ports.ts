@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { buildSha } from "./build-info.js";
+import { configPath, loadConfig } from "./config.js";
 import type { CheckPorts } from "./service-check.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
@@ -54,8 +55,15 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
+/** Resolved when the ports are built, from the same env the CLI runs under; an invalid config surfaces here as it does for every other verb that loads it. */
+function configuredLabelPrefix(env: NodeJS.ProcessEnv): { labelPrefix?: string } {
+  const labelPrefix = loadConfig(configPath(env)).service?.labelPrefix;
+  return labelPrefix === undefined ? {} : { labelPrefix };
+}
+
 export function systemServicePorts(): ServicePorts {
   return {
+    ...configuredLabelPrefix(process.env),
     platform: process.platform,
     uid: process.getuid?.() ?? -1,
     home: homedir(),

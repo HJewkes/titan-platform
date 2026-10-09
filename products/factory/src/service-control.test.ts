@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
-import { plistPath, SERVICE_LABEL } from "./service.js";
+import { plistPath, SERVICE_LABEL, serviceLabel } from "./service.js";
 import type { BusyRun } from "./restart-drain.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "./test-support/leak.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
@@ -40,11 +40,15 @@ interface MachineInit {
   pidless?: boolean;
   /** The `busy` field of each /health answer in turn; the last one repeats. Absent leaves the field out, as an older build does. */
   busy?: BusyRun[][];
+  /** `service.labelPrefix` from the factory config. */
+  labelPrefix?: string;
 }
 
 /** A launchd that refuses to bootstrap a loaded label, as the real one does, so an install that skips bootout fails. */
 function fakeMachine(init: MachineInit = {}) {
   const files = new Map(Object.entries(init.files ?? {}));
+  const label = serviceLabel(init.labelPrefix);
+  const TARGET = `gui/${UID}/${label}`;
   const calls: string[] = [];
   const dirs: string[] = [];
   const serves = init.serves ?? true;
@@ -60,7 +64,7 @@ function fakeMachine(init: MachineInit = {}) {
   const verbs: Record<string, () => CommandResult> = {
     print: () => {
       if (job) return ok(`${TARGET} = {\n\tstate = running\n${job.pid === undefined ? "" : `\tpid = ${job.pid}\n`}}\n`);
-      return lingers-- > 0 ? ok(`${TARGET} = {\n\tstate = not running\n}\n`) : failed(113, `Could not find service "${SERVICE_LABEL}" in domain for user gui: ${UID}`);
+      return lingers-- > 0 ? ok(`${TARGET} = {\n\tstate = not running\n}\n`) : failed(113, `Could not find service "${label}" in domain for user gui: ${UID}`);
     },
     bootout: () => {
       job = undefined;
@@ -78,6 +82,7 @@ function fakeMachine(init: MachineInit = {}) {
     platform: init.platform ?? "darwin",
     uid: UID,
     home: HOME,
+    ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
     launchctl,
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
@@ -534,5 +539,45 @@ describe("titan-factory service off macOS and Linux", () => {
 
     expect(code).toBe(EXIT.OK);
     expect(out).toContain(`<string>${SERVICE_LABEL}</string>`);
+  });
+});
+
+describe("titan-factory service with service.labelPrefix", () => {
+  const PREFIX = "dev.ex.";
+  const CUSTOM_LABEL = "dev.ex.titan-factory";
+  const CUSTOM_TARGET = `gui/${UID}/${CUSTOM_LABEL}`;
+  const CUSTOM_PLIST = plistPath(HOME, PREFIX);
+
+  it("installs, reports status and uninstalls under the configured label", async () => {
+    const machine = fakeMachine({ labelPrefix: PREFIX });
+
+    const install = await service(["install"], machine);
+    const status = await service(["status"], machine);
+    const uninstall = await service(["uninstall"], machine);
+
+    expect([install.code, status.code, uninstall.code]).toEqual([EXIT.OK, EXIT.OK, EXIT.OK]);
+    expect(CUSTOM_PLIST).toBe(`${HOME}/Library/LaunchAgents/${CUSTOM_LABEL}.plist`);
+    expect(machine.calls).toEqual(expect.arrayContaining([`launchctl bootstrap gui/${UID} ${CUSTOM_PLIST}`, `launchctl print ${CUSTOM_TARGET}`, `launchctl bootout ${CUSTOM_TARGET}`]));
+    expect(machine.calls.filter((call) => call.includes(SERVICE_LABEL))).toEqual([]);
+    expect(status.out).toContain(`${CUSTOM_LABEL}: loaded`);
+    expect(uninstall.out).toBe(`uninstalled ${CUSTOM_LABEL}; removed ${CUSTOM_PLIST}\n`);
+    expect(machine.files.has(CUSTOM_PLIST)).toBe(false);
+  });
+
+  it("writes the configured label into the plist", async () => {
+    const machine = fakeMachine({ labelPrefix: PREFIX });
+
+    await service(["install"], machine);
+
+    expect(machine.files.get(CUSTOM_PLIST)).toContain(`<string>${CUSTOM_LABEL}</string>`);
+    expect(machine.files.get(CUSTOM_PLIST)).not.toContain(SERVICE_LABEL);
+  });
+
+  it("restarts the configured job with kickstart", async () => {
+    const machine = fakeMachine({ labelPrefix: PREFIX, loaded: true });
+
+    await service(["restart"], machine);
+
+    expect(machine.calls).toContain(`launchctl kickstart -k ${CUSTOM_TARGET}`);
   });
 });
