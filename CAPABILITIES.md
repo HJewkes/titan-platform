@@ -682,7 +682,7 @@ Key exports:
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
 - `seat-state`: `emptySeatState`, `foldSeatEvents`
-- +39 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
+- +41 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
 <a id="cap-decider"></a>
 
