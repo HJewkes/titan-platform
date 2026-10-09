@@ -21,3 +21,5 @@ export { ghCliWire } from "./gh-cli.js";
 export { GitHubInputError, isRepo } from "./validate.js";
 export type { FakeEffects, FakeGitHub } from "./fake.js";
 export { FAKE_APP_ID, FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
+export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.js";
+export { formatSquashMessage } from "./squash-message.js";

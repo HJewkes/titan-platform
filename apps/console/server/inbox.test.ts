@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { MAX_DEPOSIT_BYTES, readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT, MAX_OPEN_DEPOSITS, MAX_OPEN_DEPOSITS_PER_ASKER, fileDeposit } from "./inbox.js";
@@ -50,6 +50,7 @@ beforeEach(async () => {
     codewatchUrl: "http://codewatch.test:7433",
     lanHost: null,
     lanNames: [],
+    lanTls: null,
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
@@ -68,6 +69,10 @@ const post = (body: unknown, headers: Record<string, string> = { "x-titan-client
   const raw = typeof body === "string" ? body : JSON.stringify(body);
   return send("127.0.0.1", config.port, "POST", `/rpc/${INBOX_DEPOSIT}`, { host: `127.0.0.1:${config.port}`, "content-type": "application/json", ...headers }, raw);
 };
+
+/** JSON with every non-ASCII code unit written as `\uXXXX`, the way Python's json.dumps writes it. */
+const asciiEscaped = (value: unknown): string =>
+  JSON.stringify(value).replace(/[\u0080-￿]/g, (unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 const bodyOf = (reply: Reply): { ok: boolean; data?: { id: string; created: boolean }; error?: string } => JSON.parse(reply.body);
 
@@ -164,6 +169,23 @@ describe("inbox.deposit on loopback", () => {
     expect(status).toBe(413);
     expect(sent).toBeLessThan(total);
     expect(await spoolFiles()).toEqual([]);
+  });
+
+  it.each([
+    ["two-byte U+00E9", "é", 2],
+    ["astral U+1F600", "\u{1F600}", 4],
+  ])("files a deposit just under 64 KB of %s sent as \\uXXXX escapes", async (_name, char, storedBytes) => {
+    // The schema's parse adds a few fields to what is stored, so leave headroom for them.
+    const room = MAX_DEPOSIT_BYTES - 1024 - Buffer.byteLength(JSON.stringify(deposit({ context: "" })));
+    const full = deposit({ context: char.repeat(Math.floor(room / storedBytes)) });
+    const raw = asciiEscaped(full);
+
+    const reply = await post(raw);
+
+    expect(Buffer.byteLength(raw)).toBeGreaterThan(2 * MAX_DEPOSIT_BYTES);
+    expect(reply.status).toBe(200);
+    const { items } = await readSpool(config.inboxDir);
+    expect(items.map((item) => item.context)).toEqual([full.context]);
   });
 
   it("refuses a deposit over 64 KB with 400 and files nothing", async () => {

@@ -1,6 +1,7 @@
 # owner-queue
 
-**Tier 2.** No titan dependencies; `zod` is a peer dependency.
+**Tier 2.** Depends on `@titan-design/review-schema` (the round schema, from npm); `zod`
+`^4.3.6` is a peer dependency.
 
 ```sh
 npm install @titan-design/owner-queue zod
@@ -168,6 +169,70 @@ const label = staleLabel(gate, {
   labels an item. An item that is not `open` is never relabelled.
 - PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
   ref as a merge key without its `@<sha>`.
+
+## Review rounds
+
+`buildOwnerRounds(items, options)` turns the open Decide items of a queue into
+`titan-review/round@2` manifests for the review harness. Every manifest passes `RoundSchema`
+from `@titan-design/review-schema`; the package imports that schema rather than copying it.
+
+```ts
+import { buildOwnerRounds, rank } from "@titan-design/owner-queue";
+
+const { rounds, skipped } = buildOwnerRounds(rank(open), {
+  unit: "owner-queue",
+  storybookUrl: "http://127.0.0.1:6006",
+  graduated: ["naming"],
+  principles: [{ id: "layout", rule: "The planner settles a cache layout when no reader sees it.", covers: ["chat:m-1", "chat:m-2"] }],
+});
+// rounds[i].manifest is round.json; rounds[i].bindings maps q1, q2, … back to item ids and option ids
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `unit` | the round's unit name, not blank | required |
+| `storybookUrl` | an http(s) URL on `127.0.0.1`, `localhost` or `[::1]`; round@2 needs one even with no frames | required |
+| `firstRound` | the first round's number, an integer of at least 1; later rounds count up | `1` |
+| `widths` | frame widths, distinct integers from 200 to 3840 | `[1280]` |
+| `graduated` | categories out of shadow mode | none |
+| `principles` | `{ id, rule, covers, recommended? }`: asks that share one reason | none |
+| `maxQuestions` | questions per round, an integer of at least 1; a principle counts as one | `10` |
+
+- **Configuration errors throw.** Options outside the table's rules throw a `ZodError` before
+  any item is read, and every manifest is parsed with `RoundSchema` before it is returned, so
+  a returned round is always one round@2 accepts. Item and principle problems never throw;
+  they are skipped as below.
+
+- **Which items.** Every item is parsed with `ownerItemSchema` first, and every principle with
+  its own schema, so a value only its TypeScript type vouches for never reaches a round. Open
+  `decide` items not routed to the decider are asked. Every other item comes back in `skipped`
+  as `invalid`, `not-open`, `not-decide` or `routed-to-decider`; a principle that does not
+  parse, such as one with a blank rule, is not asked.
+- **Order.** One question and one section per ask, in input order, so rank first. A
+  principle stands where its first covered item stood.
+- **Batching (the question contract's rule 3).** Items a principle covers become one
+  pick-one starting `Principle:`, stating the rule and listing each item as `(1) …; (2) …`,
+  with options yes (the decider settles each by this rule) and no (ask each alone). A one-way
+  item never batches. Each item goes to the first principle that covers it, and a principle
+  left with fewer than two items is not asked.
+- **Shadow and graduated.** round@2 hides recommendations per round, not per question. An ask
+  whose items all have a category in `graduated` goes in a round with
+  `recommendations: "shown"`, unless the ask carries a `hidden` recommendation on an item or
+  on its principle. Everything else, including an item with no category, goes in a separate
+  `"after-answer"` round.
+- **Questions.** An item with options is a pick-one: each option reads `label: description`,
+  the item's summary is the prompt and the `signsOff`, and the decider's pick becomes the
+  recommendation when it has a confidence and a rationale (or a cite, shown as `Cite: …`).
+  An item without options is a text question and carries no recommendation.
+- **Text round@2 is strict about.** Every prompt, section text and option label passes one
+  normaliser: it trims, replaces blank text with a fallback (a blank summary reads "An ask with
+  no summary"), and appends ` (q<n>)` until the text is neither a blanket sign-off such as
+  "Approve" or "LGTM" nor an option label already in the round. No option is ever dropped. A
+  seeded property test feeds adversarial items and principles through and checks every
+  manifest against `RoundSchema`.
+- **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
+  `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
+  feedback can be routed back to each item.
 
 ## What it deliberately does not do
 

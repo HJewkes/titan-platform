@@ -21,6 +21,10 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `healthSampleSchema` is the strict write schema for one stored probe result: `ts`,
   `target`, `kind`, `status` (`pass|warn|fail|unknown`), `latencyMs`, `observed`, `output`,
   `source` (default `probe`) and `dedupKey` (imports only). Unknown fields are refused.
+- `probeHttp(target, deps)` GETs a health route once and returns one sample. It never
+  throws: a refused connection, a timeout, a non-2xx code, a body that is not a health payload
+  or a wrong pid or port is `fail`, and an error inside the probe is `unknown`. `fetch`, the
+  clock (`now`, `after`) and `expectedPid` are injected.
 - `openHealthStore(path, { readonly? })` opens (and, unless read-only, migrates) the
   append-only `health_sample` table on store-sqlite. `appendSamples(db, samples)` validates
   every row, then writes them all in one transaction, so a tick costs one commit and a bad row
@@ -30,8 +34,6 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   split the window into whole epoch-aligned slots (60 s by default) and report `up` (pass or
   warn), `down` (fail), `unknown` and `missing` separately, both shares and the gaps. A
   missing slot is never up.
-
-The HTTP probe arrives in a later TP-1651 slice.
 
 ## `@titan-design/health/metrics`
 
