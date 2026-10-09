@@ -235,9 +235,9 @@ const knowledgeRow = z.object({
   changed: z.string().nullable(),
 });
 
-export const notesResult = z.object({ fetchedAt: z.string(), records: z.array(knowledgeRow) });
+const notesResult = z.object({ fetchedAt: z.string(), records: z.array(knowledgeRow) });
 
-export const recordResult = knowledgeRow.omit({ type: true, changed: true }).extend({
+const recordResult = knowledgeRow.omit({ type: true, changed: true }).extend({
   fetchedAt: z.string(),
   /** A note's kind; a source has none. */
   type: z.string().nullable(),
@@ -247,7 +247,7 @@ export const recordResult = knowledgeRow.omit({ type: true, changed: true }).ext
   truncated: z.boolean(),
 });
 
-export const searchResult = z.object({
+const searchResult = z.object({
   fetchedAt: z.string(),
   query: z.string(),
   hits: z.array(z.object({ ref: z.string(), class: z.string(), initiative: z.string().nullable(), title: z.string().nullable(), excerpt: z.string().nullable() })),
