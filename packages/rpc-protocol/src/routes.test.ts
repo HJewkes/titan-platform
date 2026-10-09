@@ -8,8 +8,10 @@ describe("routes", () => {
     expect([RPC_PREFIX, EVENTS_PATH, HEALTH_PATH, VERSION_PATH]).toEqual(["/rpc/", "/events", "/health", "/version"]);
   });
 
-  it("maps only DATAERR failures to 400", () => {
+  it("maps only DATAERR failures to 400, only NOPERM to 403 and only TEMPFAIL to 429", () => {
     expect(rpcFailureStatus(EXIT.DATAERR)).toBe(400);
+    expect(rpcFailureStatus(EXIT.NOPERM)).toBe(403);
+    expect(rpcFailureStatus(EXIT.TEMPFAIL)).toBe(429);
     expect(rpcFailureStatus(EXIT.USAGE)).toBe(500);
     expect(rpcFailureStatus(EXIT.CONFIG)).toBe(500);
   });

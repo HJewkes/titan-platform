@@ -1,8 +1,9 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
+import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
+import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./review-schemas.js";
 
 const MINUTE = 60_000;
@@ -216,6 +217,21 @@ describe("acceptVerdict malformed record", () => {
     expect(readMalformed(result)).toEqual({ refusal, writtenAt: WRITTEN_AT });
   });
 
+  it("reads the Claude Code weekly-limit notice as a usage limit, not a missing Verdict line", () => {
+    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+
+    const result = acceptVerdict(input, [said(notice)]);
+
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON });
+    expect(readMalformed(result)).toBeNull();
+  });
+
+  it("still records a review that merely quotes a limit as malformed", () => {
+    const review = `I looked at it. The reviewer note says: You've hit your weekly limit. ${"x".repeat(400)}`;
+
+    expect(acceptVerdict(input, [said(review)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
+  });
+
   it("covers every refusal the schema lists", () => {
     const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"]);
 
@@ -248,5 +264,44 @@ describe("acceptVerdict malformed record", () => {
     const result = acceptVerdict(input, [said(block("WAIT", goodPr, goodHead))]);
 
     expect(result).toEqual({ kind: "none", reason: "wait" });
+  });
+});
+
+describe("acceptVerdict FIX_FIRST findings", () => {
+  const OLD_HEAD = "d".repeat(40);
+  const fixFirst = (head: string) => `Verdict: FIX_FIRST\nPR: octo/demo#7\nHead: ${head}`;
+  const VERDICT = `1. The parser drops the last token.\n\n${fixFirst(HEAD)}`;
+  const POSTSCRIPT = `A background search hit its time limit and was stopped. The verdict stands.\n\n${fixFirst(HEAD)}`;
+  const said = (text: string, writtenAt: number): ReviewerMessage => ({ ...verdictMessage(writtenAt), text });
+  const findingsOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? result.text : undefined);
+
+  it("keeps the verdict's findings when a postscript restating the block follows it", () => {
+    const result = acceptVerdict(input, [said(VERDICT, DISPATCHED_AT + 1), said(POSTSCRIPT, DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(`${VERDICT}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
+  });
+
+  it("hands over every finding when a later FIX_FIRST adds one, in order and once each", () => {
+    const fuller = `1. The parser drops the last token.\n2. The cache key ignores the locale.\n\n${fixFirst(HEAD)}`;
+
+    const result = acceptVerdict(input, [said(VERDICT, DISPATCHED_AT + 1), said(VERDICT, DISPATCHED_AT + 2), said(fuller, DISPATCHED_AT + 3)]);
+
+    expect(findingsOf(result)).toBe(`${VERDICT}${FINDINGS_SEPARATOR}${fuller}`);
+  });
+
+  it("never hands over a verdict written for an older head", () => {
+    const older = said(`1. Stale finding.\n\n${fixFirst(OLD_HEAD)}`, DISPATCHED_AT + 1);
+
+    const result = acceptVerdict(input, [older, said(POSTSCRIPT, DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(POSTSCRIPT);
+  });
+
+  it("never hands over a verdict written before the dispatch", () => {
+    const early = said(VERDICT, DISPATCHED_AT - 1);
+
+    const result = acceptVerdict(input, [early, said(fixFirst(HEAD), DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(fixFirst(HEAD));
   });
 });

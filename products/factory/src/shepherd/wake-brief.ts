@@ -1,8 +1,10 @@
-import { dataFence } from "@titan-design/agent-dispatch";
+import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
+import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
+import { BLOCK_LINE, findingsText } from "./fix-first-findings.js";
 import { failureOf } from "./error-class.js";
-import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
+import { DEFECT_CLASS_HEADING } from "@titan-design/review-panel";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
@@ -30,6 +32,8 @@ export interface WakeFacts {
   payload: unknown;
   /** Which FIX_FIRST of the run a review wake is, from 1; absent reads as the first. */
   fixFirst?: number;
+  /** The run whose step records hold the verdict, named when a review wake has no findings to hand over. */
+  runId?: string;
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
@@ -94,16 +98,15 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
   return `${intro} The files both sides changed follow.${registries}`;
 }
 
-const FixFirst = z.looseObject({ text: z.string().min(1) });
-const VERDICT_LINE = /^\s*(?:Verdict|PR|Head):/;
+const FixFirst = z.looseObject({ text: z.string().optional() });
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
 
-/** The reviewer's defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
+/** The reviewer's newest defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
 export function defectClassSection(text: string): string | undefined {
   const lines = text.split("\n");
-  const start = lines.findIndex(isDefectHeading);
-  if (start < 0) return undefined;
-  const end = lines.findIndex((line, index) => index > start && VERDICT_LINE.test(line));
+  const start = lines.length - 1 - [...lines].reverse().findIndex(isDefectHeading);
+  if (start >= lines.length) return undefined;
+  const end = lines.findIndex((line, index) => index > start && BLOCK_LINE.test(line));
   return lines.slice(start, end < 0 ? undefined : end).join("\n").trim();
 }
 
@@ -115,9 +118,17 @@ function ordinal(n: number): string {
 const STRUCTURAL = "Do not patch the items one by one: fix the defect class at the one boundary where a single change covers every instance, then check that each blocking item in the findings is covered by it.";
 const NO_CLASS = "The reviewer named no defect class. Name the class these items share and the boundary where one fix covers it in your final message, then fix it there.";
 
+/** Handing a fixer a bare block, or nothing, reads as findings that were lost; saying so sends it to the record instead. */
+function noFindingsWake(input: WakeFacts, text: string): { reason: string; payload: string } {
+  const run = input.runId === undefined ? "" : ` of run ${input.runId}`;
+  const reason = `An independent review of head ${input.headSha} returned FIX_FIRST, but Shepherd found no findings in the reviewer's verdict for head ${input.headSha}. Read the recorded verdict in step ${AWAIT_VERDICT_STEP}:${input.headSha}${run} before you change anything, and say in your final message what you fixed and why.`;
+  return { reason, payload: dataFence("verdict as recorded", text === "" ? "(no verdict text)" : text) };
+}
+
 /** A repeat FIX_FIRST carries the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
-  const text = FixFirst.parse(input.payload).text;
+  const text = FixFirst.parse(input.payload).text ?? "";
+  if (findingsText(text) === "") return noFindingsWake(input, text);
   const nth = input.fixFirst ?? 1;
   const findings = dataFence("review findings", text);
   if (nth < STRUCTURAL_FIX_FIRST) return { reason: `An independent review of head ${input.headSha} returned FIX_FIRST. Its findings follow.`, payload: findings };
@@ -221,4 +232,37 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
     case "fix-proof":
       return { reason: `The fix-proof check at head ${head} did not pass. Its result follows.`, payload: dataFence("fix-proof result", JSON.stringify(input.payload ?? null, null, 2)) };
   }
+}
+
+export const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
+/** The roster's `spawnedBy` for a spawn from the CLI, which Shepherd's own spawns are. */
+const HUMAN_SPAWNER = "human";
+
+/** A spawner that is a session a report can reach; agent-dispatch checks only a row's required strings, so `spawnedBy` is narrowed here. */
+export const isSeat = (spawner: unknown): spawner is string => typeof spawner === "string" && spawner !== HUMAN_SPAWNER && PEER_NAME_PATTERN.test(spawner);
+
+/**
+ * Shepherd spawns through the CLI as the human, so the broker appends no return contract and the brief is the only
+ * place a successor learns whom to report to. Left unsaid, one guessed from its peer list and reported to another seat.
+ */
+function reportLine(seat: string | undefined): string {
+  if (seat === undefined) return "then end your turn with your report as plain text and send it to no session, since Shepherd found no seat that started this PR's lineage, and";
+  return `then send your report with chat_send to ${seat}, the seat that started this PR's lineage, and to no other session. In it,`;
+}
+
+interface SuccessorTask {
+  input: { repo: string; pr: number };
+  pr: PullRequest;
+  reason: string;
+  payload: string;
+}
+
+export function successorBrief(task: SuccessorTask, predecessor: string, name: string, seat: string | undefined): string {
+  const { input, pr } = task;
+  return [
+    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
+    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
+    task.payload,
+    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), ${reportLine(seat)} ${HEAD_LINE}`,
+  ].join("\n\n");
 }

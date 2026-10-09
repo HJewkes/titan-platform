@@ -6,10 +6,10 @@ loopback daemon built from `@titan-design/daemon` and `@titan-design/registry`. 
 talks only to that daemon, through `@titan-design/react-app` hooks typed from the daemon's own
 command definitions. The app is private and publishes nothing.
 
-The skeleton (TP-842) serves the shell, hash routes and a nav for every planned view. The
+The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
-the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847),
-which no view shows yet. Every other view except Status is a placeholder that names the task
+the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847), and `agents.messages` and `agents.queue` (TP-1059),
+which no view shows yet. Every other view except Home is a placeholder that names the task
 that builds it.
 
 ## Run it
@@ -26,15 +26,16 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 | Served | `pnpm --filter titan-console serve`, or `node apps/console/dist/cli.js` (the `titan-console` bin) | The daemon serves the single-file build through `mountStaticApp` beside `/rpc` |
 | From disk | `pnpm --filter titan-console export` | Writes `dist/console.html` with its first-paint answers embedded by `embedSnapshot`; open it with no daemon. It records the status and the portfolio, with no personal initiative |
 
-`serve` prints the address and answers until SIGINT or SIGTERM:
+`serve` prints the address, and the LAN address too in LAN mode, and answers until SIGINT or SIGTERM:
 
 ```
 titan console: http://127.0.0.1:7500/ (pid 4242)
+titan console on the LAN: http://lan-box:7500/ (sign in with `titan-console login-link`)
 ```
 
 ## Ports and settings
 
-The console listens on **7500**, loopback only. It never uses 7400, because the active-work
+The console listens on **7500**, on loopback only unless LAN mode is on (see below). It never uses 7400, because the active-work
 daemon and `titan-miner serve` both default to it. It refuses to start on a port that one of
 its upstreams uses, and on a port value that is not a number.
 
@@ -44,13 +45,52 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_STATE` | `~/.local/state/titan-console` | Holds the daemon's pid file; a second console over the same directory is refused |
 | `TITAN_CONSOLE_ACTIVE_WORK_PORT` | `7400` | Loopback port of the active-work daemon |
 | `TITAN_CONSOLE_AGENT_CHAT_PORT` | `7600` | Loopback port of the agent-chat broker |
-| `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call |
+| `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
+| `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
+| `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, served behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
+| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
+| `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Leave it unset until the LAN carries TLS. Any value but `0` or `1` is refused |
+| `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
 directory, under the name `active-work`.
+
+## LAN mode
+
+With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,
+the console adds a second listener on that address and the same port, through the daemon
+package's `remote` option. There is no setting that binds the LAN without auth. The loopback
+listener is unchanged and needs no credentials.
+
+On the LAN listener the Host guard runs first: only `TITAN_CONSOLE_HOST` and the LAN names,
+each with the bound port, are answered, and anything else, `localhost` included, gets 403.
+Then every route, the page and `/health` included, needs a session cookie or
+`Authorization: Bearer <secret>`, and answers 401 without one. `/mcp` is never served there.
+
+```sh
+titan-console login-link     # prints http://<first LAN name>:7500/auth/login?code=...
+titan-console token rotate   # rewrites lan.token at 0600; every session and link ends
+```
+
+- **`login-link`** mints a code from the token file, so it needs no running daemon. It works
+  once and for ten minutes, and a daemon that restarts after minting refuses it. Run it with
+  the same `TITAN_CONSOLE_PORT`, `_STATE`, `_TOKEN` and `_LAN_NAMES` as the service. The link
+  is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
+  nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
+  code as JSON, and that sets an HttpOnly, SameSite=Strict cookie that lasts 30 days.
+- **`token rotate`** writes a fresh secret by rename. The running daemon re-reads the file,
+  so every session and outstanding link ends with no restart. This is how to revoke a lost
+  device.
+- **Logout** is `POST /auth/logout` with a JSON body. It clears that browser's cookie only;
+  a copied cookie stays valid until a rotation.
+
+The LAN is plain HTTP, so a cookie crosses the network in clear text. Nothing is exposed until
+the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step. The unit and
+the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.md).
 
 ## The daemon
 
@@ -60,10 +100,20 @@ directory, under the name `active-work`.
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
-| `POST /rpc/work.portfolio` | Every initiative with its state, open-task rollup, note, source and session counts, newest activity and `personal` flag |
+| `POST /rpc/agents.messages` | `{ agent, peer?, before?, limit? }` in; that agent's messages, or the pair's, newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
+| `POST /rpc/agents.queue` | `{ include_system? }` in; open items waiting on the human from `/api/queue`, questions first, each with `asker` and `ageMs`. The broker's own notices are counted in `hidden` unless `include_system` is set |
+| `POST /rpc/work.portfolio` | Every initiative with its state, brief `taskPrefix`, open-task rollup, note, source and session counts, newest activity and `personal` flag |
+| `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, and `stageGuessed` when no evidence was found |
+| `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
+
+`work.tasks` derives stages from the local clones that any `artifacts.yml` names. Per clone it
+reads local refs, worktrees and main-line subjects with `git` (it never fetches) and open pull
+requests with one `gh` call, cached for a minute. A failed GitHub read is listed under
+`evidence.degraded` and leaves the review stage unset rather than failing the command.
 
 Three rules hold for every later slice.
 
@@ -71,7 +121,69 @@ Three rules hold for every later slice.
   daemons at `127.0.0.1:<port>`; only the port is configurable.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
-- **Read-only.** There is no command that writes, answers a queue item, or controls an agent.
+- **Read-only, apart from deposits.** The one write is `inbox.deposit`, which files an item but
+  cannot answer one. No command answers a queue item or controls an agent. A later one must
+  take a class below.
+
+## Who may run a command
+
+Every command the registry serves carries a class, set by `server/owner-guard.ts`. A refusal
+is 403 with the envelope code 77 (`EXIT.NOPERM`) and a reason that names the class. It never
+echoes a cookie, the token or a login code.
+
+| Class | Runs for |
+| --- | --- |
+| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` is a read |
+| `deposit` | An HTTP call: on loopback, where every POST already needs an allowlisted `Origin` or `X-Titan-Client`, or on the LAN with either credential |
+| `owner-write` | Only the owner's session cookie on the LAN listener, from a peer that is not this machine, while `TITAN_CONSOLE_OWNER_WRITES=1` |
+
+Owner writes answer for the owner: answers, approvals and merge gates. Loopback carries no
+credential and every same-user process can read `lan.token`, so loopback and
+`Authorization: Bearer` both get 403. A same-user agent can still mint a login link and curl
+the LAN address, so a cookie arriving from one of this machine's own addresses is refused
+too. With the switch off, owner writes answer "owner writes disabled until TLS". The handler
+receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
+presence proof. An owner-write handler is defined with `ownerWrite: true` and wrapped by
+`ownerWriteCommand`. `readCommand` and `depositCommand` refuse a marked handler at runtime,
+when they wrap it and again at registry build. The type check is narrower. Passing a handler
+whose `run` needs `ctx.ownerPresence` under its own type fails to compile. Once the handler is
+widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's return type,
+an array) or cast, it compiles, because `run` is a bivariant method in
+`@titan-design/registry`. The `ownerWrite` mark is then the only guard. An unmarked handler that
+reads a required `ownerPresence` fails closed, since the field is absent. One that declares it
+optional is served as a read or deposit, with no presence proof. That is the known open gap,
+tracked by TP-2115, which also makes `run` a property so widening no longer compiles.
+Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
+The OS account is still the trust boundary: this stops an agent answering for the owner by
+accident or as a confused deputy, not a hostile process running as the same user.
+
+## Owner inbox deposits
+
+Any agent files an owner item with `inbox.deposit`, or from a shell:
+
+```sh
+titan-console inbox file '{"depositId":"ask-1","asker":"my-agent","kind":"decide",...}'
+titan-console inbox file - < deposit.json   # - or no argument reads stdin
+```
+
+The CLI posts to `127.0.0.1:$TITAN_CONSOLE_PORT` only, refuses a redirect, and prints the item
+id alone. On a refusal it prints the console's reason and exits 1; it never echoes the body.
+
+- **Strict body.** `ownerItemDepositSchema` from `@titan-design/owner-queue` refuses any field
+  only the system sets: `id`, `sources`, `status`, `answer`, `route`, `authority`, `lint` and
+  `recommended.hidden`. Each answers 400 and files nothing.
+- **One file per deposit.** `owner-queue/spool`'s `writeDeposit` writes it at 0600 under
+  `TITAN_CONSOLE_INBOX_DIR`. The file name percent-encodes `asker` and `depositId`, so `../`, `/`
+  and NUL cannot leave the spool.
+- **Idempotent.** A repeat of an asker's `depositId` keeps the first body and answers its item
+  id with `created: false`.
+- **Caps.** A deposit over 64 KB, measured as the spool stores it, answers 400. An asker with
+  200 open deposits, those with no answer file beside them, gets 429 (`EXIT.TEMPFAIL`) until one
+  is answered. Deposits run one at a time, so racing calls cannot pass the cap together.
+- **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
+  identity, and a LAN credential names no agent. One agent can file under another's name, and
+  can spread past the cap across invented names. A deposit still cannot answer or resolve
+  anything, so this costs inbox noise, not owner authority.
 
 ## active-work reads
 
@@ -113,16 +225,22 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
-| `#/` | Status | Upstream reachability | this slice |
+| `#/` | Home | Upstream reachability, until the Home page lands | TP-1061 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
-| `#/tasks` | Tasks | Read-only board and task detail | TP-866 |
-| `#/sessions` | Sessions | Sessions list, conversation, sidebar, replay | TP-862, TP-863 |
-| `#/agents` | Agents | Roster with costs, topology, agent-to-agent chat | TP-864, TP-865 |
-| `#/productivity` | Flow | Productivity and quality | TP-867 |
-| `#/knowledge` | Notes | Notes and sources, then the knowledge graph | TP-869, TP-871 |
-| `#/search` | Search | Search and the what-is-where inventory | TP-870 |
-| `#/stores` | Stores | Databases and file roots | TP-872 |
+| `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
+| `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
+| `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
+| `#/knowledge`, `#/knowledge/<ref>` | Notes | Notes and sources with a reader, and a Graph tab | TP-869, TP-871a |
+
+Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
+A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,
+including Flow, Search and Stores, which left the rail, opens Home.
+
+`src/pages/index.ts` maps a view to its page, one entry per page; a rail entry with no entry
+renders its placeholder. `src/refs.ts` holds `refToRoute`, the one place a ref (`task:`, `note:`,
+`source:`, `session:`, `agent:`, `pr:`, `code:`) becomes a console route, a GitHub pull request
+or a codewatch file, and `initiativeForTask`, which finds a task's initiative from its id prefix.
 
 The command palette (TP-868) is an overlay, so it has no route.
 
@@ -142,7 +260,7 @@ existing piece, not worked around with local styles.
 | Gap | What the console does until it is filled |
 | --- | --- |
 | No `console` brand preset in `shell/brands` | Borrows the `agents` preset and overrides the wordmark |
-| No search, database or chart glyph in `components/icons` | Search uses `TargetIcon`, Stores uses `EqualIcon`, Flow uses `AwardIcon` |
+| No home glyph exported from `components/icons` | Home uses `ActivityIcon` |
 | No page container for `AppShell`'s content region | Views render flush against the rail, with no inset |
 | `InitiativeCard` has no press handler and no slot for record counts, newest activity or a personal mark | The portfolio adds a `Table` under `PortfolioOverview` that carries the counts, the `personal` badge and the link into the detail |
 | No list or reader for notes and sources (TP-859) | The detail lists both in a dense `Table`; nothing opens a note or a source yet |
@@ -161,8 +279,8 @@ server/   config.ts (ports and paths), paths.ts (the built page and export locat
           agents.* commands), commands.ts (the command list and `ConsoleCommands`), registry.ts,
           daemon.ts, cli.ts (the bin), dev.ts, export.ts, fixtures.ts (synthetic answers),
           test-support.ts (a fake daemon for tests)
-src/      main.tsx, App.tsx (the shell), router.ts, views.tsx (the nav and its placeholders),
-          pages/, data/rpc.ts (typed hooks)
+src/      main.tsx, App.tsx (the shell), router.ts, refs.ts (refToRoute), views.tsx (the rail and
+          its placeholders), pages/ (index.ts is the page registry), data/rpc.ts (typed hooks)
 ```
 
 Tests sit beside the code. `server/*.test.ts` start the real daemon on an ephemeral port

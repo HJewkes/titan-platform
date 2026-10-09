@@ -38,6 +38,21 @@ describe("resolveDbPath", () => {
 });
 
 describe("loadConfig", () => {
+  it.each(["http://127.0.0.1:7410", "https://factory.example.test/"])("reads %s as the remote factory", (remoteFactory) => {
+    expect(loadConfig(configPath(xdg({ remoteFactory }))).remoteFactory).toBe(remoteFactory);
+  });
+
+  it.each(["remotefactory", "remote_factory", "remoteFactoryUrl"])("rejects %s as a misspelt remoteFactory key", (key) => {
+    expect(() => loadConfig(configPath(xdg({ [key]: "http://127.0.0.1:7410" })))).toThrow(/remoteFactory/);
+  });
+
+  it.each(["", "127.0.0.1:7410", "ftp://factory.example.test", "file:///tmp/factory.sqlite3", "http://owner:secret@factory.example.test", 7410])(
+    "rejects %j as the remote factory",
+    (remoteFactory) => {
+      expect(() => loadConfig(configPath(xdg({ remoteFactory })))).toThrow(/remoteFactory/);
+    },
+  );
+
   it("names the config path when the file is not valid JSON", () => {
     const env = xdg({});
     writeFileSync(configPath(env), "{ not json");
@@ -135,6 +150,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
   });
 
+  it("reads a g10 changed-line limit and rejects one that is not a positive integer", () => {
+    const review = { profile: "rv", g10ChangedLines: 250 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", g10ChangedLines: 0 } } })))).toThrow(/g10ChangedLines/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 
@@ -152,6 +174,10 @@ describe("loadConfig", () => {
 
   it("rejects an agent-chat binary path that holds a NUL", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent\0chat" } })))).toThrow(/shepherd\.agentChatBin: must not contain a NUL/);
+  });
+
+  it("rejects a hub seat configured without an agent-chat binary", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { hubSeat: "hub" } })))).toThrow(/shepherd\.agentChatBin: hubSeat needs an agentChatBin/);
   });
 
   it("rejects a reviewer configured without an agent-chat binary", () => {

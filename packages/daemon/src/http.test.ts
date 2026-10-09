@@ -1,7 +1,17 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
+import type * as AuthModule from "./auth.js";
+import { createDaemonAuth, ensureTokenFile, getRequestAuth, type DaemonAuth } from "./auth.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
+
+vi.mock("./auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof AuthModule>();
+  return { ...actual, getRequestAuth: vi.fn(actual.getRequestAuth) };
+});
 
 function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
   return buildHttpApp<TestContext>({
@@ -87,6 +97,15 @@ describe("POST /rpc/:name", () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false, error: "kaboom", code: 78 });
+  });
+
+  it("answers 403 when a command refuses its caller with NOPERM", async () => {
+    const app = buildApp({ formatError: () => ({ message: "not for you", code: 77 }) });
+
+    const res = await postRpc(app, "boom", "{}");
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "not for you", code: 77 });
   });
 
   it("treats a missing body as no arguments", async () => {
@@ -229,5 +248,75 @@ describe("mountRoutes", () => {
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("dashboard");
+  });
+});
+
+describe("gate", () => {
+  let dir: string;
+  let auth: DaemonAuth;
+  let secret: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(tmpdir(), "daemon-gate-"));
+    const tokenFile = path.join(dir, "lan.token");
+    secret = ensureTokenFile(tokenFile);
+    auth = createDaemonAuth({ tokenFile });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const gatedApp = (overrides: Partial<HttpAppOptions<TestContext>> = {}) => buildApp({ gate: auth, ...overrides });
+
+  it.each(["/health", "/version", "/events"])("answers 401 on GET %s without credentials", async (route) => {
+    const res = await gatedApp().request(route);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("answers 401 on /rpc without credentials and never builds a context", async () => {
+    const createContext = vi.fn(createTestContext);
+
+    const res = await postRpc(gatedApp({ createContext }), "greet", JSON.stringify({ name: "x" }));
+
+    expect(res.status).toBe(401);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 on a product route", async () => {
+    const app = gatedApp({ mountRoutes: (a) => a.get("/ui", (c) => c.text("dashboard")) });
+
+    expect((await app.request("/ui")).status).toBe(401);
+  });
+
+  it("serves the built-ins to a bearer", async () => {
+    const app = gatedApp();
+    const bearer = { authorization: `Bearer ${secret}` };
+
+    expect((await app.request("/health", { headers: bearer })).status).toBe(200);
+    expect((await postRpc(app, "greet", JSON.stringify({ name: "x" }), { headers: bearer })).status).toBe(200);
+  });
+
+  it("runs after the Host guard, so a foreign Host gets 403 even on the login path", async () => {
+    const app = gatedApp();
+    const evil = { host: "evil.example" };
+
+    expect((await app.request("/health", { headers: evil })).status).toBe(403);
+    expect((await app.request("/auth/login", { headers: evil })).status).toBe(403);
+  });
+
+  it("treats a request the gate left no record on as unauthenticated", async () => {
+    const createContext = vi.fn(createTestContext);
+    vi.mocked(getRequestAuth).mockReturnValueOnce(undefined);
+
+    const res = await postRpc(gatedApp({ createContext }), "greet", JSON.stringify({ name: "x" }), {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+
+    expect(res.status).toBe(401);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
+  it("leaves an ungated app's /health open", async () => {
+    expect((await buildApp().request("/health")).status).toBe(200);
   });
 });

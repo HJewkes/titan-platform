@@ -23,9 +23,40 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Turbo replays a package's build or typecheck when its inputs hash the same. Only main saves; PRs restore main's cache.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
       - run: pnpm typecheck
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Save turbo cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+      # Content strategy keys the cache on file contents, so a fresh checkout's mtimes do not matter. Only main saves.
+      # eslint cannot see edits to the workspace plugin's rules, so its source is part of the key.
+      - name: Restore eslint cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
+          restore-keys: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-
       - run: pnpm lint
+      - name: Save eslint cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
       # It only orders files, so a miss leaves the step as it was and a hit never skips a test.
       - name: Restore vitest results
@@ -43,6 +74,7 @@ jobs:
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
+      - run: pnpm metrics:check
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -64,10 +96,34 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @titan-design/code-graph... run build
+      # The indexer re-parses only files that changed since the cached graph (a cold head index is ~250 s).
+      # The key covers the indexer's own code, so a schema or extractor change misses; the ISO week in the
+      # key and the restore-key bounds a stale chain to a week, so each week's first main run indexes cold.
+      # Source only: after the build, node_modules and dist sit under the same package directories.
+      - name: Compute the cache key
+        id: key
+        env:
+          SOURCE_HASH: ${{ hashFiles('packages/code-graph/src/**', 'packages/code-graph/package.json', 'packages/code-parser/src/**', 'packages/code-parser/package.json', 'packages/embed/src/**', 'packages/retrieval/src/**', 'packages/store-sqlite/src/**', 'scripts/dag-check-self.mjs', 'pnpm-lock.yaml') }}
+        run: echo "prefix=dag-graph-$SOURCE_HASH-$(date -u +%G-%V)-" >> "$GITHUB_OUTPUT"
+      - name: Restore the dag-check graph
+        id: graph-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/graph.db
+          key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
+          restore-keys: |
+            ${{ steps.key.outputs.prefix }}
       - name: Check the package DAG
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db"
+        run: pnpm dag:check --report "$RUNNER_TEMP/codewatch-report.json" --db "$RUNNER_TEMP/graph.db" --seed-db "$RUNNER_TEMP/graph.db"
+      # Only main saves, so a pull request never writes a graph built from an unmerged tree.
+      - name: Save the dag-check graph
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.graph-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/graph.db
+          key: ${{ steps.key.outputs.prefix }}${{ github.sha }}
       # On a pull request the report's head is GitHub's merge commit (the tree dag-check indexed), not the PR head.
       - name: Summarize the codewatch report
         if: always()
@@ -75,7 +131,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           node scripts/codewatch-summary.mjs "$RUNNER_TEMP/codewatch-report.json" >> "$GITHUB_STEP_SUMMARY"
-          if [ -n "$PR_HEAD_SHA" ]; then echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -n "$PR_HEAD_SHA" ]; then echo "" >> "$GITHUB_STEP_SUMMARY"; echo "Head is the merge of PR head \`${PR_HEAD_SHA:0:12}\` into the base." >> "$GITHUB_STEP_SUMMARY"; fi
       - name: Upload the codewatch report
         if: always()
         uses: actions/upload-artifact@v4

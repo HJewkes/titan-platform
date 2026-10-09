@@ -1,7 +1,7 @@
 // Structure checks for the rules in CLAUDE.md that no linter enforces (TP-897 plan S5).
 // Each check takes a repo root and returns one remediation message per violation.
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { findTiersRule, layersFromTiers, productIsolationRules } from "./new-package.mjs";
 
@@ -138,6 +138,27 @@ export function checkAgentsMatchesClaude(root) {
   return ["`AGENTS.md` and `CLAUDE.md` differ. Copy `CLAUDE.md` over `AGENTS.md`."];
 }
 
+const BUILD_CONFIGS = ["tsup.config.ts", "vite.config.ts"];
+
+/** R54: a build leaves the tracked tree alone, and a build that reads outside its package is never replayed from the turbo cache. */
+export function checkTurboBuildContract(root) {
+  const messages = [];
+  if (readJson(join(root, "turbo.json")).agentGuidance !== false) {
+    messages.push("`turbo.json` must set `agentGuidance: false`, or turbo rewrites the tracked `AGENTS.md` during `pnpm build` in an agent session.");
+  }
+  for (const dir of workspaceDirs(root)) {
+    const readsProcess = BUILD_CONFIGS.map((file) => join(dir, file))
+      .filter(existsSync)
+      .some((path) => readFileSync(path, "utf8").includes("node:child_process"));
+    const turboPath = join(dir, "turbo.json");
+    const uncached = existsSync(turboPath) && readJson(turboPath).tasks?.build?.cache === false;
+    if (readsProcess && !uncached) {
+      messages.push(`\`${relative(root, dir)}\` runs a process in its build config. Add a \`turbo.json\` that extends \`//\` and sets \`tasks.build.cache\` to false.`);
+    }
+  }
+  return messages;
+}
+
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
   return level === "warn" || level === 1;
@@ -158,4 +179,28 @@ export async function checkNoWarnSeverity(root) {
     }),
   );
   return found.flat();
+}
+
+function workspaceGlobs(root) {
+  return [...readFileSync(join(root, "pnpm-workspace.yaml"), "utf8").matchAll(/^\s*-\s*["']?([^"'\s#]+)["']?/gm)].map((m) => m[1]);
+}
+
+function resolveWorkspaceGlob(root, glob) {
+  const dirs = glob.endsWith("/*") ? subdirs(join(root, glob.slice(0, -2))) : [join(root, glob)];
+  return dirs.filter((dir) => existsSync(join(dir, "package.json"))).map((dir) => relative(root, dir));
+}
+
+/** R55: the root lint command reaches every workspace dir; workspaces carry no lint script of their own. */
+export function checkRootLintCoversWorkspaces(root) {
+  const targets = (readJson(join(root, "package.json")).scripts?.lint ?? "")
+    .split(/\s+/)
+    .map((token) => token.replace(/^["']|["']$/g, ""));
+  const covers = (target, dir) => target === dir || target.startsWith(`${dir}/`) || target.startsWith(`${dirname(dir)}/*/`);
+  return workspaceGlobs(root)
+    .flatMap((glob) => resolveWorkspaceGlob(root, glob))
+    .filter((dir) => !targets.some((target) => covers(target, dir)))
+    .map(
+      (dir) =>
+        `The root \`lint\` script does not reach \`${dir}\`. Add \`${dir}/src\` to it in \`package.json\`; workspaces have no \`lint\` script of their own.`,
+    );
 }

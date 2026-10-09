@@ -1,4 +1,4 @@
-import type { ActorClass, ResolverClass } from "@titan-design/authority";
+import type { ActorClass, DelegateResolverClass, ResolverClass } from "@titan-design/authority";
 
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
 export type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
@@ -20,6 +20,8 @@ export interface GateRecord {
   expiresAt: string | undefined;
   /** Who resolved the gate, as claimed by the caller; unset for gates resolved before stores recorded it. */
   resolvedBy: GateResolver | undefined;
+  /** The facts the resolver read when it answered, kept so an audit can re-check the decision; unset when none were given. */
+  resolvedEvidence: GateEvidence | undefined;
   /** The authority rule that opened the gate; unset for a gate no rule governs. */
   rule: GateRule | undefined;
   /** One line for the owner: the decision and the recommendation. Unset for a gate opened without a brief. */
@@ -64,6 +66,11 @@ export interface GateRule {
   version: string;
   ruleId: string;
   resolvers: ResolverClass[];
+  /**
+   * Non-owner classes the rule lets answer too, drawn only from `DELEGATE_RESOLVER_CLASSES`. A delegate is admitted
+   * only by a store that has `authorize`, and only when `authorize` allows it; SQLite needs `gateDelegateMigration`.
+   */
+  delegates?: DelegateResolverClass[];
 }
 
 /** A claim about who answered a gate. hitl records it and checks its class; it cannot prove it. */
@@ -95,6 +102,21 @@ export interface GateAnswerAllowance {
   payload: Readonly<Record<string, unknown>>;
 }
 
+/** Plain JSON facts a resolver read at resolve time. hitl stores them on the row and never interprets them. */
+export type GateEvidence = Record<string, unknown>;
+
+/**
+ * Admits a non-owner resolve that the default refusal and every allowance refuse, but only on the evidence the resolver
+ * gave. It sees the pending gate, so it can tie the evidence to the gate's own fields. Must be pure and synchronous, so an
+ * audit can re-run it over the stored row; anything but `true`, or a throw, refuses. The rule and `authorize` still run after it.
+ */
+export type GateEvidencePolicy = (
+  gate: Readonly<GateRecord>,
+  resolver: Readonly<GateResolver>,
+  payload: unknown,
+  evidence: Readonly<GateEvidence>,
+) => boolean;
+
 export interface GateInput {
   /** Defaults to a random UUID. Supply one to make the gate addressable by a name you already own. */
   id?: string;
@@ -115,7 +137,8 @@ export interface GateInput {
 export interface GateStore {
   create(input: GateInput): GateRecord;
   get(id: string): GateRecord | undefined;
-  resolve(id: string, payload: unknown, resolvedBy: GateResolver): GateRecord;
+  /** `evidence` is stored with the resolution; with an `evidencePolicy` it can admit a class the default refuses. */
+  resolve(id: string, payload: unknown, resolvedBy: GateResolver, evidence?: GateEvidence): GateRecord;
   cancel(id: string, reason: string): GateRecord;
   listPending(): GateRecord[];
 }
@@ -224,6 +247,24 @@ export class GateBriefInvalid extends GateError {
     readonly issues: string[],
   ) {
     super(`gate ${gateId} brief is invalid: ${issues.join("; ")}`, gateId);
+  }
+}
+
+export class GateEvidenceInvalid extends GateError {
+  constructor(
+    gateId: string,
+    readonly reason: string,
+  ) {
+    super(`gate ${gateId} cannot record the evidence: ${reason}`, gateId);
+  }
+}
+
+export class GateExpiryInvalid extends GateError {
+  constructor(
+    gateId: string,
+    readonly value: string,
+  ) {
+    super(`gate ${gateId} has an expiresAt that is not a date: ${value}`, gateId);
   }
 }
 

@@ -7,6 +7,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { describe, expect, it, vi } from "vitest";
 import { bindAll } from "../workflows.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
+import { shepherdEventMigration } from "./events.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
 import { FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
 import { SpawnDeferred } from "./spawn-gate.js";
@@ -46,11 +47,12 @@ function memoryFixers(spawned: Rig["spawned"]): FixerAgents {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   const fake = fakeGitHub();
+  fake.addPr({ headSha: fakeSha("pr-head") });
   fake.setRuns(RED, [successRun("validate", 7, undefined, "failure")]);
   fake.jobLogs.set(7, "step one\nassertion failed in widget.test");
   let clock = 0;
@@ -290,27 +292,27 @@ describe("sh-unfreeze", () => {
   it("unfreezes at a later green sha that re-ran every check red at the red sha", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
-    r.fake.setRuns(LATER, [successRun("validate", 8)]);
+    r.fake.setRuns(LATER, [successRun("validate", 8), successRun("dag-check", 9)]);
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toMatchObject({ unfrozen: true });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER })).toMatchObject({ unfrozen: true });
     expect(r.freezes.isFrozen(REPO)).toBe(false);
   });
 
   it("unfreezes at the red sha itself when its red was only a cancel that a later run re-ran green", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED, true);
-    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 9, "2026-10-05T00:31:31Z")]);
+    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 9, "2026-10-05T00:31:31Z"), successRun("dag-check", 10)]);
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: RED })).toMatchObject({ unfrozen: true });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: RED })).toMatchObject({ unfrozen: true });
     expect(r.freezes.isFrozen(REPO)).toBe(false);
   });
 
   it("stays frozen at the red sha when its red was a failure, even after a green re-run there", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);
-    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "failure"), successRun("validate", 9, "2026-10-05T00:31:31Z")]);
+    r.fake.setRuns(RED, [successRun("validate", 7, "2026-10-05T00:29:38Z", "failure"), successRun("validate", 9, "2026-10-05T00:31:31Z"), successRun("dag-check", 10)]);
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: RED })).toMatchObject({ unfrozen: false });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: RED })).toMatchObject({ unfrozen: false });
     expect(r.freezes.isFrozen(REPO)).toBe(true);
   });
 
@@ -319,7 +321,7 @@ describe("sh-unfreeze", () => {
     r.freezes.freeze(REPO, RED);
     r.fake.setRuns(LATER, [successRun("lint", 8)]);
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toMatchObject({ unfrozen: false });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER })).toMatchObject({ unfrozen: false });
     expect(r.freezes.isFrozen(REPO)).toBe(true);
   });
 
@@ -329,14 +331,14 @@ describe("sh-unfreeze", () => {
     r.fake.setRuns(LATER, [successRun("validate", 8)]);
     r.fake.compares.set(`${RED}...${LATER}`, { mergeBaseSha: fakeSha("older"), files: [] });
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toMatchObject({ unfrozen: false });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER })).toMatchObject({ unfrozen: false });
     expect(r.freezes.isFrozen(REPO)).toBe(true);
   });
 
   it("reports the repo is not frozen when no freeze is held", async () => {
     const r = rig();
 
-    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, mergeSha: LATER })).toEqual({ unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" });
+    expect(await unfreezeStep(r.deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER })).toEqual({ unfrozen: false, frozen: false, episode: null, detail: "the repo is not frozen" });
   });
 
   it("stays frozen when the comparison of main cannot be read", async () => {
@@ -344,7 +346,7 @@ describe("sh-unfreeze", () => {
     r.freezes.freeze(REPO, RED);
     const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, compareFiles: async () => Promise.reject(new Error("compare unavailable")) } };
 
-    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER });
 
     expect(result).toMatchObject({ unfrozen: false, frozen: true });
     expect(result.detail).toContain("main could not be read");
@@ -356,7 +358,7 @@ describe("sh-unfreeze", () => {
     r.freezes.freeze(REPO, RED);
     const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, compareFiles: async () => Promise.reject(new Error(LEAKY_MESSAGE)) } };
 
-    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER });
 
     expect(result.detail).toBe("main could not be read: Error");
     expectNoLeak(result);
@@ -367,7 +369,7 @@ describe("sh-unfreeze", () => {
     r.freezes.freeze(REPO, RED);
     const deps: ShepherdDeps = { ...r.deps, port: { ...r.deps.port, latestCheckRuns: async () => Promise.reject(new Error("check runs unavailable")) } };
 
-    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, mergeSha: LATER });
+    const result = await unfreezeStep(deps, r.wiring, { repo: REPO, pr: 1, mergeSha: LATER });
 
     expect(result).toMatchObject({ unfrozen: false, frozen: true });
     expect(result.detail).toContain("main could not be read");

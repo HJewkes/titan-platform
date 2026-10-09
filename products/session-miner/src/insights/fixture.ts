@@ -1,3 +1,4 @@
+import { EVENTS_TABLE_DDL } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 
 /** Synthetic graph rows for the insight tests. Test support: nothing outside tests imports it. */
@@ -72,6 +73,34 @@ export function seedInsightGraph(db: Db): void {
   insertRequest(db, { sessionId: "seat-1", ts: "2026-09-11T05:00:00Z", cacheWrite1h: 90_000 });
 }
 
+export interface FixtureBashCall {
+  toolUseId: string;
+  sessionId: string;
+  ts: string;
+  outputChars: number;
+  /** What the test's command port returns; null is a call that cannot be read back. */
+  command: string | null;
+  /** The recorded `command_heads` signal, when the extractor wrote one. */
+  heads?: string;
+}
+
+/** A Bash tool call with its transcript locator and tool result size; the command text stays with the test's port. */
+export function seedBashCall(db: Db, call: FixtureBashCall): void {
+  offset += 1;
+  db.prepare("INSERT OR IGNORE INTO transcript (source_id, source_key) VALUES (1, '/tmp/demo.jsonl')").run();
+  insertAt(db, "tool_call", { name: "Bash", family: "builtin", input_chars: 1 }, call);
+  db.prepare(`INSERT INTO fact (transcript_id, byte_offset, byte_length, event_type, ts, seq, session_id, tool_use_id)
+    VALUES (1, ?, 10, 'tool_decision', ?, ?, ?, ?)`).run(offset, call.ts, offset, call.sessionId, call.toolUseId);
+  insertAt(db, "context_block", { source: "tool_result", chars: call.outputChars }, call);
+  if (call.heads) insertAt(db, "session_signal", { signal: "command_heads", detail: call.heads }, call);
+}
+
+function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall): void {
+  const row = { transcript_id: 1, byte_offset: offset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
+  const names = Object.keys(row);
+  db.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map((n) => `@${n}`).join(", ")})`).run(row);
+}
+
 export interface FixtureMessage {
   ts: string;
   actor: string;
@@ -82,8 +111,7 @@ export interface FixtureMessage {
 /** An agent-chat events table holding these messages; returns its path. */
 export function seedEventsDb(file: string, messages: readonly FixtureMessage[]): string {
   const db = openDatabase(file);
-  db.exec(`CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, actor TEXT NOT NULL,
-    target TEXT, msg_id TEXT, ref TEXT, body TEXT, meta TEXT)`);
+  db.exec(EVENTS_TABLE_DDL);
   const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, 'message', ?, ?, ?)");
   for (const m of messages) insert.run(Date.parse(m.ts), m.actor, m.target, m.body);
   db.close();

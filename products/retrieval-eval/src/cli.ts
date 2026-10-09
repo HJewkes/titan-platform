@@ -1,17 +1,17 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { activeWorkGraphPath, activeWorkRoot, type PathOptions } from "@titan-design/app-paths";
 import { instantiateEmbedder } from "@titan-design/embed";
 import { Command } from "commander";
 import { activeWorkSearch } from "./candidates/active-work-search.js";
-import { defaultGraphPath, type Candidate } from "./candidates/candidate.js";
+import type { Candidate } from "./candidates/candidate.js";
 import { dateOrderNotes } from "./candidates/date-order.js";
 import { hybridVector } from "./candidates/hybrid-vector.js";
 import { notesFts } from "./candidates/notes-fts.js";
 import { defaultTranscriptRoots, discoverTranscripts, readHead } from "./corpus/transcripts.js";
 import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
-import { defaultActiveRoot } from "./mine/labels.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
 import { formatPairs, parsePairs } from "./pairs.js";
-import { QUERY_VARIANTS, type QueryVariant } from "./query/variants.js";
+import { QUERY_VARIANTS } from "./query/variants.js";
 import { formatRows, runEval } from "./run.js";
 import { formatServed } from "./served/format.js";
 import { buildReport, collectServed } from "./served/report.js";
@@ -29,17 +29,30 @@ interface CommonOptions {
   embedder: string;
 }
 
-function mineCommand(): Command {
+const ARMS = ["spawn", "bootstrap", "both"] as const;
+type Arm = (typeof ARMS)[number];
+
+function parseChoice<T extends string>(flag: string, value: string, allowed: readonly T[]): T {
+  if ((allowed as readonly string[]).includes(value)) return value as T;
+  throw new Error(`${flag} must be one of ${allowed.join(", ")}, got ${value}`);
+}
+
+function parseChoices<T extends string>(flag: string, list: string, allowed: readonly T[]): T[] {
+  return list.split(",").map((value) => parseChoice(flag, value, allowed));
+}
+
+function mineCommand(paths: PathOptions): Command {
   return new Command("mine")
     .description("Mine query/label pairs from transcripts into JSONL")
     .option("--arm <arm>", "spawn | bootstrap | both", "both")
     .option("--out <file>", "write JSONL here instead of stdout")
-    .option("--active-root <dir>", "active-work root", defaultActiveRoot())
-    .option("--graph <file>", "session graph, read-only", defaultGraphPath())
+    .option("--active-root <dir>", "active-work root", activeWorkRoot(paths))
+    .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
     .action(async (options) => {
+      const arm = parseChoice("--arm", options.arm, ARMS);
       const files = discoverTranscripts(defaultTranscriptRoots());
       const heads = await Promise.all(files.map((file) => readHead(file)));
-      const report = await mine(options.arm, files, heads, options.activeRoot);
+      const report = await mine(arm, files, heads, options.activeRoot);
       const jsonl = formatPairs(report.pairs);
       if (options.out) writeFileSync(options.out, jsonl);
       else process.stdout.write(jsonl);
@@ -49,12 +62,12 @@ function mineCommand(): Command {
 }
 
 async function mine(
-  arm: string,
+  arm: Arm,
   files: string[],
   heads: Awaited<ReturnType<typeof readHead>>[],
   activeRoot: string,
 ) {
-  const spawn = arm === "bootstrap" ? undefined : await mineSpawnArm(files, activeRoot);
+  const spawn = arm === "bootstrap" ? undefined : await mineSpawnArm(files, activeRoot, heads);
   const bootstrap = arm === "spawn" ? undefined : await mineBootstrapArm(activeRoot, heads);
   return {
     pairs: [...(spawn?.pairs ?? []), ...(bootstrap?.pairs ?? [])],
@@ -65,7 +78,7 @@ async function mine(
   };
 }
 
-async function buildCandidates(names: string[], common: CommonOptions): Promise<Candidate[]> {
+async function buildCandidates(names: readonly string[], common: CommonOptions): Promise<Candidate[]> {
   const candidates: Candidate[] = [];
   // Baseline first, so the row everything else has to beat is the row above them.
   if (names.includes("date-order-notes")) candidates.push(dateOrderNotes({ activeRoot: common.activeRoot }));
@@ -84,9 +97,9 @@ function hybridEmbedder(backend: string) {
   throw new Error(`--embedder must be hash or ollama, got ${backend}`);
 }
 
-const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"];
+const ALL_CANDIDATES = ["date-order-notes", "active-work-search", "notes-fts", "hybrid-fts-vector"] as const;
 
-function runCommand(): Command {
+function runCommand(paths: PathOptions): Command {
   return new Command("run")
     .description("Score candidate retrievers over a mined pair file")
     .argument("<pairs>", "JSONL produced by `mine`")
@@ -94,16 +107,18 @@ function runCommand(): Command {
     .option("--variants <list>", "comma-separated query derivations", QUERY_VARIANTS.join(","))
     .option("--embedder <backend>", "hybrid-fts-vector's embedder: hash | ollama", "hash")
     .option("--json", "emit rows as JSON instead of a table")
-    .option("--active-root <dir>", "active-work root", defaultActiveRoot())
-    .option("--graph <file>", "session graph, read-only", defaultGraphPath())
+    .option("--active-root <dir>", "active-work root", activeWorkRoot(paths))
+    .option("--graph <file>", "session graph, read-only", activeWorkGraphPath(paths))
     .action(async (pairsFile, options) => {
+      const names = parseChoices("--candidates", String(options.candidates), ALL_CANDIDATES);
+      const variants = parseChoices("--variants", String(options.variants), QUERY_VARIANTS);
       const pairs = parsePairs(readFileSync(pairsFile, "utf8"));
-      const candidates = await buildCandidates(String(options.candidates).split(","), options);
+      const candidates = await buildCandidates(names, options);
       try {
         const rows = await runEval({
           pairs,
           candidates,
-          variants: String(options.variants).split(",") as QueryVariant[],
+          variants,
           onProgress: (done, total) => process.stderr.write(`\r${done}/${total} cells`),
         });
         process.stderr.write("\n");
@@ -124,14 +139,14 @@ function uptakeCommand(): Command {
     });
 }
 
-function servedCommand(): Command {
+function servedCommand(paths: PathOptions): Command {
   return new Command("served")
     .description("Label what rendered bootstrap and spawn blocks served: opened, cited, and the unserved base rate")
     .option("--since <iso-date>", "only blocks rendered at or after this instant")
     .option("--until <iso-date>", "only blocks rendered before this instant; later activity is ignored")
     .option("--files <n>", "rows in the per-file table", "20")
     .option("--json", "emit the full report as JSON")
-    .option("--active-root <dir>", "active-work root, read-only", defaultActiveRoot())
+    .option("--active-root <dir>", "active-work root, read-only", activeWorkRoot(paths))
     .action(async (options) => {
       const files = discoverTranscripts(defaultTranscriptRoots());
       const window = { ...(options.since ? { since: options.since } : {}), ...(options.until ? { until: options.until } : {}) };
@@ -140,13 +155,14 @@ function servedCommand(): Command {
     });
 }
 
-export function buildCli(): Command {
+/** `paths` overrides where the --active-root and --graph defaults read env, home and platform from. */
+export function buildCli(paths: PathOptions = {}): Command {
   return new Command("retrieval-eval")
     .description("Transcript-mined retrieval eval harness (TP-84)")
-    .addCommand(mineCommand())
-    .addCommand(runCommand())
+    .addCommand(mineCommand(paths))
+    .addCommand(runCommand(paths))
     .addCommand(uptakeCommand())
-    .addCommand(servedCommand());
+    .addCommand(servedCommand(paths));
 }
 
 export async function runCli(argv: string[]): Promise<number> {

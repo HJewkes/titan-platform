@@ -33,9 +33,15 @@ afterEach(() => {
 const git = (args: string[], cwd: string): string =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe", env: fixtureEnv() }).trim();
 
+// A substring match on the whole listing passes or fails on the tmp dir name, which can contain the agent name.
+const isWorktreeListed = (repo: string, target: string): boolean =>
+  git(["worktree", "list", "--porcelain"], repo)
+    .split("\n")
+    .includes(`worktree ${target}`);
+
 /** A real repository with one commit — worktree behaviour is not provable against a mock. */
-function makeRepo(): string {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "iso-")));
+function makeRepo(prefix = "iso-"): string {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
   tmpdirs.push(dir);
   seedRepo(dir);
   return dir;
@@ -445,8 +451,9 @@ describe("concurrent worktree adds", () => {
 
     await expect(strategy.allocate(ctxFor(repo, { agentName: "w1" }))).rejects.toThrow("timed out");
 
-    expect(fs.existsSync(path.join(repo, ".worktrees", "w1"))).toBe(false);
-    expect(git(["worktree", "list", "--porcelain"], repo)).not.toContain(".worktrees/w1");
+    const target = path.join(repo, ".worktrees", "w1");
+    expect(fs.existsSync(target)).toBe(false);
+    expect(isWorktreeListed(repo, target)).toBe(false);
     const retry = await createWorktreeAllocator({}).allocate(ctxFor(repo, { agentName: "w1" }));
     expect(fs.existsSync(retry.cwd)).toBe(true);
   });
@@ -478,9 +485,7 @@ describe("concurrent worktree adds", () => {
     await expect(strategy.allocate(ctxFor(repo, { agentName: "w1" }))).rejects.toThrow("timed out");
 
     await vi.waitFor(() => expect(fs.existsSync(target)).toBe(false), { timeout: 5_000 });
-    await vi.waitFor(() => expect(git(["worktree", "list", "--porcelain"], repo)).not.toContain("w1"), {
-      timeout: 5_000,
-    });
+    await vi.waitFor(() => expect(isWorktreeListed(repo, target)).toBe(false), { timeout: 5_000 });
   });
 
   it("kills the hook a timed-out add spawned, and cleans up only after it is gone", async () => {
@@ -537,6 +542,18 @@ describe("worktree release", () => {
     expect((await worktreeStrategy.release(ctx, alloc)).released).toBe(true);
     expect(fs.existsSync(alloc.cwd)).toBe(false);
     expect(git(["branch", "--list", "agent-chat/alice"], repo)).toBe("");
+  });
+
+  it("reports a released worktree as unlisted even when the repo path contains the agent name", async () => {
+    const repo = makeRepo("iso-w1-");
+    const ctx = ctxFor(repo, { agentName: "w1" });
+    const alloc = await worktreeStrategy.allocate(ctx);
+    expect(isWorktreeListed(repo, alloc.cwd)).toBe(true);
+
+    expect((await worktreeStrategy.release(ctx, alloc)).released).toBe(true);
+
+    expect(git(["worktree", "list", "--porcelain"], repo)).toContain("w1");
+    expect(isWorktreeListed(repo, alloc.cwd)).toBe(false);
   });
 
   it("refuses while the worktree has uncommitted work, and leaves it on disk", async () => {

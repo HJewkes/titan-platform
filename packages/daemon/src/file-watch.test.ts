@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setTimeout as realDelay } from "node:timers/promises";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,6 +39,21 @@ async function writeUntilChanged(dir: string, counter: { count: number }): Promi
   if (counter.count === 0) throw new Error(`no change fired for ${dir}`);
 }
 
+/**
+ * Wait until no change has fired for several debounce windows.
+ *
+ * Creating a directory fires its own debounced change (and attaching it fires another), so a
+ * counter reset right after `whenWatching` can be refilled by that leftover timer instead of by
+ * the write under test.
+ */
+async function settle(counter: { count: number }): Promise<void> {
+  let last = -1;
+  while (counter.count !== last) {
+    last = counter.count;
+    await sleep(DEBOUNCE_MS * 5);
+  }
+}
+
 describe("watchTree", () => {
   it("fires one debounced callback for a write inside a nested subdirectory", { timeout: 15_000 }, async () => {
     const nested = path.join(root, "a", "b");
@@ -49,6 +65,69 @@ describe("watchTree", () => {
     await writeUntilChanged(nested, counter);
 
     expect(counter.count).toBe(1);
+  });
+
+  it("fires when a file at the root changes", { timeout: 15_000 }, async () => {
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+    expect(await watcher.whenWatching(root)).toBe(true);
+
+    await writeUntilChanged(root, counter);
+
+    expect(counter.count).toBeGreaterThan(0);
+  });
+
+  it("picks up a directory created after the watcher starts", { timeout: 15_000 }, async () => {
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+    const fresh = path.join(root, "new-initiative");
+    await mkdir(fresh);
+
+    expect(await watcher.whenWatching(fresh, 4000)).toBe(true);
+    await settle(counter);
+    counter.count = 0;
+    await writeUntilChanged(fresh, counter);
+
+    expect(counter.count).toBeGreaterThan(0);
+  });
+
+  it("watches a directory created inside an already-watched subdirectory", { timeout: 15_000 }, async () => {
+    const initiative = path.join(root, "initiative");
+    await mkdir(initiative);
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+    expect(watcher.isWatching(initiative)).toBe(true);
+    const tasks = path.join(initiative, "tasks");
+    await mkdir(tasks);
+
+    expect(await watcher.whenWatching(tasks, 4000)).toBe(true);
+    await settle(counter);
+    counter.count = 0;
+    await writeUntilChanged(tasks, counter);
+
+    expect(counter.count).toBeGreaterThan(0);
+  });
+
+  it("resolves whenWatching for a directory created after the watcher starts", async () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+    const late = path.join(root, "late");
+    await mkdir(late);
+
+    const watching = await watcher.whenWatching(late, 4000);
+
+    expect(watching).toBe(true);
+    expect(watcher.isWatching(late)).toBe(true);
+  });
+
+  it("resolves whenWatching false once the watcher is closed", async () => {
+    const w = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+    // The attach timeout is far past the bound below, so only close() can settle this in time.
+    const pending = w.whenWatching(path.join(root, "never"), 60_000);
+
+    w.close();
+
+    const outcome = await Promise.race([pending, sleep(500).then(() => "still pending")]);
+    expect(outcome).toBe(false);
   });
 
   it("stops firing after close", async () => {
@@ -91,5 +170,80 @@ describe("watchTree", () => {
     missing.close();
 
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("swallows a missing-root error when no onError is given", () => {
+    const missing = watchTree(path.join(root, "absent"), () => undefined);
+
+    expect(missing.isWatching(path.join(root, "absent"))).toBe(false);
+    missing.close();
+  });
+
+  it("reports paths outside the root or not on disk as unwatched", () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+
+    expect(watcher.isWatching(path.dirname(root))).toBe(false);
+    expect(watcher.isWatching(path.join(root, "missing"))).toBe(false);
+  });
+
+  it("resolves whenWatching false when the attach timeout elapses", async () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+
+    const watching = await watcher.whenWatching(path.join(root, "never"), DEBOUNCE_MS);
+
+    expect(watching).toBe(false);
+  });
+
+  it("resolves every waiter on the same late directory", async () => {
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+    const late = path.join(root, "late");
+    const waiting = [watcher.whenWatching(late, 4000), watcher.whenWatching(late, 4000)];
+
+    await mkdir(late);
+
+    expect(await Promise.all(waiting)).toEqual([true, true]);
+  });
+
+  it("keeps attaching new directories after a watched one is removed", { timeout: 15_000 }, async () => {
+    const doomed = path.join(root, "doomed", "inner");
+    await mkdir(doomed, { recursive: true });
+    watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS, onError: () => undefined });
+    expect(watcher.isWatching(doomed)).toBe(true);
+
+    await rm(path.join(root, "doomed"), { recursive: true, force: true });
+    const fresh = path.join(root, "fresh");
+    await mkdir(fresh);
+
+    expect(await watcher.whenWatching(fresh, 4000)).toBe(true);
+  });
+
+  it("never fires once closed, even with a change already pending", async () => {
+    const counter = { count: 0 };
+    watcher = watchTree(root, () => counter.count++, { debounceMs: DEBOUNCE_MS });
+    await writeFile(path.join(root, "pending.md"), "hello");
+    await sleep(DEBOUNCE_MS / 2);
+
+    watcher.close();
+    await sleep(DEBOUNCE_MS * 5);
+
+    expect(counter.count).toBe(0);
+  });
+
+  it("clears its pending debounce timer on close instead of leaving it to expire", { timeout: 15_000 }, async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      watcher = watchTree(root, () => undefined, { debounceMs: DEBOUNCE_MS });
+      for (let attempt = 0; vi.getTimerCount() === 0 && attempt < 100; attempt++) {
+        await writeFile(path.join(root, `pending-${attempt}.md`), "hello");
+        await realDelay(50);
+      }
+      expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+      watcher.close();
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

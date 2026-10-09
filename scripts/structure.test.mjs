@@ -1,8 +1,10 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { checkAreas, loadAreas } from "./areas.mjs";
+import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
   checkLayersMatchTiers,
@@ -12,7 +14,9 @@ import {
   checkNoWarnSeverity,
   checkPnpmPin,
   checkProductIsolation,
+  checkRootLintCoversWorkspaces,
   checkScaffold,
+  checkTurboBuildContract,
   checkZodIsPeer,
 } from "./structure-rules.mjs";
 
@@ -43,7 +47,30 @@ function driftedScriptRoot() {
   cpSync(join(fixture("scaffold-gap"), "packages", "a"), pkgDir, { recursive: true });
   writeFileSync(join(pkgDir, "tsup.config.ts"), "export default {};\n");
   const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
-  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, lint: "echo skipped" } }));
+  writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, typecheck: "echo skipped" } }));
+  return root;
+}
+
+function uncoveredWorkspaceRoot() {
+  const root = tempRoot("structure-lint-");
+  writeFileSync(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n  - "apps/*"\n');
+  writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: { lint: 'eslint "packages/*/src/**/*.ts"' } }));
+  for (const dir of ["packages/a", "apps/web"]) {
+    mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, dir, "package.json"), "{}");
+  }
+  return root;
+}
+
+function turboRoot(prefix, turbo, { runsProcess }) {
+  const root = tempRoot(prefix);
+  writeFileSync(join(root, "turbo.json"), JSON.stringify(turbo));
+  if (runsProcess) {
+    const pkgDir = join(root, "packages", "a");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ name: "@titan-design/a" }));
+    writeFileSync(join(pkgDir, "tsup.config.ts"), 'import { execFileSync } from "node:child_process";\n');
+  }
   return root;
 }
 
@@ -83,7 +110,13 @@ const cases = [
     rule: "R43 a script that differs from the template is reported",
     check: checkScaffold,
     root: driftedScriptRoot,
-    message: "`a` has `script lint` that differs from the scaffold (expected `eslint src`).",
+    message: "`a` has `script typecheck` that differs from the scaffold (expected `tsc --noEmit`).",
+  },
+  {
+    rule: "R55 the root lint command reaches every workspace",
+    check: checkRootLintCoversWorkspaces,
+    root: uncoveredWorkspaceRoot,
+    message: "The root `lint` script does not reach `apps/web`. Add `apps/web/src` to it in `package.json`",
   },
   {
     rule: "R46 tests live next to source",
@@ -128,6 +161,18 @@ const cases = [
     message: "`AGENTS.md` and `CLAUDE.md` differ. Copy `CLAUDE.md` over `AGENTS.md`.",
   },
   {
+    rule: "R54 turbo must not rewrite AGENTS.md",
+    check: checkTurboBuildContract,
+    root: () => turboRoot("structure-turbo-agents-", {}, { runsProcess: false }),
+    message: "`turbo.json` must set `agentGuidance: false`, or turbo rewrites the tracked `AGENTS.md` during `pnpm build` in an agent session.",
+  },
+  {
+    rule: "R54 a build that runs a process is never cached",
+    check: checkTurboBuildContract,
+    root: () => turboRoot("structure-turbo-git-", { agentGuidance: false }, { runsProcess: true }),
+    message: "`packages/a` runs a process in its build config. Add a `turbo.json` that extends `//` and sets `tasks.build.cache` to false.",
+  },
+  {
     rule: "R10 no lint rule at warn severity",
     check: checkNoWarnSeverity,
     root: () => fixture("warn-severity"),
@@ -142,6 +187,59 @@ describe.each(cases)("$rule", ({ check, root, message }) => {
 
   it("reports a violating tree with its remediation", async () => {
     const violations = await check(root());
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain(message);
+  });
+});
+
+function areasRoot(prefix, tiers, externalIds) {
+  const root = tempRoot(prefix);
+  mkdirSync(join(root, ".codewatch"));
+  mkdirSync(join(root, "scripts"));
+  const rule = { id: "package-layers", type: "layered-deps", $tiers: tiers };
+  writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [rule] }));
+  const areas = externalIds.map((id) => ({ id, tier: "product" }));
+  writeFileSync(join(root, "scripts", "areas-external.json"), JSON.stringify({ areas }));
+  return root;
+}
+
+const areaCases = [
+  {
+    rule: "R56 area ids are unique",
+    root: () => areasRoot("structure-areas-dup-", { 0: ["packages/relay"] }, ["relay"]),
+    message: "Area id `relay` is used twice.",
+  },
+  {
+    rule: "R56 every $tiers path has an area",
+    root: () => areasRoot("structure-areas-missing-", { 0: ["packages/Bad_Name"] }, []),
+    message: "`packages/Bad_Name` has no area",
+  },
+];
+
+// Warns, not fails, until W8 (TP-2101) seeds the first entries; then this becomes a failing rule.
+describe("R57 every product area has a metrics entry", () => {
+  it("warns for each product area in this repo with no entry, without failing", () => {
+    const warn = vi.spyOn(console, "warn");
+    const gaps = metricsCoverageGaps(REPO, loadAreas(REPO));
+    gaps.forEach((gap) => console.warn(`warning: ${gap}`));
+    expect(warn).toHaveBeenCalledTimes(gaps.length);
+    warn.mockRestore();
+  });
+
+  it("reports a product area with no entry as a warning", () => {
+    const root = tempRoot("structure-metrics-");
+    const gaps = metricsCoverageGaps(root, [{ id: "relay", tier: "product" }]);
+    expect(gaps).toEqual([expect.stringContaining("Product area `relay` has no `metrics/relay.yml`.")]);
+  });
+});
+
+describe.each(areaCases)("$rule", ({ root, message }) => {
+  it("holds in this repo", () => {
+    expect(checkAreas(REPO)).toEqual([]);
+  });
+
+  it("reports a violating tree with its remediation", () => {
+    const violations = checkAreas(root());
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain(message);
   });

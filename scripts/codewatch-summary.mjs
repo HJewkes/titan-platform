@@ -3,7 +3,6 @@
 // Always exits 0: dag-check owns the job's verdict, and may have failed before writing the report.
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { renderQuestions } from "./codewatch-report.mjs";
 
 const short = (sha) => (sha ? sha.slice(0, 12) : "none");
 
@@ -17,7 +16,7 @@ export function renderSummary(report) {
     `Head \`${short(report.head)}\` against base \`${short(report.base)}\`.`,
     `${report.deltas.length} metric delta(s), ${report.exports.length} export change(s).`,
   ];
-  const questions = renderQuestions(report);
+  const questions = report.questions ?? [];
   if (questions.length > 0) lines.push("", "### Questions", "", ...questions.map((q) => `- ${q}`));
   return `${lines.join("\n")}\n`;
 }

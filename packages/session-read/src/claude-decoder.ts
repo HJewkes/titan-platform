@@ -1,9 +1,7 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import type { ConversationIdentity, UsageMeasurement } from "@titan-design/agent-protocol";
 import { assertClaudeSessionSource } from "./claude-source.js";
 import {
-  booleanOrNull,
   cacheWriteSplit,
   extractCompactionSummary,
   messageTextParts,
@@ -22,16 +20,15 @@ import type {
   NormalizedObservationBase,
   NormalizedSessionObservation,
   NormalizedTextPart,
-  ResumeBoundary,
   ScopedConversationItemId,
   SessionFormatDecoder,
   SessionSourceDescriptor,
   SourceEvidence,
   SourceTextLocator,
 } from "./normalized.js";
-import { TranscriptParseError } from "./read.js";
+import { decodeLines, parseRecord } from "./decode-lines.js";
 import { SessionIdentityError } from "./recent-claude.js";
-import { asObject, str, type Json } from "./text.js";
+import { asObject, booleanOrNull, str, type Json } from "./text.js";
 
 export const CLAUDE_DECODER_ID = "claude-code-transcript";
 export const CLAUDE_CHECKPOINT_VERSION = "1";
@@ -46,14 +43,8 @@ export class ClaudeTranscriptDecoder implements SessionFormatDecoder<never> {
   async decode(request: DecodeRequest<never>, emit: EmitNormalizedObservation): Promise<DecodeResult<never>> {
     assertClaudeSessionSource(request.source);
     if (request.resume.strategy !== "replay-prefix") throw new TypeError("Claude checkpoints are not implemented; replay the verified prefix");
-    const digest = createHash("sha256");
     const context = new ClaudeContext(request.source, request.resume.emitFrom.byteOffset, emit);
-    let boundary = boundaryAt(0, digest);
-    for await (const line of request.lines) {
-      if (line.raw.trim().length > 0) context.handle(line);
-      digest.update(line.raw, "utf8").update("\n");
-      boundary = boundaryAt(line.evidence.byteOffset + line.evidence.byteLength + 1, digest);
-    }
+    const boundary = await decodeLines(request.lines, (line) => context.handle(line));
     return { resumeBoundary: boundary, checkpoint: null };
   }
 
@@ -329,18 +320,4 @@ class ClaudeContext {
 
 function isSubagentSource(source: SessionSourceDescriptor): boolean {
   return path.basename(source.path) === `agent-${source.conversation.nativeId}.jsonl`;
-}
-
-function parseRecord(filePath: string, line: LocatedSourceLine): Json {
-  try {
-    const parsed = asObject(JSON.parse(line.raw));
-    if (!parsed) throw new TypeError("record is not an object");
-    return parsed;
-  } catch (error) {
-    throw new TranscriptParseError(filePath, line.evidence.byteOffset, error);
-  }
-}
-
-function boundaryAt(byteOffset: number, digest: ReturnType<typeof createHash>): ResumeBoundary {
-  return { byteOffset, prefixHash: digest.copy().digest("hex") };
 }

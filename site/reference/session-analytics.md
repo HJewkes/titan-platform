@@ -138,7 +138,7 @@ implementer slots, with the reason its journal gave. Use it when work is done bu
 
 | Input | Read by the caller from | Parser |
 |---|---|---|
-| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` |
+| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `readVerdicts(db, window, seats)`, which applies `parseVerdict(body)` |
 | `pulls` | `gh api repos/<owner>/<repo>/pulls/<n>` for each PR a verdict names | none |
 | `denials` | each seat's transcript JSONL | `parseDenials(lines, seat)` |
 | `journals` | each seat's dated journal file | `parseSeatJournal(text, seat, date, utcOffsetMin)` |
@@ -156,12 +156,23 @@ without reporting to their spawner, and agents stuck on a permission prompt past
 | Input | Read by the caller from | Parser |
 |---|---|---|
 | `broker` | agent-chat's `broker.log` lines | `parseBrokerLog(lines)` |
-| `spawns` | `agent_spawned` rows of `events.db` | none; `SpawnRecord` |
-| `lastEvents` | each actor's newest `events.db` row before `asOf` | none; `LastEventRecord` |
+| `spawns` | `agent_spawned` rows of `events.db` | `readSpawns(db)` |
+| `lastEvents` | each actor's newest `events.db` row before `asOf` | `readLastPrompts(db, asOf)` |
 
 Broker findings cite broker.log line numbers. `LIVENESS_SOURCES` holds the commands that
 re-read each section. `parseTeleportEvents(lines)`, used by the handoff threshold, reads the
 teleport lines of the same log.
+
+### events.db readers
+
+`readVerdicts`, `readSpawns` and `readLastPrompts` read agent-chat's `events.db` through a
+connection the caller opened read-only; the package never opens the file or checks it exists.
+Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the
+matching `*_SOURCES` command is `eventsDbCommand(sql)` over that same constant, so the printed
+re-read runs the reader's own query. `eventsDbCommand` binds each `@name` parameter with
+sqlite3's `.parameter set` to an epoch-millisecond placeholder such as `<asOf epoch ms>`.
+`EVENTS_TABLE_DDL` is agent-chat's events table as the readers expect it; a test fixture
+creates it with this rather than a copy.
 
 ### reviewFillReport
 
@@ -192,7 +203,7 @@ reads at a tenth of input. Reading fable the same way is what cost the audit $1,
 
 **An unknown model returns `priced: false` and zero cost.** There is no default price row.
 A default silently bills a new model at an old model's rate, which is worse than a visible
-hole; callers are expected to surface `unpriced_models`.
+hole; callers are expected to surface `unpricedModels`.
 
 **The origin row beats `startType`.** Agent-chat workers run `claude -p`, so they report
 `start_type = "sdk-cli"` exactly like a headless miner. Only the origin row separates them.

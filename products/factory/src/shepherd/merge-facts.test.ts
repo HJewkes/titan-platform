@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { evaluate } from "@titan-design/authority";
 import type * as Authority from "@titan-design/authority";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
@@ -10,10 +10,12 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
-import { MERGE_EVIDENCE_STEP, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { shepherdEventMigration } from "./events.js";
+import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
+import type { RemergeResult } from "./remerge-carry.js";
 import type { CarryResult } from "./tree-carry.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type ShepherdStoreRef, type TaskKind } from "./store.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -122,6 +124,25 @@ describe("locatorReference", () => {
   });
 });
 
+describe("collectMergeFacts check apps", () => {
+  const SHEPHERD_APP = 4242;
+  const observe = (reviewAppId?: number) => collectMergeFacts(githubPort(world().wire), input, noFreezeStoreUntilTp523, {}, undefined, reviewAppId);
+
+  it("trusts GitHub Actions and gives shepherd/review no app when none is configured", async () => {
+    const { merge } = await observe();
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [] });
+  });
+
+  it("binds shepherd/review to the configured App and leaves allowedApps alone", async () => {
+    const { merge } = await observe(SHEPHERD_APP);
+
+    expect(merge.allowedApps).toEqual([15368]);
+    expect(merge.contextApps).toEqual({ "shepherd/review": [SHEPHERD_APP] });
+  });
+});
+
 describe("mergeEvidence", () => {
   it("allows by authority/MRG-AU-RV when all eight conditions hold, and posts one comment carrying the record", async () => {
     const fake = world();
@@ -178,30 +199,23 @@ describe("mergeEvidence", () => {
     expect((await collect(fake)).record.decision.outcome).toBe("gate");
   });
 
-  it("gates a diff under .github/ even when authority allows everything", async () => {
-    const fake = world([{ path: ".github/workflows/ci.yml", status: "modified" }]);
+  it("allows a release workflow change when authority allows and required checks are green (TP-1886)", async () => {
+    const fake = world([{ path: ".github/workflows/release.yml", status: "modified" }]);
     vi.mocked(evaluate).mockReturnValue(ALLOW_ALL);
 
     const evidence = await collect(fake);
 
-    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority" } });
   });
 
-  it("collects the source of a rename, so moving a file out of .github/ gates even when authority allows everything", async () => {
+  it("collects the source of a rename, so a move out of .github/ is visible to authority", async () => {
     const fake = world([{ path: "tools/x.yml", previousPath: ".github/actions/x.yml", status: "renamed" }]);
 
     const evidence = await collect(fake);
 
     expect(evidence.merge.changedPaths).toEqual(["tools/x.yml", ".github/actions/x.yml"]);
     vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-    expect(decideAutoMerge(HEAD, evidence)).toMatchObject({ outcome: "gate", rule: { rowId: "github-path" } });
-  });
-
-  it("folds case and trailing dots when it looks for .github", () => {
-    const evidence = { head: HEAD, merge: { head: HEAD, changedPaths: [".GitHub./workflows/x.yml"] }, record: { repo: REPO, pr: 1 } } as unknown as MergeEvidence;
-    vi.mocked(evaluate).mockReturnValueOnce(ALLOW_ALL);
-
-    expect(decideAutoMerge(HEAD, evidence).rule.rowId).toBe("github-path");
+    expect(decideAutoMerge(HEAD, evidence).outcome).toBe("allow");
   });
 
   it("gates facts collected at one head when the decision is for another", async () => {
@@ -364,7 +378,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 /** A workflow that takes the MERGE review through the sh-merge-evidence step, then lands with the Shepherd options. */
 function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined): FactoryHost {
-  const port = githubPort(fake.wire);
+  const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
   const deps: ShepherdDeps = { port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
@@ -391,7 +405,7 @@ describe("a carried verdict", () => {
   it("allows by authority/MRG-AU-RC when the sh-carry output reports equal trees for this head", async () => {
     const evidence = await collect(world(), carried());
 
-    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: TREE });
+    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: TREE, rule: "tree-equal" });
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RC" } });
   });
 
@@ -429,13 +443,48 @@ describe("a carried verdict", () => {
   });
 });
 
+const REMERGE_TREE = fakeSha("merge-facts-remerge-tree");
+
+/** A MERGE at CARRIED_FROM, carried to HEAD by a remerge whose diff touched only a generated file. */
+function remerged(remerge: Partial<RemergeResult> = {}): Partial<MergeEvidenceInput> {
+  const answer: RemergeResult = { carries: true, rule: "remerge-generated-only", headTree: TREE, remergeTree: REMERGE_TREE, paths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"], ...remerge };
+  const result: CarryResult = { equal: false, reason: "trees differ" };
+  return { verdict: { value: "MERGE", head: CARRIED_FROM, locator }, carry: { fromHead: CARRIED_FROM, head: HEAD, result, rule: "remerge-generated-only", remerge: answer } };
+}
+
+describe("a verdict carried across a remerge", () => {
+  it("allows by authority/MRG-AU-RM and records the rule and the paths the merge touched", async () => {
+    const evidence = await collect(world([{ path: "src/a.ts", status: "modified" }, { path: "CAPABILITIES.md", status: "modified" }]), remerged());
+
+    expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: REMERGE_TREE, rule: "remerge-generated-only", remergePaths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"] });
+    expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RM" } });
+    expect(evidenceComment(evidence.record).split("\n")[1]).toContain("by remerge-generated-only");
+  });
+
+  it.each([
+    ["a remerge that does not carry", remerged({ carries: false, generatedPaths: [] })],
+    ["a remerge rule with no remerge answer", { ...remerged(), carry: { fromHead: CARRIED_FROM, head: HEAD, result: { equal: false }, rule: "remerge-generated-only" as const } }],
+    ["a remerge path the answer did not match as generated", remerged({ paths: ["CAPABILITIES.md", "src/a.ts"] })],
+  ])("gates on %s", async (_name, overrides) => {
+    const evidence = await collect(world(), overrides);
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+
+  it("gates a remerge carry of registered kind security", async () => {
+    const evidence = await collect(world(), remerged(), "security");
+
+    expect(evidence.record.decision.outcome).toBe("gate");
+  });
+});
+
 const EVIDENCE_RUN = "run-1";
 
 /** The sh-merge-evidence route of the review wiring, run on a carried MERGE; `kind` undefined leaves the run unregistered in a bound store. */
 async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   const store = shepherdStoreRef();
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   if (bind) store.bind(db);
   if (kind !== undefined) new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: EVIDENCE_RUN, task: "demo/1", implementer: "impl-a", policy: AUTO, kind });
   const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };
@@ -463,7 +512,7 @@ describe("the evidence comment of a carried MERGE", () => {
   it("names both heads and both trees, and records the carry", async () => {
     const evidence = await collect(world(), carried());
 
-    expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE });
+    expect(evidence.record.carry).toEqual({ fromHead: CARRIED_FROM, head: input.head, headTree: TREE, mergeTree: TREE, rule: "tree-equal" });
   });
 
   it("names the head's tree and the merge-tree separately in the summary", async () => {
@@ -667,5 +716,63 @@ describe("approve-merge under merge:auto", () => {
     expect(host.runtime.status(runId)!.stepResults["merge-policy:0:0"]!.data).not.toHaveProperty("allowEvidence");
     host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: HEAD }, OWNER);
     await host.runtime.wait(runId);
+  });
+});
+
+describe("a 5xx while posting the sh-merge-evidence comment", () => {
+  const bad502 = () => ({ error: new FakeHttpError(502, "Server Error") });
+
+  it("retries the post and lets the run continue past the step, with one comment", async () => {
+    const fake = world();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    fake.createCommentFaults = [bad502()];
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(fake.comments.get(1)).toHaveLength(1);
+  });
+
+  it("fails the run with an error naming sh-merge-evidence when every post answers 502", async () => {
+    const fake = world();
+    fake.createCommentFaults = Array.from({ length: 10 }, bad502);
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: .*502`));
+    expect(fake.effects.merge).toBe(0);
+  });
+});
+
+describe("an empty gh body while posting the sh-merge-evidence comment", () => {
+  const emptyBody = () => ({ error: new SyntaxError("Unexpected end of JSON input") });
+
+  it("retries the post and lets the run continue past the step, with one comment", async () => {
+    const fake = world();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
+    fake.createCommentFaults = [emptyBody()];
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("completed");
+    expect(fake.effects.merge).toBe(1);
+    expect(fake.comments.get(1)).toHaveLength(1);
+  });
+
+  it("stops at the step, naming sh-merge-evidence, when every post answers an empty body", async () => {
+    const fake = world();
+    fake.createCommentFaults = Array.from({ length: 10 }, emptyBody);
+    const host = shepherdHost(fake);
+
+    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: .*unexpected end of JSON input`, "i"));
+    expect(fake.effects.merge).toBe(0);
   });
 });

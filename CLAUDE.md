@@ -56,16 +56,15 @@ pnpm build && pnpm typecheck && pnpm lint && pnpm test && pnpm dag:check && pnpm
 All six must be green. `dag:check` is self-hosted: it runs against this repo's own
 `@titan-design/code-graph`, built by `pnpm build`. `scripts/dag-check.sh` remains for one
 release as a fallback that needs `CODEWATCH_CLI` pointed at a built codewatch checkout.
-Zero lint warnings in files you touched.
 
 ## Rules that CI enforces
 
 - **Tier order.** A package imports only its own tier or lower. The `package-layers` rule in
-  `.codewatch/check.json` is the DAG. Edit its `$tiers` map, never `layers` directly;
-  `pnpm new:package <name> --tier <0|1|2|ui|product>` does this for you.
+  `.codewatch/check.json` is the DAG. `pnpm new:package <name> --tier <0|1|2|ui|product>`
+  edits its `$tiers` map for you.
 - **Changesets.** Any change under `packages/*` needs a changeset (`pnpm changeset`) or the
   PR fails. Packages version independently.
-- **Uniform scaffold.** Never hand-copy a package; stamp it with `pnpm new:package`. It also
+- **Uniform scaffold.** `pnpm new:package` stamps each package. It also
   stamps `site/reference/<name>.md` from `templates/reference-page.md` and refreshes the
   generated index and sidebar. Fill the page in; a re-stamp never overwrites it.
 - **Docs build.** The `validate` job runs `pnpm docs:build` on every pull request, with no
@@ -73,18 +72,17 @@ Zero lint warnings in files you touched.
 
 ## Conventions
 
-- ESM only, `verbatimModuleSyntax`, `import type` for type-only imports.
-- Tests live next to source as `*.test.ts`, run from the root with vitest. Test behavior.
-- Functions stay under about 30 lines. Comments explain why, never what.
-- `zod` is a peer dependency of packages that use it, never a regular dependency.
+Lint and `scripts/structure.test.mjs` enforce the conventions; read the failure message.
+
+- Tests run from the root with vitest. Test behavior.
+- Comments explain why, never what.
 - Products own surface wiring (commander, MCP SDK transports, hono servers); packages
   expose surface-independent cores.
 
 ## Releasing
 
 Merging to main lets the Release workflow open or refresh the "Version Packages" PR.
-Merging that PR publishes via npm trusted publishing. Never add an npm token secret to
-`release.yml`. The only secret it may use is the GitHub App key, which pushes the release
+Merging that PR publishes via npm trusted publishing. The only secret it may use is the GitHub App key, which pushes the release
 branch and opens the PR so CI runs on it.
 
 A brand-new package cannot use that path yet: npm only accepts a trusted publisher for a
@@ -104,10 +102,6 @@ hand, from the owner's own terminal:
 
 Ordering trap: hold the "Version Packages" pull request until every new package it depends
 on already exists on npm.
-
-Do not bump the `packageManager` pin (`pnpm@9.15.0`) without testing a real publish. pnpm
-implements `publish` natively from v11 instead of delegating to the npm CLI, and that
-delegation is what performs the OIDC exchange release.yml depends on.
 
 ## Gotchas
 

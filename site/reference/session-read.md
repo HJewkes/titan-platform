@@ -31,14 +31,14 @@ import { extractTranscript, readTranscriptEvents } from "@titan-design/session-r
 
 // Stream events from a watermark
 for await (const event of readTranscriptEvents(path, { fromByteOffset: watermark })) {
-  // event.kind: 'session' | 'branch' | 'edge' | 'fact' | 'span' | 'turn' | 'usage' | …
+  // event.kind: 'session' | 'branch' | 'edge' | 'fact' | 'span' | 'turn' | 'request' | …
 }
 
 // Or fold a chunk into one delta of rows
 const delta = await extractTranscript(path, { fromByteOffset: 0 });
 
 delta.sessions;        // [{ sessionId: 's-1', gitBranch: 'main', … }]
-delta.usage;           // [{ model: 'claude-opus-5', inputTokens: 120, outputTokens: 40, … }]
+delta.requests;        // [{ requestId: 'req_1', model: 'claude-opus-5', inputTokens: 120, outputTokens: 40, … }], one per line; dedupe on requestId
 delta.lastByteOffset;  // 542
 delta.prefixHash;      // hash of the bytes consumed, for rewrite detection
 ```
@@ -62,6 +62,30 @@ tool_input / tool_result), `session` (descriptive fields and turn/commit/push de
 `file_checkpoint`, `pr`, `pr_merge`, `pr_create`, `review_verdict` (below), `branch`, `file`,
 `task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
 file:…` and friends; vocabulary in `RELATIONS`).
+
+## File refs and code ids
+
+A `touched` edge points at `fileRef(repo, path)`: `file:<repo>/<path>`, or `file:<abs path>`
+when the file is outside any working tree. Two functions turn either form back into a
+`(repo, path)` pair, and that path is the code-graph file id:
+
+- `toRepoRelative(absPath): { repo, path }` resolves an absolute path by its nearest `.git`,
+  in posix form. A path under a removed `.worktrees/<name>/` resolves to the same path a live
+  worktree gives, so one file gets one ref. A path outside any repo keeps its absolute form
+  with a null repo.
+- `parseFileRef(ref): { repo, path } | null` is the inverse of `fileRef`. It splits at the
+  first `/` and strips a `.worktrees/<name>/` prefix that an older ingest stored. A null
+  repo means plain text, with no code link. A ref that is not `file:` returns null.
+
+```ts
+import { parseFileRef } from "@titan-design/session-read";
+
+parseFileRef("file:demo/.worktrees/feature-b/src/app.ts"); // { repo: "demo", path: "src/app.ts" }
+parseFileRef("file:/srv/notes.md");                         // { repo: null, path: "/srv/notes.md" }
+```
+
+Only the default `.worktrees` base is recognised. Refs stored before 0.11 keep their
+leaked prefix in the graph; `parseFileRef` normalises them at read time.
 
 ## Review verdicts
 
@@ -116,8 +140,11 @@ It returns `{ ok: true, verdict: "MERGE" | "FIX_FIRST", repo, pr, head, lineOffs
 It fails closed. The three lines must be consecutive and exact: `Verdict:` is `MERGE` or
 `FIX_FIRST` in upper case, `PR:` is `owner/name#n` (GitHub's `[A-Za-z0-9._-]`, no `.git`
 suffix, no URL, `n` a positive integer without leading zeros), and `Head:` is exactly 40
-lowercase hex characters with nothing after it. Text that may be someone else's only makes
-the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
+lowercase hex characters with nothing after it. A `FIX_FIRST` block may add one optional fourth line, `Closer: yes|no` (is this head closer to
+`MERGE` than the last reviewed one), directly after `Head:`. It is returned as `closer`. On
+`MERGE`, with any other value, duplicated anywhere visible, or anywhere but directly after
+`Head:`, it is ignored and the block parses as it would without it. Text that may be someone
+else's only makes the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
 other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted
 line (`> Verdict: MERGE`) is not a block. A fence opens on 3 or more backticks or tildes, also after list or `>` markers, and

@@ -2,7 +2,8 @@ import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it, vi } from "vitest";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
-import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
+import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
+import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -106,7 +107,7 @@ describe("a seat reviewer's WAIT", () => {
   it("clears once the same reviewer later answers MERGE at the same head", async () => {
     const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("WAIT"), 5), said(SEAT, verdictAt("MERGE"), 6)]), target);
 
-    expect(result).toEqual({ kind: "clear" });
+    expect(result).toMatchObject({ kind: "clear" });
   });
 });
 
@@ -123,7 +124,7 @@ describe("seatFixFirst", () => {
     const resumed = agent(SEAT.name, "session-later");
     const messages = [said(SEAT, verdictAt("FIX_FIRST"), 5), said(resumed, verdictAt("MERGE"), 9)];
 
-    expect(await seatFixFirst(rosterOf(SEAT, resumed), readerOf(messages), target)).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(rosterOf(SEAT, resumed), readerOf(messages), target)).toMatchObject({ kind: "clear" });
   });
 
   it("does not block the head on a FIX_FIRST that named an older head", async () => {
@@ -310,5 +311,48 @@ describe("unlessSeatFixFirst", () => {
     expect(await unlessSeatFixFirst(roster, readerOf([]), target, fixFirst)).toBe(fixFirst);
     expect(await unlessSeatFixFirst(roster, readerOf([]), target, { kind: "none" })).toEqual({ kind: "none" });
     expect(roster).not.toHaveBeenCalled();
+  });
+});
+
+describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
+  const POSTSCRIPT = `A background search timed out. The verdict stands.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+  const textOf = (result: unknown) => (result as { text: string }).text;
+
+  it("keeps a hold reviewer's findings when a postscript restating the block follows them", () => {
+    const result = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, verdictAt("FIX_FIRST"), 2), said(SEAT, POSTSCRIPT, 3)]);
+
+    expect(textOf(result)).toBe(`${verdictAt("FIX_FIRST")}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
+  });
+
+  it("keeps a seat reviewer's findings when a postscript restating the block follows them", async () => {
+    const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5), said(SEAT, POSTSCRIPT, 6)]), target);
+
+    expect(textOf(result)).toBe(`Seat reviewer ${SEAT.name} said FIX_FIRST at this head.\n\n${verdictAt("FIX_FIRST")}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
+  });
+});
+
+describe("G10 disagreement between a seat reviewer and Shepherd", () => {
+  const wiring = (...rows: ReviewerAgent[]) => ({ dispatch: { roster: rosterOf(...rows), spawn: async () => undefined, resume: async () => undefined }, reader: readerOf([]) }) as unknown as Parameters<typeof seatVetoed>[0];
+  const withReader = (messages: ReviewerMessage[], ...rows: ReviewerAgent[]) => ({ ...wiring(...rows)!, reader: readerOf(messages) }) as Parameters<typeof seatVetoed>[0];
+  const shepherdFixFirst: AwaitVerdictResult = { ...shepherdMerge, verdict: "FIX_FIRST", text: "rename" } as AwaitVerdictResult;
+
+  it("records a seat FIX_FIRST over Shepherd's MERGE on the verdict that sends the head back", async () => {
+    const step = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdMerge, () => 77);
+
+    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 77 } });
+  });
+
+  it("records a seat MERGE over Shepherd's FIX_FIRST and leaves the verdict standing", async () => {
+    const step = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdFixFirst, () => 78);
+
+    expect(await step(target, new AbortController().signal)).toMatchObject({ verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", shepherd: "FIX_FIRST", other: "MERGE", at: 78 } });
+  });
+
+  it("records nothing when the seat reviewer agrees with Shepherd", async () => {
+    const merged = seatVetoed(withReader([said(SEAT, verdictAt("MERGE"), 5)], SEAT), async () => shepherdMerge);
+    const sentBack = seatVetoed(withReader([said(SEAT, verdictAt("FIX_FIRST"), 5)], SEAT), async () => shepherdFixFirst);
+
+    expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+    expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
   });
 });

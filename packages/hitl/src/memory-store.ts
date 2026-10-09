@@ -1,5 +1,5 @@
 import { BaseGateStore } from "./base-store.js";
-import type { GateAnswerAllowance, GateAuthorize, GateRecord } from "./types.js";
+import type { GateAnswerAllowance, GateAuthorize, GateEvidencePolicy, GateRecord } from "./types.js";
 
 export interface MemoryGateStoreOptions {
   /** Epoch-millis clock, injectable so expiry is testable without waiting. */
@@ -10,6 +10,8 @@ export interface MemoryGateStoreOptions {
   requireBrief?: boolean;
   /** Answers a non-owner class may give, each exact in class, step and payload. Nothing else widens the default class check. */
   allowances?: readonly GateAnswerAllowance[];
+  /** Admits a non-owner class on the evidence its resolve carries; see `GateEvidencePolicy`. */
+  evidencePolicy?: GateEvidencePolicy;
 }
 
 /**
@@ -21,7 +23,7 @@ export class MemoryGateStore extends BaseGateStore {
   private readonly rows = new Map<string, GateRecord>();
 
   constructor(options: MemoryGateStoreOptions = {}) {
-    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances, options.evidencePolicy);
   }
 
   protected insert(record: GateRecord): void {
@@ -44,11 +46,14 @@ export class MemoryGateStore extends BaseGateStore {
   }
 }
 
-/** `resolvedBy`, `rule` and `questions` are nested, so a shallow spread would let a caller rewrite what the store holds. */
+/** `payload`, `schema`, `resolvedBy`, `resolvedEvidence`, `rule` and `questions` are nested, so a shallow spread would let a caller rewrite what the store holds. */
 function copy(record: GateRecord): GateRecord {
   return {
     ...record,
+    payload: record.payload === undefined ? undefined : structuredClone(record.payload),
+    schema: record.schema === undefined ? undefined : structuredClone(record.schema),
     resolvedBy: record.resolvedBy && { ...record.resolvedBy },
+    resolvedEvidence: record.resolvedEvidence && structuredClone(record.resolvedEvidence),
     rule: record.rule && { ...record.rule, resolvers: [...record.rule.resolvers] },
     questions: record.questions?.map((question) => ({ ...question, options: question.options.map((option) => ({ ...option })) })),
   };

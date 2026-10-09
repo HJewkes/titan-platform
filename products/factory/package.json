@@ -29,17 +29,19 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/agent-dispatch": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/owner-queue": "workspace:^",
     "@titan-design/registry": "workspace:^",
+    "@titan-design/review-panel": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",

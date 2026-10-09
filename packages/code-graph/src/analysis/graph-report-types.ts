@@ -66,6 +66,26 @@ export interface DeadModuleRow {
   loc: number;
   /** Its role (usually "source" or "types"). */
   role: string;
+  /**
+   * Public view only: the non-product role whose files still reach this one ("dead in the
+   * product, alive in Storybook"). Absent when nothing reaches it. Lab beats story beats test
+   * when several do, because tests accompany almost any code and say least about why it exists.
+   */
+  reachableOnlyFrom?: DeadModuleConsumer;
+}
+
+/** Importer roles the public dead-modules view does not count as the product. */
+export type DeadModuleConsumer = "test" | "story" | "lab";
+
+/**
+ * `"all-consumers"` seeds reachability from every unimported role, barrels and `main.*`.
+ * `"public"` seeds only from entry, barrel, config, script and `main.*` files.
+ */
+export type DeadModuleView = "all-consumers" | "public";
+
+export interface DeadModulesOptions {
+  /** Defaults to `"all-consumers"`. */
+  view?: DeadModuleView;
 }
 
 export interface GrowthRiskRow {
@@ -82,7 +102,7 @@ export interface UntestedRiskRow {
   coverage: number;
   /** Hotspot score (churn × complexity × recency) for context. */
   hotspot: number;
-  /** hotspot × (1 − coverage/100): load-bearing, complex, churning, AND untested. */
+  /** hotspot × (1 − coverage/100): a load-bearing, complex, frequently changed file with little test coverage. */
   score: number;
 }
 

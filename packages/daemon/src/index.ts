@@ -25,8 +25,26 @@ export type { Logger } from "./logger.js";
 export { consoleLogger, silentLogger } from "./logger.js";
 export type { McpServerOptions, ToolCallOutcome } from "./mcp.js";
 export { attachHandlers, createMcpServer, invokeTool, listTools, runMcpStdio } from "./mcp.js";
-export { NonLoopbackBindError, isLoopbackHost } from "./bind-guard.js";
-export type { DaemonHandle, StartDaemonOptions } from "./daemon.js";
+export { NonLoopbackBindError, RemoteBindError, isLoopbackHost } from "./bind-guard.js";
+export type { DaemonAuth, DaemonAuthOptions, LoginCodeLedger, RequestAuth, TokenFileProblem } from "./auth.js";
+export {
+  LOGIN_CODE_TTL_MS,
+  LOGIN_PATH,
+  LOGOUT_PATH,
+  SESSION_COOKIE,
+  SESSION_MAX_AGE_MS,
+  TokenFileError,
+  consumeLoginCode,
+  createDaemonAuth,
+  createLoginCodeLedger,
+  ensureTokenFile,
+  getRequestAuth,
+  mintLoginCode,
+  rotateTokenFile,
+  signSession,
+  verifySession,
+} from "./auth.js";
+export type { DaemonHandle, RemoteListenerOptions, StartDaemonOptions } from "./daemon.js";
 export { DaemonAlreadyRunningError, DaemonPortInUseError, runDaemonUntilSignal, startDaemon } from "./daemon.js";
 export type { StaticAppOptions } from "./static-app.js";
 export { mountStaticApp } from "./static-app.js";

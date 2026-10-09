@@ -33,8 +33,9 @@ relative, with no `.`, `..` or empty segment and no `?` or `#`. A bad value thro
 `requiredChecks` reads the branch's active rulesets (`rules/branches/<base>`), never a
 hardcoded list. `latestCheckRuns` keeps the newest run per check name, because one head can
 carry a success and a later superseded `cancelled` run. `behind` comes from the compare API.
-`evaluateChecks(required, latestRuns)` folds those into `pending`, `passed` or `failed`; a
-required name with no run is pending, never passed.
+`mergeReadiness` (and `headCheckFindings` under it) is the one rule for whether a required check
+passed: a required name needs a completed `success` run, so a `skipped` or `neutral` run, or no run
+at all, never passes.
 
 `mergeReadiness({ pr, rules, runs, requiredApps, approvedHead })` is pure. It is ready only when
 the PR is open, not a draft, not conflicting, up to date when the rules are strict, at exactly
@@ -66,6 +67,8 @@ true when `files` reaches 300 or the commits returned are fewer than `total_comm
 true, `files` may be missing paths: fall back to `listPrFiles` for a PR, or treat the result as
 unknown. `listPrCommits(repo, pr)` returns the PR's commit shas oldest first; GitHub stops at
 the first 250 (`PR_COMMITS_CAP`), so a list whose last sha is not the head is short.
+`listDefaultBranchCommits(repo, since)` returns `{ sha, message }` for each default-branch commit
+committed at or after `since`, newest first, all pages.
 `listForcePushes(repo, pr)` returns the PR's head force-pushes oldest first, each as `{ before,
 after }`: the head it replaced (null once GitHub no longer has that commit) and the new head.
 REST timeline events name only the new head, so this one read posts to GraphQL

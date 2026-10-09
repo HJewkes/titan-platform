@@ -22,8 +22,8 @@ when `shepherd.review` is configured. Relay and agent-chat keep every other disp
   `gh api` on your login and reads no token itself (`packages/github`).
 - A base branch that requires at least one status check. `land` waits on required checks
   only, so it refuses a branch that requires none.
-- macOS or Linux, only for `service install`, `status`, `restart`, `uninstall` and `deploy`,
-  which drive launchd or a systemd --user unit, and macOS for `service check`. Every other
+- macOS or Linux, only for `service install`, `status`, `restart`, `uninstall`, `deploy` and
+  `check`, which drive or read launchd or a systemd --user unit. Every other
   command, `service plist` included, runs anywhere Node does.
 
 ## Build
@@ -58,11 +58,16 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 | Database | `--db <path>`, else `TITAN_FACTORY_DB`, else `dbPath` in the config file, else `$XDG_STATE_HOME/titan-factory/factory.sqlite3` |
 | Config file | `$XDG_CONFIG_HOME/titan-factory/config.json` |
 | Server lock | `daemon.pid` and `daemon.meta.json` in the database's directory, while `serve` runs |
-| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd or systemd |
+| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd or systemd. Each stderr line starts with its ISO time |
 
 `XDG_STATE_HOME` defaults to `~/.local/state` and `XDG_CONFIG_HOME` to `~/.config`
 (`products/factory/src/config.ts`). The database holds runs, gates and Shepherd
 registrations. Nothing else is written.
+
+A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
+`[ci-timeout]`, `[gh-api-5xx]`, `[land-rules]`, `[update-branch]` or `[other]`.
+`titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
+classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
 
 ## The config file
 
@@ -109,6 +114,17 @@ stays out of the repo.
   [After the merge](/guides/shepherd#after-the-merge)). Its one key, `configDir`, is optional
   and follows the same rules as `review.configDir`. A `fixer` block without `agentChatBin`
   fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it.
+- `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
+  and successors share it. It refuses above `load5` (28), `buildLoad5` (20, with `reviewLoad`
+  4 added per review started in the last five minutes), at memory `pressureLevel` 2, and under
+  `freeMemoryPct` 20. Admits are spaced `windowMs` (60 s) apart. While the machine has headroom
+  (load5 under half of `buildLoad5`, memory pressure read as normal, and fewer than
+  `headroomReviews` (4) reviews started in the last five minutes) they are spaced
+  `headroomIntervalMs` (15 s) apart instead. At most `burstMax` (4) are admitted inside any
+  `windowMs`. Every deferral names the rule that refused. A deferred review asks again on its
+  busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
+  machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
+  of recording `none`.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
@@ -123,13 +139,16 @@ titan-factory serve --port 7411
 ```
 
 `serve` owns the database until SIGTERM or SIGINT. It adopts every unfinished run at start,
-and again every 30 seconds for runs whose owner died and whose lease lapsed. It binds
-`127.0.0.1` and exposes three surfaces (`products/factory/src/serve.ts`):
+and again every 30 seconds for runs whose owner died and whose lease lapsed. Its 5-minute
+Shepherd sweep also marks a merged run `sh-reverted` when a later main commit reverts its merge
+(see [Shepherd stats](./shepherd.md#stats)). It binds
+`127.0.0.1` and exposes these surfaces (`products/factory/src/serve.ts`):
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
+| `POST /gates/resolve-proof` | applies an owner-signed proof and returns each item's outcome; see [Owner-signed proofs](#owner-signed-proofs) |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
 
 ```sh
@@ -145,8 +164,8 @@ curl -s http://127.0.0.1:7410/health
 `gh` error when it fails, and `checking` before the first probe lands. The probe runs in the
 background at most once a minute, so a health request never waits on `gh`.
 
-The registry commands are `factory.land`, `factory.status`, `factory.gates`, and the seven
-`shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
+The registry commands are `factory.land`, `factory.status`, `factory.gates`, `needs.list`,
+`needs.count`, and the seven `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
 without one the server answers 403.
 
 ```sh
@@ -158,8 +177,31 @@ curl -s -X POST http://127.0.0.1:7410/rpc/factory.gates \
 
 `factory.status` takes an optional `runId` and otherwise lists every unfinished run.
 `factory.gates` lists each pending gate with its prompt, its schema, and the CLI command
-that resolves it. The MCP tool names carry no prefix: `factory__land`, `factory__status`,
-`factory__gates`, `shepherd__register`, and so on. To add the server to Claude Code:
+that resolves it.
+
+`needs.list` returns `{ items, gaps }`. `items` is the merged OwnerItem[] that
+`titan-factory needs --json` prints: agent-chat, factory gates, Morning queues and
+needs-decision tasks, with duplicates folded. `gaps` names each source that could not be
+read, so an outage never looks like an empty queue. `needs.count` returns `total`, `byKind`,
+`byLens` and `gaps` for the same set. Both take the same optional filters:
+
+- `kind`: `decide`, `approve`, `do`, `review` or `know`.
+- `lens`: `blocking-agent`, `blocking-merge`, `stuck`, `planning` or `fyi`.
+- `initiative`: an initiative slug.
+- `personal`: `true` to include personal initiatives, which are otherwise left out.
+
+```sh
+curl -s -X POST http://127.0.0.1:7410/rpc/needs.list \
+  -H 'content-type: application/json' -H 'x-titan-client: shell' -d '{"kind":"approve"}'
+curl -s -X POST http://127.0.0.1:7410/rpc/needs.count \
+  -H 'content-type: application/json' -H 'x-titan-client: shell' -d '{}'
+```
+
+A permission prompt or endorsement from agent-chat is always a one-way `approve` item whose
+source names the broker's msg_id; nothing reshapes it into a decision.
+
+The MCP tool names carry no prefix: `factory__land`, `factory__status`,
+`factory__gates`, `needs__list`, `shepherd__register`, and so on. To add the server to Claude Code:
 
 ```sh
 claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp
@@ -226,6 +268,54 @@ payload must match the schema stored with the gate:
 you did not see. `resume` and `factory.gates` print the exact command for each open gate;
 copy the run id and step id from there.
 
+Abandoning an `approve-merge` gate after the reviewer said MERGE at that head, or a seat
+reviewer and Shepherd's own review giving opposite verdicts at one head, records an
+`ownerOverride` on the run. `titan-factory shepherd stats` (and `--json`) reports the weekly
+rate per repo: overrides divided by runs with a MERGE verdict.
+
+## Owner-signed proofs {#owner-signed-proofs}
+
+The factory host can apply a gate answer the owner signed on another machine. One signature can
+cover one gate, or a batch of merge gates. `serve` receives proofs on `POST /gates/resolve-proof`, and
+`applyProof` is the core behind it. The Mac client that signs comes in a later slice. The flow:
+
+1. The signature is checked over the exact statement bytes, then the key, the time window, the
+   audience and the digest of the items.
+2. A nonce that was already used is refused, and nothing is resolved.
+3. Each item is checked against its live gate. In a batch, only plain merge gates answered `merge`
+   at the listed head may ride. Release gates (`shepherd-release` merges and `after-stages`) and
+   hardware gates stay one per proof.
+4. The proof is recorded, with its statement and signature, before any item fires.
+5. Each item fires only while its gate is still pending at the listed head, and, with a GitHub
+   port, while the PR is open at that head. An item that moved or closed is skipped and named.
+6. A resolved gate records the resolver `owner-terminal` `key:<keyId>`, channel
+   `factory-proof`. A failed resolve stops the batch, and the record shows which items fired.
+
+The package README has the record's columns and the exact checks.
+
+### The route and the owner keys
+
+The route takes `{"statement": <base64url bytes>, "signature": <base64url DER>}` and answers
+`{ok, batchId, items: [{gate, outcome, detail?}]}`. A one-item proof is a single `gate resolve`.
+It is not an MCP tool or an RPC command, and it sits behind the same Host, Origin and
+client-header guards as `/rpc`. Bodies over 512 KiB get 413. A refused proof gets 403, or 409
+for a replay, and resolves nothing. Logs name the refusal or the outcomes, never the proof.
+
+The owner public keys load once at start from `/etc/titan-factory/owner-keys/*.pem`. The path is
+fixed in code. The directory, each of its parents and each key file must be owned by root, carry no
+group or other write bit, and not be a symlink. Any failure refuses the whole set. `/health` then
+shows `ownerKeys: {count: 0, refusal}` and the route answers 503 `owner keys not installed`.
+`factory.gates` returns `aud`, the host name a proof must be signed for.
+
+Install a key on the factory host, then restart serve:
+
+```sh
+sudo install -d -o root -g root -m 0755 /etc/titan-factory /etc/titan-factory/owner-keys
+sudo install -o root -g root -m 0644 owner-presence.pub.pem /etc/titan-factory/owner-keys/mac.pem
+titan-factory service restart
+curl -s http://127.0.0.1:7410/health | jq .ownerKeys
+```
+
 ## `resume`
 
 ```sh
@@ -288,7 +378,7 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd pid with `github` `ok` |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, and deploys are not stalled |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -303,11 +393,17 @@ the unit runs without a login session. The package README maps each plist key to
 
 `service check` defines each cause precisely and reports the first that holds, in this order:
 
-- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job.
+On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPID` is the pid
+(none unless `ActiveState` is `active`), `NRestarts` stands in for the run count and
+`ExecMainStatus` for the last exit code.
+
+- **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded`.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no `/health` answer (and it is not crash-looping).
 - **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
 - **stale build**: the build sha in `/health` differs from the sha baked into the installed dist; an `unknown` sha on either side never counts.
 - **GitHub down**: the right pid answers but `github` is not `ok`.
+- **stale index.lock**: the service checkout's `.git/index.lock` has no process holding it and is older than 10 minutes. The line names its path and age. `service check` never removes it; a person does, once no git runs there.
+- **deploy stalled**: the deploy block in `/health` has its alarm up (see [below](#service-deploy-redeploy-from-main)). The line names each cause, with the last refusal's reason; `--json` adds the running sha, the waiting asks, the refusals in a row and the last refusal.
 
 It never starts, stops or restarts the job.
 
@@ -315,8 +411,8 @@ It never starts, stops or restarts the job.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | `/health` answers from the launchd pid with `github` `ok`, and the build is not stale |
-| `1` | One of the causes above holds, or the platform is not macOS |
+| `0` | `/health` answers from the launchd or systemd pid with `github` `ok`, the build is not stale, and deploys are not stalled |
+| `1` | One of the causes above holds, or the platform is neither macOS nor Linux |
 | `2` | Usage error, such as an invalid `--port` |
 
 A server installed with `--port` needs the same `--port` on `status` and `restart`. On any
@@ -376,6 +472,29 @@ then held until a newer one arrives.
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
 The deployer never runs `git reset`: a rollback reverts `dist` and leaves the checkout at the
 target.
+
+`serve` watches those refusals. Every five minutes it re-reads the tail of `redeploy.log`.
+It judges the deployer only on what it was asked to land: each `service deploy --expect`
+line there is an ask, and Shepherd writes one only after a merge's main CI is green. A
+deploy lands exactly the sha it was asked for, so a landing (`deployed`, `skipped` or
+`already deployed`) covers an earlier ask only when it names that ask's target or a target
+asked at or after it. A burst's deployers that lose `deploy.lock` stay behind until something
+newer lands. The running build is a landing too, so a deploy fixed by hand clears the alarm:
+it lands its own ask, which covers that ask and every one before it and ends the refusals in
+a row. A running build that no ask named lands nothing.
+`/health` carries a `deploy` block: the running sha, the asks that have not landed
+(`behind`, counting only asks older than 20 minutes) and the age of the oldest one, the
+refusals in a row, and the last refusal's reason. The alarm goes up on two refusals in a row,
+on more than 3 waiting asks, or on an ask over 60 minutes old. A merge that never asked, such
+as one with a red main, raises nothing. A refusal because the checkout already landed a newer
+commit from origin/main is a deploy finishing out of order, and does not count. When the last
+refusal names `index.lock`, its reason ends with a report on the service checkout's
+`.git/index.lock`: its path and age, and whether a process holds it. A lock with no holder that
+is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
+`shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
+row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
+gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
+clears. A failed message is retried on the next check.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
 It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The

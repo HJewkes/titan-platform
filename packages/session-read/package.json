@@ -32,11 +32,11 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/locator": "workspace:^",
-    "@titan-design/agent-protocol": "workspace:^"
+    "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/anthropic-account": "workspace:^"
   }
 }

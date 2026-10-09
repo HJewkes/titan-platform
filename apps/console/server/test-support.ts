@@ -1,5 +1,6 @@
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, request, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 
 const RPC_PREFIX = "/rpc/";
@@ -51,16 +52,29 @@ export interface FakeBrokerData {
   token: string;
   sessions: unknown[];
   items: unknown[];
+  queue?: unknown[];
   brokerUptimeMs?: number;
 }
 
-/** A loopback agent-chat broker: `/api/sessions` and `/api/history` behind the token header, 401 without it. */
-export async function startFakeBroker(data: FakeBrokerData): Promise<FakeDaemon> {
+export interface FakeBroker extends FakeDaemon {
+  /** Every request as `METHOD url`, so a test can prove a read never wrote. */
+  requests: string[];
+}
+
+function brokerBody(route: string | undefined, data: FakeBrokerData): unknown {
+  if (route === "/api/sessions") return { sessions: data.sessions, brokerUptimeMs: data.brokerUptimeMs ?? 60_000 };
+  if (route === "/api/history") return { items: data.items };
+  if (route === "/api/queue") return { items: data.queue ?? [] };
+  return null;
+}
+
+/** A loopback agent-chat broker: `/api/sessions`, `/api/history` and `/api/queue` behind the token header, 401 without it. */
+export async function startFakeBroker(data: FakeBrokerData): Promise<FakeBroker> {
+  const requests: string[] = [];
   const server = createServer((req, res) => {
-    const route = (req.url ?? "").split("?")[0];
+    requests.push(`${req.method} ${req.url}`);
     const authorized = req.headers["x-agent-chat-token"] === data.token;
-    const body =
-      route === "/api/sessions" ? { sessions: data.sessions, brokerUptimeMs: data.brokerUptimeMs ?? 60_000 } : route === "/api/history" ? { items: data.items } : null;
+    const body = brokerBody((req.url ?? "").split("?")[0], data);
     res.writeHead(!authorized ? 401 : body ? 200 : 404, { "content-type": "application/json" });
     res.end(JSON.stringify(authorized && body ? body : { error: "nope" }));
   });
@@ -70,5 +84,29 @@ export async function startFakeBroker(data: FakeBrokerData): Promise<FakeDaemon>
     server.closeAllConnections();
     return closeServer(server);
   };
-  return { port: (server.address() as AddressInfo).port, close };
+  return { port: (server.address() as AddressInfo).port, close, requests };
+}
+
+export interface Reply {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}
+
+/** A raw request, so a test sets the Host and Origin headers that fetch would fill in itself. */
+export function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: address, port, path: route, method, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+export function sessionCookie(reply: Reply): string | undefined {
+  const cookies = [reply.headers["set-cookie"] ?? []].flat();
+  return cookies.find((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`));
 }

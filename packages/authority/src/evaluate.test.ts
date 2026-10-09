@@ -20,15 +20,18 @@ const DENY_RULE_IDS = [
   "SPD-OR",
   "CFG-OR", "CFG-CO", "CFG-WK", "CFG-HD", "CFG-AU",
   "HV-CO", "HV-WK", "HV-HD", "HV-AU",
+  "MRG-DC", "REL-DC", "SEC-DC", "UNT-DC", "PUB-DC", "EXT-DC", "HW-DC", "HWS-DC",
+  "DSR-DC", "DSL-DC", "DSX-DC", "SPN-DC", "SPD-DC", "CFG-DC", "HV-DC",
+  "ANS-OT", "ANS-OR", "ANS-CO", "ANS-WK", "ANS-HD", "ANS-AU", "ANS-DC",
 ];
 
 const ACTION_CODES: Record<string, ActionClass> = {
-  MRG: "merge", REL: "release", SEC: "secret-read", PUB: "private-to-public", EXT: "private-egress",
-  HW: "hardware-actuate", DSR: "destructive-remote", DSL: "destructive-local", DSX: "destructive-foreign",
-  SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb",
+  MRG: "merge", REL: "release", SEC: "secret-read", UNT: "untrusted-ingest", PUB: "private-to-public", EXT: "private-egress",
+  HW: "hardware-actuate", HWS: "hardware-stop", DSR: "destructive-remote", DSL: "destructive-local", DSX: "destructive-foreign",
+  SPN: "spawn", SPD: "spend-over-cap", CFG: "authority-config", HV: "human-verb", ANS: "answer-question",
 };
 const ACTOR_CODES: Record<string, ActorClass> = {
-  OT: "owner-terminal", OR: "owner-remote", CO: "coordinator", WK: "worker", HD: "headless", AU: "automation",
+  OT: "owner-terminal", OR: "owner-remote", CO: "coordinator", WK: "worker", HD: "headless", AU: "automation", DC: "decider",
 };
 
 function request(action: ActionClass, actor: ActorClass, tainted = false): AuthorityRequest {
@@ -41,9 +44,9 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 42 allow, 6 gate and 44 deny rows", () => {
+  it("holds 44 allow, 6 gate and 66 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 42, gate: 6, deny: 44 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 44, gate: 6, deny: 66 });
   });
 
   it("denies exactly the hand-listed rows", () => {
@@ -55,8 +58,8 @@ describe("the approved table", () => {
     expect(evaluate(DEFAULT_TABLE, requestFor(ruleId))).toMatchObject({ verdict: "deny", ruleId });
   });
 
-  it("lets every actor stop hardware and lets no rule stop a run for spend", () => {
-    for (const actor of ACTOR_CLASSES) expect(evaluate(DEFAULT_TABLE, request("hardware-stop", actor)).verdict).toBe("allow");
+  it("lets every actor but the decider stop hardware and lets no rule stop a run for spend", () => {
+    for (const actor of ACTOR_CLASSES.filter((candidate) => candidate !== "decider")) expect(evaluate(DEFAULT_TABLE, request("hardware-stop", actor)).verdict).toBe("allow");
     for (const actor of ["coordinator", "worker", "headless", "automation"] as const) {
       expect(evaluate(DEFAULT_TABLE, request("spend-over-cap", actor)).verdict).toBe("allow");
     }

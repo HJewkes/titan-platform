@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./limits": {
+      "types": "./dist/limits/index.d.ts",
+      "import": "./dist/limits/index.js"
+    },
+    "./limits/node": {
+      "types": "./dist/limits/node.d.ts",
+      "import": "./dist/limits/node.js"
     }
   },
   "files": [
@@ -32,7 +40,12 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }

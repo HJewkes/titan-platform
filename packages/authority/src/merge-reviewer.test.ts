@@ -5,10 +5,10 @@ import type { AuthorityRequest } from "./evaluate.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
 import type { ActorClass, ConditionKind } from "./vocabulary.js";
-import { CONDITION_KINDS as ALL_CONDITION_KINDS } from "./vocabulary.js";
+import { MERGE_CONDITION_KINDS } from "./vocabulary.js";
 
-// MRG-AU-RV never checks the carry or kind conditions, which belong to MRG-AU-RC.
-const CONDITION_KINDS = ALL_CONDITION_KINDS.filter((condition) => condition !== "verdict-merge-carried-tree-equal" && condition !== "pr-kind-not-security");
+// MRG-AU-RV never checks the carry or kind conditions, which belong to MRG-AU-RC and MRG-AU-RM.
+const CONDITION_KINDS = MERGE_CONDITION_KINDS.filter((condition) => !["verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "pr-kind-not-security"].includes(condition));
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
 const ACTIONS_APP = 15368;
@@ -88,24 +88,18 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a null repoFrozen", (f) => { setFact(f, "repoFrozen", null); }, "repo-not-frozen"],
   ["a repoFrozen of 0", (f) => { setFact(f, "repoFrozen", 0); }, "repo-not-frozen"],
   ["no changed paths", (f) => { f.changedPaths = []; }, "no-protected-path-change"],
-  ["a change to .github/workflows/ci.yml", (f) => { f.changedPaths.push(".github/workflows/ci.yml"); }, "no-protected-path-change"],
-  ["a change to .github/actions/setup/action.yml", (f) => { f.changedPaths.push(".github/actions/setup/action.yml"); }, "no-protected-path-change"],
   ["a change to .github/CODEOWNERS", (f) => { f.changedPaths.push(".github/CODEOWNERS"); }, "no-protected-path-change"],
-  ["a change to .github/dependabot.yml", (f) => { f.changedPaths.push(".github/dependabot.yml"); }, "no-protected-path-change"],
-  ["a change to .github/rulesets/main.json", (f) => { f.changedPaths.push(".github/rulesets/main.json"); }, "no-protected-path-change"],
+  ["a change to .GitHub/codeowners", (f) => { f.changedPaths.push(".GitHub/codeowners"); }, "no-protected-path-change"],
   ["a change to CODEOWNERS", (f) => { f.changedPaths.push("CODEOWNERS"); }, "no-protected-path-change"],
   ["a change to docs/CODEOWNERS", (f) => { f.changedPaths.push("docs/CODEOWNERS"); }, "no-protected-path-change"],
   ["a change to .gitmodules", (f) => { f.changedPaths.push(".gitmodules"); }, "no-protected-path-change"],
   ["a change to ./.github/workflows/ci.yml", (f) => { f.changedPaths.push("./.github/workflows/ci.yml"); }, "no-protected-path-change"],
   ["a change to ./CODEOWNERS", (f) => { f.changedPaths.push("./CODEOWNERS"); }, "no-protected-path-change"],
-  ["a change to .github/x", (f) => { f.changedPaths.push(".github/x"); }, "no-protected-path-change"],
   ["a change to a/../.github/x", (f) => { f.changedPaths.push("a/../.github/x"); }, "no-protected-path-change"],
   ["a change to docs/../CODEOWNERS", (f) => { f.changedPaths.push("docs/../CODEOWNERS"); }, "no-protected-path-change"],
   ["a change to /.github/x", (f) => { f.changedPaths.push("/.github/x"); }, "no-protected-path-change"],
   ["a change to .//.github/x", (f) => { f.changedPaths.push(".//.github/x"); }, "no-protected-path-change"],
   ["a change to docs/./CODEOWNERS", (f) => { f.changedPaths.push("docs/./CODEOWNERS"); }, "no-protected-path-change"],
-  ["a change to .GITHUB/x", (f) => { f.changedPaths.push(".GITHUB/x"); }, "no-protected-path-change"],
-  ["a change to .github", (f) => { f.changedPaths.push(".github"); }, "no-protected-path-change"],
   ["a change to CODEOWNERS/", (f) => { f.changedPaths.push("CODEOWNERS/"); }, "no-protected-path-change"],
   ["a change to codeowners", (f) => { f.changedPaths.push("codeowners"); }, "no-protected-path-change"],
   ["a change to Docs/CODEOWNERS", (f) => { f.changedPaths.push("Docs/CODEOWNERS"); }, "no-protected-path-change"],
@@ -113,7 +107,6 @@ const REFUSALS: [string, (facts: MergeFacts) => void, ConditionKind][] = [
   ["a change to docs\\guide.md", (f) => { f.changedPaths.push("docs\\guide.md"); }, "no-protected-path-change"],
   ["a change to packages//x.ts", (f) => { f.changedPaths.push("packages//x.ts"); }, "no-protected-path-change"],
   ["a change to packages/x/..", (f) => { f.changedPaths.push("packages/x/.."); }, "no-protected-path-change"],
-  ["a rename whose old side is under .github/", (f) => { f.changedPaths.push(".github/workflows/old.yml", "tools/old.yml"); }, "no-protected-path-change"],
   ...[".github /x", ".github./x", "CODEOWNERS.", "docs/CODEOWNERS ", "docs./CODEOWNERS"].map(
     (path): [string, (facts: MergeFacts) => void, ConditionKind] => [`a change to ${JSON.stringify(path)}`, (f) => { f.changedPaths.push(path); }, "no-protected-path-change"],
   ),
@@ -141,11 +134,11 @@ const UNREADABLE: [string, () => AuthorityRequest][] = [
   ["a cycle in the facts", () => { const facts = greenFacts(); setFact(facts, "self", facts); return mergeBy("automation", facts); }],
   ["a BigInt fact", () => mergeBy("automation", patched((f) => { setFact(f, "extra", 1n); }))],
   ["a changed path getter that throws", () => mergeBy("automation", patched((f) => { Object.defineProperty(f.changedPaths, 0, { get: () => { throw new Error("boom"); } }); }))],
-  ["changed paths whose toJSON hides a .github change", () => mergeBy("automation", patched((f) => { f.changedPaths = [".github/workflows/x.yml"]; setFact(f.changedPaths, "toJSON", () => ["src/x.ts"]); }))],
+  ["changed paths whose toJSON hides a CODEOWNERS change", () => mergeBy("automation", patched((f) => { f.changedPaths = ["CODEOWNERS"]; setFact(f.changedPaths, "toJSON", () => ["src/x.ts"]); }))],
   ["a FIX_FIRST verdict whose toJSON claims MERGE", () => mergeBy("automation", patched((f) => { f.verdict.value = "FIX_FIRST"; setFact(f.verdict, "toJSON", () => ({ value: "MERGE", head: HEAD })); }))],
   ["seat grants whose toJSON adds merge-on-green-approve", () => mergeBy("automation", patched((f) => { f.seatGrants = []; setFact(f.seatGrants, "toJSON", () => ["merge-on-green-approve"]); }))],
   ["a failed run whose toJSON claims success", () => mergeBy("automation", patched((f) => { const run = { name: "lint", appId: ACTIONS_APP, headSha: HEAD, conclusion: "failure" }; setFact(run, "toJSON", () => ({ ...run, conclusion: "success" })); f.checkRuns.push(run); }))],
-  ["changed paths given as an array-like object with methods", () => mergeBy("automation", patched((f) => { setFact(f, "changedPaths", { 0: ".github/x", length: 1, some: () => false }); }))],
+  ["changed paths given as an array-like object with methods", () => mergeBy("automation", patched((f) => { setFact(f, "changedPaths", { 0: "CODEOWNERS", length: 1, some: () => false }); }))],
   ["seat grants given as an object with includes", () => mergeBy("automation", patched((f) => { setFact(f, "seatGrants", { includes: () => true }); }))],
   ["a Map in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Map()); }))],
   ["a Set in the facts", () => mergeBy("automation", patched((f) => { setFact(f, "extra", new Set()); }))],
@@ -267,7 +260,7 @@ describe("MRG-AU-RV: an automation merge on the dispatched reviewer's verdict", 
     });
   });
 
-  it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md"])("allows a change to the unprotected path %s", (path) => {
+  it.each(["docs/guide.md", ".githubx/notes.md", "packages/x/CODEOWNERS.md", ".github/workflows/release.yml", ".GITHUB/x", ".github"])("allows a change to the unprotected path %s", (path) => {
     const facts = patched((f) => { f.changedPaths.push(path); });
     expect(evaluate(DEFAULT_TABLE, mergeBy("automation", facts))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RV" });
   });
@@ -354,7 +347,7 @@ describe("a hole that a polluted prototype would fill", () => {
   });
 
   it("keeps a dense list when Array.prototype[0] is an accessor that swallows writes", () => {
-    const facts = patched((f) => { f.changedPaths = [".github/workflows/ci.yml"]; });
+    const facts = patched((f) => { f.changedPaths = ["CODEOWNERS"]; });
     Object.defineProperty(Array.prototype, 0, { get: () => "src/ok.ts", set: () => undefined, configurable: true });
     const unmet = unmetConditions(CONDITION_KINDS, { merge: facts }).join();
     const decision = evaluate(DEFAULT_TABLE, mergeBy("automation", facts));

@@ -3,18 +3,18 @@
 // --report <file> also writes codewatch-pr-report@1 (scripts/codewatch-report.mjs); a failed write never changes the exit code.
 // The lock holder indexes in a child process, so a signal or an OOM in the indexer still releases the lock and cleans up at once;
 // an OOM exits 2 and says so. --db <path> keeps the finished graph there for `dead:check --db`, which would otherwise re-index.
+// --seed-db <path> starts from a graph a CI cache restored: the indexer re-parses only changed files and drops deleted ones (TP-1854).
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
-import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
-const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
 // The indexer's live heap peaks near 460 MB; uncapped, V8 lets garbage grow the process to about 3 GB.
 const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
@@ -83,10 +83,32 @@ function formatText({ snapshot, baselineSnapshot, result }) {
   return lines.join("\n");
 }
 
+/**
+ * A seeded snapshot may feed the reuse basis but never snapshot identity: with a commit it becomes the alias base
+ * of the head index, so rename aliases (and the baseline's carry-over) would differ from a cold run's.
+ */
+export function forgetSeedCommits(store) {
+  store.db.prepare("UPDATE snapshot SET commit_hash = NULL").run();
+}
+
+// A cache written by another schema or truncated mid-save must cost a cold index, never a failed check.
+function openWorkStore(graph) {
+  try {
+    const store = graph.openCodeGraph(WORK_DB);
+    store.listSnapshots({ limit: 1 });
+    if (seedDbPath(process.argv.slice(2))) forgetSeedCommits(store);
+    return store;
+  } catch (err) {
+    console.error(`seed graph unusable, indexing cold: ${err instanceof Error ? err.message : String(err)}`);
+    removeDb(WORK_DB);
+    return graph.openCodeGraph(WORK_DB);
+  }
+}
+
 async function check() {
   const graph = await import(ENTRY);
   const baseRef = process.env.BASE_REF;
-  const store = graph.openCodeGraph(WORK_DB);
+  const store = openWorkStore(graph);
   try {
     await indexTree(graph, store, ROOT, "head");
     if (baseRef) await indexBaseline(graph, store, baseRef);
@@ -96,6 +118,8 @@ async function check() {
     console.log(process.argv.includes("--json") ? JSON.stringify(json, null, 2) : formatText(run));
     const reportAt = process.argv.indexOf("--report");
     if (reportAt >= 0) writeReport(process.argv[reportAt + 1], () => collectReport(graph, store, run, rules));
+    // A cached graph keeps only what the next run can reuse: the head and baseline just indexed.
+    if (seedDbPath(process.argv.slice(2))) graph.runPrune(store, { keep: 2 });
     return run.result.passed ? 0 : 1;
   } finally {
     store.close();
@@ -122,6 +146,13 @@ export function keptDbPath(argv) {
   return path.resolve(argv[at + 1]);
 }
 
+export function seedDbPath(argv) {
+  const at = argv.indexOf("--seed-db");
+  if (at < 0) return null;
+  if (!argv[at + 1]) throw new Error("--seed-db needs a path");
+  return path.resolve(argv[at + 1]);
+}
+
 function removeDb(dbPath) {
   for (const suffix of ["", "-wal", "-shm"]) rmSync(`${dbPath}${suffix}`, { force: true });
 }
@@ -137,6 +168,11 @@ export function keepDb({ workDb, dbPath, code }) {
 async function indexUnderLock(cleanups, dbPath) {
   clearWorkDir();
   mkdirSync(WORK_DIR, { recursive: true });
+  const seed = seedDbPath(process.argv.slice(2));
+  if (seed && existsSync(seed)) {
+    copyFileSync(seed, WORK_DB);
+    console.error(`seeded the graph from ${seed}`);
+  }
   const args = [WORKER_FLAG, ...process.argv.slice(2)];
   const log = (m) => console.error(m);
   const code = await runCappedWorker({ script: SCRIPT, args, name: "dag-check indexer", heapCapMb: HEAP_CAP_MB, cleanups, log });
@@ -152,7 +188,13 @@ async function supervise() {
   const dbPath = keptDbPath(process.argv.slice(2));
   const cleanups = [];
   cleanupOnSignal(cleanups);
-  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log: (m) => console.error(m) });
+  try {
+    await acquire({ timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
+  } catch (err) {
+    if (!(err instanceof LockTimeoutError)) throw err;
+    console.error(err.message);
+    return BUSY_EXIT_CODE;
+  }
   cleanups.push(() => release(DEFAULT_LOCK_DIR), clearWorkDir);
   try {
     return await indexUnderLock(cleanups, dbPath);

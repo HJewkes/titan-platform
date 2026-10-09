@@ -8,6 +8,14 @@
         "link": "/reference/agent-protocol"
       },
       {
+        "text": "anthropic-account",
+        "link": "/reference/anthropic-account"
+      },
+      {
+        "text": "app-paths",
+        "link": "/reference/app-paths"
+      },
+      {
         "text": "authority",
         "link": "/reference/authority"
       },
@@ -32,6 +40,10 @@
         "link": "/reference/embed"
       },
       {
+        "text": "eslint-plugin",
+        "link": "/reference/eslint-plugin"
+      },
+      {
         "text": "evidence",
         "link": "/reference/evidence"
       },
@@ -50,6 +62,10 @@
       {
         "text": "store-sqlite",
         "link": "/reference/store-sqlite"
+      },
+      {
+        "text": "tool-guard",
+        "link": "/reference/tool-guard"
       }
     ]
   },
@@ -80,6 +96,10 @@
       {
         "text": "github",
         "link": "/reference/github"
+      },
+      {
+        "text": "health",
+        "link": "/reference/health"
       },
       {
         "text": "hitl",
@@ -140,8 +160,16 @@
         "link": "/reference/owner-queue"
       },
       {
+        "text": "pm",
+        "link": "/reference/pm"
+      },
+      {
         "text": "queue-mirror",
         "link": "/reference/queue-mirror"
+      },
+      {
+        "text": "review-panel",
+        "link": "/reference/review-panel"
       },
       {
         "text": "session-analytics",

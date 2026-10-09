@@ -17,6 +17,9 @@ importers:
       '@titan-design/egress-scan':
         specifier: workspace:*
         version: link:packages/egress-scan
+      '@titan-design/eslint-plugin':
+        specifier: workspace:*
+        version: link:packages/eslint-plugin
       '@types/node':
         specifier: ^25.3.2
         version: 25.9.5
@@ -35,6 +38,9 @@ importers:
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@1.21.7)(postcss@8.5.28)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1)
+      turbo:
+        specifier: 2.11.7
+        version: 2.11.7
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -50,6 +56,9 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@25.9.5)(jiti@1.21.7)(jsdom@30.1.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   apps/codewatch:
     dependencies:
@@ -129,12 +138,21 @@ importers:
 
   apps/console:
     dependencies:
+      '@titan-design/app-paths':
+        specifier: workspace:*
+        version: link:../../packages/app-paths
       '@titan-design/chat-protocol':
         specifier: workspace:^
         version: link:../../packages/chat-protocol
       '@titan-design/daemon':
         specifier: workspace:^
         version: link:../../packages/daemon
+      '@titan-design/github':
+        specifier: workspace:^
+        version: link:../../packages/github
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -147,9 +165,21 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:*
         version: link:../../packages/rpc-client
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
+      '@titan-design/session-graph':
+        specifier: workspace:^
+        version: link:../../packages/session-graph
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
+      '@titan-design/worktree':
+        specifier: workspace:^
+        version: link:../../packages/worktree
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -225,7 +255,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/agent-dispatch: {}
+  packages/agent-dispatch:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/agent-lifecycle:
     dependencies:
@@ -243,6 +277,18 @@ importers:
         version: 4.5.4
 
   packages/agent-surface: {}
+
+  packages/anthropic-account:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/app-paths:
+    devDependencies:
+      env-paths:
+        specifier: ^3.0.0
+        version: 3.0.0
 
   packages/authority:
     devDependencies:
@@ -397,6 +443,16 @@ importers:
 
   packages/github: {}
 
+  packages/health:
+    dependencies:
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../store-sqlite
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
   packages/hitl:
     dependencies:
       '@titan-design/authority':
@@ -438,6 +494,15 @@ importers:
 
   packages/owner-queue:
     devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  packages/pm:
+    devDependencies:
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -522,6 +587,12 @@ importers:
         specifier: workspace:^
         version: link:../store-sqlite
 
+  packages/review-panel:
+    dependencies:
+      '@titan-design/session-read':
+        specifier: workspace:^
+        version: link:../session-read
+
   packages/rpc-client:
     dependencies:
       '@titan-design/rpc-protocol':
@@ -579,6 +650,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../anthropic-account
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
@@ -707,6 +781,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
@@ -722,9 +799,15 @@ importers:
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
+      '@titan-design/review-panel':
+        specifier: workspace:^
+        version: link:../../packages/review-panel
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
@@ -752,6 +835,9 @@ importers:
 
   products/retrieval-eval:
     dependencies:
+      '@titan-design/app-paths':
+        specifier: workspace:*
+        version: link:../../packages/app-paths
       '@titan-design/embed':
         specifier: workspace:^
         version: link:../../packages/embed
@@ -3223,6 +3309,36 @@ packages:
   '@ts-morph/common@0.26.1':
     resolution: {integrity: sha512-Sn28TGl/4cFpcM+jwsH1wLncYq3FtN/BIpem+HOygfBWPT5pAeS5dB4VFVzV8FbnOKHpDLZmvAl4AjPEev5idA==}
 
+  '@turbo/darwin-64@2.11.7':
+    resolution: {integrity: sha512-Z2LFOxwbiJueD1miByXJS/BrW21vv6YaQXZustty5jEX4vQYw6zyh101Sz1QO7WG0mqBzKagZ/DoAeeujI0/Sw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@turbo/darwin-arm64@2.11.7':
+    resolution: {integrity: sha512-Vhv8ybgIflosNDSSRD9fNXHlCFA60dsGyTqQmc7l28SEX5jOaweCCD4BBYNd8/p0WGkw3e7tZbfA9w6FsujGvw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@turbo/linux-64@2.11.7':
+    resolution: {integrity: sha512-rAqRp3blQKk1+ylMGlZHAW0eJjVNuuGUm4ZrC6RU1Im8tLryvaO4a2zLQ/FQi1TRlmKqKV9YXBki2YeytlLbXA==}
+    cpu: [x64]
+    os: [android, linux]
+
+  '@turbo/linux-arm64@2.11.7':
+    resolution: {integrity: sha512-thVYGov7S+llXAxrl3kBb/efalav0xhrjl5NHCR6AfKx14JkbqaetvbVwyss4FvZ9rt+Pv3xsTb+8SIYix8DTg==}
+    cpu: [arm64]
+    os: [android, linux]
+
+  '@turbo/windows-64@2.11.7':
+    resolution: {integrity: sha512-ZIoKT7J7KutgYl4bGxmmgeUQjG+7E0nY8BF9dxUOiMH2vdTsM4JQ2uSwTYFkTR2Llbg6ghGjSmuZ8LQtkLEYjg==}
+    cpu: [x64]
+    os: [win32]
+
+  '@turbo/windows-arm64@2.11.7':
+    resolution: {integrity: sha512-88Xv2f7SLGVJ68lRRx8o375dKmnZYNdDtvlKcPA0kZpcF93eAQd8l96BKQ0/AMHG0bMJA0Z5QqoqtetxzNsC+g==}
+    cpu: [arm64]
+    os: [win32]
+
   '@types/aria-query@5.0.4':
     resolution: {integrity: sha512-rfT93uj5s0PRL7EzccGMs3brplhcrghnDoV26NqKhCAS1hVo+WdNsPvE/yb6ilfr5hi2MEk6d5EWJTKdxg8jVw==}
 
@@ -4348,6 +4464,10 @@ packages:
   entities@8.1.0:
     resolution: {integrity: sha512-kxL7msIffSuh9aaFAMD7rxAIuTRMAHMeBtgHW2yUdWw732ZNh4MehkF2gdjvtdmikkaIP9bFDDJOPlsvm7avrA==}
     engines: {node: '>=20.19.0'}
+
+  env-paths@3.0.0:
+    resolution: {integrity: sha512-dtJUTepzMW3Lm/NPxRf3wP4642UWhjL2sQxc+ym2YMj1m/H2zDNQOlezafzkHwn6sMstjHTwG6iQQsctDW/b1A==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   error-stack-parser@2.1.4:
     resolution: {integrity: sha512-Sk5V6wVazPhq5MhpO+AUxJn5x7XSXGl1R93Vn7i+zS15KDVxQijejNCrz8340/2bgLBjR9GtEG8ZVKONDjcqGQ==}
@@ -6332,6 +6452,10 @@ packages:
   tsx@4.23.13:
     resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==}
     engines: {node: '>=18.0.0'}
+    hasBin: true
+
+  turbo@2.11.7:
+    resolution: {integrity: sha512-RhXHbqfvY6o3xt/zSHCwSNwLrZlXiqHzewi4eAj9PtZ1T1CqgMJ2yIDb7SKPTG9IikTm925mfzL6hldQVdyNWw==}
     hasBin: true
 
   type-check@0.4.0:
@@ -9446,6 +9570,24 @@ snapshots:
       minimatch: 9.0.9
       path-browserify: 1.0.1
 
+  '@turbo/darwin-64@2.11.7':
+    optional: true
+
+  '@turbo/darwin-arm64@2.11.7':
+    optional: true
+
+  '@turbo/linux-64@2.11.7':
+    optional: true
+
+  '@turbo/linux-arm64@2.11.7':
+    optional: true
+
+  '@turbo/windows-64@2.11.7':
+    optional: true
+
+  '@turbo/windows-arm64@2.11.7':
+    optional: true
+
   '@types/aria-query@5.0.4': {}
 
   '@types/better-sqlite3@7.6.13':
@@ -10650,6 +10792,8 @@ snapshots:
   entities@7.0.1: {}
 
   entities@8.1.0: {}
+
+  env-paths@3.0.0: {}
 
   error-stack-parser@2.1.4:
     dependencies:
@@ -12971,6 +13115,15 @@ snapshots:
       esbuild: 0.28.2
     optionalDependencies:
       fsevents: 2.3.3
+
+  turbo@2.11.7:
+    optionalDependencies:
+      '@turbo/darwin-64': 2.11.7
+      '@turbo/darwin-arm64': 2.11.7
+      '@turbo/linux-64': 2.11.7
+      '@turbo/linux-arm64': 2.11.7
+      '@turbo/windows-64': 2.11.7
+      '@turbo/windows-arm64': 2.11.7
 
   type-check@0.4.0:
     dependencies:

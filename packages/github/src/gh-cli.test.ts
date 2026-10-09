@@ -54,6 +54,15 @@ describe("gh api adapter", () => {
     expect(update?.args).toEqual(["api", "-i", "-X", "PUT", "repos/octo/demo/pulls/7/update-branch", "-f", `expected_head_sha=${H1}`]);
   });
 
+  it("maps REST merged_at to mergedAt, and null while the PR is open", async () => {
+    const mergedPr = JSON.stringify({ ...JSON.parse(openPr), state: "closed", merged: true, merged_at: "2026-01-02T03:04:05Z" });
+    const merged = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 0 }), "pulls/7": mergedPr });
+    const open = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+
+    expect(await ghCliWire(merged.exec).getPr(REPO, 7)).toMatchObject({ merged: true, mergedAt: "2026-01-02T03:04:05Z" });
+    expect(await ghCliWire(open.exec).getPr(REPO, 7)).toMatchObject({ merged: false, mergedAt: null });
+  });
+
   it("reads behind from the compare API and never passes a token", async () => {
     const gh = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 3 }), "pulls/7": openPr });
 
@@ -82,6 +91,28 @@ describe("gh api adapter", () => {
     const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules) });
 
     expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true });
+  });
+
+  it("reads a context's app pin from a ruleset, and leaves an unpinned context out of the pins", async () => {
+    const rules = [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "validate", integration_id: 15368 }, { context: "dag-check" }] } }];
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify(rules) });
+
+    expect(await ghCliWire(gh.exec).getBranchRules(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: false, pins: { validate: [15368] } });
+  });
+
+  it("reads classic protection's contexts, strictness and app pins", async () => {
+    const body = { strict: true, contexts: ["validate", "dag-check"], checks: [{ context: "validate", app_id: 15368 }, { context: "dag-check", app_id: -1 }] };
+    const gh = scriptedGh({ "branches/main/protection/required_status_checks": JSON.stringify(body) });
+
+    expect(await ghCliWire(gh.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: ["dag-check", "validate"], strict: true, pins: { validate: [15368] } });
+  });
+
+  it("reads a 404 from classic protection as no required checks, and any other failure as an error", async () => {
+    const absent = scriptedGh({ "protection/required_status_checks": { code: 1, stdout: "", stderr: "gh: Not Found (HTTP 404)\n" } });
+    const broken = scriptedGh({ "protection/required_status_checks": { code: 1, stdout: "", stderr: "gh: Server Error (HTTP 502)\n" } });
+
+    expect(await ghCliWire(absent.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: [], strict: false });
+    await expect(ghCliWire(broken.exec).getClassicRequiredChecks(REPO, "main")).rejects.toThrow(/502/);
   });
 
   it("throws a named error for a required_status_checks rule with no parameters, rather than reading no contexts", async () => {
@@ -192,6 +223,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/^user$/, { login: "octo" }],
   [/pulls\/7\/files$/, []],
   [/pulls\/7\/commits$/, []],
+  [/^repos\/octo\/demo\/commits$/, []],
   [/git\/ref\/heads\//, { object: { sha: H1 } }],
   [/git\/refs/, undefined],
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
@@ -237,6 +269,7 @@ describe("gh api adapter, REST only", () => {
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
+      classicRequiredChecks: () => port.classicRequiredChecks(REPO, "main"),
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
@@ -249,6 +282,7 @@ describe("gh api adapter, REST only", () => {
       rerunFailed: () => port.rerunFailed(REPO, 55),
       listPrFiles: () => port.listPrFiles(REPO, 7),
       listPrCommits: () => port.listPrCommits(REPO, 7),
+      listDefaultBranchCommits: () => port.listDefaultBranchCommits(REPO, "2026-01-01T00:00:00Z"),
       compareFiles: () => port.compareFiles(REPO, "main", "topic"),
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),

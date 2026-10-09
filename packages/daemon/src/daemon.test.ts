@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, request } from "node:http";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
@@ -8,11 +8,20 @@ import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SESSION_COOKIE, TokenFileError, ensureTokenFile, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
-import { NonLoopbackBindError } from "./bind-guard.js";
+import type * as BindGuardModule from "./bind-guard.js";
+import { NonLoopbackBindError, RemoteBindError, assertRemoteHost } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
+
+// The one test seam for the remote listener: 127.0.0.2 is loopback, so the remote suite lets
+// exactly that address past the refusal. Every other host still meets the real check.
+vi.mock("./bind-guard.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof BindGuardModule>();
+  return { ...actual, assertRemoteHost: vi.fn(actual.assertRemoteHost) };
+});
 
 let stateDir: string;
 let handle: DaemonHandle | null = null;
@@ -304,20 +313,10 @@ describe("stale pid file", () => {
 });
 
 describe("startDaemon port conflicts", () => {
-  async function freePort(): Promise<number> {
-    const probe = createServer();
-    probe.listen(0, "127.0.0.1");
-    await once(probe, "listening");
-    const { port } = probe.address() as AddressInfo;
-    probe.close();
-    await once(probe, "close");
-    return port;
-  }
-
   it("rejects the second daemon on a taken port while the first keeps serving", async () => {
-    const port = await freePort();
+    handle = await startDaemon(options({ port: 0 }));
+    const { port } = handle;
     const otherStateDir = await mkdtemp(path.join(tmpdir(), "titan-daemon-other-"));
-    handle = await startDaemon(options({ port }));
     try {
       const failure = await startDaemon(options({ port, stateDir: otherStateDir })).catch((err: unknown) => err);
       expect(failure).toBeInstanceOf(DaemonPortInUseError);
@@ -328,5 +327,343 @@ describe("startDaemon port conflicts", () => {
     } finally {
       await rm(otherStateDir, { recursive: true, force: true });
     }
+  });
+});
+
+const REMOTE = "127.0.0.2";
+
+interface Reply {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}
+
+function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: address, port, path: route, method, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+/** The first bytes of a response; for a stream that never ends, such as `/events`. */
+function sendHead(address: string, port: number, route: string, headers: Record<string, string>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: address, port, path: route, headers }, (res) => {
+      resolve(res.statusCode ?? 0);
+      req.destroy();
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function holdPort(address: string, port = 0): Promise<{ port: number; release: () => Promise<void> }> {
+  const server = createServer();
+  server.listen(port, address);
+  await once(server, "listening");
+  return { port: (server.address() as AddressInfo).port, release: () => new Promise((resolve) => server.close(() => resolve())) };
+}
+
+async function bindOnce(address: string, port: number): Promise<boolean> {
+  return holdPort(address, port).then(
+    ({ release }) => release().then(() => true),
+    () => false,
+  );
+}
+
+/**
+ * Released means this process can bind the address and port again. close() has already resolved
+ * on the server's own close event, so a refusal right after it is another test file's worker
+ * taking the freed ephemeral port for a moment; that clears, a listener that leaked does not,
+ * so the wait is bounded and a leak still fails.
+ */
+async function canBind(address: string, port: number, waitMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  while (!(await bindOnce(address, port))) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
+}
+
+const LOOPBACK_RACE_ATTEMPTS = 5;
+
+/**
+ * Run a start that is expected to fail on a port probed free, then released. Parallel test files
+ * bind ephemeral ports too and can take it in that gap; only that loss, the daemon's own
+ * loopback bind refused, earns a fresh port.
+ */
+async function failOnProbedPort(start: (port: number) => Promise<DaemonHandle>): Promise<{ port: number; failure: unknown }> {
+  for (let attempt = 1; ; attempt++) {
+    const probe = await holdPort("127.0.0.1");
+    await probe.release();
+    const failure = await start(probe.port).then(
+      async (started) => {
+        await started.close();
+        return new Error("started when it should have failed");
+      },
+      (err: unknown) => err,
+    );
+    const lostRace = failure instanceof DaemonPortInUseError && failure.host === "127.0.0.1";
+    if (!lostRace || attempt === LOOPBACK_RACE_ATTEMPTS) return { port: probe.port, failure };
+  }
+}
+
+describe("startDaemon remote host refusal", () => {
+  let tokenFile: string;
+  beforeEach(() => {
+    tokenFile = path.join(stateDir, "lan.token");
+    ensureTokenFile(tokenFile);
+  });
+
+  it.each(["0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0", "127.0.0.1", REMOTE, "::1", "::ffff:127.0.0.1", "localhost", "lan-box", "", "[192.168.1.20]"])(
+    "refuses remote.host %j before binding or writing the pid file",
+    async (host) => {
+      const attempt = startDaemon(options({ remote: { host, tokenFile } }));
+
+      await expect(attempt).rejects.toBeInstanceOf(RemoteBindError);
+      await expect(attempt).rejects.toMatchObject({ host });
+      expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+    },
+  );
+
+  it("refuses a remote listener beside an unauthenticated non-loopback one", async () => {
+    const attempt = startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: true, remote: { host: "192.0.2.1", tokenFile } }));
+
+    await expect(attempt).rejects.toBeInstanceOf(RemoteBindError);
+  });
+
+  // The loopback port stays held: a start that bound before reading the file would fail with
+  // DaemonPortInUseError instead, so the token error proves the file is read first.
+  it("refuses a missing token file before binding", async () => {
+    const held = await holdPort("127.0.0.1");
+    try {
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile: path.join(stateDir, "absent.token") } }));
+
+      await expect(attempt).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await held.release();
+    }
+  });
+
+  it("refuses a group-readable token file before binding", async () => {
+    const held = await holdPort("127.0.0.1");
+    await chmod(tokenFile, 0o640);
+    try {
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile } }));
+
+      await expect(attempt).rejects.toBeInstanceOf(TokenFileError);
+    } finally {
+      await held.release();
+    }
+  });
+
+  it("binds both listeners or neither: a remote bind failure closes loopback and writes no pid file", async () => {
+    const { port, failure } = await failOnProbedPort((probed) => startDaemon(options({ port: probed, remote: { host: "192.0.2.1", tokenFile } })));
+
+    expect(failure).toMatchObject({ code: "EADDRNOTAVAIL" });
+    expect(await canBind("127.0.0.1", port)).toBe(true);
+    expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+  });
+});
+
+// Linux routes all of 127/8 to lo; macOS answers only 127.0.0.1 unless an alias is added.
+describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.0.0.2 stands in for the LAN)", () => {
+  let tokenFile: string;
+  let secret: string;
+  const json = { "content-type": "application/json" };
+
+  beforeEach(() => {
+    vi.mocked(assertRemoteHost).mockImplementation((host) => {
+      if (host !== REMOTE) throw new RemoteBindError(host, "is not the test stand-in");
+    });
+    tokenFile = path.join(stateDir, "lan.token");
+    secret = ensureTokenFile(tokenFile);
+  });
+
+  afterEach(() => {
+    vi.mocked(assertRemoteHost).mockReset();
+  });
+
+  async function startRemote(overrides: Partial<StartDaemonOptions<TestContext>> = {}): Promise<number> {
+    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile, allowedHosts: ["lan-box"] }, ...overrides }));
+    return handle.port;
+  }
+
+  const bearer = (): Record<string, string> => ({ authorization: `Bearer ${secret}` });
+  const cookie = (): Record<string, string> => ({ cookie: `${SESSION_COOKIE}=${signSession(secret)}` });
+  const remoteOrigin = (port: number): Record<string, string> => ({ origin: `http://${REMOTE}:${port}` });
+
+  it("answers 401 on /health and /rpc without credentials", async () => {
+    const port = await startRemote();
+
+    const health = await send(REMOTE, port, "GET", "/health");
+    const rpc = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...remoteOrigin(port) }, '{"name":"lan"}');
+
+    expect(health.status).toBe(401);
+    expect(rpc.status).toBe(401);
+  });
+
+  it("answers 401 on /events without credentials", async () => {
+    const port = await startRemote();
+
+    expect(await sendHead(REMOTE, port, "/events", {})).toBe(401);
+  });
+
+  it.each([
+    ["bearer", bearer],
+    ["session cookie", cookie],
+  ])("serves /health and /rpc with a %s", async (_kind, credential) => {
+    const port = await startRemote();
+
+    const health = await send(REMOTE, port, "GET", "/health", credential());
+    const rpc = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...remoteOrigin(port), ...credential() }, '{"name":"lan"}');
+
+    expect(health.status).toBe(200);
+    expect(rpc.status).toBe(200);
+    expect(JSON.parse(rpc.body)).toMatchObject({ ok: true, data: { greeting: "hello lan" } });
+  });
+
+  it("answers the configured LAN name with the bound port", async () => {
+    const port = await startRemote();
+
+    expect((await send(REMOTE, port, "GET", "/health", { host: `lan-box:${port}`, ...bearer() })).status).toBe(200);
+  });
+
+  it("refuses a cross-site Origin on a cookie POST", async () => {
+    const port = await startRemote();
+
+    const res = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...cookie(), origin: "http://evil.example" }, "{}");
+
+    expect(res.status).toBe(403);
+  });
+
+  it.each([`http://${REMOTE}`, "http://lan-box", `https://${REMOTE}`])("refuses the portless Origin %s on a cookie POST", async (origin) => {
+    const port = await startRemote();
+
+    const res = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...cookie(), origin }, "{}");
+
+    expect(res.status).toBe(403);
+  });
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])("refuses the loopback Host %s even with a credential", async (name) => {
+    const port = await startRemote();
+
+    expect((await send(REMOTE, port, "GET", "/health", { host: `${name}:${port}`, ...bearer() })).status).toBe(403);
+  });
+
+  it("refuses a portless Host", async () => {
+    const port = await startRemote();
+
+    expect((await send(REMOTE, port, "GET", "/health", { host: REMOTE, ...bearer() })).status).toBe(403);
+  });
+
+  it("runs the Host guard before the auth gate, /auth/login included", async () => {
+    const port = await startRemote();
+    const foreign = { host: `evil.example:${port}` };
+
+    const page = await send(REMOTE, port, "GET", "/auth/login?code=x", foreign);
+    const login = await send(REMOTE, port, "POST", "/auth/login", { ...foreign, ...json, origin: `http://evil.example:${port}` }, '{"code":"x"}');
+    const health = await send(REMOTE, port, "GET", "/health", foreign);
+
+    expect([page.status, login.status, health.status]).toEqual([403, 403, 403]);
+  });
+
+  it("never serves /mcp remotely, while loopback still does", async () => {
+    const port = await startRemote({ toolPrefix: "test__" });
+    const listTools = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}';
+    const mcpHeaders = { ...json, accept: "application/json, text/event-stream", "x-titan-client": "test" };
+
+    const anonymous = await send(REMOTE, port, "POST", "/mcp", mcpHeaders, listTools);
+    const authed = await send(REMOTE, port, "POST", "/mcp", { ...mcpHeaders, ...bearer() }, listTools);
+    const local = await send("127.0.0.1", port, "POST", "/mcp", mcpHeaders, listTools);
+
+    expect([anonymous.status, authed.status, local.status]).toEqual([401, 404, 200]);
+  });
+
+  it("serves loopback without credentials and keeps LAN names off its allowlist", async () => {
+    const port = await startRemote();
+
+    const health = await send("127.0.0.1", port, "GET", "/health");
+    const rpc = await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, "x-titan-client": "test" }, '{"name":"local"}');
+    const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `lan-box:${port}` });
+
+    expect([health.status, rpc.status, lanName.status]).toEqual([200, 200, 403]);
+  });
+
+  it("tells createContext the peer is this machine", async () => {
+    const createContext = vi.fn(createTestContext);
+    const port = await startRemote({ createContext });
+
+    await send(REMOTE, port, "POST", "/rpc/greet", { ...json, "x-titan-client": "test", ...bearer() }, "{}");
+
+    expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null, peerLocal: true });
+  });
+
+  it("closes both listeners and releases the pid file", async () => {
+    const port = await startRemote();
+
+    await handle!.close();
+    handle = null;
+
+    expect(await canBind("127.0.0.1", port)).toBe(true);
+    expect(await canBind(REMOTE, port)).toBe(true);
+    expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+  });
+
+  it("still reports a port as unbindable while a listener on it never closes", async () => {
+    const leaked = await holdPort("127.0.0.1");
+
+    try {
+      expect(await canBind("127.0.0.1", leaked.port, 150)).toBe(false);
+    } finally {
+      await leaked.release();
+    }
+  });
+
+  it("binds neither when the remote port is taken, and names the remote host", async () => {
+    const squatters: Array<() => Promise<void>> = [];
+    try {
+      const { port, failure } = await failOnProbedPort(async (probed) => {
+        squatters.push((await holdPort(REMOTE, probed)).release);
+        return startDaemon(options({ port: probed, remote: { host: REMOTE, tokenFile } }));
+      });
+
+      expect(failure).toBeInstanceOf(DaemonPortInUseError);
+      expect(failure).toMatchObject({ port, host: REMOTE });
+      expect(await canBind("127.0.0.1", port)).toBe(true);
+      expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+    } finally {
+      await Promise.all(squatters.map((release) => release()));
+    }
+  });
+
+  it("answers loopback byte for byte as a daemon without a remote listener does", async () => {
+    const probes = async (port: number): Promise<string[]> => {
+      const replies = [
+        await send("127.0.0.1", port, "GET", "/version"),
+        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, "x-titan-client": "t" }, '{"name":"same"}'),
+        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, origin: "http://127.0.0.1" }, '{"name":"same"}'),
+        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, origin: "http://evil.example" }, "{}"),
+        await send("127.0.0.1", port, "GET", "/health", { host: "evil.example" }),
+        await send("127.0.0.1", port, "GET", "/auth/login"),
+        // Uptime changes the length, so /health compares its status and field names only.
+        await send("127.0.0.1", port, "GET", "/health", { host: "localhost" }).then((r) => ({ status: r.status, headers: {}, body: Object.keys(JSON.parse(r.body)).sort().join() })),
+      ];
+      return replies.map(({ status, headers, body }) => JSON.stringify({ status, body, headers: { ...headers, date: undefined } }));
+    };
+    // No reply carries the port, so each daemon takes its own ephemeral one.
+    handle = await startDaemon(options());
+    const plain = await probes(handle.port);
+    await handle.close();
+    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile } }));
+    const withRemote = await probes(handle.port);
+
+    expect(withRemote).toEqual(plain);
   });
 });

@@ -7,13 +7,21 @@ on:
       repo:
         description: Repository under HJewkes to measure
         type: choice
-        options: [titan-platform, titan-design]
+        options: [titan-platform, titan-design, agent-chat]
         required: true
       ref:
         description: Branch, tag or sha of that repository
         type: string
         default: main
         required: true
+      baseline_run:
+        description: Run id of an earlier codewatch-metrics run to diff against (with baseline_sha256)
+        type: string
+        required: false
+      baseline_sha256:
+        description: sha256 of that run's codewatch-metrics.json (with baseline_run)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -22,7 +30,21 @@ jobs:
   metrics:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    env:
+      BASELINE_RUN: ${{ inputs.baseline_run }}
+      BASELINE_SHA256: ${{ inputs.baseline_sha256 }}
     steps:
+      - name: Require both baseline inputs or neither
+        run: |
+          if [ -n "$BASELINE_RUN" ] && [ -z "$BASELINE_SHA256" ]; then
+            echo "::error::baseline_run needs baseline_sha256 too"; exit 1
+          fi
+          if [ -z "$BASELINE_RUN" ] && [ -n "$BASELINE_SHA256" ]; then
+            echo "::error::baseline_sha256 needs baseline_run too"; exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -51,4 +73,41 @@ jobs:
         with:
           name: codewatch-metrics-${{ inputs.repo }}-${{ steps.target.outputs.sha }}
           path: codewatch-metrics.json
+          if-no-files-found: error
+      - name: Download the baseline metrics
+        if: env.BASELINE_RUN != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ inputs.repo }}
+        # The repo-scoped pattern makes a run that measured another repository fail to download.
+        run: gh run download "$BASELINE_RUN" --repo HJewkes/titan-platform --pattern "codewatch-metrics-${REPO}-*" --dir baseline
+      - name: Write the findings
+        env:
+          REPO: ${{ inputs.repo }}
+        run: |
+          args=(--repo "$REPO" --current codewatch-metrics.json --out codewatch-findings.json)
+          if [ -n "$BASELINE_RUN" ]; then
+            previous=$(find baseline -name codewatch-metrics.json)
+            if [ "$(printf '%s\n' "$previous" | grep -c .)" -ne 1 ]; then
+              echo "::error::expected one codewatch-metrics.json in run $BASELINE_RUN"; exit 1
+            fi
+            args+=(--previous "$previous" --previous-sha256 "$BASELINE_SHA256")
+          fi
+          node scripts/codewatch-findings.mjs "${args[@]}"
+      # Runs even when findings fail, so this run's metrics hash can still pin it as a later baseline.
+      - name: Print the file hashes
+        if: always()
+        run: |
+          {
+            echo "### Codewatch metrics"
+            for file in codewatch-metrics.json codewatch-findings.json; do
+              if [ -f "$file" ]; then
+                echo "- $file sha256: \`$(sha256sum "$file" | cut -d' ' -f1)\`"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codewatch-findings-${{ inputs.repo }}-${{ steps.target.outputs.sha }}
+          path: codewatch-findings.json
           if-no-files-found: error

@@ -6,7 +6,6 @@ import { githubPort } from "./port.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head1");
-const H2 = fakeSha("head2");
 
 const pull = (sha: string) => ({ number: 7, state: "open", merged: false, merge_commit_sha: null, draft: false, mergeable_state: "clean", head: { ref: "topic", sha, repo: { full_name: REPO } }, base: { ref: "main" } });
 
@@ -28,7 +27,7 @@ function wireOf(routes: Record<string, GhResult[]>) {
     return queue.length > 1 ? queue.shift()! : queue[0]!;
   };
   const wire = ghCliWire(exec, { sleep: async (ms) => void slept.push(ms) });
-  return { wire, port: githubPort(wire), calls, slept };
+  return { wire, port: githubPort(wire, { sleep: async (ms) => void slept.push(ms) }), calls, slept };
 }
 const compare = answer(200, { behind_by: 2 });
 
@@ -83,23 +82,54 @@ describe("gh read retry", () => {
     expect(gh.slept.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(10_000);
   });
 
-  it("never repeats a write that failed with HTTP 500", async () => {
+  it("reads a merge back before sending it once more at the pinned head, then fails with the step named", async () => {
     const gh = wireOf({ "pulls/7/merge": [answer(500, "", "gh: HTTP 500")], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
 
-    await expect(gh.port.merge(REPO, 7, H1, "squash")).rejects.toThrow(/HTTP 500/);
-    expect(gh.calls.filter((call) => call.includes("-X PUT"))).toHaveLength(1);
+    await expect(gh.port.merge(REPO, 7, H1, "squash")).rejects.toThrow(new RegExp(`merge PUT ${REPO}#7 at ${H1}.*HTTP 500`));
+    const puts = gh.calls.filter((call) => call.includes("-X PUT"));
+    expect(puts).toHaveLength(2);
+    expect(puts.every((put) => put.includes(`sha=${H1}`))).toBe(true);
   });
 
-  it("update-branch with an unreadable answer re-reads the PR instead of sending a second PUT", async () => {
-    const gh = wireOf({ "pulls/7/update-branch": [answer(202, "{")], "compare/": [compare], "pulls/7": [answer(200, pull(H1)), answer(200, pull(H2))] });
+  it("update-branch retried after an unreadable answer sends the same expected head twice", async () => {
+    const gh = wireOf({ "pulls/7/update-branch": [answer(202, "{"), answer(202, { message: "Updating" })], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
 
     expect(await gh.port.updateBranch(REPO, 7, H1)).toEqual({ done: true });
-    expect(gh.calls.filter((call) => call.includes("-X PUT"))).toHaveLength(1);
+    const puts = gh.calls.filter((call) => call.includes("-X PUT"));
+    expect(puts).toHaveLength(2);
+    expect(puts[1]).toContain(`expected_head_sha=${H1}`);
   });
 
-  it("update-branch with an unreadable answer and an unmoved head fails with the parse error", async () => {
-    const gh = wireOf({ "pulls/7/update-branch": [answer(202, "{")], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
+  it("update-branch retried after gh's empty-response exit continues", async () => {
+    const empty: GhResult = { code: 1, stdout: "", stderr: "unexpected end of JSON input\n" };
+    const gh = wireOf({ "pulls/7/update-branch": [empty, answer(202, { message: "Updating" })], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
+
+    expect(await gh.port.updateBranch(REPO, 7, H1)).toEqual({ done: true });
+  });
+
+  it("update-branch retried after HTTP 502 continues", async () => {
+    const gh = wireOf({ "pulls/7/update-branch": [answer(502, "", "gh: Bad Gateway (HTTP 502)"), answer(202, { message: "Updating" })], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
+
+    expect(await gh.port.updateBranch(REPO, 7, H1)).toEqual({ done: true });
+  });
+
+  it("update-branch whose retry answers 422 head moved reads as already updated", async () => {
+    const moved = answer(422, { message: "expected head sha didn't match current head ref." }, "gh: expected head sha didn't match current head ref. (HTTP 422)");
+    const gh = wireOf({ "pulls/7/update-branch": [answer(202, "{"), moved], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
+
+    expect(await gh.port.updateBranch(REPO, 7, H1)).toEqual({ done: true });
+  });
+
+  it("update-branch failing twice rethrows the original error", async () => {
+    const gh = wireOf({ "pulls/7/update-branch": [answer(202, "{"), answer(500, "", "gh: HTTP 500")], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
 
     await expect(gh.port.updateBranch(REPO, 7, H1)).rejects.toBeInstanceOf(SyntaxError);
+  });
+
+  it("update-branch does not retry a 4xx", async () => {
+    const gh = wireOf({ "pulls/7/update-branch": [answer(403, "", "gh: Forbidden (HTTP 403)")], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
+
+    await expect(gh.port.updateBranch(REPO, 7, H1)).rejects.toThrow(/HTTP 403/);
+    expect(gh.calls.filter((call) => call.includes("-X PUT"))).toHaveLength(1);
   });
 });

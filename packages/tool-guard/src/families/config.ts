@@ -96,4 +96,4 @@ function write(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Editing permission config, hooks or home instructions: CFG rows of the authority table. */
-export const config: Family = { bash, write };
+export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude"]), bash, write };

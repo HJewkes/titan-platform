@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/egress-scan",
   "version": "0.5.1",
-  "description": "Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only",
+  "description": "Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -39,7 +39,6 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   }
 }

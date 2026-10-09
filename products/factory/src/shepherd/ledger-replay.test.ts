@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEDGER_FIXTURES, type HeadScript, type LedgerFixture, type MainScript, type Pinned, type ReviewAnswer } from "../test-support/ledger-fixtures.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { MAX_UPDATE_CYCLES, sleep } from "../workflows/land.js";
+import { MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, sleep } from "../workflows/land.js";
 import { UPDATE_GAP_MS, spaceUpdates } from "../test-support/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { freezeStoreRef } from "./freeze.js";
@@ -103,16 +103,18 @@ function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | un
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
 /**
- * The tree probe's git, answering from the fixture: a head scripted `treeEqual` has the tree of its parent merged onto
- * main, any other head has a tree of its own. Heads are told apart by the order the run first read them.
+ * The tree probe's git, answering from the fixture: every head is the reviewed head merged with main, and a head scripted
+ * `treeEqual` has the tree of that clean merge, any other head a tree of its own. Heads are told apart by the order the run
+ * first read them.
  */
 function scriptedGit(replay: Replay): Git {
   let head = "";
+  let reviewed = "";
   let merged = "";
   return async (_dir, args) => {
     const [command, flag] = args;
-    if (command === "fetch") head = args[6] ?? "";
-    if (command === "rev-list") return ok(`${head} ${fakeSha("reviewed-parent")} ${fakeSha("main-base")}`);
+    if (command === "fetch") [reviewed = "", head = ""] = args.slice(5, 7);
+    if (command === "rev-list") return ok(`${head} ${reviewed} ${fakeSha("main-base")}`);
     if (command === "merge-tree") return ok(`${(merged = `merged-${args[4]}`)}\n`);
     if (command !== "rev-parse" || flag === undefined) return ok();
     const script = headOf(replay, head);
@@ -149,11 +151,11 @@ const MAIN_RUNS: Record<MainScript, ReturnType<typeof successRun>> = {
 function mainCi(fake: FakeGitHub, main: MainScript): GitHubPort {
   const port = githubPort(fake.wire);
   const atMerge = (sha: string): void => {
-    fake.setRuns(sha, [MAIN_RUNS[main]]);
+    fake.setRuns(sha, [MAIN_RUNS[main], successRun("dag-check", 11)]);
     if (main !== "cancelled-superseded") return;
     fake.refs.set("main", NEWER_MAIN);
     fake.compares.set(`${sha}...${NEWER_MAIN}`, { mergeBaseSha: sha, files: [] });
-    fake.setRuns(NEWER_MAIN, [successRun("validate", 10)]);
+    fake.setRuns(NEWER_MAIN, [successRun("validate", 10), successRun("dag-check", 12)]);
   };
   return { ...port, checkRuns: async (repo, sha) => (fake.pr(1).merged && sha === fake.pr(1).mergeSha && atMerge(sha), port.checkRuns(repo, sha)) };
 }
@@ -288,16 +290,17 @@ describe("a base that moves on every read", () => {
   });
 
   it(`stops at ${MAX_UPDATE_CYCLES} updates with a stuck-behind gate naming the count and every head`, async () => {
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, behindCarry, behindCarry, behindCarry];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 3 + MAX_UPDATE_RETRIES }, () => behindCarry)];
     const { host, replay } = startReplay({ ...BUSY, heads });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
     expect(replay.trace).toEqual({ reviewers: 1, unscripted: [], fixers: [] });
-    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates over 120 min (budget 120 min), heads ${short(replay)}`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates and ${MAX_UPDATE_RETRIES} automatic retries with backoff over`);
+    expect(gate?.gate.prompt).toContain(`heads ${short(replay)}`);
   });
 
   it("does not spend a round on a behind head while GitHub's mergeable_state is unknown", async () => {
@@ -313,15 +316,15 @@ describe("a base that moves on every read", () => {
 
   it("counts updates across rounds for a kind that never carries a MERGE, and stops at the bound", async () => {
     const reviewedThenBehind: HeadScript = { reviews: ["MERGE"], goesBehind: true };
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 }, () => reviewedThenBehind)];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 6 + MAX_UPDATE_RETRIES }, () => reviewedThenBehind)];
     const { host, replay } = startReplay({ ...BUSY, heads }, { kind: "security" });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
-    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: MAX_UPDATE_CYCLES + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after ${MAX_UPDATE_CYCLES} updates and ${MAX_UPDATE_RETRIES} automatic retries`);
   });
 
   it("keeps updating past the minimum while main outpaces CI inside the time budget, and merges once the base holds", async () => {
@@ -336,15 +339,16 @@ describe("a base that moves on every read", () => {
   });
 
   it("opens stuck-behind once the time budget is spent, naming the elapsed time, the budget and every head", async () => {
-    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 8 }, () => behindCarry)];
+    const heads: HeadScript[] = [{ state: "behind", reviews: ["MERGE"] }, ...Array.from({ length: 8 + MAX_UPDATE_RETRIES }, () => behindCarry)];
     const { host, replay } = startReplay({ ...BUSY, heads }, { updateGapMs: 30 * 60_000 });
 
     await vi.waitFor(() => expect(settled(host, replay)).toBe("gated"), { timeout: 5_000, interval: 10 });
     const [gate] = host.pendingGates().filter((pending) => pending.runId === replay.runId);
 
-    expect(replay.fake.effects).toMatchObject({ updateBranch: 5, merge: 0 });
+    expect(replay.fake.effects).toMatchObject({ updateBranch: 5 + MAX_UPDATE_RETRIES, merge: 0 });
     expect(gate?.stepId).toBe("stuck-behind");
-    expect(gate?.gate.prompt).toContain(`still behind its base after 5 updates over 120 min (budget 120 min), heads ${short(replay)}`);
+    expect(gate?.gate.prompt).toContain(`still behind its base after 5 updates and ${MAX_UPDATE_RETRIES} automatic retries with backoff over`);
+    expect(gate?.gate.prompt).toContain(`(budget 120 min), heads ${short(replay)}`);
   });
 });
 

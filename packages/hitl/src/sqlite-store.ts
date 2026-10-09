@@ -1,9 +1,12 @@
 import { quoteIdent, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
+import { DELEGATE_RESOLVER_CLASSES } from "@titan-design/authority";
 import { BaseGateStore } from "./base-store.js";
 import {
   GateStoreSchemaOutdated,
   type GateAnswerAllowance,
   type GateAuthorize,
+  type GateEvidence,
+  type GateEvidencePolicy,
   type GateQuestion,
   type GateRecord,
   type GateResolver,
@@ -92,11 +95,25 @@ const CANONICAL_STATUSES = "'pending', 'resolved', 'cancelled', 'expired'";
  * Without `resolved_by` no resolver can be recorded, so they refuse every resolve
  * of a rule-bound row; whichever migration runs second installs the class-aware form.
  */
-function ruleTriggerDdl(db: Db, name: string): string {
+function ruleTriggerDdl(db: Db, name: string, delegates = hasDelegateTriggers(db, name)): string {
   const hasResolver = hasResolverColumn(db, name);
-  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule");
-  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0");
+  const update = ruleTrigger(name, "UPDATE", "OLD.rule", hasResolver, "NEW.rule IS NOT OLD.rule", delegates);
+  const insert = ruleTrigger(name, "INSERT", "NEW.rule", hasResolver, "0", delegates);
   return `${update}\n${insert}\n${replaceGuard(name)}`;
+}
+
+/** Once `gateDelegateMigration` has run, a later rule or resolver migration keeps the delegate-aware form rather than narrow it back. */
+function hasDelegateTriggers(db: Db, name: string): boolean {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(`${name}_rule_resolver`) as { sql: string } | undefined;
+  return row?.sql.includes("'$.delegates'") ?? false;
+}
+
+/** The classes a rule-bound row admits: its resolvers, and with delegates on, the delegate classes its rule names as a JSON array. */
+function admittedClasses(rule: string, delegates: boolean): string {
+  const resolvers = `SELECT value FROM json_each(${rule}, '$.resolvers')`;
+  if (!delegates) return resolvers;
+  const named = DELEGATE_RESOLVER_CLASSES.map((cls) => `'${cls}'`).join(", ");
+  return `${resolvers} UNION ALL SELECT value FROM json_each(${rule}, '$.delegates') WHERE json_type(${rule}, '$.delegates') = 'array' AND value IN (${named})`;
 }
 
 /** REPLACE deletes the old row before any delete trigger fires without recursive_triggers, so refuse it up front. */
@@ -115,10 +132,10 @@ function replaceGuard(name: string): string {
   `;
 }
 
-function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string): string {
+function ruleTrigger(name: string, event: "UPDATE" | "INSERT", rule: string, hasResolver: boolean, ruleChanged: string, delegates: boolean): string {
   const trigger = quoteIdent(event === "UPDATE" ? `${name}_rule_resolver` : `${name}_rule_resolver_insert`);
   const outsideRule = hasResolver
-    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (SELECT value FROM json_each(${rule}, '$.resolvers'))`
+    ? `COALESCE(json_extract(NEW.resolved_by, '$.class'), '') NOT IN (${admittedClasses(rule, delegates)})`
     : "1";
   return `
     DROP TRIGGER IF EXISTS ${trigger};
@@ -160,9 +177,40 @@ export function gateBriefMigration(version: number, name: string = DEFAULT_GATE_
   };
 }
 
+/**
+ * Adds `resolved_evidence`. Idempotent and backfill-free: gates resolved before it carry no evidence. A store
+ * refuses a resolve that carries evidence while the table lacks it, rather than drop the evidence.
+ */
+export function gateEvidenceMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:evidence:${name}`,
+    up: (db) => {
+      if (!hasColumn(db, name, "resolved_evidence")) db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN resolved_evidence TEXT`);
+    },
+  };
+}
+
+/**
+ * Reinstalls the rule triggers to admit a delegate class the row's own rule names; a pending row's rule still cannot change. A
+ * store refuses a gate with delegates until this runs, since no delegate could resolve it. Idempotent and backfill-free.
+ */
+export function gateDelegateMigration(version: number, name: string = DEFAULT_GATE_TABLE): Migration {
+  return {
+    version,
+    name: `hitl:delegate:${name}`,
+    up: (db) => {
+      const missing = ["resolved_by", "rule"].filter((column) => !hasColumn(db, name, column));
+      missing.forEach((column) => db.exec(`ALTER TABLE ${quoteIdent(name)} ADD COLUMN ${column} TEXT`));
+      db.exec(resolverRequiredTriggerDdl(name));
+      db.exec(ruleTriggerDdl(db, name, true));
+    },
+  };
+}
+
 export interface SqliteGateStoreOptions {
   table?: string;
-  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration` and `gateBriefMigration` on construction. Off when the product owns its migration list. */
+  /** Run `gateMigration`, `gateResolverMigration`, `gateRuleMigration`, `gateBriefMigration`, `gateEvidenceMigration` and `gateDelegateMigration` on construction. Off when the product owns its migration list. */
   migrate?: boolean;
   now?: () => number;
   /** Refuses resolvers beyond the default class check; it cannot admit one the default refused. */
@@ -171,6 +219,8 @@ export interface SqliteGateStoreOptions {
   requireBrief?: boolean;
   /** Answers a non-owner class may give, each exact in class, step and payload. Nothing else widens the default class check. */
   allowances?: readonly GateAnswerAllowance[];
+  /** Admits a non-owner class on the evidence its resolve carries; see `GateEvidencePolicy`. Needs `gateEvidenceMigration`. */
+  evidencePolicy?: GateEvidencePolicy;
 }
 
 interface RawGateRow {
@@ -190,6 +240,8 @@ interface RawGateRow {
   summary?: string | null;
   evidence_ref?: string | null;
   questions?: string | null;
+  /** Absent entirely on a table that has not run `gateEvidenceMigration`. */
+  resolved_evidence?: string | null;
 }
 
 /**
@@ -205,7 +257,7 @@ export class SqliteGateStore extends BaseGateStore {
     private readonly db: Db,
     options: SqliteGateStoreOptions = {},
   ) {
-    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances);
+    super(options.now ?? Date.now, options.authorize, options.requireBrief, options.allowances, options.evidencePolicy);
     this.table = options.table ?? DEFAULT_GATE_TABLE;
     if (options.migrate ?? true) runMigrations(db, defaultMigrations(this.table));
     const missing = missingMigration(db, this.table, options.requireBrief ?? false);
@@ -225,6 +277,7 @@ export class SqliteGateStore extends BaseGateStore {
     const optional = new Map<string, string | null>();
     if (record.rule) {
       this.requireColumn(record.id, "rule", "gateRuleMigration");
+      if (record.rule.delegates && !hasDelegateTriggers(this.db, this.table)) throw new GateStoreSchemaOutdated(record.id, this.table, "gateDelegateMigration");
       optional.set("rule", JSON.stringify(record.rule));
     }
     if (hasBrief(record)) {
@@ -243,15 +296,19 @@ export class SqliteGateStore extends BaseGateStore {
     return row ? toRecord(row) : undefined;
   }
 
+  /** Evidence is written only when given, so a table without `resolved_evidence` still settles every other resolve. */
   protected update(record: GateRecord): boolean {
     const resolvedBy = record.resolvedBy ? JSON.stringify(record.resolvedBy) : null;
+    const values = [record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy];
+    let assignments = "status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?";
+    if (record.resolvedEvidence !== undefined) {
+      this.requireColumn(record.id, "resolved_evidence", "gateEvidenceMigration");
+      assignments += ", resolved_evidence = ?";
+      values.push(JSON.stringify(record.resolvedEvidence));
+    }
     const result = this.db
-      .prepare(
-        `UPDATE ${quoteIdent(this.table)}
-            SET status = ?, payload = ?, reason = ?, resolved_at = ?, resolved_by = ?
-          WHERE id = ? AND status = 'pending'`,
-      )
-      .run(record.status, toJson(record.payload), record.reason ?? null, record.resolvedAt ?? null, resolvedBy, record.id);
+      .prepare(`UPDATE ${quoteIdent(this.table)} SET ${assignments} WHERE id = ? AND status = 'pending'`)
+      .run(...values, record.id);
     return result.changes > 0;
   }
 
@@ -278,7 +335,7 @@ function missingMigration(db: Db, table: string, requireBrief: boolean): string 
 }
 
 function defaultMigrations(table: string): Migration[] {
-  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table)];
+  return [gateMigration(1, table), gateResolverMigration(2, table), gateRuleMigration(3, table), gateBriefMigration(4, table), gateEvidenceMigration(5, table), gateDelegateMigration(6, table)];
 }
 
 const BASE_COLUMNS = ["id", "prompt", "schema", "status", "payload", "reason", "created_at", "resolved_at", "expires_at"];
@@ -318,6 +375,7 @@ function toRecord(row: RawGateRow): GateRecord {
     resolvedAt: row.resolved_at ?? undefined,
     expiresAt: row.expires_at ?? undefined,
     resolvedBy: row.resolved_by ? (JSON.parse(row.resolved_by) as GateResolver) : undefined,
+    resolvedEvidence: row.resolved_evidence ? (JSON.parse(row.resolved_evidence) as GateEvidence) : undefined,
     rule: row.rule ? (JSON.parse(row.rule) as GateRule) : undefined,
     summary: row.summary ?? undefined,
     evidenceRef: row.evidence_ref ?? undefined,

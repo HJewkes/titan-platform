@@ -1,31 +1,38 @@
-/** The charter's G10 rule picks the class: a registered `security` kind, or a diff over `G10_CHANGED_LINES`. Everything else is `standard`. */
+import type { PrFile } from "@titan-design/github";
+import { changedLineCount, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES } from "@titan-design/review-panel";
+import type { ClassRoles, ReviewerFacts } from "@titan-design/review-panel";
+
+/** The charter's G10 rule picks the class: a registered `security` kind, or a diff over the changed-line limit. Everything else is `standard`. */
 type ReviewerClass = "g10" | "standard";
 
-export interface ReviewerFacts {
-  /** The run's registered kind. */
-  kind?: string;
-  /** The kind could not be read, so the PR takes the stricter class. */
-  unread?: boolean;
-  /** Additions plus deletions. Nothing populates it until the github port reports line counts (TP-1755), so the size rule is idle until then. */
-  changedLines?: number;
-}
+export type { ReviewerFacts };
 
-/** One agent-chat profile per class; the profile carries the reviewer's model and effort. */
-export type ReviewerRoles = Record<ReviewerClass, string>;
+export type ReviewerRoles = ClassRoles & {
+  /** A PR over this many changed lines is g10; absent means `G10_CHANGED_LINES`. */
+  g10ChangedLines?: number;
+};
 
-const G10_CHANGED_LINES = 400;
+/** The panel's large-PR limit, so Shepherd and `planPanel` class the same diff alike. */
+const G10_CHANGED_LINES = DEFAULT_CLASS_RULES.largeLines;
 
-export const DEFAULT_REVIEWER_ROLES: ReviewerRoles = { g10: "bd-reviewer", standard: "reviewer" };
+export const DEFAULT_REVIEWER_ROLES: ReviewerRoles = DEFAULT_CLASS_ROLES;
 
-export function reviewerClassFor({ kind, unread, changedLines }: ReviewerFacts): ReviewerClass {
-  return unread || kind === "security" || (changedLines !== undefined && changedLines > G10_CHANGED_LINES) ? "g10" : "standard";
+export function reviewerClassFor({ kind, unread, sizeUnread, changedLines }: ReviewerFacts, limit: number = G10_CHANGED_LINES): ReviewerClass {
+  return unread || sizeUnread || kind === "security" || (changedLines !== undefined && changedLines > limit) ? "g10" : "standard";
 }
 
 export function reviewerRoleFor(facts: ReviewerFacts, roles: ReviewerRoles = DEFAULT_REVIEWER_ROLES): string {
-  return roles[reviewerClassFor(facts)];
+  return roles[reviewerClassFor(facts, roles.g10ChangedLines)];
+}
+
+/** A PR's changed lines as `changedLineCount` counts them against `limit`; undefined when a file carries no line counts. */
+export function prChangedLines(files: readonly PrFile[], limit: number = G10_CHANGED_LINES): number | undefined {
+  const changed = files.map(({ path, previousPath, additions, deletions }) => ({ path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? Number.NaN, deletions: deletions ?? Number.NaN }));
+  return changedLineCount(changed, { generated: DEFAULT_CLASS_RULES.generated, largeLines: limit });
 }
 
 /** A class the config leaves out, or a config with no table, keeps the one `profile` it had before the table. */
-export function configuredRoles(review: { profile: string; roles?: Partial<ReviewerRoles> }): ReviewerRoles {
-  return { g10: review.roles?.g10 ?? review.profile, standard: review.roles?.standard ?? review.profile };
+export function configuredRoles(review: { profile: string; roles?: Partial<ClassRoles>; g10ChangedLines?: number }): ReviewerRoles {
+  const limit = review.g10ChangedLines;
+  return { g10: review.roles?.g10 ?? review.profile, standard: review.roles?.standard ?? review.profile, ...(limit !== undefined && { g10ChangedLines: limit }) };
 }

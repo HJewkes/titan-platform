@@ -143,6 +143,14 @@ describe("Codex exec command and policy", () => {
     expect(runner.start).not.toHaveBeenCalled();
   });
 
+  it("rejects a wallTimeMs beyond the timer range before version probing", async () => {
+    const runner = harness(fakeProcess({ stdout: events() }).processHandle);
+    const result = await runner.adapter.run(request({ wallTimeMs: 2 ** 31 }));
+    expect(result).toMatchObject({ ok: false, failure: { kind: "invalid_request", reason: /timer range/ } });
+    expect(runner.inspectVersion).not.toHaveBeenCalled();
+    expect(runner.start).not.toHaveBeenCalled();
+  });
+
   it("rejects hard dollar guarantees through the adapter preflight without spawning", async () => {
     const fake = fakeProcess({ stdout: events() });
     const runner = harness(fake.processHandle);

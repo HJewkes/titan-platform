@@ -117,6 +117,38 @@
       ]
     },
     {
+      "id": "MRG-AU-RM",
+      "action": "merge",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Owner decision of 2026-10-07 (TP-1907): a head that is the reviewed head plus one merge of a base-branch commit inherits the run-dispatched reviewer's MERGE when git's remerge-diff of that merge is empty or touches only the repo's declared generated files, attested by the factory's remerge probe, never by the reviewer. Every other MRG-AU-RC condition still holds at the new head. Never kind:security. A separate row, so deleting it revokes the remerge carry alone.",
+      "when": [
+        "resolver-is-dispatched-reviewer",
+        "verdict-merge-carried-remerge-clean",
+        "pr-kind-not-security",
+        "required-contexts-green",
+        "no-non-green-run",
+        "merge-tree-clean",
+        "repo-not-frozen",
+        "no-protected-path-change",
+        "seat-grants-merge-on-green-approve"
+      ],
+      "evidence": [
+        "E-gate",
+        "E-gh",
+        "E-rev"
+      ]
+    },
+    {
+      "id": "MRG-DC",
+      "action": "merge",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "REL-OT",
       "action": "release",
       "actor": "owner-terminal",
@@ -178,6 +210,15 @@
       ]
     },
     {
+      "id": "REL-DC",
+      "action": "release",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "SEC-OT",
       "action": "secret-read",
       "actor": "owner-terminal",
@@ -229,6 +270,15 @@
       "condition": "Its own scoped credential only.",
       "evidence": [
         "E-dec"
+      ]
+    },
+    {
+      "id": "SEC-DC",
+      "action": "secret-read",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
       ]
     },
     {
@@ -292,6 +342,15 @@
       ]
     },
     {
+      "id": "UNT-DC",
+      "action": "untrusted-ingest",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "PUB-OT",
       "action": "private-to-public",
       "actor": "owner-terminal",
@@ -340,6 +399,15 @@
       "actor": "automation",
       "verdict": "deny",
       "condition": "The CI check fails.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "PUB-DC",
+      "action": "private-to-public",
+      "actor": "decider",
+      "verdict": "deny",
       "evidence": [
         "E-ref"
       ]
@@ -403,6 +471,15 @@
       ]
     },
     {
+      "id": "EXT-DC",
+      "action": "private-egress",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "HW-OT",
       "action": "hardware-actuate",
       "actor": "owner-terminal",
@@ -463,6 +540,15 @@
       ]
     },
     {
+      "id": "HW-DC",
+      "action": "hardware-actuate",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "HWS-OT",
       "action": "hardware-stop",
       "actor": "owner-terminal",
@@ -514,6 +600,15 @@
       "verdict": "allow",
       "evidence": [
         "E-dev"
+      ]
+    },
+    {
+      "id": "HWS-DC",
+      "action": "hardware-stop",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
       ]
     },
     {
@@ -572,6 +667,15 @@
       ]
     },
     {
+      "id": "DSR-DC",
+      "action": "destructive-remote",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "DSL-OT",
       "action": "destructive-local",
       "actor": "owner-terminal",
@@ -620,6 +724,15 @@
       "verdict": "allow",
       "condition": "Inside its own workspace.",
       "evidence": []
+    },
+    {
+      "id": "DSL-DC",
+      "action": "destructive-local",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
     },
     {
       "id": "DSX-OT",
@@ -671,6 +784,15 @@
       "id": "DSX-AU",
       "action": "destructive-foreign",
       "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "DSX-DC",
+      "action": "destructive-foreign",
+      "actor": "decider",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -737,6 +859,15 @@
       ]
     },
     {
+      "id": "SPN-DC",
+      "action": "spawn",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "SPD-OT",
       "action": "spend-over-cap",
       "actor": "owner-terminal",
@@ -796,6 +927,15 @@
       ]
     },
     {
+      "id": "SPD-DC",
+      "action": "spend-over-cap",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
       "id": "CFG-OT",
       "action": "authority-config",
       "actor": "owner-terminal",
@@ -843,6 +983,15 @@
       "id": "CFG-AU",
       "action": "authority-config",
       "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "CFG-DC",
+      "action": "authority-config",
+      "actor": "decider",
       "verdict": "deny",
       "evidence": [
         "E-ref"
@@ -906,6 +1055,95 @@
       "condition": "A queue mirror applying a verdict the owner gave remotely acts as owner-remote, not as automation.",
       "evidence": [
         "E-gate"
+      ]
+    },
+    {
+      "id": "HV-DC",
+      "action": "human-verb",
+      "actor": "decider",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-OT",
+      "action": "answer-question",
+      "actor": "owner-terminal",
+      "verdict": "deny",
+      "condition": "The owner answers a question gate by resolving it in hitl, not through this action.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-OR",
+      "action": "answer-question",
+      "actor": "owner-remote",
+      "verdict": "deny",
+      "condition": "The owner answers a question gate by resolving it in hitl, not through this action.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-CO",
+      "action": "answer-question",
+      "actor": "coordinator",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-WK",
+      "action": "answer-question",
+      "actor": "worker",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-HD",
+      "action": "answer-question",
+      "actor": "headless",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-AU",
+      "action": "answer-question",
+      "actor": "automation",
+      "verdict": "deny",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-DC",
+      "action": "answer-question",
+      "actor": "decider",
+      "verdict": "deny",
+      "condition": "Refused unless ANS-DC-QA applies.",
+      "evidence": [
+        "E-ref"
+      ]
+    },
+    {
+      "id": "ANS-DC-QA",
+      "action": "answer-question",
+      "actor": "decider",
+      "verdict": "allow",
+      "condition": "Owner decision on TP-713: the decider answers a question gate only when the gate was opened under a question rule and the question's category is in auto mode. A trusted collector, never the decider, observes both facts. A tainted request never matches. Otherwise ANS-DC denies.",
+      "when": [
+        "gate-rule-is-question",
+        "category-mode-auto"
+      ],
+      "evidence": [
+        "E-dec"
       ]
     }
   ]

@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./spool": {
+      "types": "./dist/spool.d.ts",
+      "import": "./dist/spool.js"
     }
   },
   "files": [
@@ -32,8 +36,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

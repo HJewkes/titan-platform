@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
 import type { CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -13,7 +12,9 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
+import type { Waiting } from "./waiting.js";
 import { expectBrief } from "../test-support/brief.js";
+import { callCommand } from "../test-support/shepherd.js";
 import { OWNER } from "../test-support/resolver.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 
@@ -105,6 +106,7 @@ describe("readMainCi", () => {
 
     function superseded(newerConclusion: string): FakeGitHub {
       const fake = fakeGitHub();
+      fake.rules = { contexts: [], strict: false };
       fake.addPr({ headSha: H1, baseRef: "main" });
       fake.setRuns(MERGE, [cancelled]);
       fake.refs.set("main", NEWER);
@@ -148,6 +150,7 @@ describe("readMainCi", () => {
 
     function backlog(tipRuns: ReturnType<typeof successRun>[], mergeBase = MERGE): FakeGitHub {
       const fake = fakeGitHub();
+      fake.rules = { contexts: [], strict: false };
       fake.addPr({ headSha: H1, baseRef: "main" });
       fake.setRuns(MERGE, [queued]);
       fake.refs.set("main", TIP);
@@ -187,6 +190,90 @@ describe("readMainCi", () => {
 
       expect(result).toMatchObject({ verdict: "none", detail: expect.stringContaining(`no completed main run containing ${MERGE} within 240 min`) });
       expect(timing.now()).toBeGreaterThanOrEqual(4 * SH_MAIN_CI_TIMEOUT_MS);
+    });
+  });
+
+  describe("a red, cancelled or missing merge sha with a later main commit containing it", () => {
+    const TIP = fakeSha("green-descendant");
+    const failing = (name: string) => successRun(name, 3, undefined, "failure");
+    const requiredGreen = [successRun("validate", 4), successRun("dag-check", 5)];
+
+    /** Main sits at the merge sha until `movesAtMs`, then at TIP, which contains the merge and carries `tipRuns`. */
+    function laterMain(mergeRuns: ReturnType<typeof successRun>[], tipRuns: ReturnType<typeof successRun>[], movesAtMs = 10 * 60_000, mergeBase = MERGE) {
+      const fake = fakeGitHub();
+      fake.addPr({ headSha: H1, baseRef: "main" });
+      fake.setRuns(MERGE, mergeRuns);
+      fake.refs.set("main", MERGE);
+      fake.compares.set(`${MERGE}...${TIP}`, { mergeBaseSha: mergeBase, files: [] });
+      fake.setRuns(TIP, tipRuns);
+      const timing = clockedTiming();
+      const sleep = timing.sleep;
+      timing.sleep = async (ms: number) => {
+        await sleep(ms);
+        if (timing.now() >= movesAtMs) fake.refs.set("main", TIP);
+      };
+      return { fake, timing };
+    }
+
+    const readLater = ({ fake, timing }: ReturnType<typeof laterMain>) => read(fake, timing, { ...input, pr: 1 });
+
+    it("acknowledges a red merge sha on a later main commit green on every required context, recording that sha", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+
+      const result = await readLater(world);
+
+      expect(result).toMatchObject({ verdict: "green", mergeSha: MERGE, readSha: TIP, acknowledgedSha: TIP, detail: expect.stringContaining("failed: validate") });
+      expect(world.timing.now()).toBeLessThan(SH_MAIN_CI_TIMEOUT_MS);
+    });
+
+    it("reads a cancelled merge sha's later commit green on every required context, warning of the check that failed outside them", async () => {
+      const world = laterMain([successRun("validate", 3, undefined, "cancelled")], [...requiredGreen, failing("lint")]);
+
+      expect(await readLater(world)).toMatchObject({ verdict: "green", readSha: TIP, warning: "not required, so not blocking: lint" });
+    });
+
+    it("acknowledges a merge sha with no run yet on a later commit green on every required context", async () => {
+      expect(await readLater(laterMain([], [...requiredGreen, failing("lint")]))).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    });
+
+    it("is green on the merge sha itself, with a warning, when it is red only on a check that is not required", async () => {
+      const world = laterMain([...requiredGreen, failing("lint")], [], Number.POSITIVE_INFINITY);
+
+      expect(await readLater(world)).toMatchObject({ verdict: "green", warning: "not required, so not blocking: lint" });
+    });
+
+    it("answers red after a fresh full wait when the later commit stays red", async () => {
+      const world = laterMain([failing("validate")], [failing("validate"), successRun("dag-check", 5)]);
+
+      const result = await readLater(world);
+
+      expect(result).toMatchObject({ verdict: "red", detail: "failed: validate" });
+      expect(result.acknowledgedSha).toBeUndefined();
+      expect(world.timing.now()).toBeGreaterThanOrEqual(SH_MAIN_CI_TIMEOUT_MS);
+    });
+
+    it("never acknowledges a later commit missing a required context", async () => {
+      expect(await readLater(laterMain([failing("validate")], [successRun("validate", 4)]))).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges a green commit that does not contain the merge sha", async () => {
+      expect(await readLater(laterMain([failing("validate")], requiredGreen, 0, fakeSha("elsewhere")))).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges when the required contexts cannot be read", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+      world.fake.wire.getBranchRules = async () => {
+        throw new Error("boom");
+      };
+
+      expect(await readLater(world)).toMatchObject({ verdict: "red" });
+    });
+
+    it("never acknowledges when the repo requires no context", async () => {
+      const world = laterMain([failing("validate")], requiredGreen);
+      world.fake.rules.contexts = [];
+
+      expect(await readLater(world)).toMatchObject({ verdict: "red" });
     });
   });
 
@@ -264,19 +351,22 @@ describe("a classified main CI read", () => {
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
+/** The fake's base requires dag-check beside validate, so a non-empty main read gets its green. */
+const withRequired = (runs: ReturnType<typeof successRun>[]) => (runs.length === 0 ? runs : [...runs, successRun("dag-check", 99)]);
+
 function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup?: CleanupPorts, mainRed?: Omit<MainRedWiring, "freezes">) {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
-  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, mergeRuns()), base.checkRuns(repo, sha)) };
+  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, withRequired(mergeRuns())), base.checkRuns(repo, sha)) };
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup, mainRed });
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, store, freezes: () => freeze.get() };
+  return { host, fake, store, routes, freezes: () => freeze.get() };
 }
 
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
@@ -343,6 +433,25 @@ describe("shepherd-pr after land", () => {
     expect(w.freezes().get(REPO)?.redSha).toBe(w.fake.pr(1).mergeSha);
   });
 
+  it("opens no gate and freezes nothing when a later main commit containing a red merge is green on every required context", async () => {
+    const TIP = fakeSha("green-descendant");
+    const w = shepherdWorld(() => {
+      const mergeSha = w.fake.pr(1).mergeSha!;
+      w.fake.refs.set("main", TIP);
+      w.fake.compares.set(`${mergeSha}...${TIP}`, { mergeBaseSha: mergeSha, files: [] });
+      w.fake.setRuns(TIP, [successRun("validate", 6), successRun("dag-check", 7)]);
+      return [successRun("validate", 5, undefined, "failure")];
+    });
+    const runId = await runToMerge(w);
+
+    await w.host.runtime.wait(runId);
+
+    const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
+    expect(main?.data).toMatchObject({ result: { verdict: "green", mergeSha: w.fake.pr(1).mergeSha, acknowledgedSha: TIP } });
+    expect(stepIds(w, runId)).not.toContain("sh-freeze");
+    expect(w.host.gates.listPending()).toEqual([]);
+  });
+
   it("opens no freeze when each check's cancelled run at the merge sha was re-run green", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5, "2026-10-05T00:29:38Z", "cancelled"), successRun("validate", 6, "2026-10-05T00:31:31Z")]);
     const runId = await runToMerge(w);
@@ -376,6 +485,20 @@ describe("shepherd-pr after land", () => {
 
     const main = Object.values(w.host.runtime.status(runId)!.stepResults).find((result) => result.stepId === "sh-main-ci");
     expect(main?.data).toMatchObject({ result: { verdict: "none" } });
+  });
+
+  it("lists the main-ci-timeout gate in shepherd waiting with no head verdict, since it names the merge, not the PR head", async () => {
+    const w = shepherdWorld(() => []);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
+
+    const envelope = await callCommand<Waiting>(w.host, w.routes, "shepherd.waiting", {});
+
+    expect(w.host.gates.get(gateId(runId, "main-ci-timeout"))?.prompt).toContain(`at merge ${w.fake.pr(1).mergeSha}`);
+    expect(envelope).toMatchObject({ ok: true, data: { owner: [{ gateId: gateId(runId, "main-ci-timeout"), head: H1, headIsCurrent: null }] } });
   });
 
   it("asks once with main-ci-timeout, never main-red, and says no completed run contains the merge, when a run stays queued", async () => {
@@ -545,8 +668,10 @@ describe("shepherd-pr on a red main", () => {
     expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
-  it("offers the owner the release when the fixer's green merge skipped a check that was red, and thaws on the owner's word", async () => {
+  it("offers the owner the release when the fixer's green merge skipped a check that was red under the all-checks rule an unreadable ruleset leaves, and thaws on the owner's word", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
+    const rules = w.fake.wire.getBranchRules;
+    w.fake.wire.getBranchRules = async (...args) => (w.fake.pr(1).merged ? Promise.reject(new Error("HTTP 502")) : rules(...args));
     w.fake.setRuns(EARLIER_RED, [successRun("docs", 4, undefined, "failure")]);
     frozenWithFixer(w);
     const runId = await registeredToMerge(w, "demo/FX-1", FIXER);

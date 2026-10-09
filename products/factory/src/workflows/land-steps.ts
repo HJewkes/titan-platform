@@ -12,7 +12,7 @@ const FailingCheck = z.looseObject({
   workflowRunId: z.number().nullable(),
 });
 
-export const LandRulesResult = z.looseObject({ contexts: z.array(z.string()), strict: z.boolean() });
+export const LandRulesResult = z.looseObject({ base: z.string(), contexts: z.array(z.string()), strict: z.boolean() });
 
 export const CiSnapshotResult = z.looseObject({
   verdict: z.enum(["pending", "green", "red", "behind", "merged", "closed", "not-mergeable"]),
@@ -27,6 +27,8 @@ export const CiSnapshotResult = z.looseObject({
 });
 
 export const UpdateResultResult = z.looseObject({ headSha: z.string(), own: z.boolean(), conflict: z.boolean().optional(), unmoved: z.boolean().optional(), at: z.number().optional() });
+
+export const BackoffResult = z.looseObject({ waitMs: z.number(), retry: z.number() });
 
 export const MergeResultResult = z.looseObject({ done: z.boolean(), skipped: z.string().optional(), mergeSha: z.string() });
 

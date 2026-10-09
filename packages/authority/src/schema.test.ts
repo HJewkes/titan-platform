@@ -20,7 +20,7 @@ function issues(table: unknown): string[] {
 describe("policyTableSchema", () => {
   it("accepts the shipped table.json as is", () => {
     expect(issues(tableJson)).toEqual([]);
-    expect(DEFAULT_TABLE.rules).toHaveLength(92);
+    expect(DEFAULT_TABLE.rules).toHaveLength(116);
   });
 
   it("rejects a table missing one action by actor pair", () => {
@@ -36,7 +36,7 @@ describe("policyTableSchema", () => {
     expect(issues(table)).toContain("duplicate rule for merge by worker");
   });
 
-  it.each(["coordinator", "worker", "headless", "automation"])("rejects a gate that names %s as a resolver", (resolver) => {
+  it.each(["coordinator", "worker", "headless", "automation", "decider"])("rejects a gate that names %s as a resolver", (resolver) => {
     const table = withRule(copyOfDefault(), "MRG-CO", { resolvers: ["owner-terminal", resolver] });
     expect(issues(table)).not.toEqual([]);
   });

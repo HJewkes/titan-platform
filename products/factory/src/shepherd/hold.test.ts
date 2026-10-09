@@ -2,8 +2,9 @@ import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } fro
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
-import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, waitWhileHeld } from "./hold.js";
+import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerAgent, ReviewerMessage } from "./review.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
@@ -38,7 +39,7 @@ interface Rig {
 
 function rig(kind?: string): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: H1 });
@@ -201,7 +202,7 @@ describe("a hold that names a reviewer", () => {
     const r = rig();
     let ran = false;
     const route = { match: "merge", runner: { run: async () => ((ran = true), { ok: true as const, output: "{}" }) } };
-    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep: async () => say(r, verdictAt(H1)), now: () => 0 });
+    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep: async () => say(r, verdictAt(H1)), now: () => 0 }, openHeadRead(r.port));
 
     const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean; output?: string }>)({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha: H1 }), signal: new AbortController().signal, stepId: "merge", attempt: 0 });
 
@@ -352,7 +353,7 @@ describe("a run held at registration whose seat sends the reviewed head back", (
       onPoll(probe.polls);
     };
     const route = { match: "merge", runner: { run: async () => ((probe.ran = true), { ok: true as const, output: "{}" }) } };
-    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep, now: () => 0 });
+    const waiting = waitWhileHeld(route as never, heldCheck(r.port, () => r.store, undefined, satisfier(r)), { sleep, now: () => 0 }, openHeadRead(r.port));
     const run = (sha: string) => (waiting.runner.run as Run)({ prompt: JSON.stringify({ repo: REPO, pr: r.pr, sha }), signal: control.signal, stepId: "merge:0", attempt: 0 });
     return { probe, run };
   }
@@ -398,33 +399,47 @@ describe("a run held at registration whose seat sends the reviewed head back", (
     expect(r.fake.pr(r.pr).merged).toBe(false);
   });
 
-  it("keeps the merge step waiting at the reviewed head once a push moves the PR on past the hold reviewer's MERGE", async () => {
+  it("ends the merge step at the old head, unmerged and still held, once a push moves the PR on, so land reads CI at the new head", async () => {
+    const r = heldAtRegistration();
+    const step = mergeStep(r, (poll) => poll === 1 && r.fake.pushHead(r.pr, H2));
+
+    const result = await step.run(H1);
+
+    expect(result).toMatchObject({ ok: true });
+    expect(step.probe).toMatchObject({ ran: false, polls: 1 });
+    expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+    expect(r.fake.pr(r.pr).merged).toBe(false);
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-review: +415/-0 diff over 400" });
+  });
+
+  it("keeps the merge step at the new head waiting once a push moves the PR on past the hold reviewer's MERGE", async () => {
     const r = heldAtRegistration();
     say(r, verdictAt(H1), agent(SEAT));
     await heldCheck(r.port, () => r.store, undefined, satisfier(r))(REPO, r.pr, H1);
     r.fake.pushHead(r.pr, H2);
     const step = mergeStep(r);
 
-    stillWaiting(r, step, await step.run(H1));
+    stillWaiting(r, step, await step.run(H2));
     expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
   });
 
-  it("keeps the merge step waiting while only Shepherd's own reviewer has sent MERGE at the new head", async () => {
+  it("keeps the merge step at the new head waiting while only Shepherd's own reviewer has sent MERGE there", async () => {
     const r = heldAtRegistration();
     say(r, verdictAt(H1, "FIX_FIRST"), agent(SEAT));
-    const step = mergeStep(r, (poll) => poll === 1 && (r.fake.pushHead(r.pr, H2), say(r, verdictAt(H2), agent(OWN))));
+    r.fake.pushHead(r.pr, H2);
+    const step = mergeStep(r, (poll) => poll === 1 && say(r, verdictAt(H2), agent(OWN)));
 
-    stillWaiting(r, step, await step.run(H1));
+    stillWaiting(r, step, await step.run(H2));
   });
 
-  it("keeps the merge step waiting and withdraws the satisfaction when the hold reviewer sends FIX_FIRST at the new head after MERGE at the old", async () => {
+  it("keeps the merge step at the new head waiting and withdraws the satisfaction when the hold reviewer sends FIX_FIRST there after MERGE at the old", async () => {
     const r = heldAtRegistration();
     say(r, verdictAt(H1), agent(SEAT));
     await heldCheck(r.port, () => r.store, undefined, satisfier(r))(REPO, r.pr, H1);
     r.fake.pushHead(r.pr, H2);
     const step = mergeStep(r, (poll) => poll === 1 && say(r, verdictAt(H2, "FIX_FIRST"), agent(SEAT)));
 
-    stillWaiting(r, step, await step.run(H1));
+    stillWaiting(r, step, await step.run(H2));
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 

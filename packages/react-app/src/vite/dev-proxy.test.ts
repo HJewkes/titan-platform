@@ -28,15 +28,23 @@ function send(port: number, method: string, pathname: string, headers: Record<st
   });
 }
 
+/** Vite probes for a free ephemeral port and then binds it, so a parallel test file can take the port in between. */
 async function startVite(root: string, daemon: TestDaemon, server: ServerOptions = {}): Promise<ViteDevServer> {
-  const vite = await createServer({
-    root,
-    configFile: false,
-    logLevel: "silent",
-    plugins: titanApp({ daemonUrl: daemon.origin }),
-    server: { port: 0, host: "127.0.0.1", ...server },
-  });
-  return vite.listen();
+  for (let attempt = 1; ; attempt++) {
+    const vite = await createServer({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: titanApp({ daemonUrl: daemon.origin }),
+      server: { port: 0, host: "127.0.0.1", ...server },
+    });
+    try {
+      return await vite.listen();
+    } catch (err) {
+      await vite.close();
+      if (attempt >= 5 || !(err instanceof Error) || !err.message.includes("already in use")) throw err;
+    }
+  }
 }
 
 const portOf = (vite: ViteDevServer): number => (vite.httpServer!.address() as { port: number }).port;

@@ -1,6 +1,8 @@
-import { promises as fs, readdirSync, statSync, type Dirent } from 'node:fs';
+import { promises as fs, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { AccountProfile } from '@titan-design/anthropic-account';
+import { CONFIG_DIRS_ENV, discoverProfiles } from '@titan-design/anthropic-account/node';
 import { isMissing } from './absent.js';
 import { expandHome } from './expand-home.js';
 
@@ -32,8 +34,6 @@ export interface TranscriptRoot {
 }
 
 const DEFAULT_ACCOUNT = 'default';
-const PROFILES_DIR_NAME = '.claude-profiles';
-const CONFIG_DIRS_ENV = 'CLAUDE_CONFIG_DIRS';
 
 const SUBAGENT_DIR = 'subagents';
 const SUBAGENT_PREFIX = 'agent-';
@@ -143,13 +143,8 @@ export async function discoverTranscripts(
   return found;
 }
 
-function accountFor(configDir: string): string {
-  const name = path.basename(configDir);
-  return name === '.claude' ? DEFAULT_ACCOUNT : name;
-}
-
-function rootFor(configDir: string): TranscriptRoot {
-  return { root: path.join(configDir, 'projects'), account: accountFor(configDir) };
+function rootFor({ configDir, label }: AccountProfile): TranscriptRoot {
+  return { root: path.join(configDir, 'projects'), account: label };
 }
 
 function hasProjectsDir(configDir: string): boolean {
@@ -163,33 +158,15 @@ function hasProjectsDir(configDir: string): boolean {
 
 /** ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides. */
 export function claudeTranscriptRoots(env: NodeJS.ProcessEnv = process.env): TranscriptRoot[] {
-  const override = env[CONFIG_DIRS_ENV];
-  if (override) {
-    return override
-      .split(path.delimiter)
-      .filter((dir) => dir.length > 0)
-      .map(rootFor);
-  }
+  const profiles = discoverProfiles({ env });
+  if (env[CONFIG_DIRS_ENV]) return profiles.map(rootFor);
 
-  const home = os.homedir();
-  const roots: TranscriptRoot[] = [{ root: transcriptsRoot(), account: DEFAULT_ACCOUNT }];
-
-  let profiles: string[];
-  try {
-    profiles = readdirSync(path.join(home, PROFILES_DIR_NAME), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-  } catch (error) {
-    if (isMissing(error)) return roots;
-    throw error;
-  }
-
-  for (const profile of profiles) {
-    const configDir = path.join(home, PROFILES_DIR_NAME, profile);
-    if (hasProjectsDir(configDir)) roots.push(rootFor(configDir));
-  }
-  return roots;
+  // The default root is listed even when ~/.claude is missing, so a fresh machine still has it.
+  const defaultDir = path.join(os.homedir(), '.claude');
+  const others = profiles.filter(
+    (profile) => profile.configDir !== defaultDir && hasProjectsDir(profile.configDir),
+  );
+  return [{ root: transcriptsRoot(), account: DEFAULT_ACCOUNT }, ...others.map(rootFor)];
 }
 
 /**

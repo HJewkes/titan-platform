@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/coordinator",
   "version": "0.0.0",
-  "description": "Seat config schema for the autonomy coordinator (pure code: zod schema and inferred types).",
+  "description": "Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -32,8 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
