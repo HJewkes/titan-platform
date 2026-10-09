@@ -6,7 +6,7 @@ import { appliedVersions, openDatabase, runMigrations } from "@titan-design/stor
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
-import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
+import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
@@ -248,9 +248,14 @@ describe("the frozen-merge guard", () => {
         now: () => r.clock.at,
       }),
     );
-    const waiting = waitWhileHeld(route as never, held, {
-      sleep: async () => control.abort(),
-    });
+    const waiting = waitWhileHeld(
+      route as never,
+      held,
+      {
+        sleep: async () => control.abort(),
+      },
+      openHeadRead(r.port),
+    );
 
     const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
 
