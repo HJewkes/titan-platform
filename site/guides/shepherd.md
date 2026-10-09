@@ -522,15 +522,28 @@ cannot loosen it.
 ## Hold and release
 
 ```sh
-titan-factory shepherd hold owner/repo#123 --reason "waiting on a schema decision"
-titan-factory shepherd hold owner/repo#123 --reason "security audit" --reviewer sec-audit-review
+titan-factory shepherd hold owner/repo#123 --reason "stalled: no step progress for 70 minutes; TP-123"
+titan-factory shepherd hold owner/repo#123 --reason "g10-adversary: merge-policy change" --reviewer sec-audit-review
 titan-factory shepherd release owner/repo#123
 ```
 
 ```
-run ab0f9228-…: held (waiting on a schema decision)
+run ab0f9228-…: held (stalled: no step progress for 70 minutes; TP-123)
 run ab0f9228-…: released
 ```
+
+A reason has the shape `<class>: <detail>; <task id>`. Its class is the text before the
+first colon, matched exactly, and must be one of the seven break-glass classes:
+`serve-down`, `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or
+`g10-adversary`. The first four are factory defects, so their reason must also cite the
+task for the defect, an ID like `TP-123` or `CC-45`. Only the ID's syntax is checked, not
+whether the task is open. The three gate classes need no task ID. A seat path or an interim
+procedure is not a hold reason. Any other reason is refused with exit 65 before anything is
+read or written: nothing is held, so the pull request stays unheld and Shepherd may still
+merge it. The refusal message lists the classes and the task-ID rule
+(`products/factory/src/shepherd/hold-reason.ts`). Only `shepherd hold` checks the reason.
+`release` clears any hold, and a typed `hold` replaces an existing one, including one
+stored before the check existed.
 
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits

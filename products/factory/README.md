@@ -211,7 +211,9 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
-  the reason is free text, so no class is validated. Two classes carry the G10 rule:
+  `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or `g10-adversary`, and a reason in one of the
+  first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
     configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
     checks are green at that head, the `sh-g10-release:<head>:<n>` step releases the hold and records the verdict
