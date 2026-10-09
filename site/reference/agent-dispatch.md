@@ -64,10 +64,56 @@ const claude = resolveBinaryPath("/opt/homebrew/bin/claude", "claude");
 const turn = execSafe(claude, resumeArgs(sessionId, "CI is red; see the log"), minimalEnv(), 600_000, worktree);
 ```
 
+## Limits
+
+The `./limits` subpath holds the spend limits a budget gate reads, as data rather than
+charter prose or constants. One versioned block keys pools by name, one per Claude account,
+and adds per-profile, per-seat and time-boxed layers:
+
+```ts
+import { checkLimits, liftQuestion, resolveLimits } from "@titan-design/agent-dispatch/limits";
+import { loadLimits, readGrants } from "@titan-design/agent-dispatch/limits/node";
+
+const parsed = loadLimits("/path/to/host-config.json", { key: "limits" });
+const { grants } = readGrants("/path/to/limits-grants.json");
+const result = resolveLimits(parsed, {
+  pool: "agents",
+  profile: "bd-implementer",
+  now: new Date(),
+  grants,
+  answeredQuestions: new Set(ownerAnswerIds),
+  fiveHourResetsAt: reading.resetsAt,
+});
+if (!result.open) refuse(result.reason); // a malformed or unknown pool fails closed
+// result.limits: { ceiling_five_hour: 95, reserve_seven_day: 14, sonnet_band_points: 0, ...,
+//   sources: { ceiling_five_hour: "pool", ... }, applied: ["override:<decision>"] }
+
+checkLimits(parsed, { now: new Date() }); // [{ kind: "expired_override", message: "..." }, ...]
+```
+
+Each field resolves independently, the later layer winning: `LIMIT_DEFAULTS`, then
+`defaults`, the pool, the profile on every pool, the profile × pool entry, active
+`overrides[]` (later entry wins; `null` per-day lifts the cap), and answered grants. Then
+the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or more.
+
+- An override carries an `until`. Past it the override stops applying and `checkLimits`
+  reports it, so a standing value comes back with no edit.
+- A malformed pool closes that pool, a malformed profile closes spawns of that profile, a
+  malformed seat closes that seat, and a malformed override or grant is ignored. Only a bad
+  envelope (wrong `version`, not an object) throws `LimitsConfigError`.
+- Seat caps are a separate stop: `per_run_points` is added and `per_day_points` only ever
+  lowers the pool's.
+- `liftQuestion` asks once per pool per five-hour window when a pool with a `lift` reaches
+  its ceiling. `grantFromAnswer` turns a yes into a grant until that window resets. The
+  resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
+  `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are
-product policy, so the allowlist is an argument. It does not wait for the agent's work,
+product policy, so the allowlist is an argument. The limits subpath owns no file path, reads
+no usage, writes no grant and posts no question: the product passes paths, readings and
+owner answers in. It does not wait for the agent's work,
 decide whether an agent is live before a resume, or talk to the broker's socket directly.
 
 ## Gotchas
@@ -105,4 +151,5 @@ Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resum
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
 its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
-brief) by TP-518, `parkAgent` by TP-548, and `messageAgent` by TP-728.
+brief) by TP-518, `parkAgent` by TP-548, and `messageAgent` by TP-728. The `./limits`
+subpath (TP-2067) replaces the `pools:` and `funds:` blocks of a coordinator charter.

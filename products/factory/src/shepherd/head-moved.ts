@@ -1,6 +1,7 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
 import { SUPERSEDED, gateHead } from "./stale-gates.js";
@@ -12,6 +13,7 @@ const FAILED_ROUNDS: Escalation = "failed-rounds";
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
 const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
 const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
+const STUCK_BEHIND_GATE = /\/stuck-behind(:\d+)?$/;
 
 export interface SupersededGate {
   runId: string;
@@ -123,16 +125,24 @@ function waitsForNewHead({ stepId, gate }: PendingGate): boolean {
   return (stepId === "sh-sent-back" && SENT_BACK_GATE.test(gate.id)) || (stepId === "ci-failed" && CI_FAILED_GATE.test(gate.id));
 }
 
-/** A conflict, other escalation or release gate shares the approve-merge step id but stays with the owner; a send-back or red head only ever waits for a new head. */
+/** A stuck-behind prompt names only short heads; land asks it about the head it read just before. */
+function stuckBehindHead(host: FactoryHost, { runId, gate }: PendingGate): string | undefined {
+  if (!STUCK_BEHIND_GATE.test(gate.id)) return undefined;
+  const run = host.runtime.status(runId);
+  return run?.workflowName === SHEPHERD_WORKFLOW ? lastReadHead(run) : undefined;
+}
+
+/** A conflict, other escalation or release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
+  if (pending.stepId === "stuck-behind") return stuckBehindHead(host, pending);
   const run = approveMergeRun(host, pending);
   return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? failedRoundsHead(run, gate));
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or failed-rounds route approve-merge gate, sh-sent-back or ci-failed gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or failed-rounds route approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {

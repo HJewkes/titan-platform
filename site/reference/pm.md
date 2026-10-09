@@ -20,6 +20,8 @@ of a task's shape. This package holds those primitives once, so every reader agr
   `kind`, `status`, `cos` and `area` against one registry file.
 - `DeliverableSchema` and `parseDeliverableRegistry(entries)`, which validate the one
   platform-wide deliverable registry, one file per deliverable.
+- `taskTree(tasks, rootId)` and `criticalPath(tasks, { deliverable })`, which read the
+  parent tree and the dep graph.
 
 ## When to reach for it
 
@@ -159,6 +161,46 @@ const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".yml"
 const deliverables = parseDeliverableRegistry(
   files.map((file) => ({ file, parsed: parse(readFileSync(join(dir, file), "utf8")) })),
 );
+```
+
+## Tree and critical path
+
+Both read edges through `readEdges`, so the tag fallback applies to them too, and both keep
+the first task when an id repeats.
+
+`taskTree(tasks, rootId)` returns the subtree under `rootId` by `parent` edges, or `null`
+when no task has that id. Each node carries `id`, `title`, `status`, `estimate` (`null`
+when unestimated), `depth` (0 at the root) and `children` in input order, so a depth-first
+walk of `children` prints the tree. A parent cycle is cut where it would revisit a task.
+
+`criticalPath(tasks, { deliverable })` schedules the open tasks by their `dep` edges with
+the estimate in points as the duration, and returns the total float of each:
+
+| field | meaning |
+|---|---|
+| `tasks` | `{ id, duration, earlyStart, earlyFinish, lateStart, lateFinish, float }` per task outside a cycle, in input order |
+| `criticalPath` | the zero-float ids, by early start then input order |
+| `length` | the longest open chain in points: the latest early finish |
+| `cycles` | each dep cycle's ids, in input order; its tasks get no float |
+| `lowerBound` | true when there are cycles, since their tasks add nothing to `length` |
+| `externalDeps` | `{ task, dep }` for each dep outside the set |
+| `unestimated` | ids whose estimate is missing, NaN, infinite or negative |
+
+The rules match agent-chat's burndown critical path:
+
+- The set is the open tasks, narrowed to those whose `deliverables` field lists
+  `deliverable` when one is given. No tag is read for this.
+- A dep outside the set (a closed task, another deliverable, an unknown id) is satisfied.
+- An unestimated task has duration 0 but keeps its edges.
+- A cycle is reported, never thrown.
+
+Open means not closed. Until callers pass the category registry in, status `done` and
+`wont-do` count as closed and every other status, `icebox` included, as open.
+
+```ts
+import { criticalPath } from "@titan-design/pm";
+
+const { criticalPath: path, length, cycles } = criticalPath(allTasks, { deliverable: "console-v1" });
 ```
 
 ## What it deliberately does not do
