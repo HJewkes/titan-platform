@@ -14,6 +14,8 @@ const tickFixture = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({ version: 1, loop: "burndown-tick", heartbeatAt: new Date(NOW - 60_000).toISOString(), outcome: "failed", consecutiveFailures: 1, lastErrorClass: "LedgerMalformedError", intervalSeconds: 600, ...over });
 
 interface Machine {
+  labelPrefix?: string;
+  configError?: string;
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
@@ -44,6 +46,8 @@ function fakePorts(init: Machine) {
     platform: init.platform ?? "darwin",
     uid: UID,
     home: "/srv/tester",
+    ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
+    ...(init.configError === undefined ? {} : { configError: init.configError }),
     launchctl: async (args) => {
       calls.push(args.join(" "));
       return init.print === undefined ? { code: 113, stdout: "", stderr: "Could not find service" } : { code: 0, stdout: init.print, stderr: "" };
@@ -257,6 +261,22 @@ describe("titan-factory service check", () => {
     expect(loop.out).toBe(
       `crash loop: ${SERVICE_LABEL} is crash-looping: last exit 1, 9 runs; read serve.err.log in the service log directory, fix it, then run titan-factory service restart\n`,
     );
+  });
+
+  it("reads and names the job under the configured label prefix", async () => {
+    const { out, calls } = await check({ labelPrefix: "dev.ex.", print: undefined, health: null });
+
+    expect(calls).toEqual([`print gui/${UID}/dev.ex.titan-factory`]);
+    expect(out).toBe("not loaded: dev.ex.titan-factory is not loaded; run titan-factory service install\n");
+  });
+
+  it("refuses to report on the default label when the config fails to load", async () => {
+    const { code, out, err, calls } = await check({ configError: "invalid config: $: bad json", print: running, health: healthy() });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toBe("error: titan-factory service check cannot resolve the service label: invalid config: $: bad json\n");
+    expect(out).toBe("");
+    expect(calls).toEqual([]);
   });
 
   describe("on Linux", () => {

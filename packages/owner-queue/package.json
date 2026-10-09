@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/owner-queue",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions",
   "type": "module",
   "main": "./dist/index.js",

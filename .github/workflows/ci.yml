@@ -23,6 +23,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check the toolchain against the canonical declarations
+        run: pnpm env:doctor
       # Turbo replays a package's build or typecheck when its inputs hash the same. Only main saves; PRs restore main's cache.
       - name: Restore turbo cache
         uses: actions/cache/restore@v4

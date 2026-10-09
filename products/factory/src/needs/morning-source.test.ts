@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { ownerItemSchema } from "@titan-design/owner-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MORNING_COUNT, SEATS, seatQueueFile } from "../test-support/owner-queue-10-05.js";
 import { createMorningSource, morningQueuesDir } from "./morning-source.js";
+import { configPath } from "../config.js";
 
 let dir: string;
 
@@ -50,6 +51,21 @@ describe("createMorningSource", () => {
 
 describe("morningQueuesDir", () => {
   it("roots the queues at ACTIVE_ROOT", () => {
-    expect(morningQueuesDir({ ACTIVE_ROOT: "/srv/aw" })).toBe("/srv/aw/claude-channels/sources/autonomy/queues");
+    expect(morningQueuesDir({ ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: join(dir, "no-config") })).toBe("/srv/aw/claude-channels/sources/autonomy/queues");
+  });
+
+  it("uses digest.queuesDir from the factory config when set", () => {
+    const config = join(dir, "config-home");
+    const env = { ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: config };
+    mkdirSync(dirname(configPath(env)), { recursive: true });
+    writeFileSync(configPath(env), JSON.stringify({ digest: { queuesDir: "/srv/queues" } }));
+
+    expect(morningQueuesDir(env)).toBe("/srv/queues");
+  });
+
+  it("keeps today's path when the config sets no queuesDir", () => {
+    const env = { ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: join(dir, "no-config") };
+
+    expect(morningQueuesDir(env)).toBe("/srv/aw/claude-channels/sources/autonomy/queues");
   });
 });
