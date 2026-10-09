@@ -73,6 +73,8 @@ export interface AcceptedVerdict {
   ownerBrief?: OwnerBrief | null;
   /** Set when a seat reviewer and Shepherd's own review gave opposite verdicts at this head (G10). */
   ownerOverride?: OwnerOverride;
+  /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
+  reviewerProfile?: string;
 }
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
@@ -290,7 +292,14 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(effectivePolicy(ctx).merge === "owner-gate" && { ownerBrief: true }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
-  const awaiting: AwaitVerdictInput = { ...target, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
+  const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
+    ...target,
+    reviewerAgentId: dispatched.agentId,
+    reviewerSessionId: dispatched.sessionId,
+    dispatchedAt: dispatched.at,
+    ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }),
+    ...(dispatched.profile !== undefined && { reviewerProfile: dispatched.profile }),
+  };
   return withReviewerProfile(await takeVerdict(ctx, target, awaiting, dispatchedReviewer), dispatched.profile);
 };
 

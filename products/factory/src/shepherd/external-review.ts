@@ -1,4 +1,6 @@
+import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
@@ -199,6 +201,23 @@ const disagreement = (head: string, shepherd: "MERGE" | "FIX_FIRST", other: stri
 
 type VerdictStep = (raw: unknown, signal: AbortSignal) => Promise<AwaitVerdictResult>;
 
+const SpawnedProfile = z.looseObject({ reviewerAgentId: z.string(), reviewerProfile: z.string().min(1) });
+
+/** The profile Shepherd spawned its own reviewer with, else the roster's for whoever wrote the verdict; an unreadable roster leaves it unknown. */
+async function authorProfile(raw: unknown, author: AgentIdentity, roster: () => Promise<readonly ReviewerAgent[]>): Promise<string | undefined> {
+  const spawned = SpawnedProfile.safeParse(raw);
+  if (spawned.success && spawned.data.reviewerAgentId === author.agentId) return spawned.data.reviewerProfile;
+  const rows = await roster().catch((): readonly ReviewerAgent[] => []);
+  return rows.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
+}
+
+/** Every acceptor's verdict passes here, so the recorded step names the profile of the reviewer whose message it took. */
+async function withAuthorProfile(raw: unknown, result: AwaitVerdictResult, roster: () => Promise<readonly ReviewerAgent[]>): Promise<AwaitVerdictResult> {
+  if (result.kind !== "verdict") return result;
+  const profile = await authorProfile(raw, result.reviewer, roster);
+  return profile === undefined ? result : { ...result, reviewerProfile: profile };
+}
+
 /** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. */
 export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now): VerdictStep {
   return async (raw, signal) => {
@@ -208,7 +227,7 @@ export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, 
     const { repo, pr, head } = raw as ReviewTarget;
     const roster = () => dispatch.roster();
     const vetoed = await unlessSeatFixFirst(roster, wiring.reader, { repo, pr, head }, result, undefined, now);
-    return bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, { repo, pr, head }, result, now) : vetoed);
+    return withAuthorProfile(raw, bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, { repo, pr, head }, result, now) : vetoed), roster);
   };
 }
 
