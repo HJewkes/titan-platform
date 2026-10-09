@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
-import { EffectivePolicySchema, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy.js";
+import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
 
@@ -222,7 +222,7 @@ export class ShepherdStore implements HoldLookup {
     const write = this.db.transaction(() => {
       const stored = this.byRun(runId);
       if (!stored) throw new Error(`shepherd-pr run ${runId} has no registration`);
-      const policy = stricterPolicy(meta.policy, stored.policy);
+      const policy = repeatedPolicy(meta.policy, stored.policy);
       const kind = explicitKind ?? stored.kind;
       const refusal = kindMoveRefusal(stored.kind, kind);
       if (refusal) throw new RegistrationRefused(`run ${runId}: ${refusal}`);

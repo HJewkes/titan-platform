@@ -54,6 +54,16 @@ describe("print-settings", () => {
     expect(SETTINGS_ENTRY.matcher).toBe("Bash|Read|Grep|Edit|Write|MultiEdit|NotebookEdit");
     expect(writes).toEqual([]);
   });
+
+  it("the pasted hook command names this package's published bin", () => {
+    const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+      name: string;
+      bin: Record<string, string>;
+    };
+    const binPath = pkg.bin["titan-tool-guard"]?.replace("./", "");
+
+    expect(SETTINGS_ENTRY.hooks[0].command).toContain(`node_modules/${pkg.name}/${binPath}"`);
+  });
 });
 
 describe("hook", () => {

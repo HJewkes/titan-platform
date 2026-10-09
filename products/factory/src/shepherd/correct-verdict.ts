@@ -6,7 +6,7 @@ import { HEAD } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { Awaited, MalformedSchema, readMalformed } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { correctionPrompt } from "./reviewer-brief.js";
+import { correctionPrompt } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 

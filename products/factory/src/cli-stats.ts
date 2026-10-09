@@ -7,6 +7,7 @@ import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
+import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 
@@ -18,6 +19,7 @@ interface StatsOpts {
   to?: string;
   json?: boolean;
   rereviews?: boolean;
+  failures?: boolean;
 }
 
 function formatStages(weeks: readonly StageWeek[]): string[] {
@@ -50,9 +52,10 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const friction = ownerFriction(readAllGates(db), now, range);
   const stages = stageStats(runs, range);
   const red = redAfterMerge(runs, range);
-  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, reviewCauses: causes }, null, 2)}\n`;
-  const redLines = formatRedAfterMerge(red).map((line) => `${line}\n`).join("");
-  return `${formatStats(rows, friction, stages)}${redLines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
+  const failures = opts.failures ? failureStats(runs, range) : undefined;
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
+  const lines = [...formatRedAfterMerge(red), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
+  return `${formatStats(rows, friction, stages)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
@@ -64,6 +67,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
+    .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
     .action((opts: StatsOpts) => {
       const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
       if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));

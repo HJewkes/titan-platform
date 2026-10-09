@@ -5,6 +5,7 @@ import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { buildSha } from "./build-info.js";
 import type { CheckPorts } from "./service-check.js";
+import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 import type { TickStatusRead } from "./tick-status.js";
 
@@ -81,6 +82,14 @@ function tickStatusRead(): TickStatusRead {
   return { file, text: readIfPresent(file) };
 }
 
-export function systemCheckPorts(): CheckPorts {
-  return { ...systemServicePorts(), isAlive: isProcessAlive, processStartedAt: async (pid) => getProcessStartTime(pid), installedBuildSha: buildSha, tickStatus: tickStatusRead };
+/** `checkout` is the service checkout whose index.lock blocks deploys. */
+export function systemCheckPorts(checkout: string): CheckPorts {
+  return {
+    ...systemServicePorts(),
+    isAlive: isProcessAlive,
+    processStartedAt: async (pid) => getProcessStartTime(pid),
+    installedBuildSha: buildSha,
+    tickStatus: tickStatusRead,
+    indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+  };
 }
