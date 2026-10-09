@@ -1,6 +1,6 @@
 import { formatSquashMessage, type SquashCommit, type SquashInput } from "./squash-message.js";
 
-export interface SquashCliIo {
+interface SquashCliIo {
   readStdin(): string;
   out(text: string): void;
   err(line: string): void;
