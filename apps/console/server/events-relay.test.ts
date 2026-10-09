@@ -233,7 +233,7 @@ describe("the events relay", () => {
     await until(() => broker.openCount() === 1);
 
     broker.write(`data: ${"x".repeat(MAX_FRAME_CHARS + 1024)}`);
-    await until(() => broker.dials.length === 2);
+    await until(() => broker.dials.length === 2 && relayed.length === 1);
 
     expect(relayed.map(({ data }) => JSON.parse(data) as unknown)).toEqual([{ kind: "reconnected" }]);
   });
@@ -243,7 +243,7 @@ describe("the events relay", () => {
     const relayed = startRelay(brokerAt(broker.port), { baseDelayMs: 10, maxDelayMs: 40, idleTimeoutMs: 50 });
     await until(() => broker.openCount() === 1);
 
-    await until(() => broker.dials.length >= 2);
+    await until(() => broker.dials.length >= 2 && relayed.length >= 1);
 
     expect(relayed.map(({ data }) => JSON.parse(data) as unknown)[0]).toEqual({ kind: "reconnected" });
   });
