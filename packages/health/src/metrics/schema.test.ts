@@ -47,6 +47,13 @@ describe("validateEntry", () => {
     expect(validateEntry(entry, "write").ok).toBe(false);
   });
 
+  it("refuses an unknown key nested inside a metric on write only", () => {
+    const entry = clone(SHEPHERD_ENTRY);
+    entry.metrics[0] = { ...entry.metrics[0]!, futureMetricKey: true } as (typeof entry.metrics)[0];
+    expect(validateEntry(entry, "read").ok).toBe(true);
+    expect(validateEntry(entry, "write").ok).toBe(false);
+  });
+
   it("refuses an unknown schema id", () => {
     expect(
       validateEntry({ ...SHEPHERD_ENTRY, schema: "titan.metrics/v9" }, "read")

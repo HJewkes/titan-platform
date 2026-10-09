@@ -113,12 +113,15 @@ const entryShape = (obj: ObjectFactory) => ({
   lastAudit: obj({ at: z.string(), codeRev: z.string(), report: z.string() }),
 });
 
+const surfaceRefShape = (obj: ObjectFactory) =>
+  obj({ kind: z.enum(["cli", "http", "view", "digest"]), ref: z.string() });
+
 const auditInputShape = (obj: ObjectFactory) =>
   obj({
     system: z.string(),
     codeRoots: z.array(z.string()),
     stores: z.array(storeShape(obj)),
-    surfaces: z.array(z.string()),
+    surfaces: z.array(surfaceRefShape(obj)),
     sources: z.array(z.string()).optional(),
     owner: z.string(),
     mode: z.enum(["initial", "reaudit"]),

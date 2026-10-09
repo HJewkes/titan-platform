@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { healthReportSchema, healthSampleSchema, parseHealthReport, worstStatus } from "./index.js";
 
 const V1_REPORT = {
   status: "warn",
   checks: {
-    deploy: { status: "warn", observedValue: "rolled-back", output: "build failed" },
-    github: { status: "pass" },
+    deploy: [{ status: "warn", observedValue: "rolled-back", output: "build failed" }],
+    github: [{ status: "pass" }],
   },
   started_at: "2026-01-01T00:00:00.000Z",
   metrics: { event_loop: { p50_ms: 1, p99_ms: 12, max_ms: 40 } },
@@ -14,6 +14,36 @@ const V1_REPORT = {
   pid: 4242,
   uptime_ms: 1000,
   port: 7410,
+};
+
+// Shaped after the draft's own example response, with synthetic ids and values.
+const DRAFT_PAYLOAD = {
+  status: "pass",
+  version: "1",
+  releaseId: "1.2.2",
+  notes: [""],
+  output: "",
+  serviceId: "00000000-0000-4000-8000-000000000001",
+  description: "health of an example service",
+  checks: {
+    "db:responseTime": [
+      {
+        componentId: "00000000-0000-4000-8000-000000000002",
+        componentType: "datastore",
+        observedValue: 3,
+        observedUnit: "ms",
+        status: "pass",
+        affectedEndpoints: ["/users/{userId}"],
+        time: "2026-01-01T00:00:00Z",
+        output: "",
+      },
+    ],
+    "cpu:utilization": [
+      { componentType: "system", node: 1, observedValue: 85, observedUnit: "percent", status: "pass" },
+      { componentType: "system", node: 2, observedValue: 85, observedUnit: "percent", status: "pass" },
+    ],
+  },
+  links: { about: "https://example.com/about" },
 };
 
 const SAMPLE = {
@@ -49,6 +79,15 @@ describe("healthReportSchema (write)", () => {
     expect(healthReportSchema.safeParse({ ...V1_REPORT, status: "pass" }).success).toBe(false);
   });
 
+  it("accepts a payload in the draft's shape", () => {
+    expect(healthReportSchema.safeParse(DRAFT_PAYLOAD).success).toBe(true);
+  });
+
+  it("refuses a check that is a bare object instead of the draft's array", () => {
+    const bare = { status: "pass", checks: { "db:responseTime": { status: "pass" } } };
+    expect(healthReportSchema.safeParse(bare).success).toBe(false);
+  });
+
   it("keeps product extension keys", () => {
     const parsed = healthReportSchema.parse({ ...V1_REPORT, runs: { running: 9 } });
     expect(parsed.runs).toEqual({ running: 9 });
@@ -63,7 +102,7 @@ describe("parseHealthReport (read)", () => {
 
   it("maps a legacy payload with ok true to pass and keeps its fields", () => {
     const read = parseHealthReport({ ok: true, pid: 4242, port: 7410 });
-    expect(read).toEqual({ ok: true, report: { status: "pass", ok: true, pid: 4242, port: 7410 } });
+    expect(read).toEqual({ ok: true, report: { status: "pass", ok: true, pid: 4242, port: 7410 }, ignored: [] });
   });
 
   it("maps a legacy payload with ok false to fail", () => {
@@ -71,7 +110,7 @@ describe("parseHealthReport (read)", () => {
   });
 
   it("lowers a reported status to its worst check", () => {
-    const read = parseHealthReport({ status: "pass", checks: { db: { status: "fail" } } });
+    const read = parseHealthReport({ status: "pass", checks: { db: [{ status: "pass" }, { status: "fail" }] } });
     expect(read).toMatchObject({ ok: true, report: { status: "fail" } });
   });
 
@@ -86,8 +125,56 @@ describe("parseHealthReport (read)", () => {
   });
 
   it("counts a check status it does not know as warn", () => {
-    const read = parseHealthReport({ status: "pass", checks: { db: { status: "degraded" } } });
-    expect(read).toMatchObject({ ok: true, report: { status: "warn", checks: { db: { status: "warn" } } } });
+    const read = parseHealthReport({ status: "pass", checks: { db: [{ status: "degraded" }] } });
+    expect(read).toMatchObject({ ok: true, report: { status: "warn", checks: { db: [{ status: "warn" }] } } });
+  });
+
+  it("reads a passing draft payload as pass with every check value intact", () => {
+    const read = parseHealthReport(DRAFT_PAYLOAD);
+    expect(read).toEqual({ ok: true, report: DRAFT_PAYLOAD, ignored: [] });
+  });
+
+  it("reads a bare check object as a one-entry array", () => {
+    const read = parseHealthReport({ status: "pass", checks: { db: { status: "pass", observedValue: 3 } } });
+    expect(read).toMatchObject({ ok: true, report: { status: "pass", checks: { db: [{ observedValue: 3 }] } } });
+  });
+
+  it("drops a mistyped legacy field and names it instead of refusing the payload", () => {
+    const read = parseHealthReport({ ok: true, version: 2, pid: "42", port: 7410 });
+    expect(read).toEqual({ ok: true, report: { status: "pass", ok: true, port: 7410 }, ignored: ["version", "pid"] });
+  });
+
+  it("drops a mistyped check field and names it by path, keeping the rest of the check", () => {
+    const read = parseHealthReport({
+      status: "pass",
+      checks: { "db:responseTime": [{ status: "pass", output: { code: 7 }, componentType: 3, observedValue: 3 }] },
+    });
+    expect(read).toEqual({
+      ok: true,
+      report: { status: "pass", checks: { "db:responseTime": [{ status: "pass", observedValue: 3 }] } },
+      ignored: ["checks.db:responseTime.0.componentType", "checks.db:responseTime.0.output"],
+    });
+  });
+
+  it("returns check fields typed as the contract declares them", () => {
+    const read = parseHealthReport({ status: "pass", checks: { db: [{ status: "pass", output: "slow" }] } });
+    if (!read.ok) throw new Error(read.error);
+    const output = read.report.checks?.db?.[0]?.output;
+    expectTypeOf(output).toEqualTypeOf<string | undefined>();
+    expect(output?.trim()).toBe("slow");
+  });
+
+  it("reads a check entry that is not an object as warn", () => {
+    const read = parseHealthReport({ status: "pass", checks: { db: ["broken"] } });
+    expect(read).toEqual({ ok: true, report: { status: "warn", checks: { db: [{ status: "warn" }] } }, ignored: [] });
+  });
+
+  it("ignores a checks value that is not an object", () => {
+    expect(parseHealthReport({ ok: true, checks: "all good" })).toEqual({
+      ok: true,
+      report: { status: "pass", ok: true },
+      ignored: ["checks"],
+    });
   });
 
   it("refuses a payload with neither status nor ok", () => {
