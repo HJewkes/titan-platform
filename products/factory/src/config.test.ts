@@ -38,6 +38,21 @@ describe("resolveDbPath", () => {
 });
 
 describe("loadConfig", () => {
+  it.each(["http://127.0.0.1:7410", "https://factory.example.test/"])("reads %s as the remote factory", (remoteFactory) => {
+    expect(loadConfig(configPath(xdg({ remoteFactory }))).remoteFactory).toBe(remoteFactory);
+  });
+
+  it.each(["remotefactory", "remote_factory", "remoteFactoryUrl"])("rejects %s as a misspelt remoteFactory key", (key) => {
+    expect(() => loadConfig(configPath(xdg({ [key]: "http://127.0.0.1:7410" })))).toThrow(/remoteFactory/);
+  });
+
+  it.each(["", "127.0.0.1:7410", "ftp://factory.example.test", "file:///tmp/factory.sqlite3", "http://owner:secret@factory.example.test", 7410])(
+    "rejects %j as the remote factory",
+    (remoteFactory) => {
+      expect(() => loadConfig(configPath(xdg({ remoteFactory })))).toThrow(/remoteFactory/);
+    },
+  );
+
   it("names the config path when the file is not valid JSON", () => {
     const env = xdg({});
     writeFileSync(configPath(env), "{ not json");

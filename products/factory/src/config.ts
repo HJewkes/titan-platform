@@ -90,9 +90,22 @@ export const ReviewCheckConfigSchema = z.strictObject({
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
+function isRemoteFactoryUrl(value: string): boolean {
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+}
+
+/** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
+const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
+
+/** The schema strips unknown keys, so a misspelt remoteFactory would silently leave the frozen database writable. */
+const misspeltRemoteFactory = (key: string): boolean => key !== "remoteFactory" && key.toLowerCase().replace(/[^a-z]/g, "").startsWith("remotefactory");
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
+  remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
   shepherd: z
@@ -147,7 +160,10 @@ function parseJson(path: string): unknown {
 
 export function loadConfig(path: string): FactoryConfig {
   if (!existsSync(path)) return {};
-  const parsed = FactoryConfigSchema.safeParse(parseJson(path));
+  const raw = parseJson(path);
+  const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
+  if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
+  const parsed = FactoryConfigSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`invalid config ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
   return parsed.data;
 }
