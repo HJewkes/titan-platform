@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import type { DigestPushConfig } from "../config.js";
 import type { DigestSlot } from "./model.js";
 
-export const HEADLINE_LINES = 3;
-export const FALLBACK_BODY_BYTES = 4096;
+const HEADLINE_LINES = 3;
+const FALLBACK_BODY_BYTES = 4096;
 
 export interface PushDeps {
   fetch?: typeof fetch;

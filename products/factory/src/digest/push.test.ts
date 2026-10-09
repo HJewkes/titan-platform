@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DigestSlot } from "./model.js";
-import { FALLBACK_BODY_BYTES, pushDigest } from "./push.js";
+import { pushDigest } from "./push.js";
 import { deliverDigest } from "./run.js";
 
 const SLOT: DigestSlot = { date: "2026-03-10", hour: "12" };
@@ -47,7 +47,7 @@ describe("pushDigest", () => {
     expect(warning).toBeUndefined();
     const [, init] = fetchMock.mock.calls[1]!;
     expect(init.method).toBe("POST");
-    expect(Buffer.byteLength(init.body)).toBeLessThanOrEqual(FALLBACK_BODY_BYTES);
+    expect(Buffer.byteLength(init.body)).toBeLessThanOrEqual(4096);
     expect(init.body.length).toBeGreaterThan(1000);
     expect(init.headers.Filename).toBeUndefined();
   });
