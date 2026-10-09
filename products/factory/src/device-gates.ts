@@ -3,7 +3,7 @@ import type { GateAuthorize, GateAuthorization, GateRecord, GateResolver } from 
 import { stepOf } from "./coordinator-evidence.js";
 
 /** A device gate's step id, with any `:<n>` repeat suffix already stripped by `stepOf`. */
-export const DEVICE_GATE = /^device-/;
+const DEVICE_GATE = /^device-/;
 
 /** The table row that names who may confirm a device step; automation, the factory's own class, is denied it (HW-AU). */
 const DEVICE_RULE = "HW-CO";
