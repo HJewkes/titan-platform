@@ -6,14 +6,14 @@ import { median, p90 } from "./stage-times.js";
 import { inRange, isoWeek, mergedAt, payloadOf } from "./stats.js";
 
 /** Disjoint token counts: `input` excludes cache reads and writes. */
-export interface CostTokens {
+interface CostTokens {
   input: number;
   cacheRead: number;
   cacheWrite: number;
   output: number;
 }
 
-export interface SessionRequest {
+interface SessionRequest {
   responseId: string;
   model: string | null;
   /** ISO timestamp the request is priced at. */
@@ -28,12 +28,12 @@ export interface TranscriptPort {
   read(path: string): Promise<SessionRead>;
 }
 
-export interface UnreadableSession {
+interface UnreadableSession {
   session: string;
   reason: string;
 }
 
-export interface PrCost {
+interface PrCost {
   repo: string;
   pr: number;
   /** ISO week of the merge. */
@@ -59,9 +59,9 @@ interface Rollup {
   p90Usd: number | null;
 }
 
-export type CostWeek = { repo: string; week: string } & Rollup;
+type CostWeek = { repo: string; week: string } & Rollup;
 
-export interface ReviewCostReport {
+interface ReviewCostReport {
   prs: PrCost[];
   weeks: CostWeek[];
   totals: Rollup & { completePrs: number };
