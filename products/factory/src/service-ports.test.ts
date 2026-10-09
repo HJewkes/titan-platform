@@ -74,7 +74,10 @@ describe("systemServicePorts label prefix", () => {
   it("carries service.labelPrefix from the config in the env", () => {
     vi.stubEnv("XDG_CONFIG_HOME", configHome({ service: { labelPrefix: "dev.ex." } }));
 
-    expect(systemServicePorts().labelPrefix).toBe("dev.ex.");
+    const ports = systemServicePorts();
+
+    expect(ports.labelPrefix).toBe("dev.ex.");
+    expect(ports.configError).toBeUndefined();
   });
 
   it("leaves labelPrefix unset when the config names none", () => {
@@ -83,13 +86,13 @@ describe("systemServicePorts label prefix", () => {
     expect(systemServicePorts().labelPrefix).toBeUndefined();
   });
 
-  it("keeps the default label when the config is malformed", () => {
-    const root = mkdtempSync(join(tmpdir(), "factory-ports-bad-"));
-    dirs.push(root);
-    mkdirSync(join(root, "titan-factory"));
-    writeFileSync(join(root, "titan-factory", "config.json"), "{ not json");
-    vi.stubEnv("XDG_CONFIG_HOME", root);
+  it("carries the load error instead of a prefix when the config is malformed", () => {
+    vi.stubEnv("XDG_CONFIG_HOME", configHome({ service: { labelPrefix: "dev.ex." }, digest: { queuesdir: "/srv/queues" } }));
 
-    expect(systemServicePorts().labelPrefix).toBeUndefined();
+    const ports = systemServicePorts();
+
+    expect(ports.labelPrefix).toBeUndefined();
+    expect(ports.configError).toMatch(/^invalid config .*config\.json: digest/);
   });
+
 });

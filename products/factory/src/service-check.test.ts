@@ -15,6 +15,7 @@ const tickFixture = (over: Record<string, unknown> = {}): string =>
 
 interface Machine {
   labelPrefix?: string;
+  configError?: string;
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
@@ -46,6 +47,7 @@ function fakePorts(init: Machine) {
     uid: UID,
     home: "/srv/tester",
     ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
+    ...(init.configError === undefined ? {} : { configError: init.configError }),
     launchctl: async (args) => {
       calls.push(args.join(" "));
       return init.print === undefined ? { code: 113, stdout: "", stderr: "Could not find service" } : { code: 0, stdout: init.print, stderr: "" };
@@ -266,6 +268,15 @@ describe("titan-factory service check", () => {
 
     expect(calls).toEqual([`print gui/${UID}/dev.ex.titan-factory`]);
     expect(out).toBe("not loaded: dev.ex.titan-factory is not loaded; run titan-factory service install\n");
+  });
+
+  it("refuses to report on the default label when the config fails to load", async () => {
+    const { code, out, err, calls } = await check({ configError: "invalid config: $: bad json", print: running, health: healthy() });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toBe("error: titan-factory service check cannot resolve the service label: invalid config: $: bad json\n");
+    expect(out).toBe("");
+    expect(calls).toEqual([]);
   });
 
   describe("on Linux", () => {

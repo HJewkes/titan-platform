@@ -324,7 +324,9 @@ about the same PR.
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
 `icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
-`shepherd.seatsDir`. Paths must be absolute.
+`shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
+unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
+absolute.
 
 ## Owner-queue sources
 
@@ -374,6 +376,13 @@ this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
 script says so when the directory is not on `PATH`.
+
+The launchd label is `dev.hjewkes.titan-factory` unless the config sets `service.labelPrefix`
+(`{ "service": { "labelPrefix": "dev.ex." } }` gives `dev.ex.titan-factory`). The plist file
+and every `launchctl` target follow it; the systemd unit name does not. Run `service uninstall`
+before changing the prefix, or the old job stays loaded under its old label. When the config
+fails to load, every service verb but `service plist` exits non-zero with the config error
+rather than act on the default label; `service plist` prints the default label with a warning.
 
 `service install [--port <n>] [--node <path>] [--mcp] [--dry-run]` does these in order on macOS:
 

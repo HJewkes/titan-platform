@@ -18,6 +18,8 @@ export interface ServicePorts {
   xdgConfigHome?: string;
   /** `service.labelPrefix` from the factory config; the launchd label, plist and every launchctl target follow it. The systemd unit name has no prefix. */
   labelPrefix?: string;
+  /** Why the factory config failed to load; the label prefix is then unknown, so every verb but `service plist` refuses. */
+  configError?: string;
   launchctl: (args: readonly string[]) => Promise<CommandResult>;
   systemctl: (args: readonly string[]) => Promise<CommandResult>;
   /** Resolves undefined when no `claude` binary is on PATH. */
@@ -87,7 +89,10 @@ export async function runServiceVerb(
   run: (ports: ServicePorts) => Promise<number>,
   platforms: readonly NodeJS.Platform[] = ["darwin"],
 ): Promise<number> {
-  if (platforms.includes(ports.platform)) return run(ports);
+  if (platforms.includes(ports.platform)) {
+    if (ports.configError !== undefined) return fail(io, `titan-factory service ${verb} cannot resolve the service label: ${ports.configError}`);
+    return run(ports);
+  }
   const needs = platforms.includes("linux") ? "launchd (macOS) or systemd (Linux)" : "launchd, which only macOS has";
   return fail(io, `titan-factory service ${verb} needs ${needs} (this is ${ports.platform})`);
 }

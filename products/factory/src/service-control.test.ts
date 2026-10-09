@@ -42,6 +42,8 @@ interface MachineInit {
   busy?: BusyRun[][];
   /** `service.labelPrefix` from the factory config. */
   labelPrefix?: string;
+  /** The factory config failed to load with this message. */
+  configError?: string;
 }
 
 /** A launchd that refuses to bootstrap a loaded label, as the real one does, so an install that skips bootout fails. */
@@ -83,6 +85,7 @@ function fakeMachine(init: MachineInit = {}) {
     uid: UID,
     home: HOME,
     ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
+    ...(init.configError === undefined ? {} : { configError: init.configError }),
     launchctl,
     systemctl: async (args) => {
       calls.push(`systemctl ${args.join(" ")}`);
@@ -579,5 +582,31 @@ describe("titan-factory service with service.labelPrefix", () => {
     await service(["restart"], machine);
 
     expect(machine.calls).toContain(`launchctl kickstart -k ${CUSTOM_TARGET}`);
+  });
+});
+
+describe("titan-factory service with a config that fails to load", () => {
+  const BROKEN = "invalid config /xdg/config/titan-factory/config.json: digest.queuesdir: Unrecognized key";
+
+  it.each([["uninstall"], ["restart"], ["install"], ["status"]])("refuses %s and leaves the loaded job alone", async (verb) => {
+    const machine = fakeMachine({ configError: BROKEN, loaded: true, files: { [PLIST]: "loaded" } });
+
+    const { code, out, err } = await service([verb], machine);
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toBe(`error: titan-factory service ${verb} cannot resolve the service label: ${BROKEN}\n`);
+    expect(out).toBe("");
+    expect(machine.calls).toEqual([]);
+    expect(machine.files.get(PLIST)).toBe("loaded");
+  });
+
+  it("still prints the plist under the default label, with a warning", async () => {
+    const machine = fakeMachine({ configError: BROKEN });
+
+    const { code, out, err } = await service(["plist"], machine);
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toContain(`<string>${SERVICE_LABEL}</string>`);
+    expect(err).toContain(`warning: printing the default label, because ${BROKEN}`);
   });
 });
