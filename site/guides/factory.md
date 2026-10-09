@@ -226,29 +226,23 @@ payload must match the schema stored with the gate:
 you did not see. `resume` and `factory.gates` print the exact command for each open gate;
 copy the run id and step id from there.
 
-## `gate resolve-batch` {#gate-resolve-batch}
+## Owner-signed proofs {#owner-signed-proofs}
 
-```sh
-titan-factory gate resolve-batch --file batch.jsonl
-titan-factory gate resolve-batch --json '[{"gate":"<runId>/approve-merge","pr":"owner/repo#12","headSha":"<40 hex>"}]'
-```
+The factory host can apply a gate answer the owner signed on another machine. One signature can
+cover one gate, or a batch of merge gates. `applyProof` is the server-side core. The route that
+receives proofs and the Mac client that signs them come in later slices. The flow:
 
-One owner presence check signs a reviewed list of merge-gate resolves. Every item answers
-`merge` at exactly the head it lists. A page or a seat can generate the list. The flow:
-
-1. The whole list is checked first. A malformed line, an unknown or duplicate gate, or a PR that
-   is not the one the gate asks about exits 2 with no dialog.
-2. Release gates (`shepherd-release` merges and `after-stages`) and hardware gates are refused
-   from a batch. They stay one at a time with `gate resolve`.
-3. The numbered list and its digest print before the single Touch ID or password dialog. A
-   cancelled dialog exits 1 and resolves nothing.
-4. The signed batch is recorded in the factory database with every item, before any item fires.
-5. Each item fires through the `gate resolve` path only if its gate is still pending at the
-   listed head, and with Shepherd wired, only if GitHub shows the PR open at that head. An item
-   that moved or closed is skipped and named. Its recorded outcome is `skipped-moved` or
-   `skipped-closed`.
-6. A failed resolve stops the batch. The record shows which items fired, which failed, and which
-   never ran.
+1. The signature is checked over the exact statement bytes, then the key, the time window, the
+   audience and the digest of the items.
+2. A nonce that was already used is refused, and nothing is resolved.
+3. Each item is checked against its live gate. In a batch, only plain merge gates answered `merge`
+   at the listed head may ride. Release gates (`shepherd-release` merges and `after-stages`) and
+   hardware gates stay one per proof.
+4. The proof is recorded, with its statement and signature, before any item fires.
+5. Each item fires only while its gate is still pending at the listed head, and, with a GitHub
+   port, while the PR is open at that head. An item that moved or closed is skipped and named.
+6. A resolved gate records the resolver `owner-terminal` `key:<keyId>`, channel
+   `factory-proof`. A failed resolve stops the batch, and the record shows which items fired.
 
 The package README has the record's columns and the exact checks.
 
