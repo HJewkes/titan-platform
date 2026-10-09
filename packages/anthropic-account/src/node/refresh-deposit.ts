@@ -8,6 +8,7 @@ export type RefreshFailureKind =
   | "login-required"
   | "unrecognized-format"
   | "write-conflict"
+  | "write-failed"
   | "network"
   | "malformed"
   | "io"
@@ -33,6 +34,7 @@ const CONTEXTS: Partial<Record<RefreshFailureKind, string>> = {
   "http-403": `The stored refresh token is missing, expired or was refused. ${RELOGIN}`,
   "unrecognized-format": `The credentials file is in a layout this refresher does not rewrite, so no refresh was sent. ${RELOGIN}`,
   "write-conflict": `The token was refreshed, but the credentials file kept changing and the new token could not be stored. If Claude Code reports a login error, ${RELOGIN}`,
+  "write-failed": `The token was refreshed and the server rotated the refresh token, but the new one could not be stored. ${RELOGIN}`,
 };
 
 const RETRY_CONTEXT = "The refresh will be retried on the next poll. If this repeats, check the network and the token endpoint.";
@@ -44,12 +46,16 @@ function depositLabel(label: string): string {
 export function refreshFailureDeposit(label: string, failure: RefreshFailureKind, now: number): RefreshFailureDeposit {
   const name = depositLabel(label);
   const day = new Date(now).toISOString().slice(0, 10);
+  const context = CONTEXTS[failure];
+  // The spool keeps the first deposit per id, so a retry one must not share an id with a
+  // log-in-again one filed later the same day.
+  const stream = context === undefined ? "" : "relogin-";
   return {
-    depositId: `token-refresh-${name}-${day}`,
+    depositId: `token-refresh-${name}-${stream}${day}`,
     asker: DEPOSIT_ASKER,
     kind: "do",
     door: "two-way",
     summary: `Claude token refresh failed for profile ${name}: ${failure}`,
-    context: CONTEXTS[failure] ?? RETRY_CONTEXT,
+    context: context ?? RETRY_CONTEXT,
   };
 }

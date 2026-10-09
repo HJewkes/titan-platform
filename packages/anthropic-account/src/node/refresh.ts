@@ -81,8 +81,9 @@ export interface RefreshOptions {
   // The uid that must own the credentials file. Defaults to this process's.
   uid?: number;
   timeoutMs?: number;
-  // Called once per failed refresh. The depositId is stable per profile per UTC day, so the
-  // owner-queue spool keeps one item however often the poller retries.
+  // Called once per failed refresh. The depositId is stable per profile per UTC day, one for
+  // failures a retry may clear and one for those that need a new login, so the owner-queue
+  // spool keeps at most two items however often the poller retries.
   onFailure?: (deposit: RefreshFailureDeposit) => void | Promise<void>;
 }
 
@@ -271,7 +272,7 @@ function rebase(configDir: string, uid: number, spent: string): CredentialsBase 
   return format === null ? "retry" : { text: read.text, credentials, format };
 }
 
-async function store(configDir: string, plan: RefreshPlan, tokens: TokenResponse, settings: Settings): Promise<RefreshResult> {
+async function storeOrRetry(configDir: string, plan: RefreshPlan, tokens: TokenResponse, settings: Settings): Promise<RefreshResult> {
   let base: CredentialsBase = plan;
   for (let attempt = 1; attempt <= STORE_ATTEMPTS; attempt++) {
     const next = serialize(base, tokens, settings.now);
@@ -284,6 +285,16 @@ async function store(configDir: string, plan: RefreshPlan, tokens: TokenResponse
     else base = current;
   }
   return failed("write-conflict");
+}
+
+// A rotated refresh token has replaced the stored one at the server, so a write that throws
+// leaves a login a retry cannot renew. Without a rotation the stored token still works.
+async function store(configDir: string, plan: RefreshPlan, tokens: TokenResponse, settings: Settings): Promise<RefreshResult> {
+  try {
+    return await storeOrRetry(configDir, plan, tokens, settings);
+  } catch {
+    return failed(tokens.refresh_token === undefined ? "io" : "write-failed");
+  }
 }
 
 async function refreshLocked(configDir: string, plan: RefreshPlan, settings: Settings): Promise<RefreshResult> {

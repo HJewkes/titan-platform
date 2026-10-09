@@ -1,10 +1,11 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CANARY, FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, HOUR, NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
 import { captureOutput, errorText, makeTempHome, removeTempHome, writeFileWithMode } from "../fixtures/temp-home.js";
 import type { AccountProfile } from "../profile.js";
-import { REFRESH_LOCK } from "./credentials-write.js";
+import { REFRESH_LOCK, REFRESH_LOCK_HOLDER } from "./credentials-write.js";
 import { CREDENTIALS_FILE } from "./login.js";
 import type { FetchLike } from "./poll.js";
 import { DEFAULT_REFRESH_SCOPES, OAUTH_CLIENT_ID, TOKEN_URL, refreshIfNeeded, type RefreshOptions } from "./refresh.js";
@@ -95,6 +96,20 @@ function expectNoCanaryInFiles(dir: string): void {
     if (!entry.isFile() || entry.name === CREDENTIALS_FILE) continue;
     expectCanaryAbsent(fs.readFileSync(path.join(entry.parentPath, entry.name), "utf8"));
   }
+}
+
+// What a crash between taking and releasing the locks leaves: both lock dirs and the record.
+function leaveOwnLock(pid: number, inoOffset = 0): void {
+  const primary = path.join(profile.configDir, REFRESH_LOCK);
+  const legacy = `${profile.configDir}.lock`;
+  fs.mkdirSync(primary);
+  fs.mkdirSync(legacy);
+  const identity = (dir: string) => {
+    const { ino, ctimeMs } = fs.lstatSync(dir);
+    return { ino: ino + inoOffset, ctimeMs };
+  };
+  const record = { pid, primary: identity(primary), legacy: identity(legacy) };
+  fs.writeFileSync(path.join(profile.configDir, REFRESH_LOCK_HOLDER), JSON.stringify(record));
 }
 
 function expectNoLeftovers(): void {
@@ -241,6 +256,23 @@ describe("refreshIfNeeded writes the new credentials atomically", () => {
     expectNoLeftovers();
     expectNoCanary(result);
   });
+
+  it("asks for a new login when a rotated refresh token cannot be stored", async () => {
+    const original = JSON.stringify(expiringCredentials());
+    writeText(original);
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error(`EXDEV moving ${NEW_REFRESH_TOKEN}`);
+    });
+    const { fetch } = fakeFetch(() => granted({ refresh_token: NEW_REFRESH_TOKEN }));
+
+    const result = await refresh(fetch);
+
+    expect(result).toEqual({ status: "failed", failure: "write-failed", deposited: true });
+    expect(deposits[0]?.context).toContain("Log in again");
+    expect(fs.readFileSync(file, "utf8")).toBe(original);
+    expectNoLeftovers();
+    expectNoCanary(result);
+  });
 });
 
 describe("refreshIfNeeded yields to another writer", () => {
@@ -350,6 +382,36 @@ describe("refreshIfNeeded yields to another writer", () => {
     expect(deposits).toEqual([]);
   });
 
+  it("reclaims a lock this package left behind when its holder has exited", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    leaveOwnLock(spawnSync(process.execPath, ["-e", ""]).pid);
+    const { fetch, calls } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toMatchObject({ status: "refreshed" });
+    expect(calls).toHaveLength(1);
+    expectNoLeftovers();
+  });
+
+  it("keeps a lock this package holds while its holder is alive", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    leaveOwnLock(process.pid);
+    const { fetch, calls } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toEqual({ status: "locked" });
+    expect(calls).toHaveLength(0);
+    expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
+  });
+
+  it("never reclaims a lock whose holder record names a different lock", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    leaveOwnLock(spawnSync(process.execPath, ["-e", ""]).pid, 1);
+    const { fetch, calls } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toEqual({ status: "locked" });
+    expect(calls).toHaveLength(0);
+    expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
+  });
+
   it("does not send while Claude Code holds its legacy lock, and releases its own", async () => {
     writeText(JSON.stringify(expiringCredentials()));
     fs.mkdirSync(`${profile.configDir}.lock`);
@@ -414,19 +476,42 @@ describe("refreshIfNeeded failures are values with no token, and file one deposi
 
     await refresh(fetch);
 
-    expect(deposits[0]?.depositId).toBe("token-refresh-unlabelled-2026-10-08");
+    expect(deposits[0]?.depositId).toBe("token-refresh-unlabelled-relogin-2026-10-08");
     expectNoCanary(deposits);
   });
 
-  it("keeps one depositId per profile per UTC day", () => {
+  it("keeps one depositId per profile per UTC day for each of retry and log in again", () => {
     const morning = refreshFailureDeposit("work", "network", NOW);
+    const noon = refreshFailureDeposit("work", "http-500", NOW + 4 * HOUR);
     const evening = refreshFailureDeposit("work", "http-401", NOW + 10 * HOUR);
+    const later = refreshFailureDeposit("work", "write-failed", NOW + 7 * HOUR);
     const tomorrow = refreshFailureDeposit("work", "network", NOW + 24 * HOUR);
 
     expect(morning.depositId).toBe("token-refresh-work-2026-10-08");
-    expect(evening.depositId).toBe(morning.depositId);
+    expect(noon.depositId).toBe(morning.depositId);
+    expect(evening.depositId).toBe("token-refresh-work-relogin-2026-10-08");
+    expect(later.depositId).toBe(evening.depositId);
     expect(tomorrow.depositId).toBe("token-refresh-work-2026-10-09");
     expect(morning).toMatchObject({ asker: "anthropic-account", kind: "do", door: "two-way" });
+  });
+
+  it("does not let an earlier retry deposit the same day hide a log-in-again one", async () => {
+    // The owner-queue spool keeps the first file it is given for each depositId.
+    const spool = new Map<string, RefreshFailureDeposit>();
+    const onFailure = (deposit: RefreshFailureDeposit): void => {
+      if (!spool.has(deposit.depositId)) spool.set(deposit.depositId, deposit);
+    };
+    writeText(JSON.stringify(expiringCredentials()));
+    await refresh(() => Promise.reject(new Error("ECONNRESET")), { onFailure });
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error("EXDEV");
+    });
+
+    await refresh(fakeFetch(() => granted({ refresh_token: NEW_REFRESH_TOKEN })).fetch, { onFailure });
+
+    const contexts = [...spool.values()].map((deposit) => deposit.context);
+    expect(contexts).toHaveLength(2);
+    expect(contexts.some((context) => context.includes("Log in again"))).toBe(true);
   });
 
   it("returns deposited false when the deposit cannot be filed, and does not throw", async () => {

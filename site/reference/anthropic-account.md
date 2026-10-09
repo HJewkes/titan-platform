@@ -317,13 +317,24 @@ Code's own refresh closely:
      `refreshed-elsewhere`.
    - After four attempts the result is `failed` with `write-conflict`, which files a
      deposit, and the file is left as the other writer left it.
-7. Renames the temp file over `.credentials.json`, then `fsync`s the dir, best effort.
+7. Renames the temp file over `.credentials.json`, then `fsync`s the dir, best effort. If
+   the write or the rename throws, the result is `failed` with `write-failed` when the
+   response rotated the refresh token, since the stored one no longer works, and with `io`
+   when it did not.
 
 The file is never truncated in place, so a session reading it sees the old file or the new
 one. Only `accessToken` and `expiresAt` (`now` plus `expires_in`) change. So do
 `refreshToken` and `refreshTokenExpiresAt` when the response rotates them. Every other key
 keeps its bytes and its position. Locks are released on every path, and only a lock
 directory this call made is removed.
+
+While it holds the locks, the refresher keeps a holder record,
+`.oauth_refresh.lock.anthropic-account`, beside them in the config dir: its pid and the
+inode and ctime of each lock dir it made. The record sits outside the lock dir because
+Claude Code removes a stale lock with `rmdir`. If a crash leaves the locks behind, the next
+call finds them held, sees the recorded pid has exited, removes only the dirs whose inode
+and ctime still match, and takes the locks again. A lock with no record, or one whose
+identity differs, is Claude Code's and is left alone.
 
 | result | when | deposit |
 |---|---|---|
@@ -332,13 +343,17 @@ directory this call made is removed.
 | `refreshed-elsewhere` | the file changed before the request, or another login or a logout replaced it after | no |
 | `locked` | a refresh lock is held | no |
 | `skipped`, with `reason` | the file is missing or refused by the gate, or the login is one Claude Code would not refresh: neither the `user:inference` scope nor a `subscriptionType` | no |
-| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `write-conflict`, `http-<status>`, `network`, `malformed` or `io` | yes |
+| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `write-conflict`, `write-failed`, `http-<status>`, `network`, `malformed` or `io` | yes |
 
 Each failure calls `onFailure` once with a `RefreshFailureDeposit`. That is an owner-queue
 `OwnerItemDeposit`: asker `anthropic-account`, kind `do`, a one-line summary naming the
-profile label and the failure kind, and a fixed context line. Its `depositId` is
-`token-refresh-<label>-<UTC day>`, so the spool keeps one item per profile per day however
-often a poller retries. A label that is not a short plain name, or that `redactSecrets`
+profile label and the failure kind, and a fixed context line. A failure that needs a new
+login (`login-required`, `http-400`, `http-401`, `http-403`, `unrecognized-format`,
+`write-conflict`, `write-failed`) has the `depositId`
+`token-refresh-<label>-relogin-<UTC day>`. Any other failure, which a later poll may clear,
+has `token-refresh-<label>-<UTC day>`. The spool keeps the first deposit for each id, so a
+retry deposit filed earlier in the day never hides a log-in-again one, and a poller that
+retries files at most two items per profile per day. A label that is not a short plain name, or that `redactSecrets`
 would change, is written `unlabelled`. The package is tier 0 and owner-queue is tier 2, so
 the caller wires `writeDeposit`. A deposit that throws leaves `deposited: false`, and the
 result is otherwise unchanged.

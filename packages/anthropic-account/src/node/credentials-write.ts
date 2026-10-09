@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import type { RefusedReason } from "../login.js";
 import { readGatedFile } from "./gated-read.js";
 import { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES } from "./login.js";
@@ -10,6 +11,9 @@ import { syncDir } from "./usage-file.js";
 // directory made with mkdir: this one in the config dir and a legacy one beside it. Its
 // stale time is 60 s, and with no holder record of its own it never takes over a fresher lock.
 export const REFRESH_LOCK = ".oauth_refresh.lock";
+// Beside the lock, never inside it: Claude Code removes a stale lock with rmdir, which fails
+// on a non-empty dir. It names which lock dirs this package made, and for which process.
+export const REFRESH_LOCK_HOLDER = ".oauth_refresh.lock.anthropic-account";
 
 export type CredentialsText =
   | { status: "text"; text: string }
@@ -23,9 +27,20 @@ export interface JsonFormat {
 
 const INDENTS: readonly (string | number | undefined)[] = [undefined, 2, 4, "\t"];
 
-interface HeldDir {
-  dir: string;
+// Inode and ctime together, since a filesystem may hand a removed dir's inode to the next one.
+interface DirIdentity {
   ino: number;
+  ctimeMs: number;
+}
+
+interface HeldDir extends DirIdentity {
+  dir: string;
+}
+
+interface HolderRecord {
+  pid: number;
+  primary: DirIdentity;
+  legacy?: DirIdentity;
 }
 
 // The exact text that passed the gate, so a later read can be compared byte for byte.
@@ -64,13 +79,15 @@ function makeLockDir(dir: string): HeldDir | null {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") return null;
     throw error;
   }
-  return { dir, ino: fs.lstatSync(dir).ino };
+  const { ino, ctimeMs } = fs.lstatSync(dir);
+  return { dir, ino, ctimeMs };
 }
 
 // A lock another process took over as stale is not this call's to remove.
 function removeLockDir(held: HeldDir): void {
   try {
-    if (fs.lstatSync(held.dir).ino === held.ino) fs.rmdirSync(held.dir);
+    const now = fs.lstatSync(held.dir);
+    if (now.ino === held.ino && now.ctimeMs === held.ctimeMs) fs.rmdirSync(held.dir);
   } catch {
     return;
   }
@@ -84,15 +101,56 @@ function legacyLockPath(configDir: string): string {
   }
 }
 
-// Takes both of Claude Code's refresh locks, in its order, or neither. A lock already held
-// is never stolen, however old: Claude Code's own stale takeover handles a dead holder.
-// Like Claude Code, an unusable legacy path (not a held one) is skipped.
-export function acquireRefreshLock(configDir: string): (() => void) | null {
-  const primary = makeLockDir(path.join(configDir, REFRESH_LOCK));
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+const identitySchema = z.object({ ino: z.number(), ctimeMs: z.number() });
+const holderSchema = z.object({ pid: z.number().int().positive(), primary: identitySchema, legacy: identitySchema.optional() });
+
+function readHolder(configDir: string): HolderRecord | null {
+  try {
+    const parsed = holderSchema.safeParse(JSON.parse(fs.readFileSync(path.join(configDir, REFRESH_LOCK_HOLDER), "utf8")));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+// Only lock dirs the record names are removed, and only once the process that
+// made them has exited: a lock with no record, or another inode, is Claude Code's.
+function reclaimAbandoned(configDir: string, lockDir: string, legacyDir: string): void {
+  const holder = readHolder(configDir);
+  if (holder === null || isAlive(holder.pid)) return;
+  if (holder.legacy !== undefined) removeLockDir({ dir: legacyDir, ...holder.legacy });
+  removeLockDir({ dir: lockDir, ...holder.primary });
+  fs.rmSync(path.join(configDir, REFRESH_LOCK_HOLDER), { force: true });
+}
+
+const identityOf = ({ ino, ctimeMs }: HeldDir): DirIdentity => ({ ino, ctimeMs });
+
+function recordHolder(configDir: string, primary: HeldDir, legacy: HeldDir | undefined): void {
+  const record: HolderRecord = { pid: process.pid, primary: identityOf(primary), legacy: legacy && identityOf(legacy) };
+  fs.writeFileSync(path.join(configDir, REFRESH_LOCK_HOLDER), JSON.stringify(record), { mode: 0o600 });
+}
+
+function releaseLocks(configDir: string, primary: HeldDir, legacy: HeldDir | undefined): void {
+  fs.rmSync(path.join(configDir, REFRESH_LOCK_HOLDER), { force: true });
+  if (legacy !== undefined) removeLockDir(legacy);
+  removeLockDir(primary);
+}
+
+function takeLocks(configDir: string, lockDir: string, legacyDir: string): (() => void) | null {
+  const primary = makeLockDir(lockDir);
   if (primary === null) return null;
   let legacy: HeldDir | null | undefined;
   try {
-    legacy = makeLockDir(legacyLockPath(configDir));
+    legacy = makeLockDir(legacyDir);
   } catch {
     legacy = undefined;
   }
@@ -100,10 +158,26 @@ export function acquireRefreshLock(configDir: string): (() => void) | null {
     removeLockDir(primary);
     return null;
   }
-  return () => {
-    if (legacy !== undefined) removeLockDir(legacy);
-    removeLockDir(primary);
-  };
+  try {
+    recordHolder(configDir, primary, legacy);
+  } catch (error) {
+    releaseLocks(configDir, primary, legacy);
+    throw error;
+  }
+  return () => releaseLocks(configDir, primary, legacy);
+}
+
+// Takes both of Claude Code's refresh locks, in its order, or neither. A lock already held
+// is never stolen, however old: Claude Code's own stale takeover handles a dead holder.
+// The one exception is a lock this package made and a crash left behind. Like Claude Code,
+// an unusable legacy path (not a held one) is skipped.
+export function acquireRefreshLock(configDir: string): (() => void) | null {
+  const lockDir = path.join(configDir, REFRESH_LOCK);
+  const legacyDir = legacyLockPath(configDir);
+  const taken = takeLocks(configDir, lockDir, legacyDir);
+  if (taken !== null) return taken;
+  reclaimAbandoned(configDir, lockDir, legacyDir);
+  return takeLocks(configDir, lockDir, legacyDir);
 }
 
 function writeSynced(file: string, text: string): void {
