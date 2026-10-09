@@ -49,7 +49,7 @@ function headIsCurrent(row: WatchRow, gateId: string, gateHead: GateHead): boole
 const HEAD = /\b[0-9a-f]{40}\b/;
 
 /** The head a gate asks about: the one its answer schema pins, else the first full SHA in its summary or prompt. */
-export function gateHeadOf(gate: Pick<GateRecord, "schema" | "summary" | "prompt">): string | undefined {
+function gateHeadOf(gate: Pick<GateRecord, "schema" | "summary" | "prompt">): string | undefined {
   const pinned = (gate.schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;
   return typeof pinned === "string" ? pinned : HEAD.exec(gate.summary ?? gate.prompt)?.[0];
 }
