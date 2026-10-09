@@ -17,7 +17,8 @@ import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, 
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
-import { WAKE_STEPS, isHeld, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
+import { isHeld } from "./held-wake.js";
+import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
 
 const REPO = "octo/demo";

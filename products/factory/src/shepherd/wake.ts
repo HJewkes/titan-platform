@@ -18,6 +18,7 @@ import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
+import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -334,9 +335,6 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
   }
 }
 
-/** Only a review's send-back holds; a ci-red or conflict wake no fixer took keeps its own route: the ci-failed gate or the not-mergeable stop. */
-const HOLDING_KINDS: ReadonlySet<WakeInput["kind"]> = new Set(["review", "fix-proof"]);
-
 /** The step's record is what `wakePhase` and the view both read, so a kind that never holds records no `held`. */
 function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): WakeStepResult {
   return result.kind === "unhandled" && result.held !== undefined && !HOLDING_KINDS.has(kind) ? unhandled(result.reason) : result;
@@ -355,14 +353,6 @@ const Woke = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
-
-/**
- * A send-back whose successor agent-chat refused to start. No agent took it, so `afterWake` routes it as a fixer's exit
- * with no push: a seat notice and a wait, or else the owner gate.
- */
-export type HeldWake = Extract<WakeOutcome, { kind: "unhandled" }> & { held: { agent: string } };
-
-export const isHeld = (outcome: WakeOutcome): outcome is HeldWake => "held" in outcome && outcome.held !== undefined;
 
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 

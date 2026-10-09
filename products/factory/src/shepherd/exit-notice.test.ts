@@ -14,7 +14,7 @@ import type { ShepherdPhases, Verdict, WakeEvidence, WakeOutcome } from "./phase
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
-import type { HeldWake } from "./wake.js";
+import type { HeldWake } from "./held-wake.js";
 
 const H2 = fakeSha("head2");
 const ASKED_AT = Date.parse("2026-10-08T11:38:40Z");

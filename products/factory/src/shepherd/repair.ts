@@ -7,7 +7,7 @@ import { sentBackGate, tookWake, type GateRun, type PrTarget, type WakeRun } fro
 import type { WakeOutcome, WakeRequest } from "./phases.js";
 import { MAX_REPAIRS, escalationReason } from "./route-table.js";
 import { REPAIR_STEP } from "./wake-brief.js";
-import { isHeld } from "./wake.js";
+import { isHeld } from "./held-wake.js";
 
 const RepairRecord = z.looseObject({ repair: z.number().int().positive() });
 const CiRedPayload = z.object({ failing: z.array(z.object({ name: z.string() })) });
