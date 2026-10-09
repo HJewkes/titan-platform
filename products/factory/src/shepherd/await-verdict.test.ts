@@ -1,6 +1,6 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
+import { FINDINGS_SEPARATOR, acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./review-schemas.js";
@@ -274,10 +274,18 @@ describe("acceptVerdict FIX_FIRST findings", () => {
   const said = (text: string, writtenAt: number): ReviewerMessage => ({ ...verdictMessage(writtenAt), text });
   const findingsOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? result.text : undefined);
 
-  it("hands over the verdict's findings when a postscript restating the block follows it", () => {
+  it("keeps the verdict's findings when a postscript restating the block follows it", () => {
     const result = acceptVerdict(input, [said(VERDICT, DISPATCHED_AT + 1), said(POSTSCRIPT, DISPATCHED_AT + 2)]);
 
-    expect(findingsOf(result)).toBe(VERDICT);
+    expect(findingsOf(result)).toBe(`${VERDICT}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
+  });
+
+  it("hands over every finding when a later FIX_FIRST adds one, in order and once each", () => {
+    const fuller = `1. The parser drops the last token.\n2. The cache key ignores the locale.\n\n${fixFirst(HEAD)}`;
+
+    const result = acceptVerdict(input, [said(VERDICT, DISPATCHED_AT + 1), said(VERDICT, DISPATCHED_AT + 2), said(fuller, DISPATCHED_AT + 3)]);
+
+    expect(findingsOf(result)).toBe(`${VERDICT}${FINDINGS_SEPARATOR}${fuller}`);
   });
 
   it("never hands over a verdict written for an older head", () => {

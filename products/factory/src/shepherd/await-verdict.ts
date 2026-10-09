@@ -67,7 +67,7 @@ const isUsageLimitNotice = (text: string): boolean => text.length <= MAX_LIMIT_N
 
 /** The step that records each head's verdict; a wake with no findings points the fixer at it. */
 export const AWAIT_VERDICT_STEP = "sh-await-verdict";
-const BLOCK_LINE = /^\s*(?:Verdict|PR|Head|Closer):/;
+export const BLOCK_LINE = /^\s*(?:Verdict|PR|Head|Closer):/;
 /** What a verdict message says beside its block; empty when it is the block alone. */
 export const findingsText = (text: string): string =>
   text
@@ -84,12 +84,17 @@ function isFixFirstFor(input: AwaitVerdictInput, text: string): boolean {
   return "repo" in block && block.ok && block.verdict === "FIX_FIRST" && namesTarget(block, input);
 }
 
+/** Separates two of the reviewer's FIX_FIRST messages in the findings the fixer is handed. */
+export const FINDINGS_SEPARATOR = "\n\n---\n\n";
+
 /**
- * The first FIX_FIRST for this head that says something beside its block. A reviewer's later message can restate the block
- * under a postscript with no findings, so the final message only decides the verdict, not what the fixer is handed.
+ * Every FIX_FIRST for this head that says something beside its block, in order and without repeats. A reviewer can restate
+ * the block under a postscript or under a fuller list once a background task ends; any one message alone loses the others.
  */
-function findingsMessage(input: AwaitVerdictInput, messages: readonly ReviewerMessage[], final: ReviewerMessage): ReviewerMessage {
-  return messages.find((message) => fromDispatch(input, message) && findingsText(message.text) !== "" && isFixFirstFor(input, message.text)) ?? final;
+function findingsOf(input: AwaitVerdictInput, messages: readonly ReviewerMessage[], final: ReviewerMessage): string {
+  const said = messages.filter((message) => fromDispatch(input, message) && findingsText(message.text) !== "" && isFixFirstFor(input, message.text));
+  const texts = [...new Set(said.map((message) => message.text))];
+  return texts.length === 0 ? final.text : texts.join(FINDINGS_SEPARATOR);
 }
 
 type MalformedNone = { kind: "none"; malformed: Malformed };
@@ -117,7 +122,7 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
   const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(findingsMessage(input, messages, final).text), ...(block.closer && { closer: block.closer }) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(findingsOf(input, messages, final)), ...(block.closer && { closer: block.closer }) };
 }
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */

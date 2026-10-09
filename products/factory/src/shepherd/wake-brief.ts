@@ -1,7 +1,7 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
-import { AWAIT_VERDICT_STEP, findingsText } from "./await-verdict.js";
+import { AWAIT_VERDICT_STEP, BLOCK_LINE, findingsText } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
 
@@ -98,7 +98,6 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
 }
 
 const FixFirst = z.looseObject({ text: z.string().optional() });
-const VERDICT_LINE = /^\s*(?:Verdict|PR|Head):/;
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
 
 /** The reviewer's defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
@@ -106,7 +105,7 @@ export function defectClassSection(text: string): string | undefined {
   const lines = text.split("\n");
   const start = lines.findIndex(isDefectHeading);
   if (start < 0) return undefined;
-  const end = lines.findIndex((line, index) => index > start && VERDICT_LINE.test(line));
+  const end = lines.findIndex((line, index) => index > start && BLOCK_LINE.test(line));
   return lines.slice(start, end < 0 ? undefined : end).join("\n").trim();
 }
 
