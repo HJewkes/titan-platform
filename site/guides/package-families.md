@@ -25,6 +25,8 @@ config, cache and log directories, and active-work's data root.
   tool list, and an HTTP route.
 - [`daemon`](/reference/daemon): hosts a registry on a loopback port with `/rpc`, `/mcp`,
   SSE events, a health route, and a pid file.
+- [`health`](/reference/health): the health/v1 report a health route answers with, a
+  reader that also takes legacy `ok` payloads, and the sample row a probe stores.
 
 [Case study: adopting registry and daemon](/guides/adopting-a-package) shows the two
 replacing a product's hand-written server.

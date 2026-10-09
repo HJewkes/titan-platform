@@ -36,7 +36,8 @@
           "packages/github",
           "packages/agent-dispatch",
           "packages/agent-surface",
-          "packages/worktree"
+          "packages/worktree",
+          "packages/health"
         ],
         "2": [
           "packages/session-read",
@@ -100,7 +101,8 @@
           "packages/github",
           "packages/agent-dispatch",
           "packages/agent-surface",
-          "packages/worktree"
+          "packages/worktree",
+          "packages/health"
         ],
         [
           "packages/session-read",
