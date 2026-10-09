@@ -21,5 +21,7 @@ export const EXIT = {
   NOINPUT: 66,
   UNAVAILABLE: 69,
   SOFTWARE: 70,
+  /** The caller may not run this command; `POST /rpc/:name` answers 403. */
+  NOPERM: 77,
   CONFIG: 78,
 } as const;
