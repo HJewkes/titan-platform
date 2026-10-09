@@ -40,6 +40,8 @@ export interface ReviewerAgent {
   fillTokens?: number;
   /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
   lastWrittenAt?: number;
+  /** The profile the agent was spawned with; absent means the port does not say. */
+  profile?: string;
 }
 
 /** How a caller starts a reviewer; a throw from `spawn` or `resume` that the caller does not classify as a broker outage is a refusal. */
