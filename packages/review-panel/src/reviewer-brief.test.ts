@@ -2,7 +2,18 @@ import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
 
-const REFUSALS = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"] as const satisfies readonly MalformedRefusal[];
+// A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
+const REFUSAL_SET: Record<MalformedRefusal, true> = {
+  no_block: true,
+  multiple_blocks: true,
+  bad_verdict: true,
+  missing_pr_line: true,
+  bad_pr: true,
+  missing_head_line: true,
+  bad_head: true,
+  wrong_target: true,
+};
+const REFUSALS = Object.keys(REFUSAL_SET) as MalformedRefusal[];
 
 const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40) };
 
