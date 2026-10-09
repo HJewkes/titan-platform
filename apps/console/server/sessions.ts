@@ -69,7 +69,7 @@ export interface SessionsListResult {
 }
 
 /** One distinct touched path, mapped to its code-graph node; `nodeId` and `href` are null for a path outside any repo. */
-export interface TouchedFile {
+interface TouchedFile {
   /** As `timeline.files.touches` holds it, so a renderer can join the two. */
   touchPath: string;
   /** The session graph's `file:` ref for the path. */
