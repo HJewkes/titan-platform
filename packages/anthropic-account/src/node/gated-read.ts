@@ -4,15 +4,15 @@ import fs from "node:fs";
 // a FIFO swapped in from hanging it; the fstat then refuses either.
 const OPEN_FLAGS = fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK;
 
-export type GateRefusal = "not-a-regular-file" | "too-large" | "foreign-owner" | "mode-too-wide" | "hard-linked";
+type GateRefusal = "not-a-regular-file" | "too-large" | "foreign-owner" | "mode-too-wide" | "hard-linked";
 
-export type GatedRead =
+type GatedRead =
   | { status: "missing" }
   | { status: "refused"; reason: GateRefusal }
   // The caller must zero `bytes` once it has parsed them.
   | { status: "read"; bytes: Buffer };
 
-export interface GatePolicy {
+interface GatePolicy {
   maxBytes: number;
   // When set, the file must also be this uid's, owner-only and singly linked: the rules
   // for a credentials file.
