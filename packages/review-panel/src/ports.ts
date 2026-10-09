@@ -22,7 +22,7 @@ export interface ReviewerFacts {
   kind?: string;
   /** The kind could not be read, so the PR takes the stricter class. */
   unread?: boolean;
-  /** Additions plus deletions; absent means unknown. Nothing populates it until the github port reports line counts (TP-1755). */
+  /** Additions plus deletions, generated files left out (`changedLineCount`); absent means unknown. */
   changedLines?: number;
 }
 

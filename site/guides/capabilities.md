@@ -764,10 +764,10 @@ Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer 
 
 Key exports:
 
-- `ports`: `AwaitVerdictInput`, `Presence`, `ReviewTarget`
-- `classify`: `classifyPr`, `DEFAULT_CLASS_RULES`
+- `ports`: `AwaitVerdictInput`, `Presence`
+- `classify`: `changedLineCount`, `classifyPr`, `DEFAULT_CLASS_RULES`
 - `plan`: `DEFAULT_CLASS_ROLES`, `DEFAULT_MEMBER_POINTS`, `DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`, `DEFAULT_SHAPE_ROLES`, `DEFAULT_SONNET_FOR`, `planPanel`
-- +21 more in the [reference page](/reference/review-panel)
+- +22 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
+import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
 import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
@@ -89,6 +89,19 @@ describe("classifyPr", () => {
     const over = { ...facts([]), changedFiles: [file("docs/a.md", 300, 101)] };
     expect(classifyPr(at)).toEqual({ class: "standard", touches: [] });
     expect(classifyPr(over)).toEqual({ class: "g10", touches: ["large"] });
+  });
+
+  it("leaves generated registry files out of the changed-line count", () => {
+    const changedFiles = [file("packages/a/src/a.ts", 20, 1), file("CAPABILITIES.md", 200, 80), file("site/reference/a.md", 60, 0), file("site/.vitepress/reference-sidebar.json", 20, 0), file("site/guides/capabilities.md", 10, 0), file(".codewatch/check.json", 10, 0)];
+    expect(changedLineCount(changedFiles)).toBe(21);
+    expect(classifyPr({ ...facts([]), changedFiles }).touches).not.toContain("large");
+  });
+
+  it("counts no lines when a counted file lacks them, and ignores a generated file that does", () => {
+    const bare = { path: "docs/a.md" } as unknown as ChangedFile;
+    const bareGenerated = { path: "CAPABILITIES.md" } as unknown as ChangedFile;
+    expect(changedLineCount([file("docs/b.md"), bare])).toBeUndefined();
+    expect(changedLineCount([file("docs/b.md"), bareGenerated])).toBe(6);
   });
 
   it("falls back to file count when line counts are absent", () => {

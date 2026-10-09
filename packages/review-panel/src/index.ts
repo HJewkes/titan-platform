@@ -12,7 +12,7 @@ export type {
   ReviewClass,
   ReviewShape,
 } from "./types.js";
-export { classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
+export { changedLineCount, classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
 export type { ClassRules } from "./classify.js";
 export {
   DEFAULT_CLASS_ROLES,

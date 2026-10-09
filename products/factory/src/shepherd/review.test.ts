@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -380,6 +380,12 @@ describe("reviewRoutes", () => {
   });
 });
 
+function portListing(files: PrFile[]) {
+  const fake = fakeGitHub();
+  fake.prFiles.set(7, files);
+  return githubPort(fake.wire);
+}
+
 const agent = (name: string, overrides: Partial<ReviewerAgent> = {}): ReviewerAgent => ({
   name,
   agentId: `agent-${name}`,
@@ -452,6 +458,8 @@ describe("sh-review", () => {
     /** Runs inside every sleep, after the clock has moved. */
     onSleep?: (ms: number) => void;
     signal?: AbortSignal;
+    /** PR 7's changed files on a fake GitHub; absent means the deps carry no port. */
+    files?: PrFile[];
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -463,7 +471,7 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), ...(options.files && { port: portListing(options.files) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -495,6 +503,37 @@ describe("sh-review", () => {
     await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
 
     expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security" });
+  });
+
+  describe("sizes the spawn by the PR's changed lines", () => {
+    const correctness = { ...registration, kind: "correctness" };
+    const roles: ReviewerRoles = { g10: "bd-reviewer", standard: "reviewer" };
+    const spawnSized = async (files: PrFile[]) => {
+      const dispatch = fakeDispatch();
+      const { result } = await reviewSteps(dispatch, { registered: correctness, files, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      return { facts: dispatch.spawns[0]?.facts, profile: (result as { profile?: string } | undefined)?.profile };
+    };
+
+    it("gives a 450-line correctness PR the g10 profile", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 400, deletions: 50 }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 450 }, profile: "bd-reviewer" });
+    });
+
+    it("gives a 30-line correctness PR the standard profile", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+    });
+
+    it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
+      const sized = await spawnSized([
+        { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },
+        { path: "CAPABILITIES.md", status: "modified", additions: 300, deletions: 61 },
+      ]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 40 }, profile: "reviewer" });
+    });
   });
 
   it("sh-review gives the spawn the strict facts when the step carries no run id", async () => {
