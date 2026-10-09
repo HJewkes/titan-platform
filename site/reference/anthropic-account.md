@@ -338,6 +338,13 @@ call finds them held, sees the recorded pid has exited, removes only the dirs wh
 and ctime still match, and takes the locks again. A lock with no record, or one whose
 identity differs, is Claude Code's and is left alone.
 
+The record is written with `O_CREAT | O_EXCL | O_NOFOLLOW` after any stale record is
+unlinked, so a symlink planted at its path is removed, never written through. It is read
+through the same gate as the credentials file: a record that is not this uid's own regular,
+owner-only, singly linked file, or that is a FIFO, names no lock, and nothing is reclaimed.
+A release whose record removal throws still frees the lock dirs, and the result already
+reached, such as `write-failed`, stands.
+
 | result | when | deposit |
 |---|---|---|
 | `fresh` | the token is not due | no |
