@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
@@ -183,6 +183,27 @@ describe("titan-factory serve start record", () => {
     await expect(serve(dbPath, scenario)).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
 
     expect(await healthOf(first)).toMatchObject({ restartCount: 1, uncleanStartsTotal: 0 });
+  });
+});
+
+describe("titan-factory serve state directory", () => {
+  it("refuses an in-memory database without a state directory instead of writing state into the working directory", async () => {
+    const scenario = landScenario();
+
+    const start = startFactoryServer({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, port: 0, logger: silentLogger });
+
+    await expect(start).rejects.toThrow(/needs a stateDir/);
+    expect(existsSync(join(process.cwd(), "serve-starts.json"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "daemon.pid"))).toBe(false);
+  });
+
+  it("writes the start record under the given state directory for an in-memory database", async () => {
+    const stateDir = dirname(dbFile());
+    mkdirSync(stateDir, { recursive: true });
+
+    await serve(":memory:", landScenario(), { stateDir });
+
+    expect(existsSync(join(stateDir, "serve-starts.json"))).toBe(true);
   });
 });
 

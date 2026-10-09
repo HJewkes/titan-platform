@@ -27,6 +27,7 @@ export const FACTORY_PORT = 7410;
 /** Empty so registered commands keep their own names: `shepherd.register` becomes `shepherd__register`, not `factory__shepherd__register`. */
 export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
+const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -65,13 +66,14 @@ export interface FactoryServer {
 
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
+  const stateDir = stateDirOf(options);
   const host = openFactoryHost(options);
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
   const daemon = await startCountedDaemon(host, options, github, build, log);
-  const unbindCarry = bindCarryStateDir(stateDirOf(options));
+  const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
   const held = new Set<string>();
   const thaws = watchThaws(services);
@@ -126,7 +128,12 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
   });
 }
 
-const stateDirOf = (options: FactoryServerOptions): string => options.stateDir ?? dirname(options.dbPath);
+/** `dirname(":memory:")` is the working directory, so an in-memory database must name its state directory rather than leave the pid file and start record in the cwd. */
+function stateDirOf(options: FactoryServerOptions): string {
+  if (options.stateDir !== undefined) return options.stateDir;
+  if (options.dbPath === IN_MEMORY_DB) throw new Error("titan-factory serve needs a stateDir when the database is in memory");
+  return dirname(options.dbPath);
+}
 
 type BuildHealth = BehindMain & { sha: string };
 
