@@ -6,8 +6,8 @@
 npm install @titan-design/review-panel
 ```
 
-Status: types, ports and the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`). The planner, briefs, verdict acceptor and
-aggregate land in later slices of TP-1916.
+Status: types, ports, the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`) and the planner (`planPanel`,
+`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`). The briefs, verdict acceptor and aggregate land in later slices of TP-1916.
 
 ## The problem it solves
 
@@ -25,6 +25,12 @@ every caller plans, briefs and aggregates the same way:
   shapes.
 - `PanelPlan`: the members (one per `ReviewShape`), each with its profile, brief id, and
   whether it blocks or was degraded to sonnet, plus a spend estimate.
+- `planPanel(cls, policy, headroom)`: the pure planner. The correctness member always
+  runs, at the policy's `roles` profile for the class. A `panel` table adds shapes by
+  class and touch, in priority order; with no table the plan is correctness alone, which
+  is how Shepherd routes its single reviewer today. At most 3 members and 1 opus member;
+  a later opus member is planned at its sonnet profile. `headroom.opus === false` plans
+  every opus member at its sonnet profile with `degraded: true`.
 - `PanelVerdict`: the panel's outcome in Shepherd's vocabulary (`MERGE`, `FIX_FIRST`,
   `no-verdict`, `timeout`), the labelled findings, the dissenting members, and
   `satisfiesG10`.
@@ -60,6 +66,21 @@ const reader: ReviewerReader = {
 };
 ```
 
+```ts
+import { classifyPr, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel } from "@titan-design/review-panel";
+
+const cls = classifyPr({
+  repo: "acme/app",
+  pr: 7,
+  head: "abc123",
+  base: "def456",
+  kind: "feature",
+  changedFiles: [{ path: ".github/workflows/ci.yml", additions: 4, deletions: 1 }],
+});
+const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABLE }, { opus: true });
+// plan.members: correctness at bd-reviewer, adversary at reviewer; both blocking
+```
+
 ## What it deliberately does not do
 
 - It runs nothing. Every side effect (starting an agent, reading a transcript, the clock,
@@ -74,7 +95,12 @@ const reader: ReviewerReader = {
 - `ReviewerAgent.predecessor` and `fillTokens` absent mean unknown, and Shepherd never
   resumes such an agent. Report them when your roster knows them.
 - `ReviewerReader.read` returns messages oldest first; the last one is the final message.
-- `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap.
+- `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap. The default
+  weights (`DEFAULT_MEMBER_POINTS`) are placeholders until the scorecard measures spend.
+- A profile counts as opus only when `sonnetFor` maps it to a sonnet profile; an opus
+  profile missing from that map is never degraded or capped.
+- `tests` is advisory in the plan. Aggregation makes it block when the fix-proof result
+  is `vacuous` or `no-tests`.
 
 ## Where it came from
 

@@ -54,7 +54,7 @@ Before adding code:
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired). The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
 | [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
-| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`) and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. Types only for now; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
+| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
@@ -760,14 +760,14 @@ Key exports:
 
 Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer ports a caller satisfies
 
-**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`) and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. Types only for now; to start an agent use agent-dispatch, and to parse a transcript use session-read.
+**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
 Key exports:
 
-- `ports`: `AwaitVerdictInput`, `Presence`, `ReviewTarget`, `ReviewerAgent`, `ReviewerDispatch`, `ReviewerFacts`, `ReviewerMessage`, `ReviewerReader`
-- `types`: `ChangedFile`, `PanelFinding`
+- `ports`: `AwaitVerdictInput`, `Presence`, `ReviewTarget`
 - `classify`: `classifyPr`, `DEFAULT_CLASS_RULES`
-- +10 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- `plan`: `DEFAULT_CLASS_ROLES`, `DEFAULT_MEMBER_POINTS`, `DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`, `DEFAULT_SHAPE_ROLES`, `DEFAULT_SONNET_FOR`, `planPanel`
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
