@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,7 +47,8 @@ function home(config: object): { env: NodeJS.ProcessEnv; dbPath: string } {
 async function cli(env: NodeJS.ProcessEnv, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
-  const code = await runCli(argv, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), env }, deps);
+  // An already-stopped serve returns at once instead of hanging the test if the refusal is missing.
+  const code = await runCli(argv, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), env }, { ...deps, stop: AbortSignal.abort() });
   return { code, out, err };
 }
 
@@ -66,6 +68,24 @@ async function deadPort(): Promise<string> {
   await new Promise<void>((resolve) => probe.close(() => resolve()));
   return String(port);
 }
+
+/** A loopback server that answers /health and every /rpc call with success, counting the requests it gets. */
+async function answeringServe(): Promise<{ port: string; requests: () => number }> {
+  let requests = 0;
+  const server = createHttpServer((req, res) => {
+    requests += 1;
+    res.setHeader("content-type", "application/json");
+    res.end(req.url === "/health" ? "{}" : JSON.stringify({ ok: true, data: { runId: "run-1", held: null } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return { port: String((server.address() as { port: number }).port), requests: () => requests };
+}
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
 
 describe("a host whose config names a remoteFactory", () => {
   it("refuses a local resolve when remoteFactory is set", async () => {
@@ -92,6 +112,12 @@ describe("a host whose config names a remoteFactory", () => {
     ["resume", async () => ["resume"]],
     ["land with no serve answering", async () => ["land", "acme/web#1", "--port", await deadPort()]],
     ["shepherd resync with no serve answering", async () => ["shepherd", "resync", "--port", await deadPort()]],
+    ["serve", async () => ["serve", "--port", await deadPort()]],
+    ["shepherd hold with no serve answering", async () => ["shepherd", "hold", "acme/web#1", "--reason", "wait", "--port", await deadPort()]],
+    ["shepherd register --offline", async () => ["shepherd", "register", "acme/web#1", "--task", "demo/T-1", "--implementer", "impl", "--offline", "--port", await deadPort()]],
+    ["shepherd merge with no serve answering", async () => ["shepherd", "merge", "acme/web#1", "--port", await deadPort()]],
+    ["shepherd status with no serve answering", async () => ["shepherd", "status", "--port", await deadPort()]],
+    ["queue-counts", async () => ["queue-counts"]],
   ])("opens no database when it refuses %s", async (_verb, argv) => {
     const { env, dbPath } = home({ remoteFactory: REMOTE });
 
@@ -101,6 +127,34 @@ describe("a host whose config names a remoteFactory", () => {
     expect(err).toContain("this host's database is frozen");
     expect(openFactoryHost).not.toHaveBeenCalled();
     expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it.each([
+    ["land", ["land", "acme/web#1"]],
+    ["shepherd register", ["shepherd", "register", "acme/web#1", "--task", "demo/T-1", "--implementer", "impl"]],
+    ["shepherd hold", ["shepherd", "hold", "acme/web#1", "--reason", "wait"]],
+    ["shepherd release", ["shepherd", "release", "acme/web#1"]],
+    ["shepherd resync", ["shepherd", "resync"]],
+  ])("refuses %s even when a serve answers on --port, and sends it nothing", async (_verb, argv) => {
+    const { env, dbPath } = home({ remoteFactory: REMOTE });
+    const serve = await answeringServe();
+
+    const { code, err } = await cli(env, ...argv, "--port", serve.port);
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain("this host's database is frozen");
+    expect(serve.requests()).toBe(0);
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it("still reads shepherd status from a serve that answers", async () => {
+    const { env } = home({ remoteFactory: REMOTE });
+    const serve = await answeringServe();
+
+    const { code } = await cli(env, "shepherd", "status", "--json", "--port", serve.port);
+
+    expect(code).toBe(EXIT.OK);
+    expect(serve.requests()).toBeGreaterThan(0);
   });
 
   it("resolves locally when remoteFactory is unset", async () => {
