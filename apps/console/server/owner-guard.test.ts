@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type * as NetModule from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { z } from "zod";
 import * as daemonPackage from "@titan-design/daemon";
 import { silentLogger, type DaemonHandle, type RequestAuth } from "@titan-design/daemon";
@@ -46,16 +46,21 @@ const OWNER_WRITE = "test.answer";
 const DEPOSIT = "test.deposit";
 let ran: Array<{ command: string; issuedAt?: number }>;
 
-const stubOwnerWrite = ownerWriteCommand({
+type OwnerAnswerContext = ConsoleContext & { ownerPresence: { issuedAt: number } };
+
+const ownerAnswer = {
   name: OWNER_WRITE,
   description: "Test-only stand-in for an owner answer",
   args: z.object({ answer: z.string() }),
   result: z.object({ answer: z.string(), issuedAt: z.number() }),
-  run: async ({ answer }, ctx) => {
+  ownerWrite: true as const,
+  run: async ({ answer }: { answer: string }, ctx: OwnerAnswerContext) => {
     ran.push({ command: OWNER_WRITE, issuedAt: ctx.ownerPresence.issuedAt });
     return { answer, issuedAt: ctx.ownerPresence.issuedAt };
   },
-});
+};
+
+const stubOwnerWrite = ownerWriteCommand(ownerAnswer);
 
 const stubDeposit = depositCommand({
   name: DEPOSIT,
@@ -157,6 +162,40 @@ describe("classes fail closed", () => {
     ["a spread copy of an owner-write as a read", () => readCommand({ ...stubOwnerWrite }), "read"],
   ])("refuses to re-class %s", (_label, reclass, commandClass) => {
     expect(reclass).toThrow(new RegExp(`already classed; it cannot be re-classed as ${commandClass}$`));
+  });
+
+  it("refuses, at compile time and at definition, an owner-write handler wrapped as a read or a deposit", () => {
+    // @ts-expect-error a read cannot wrap a handler whose run takes the owner-write context
+    const asRead = () => readCommand(ownerAnswer);
+    // @ts-expect-error a deposit cannot wrap a handler whose run takes the owner-write context
+    const asDeposit = () => depositCommand(ownerAnswer);
+
+    expect(asRead).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read, only through ownerWriteCommand`);
+    expect(asDeposit).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit, only through ownerWriteCommand`);
+  });
+
+  it("fails to compile a read or a deposit whose run needs the owner's presence proof, even without the mark", () => {
+    const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, OwnerAnswerContext>({
+      name: "test.needs-presence",
+      description: "Test-only handler that reads the presence proof but carries no owner-write mark",
+      args: z.object({}),
+      result: z.object({ ok: z.boolean() }),
+      run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
+    });
+
+    // Type-only: with no mark there is nothing for the runtime guard to see, so neither wrapper is called.
+    // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
+    expectTypeOf(() => readCommand(needsPresence)).toBeFunction();
+    // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
+    expectTypeOf(() => depositCommand(needsPresence)).toBeFunction();
+  });
+
+  it("fails startup on an owner-write handler hand-classed as a read", () => {
+    const handClassed = { ...ownerAnswer, commandClass: "read" } as unknown as ClassedCommand;
+
+    expect(() => createConsoleRegistry(createSources(syntheticConfig()), [handClassed])).toThrow(
+      `Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read, only through ownerWriteCommand`,
+    );
   });
 
   it("fails startup naming a command with no class", () => {
