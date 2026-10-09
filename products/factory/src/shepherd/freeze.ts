@@ -1,5 +1,6 @@
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { consoleTextOf } from "./error-class.js";
 import { appendEvent } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
 
@@ -54,6 +55,15 @@ interface Row {
   episode: number;
   thawed_at: string | null;
   cancel_only: number;
+}
+
+/** A listener runs after the thaw has committed, so its failure is only logged: the thaw stands and the next listener still runs. */
+function notifyThaw(listener: (repo: RepoSlug) => void, repo: RepoSlug): void {
+  try {
+    listener(repo);
+  } catch (error) {
+    console.warn(`shepherd: a thaw listener for ${repo} failed: ${consoleTextOf(error)}`);
+  }
 }
 
 /** GitHub treats repo names case-insensitively, so a freeze on one spelling must freeze every spelling. */
@@ -140,7 +150,7 @@ export class FreezeStore {
       if (changed) appendEvent(this.db, { repo, kind: "thaw", at, headSha: this.row(repo)?.red_sha });
       return changed;
     })();
-    if (thawed) this.onThaw(repo);
+    if (thawed) notifyThaw(this.onThaw, repo);
     return thawed;
   }
 
@@ -183,7 +193,7 @@ export interface FreezeStoreRef {
 export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
   let store: FreezeStore | undefined;
   const listeners = new Set<(repo: RepoSlug) => void>();
-  const thawed = (repo: RepoSlug) => listeners.forEach((listener) => listener(repo));
+  const thawed = (repo: RepoSlug) => listeners.forEach((listener) => notifyThaw(listener, repo));
   return {
     get() {
       if (!store) throw new Error("the freeze store is not bound to an open factory database");

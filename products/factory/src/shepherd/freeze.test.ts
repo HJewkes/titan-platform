@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
 import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
@@ -404,6 +404,40 @@ describe("thaw notice from the freeze store ref", () => {
     ref.get().unfreeze(A, GREEN);
 
     expect(thawed).toEqual([]);
+  });
+
+  it("a throwing listener neither throws from the thaw nor stops the listener after it, and its failure is logged", () => {
+    const { ref, thawed, unsubscribe } = boundRef();
+    unsubscribe();
+    ref.onThaw(() => {
+      throw new Error("listener broke");
+    });
+    ref.onThaw((repo) => thawed.push(repo));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const episode = ref.get().freeze(A, RED).episode;
+
+    const released = ref.get().release(A, episode);
+
+    expect(released).toBe(true);
+    expect(ref.get().isFrozen(A)).toBe(false);
+    expect(thawed).toEqual([A]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("listener broke"));
+    warn.mockRestore();
+  });
+
+  it("a store whose own thaw callback throws still reports the thaw it committed", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    const freezes = new FreezeStore(db, () => 0, () => {
+      throw new Error("callback broke");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    freezes.freeze(A, RED);
+
+    expect(freezes.unfreeze(A, GREEN)).toBe(true);
+    expect(freezes.isFrozen(A)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("callback broke"));
+    warn.mockRestore();
   });
 });
 
