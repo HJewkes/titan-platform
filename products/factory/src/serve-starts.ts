@@ -2,7 +2,7 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Kept beside the daemon pid file, so each state directory, and so each serve, counts its own starts. */
-export const SERVE_STARTS_FILE = "serve-starts.json";
+const SERVE_STARTS_FILE = "serve-starts.json";
 
 interface StartsFile {
   starts: number;
@@ -19,10 +19,6 @@ export interface ServeStart {
   /** Starts that found a stale daemon pid file: the previous serve exited without cleaning up. */
   uncleanStartsTotal: number;
   restartsToday: number;
-}
-
-export interface ServeStartsHealth extends ServeStart {
-  uptimeSeconds: number;
 }
 
 const utcDay = (at: Date): string => at.toISOString().slice(0, 10);
@@ -56,7 +52,7 @@ export function recordServeStart(stateDir: string, { unclean, now }: { unclean: 
 }
 
 /** `restartsToday` reads 0 once the UTC day has turned since this serve started. */
-export function serveStartsHealth(start: ServeStart, now: Date): ServeStartsHealth {
+export function serveStartsHealth(start: ServeStart, now: Date): ServeStart & { uptimeSeconds: number } {
   const sameDay = start.startedAt.slice(0, 10) === utcDay(now);
   return {
     startedAt: start.startedAt,
