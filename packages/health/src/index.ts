@@ -1,2 +1,20 @@
-// Placeholder entry for @titan-design/health (tier 1). Filled in by TP-1651.
-export {};
+export {
+  HEALTH_STATUSES,
+  healthCheckSchema,
+  healthReportSchema,
+  healthStatusSchema,
+  parseHealthReport,
+  worstStatus,
+  type HealthCheck,
+  type HealthReport,
+  type HealthReportRead,
+  type HealthStatus,
+} from "./contract.js";
+export {
+  SAMPLE_STATUSES,
+  healthSampleSchema,
+  sampleStatusSchema,
+  type HealthSample,
+  type HealthSampleInput,
+  type SampleStatus,
+} from "./sample.js";
