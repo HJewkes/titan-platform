@@ -427,6 +427,12 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   those whose stored `sh-main-ci` read was red, and the rate, plus those since marked
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
+- With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
+  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
+  error's `[<class>] ` prefix; an older error without one is classified from its text. A
+  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `"failures": [{ repo, week, failures, byClass }]`.
+
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
 as `stage` and `totalMinutes`.
