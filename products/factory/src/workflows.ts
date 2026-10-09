@@ -1,6 +1,11 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import type { AuditPorts } from "./audit/ports.js";
+import { systemAuditPorts } from "./audit/production.js";
+import { auditRoutes } from "./audit/routes.js";
+import { measurementAuditWorkflow } from "./audit/workflow.js";
+import { ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
@@ -36,7 +41,7 @@ import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
@@ -74,6 +79,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   redeploy?: Deployer;
   /** Tells a repo's seat that a woken fixer exited with no push; absent means the owner gate takes every such exit. */
   exitNotice?: ExitNoticePorts;
+  /** What measurement-audit reads and asks; defaults to this checkout's machine and `claude -p`. */
+  audit?: AuditPorts;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
@@ -103,7 +110,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing };
-  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
+  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */

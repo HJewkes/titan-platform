@@ -1,6 +1,6 @@
 export type { Surface, SurfaceOptions } from "./surface.js";
-export type { HttpAppOptions } from "./http.js";
-export { buildHttpApp } from "./http.js";
+export type { HttpAppOptions, RpcBodyLimit } from "./http.js";
+export { DEFAULT_RPC_BODY_LIMIT, buildHttpApp } from "./http.js";
 export type { HealthPayload, HealthPayloadInput } from "./health.js";
 export { buildHealthPayload } from "./health.js";
 export type { SseMessage, Subscriber } from "./events.js";
