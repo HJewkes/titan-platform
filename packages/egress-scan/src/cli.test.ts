@@ -299,7 +299,7 @@ describe("pre-push and tree", () => {
     const leak = commitFile(repo, "notes.md", `path ${plantedHomePath()}\n`);
     const stdin = `refs/heads/main ${leak} refs/heads/main ${base}\n`;
 
-    const result = run(repo, ["pre-push", "origin", "git@example.com:o/r.git"], {}, stdin);
+    const result = run(repo, ["pre-push", "origin", "/nonexistent/egress-scan-remote.git"], {}, stdin);
 
     expect(result.code).toBe(1);
     expect(result.out).toContain(`commit ${leak.slice(0, 7)} notes.md:1 home-path`);

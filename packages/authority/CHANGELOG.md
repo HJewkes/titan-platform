@@ -1,5 +1,18 @@
 # @titan-design/authority
 
+## 0.4.0
+
+### Minor Changes
+
+- 2ff0840: Add the `decider` actor class and the `answer-question` action class. The decider is denied every action except `answer-question`, which the conditional ANS-DC-QA row allows only when `facts.question` names a `question` rule kind in `auto` mode on an untainted request; every other actor is denied `answer-question`. `decider` is never a resolver. Adds the `gate-rule-is-question` and `category-mode-auto` conditions, the `QuestionFacts` type, and `MERGE_CONDITION_KINDS` and `QUESTION_CONDITION_KINDS`.
+- 69db518: Export `DELEGATE_RESOLVER_CLASSES` (`["coordinator"]`) and its `DelegateResolverClass` type: the only classes a gate's rule may name as a delegate resolver.
+- c517313: Add the MRG-AU-RM allow row and its `verdict-merge-carried-remerge-clean` condition: an automation merge may carry the dispatched reviewer's MERGE to a head that is the reviewed head plus one merge of the base, when the merge's remerge-diff is empty or touches only the repo's declared generated files. `CarryFact` gains the optional `rule`, `remergePaths` and `generatedPaths` fields.
+
+### Patch Changes
+
+- dcde08d: `MergeFacts` gains an optional `contextApps` map: a run of a listed context counts toward `required-contexts-green` and `no-non-green-run` only from the apps listed for it, and every other context still uses `allowedApps`. A fact record without the field evaluates as before; a malformed map fails both conditions.
+- 20778a2: Stop protecting `.github/` in the MRG-AU-RV path condition; `CODEOWNERS`, `docs/CODEOWNERS`, `.github/CODEOWNERS`, `.gitmodules` and non-canonical paths stay protected (owner decision of 2026-10-07, TP-1886).
+
 ## 0.3.0
 
 ### Minor Changes

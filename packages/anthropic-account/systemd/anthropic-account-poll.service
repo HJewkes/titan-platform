@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll Anthropic OAuth usage for every Claude Code config dir, renewing access tokens that are due
+Documentation=https://github.com/HJewkes/titan-platform/tree/main/packages/anthropic-account#readme
+
+[Service]
+Type=oneshot
+# --refresh rewrites <config dir>/.credentials.json when a token is due. Drop it to keep
+# the poller read-only on credentials.
+ExecStart=%h/.local/bin/anthropic-account poll --write --refresh
+# Each request has its own 10 s timeout; this only stops a hung run before the next tick.
+TimeoutStartSec=90
+NoNewPrivileges=yes
+UMask=0077

@@ -2,11 +2,11 @@ import type { StepResult, WorkflowContext, WorkflowRun } from "@titan-design/wor
 import { stepIdMatches } from "../definition.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
 import { isCorrectionFailure } from "./correct-verdict.js";
-import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import type { Verdict, WakeRequest } from "./phases.js";
 import type { ReviewOutcome } from "./route-table.js";
 import { ReviewCauseSchema, type ReviewCause, type ReviewCauseKind } from "./review-schemas.js";
 import { inRange, isoWeek } from "./stats.js";
+import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 
 export type { ReviewCause } from "./review-schemas.js";
 

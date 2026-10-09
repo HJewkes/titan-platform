@@ -8,3 +8,4 @@ export { staticSource } from "./client/static-source.js";
 export type { Snapshot, SnapshotPlan, SnapshotResolver } from "./client/snapshot.js";
 export { SNAPSHOT_FORMAT, buildSnapshot, parseSnapshot } from "./client/snapshot.js";
 export { canonicalArgs, snapshotKey, wireArgs } from "./client/canonical-key.js";
+export { createSseParser } from "./client/sse-parser.js";

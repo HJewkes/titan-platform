@@ -32,7 +32,7 @@ Tuwunel knows the `@core-.*` and `#coord.*` namespaces even though nothing uses 
 
 ## Local run
 
-Needs Docker, plus Node 22 for the owner-side scripts.
+Needs Docker, plus Node 24 (the version in `.node-version`) for the owner-side scripts.
 
     ./scripts/setup.sh
     docker compose up -d --build

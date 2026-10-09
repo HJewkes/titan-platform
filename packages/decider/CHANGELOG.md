@@ -1,5 +1,30 @@
 # @titan-design/decider
 
+## 0.6.0
+
+### Minor Changes
+
+- 9a91a0c: A bulk answer is zero evidence. `feedbackForRow` skips a row whose outcome is `bulk` with the new `FeedbackSkip` `"bulk"`, so `isEvidence` is false for it: condense never shows it to the reflector, rejects a cite or proposal grounded in it, and still advances the domain watermark past it. `DomainRun` and `ExtractSummary` gain a `bulk` count; extraction still writes the row, since it authorizes its own items.
+
+### Patch Changes
+
+- 0fa30a9: Add an optional stats argument to `lintAsk` that counts the characters the id-context windows read, so the linear-time test asserts work instead of wall time.
+- Updated dependencies [f34ae27]
+- Updated dependencies [495e6f8]
+- Updated dependencies [74f9f51]
+- Updated dependencies [a8faac4]
+- Updated dependencies [1aed39d]
+- Updated dependencies [1fd9652]
+- Updated dependencies [deb35d0]
+- Updated dependencies [295acf8]
+- Updated dependencies [1f7de27]
+- Updated dependencies [59ba612]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [c466784]
+  - @titan-design/session-read@0.11.0
+  - @titan-design/store-sqlite@0.4.0
+  - @titan-design/memory@0.1.4
+
 ## 0.5.1
 
 ### Patch Changes

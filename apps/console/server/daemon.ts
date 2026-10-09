@@ -13,7 +13,9 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
-import type { ConsoleConfig } from "./config.js";
+import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
+import { relayUpstreams, startEventsRelay } from "./events-relay.js";
+import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { APP_VERSION } from "./paths.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
@@ -30,33 +32,41 @@ export interface ConsoleDaemonOptions {
 
 /**
  * The console's one daemon: its commands and, when asked, the built app, on loopback, plus the
- * LAN address behind auth when `lanHost` is set. The LAN is reached only through `remote`, which
- * gates every route, so no setting binds it without auth.
+ * LAN address behind TLS and auth when `lanHost` is set. The LAN is reached only through `remote`,
+ * which serves only HTTPS and gates every route, so no setting binds it in clear or without auth.
  */
 export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise<DaemonHandle> {
   const { config, staticRoot } = options;
   const remote = lanListener(config);
   const sources = createSources(config);
   const { upstreams } = sources;
-  return startDaemon({
+  const logger = options.logger ?? consoleLogger;
+  const handle = await startDaemon({
     registry: createConsoleRegistry(sources, options.extraCommands),
     createContext: consoleContextFor(config.ownerWrites),
     version: APP_VERSION,
     port: config.port,
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
+    rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
-    logger: options.logger ?? consoleLogger,
+    logger,
   });
+  const relay = startEventsRelay({ hub: handle.hub, upstreams: relayUpstreams(config), logger });
+  const close = async (): Promise<void> => {
+    await Promise.all([relay.close(), handle.close()]);
+  };
+  return { ...handle, close };
 }
 
 /** Creates the token file on first run; an untrustworthy one throws here, before anything binds. */
 function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
   if (config.lanHost === null) return null;
+  if (config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
   ensureLanToken(config);
-  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames };
+  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls };
 }
 
 /** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
@@ -68,11 +78,11 @@ export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void>
   process.once("SIGTERM", stop);
 }
 
-/** The LAN address a browser dials: the first LAN name, else the bound IP. */
+/** The HTTPS address a browser dials: the first LAN name, which the certificate covers, else the bound IP. */
 export function lanOrigin(config: ConsoleConfig, port: number): string {
   const name = config.lanNames[0] ?? (config.lanHost && isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost);
   if (!name) throw new Error("No LAN name to put in a link: set TITAN_CONSOLE_LAN_NAMES or TITAN_CONSOLE_HOST");
-  return `http://${name}:${port}`;
+  return `https://${name}:${port}`;
 }
 
 /**

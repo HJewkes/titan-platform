@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/coordinator",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "examples",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -33,6 +34,9 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/agent-dispatch": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
