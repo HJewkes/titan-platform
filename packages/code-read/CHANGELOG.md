@@ -1,5 +1,61 @@
 # @titan-design/code-read
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [caca1a4]
+- Updated dependencies [1893149]
+  - @titan-design/code-graph@0.15.1
+  - @titan-design/registry@0.4.0
+
+## 0.3.0
+
+### Minor Changes
+
+- 224485e: Export the reason vocabularies as const tuples: `EXCERPT_MISSING` (with `ExcerptMissing`, which now types `SourceRead.unavailable`) and `MISSING_REASONS` (which types `Missing`). Export `FindingSort`, the `findings.list` sort enum, and `SYNTHESIZED_KINDS` with `isStoredKind`, so a consumer can tell which nodes `node.neighbors` accepts. codewatch derives its sort keys and its stored-kind check from these instead of restating them.
+
+### Patch Changes
+
+- 25ac9ce: `excessOf` and a finding's `status` now use code-graph's `violationExcess` and `compareExcess`
+  instead of a local copy of the same rule, so they return the same outputs as before.
+  `changes.get` and `paths.impact` now pass each finding's rule type and threshold to
+  code-graph's bucketing. A `metric-min` finding whose value falls is now counted as worsened,
+  not improved, which matches the status `findings.list` already gave it.
+- f4b785f: Add a `no-import-cycles` check rule to code-graph. It reports each strongly connected component of the file import graph once, with its sorted member files in the new `members` field, and leaves type-only imports out unless `includeTypeOnly: true`. Against a baseline, a cycle inside one known cycle carries over and a cycle that gains a file is new. The TypeScript extractor now marks type-only import and re-export edges with `attrs.typeOnly`, and `INDEX_VERSION` moves to 0.25.0 so no snapshot without that mark is reused. code-read describes the new rule in plain language.
+- Updated dependencies [ea8ce65]
+- Updated dependencies [648d9af]
+- Updated dependencies [640a020]
+- Updated dependencies [1f1600b]
+- Updated dependencies [25ac9ce]
+- Updated dependencies [0bd5cd7]
+- Updated dependencies [8f05c8d]
+- Updated dependencies [c8e978e]
+- Updated dependencies [f42e765]
+- Updated dependencies [e54ada8]
+- Updated dependencies [ba007f1]
+- Updated dependencies [53460b5]
+- Updated dependencies [9228402]
+- Updated dependencies [04561ad]
+- Updated dependencies [1f1ca13]
+- Updated dependencies [20af8a3]
+- Updated dependencies [9fcd1b3]
+- Updated dependencies [175c7a9]
+- Updated dependencies [cbe3679]
+- Updated dependencies [2159a49]
+- Updated dependencies [f4b785f]
+- Updated dependencies [45f05b1]
+- Updated dependencies [6ecc31d]
+- Updated dependencies [3428e45]
+- Updated dependencies [388d791]
+- Updated dependencies [c043041]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/code-graph@0.15.0
+  - @titan-design/registry@0.3.3
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes

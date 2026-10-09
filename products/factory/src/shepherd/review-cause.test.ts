@@ -1,7 +1,7 @@
 import { fakeSha } from "@titan-design/github";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
+import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { UNPARSED_AFTER_CORRECTION } from "./correct-verdict.js";
 import type { Verdict } from "./phases.js";
 import { causeLabel, noteCarryStep, reviewCause, reviewCauseStats, type CarryProbe, type CauseFacts, type LastReview } from "./review-cause.js";

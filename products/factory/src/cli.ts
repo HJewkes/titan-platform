@@ -1,4 +1,5 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
+import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
@@ -21,6 +22,7 @@ import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { ownCheckout, registerService } from "./cli-service.js";
+import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
@@ -28,6 +30,7 @@ import type { ShepherdCommandName } from "./shepherd/commands.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
+import { probeServe, type ServeProbe } from "./serve-probe.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -59,6 +62,8 @@ export interface CliDeps {
   presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** How long a shepherd verb waits on a serve that holds the connection but does not answer; defaults to 20 s. */
+  serveWaitMs?: number;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
   deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
 }
@@ -99,7 +104,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -194,6 +199,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
+  registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
@@ -227,11 +233,12 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${(err as Error).message}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
-  const health = await probeHealth(opts.port);
+  const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
+  const health = probe.state === "up" ? probe.health : null;
   const deploy = name === "shepherd.status" ? deployBlockOf(health) : undefined;
   if (health) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts, deploy));
   if (name === "shepherd.register" && !opts.offline) {
-    verbs.io.stderr(`error: no titan-factory serve answered on port ${opts.port}; nothing was recorded (pass --offline to record the run here anyway)\n`);
+    verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
   await verbs.withHost(async (host, routes) => {
@@ -241,11 +248,20 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   });
 }
 
+/** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
+const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+
+function unansweredMessage(probe: ServeProbe, port: number): string {
+  if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
+  if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
+  return `no titan-factory serve answered on port ${port}: connection refused, so serve is down`;
+}
+
 /** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
-    return EXIT.FAILURE;
+    return exitOf(envelope.code);
   }
   if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
   else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);

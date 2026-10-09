@@ -1,10 +1,13 @@
 {
   "name": "@titan-design/anthropic-account",
-  "version": "0.0.0",
-  "description": "Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller",
+  "version": "0.2.0",
+  "description": "Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "anthropic-account": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,6 +20,7 @@
   },
   "files": [
     "dist",
+    "systemd",
     "README.md"
   ],
   "author": "Henry Jewkes",

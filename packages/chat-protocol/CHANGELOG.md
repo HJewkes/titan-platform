@@ -1,5 +1,11 @@
 # @titan-design/chat-protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- 73ffaaa: Rename the two `agents` schemas that carried a `Schema` suffix to the package's suffix-free convention: `activityCategorySchema` is now `agentActivityCategory` and `nodeActivitySchema` is now `agentGraphNodeActivity`. The bare names stay with the `activityCategory` and `nodeActivity` functions. The `ActivityCategory` and `NodeActivity` types are unchanged.
+
 ## 0.2.0
 
 ### Minor Changes

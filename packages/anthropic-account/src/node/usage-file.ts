@@ -100,7 +100,7 @@ function writeSynced(file: string, text: string): void {
 
 // Best effort: some platforms cannot open or fsync a directory, and the rename has already
 // made the new file whole; this only makes the rename itself durable.
-function syncDir(dir: string): void {
+export function syncDir(dir: string): void {
   try {
     const fd = fs.openSync(dir, "r");
     try {

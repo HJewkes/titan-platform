@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, renderUnit, SERVICE_LABEL, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
+import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -22,6 +22,20 @@ function keyValue(plist: string, key: string): string {
   if (!match) throw new Error(`no ${key} in plist`);
   return match[2] ?? match[1]!;
 }
+
+describe("service label prefix", () => {
+  it("keeps the default label byte-identical when no prefix is given", () => {
+    expect(serviceLabel()).toBe("dev.hjewkes.titan-factory");
+    expect(keyValue(renderPlist(options), "Label")).toBe("dev.hjewkes.titan-factory");
+    expect(plistPath("/srv/h")).toBe("/srv/h/Library/LaunchAgents/dev.hjewkes.titan-factory.plist");
+  });
+
+  it("follows a configured prefix in the label, the plist and its path", () => {
+    expect(serviceLabel("dev.ex.")).toBe("dev.ex.titan-factory");
+    expect(keyValue(renderPlist({ ...options, labelPrefix: "dev.ex." }), "Label")).toBe("dev.ex.titan-factory");
+    expect(plistPath("/srv/h", "dev.ex.")).toBe("/srv/h/Library/LaunchAgents/dev.ex.titan-factory.plist");
+  });
+});
 
 describe("titan-factory service plist", () => {
   it("names the job and keeps it running from load", () => {

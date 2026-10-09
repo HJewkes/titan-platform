@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/review-panel",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "description": "Review-panel types and the reviewer ports a caller satisfies",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,5 +36,11 @@
   },
   "dependencies": {
     "@titan-design/session-read": "workspace:^"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }

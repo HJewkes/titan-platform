@@ -1,5 +1,16 @@
 # @titan-design/agent-lifecycle
 
+## 0.1.6
+
+### Patch Changes
+
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [1f7de27]
+- Updated dependencies [ff6ff86]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.1.5
 
 ### Patch Changes
