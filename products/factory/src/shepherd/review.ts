@@ -63,7 +63,7 @@ export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
 /** The package's accepted verdict, plus the seat disagreement only Shepherd records. */
-export type AcceptedVerdict = PanelAcceptedVerdict & {
+type AcceptedVerdict = PanelAcceptedVerdict & {
   /** Set when a seat reviewer and Shepherd's own review gave opposite verdicts at this head (G10). */
   ownerOverride?: OwnerOverride;
 };
