@@ -1,5 +1,14 @@
 # @titan-design/registry
 
+## 0.3.3
+
+### Patch Changes
+
+- 45f05b1: Correct the README dependency claim: registry depends on rpc-protocol as well as zod.
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.3.2
 
 ### Patch Changes

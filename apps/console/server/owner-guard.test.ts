@@ -3,11 +3,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type * as NetModule from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { z } from "zod";
 import * as daemonPackage from "@titan-design/daemon";
 import { silentLogger, type DaemonHandle, type RequestAuth } from "@titan-design/daemon";
-import { EXIT, defineCommand, invokeCommand } from "@titan-design/registry";
+import { EXIT, defineCommand, invokeCommand, type AnyCommand, type Command } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
@@ -46,16 +46,70 @@ const OWNER_WRITE = "test.answer";
 const DEPOSIT = "test.deposit";
 let ran: Array<{ command: string; issuedAt?: number }>;
 
-const stubOwnerWrite = ownerWriteCommand({
+type OwnerAnswerContext = ConsoleContext & { ownerPresence: { issuedAt: number } };
+
+const ownerAnswer = {
   name: OWNER_WRITE,
   description: "Test-only stand-in for an owner answer",
   args: z.object({ answer: z.string() }),
   result: z.object({ answer: z.string(), issuedAt: z.number() }),
-  run: async ({ answer }, ctx) => {
+  ownerWrite: true as const,
+  run: async ({ answer }: { answer: string }, ctx: OwnerAnswerContext) => {
     ran.push({ command: OWNER_WRITE, issuedAt: ctx.ownerPresence.issuedAt });
     return { answer, issuedAt: ctx.ownerPresence.issuedAt };
   },
+};
+
+const stubOwnerWrite = ownerWriteCommand(ownerAnswer);
+
+const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, OwnerAnswerContext>({
+  name: "test.needs-presence",
+  description: "Test-only handler that reads the presence proof but carries no owner-write mark",
+  args: z.object({}),
+  result: z.object({ ok: z.boolean() }),
+  run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
 });
+
+type OptionalPresenceContext = ConsoleContext & { ownerPresence?: { issuedAt: number } };
+
+const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, OptionalPresenceContext>({
+  name: "test.optional-presence",
+  description: "Test-only handler that treats the presence proof as optional and carries no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
+});
+
+type EitherPresenceContext = ConsoleContext | OwnerAnswerContext;
+
+const eitherPresence = defineCommand<Record<string, never>, { present: boolean }, EitherPresenceContext>({
+  name: "test.either-presence",
+  description: "Test-only handler whose context may or may not carry the presence proof, with no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: "ownerPresence" in ctx }),
+});
+
+/**
+ * Each way a handler reaches a helper typed as a console command. None compiles, because `run` is a
+ * property; the runtime tests below stand in for a caller that casts past the types instead.
+ */
+function widenings<Args, Result>(handler: Command<Args, Result, OwnerAnswerContext>): Array<[string, AnyCommand<ConsoleContext>]> {
+  // @ts-expect-error a console-context annotation cannot hold a run that needs the presence proof
+  const annotated: Command<Args, Result, ConsoleContext> = handler;
+  // @ts-expect-error nor can an AnyCommand annotation
+  const asAny: AnyCommand<ConsoleContext> = handler;
+  // @ts-expect-error nor a factory's return type
+  const fromFactory = (): Command<Args, Result, ConsoleContext> => handler;
+  // @ts-expect-error nor an AnyCommand array
+  const list: AnyCommand<ConsoleContext>[] = [handler];
+  return [
+    ["a console-context annotation", annotated],
+    ["an AnyCommand annotation", asAny],
+    ["a factory's return type", fromFactory()],
+    ["an AnyCommand array", list[0]!],
+  ];
+}
 
 const stubDeposit = depositCommand({
   name: DEPOSIT,
@@ -93,6 +147,7 @@ function syntheticConfig(): ConsoleConfig {
     lanNames: [],
     lanTokenPath: "/nonexistent/lan.token",
     ownerWrites: false,
+    inboxDir: "/nonexistent/inbox",
   };
 }
 
@@ -159,6 +214,87 @@ describe("classes fail closed", () => {
     expect(reclass).toThrow(new RegExp(`already classed; it cannot be re-classed as ${commandClass}$`));
   });
 
+  it("refuses, at compile time and at definition, an owner-write handler wrapped as a read or a deposit", () => {
+    // @ts-expect-error a read cannot wrap a handler whose run takes the owner-write context
+    const asRead = () => readCommand(ownerAnswer);
+    // @ts-expect-error a deposit cannot wrap a handler whose run takes the owner-write context
+    const asDeposit = () => depositCommand(ownerAnswer);
+
+    expect(asRead).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read, only through ownerWriteCommand`);
+    expect(asDeposit).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit, only through ownerWriteCommand`);
+  });
+
+  it("fails to compile a read or a deposit whose run needs the owner's presence proof, even without the mark", () => {
+    // Type-only: with no mark there is nothing for the runtime guard to see, so neither wrapper is called.
+    // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
+    expectTypeOf(() => readCommand(needsPresence)).toBeFunction();
+    // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
+    expectTypeOf(() => depositCommand(needsPresence)).toBeFunction();
+  });
+
+  it("fails to compile the owner-write handler itself widened to a console command", () => {
+    // @ts-expect-error the handler's run needs the presence proof a console context lacks
+    const annotated: Command<{ answer: string }, { answer: string; issuedAt: number }, ConsoleContext> = ownerAnswer;
+    // @ts-expect-error the same for an AnyCommand array
+    const list: AnyCommand<ConsoleContext>[] = [ownerAnswer];
+
+    expect([annotated, ...list]).toEqual([ownerAnswer, ownerAnswer]);
+  });
+
+  it("fails to compile a read or a deposit whose presence is optional, even without the mark", () => {
+    // Type-only, as above: unmarked, so the runtime guard has nothing to see.
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => readCommand(optionalPresence)).toBeFunction();
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => depositCommand(optionalPresence)).toBeFunction();
+  });
+
+  it("fails to compile a read or a deposit whose context is a union with one member carrying presence", () => {
+    // keyof a union sees only the shared keys, so the check must look at each member's keys.
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => readCommand(eitherPresence)).toBeFunction();
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => depositCommand(eitherPresence)).toBeFunction();
+  });
+
+  it.each(widenings(ownerAnswer))("refuses at runtime a marked owner-write handler widened by %s", (_label, widened) => {
+    expect(() => readCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read`);
+    expect(() => depositCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit`);
+  });
+
+  it.each(widenings(needsPresence))("fails closed when an unmarked handler needing presence is widened by %s and run", async (_label, widened) => {
+    const replies = await Promise.all([
+      invokeCommand(readCommand(widened), {}, context("http", SESSION_AUTH)),
+      invokeCommand(depositCommand(widened), {}, context("http", SESSION_AUTH)),
+    ]);
+
+    expect(replies.map(({ envelope }) => envelope.ok)).toEqual([false, false]);
+  });
+
+  it("never hands the presence proof to an optional-presence handler widened before it is classed", async () => {
+    // TypeScript has no exact types, so a console context still satisfies an optional key once the
+    // handler's own type is gone; what the console guarantees is that only ownerWriteCommand adds the proof.
+    const widened: Command<Record<string, never>, { present: boolean }, ConsoleContext> = optionalPresence;
+
+    const replies = await Promise.all([
+      invokeCommand(readCommand(widened), {}, context("http", SESSION_AUTH)),
+      invokeCommand(depositCommand(widened), {}, context("http", SESSION_AUTH)),
+    ]);
+
+    expect(replies.map(({ envelope }) => envelope)).toEqual([
+      { ok: true, data: { present: false } },
+      { ok: true, data: { present: false } },
+    ]);
+  });
+
+  it("fails startup on an owner-write handler hand-classed as a read", () => {
+    const handClassed = { ...ownerAnswer, commandClass: "read" } as unknown as ClassedCommand;
+
+    expect(() => createConsoleRegistry(createSources(syntheticConfig()), [handClassed])).toThrow(
+      `Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read, only through ownerWriteCommand`,
+    );
+  });
+
   it("fails startup naming a command with no class", () => {
     const sources = createSources(syntheticConfig());
 
@@ -168,13 +304,13 @@ describe("classes fail closed", () => {
     );
   });
 
-  it("classes every console command at its definition, all of them reads today", () => {
+  it("classes every console command at its definition: inbox.deposit a deposit, the rest reads", () => {
     const classes = createConsoleRegistry(createSources(syntheticConfig()))
       .list()
       .map((command) => [command.name, (command as ClassedCommand).commandClass]);
 
-    expect(classes.length).toBeGreaterThan(0);
-    expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([]);
+    expect(classes.length).toBeGreaterThan(1);
+    expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([["inbox.deposit", "deposit"]]);
   });
 });
 
@@ -208,6 +344,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
       lanNames: [NAME],
       lanTokenPath: path.join(dir, "state", "lan.token"),
       ownerWrites: true,
+      inboxDir: path.join(dir, "state", "inbox", "deposits"),
     };
     await writeFile(config.sessionGraphPath, "synthetic");
     replies = [];

@@ -46,7 +46,7 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | Runs the command: 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 500 on any other thrown error |
+| `POST /rpc/:name` | Runs the command: 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 413 a body over `rpcBodyLimit` (1 MiB by default, checked before buffering), 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 429 a command refusing a caller over its limit (code 75), 500 on any other thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 The paths, the `/rpc` failure statuses, and the SSE event names come from

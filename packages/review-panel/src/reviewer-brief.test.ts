@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewCheckoutName, reviewerBrief } from "./reviewer-brief.js";
 
 // A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
 const REFUSAL_SET: Record<MalformedRefusal, true> = {
@@ -32,6 +32,12 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it("names the checkout to remove with the same name it extracts into", () => {
+    const brief = reviewerBrief(target);
+
+    expect(brief).toContain(`$TMPDIR/${reviewCheckoutName(target.pr, target.head)}\``);
+  });
+
   it("keeps the full suite off the Mac", () => {
     const brief = reviewerBrief(target);
 

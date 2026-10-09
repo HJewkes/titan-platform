@@ -2,9 +2,8 @@ import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import { BLOCK_LINE, findingsText } from "./fix-first-findings.js";
 import { failureOf } from "./error-class.js";
-import { DEFECT_CLASS_HEADING } from "@titan-design/review-panel";
+import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */

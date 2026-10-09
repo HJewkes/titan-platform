@@ -192,7 +192,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
-    registry: createFactoryRegistry(),
+    registry: createFactoryRegistry(log),
     createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),

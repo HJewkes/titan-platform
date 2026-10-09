@@ -12,7 +12,7 @@ Domain-free building blocks. No titan dependencies.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
-| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read and the usage file | none |
+| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller | none |
 | [`app-paths`](/reference/app-paths) | Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies | none |
 | [`authority`](/reference/authority) | The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator | none |
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
@@ -57,7 +57,7 @@ Modules that know about a subject: transcripts, code, rules.
 | --- | --- | --- |
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `retrieval`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
-| [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | none |
+| [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | none |
@@ -66,7 +66,7 @@ Modules that know about a subject: transcripts, code, rules.
 | [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `session-read` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
-| [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol` |
+| [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |
 | [`style-analyzer`](/reference/style-analyzer) | Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability | `code-parser`, `style-profile` |
 | [`style-checker`](/reference/style-checker) | Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile | `style-analyzer`, `style-profile` |
 | [`style-profile`](/reference/style-profile) | Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown | none |
@@ -88,8 +88,8 @@ Thin compositions of the tiers. Private, not published.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | none |
-| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent-dispatch`, `app-paths`, `authority`, `daemon`, `fix-proof`, `github`, `hitl`, `owner-queue`, `registry`, `review-panel`, `rpc-client`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
+| `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `app-paths`, `authority`, `daemon`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `registry`, `review-panel`, `rpc-client`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `codewatch` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
-| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `app-paths`, `chat-protocol`, `daemon`, `github`, `react-app`, `react-ui`, `registry`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |
+| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `app-paths`, `chat-protocol`, `daemon`, `github`, `owner-queue`, `react-app`, `react-ui`, `registry`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |

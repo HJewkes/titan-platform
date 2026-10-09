@@ -18,7 +18,7 @@ Before adding code:
 | Unit | Tier | Use this when |
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
-| [`anthropic-account`](#cap-anthropic-account) | 0 | You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, and `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead. |
+| [`anthropic-account`](#cap-anthropic-account) | 0 | You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`, and `pollUsage` and `pollAll` fetch a fresh reading from the OAuth usage endpoint through an injected `fetch`, never refreshing a token. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead. |
 | [`app-paths`](#cap-app-paths) | 0 | You need an app's per-user data, config, cache or log directory (`appDirs`, the env-paths table with no `-nodejs` suffix), or active-work's data root and session graph path as active-work's own CLI resolves them (`activeWorkRoot`, `activeWorkGraphPath`, honouring `ACTIVE_ROOT`). Every function is pure over an injectable `{ env, home, platform }`. To expand `~` in a transcript path, use `expandHome` in session-read; to scan diffs for leaked data-directory paths, use egress-scan. |
 | [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph. |
@@ -39,7 +39,7 @@ Before adding code:
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
 | [`github`](#cap-github) | 1 | Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`. |
-| [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
+| [`health`](#cap-health) | 1 | You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" \| "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry. |
 | [`hitl`](#cap-hitl) | 1 | A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`. |
 | [`matrix-bus`](#cap-matrix-bus) | 1 | You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room. |
 | [`messaging`](#cap-messaging) | 1 | A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel. |
@@ -49,13 +49,13 @@ Before adding code:
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
-| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. |
+| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
 | [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired). The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
 | [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
-| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
+| [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, and `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph. |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
@@ -66,7 +66,7 @@ Before adding code:
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
 | [`evals`](#cap-evals) | product | You need a stable content hash for a unit of work, a workflow variant, an eval case, a suite or a scorecard key, or strict and loose zod parsing of those specs. For retrieval quality use retrieval-eval instead. |
-| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. |
+| [`factory`](#cap-factory) | product | You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE\|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks. |
 | [`retrieval-eval`](#cap-retrieval-eval) | product | You change retrieval behaviour and need recall measured before and after, against the `active-work-search` row, today's shipped ranker. `date-order-notes` is only the pre-CC-101 floor. |
 | [`session-miner`](#cap-session-miner) | product | You want a working end-to-end example of the DAG, or to index and search your own Claude Code transcripts from a checkout. |
 | [`codewatch`](#cap-codewatch) | product | You want codewatch's layered code report, or a reference app that consumes react-app and code-read. |
@@ -128,7 +128,7 @@ Domain-free building blocks. No titan dependencies.
 
 ### [`agent-protocol`](/reference/agent-protocol)
 
-Tier 0, `@titan-design/agent-protocol@0.5.0`. Harness-neutral identity and usage contracts for execution and session readers
+Tier 0, `@titan-design/agent-protocol@0.6.0`. Harness-neutral identity and usage contracts for execution and session readers
 
 **Use this when:** You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`.
 
@@ -146,9 +146,9 @@ Key exports:
 
 ### [`anthropic-account`](/reference/anthropic-account)
 
-Tier 0, `@titan-design/anthropic-account@0.0.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read and the usage file
+Tier 0, `@titan-design/anthropic-account@0.1.0`. Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller
 
-**Use this when:** You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, and `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
+**Use this when:** You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. The root is pure code. The `./node` subpath does the file work: `discoverProfiles` lists the config dirs, `readLoginState` reads a credentials file only when it is a regular file of mode 0600 or narrower owned by the caller, `readUsage` and `writeReading` read the newest reading and atomically write `usage-poll.json`, and `pollUsage` and `pollAll` fetch a fresh reading from the OAuth usage endpoint through an injected `fetch`, never refreshing a token. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
 
 Key exports:
 
@@ -162,7 +162,7 @@ Key exports:
 
 ### [`app-paths`](/reference/app-paths)
 
-Tier 0, `@titan-design/app-paths@0.0.0`. Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies
+Tier 0, `@titan-design/app-paths@0.1.0`. Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies
 
 **Use this when:** You need an app's per-user data, config, cache or log directory (`appDirs`, the env-paths table with no `-nodejs` suffix), or active-work's data root and session graph path as active-work's own CLI resolves them (`activeWorkRoot`, `activeWorkGraphPath`, honouring `ACTIVE_ROOT`). Every function is pure over an injectable `{ env, home, platform }`. To expand `~` in a transcript path, use `expandHome` in session-read; to scan diffs for leaked data-directory paths, use egress-scan.
 
@@ -174,7 +174,7 @@ Key exports:
 
 ### [`authority`](/reference/authority)
 
-Tier 0, `@titan-design/authority@0.3.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
+Tier 0, `@titan-design/authority@0.4.0`. The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator
 
 **Use this when:** Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl.
 
@@ -190,7 +190,7 @@ Key exports:
 
 ### [`chat-protocol`](/reference/chat-protocol)
 
-Tier 0, `@titan-design/chat-protocol@0.2.0`. The canonical chat message document and envelope every agent-chat surface speaks
+Tier 0, `@titan-design/chat-protocol@0.3.0`. The canonical chat message document and envelope every agent-chat surface speaks
 
 **Use this when:** You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph.
 
@@ -203,7 +203,7 @@ Key exports:
 
 ### [`cluster`](/reference/cluster)
 
-Tier 0, `@titan-design/cluster@0.1.3`. Deterministic Drain template mining with pluggable line masking
+Tier 0, `@titan-design/cluster@0.2.0`. Deterministic Drain template mining with pluggable line masking
 
 **Use this when:** You have high-volume semi-structured text (tool results, stack traces, log lines) and want a stable handful of templates with no model. Ids are deterministic for a given input order and survive restarts via snapshot; merged lines take the founding line's id.
 
@@ -238,7 +238,7 @@ Key exports:
 
 ### [`egress-scan`](/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.5.1`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.6.0`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -273,7 +273,7 @@ Key exports:
 
 ### [`eslint-plugin`](/reference/eslint-plugin)
 
-Tier 0, `@titan-design/eslint-plugin@0.0.0`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task
+Tier 0, `@titan-design/eslint-plugin@0.1.0`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task
 
 **Use this when:** You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
 
@@ -339,7 +339,7 @@ Key exports:
 
 ### [`rpc-protocol`](/reference/rpc-protocol)
 
-Tier 0, `@titan-design/rpc-protocol@0.2.0`. Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap
+Tier 0, `@titan-design/rpc-protocol@0.3.0`. Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap
 
 **Use this when:** You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary.
 
@@ -354,7 +354,7 @@ Key exports:
 
 ### [`store-sqlite`](/reference/store-sqlite)
 
-Tier 0, `@titan-design/store-sqlite@0.3.3`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
+Tier 0, `@titan-design/store-sqlite@0.4.0`. SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations
 
 **Use this when:** You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself.
 
@@ -369,7 +369,7 @@ Key exports:
 
 ### [`tool-guard`](/reference/tool-guard)
 
-Tier 0, `@titan-design/tool-guard@0.2.1`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
+Tier 0, `@titan-design/tool-guard@0.3.0`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 **Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand.
 
@@ -394,7 +394,7 @@ Reusable machinery over the primitives.
 
 ### [`agent`](/reference/agent)
 
-Tier 1, `@titan-design/agent@0.4.5`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
+Tier 1, `@titan-design/agent@0.4.6`. Headless agent triggering over the Claude Agent SDK with env-scrub, failure taxonomy, and hard budgets
 
 **Use this when:** You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
 
@@ -411,7 +411,7 @@ Key exports:
 
 ### [`agent-dispatch`](/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.4.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.5.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
 
@@ -426,7 +426,7 @@ Key exports:
 
 ### [`agent-lifecycle`](/reference/agent-lifecycle)
 
-Tier 1, `@titan-design/agent-lifecycle@0.1.5`. Durable agent execution state and fenced ownership
+Tier 1, `@titan-design/agent-lifecycle@0.1.6`. Durable agent execution state and fenced ownership
 
 **Use this when:** You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one.
 
@@ -440,7 +440,7 @@ Key exports:
 
 ### [`agent-surface`](/reference/agent-surface)
 
-Tier 1, `@titan-design/agent-surface@0.3.0`. Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan
+Tier 1, `@titan-design/agent-surface@0.3.1`. Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan
 
 **Use this when:** A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead.
 
@@ -458,7 +458,7 @@ Key exports:
 
 ### [`daemon`](/reference/daemon)
 
-Tier 1, `@titan-design/daemon@0.4.1`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
+Tier 1, `@titan-design/daemon@0.5.0`. hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle
 
 **Use this when:** You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback.
 
@@ -470,13 +470,13 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +63 more in the [reference page](/reference/daemon)
+- +65 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
 ### [`github`](/reference/github)
 
-Tier 1, `@titan-design/github@0.5.1`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
+Tier 1, `@titan-design/github@0.6.0`. GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake
 
 **Use this when:** Code must read or change GitHub (refs, files, pull requests, required checks, check runs, job logs, merges, reruns, branch deletes) over REST through the caller's `gh` login, with every write safe to repeat after a crash and polling paced by ETags and a shared rate budget. `mergeReadiness` decides, without I/O, whether a PR may merge at an approved head. Use `fakeGitHub()` in tests instead of stubbing `gh`.
 
@@ -494,21 +494,23 @@ Key exports:
 
 ### [`health`](/reference/health)
 
-Tier 1, `@titan-design/health@0.0.0`. health/v1 contract, probes, append-only sample store and uptime
+Tier 1, `@titan-design/health@0.1.0`. health/v1 contract, probes, append-only sample store and uptime
 
-**Use this when:** You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" | "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry.
+**Use this when:** You emit or read a health route's payload and want one open contract: `healthReportSchema` for health/v1 (pass, warn or fail with named checks, after draft-inadarei-api-health-check) and `parseHealthReport` to read any payload, legacy `ok`-only ones included, without ever reading better than its worst check. `healthSampleSchema` is the strict row for storing one probe result; `openHealthStore` and `appendSamples` keep every one in an append-only SQLite table (one transaction per tick), and `uptime` reports up, down, unknown and missing slots separately. To serve the health route itself, use daemon. The `./metrics` subpath adds `validateEntry(entry, "write" | "read")` and the zod schemas for `titan.metrics/v1` registry entries and `titan.measurement-audit/v1` audit reports (write refuses unknown keys, read keeps them); use it to author or load a system's metric registry.
 
 Key exports:
 
-- `contract`: `HEALTH_STATUSES`, `healthCheckSchema`, `healthReportSchema`, `healthStatusSchema`, `parseHealthReport`, `worstStatus`, `HealthCheck`, `HealthReport`, `HealthReportRead`
-- `sample`: `SAMPLE_STATUSES`, `healthSampleSchema`, `sampleStatusSchema`
-- +5 more in the [reference page](/reference/health)
+- `contract`: `healthCheckSchema`, `healthReportSchema`, `healthStatusSchema`, `parseHealthReport`, `worstStatus`
+- `store`: `appendSamples`, `openHealthStore`, `readSamples`, `storeStats`
+- `uptime`: `foldUptime`, `uptime`
+- `sample`: `healthSampleSchema`
+- +19 more in the [reference page](/reference/health)
 
 <a id="cap-hitl"></a>
 
 ### [`hitl`](/reference/hitl)
 
-Tier 1, `@titan-design/hitl@0.7.0`. Human-in-the-loop gate()/resolve() primitive
+Tier 1, `@titan-design/hitl@0.8.0`. Human-in-the-loop gate()/resolve() primitive
 
 **Use this when:** A step must pause for a human decision and resume, possibly in another process, after a restart. A gate can carry an owner-facing brief (one-line summary, evidence pointer, bounded button questions), required per store with `requireBrief`.
 
@@ -522,7 +524,7 @@ Key exports:
 
 ### [`matrix-bus`](/reference/matrix-bus)
 
-Tier 1, `@titan-design/matrix-bus@0.2.0`. Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap
+Tier 1, `@titan-design/matrix-bus@0.2.1`. Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap
 
 **Use this when:** You talk to a Matrix homeserver without an SDK: appservice sends, the queue item codec, or bootstrapping the `#queue` room.
 
@@ -540,7 +542,7 @@ Key exports:
 
 ### [`messaging`](/reference/messaging)
 
-Tier 1, `@titan-design/messaging@0.4.1`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
+Tier 1, `@titan-design/messaging@0.4.2`. Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness
 
 **Use this when:** A program must text a human over iMessage (BlueBubbles) or Telegram, or validate their inbound webhooks, without caring which channel.
 
@@ -557,7 +559,7 @@ Key exports:
 
 ### [`registry`](/reference/registry)
 
-Tier 1, `@titan-design/registry@0.3.2`. zod command registry projected to CLI, MCP, and HTTP surfaces
+Tier 1, `@titan-design/registry@0.3.3`. zod command registry projected to CLI, MCP, and HTTP surfaces
 
 **Use this when:** You define a command once and want it served as a CLI, an MCP tool and an HTTP route. Adopt it the moment a second surface is plausible.
 
@@ -574,7 +576,7 @@ Key exports:
 
 ### [`retrieval`](/reference/retrieval)
 
-Tier 1, `@titan-design/retrieval@0.3.0`. FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open
+Tier 1, `@titan-design/retrieval@0.3.1`. FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open
 
 **Use this when:** You need search over a store-sqlite corpus that fuses FTS, vectors and graph hops and keeps answering when one retriever is down. `fuseByRRF` and `gatherFailOpen` work over your own retrievers too.
 
@@ -593,7 +595,7 @@ Key exports:
 
 ### [`rpc-client`](/reference/rpc-client)
 
-Tier 1, `@titan-design/rpc-client@0.2.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
+Tier 1, `@titan-design/rpc-client@0.3.0`. Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources
 
 **Use this when:** Browser or Node code calls a registry-backed daemon, live over HTTP and SSE or from a static snapshot export, with typed commands.
 
@@ -610,7 +612,7 @@ Key exports:
 
 ### [`worktree`](/reference/worktree)
 
-Tier 1, `@titan-design/worktree@0.1.4`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
+Tier 1, `@titan-design/worktree@0.1.5`. Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep
 
 **Use this when:** You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch.
 
@@ -633,7 +635,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.14.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.15.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -652,7 +654,7 @@ Key exports:
 
 ### [`code-read`](/reference/code-read)
 
-Tier 2, `@titan-design/code-read@0.2.1`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
+Tier 2, `@titan-design/code-read@0.3.0`. Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands
 
 **Use this when:** A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon.
 
@@ -670,9 +672,9 @@ Key exports:
 
 ### [`coordinator`](/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.0.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.1.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
-**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path.
+**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims.
 
 Key exports:
 
@@ -680,13 +682,13 @@ Key exports:
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
 - `seat-state`: `emptySeatState`, `foldSeatEvents`
-- +21 more in the [reference page](/reference/coordinator)
+- +39 more in the [reference page](/reference/coordinator)
 
 <a id="cap-decider"></a>
 
 ### [`decider`](/reference/decider)
 
-Tier 2, `@titan-design/decider@0.5.1`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+Tier 2, `@titan-design/decider@0.6.0`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
 
 **Use this when:** You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list.
 
@@ -703,7 +705,7 @@ Key exports:
 
 ### [`memory`](/reference/memory)
 
-Tier 2, `@titan-design/memory@0.1.3`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
+Tier 2, `@titan-design/memory@0.1.4`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
 
 **Use this when:** An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation.
 
@@ -719,7 +721,7 @@ Key exports:
 
 ### [`owner-queue`](/reference/owner-queue)
 
-Tier 2, `@titan-design/owner-queue@0.0.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
+Tier 2, `@titan-design/owner-queue@0.1.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
 
 **Use this when:** You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired). The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror.
 
@@ -736,7 +738,7 @@ Key exports:
 
 ### [`pm`](/reference/pm)
 
-Tier 2, `@titan-design/pm@0.0.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
+Tier 2, `@titan-design/pm@0.1.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
 
 **Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
@@ -753,7 +755,7 @@ Key exports:
 
 ### [`queue-mirror`](/reference/queue-mirror)
 
-Tier 2, `@titan-design/queue-mirror@0.4.4`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
+Tier 2, `@titan-design/queue-mirror@0.4.5`. Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back
 
 **Use this when:** A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back.
 
@@ -773,22 +775,26 @@ Key exports:
 
 ### [`review-panel`](/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.1.0`. Review-panel types and the reviewer ports a caller satisfies
 
-**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
+**Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, and `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
 Key exports:
 
-- `classify`: `classifyPr`, `DEFAULT_CLASS_RULES`
-- `plan`: `DEFAULT_CLASS_ROLES`, `DEFAULT_MEMBER_POINTS`, `DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`, `DEFAULT_SHAPE_ROLES`, `DEFAULT_SONNET_FOR`, `planPanel`
+- `classify`: `changedLineCount`, `classifyPr`
+- `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
-- +33 more in the [reference page](/reference/review-panel)
+- `accept-verdict`: `acceptVerdict`
+- `depth-floor`: `isInvestigativeCall`
+- `fix-first-findings`: `boundedFindings`, `findingsText`, `fixFirstFindings`
+- `verdict-schemas`: `MalformedSchema`
+- +57 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.9.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.10.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph.
 
@@ -808,7 +814,7 @@ Key exports:
 
 ### [`session-graph`](/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.13.2`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.14.0`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph.
 
@@ -828,7 +834,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.10.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.11.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -844,7 +850,7 @@ Key exports:
 
 ### [`style-analyzer`](/reference/style-analyzer)
 
-Tier 2, `@titan-design/style-analyzer@0.1.4`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
+Tier 2, `@titan-design/style-analyzer@0.1.5`. Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability
 
 **Use this when:** You measure how a codebase is actually written and build a style profile from real code.
 
@@ -865,7 +871,7 @@ Key exports:
 
 ### [`style-checker`](/reference/style-checker)
 
-Tier 2, `@titan-design/style-checker@0.4.3`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
+Tier 2, `@titan-design/style-checker@0.4.4`. Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile
 
 **Use this when:** You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape.
 
@@ -888,7 +894,7 @@ Key exports:
 
 ### [`style-profile`](/reference/style-profile)
 
-Tier 2, `@titan-design/style-profile@0.4.0`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
+Tier 2, `@titan-design/style-profile@0.4.1`. Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown
 
 **Use this when:** You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it.
 
@@ -905,7 +911,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.9.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.10.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
@@ -923,7 +929,7 @@ React bindings for the daemon wire. The design system, react-ui, is listed here 
 
 ### [`react-app`](/reference/react-app)
 
-Tier ui, `@titan-design/react-app@0.1.1`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
+Tier ui, `@titan-design/react-app@0.1.2`. React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps
 
 **Use this when:** A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui.
 
@@ -967,14 +973,14 @@ Key exports:
 
 Tier product, private, `products/factory`. Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams
 
-**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer.
+**Use this when:** You want code, not a coordinating agent, to own a software workflow's transitions, retries, human gates and evidence, and to resume it after a crash. The engine is `workflow`; this product holds the policy, the step router and the pilots. It requests agent dispatch through agent-chat, via `@titan-design/agent-dispatch`, for three kinds of agent: the Shepherd reviewer, the main-red fixer and the successor implementer. It also starts one process that is not an agent, the detached deployer. Relay and agent-chat keep every other dispatch. - **Reviewer.** Spawned when a registered pull request needs an independent review of its current head, and resumed for a later head. It runs under the agent-chat profile set by `review.profile` in the factory config (the profile is its tool grant) and under `review.configDir` when set, else agent-chat's default account. It starts in the repo's configured checkout, reads the head at that exact commit, changes nothing, and ends its final message with `Verdict: MERGE|FIX_FIRST`, `PR:` and `Head:` lines. After a FIX_FIRST on a repeat round it also names the defect class. - **Fixer.** Spawned once per red-main episode, when main CI goes red after a merge and Shepherd freezes merges into the repo. Shepherd files a high-severity fix task in active-work first, and the fixer is named for the episode so a retry never starts a second one. It runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It branches from main, opens a PR, registers it with Shepherd against the fix task, and ends with a `Head: <full sha>` line. Only that PR may merge while the freeze holds. With no agent-chat configured, nothing is spawned and the owner gets the red main. - **Successor.** Spawned when Shepherd must wake an implementer (CI red, FIX_FIRST review, conflict, or a failed fix-proof check) and no agent of that lineage is live or resumable. A live implementer is messaged and an exited one is resumed; neither is a new dispatch. The successor runs headless under the `bd-implementer` profile and under `shepherd.fixer.configDir` when set, else agent-chat's default account. It continues on the PR's head branch, does not open a new PR, registers as the PR's implementer, and ends with a `Head: <full sha>` line. - **Deployer.** Not an agent and not an agent-chat dispatch. After a merge into the factory's own repo, Shepherd starts `service deploy` for the merge sha as a detached process that outlives the service, and skips it if the service already runs that sha. It reports only through its log file in the state directory. Merges into any other repo start no deployer. - **Audit steps.** Not an agent-chat dispatch. Each agent step of `measurement-audit` (`titan-factory audit <area>`) is one `claude -p` turn through `@titan-design/agent`. The turn runs with no tools, on the CLI login, under the model the step's manifest names. It gets the inventory as data and answers with JSON that the step's schema checks.
 
 Key exports:
 
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
-- +92 more in `products/factory/src/index.ts`
+- +104 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 
@@ -1008,7 +1014,7 @@ Key exports:
 - `cli`: `runCli`
 - `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
 - `insights/post-filter`: `normaliseStage`
-- +31 more in `products/session-miner/src/index.ts`
+- +42 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 
