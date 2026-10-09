@@ -25,6 +25,7 @@ import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import { waitingCommand } from "./waiting.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -302,6 +303,8 @@ const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], 
     rows(ctx.host, servicesOf(ctx)).filter((row) => (repo === undefined || row.repo === repo.toLowerCase()) && (pr === undefined || row.pr === pr)),
 });
 
+const waiting = waitingCommand((ctx) => rows(ctx.host, servicesOf(ctx)));
+
 const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, WatchRow[], FactoryContext>({
   name: "shepherd.list",
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
@@ -378,6 +381,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
   "shepherd.status": statusCommand,
   "shepherd.list": listCommand,
+  "shepherd.waiting": waiting,
   "shepherd.timeline": timelineCommand,
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
