@@ -188,26 +188,33 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
 | `principles` | `{ id, rule, covers, recommended? }`: asks that share one reason | none |
 | `maxQuestions` | questions per round; a principle counts as one | `10` |
 
-- **Which items.** Open `decide` items not routed to the decider. Every other item comes
-  back in `skipped` as `not-open`, `not-decide` or `routed-to-decider`.
+- **Which items.** Every item is parsed with `ownerItemSchema` first, and every principle with
+  its own schema, so a value only its TypeScript type vouches for never reaches a round. Open
+  `decide` items not routed to the decider are asked. Every other item comes back in `skipped`
+  as `invalid`, `not-open`, `not-decide` or `routed-to-decider`; a principle that does not
+  parse, such as one with a blank rule, is not asked.
 - **Order.** One question and one section per ask, in input order, so rank first. A
   principle stands where its first covered item stood.
 - **Batching (the question contract's rule 3).** Items a principle covers become one
   pick-one starting `Principle:`, stating the rule and listing each item as `(1) …; (2) …`,
   with options yes (the decider settles each by this rule) and no (ask each alone). A one-way
   item never batches. Each item goes to the first principle that covers it, and a principle
-  left with fewer than two items, or with a blank rule, is not asked.
+  left with fewer than two items is not asked.
 - **Shadow and graduated.** round@2 hides recommendations per round, not per question. An ask
   whose items all have a category in `graduated` goes in a round with
-  `recommendations: "shown"`. Everything else, including an item with no category or a
-  `hidden` recommendation, goes in a separate `"after-answer"` round. A principle is shadow
-  if any item it covers is.
+  `recommendations: "shown"`, unless the ask carries a `hidden` recommendation on an item or
+  on its principle. Everything else, including an item with no category, goes in a separate
+  `"after-answer"` round.
 - **Questions.** An item with options is a pick-one: each option reads `label: description`,
   the item's summary is the prompt and the `signsOff`, and the decider's pick becomes the
   recommendation when it has a confidence and a rationale (or a cite, shown as `Cite: …`).
-  An item without options is a text question. round@2 refuses an option label shared by two
-  questions, and a blanket sign-off such as "Approve" or "LGTM" in any prompt or label, so such
-  text gets ` (q<n>)` appended until it is neither; no option is ever dropped.
+  An item without options is a text question and carries no recommendation.
+- **Text round@2 is strict about.** Every prompt, section text and option label passes one
+  normaliser: it trims, replaces blank text with a fallback (a blank summary reads "An ask with
+  no summary"), and appends ` (q<n>)` until the text is neither a blanket sign-off such as
+  "Approve" or "LGTM" nor an option label already in the round. No option is ever dropped. A
+  seeded property test feeds adversarial items and principles through and checks every
+  manifest against `RoundSchema`.
 - **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.

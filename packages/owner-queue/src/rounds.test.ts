@@ -197,6 +197,33 @@ describe("buildOwnerRounds", () => {
     expectValid(rounds.map((each) => each.manifest));
   });
 
+  it("keeps a round valid when a summary is only spaces", () => {
+    const items = [decide("a", { summary: "   " }), decide("b", { summary: "   ", options: undefined })];
+
+    const { rounds } = buildOwnerRounds(items, base);
+
+    expect(rounds[0]!.manifest.questions.map((each) => each.prompt)).toEqual(["An ask with no summary", "An ask with no summary"]);
+    expectValid(rounds.map((each) => each.manifest));
+  });
+
+  it("puts a principle with a hidden recommendation in an after-answer round, even over graduated items", () => {
+    const principle: Principle = { id: "p", rule: "One rule.", covers: ["a", "b"], recommended: { ...recommended, optionId: "yes", hidden: true } };
+    const items = [decide("a", { category: "naming" }), decide("b", { category: "naming" })];
+
+    const { rounds } = buildOwnerRounds(items, { ...base, graduated: ["naming"], principles: [principle] });
+
+    expect(rounds.map((each) => each.manifest.recommendations)).toEqual(["after-answer"]);
+  });
+
+  it("skips an item that does not parse as an OwnerItem", () => {
+    const broken = { ...decide("broken"), options: [{ id: "only", label: "Only one" }] };
+
+    const { rounds, skipped } = buildOwnerRounds([broken, decide("fine")], base);
+
+    expect(skipped).toEqual([{ id: "broken", reason: "invalid" }]);
+    expect(rounds[0]!.bindings.map((each) => each.itemIds)).toEqual([["fine"]]);
+  });
+
   it("skips items that are not open Decide asks for the owner, with the reason", () => {
     const items = [
       decide("answered", { status: "answered" }),

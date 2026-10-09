@@ -38,7 +38,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   manifests that pass `RoundSchema` from `@titan-design/review-schema`. It returns
   `{ rounds: [{ manifest, bindings }], skipped }`. Each ask is one question in its own section,
   in input order (rank first). Items a `Principle` covers become one `Principle:` question
-  listing each; one-way items never batch. Shadow-mode asks fill rounds with
-  `recommendations: "after-answer"`, and asks whose items are all in `options.graduated`
-  fill rounds with `"shown"`. A `binding` maps each question id to its item ids and each
+  listing each; one-way items never batch. Asks whose items are all in `options.graduated`
+  and carry no hidden pick (on an item or its principle) fill rounds with `"shown"`; the rest
+  fill rounds with `recommendations: "after-answer"`. Items and principles are parsed first;
+  an item that does not parse is skipped as `invalid`, and text questions carry no
+  recommendation. A `binding` maps each question id to its item ids and each
   shown option label back to the item's option id.

@@ -1,5 +1,6 @@
 import { isBlanketSignOff, MANIFEST_SCHEMA_ID, type ManifestInput } from "@titan-design/review-schema";
-import type { OwnerItem } from "./schema.js";
+import { z } from "zod";
+import { ownerItemSchema, type OwnerItem } from "./schema.js";
 
 type Recommended = NonNullable<OwnerItem["recommended"]>;
 type QuestionInput = ManifestInput["questions"][number];
@@ -11,11 +12,18 @@ export interface Principle {
   id: string;
   /** One sentence: the rule and its limits. The covered items are listed after it. */
   rule: string;
-  /** OwnerItem ids. One-way items are asked alone; with fewer than two left, or a blank rule, the items are asked alone. */
+  /** OwnerItem ids. One-way items are asked alone; with fewer than two left the items are asked alone. */
   covers: readonly string[];
-  /** `optionId` is "yes" or "no". */
+  /** `optionId` is "yes" or "no". A hidden one puts the principle in an after-answer round. */
   recommended?: Recommended;
 }
+
+const principleSchema = z.object({
+  id: z.string().min(1),
+  rule: z.string().regex(/\S/),
+  covers: z.array(z.string()),
+  recommended: ownerItemSchema.shape.recommended,
+});
 
 export interface OwnerRoundOptions {
   unit: string;
@@ -46,7 +54,7 @@ export interface OwnerRound {
   bindings: RoundQuestionBinding[];
 }
 
-export type SkipReason = "not-open" | "not-decide" | "routed-to-decider";
+export type SkipReason = "invalid" | "not-open" | "not-decide" | "routed-to-decider";
 
 export interface OwnerRounds {
   rounds: OwnerRound[];
@@ -57,6 +65,18 @@ interface Ask {
   items: OwnerItem[];
   principle?: Principle;
   shadow: boolean;
+}
+
+/** An ask's raw text before `render` holds each field to round@2's rules. */
+interface AskText {
+  prompt: string;
+  title: string;
+  changed: string;
+  context: string;
+  choices?: { id: string; label: string }[];
+  recommended?: Recommended;
+  itemIds: string[];
+  principleId?: string;
 }
 
 const PRINCIPLE_OPTIONS = [
@@ -70,9 +90,14 @@ function skipReason(item: OwnerItem): SkipReason | null {
   return item.route?.target === "decider" ? "routed-to-decider" : null;
 }
 
-function isShadow(item: OwnerItem, graduated: ReadonlySet<string>): boolean {
+function itemIsShadow(item: OwnerItem, graduated: ReadonlySet<string>): boolean {
   if (item.recommended?.hidden === true) return true;
   return item.category === undefined || !graduated.has(item.category);
+}
+
+/** The one shadow decision: any hidden pick, on an item or on its principle, keeps the ask unshown. */
+function askIsShadow(items: OwnerItem[], principle: Principle | undefined, graduated: ReadonlySet<string>): boolean {
+  return principle?.recommended?.hidden === true || items.some((item) => itemIsShadow(item, graduated));
 }
 
 /** Each item belongs to the first principle that covers it; a one-way item never batches. */
@@ -81,25 +106,24 @@ function claimPrinciples(asked: OwnerItem[], principles: readonly Principle[]): 
   const claimed = new Map<string, Principle>();
   for (const principle of principles) {
     const members = [...new Set(principle.covers)].filter((id) => batchable.has(id) && !claimed.has(id));
-    if (members.length < 2 || principle.rule.trim() === "") continue;
+    if (members.length < 2) continue;
     for (const id of members) claimed.set(id, principle);
   }
   return claimed;
 }
 
 /** One ask per item or principle, placed where its first item stands in the input. */
-function toAsks(asked: OwnerItem[], options: OwnerRoundOptions): Ask[] {
-  const graduated = new Set(options.graduated ?? []);
-  const claimed = claimPrinciples(asked, options.principles ?? []);
+function toAsks(asked: OwnerItem[], principles: Principle[], graduated: ReadonlySet<string>): Ask[] {
+  const claimed = claimPrinciples(asked, principles);
   const asks: Ask[] = [];
   const opened = new Set<Principle>();
   for (const item of asked) {
     const principle = claimed.get(item.id);
-    if (principle === undefined) asks.push({ items: [item], shadow: isShadow(item, graduated) });
+    if (principle === undefined) asks.push({ items: [item], shadow: askIsShadow([item], undefined, graduated) });
     if (principle === undefined || opened.has(principle)) continue;
     opened.add(principle);
     const items = asked.filter((each) => claimed.get(each.id) === principle);
-    asks.push({ items, principle, shadow: items.some((each) => isShadow(each, graduated)) });
+    asks.push({ items, principle, shadow: askIsShadow(items, principle, graduated) });
   }
   return asks;
 }
@@ -122,22 +146,53 @@ function batch(asks: Ask[], max: number): Ask[][] {
 }
 
 /**
- * round@2 refuses a blanket sign-off in any prompt or option and an option shared by two
- * pick-ones, so the question id is appended until the text is neither. Prompts pass no `used`.
+ * Every rendered text goes through here. round@2 refuses a blank section text, a blanket
+ * sign-off in a prompt or option and an option shared by two pick-ones, so blank text takes
+ * the fallback and the question id is appended until the text is none of those.
  */
-function distinct(text: string, questionId: string, used = new Set<string>()): string {
-  let shown = text;
+function field(text: string, fallback: string, questionId: string, used = new Set<string>()): string {
+  let shown = text.trim() === "" ? fallback : text.trim();
   while (used.has(shown) || isBlanketSignOff(shown)) shown = `${shown} (${questionId})`;
   used.add(shown);
   return shown;
 }
 
 function recommendation(recommended: Recommended | undefined, labels: Record<string, string>): RecommendationInput {
-  if (recommended === undefined || recommended.confidence === undefined) return undefined;
+  if (recommended === undefined || recommended.confidence === undefined || recommended.by.trim() === "") return undefined;
   const answer = Object.keys(labels).find((label) => labels[label] === recommended.optionId);
-  const rationale = recommended.rationale ?? (recommended.cite === undefined ? undefined : `Cite: ${recommended.cite}`);
+  const cite = recommended.cite?.trim() ? `Cite: ${recommended.cite.trim()}` : undefined;
+  const rationale = recommended.rationale?.trim() ? recommended.rationale.trim() : cite;
   if (answer === undefined || rationale === undefined) return undefined;
-  return { answer, rationale, confidence: recommended.confidence, by: recommended.by };
+  return { answer, rationale, confidence: recommended.confidence, by: recommended.by.trim() };
+}
+
+function itemText(item: OwnerItem): AskText {
+  return {
+    prompt: item.summary,
+    title: item.summary,
+    changed: `New ask from ${item.asker ?? item.sources[0]!.system}, opened ${item.openedAt}`,
+    context: item.context,
+    choices: item.options?.map((option) => ({
+      id: option.id,
+      label: option.description?.trim() ? `${option.label.trim()}: ${option.description.trim()}` : option.label,
+    })),
+    recommended: item.recommended,
+    itemIds: [item.id],
+  };
+}
+
+function principleText(principle: Principle, items: OwnerItem[]): AskText {
+  const covered = items.map((item, index) => `(${index + 1}) ${item.summary.trim() || item.id}`).join("; ");
+  return {
+    prompt: `Principle: ${principle.rule.trim()} It covers: ${covered}.`,
+    title: `Principle covering ${items.length} asks`,
+    changed: `${items.length} open asks share this rule; a yes settles each, a no asks each alone`,
+    context: covered,
+    choices: PRINCIPLE_OPTIONS,
+    recommended: principle.recommended,
+    itemIds: items.map((item) => item.id),
+    principleId: principle.id,
+  };
 }
 
 interface Rendered {
@@ -146,66 +201,36 @@ interface Rendered {
   binding: RoundQuestionBinding;
 }
 
-function pickOne(
-  questionId: string,
-  prompt: string,
-  choices: { id: string; label: string }[],
-  recommended: Recommended | undefined,
-  used: Set<string>,
-): { question: QuestionInput; labels: Record<string, string> } {
+/** The single boundary between an ask and round@2: every constrained field is normalised here. */
+function renderAsk(text: AskText, questionId: string, used: Set<string>): Rendered {
+  const prompt = field(text.prompt, "An ask with no summary", questionId);
+  const section: SectionInput = {
+    id: `s-${questionId}`,
+    title: field(text.title, prompt, questionId),
+    deciding: prompt,
+    changed: field(text.changed, "A new ask", questionId),
+    context: field(text.context, "No further context.", questionId),
+    questionIds: [questionId],
+  };
+  const binding: RoundQuestionBinding = { questionId, itemIds: text.itemIds, options: {} };
+  if (text.principleId !== undefined) binding.principleId = text.principleId;
+  if (text.choices === undefined) return { question: { id: questionId, kind: "text", prompt }, section, binding };
   const labels: Record<string, string> = {};
-  for (const choice of choices) labels[distinct(choice.label, questionId, used)] = choice.id;
-  const signsOff = distinct(prompt, questionId);
-  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt: signsOff, options: Object.keys(labels), signsOff };
-  const shown = recommendation(recommended, labels);
-  return { question: shown === undefined ? question : { ...question, recommendation: shown }, labels };
-}
-
-function itemQuestion(item: OwnerItem, questionId: string, used: Set<string>): Rendered {
-  const section: SectionInput = {
-    id: `s-${questionId}`,
-    title: item.summary,
-    deciding: item.summary,
-    changed: `New ask from ${item.asker ?? item.sources[0]!.system}, opened ${item.openedAt}`,
-    context: item.context.trim() === "" ? "No further context." : item.context,
-    questionIds: [questionId],
+  for (const choice of text.choices) labels[field(choice.label, "Option", questionId, used)] = choice.id;
+  const question: QuestionInput = { id: questionId, kind: "pick-one", prompt, options: Object.keys(labels), signsOff: prompt };
+  const shown = recommendation(text.recommended, labels);
+  return {
+    question: shown === undefined ? question : { ...question, recommendation: shown },
+    section,
+    binding: { ...binding, options: labels },
   };
-  const binding = { questionId, itemIds: [item.id], options: {} };
-  if (item.options === undefined) {
-    return { question: { id: questionId, kind: "text", prompt: distinct(item.summary, questionId) }, section, binding };
-  }
-  const choices = item.options.map((option) => ({
-    id: option.id,
-    label: option.description === undefined ? option.label : `${option.label}: ${option.description}`,
-  }));
-  const { question, labels } = pickOne(questionId, item.summary, choices, item.recommended, used);
-  return { question, section, binding: { ...binding, options: labels } };
-}
-
-function principleQuestion(principle: Principle, items: OwnerItem[], questionId: string, used: Set<string>): Rendered {
-  const covered = items.map((item, index) => `(${index + 1}) ${item.summary}`).join("; ");
-  const prompt = `Principle: ${principle.rule} It covers: ${covered}.`;
-  const { question, labels } = pickOne(questionId, prompt, PRINCIPLE_OPTIONS, principle.recommended, used);
-  const section: SectionInput = {
-    id: `s-${questionId}`,
-    title: `Principle covering ${items.length} asks`,
-    deciding: principle.rule,
-    changed: `${items.length} open asks share this rule; a yes settles each, a no asks each alone`,
-    context: covered,
-    questionIds: [questionId],
-  };
-  const binding = { questionId, itemIds: items.map((item) => item.id), principleId: principle.id, options: labels };
-  return { question, section, binding };
 }
 
 function render(asks: Ask[], round: number, options: OwnerRoundOptions): OwnerRound {
   const used = new Set<string>();
-  const rendered = asks.map((ask, index) => {
-    const questionId = `q${index + 1}`;
-    return ask.principle === undefined
-      ? itemQuestion(ask.items[0]!, questionId, used)
-      : principleQuestion(ask.principle, ask.items, questionId, used);
-  });
+  const rendered = asks.map((ask, index) =>
+    renderAsk(ask.principle === undefined ? itemText(ask.items[0]!) : principleText(ask.principle, ask.items), `q${index + 1}`, used),
+  );
   const manifest: ManifestInput = {
     schema: MANIFEST_SCHEMA_ID,
     unit: options.unit,
@@ -220,21 +245,33 @@ function render(asks: Ask[], round: number, options: OwnerRoundOptions): OwnerRo
   return { manifest, bindings: rendered.map((each) => each.binding) };
 }
 
+/** Inputs are parsed here, so a value only its TypeScript type vouches for never reaches a round. */
+function admit(items: readonly OwnerItem[]): { asked: OwnerItem[]; skipped: OwnerRounds["skipped"] } {
+  const skipped: OwnerRounds["skipped"] = [];
+  const asked: OwnerItem[] = [];
+  for (const raw of items) {
+    const parsed = ownerItemSchema.safeParse(raw);
+    const reason = parsed.success ? skipReason(parsed.data) : "invalid";
+    if (reason === null) asked.push(parsed.data!);
+    else skipped.push({ id: String(raw?.id ?? ""), reason });
+  }
+  return { asked, skipped };
+}
+
 /**
  * Turns open Decide items into titan-review/round@2 manifests, one question and one section per
  * ask, in input order (rank first). Items a principle covers become one `Principle:` question.
- * Shadow-mode asks go in rounds that reveal recommendations after the answer; asks whose every
- * item is in a graduated category go in rounds that show them. Pure: no I/O and no clock.
+ * Asks with a shadow-mode item or a hidden pick go in rounds that reveal recommendations after
+ * the answer; the rest go in rounds that show them. Pure: no I/O and no clock.
  */
 export function buildOwnerRounds(items: readonly OwnerItem[], options: OwnerRoundOptions): OwnerRounds {
-  const skipped: OwnerRounds["skipped"] = [];
-  const asked: OwnerItem[] = [];
-  for (const item of items) {
-    const reason = skipReason(item);
-    if (reason === null) asked.push(item);
-    else skipped.push({ id: item.id, reason });
-  }
+  const { asked, skipped } = admit(items);
+  const principles = (options.principles ?? []).flatMap((each) => {
+    const parsed = principleSchema.safeParse(each);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const asks = toAsks(asked, principles, new Set(options.graduated ?? []));
   const first = options.firstRound ?? 1;
-  const rounds = batch(toAsks(asked, options), options.maxQuestions ?? 10);
-  return { rounds: rounds.map((asks, index) => render(asks, first + index, options)), skipped };
+  const rounds = batch(asks, options.maxQuestions ?? 10);
+  return { rounds: rounds.map((each, index) => render(each, first + index, options)), skipped };
 }
