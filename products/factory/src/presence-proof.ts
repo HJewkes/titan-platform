@@ -27,7 +27,7 @@ const ItemSchema = z.strictObject({
 });
 
 /** The v1 statement the owner's Mac signs; the server verifies the signature over its exact bytes before parsing it. */
-export const StatementSchema = z.strictObject({
+const StatementSchema = z.strictObject({
   v: z.literal(1),
   type: z.literal("titan-factory.gate-resolve"),
   aud: z.string().min(1),
@@ -42,7 +42,7 @@ export const StatementSchema = z.strictObject({
 export type Statement = z.infer<typeof StatementSchema>;
 export type ProofItem = z.infer<typeof ItemSchema>;
 
-export type Refusal =
+type Refusal =
   | "bad-signature"
   | "unknown-key"
   | "expired"
@@ -53,15 +53,15 @@ export type Refusal =
   | "malformed"
   | "mixed-release-batch";
 
-export type ProofResult = { ok: true; statement: Statement; keyId: string } | { ok: false; refusal: Refusal };
+type ProofResult = { ok: true; statement: Statement; keyId: string } | { ok: false; refusal: Refusal };
 
-export interface ProofInput {
+interface ProofInput {
   statementB64: string;
   signatureB64: string;
 }
 
 /** Installed owner public keys by key id. */
-export type KeyRing = ReadonlyMap<string, KeyObject>;
+type KeyRing = ReadonlyMap<string, KeyObject>;
 
 /** Sorted-key JSON, so the digest does not depend on the order a payload's keys were written in. */
 function canonical(value: unknown): string {
