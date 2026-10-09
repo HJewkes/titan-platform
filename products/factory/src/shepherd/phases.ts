@@ -6,6 +6,7 @@ import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { ShepherdStoreRef } from "./store.js";
+import type { SuiteRules } from "./suite-host.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
@@ -79,4 +80,6 @@ export interface ShepherdDeps {
   reviewCheck?: GitHubPort;
   /** Tells the repo's seat that a woken fixer exited with no push; absent means every such exit opens the owner gate. */
   exitNotice?: ExitNoticePorts;
+  /** The test rules briefs carry, resolved once at serve start from its host; absent means the form for agents off basement. */
+  suiteRules?: SuiteRules;
 }

@@ -30,7 +30,7 @@ pnpm --filter titan-console serve          # http://127.0.0.1:7500/
 
 ```
 titan console: http://127.0.0.1:7500/ (pid 4242)
-titan console on the LAN: http://lan-box:7500/ (sign in with `titan-console login-link`)
+titan console on the LAN: https://lan-box.example.ts.net:7500/ (sign in with `titan-console login-link`)
 ```
 
 ## Ports and settings
@@ -49,10 +49,12 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
-| `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, served behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
-| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, such as its tailscale address, served over HTTPS behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
+| `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. Set it to the tailnet name: the certificate must cover every name, so the defaults fail start. A port, an IP or a loopback name is refused |
+| `TITAN_CONSOLE_TLS_CERT` | none | PEM certificate the LAN listener serves, such as the `.crt` from `tailscale cert`. Required with `TITAN_CONSOLE_HOST`; set with `_KEY` or not at all |
+| `TITAN_CONSOLE_TLS_KEY` | none | Its PEM key; refused unless it is this user's and mode 0600. Both files are re-read within a minute of a change |
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
-| `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Leave it unset until the LAN carries TLS. Any value but `0` or `1` is refused |
+| `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
@@ -63,16 +65,19 @@ directory, under the name `active-work`.
 
 With `TITAN_CONSOLE_HOST` unset the console is exactly the loopback daemon above. With it set,
 the console adds a second listener on that address and the same port, through the daemon
-package's `remote` option. There is no setting that binds the LAN without auth. The loopback
-listener is unchanged and needs no credentials.
+package's `remote` option. That listener speaks only HTTPS, with the certificate and key named by
+`TITAN_CONSOLE_TLS_CERT` and `_KEY`, so a plain-HTTP request to it gets no reply. There is no
+setting that binds the LAN without TLS or without auth. The loopback listener is unchanged and
+needs no credentials.
 
 On the LAN listener the Host guard runs first: only `TITAN_CONSOLE_HOST` and the LAN names,
-each with the bound port, are answered, and anything else, `localhost` included, gets 403.
+each with the bound port, are answered, and anything else, `localhost` included, gets 403. A
+state-changing request's `Origin` must be `https://` one of those, with the port.
 Then every route, the page and `/health` included, needs a session cookie or
 `Authorization: Bearer <secret>`, and answers 401 without one. `/mcp` is never served there.
 
 ```sh
-titan-console login-link     # prints http://<first LAN name>:7500/auth/login?code=...
+titan-console login-link     # prints https://<first LAN name>:7500/auth/login?code=...
 titan-console token rotate   # rewrites lan.token at 0600; every session and link ends
 ```
 
@@ -81,16 +86,16 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
   the same `TITAN_CONSOLE_PORT`, `_STATE`, `_TOKEN` and `_LAN_NAMES` as the service. The link
   is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
   nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
-  code as JSON, and that sets an HttpOnly, SameSite=Strict cookie that lasts 30 days.
+  code as JSON, and that sets a Secure, HttpOnly, SameSite=Strict cookie that lasts 30 days.
 - **`token rotate`** writes a fresh secret by rename. The running daemon re-reads the file,
   so every session and outstanding link ends with no restart. This is how to revoke a lost
   device.
 - **Logout** is `POST /auth/logout` with a JSON body. It clears that browser's cookie only;
   a copied cookie stays valid until a rotation.
 
-The LAN is plain HTTP, so a cookie crosses the network in clear text. Nothing is exposed until
-the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step. The unit and
-the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.md).
+Nothing is exposed until the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an
+owner step. The unit and the tailscale certificate, install, login, renewal, rotate and rollback
+commands are in [docs/lan.md](docs/lan.md).
 
 ## The daemon
 
@@ -169,7 +174,7 @@ Owner writes answer for the owner: answers, approvals and merge gates. Loopback 
 credential and every same-user process can read `lan.token`, so loopback and
 `Authorization: Bearer` both get 403. A same-user agent can still mint a login link and curl
 the LAN address, so a cookie arriving from one of this machine's own addresses is refused
-too. With the switch off, owner writes answer "owner writes disabled until TLS". The handler
+too. With the switch off, owner writes answer "owner writes are off". The handler
 receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
 presence proof. An owner-write handler is defined with `ownerWrite: true` and wrapped by
 `ownerWriteCommand`. `readCommand` and `depositCommand` refuse a marked handler at runtime,

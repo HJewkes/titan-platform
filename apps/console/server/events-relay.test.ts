@@ -98,6 +98,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
     codewatchUrl: "http://codewatch.test:7433",
     lanHost: null,
     lanNames: [],
+    lanTls: null,
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox"),
