@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { hostname } from "node:os";
 import { dirname } from "node:path";
 import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
@@ -10,7 +11,9 @@ import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
+import { mountResolveProof } from "./resolve-proof.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
@@ -51,6 +54,15 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   resyncOnStart?: boolean;
   /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
   deployWatch?: DeployWatch;
+  /** The audience an owner proof must name; defaults to this machine's hostname. */
+  aud?: string;
+  /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
+  ownerKeys?: () => OwnerKeys;
+}
+
+interface OwnerProofs {
+  keys: OwnerKeys;
+  aud: string;
 }
 
 export interface FactoryServer {
@@ -69,7 +81,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const build = buildHealth(options);
   let daemon: DaemonHandle;
   try {
-    daemon = await startDaemon(daemonOptions(host, options, github, build));
+    daemon = await startDaemon(daemonOptions(host, options, github, build, ownerProofs(options)));
   } catch (err) {
     host.close();
     throw err;
@@ -127,11 +139,17 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
 
 const stateDirOf = (options: FactoryServerOptions): string => options.stateDir ?? dirname(options.dbPath);
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
+/** Keys are read once at start, so /health and the route always agree; installing or rotating a key means a restart. */
+function ownerProofs(options: FactoryServerOptions): OwnerProofs {
+  return { keys: (options.ownerKeys ?? loadOwnerKeys)(), aud: options.aud ?? hostname() };
+}
+
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }, proofs: OwnerProofs): StartDaemonOptions<FactoryContext> {
   const { routeFor } = routedRunner(options.routes);
+  const log = options.logger ?? consoleLogger;
   return {
     registry: createFactoryRegistry(),
-    createContext: () => factoryContext(host, options.routes),
+    createContext: () => factoryContext(host, options.routes, proofs.aud),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
@@ -145,7 +163,9 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
+      ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
     }),
+    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, log }),
     logger: options.logger,
   };
 }
