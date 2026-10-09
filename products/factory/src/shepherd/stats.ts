@@ -3,7 +3,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 /** A merge that waited longer than this between the reviewer's MERGE and the merge itself is slow. */
 const SLOW_WAIT_MS = 60 * 60_000;
 
-interface StatsRange {
+export interface StatsRange {
   /** Inclusive `YYYY-MM-DD`, UTC. */
   from?: string;
   /** Inclusive `YYYY-MM-DD`, UTC. */
@@ -25,7 +25,7 @@ export const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
   return typeof wrapped === "object" && wrapped !== null ? (wrapped as Record<string, unknown>) : {};
 };
-const stepName = (key: string): string => key.split(":")[0]!;
+export const stepName = (key: string): string => key.split(":")[0]!;
 const MS_PER_DAY = 86_400_000;
 
 /** The ISO 8601 week of a UTC instant: the week belongs to the year of its Thursday. */

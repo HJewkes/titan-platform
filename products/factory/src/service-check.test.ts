@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
 import { CRASH_LOOP_WINDOW_MS, type CheckPorts } from "./service-check.js";
+import { deployHealth, parseRedeployLog } from "./deploy-health.js";
+import type { IndexLock } from "./stale-lock.js";
 
 const UID = 501;
 const PID = 4242;
@@ -25,7 +27,11 @@ interface Machine {
   installed?: string;
   /** The status file's text; undefined means the file is absent. */
   tick?: string;
+  /** The deploy checkout's index.lock; absent by default. */
+  lock?: IndexLock;
 }
+
+const LOCK = "/srv/checkout/.git/index.lock";
 
 const printed = (fields: string[]): string => `gui/${UID}/${SERVICE_LABEL} = {\n${fields.map((f) => `\t${f}\n`).join("")}}\n`;
 const running = printed(["state = running", `pid = ${PID}`, "runs = 1", "last exit code = (never exited)"]);
@@ -61,6 +67,7 @@ function fakePorts(init: Machine) {
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
     installedBuildSha: () => init.installed ?? BUILD,
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
+    indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
   };
   return { ports, calls };
 }
@@ -77,6 +84,15 @@ async function check(init: Machine, ...flags: string[]) {
 describe("titan-factory service check", () => {
   it("exits 0 when /health answers from the launchd pid with github ok", async () => {
     const { code, out } = await check({ print: running, health: healthy() });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
+  it("exits 0 when /health also carries serve's start time and start counts", async () => {
+    const starts = { startedAt: "2026-10-08T21:00:00.000Z", uptimeSeconds: 90, restartCount: 3, uncleanStartsTotal: 1, restartsToday: 2 };
+
+    const { code, out } = await check({ print: running, health: healthy(starts) });
 
     expect(code).toBe(EXIT.OK);
     expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
@@ -353,6 +369,60 @@ describe("titan-factory service check", () => {
       const { out } = await check({ print: running, health: healthy(), dead: [PID], tick: tickFixture() });
 
       expect(out).toMatch(/^stale pid: /);
+    });
+  });
+
+  describe("the deploy alarm and the deploy checkout's index.lock", () => {
+    const TARGET = "b".repeat(40);
+    const refusal = (at: string): string =>
+      `${at} service deploy --expect ${TARGET}\nerror: deploy refused: git merge --ff-only ${TARGET} failed: Unable to create '${LOCK}': File exists.\n`;
+    const deployBlock = (log: string): Record<string, unknown> => ({ ...deployHealth({ entries: parseRedeployLog(log), runningSha: BUILD, now: NOW }) });
+    const TWO_REFUSALS = refusal("2026-01-01T11:50:00Z") + refusal("2026-01-01T11:55:00Z");
+    const STALE: IndexLock = { state: "stale", path: LOCK, ageMs: 42 * 60_000 };
+
+    it("exits 1 naming deploy stalled and the last refusal after two refusals in a row", async () => {
+      const { code, out } = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }) });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^deploy stalled: service deploy refused 2 times in a row; last: deploy refused: git merge --ff-only b+ failed: Unable to create/);
+      expect(out.split("\n").filter(Boolean)).toHaveLength(1);
+    });
+
+    it("exits 0 once a deploy lands after the refusals", async () => {
+      const landed = `${TWO_REFUSALS}2026-01-01T11:58:00Z service deploy --expect ${TARGET}\ndeployed ${TARGET}\n`;
+
+      const { code } = await check({ print: running, health: healthy({ deploy: deployBlock(landed) }) });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
+    it("carries the running sha, behind count and last refusal in --json", async () => {
+      const { out } = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }) }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "deploy stalled", detail: { runningSha: BUILD, behind: 0, consecutiveRefusals: 2, lastRefusal: expect.stringContaining("index.lock") } });
+    });
+
+    it("names a stale index.lock by path and age, and never removes it", async () => {
+      const { code, out, calls } = await check({ print: running, health: healthy(), lock: STALE });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toBe(`stale index.lock: stale ${LOCK}, 42 min old with no process holding it; remove it to unblock the deploy\n`);
+      expect(calls.every((call) => call.startsWith("print "))).toBe(true);
+    });
+
+    it("reports the stale lock before the deploy alarm it causes, and both after a server fault", async () => {
+      const both = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }), lock: STALE }, "--json");
+      const github = await check({ print: running, health: healthy({ github: "down", deploy: deployBlock(TWO_REFUSALS) }), lock: STALE });
+
+      expect(JSON.parse(both.out)).toMatchObject({ cause: "stale index.lock", detail: { lockPath: LOCK, lockAgeMinutes: 42 } });
+      expect(github.out).toMatch(/^GitHub down: /);
+    });
+
+    it("exits 0 for a lock a git process holds or one 10 minutes old or less", async () => {
+      const held = await check({ print: running, health: healthy(), lock: { state: "held", path: LOCK, ageMs: 60 * 60_000, holder: "a running git, pid 7" } });
+      const fresh = await check({ print: running, health: healthy(), lock: { state: "fresh", path: LOCK, ageMs: 5 * 60_000 } });
+
+      expect([held.code, fresh.code]).toEqual([EXIT.OK, EXIT.OK]);
     });
   });
 });

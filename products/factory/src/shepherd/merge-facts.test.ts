@@ -10,6 +10,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
+import { shepherdEventMigration } from "./events.js";
 import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
@@ -483,7 +484,7 @@ const EVIDENCE_RUN = "run-1";
 async function carriedThroughRoute(kind: TaskKind | undefined, bind = true) {
   const store = shepherdStoreRef();
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   if (bind) store.bind(db);
   if (kind !== undefined) new ShepherdStore(db).register({ repo: REPO, pr: 1, runId: EVIDENCE_RUN, task: "demo/1", implementer: "impl-a", policy: AUTO, kind });
   const deps: ShepherdDeps = { port: githubPort(world().wire), store, now: () => 0, sleep: async () => undefined, agentChatBin: "agent-chat" };

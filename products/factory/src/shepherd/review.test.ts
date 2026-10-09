@@ -10,6 +10,7 @@ import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
+import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
@@ -42,9 +43,9 @@ import {
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
-import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
-import type { ReviewerFacts } from "./reviewer-roles.js";
+import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 
@@ -431,7 +432,7 @@ const optIn = (reviewer: string): RegistrationInput => ({ ...registration, polic
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -1147,6 +1148,8 @@ describe("reviewPhase", () => {
     /** The hold's `--reviewer`. */
     holdReviewer?: string;
     fresh?: boolean;
+    /** The profile each class of PR is spawned with; absent means the dispatch records none. */
+    roles?: ReviewerRoles;
   }
 
   async function review(scene: Scene) {
@@ -1164,11 +1167,11 @@ describe("reviewPhase", () => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000 });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
@@ -1782,6 +1785,46 @@ describe("reviewPhase", () => {
 
       expect(dispatch.spawns).toHaveLength(1);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
+    });
+  });
+
+  describe("the reviewer profile on the recorded verdict step", () => {
+    const ROLES: ReviewerRoles = { g10: "bd-reviewer", standard: "bd-reviewer" };
+    const ownSays = (verdict: string): NonNullable<Scene["read"]> => (input, dispatch, now) =>
+      dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, verdict), now + 1));
+
+    it.each(["MERGE", "FIX_FIRST"])("records the profile Shepherd spawned its reviewer with on a %s", async (verdict) => {
+      const { resultOf } = await review({ dispatch: fakeDispatch(crew()), read: ownSays(verdict), roles: ROLES, policy: AUTO });
+
+      expect(resultOf(`sh-await-verdict:${H1}`)).toMatchObject({ kind: "verdict", verdict, reviewerProfile: "bd-reviewer" });
+    });
+
+    it.each(["MERGE", "FIX_FIRST"])("records the roster's profile of the hold's external reviewer on a %s", async (verdict) => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord", profile: "sec-auditor" });
+      const read: Scene["read"] = () => [said(external, verdictAt(H1, verdict), 5_000)];
+
+      const { resultOf } = await review({ dispatch: fakeDispatch(crew(external)), read, roles: ROLES, hold: "security: awaiting the audit", holdReviewer: external.name });
+
+      expect(resultOf(`sh-await-verdict:${H1}`)).toMatchObject({ kind: "verdict", verdict, reviewerProfile: "sec-auditor" });
+    });
+
+    it("records no profile for an external reviewer the roster gives none", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+      const read: Scene["read"] = () => [said(external, verdictAt(H1), 5_000)];
+
+      const { resultOf } = await review({ dispatch: fakeDispatch(crew(external)), read, roles: ROLES, hold: "security: awaiting the audit", holdReviewer: external.name });
+
+      expect(resultOf(`sh-await-verdict:${H1}`)).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(resultOf(`sh-await-verdict:${H1}`)).not.toHaveProperty("reviewerProfile");
+    });
+
+    it("records the seat reviewer's own profile, not Shepherd's, on the seat check's FIX_FIRST", async () => {
+      const seat = agent("seat-pr-1-review", { spawnedBy: "coord", profile: "seat-reviewer" });
+      const read: Scene["read"] = (input, dispatch, now) => (input.reviewerAgentId === seat.agentId ? [said(seat, verdictAt(H1, "FIX_FIRST"), 9_000)] : ownSays("MERGE")(input, dispatch, now));
+
+      const { resultOf } = await review({ dispatch: fakeDispatch(crew(seat)), read, roles: ROLES, policy: AUTO });
+
+      expect(resultOf(`sh-await-verdict:${H1}`)).toMatchObject({ verdict: "FIX_FIRST", reviewer: { agentId: seat.agentId }, reviewerProfile: "seat-reviewer" });
     });
   });
 

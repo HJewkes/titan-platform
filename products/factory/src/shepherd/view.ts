@@ -2,7 +2,9 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
+import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { OWNER_GATE_REASONS } from "./policy.js";
 import { reviewWait } from "./review-wait.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -39,6 +41,8 @@ export const WatchRowSchema = z.object({
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
   /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
   stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
+  /** Why an owner-gate run asks the owner; absent for other policies and for runs registered before the field. */
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
 });
@@ -84,6 +88,14 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     createdAt: z.string(),
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    event: z.enum(EVENT_KINDS),
+    reason: z.string().nullable(),
+    actor: z.string().nullable(),
+    at: z.string(),
+    headSha: z.string().nullable(),
   }),
 ]);
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
@@ -275,6 +287,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     branch: registration.branch ?? run.params.branch ?? "",
     runId: run.id,
     task: registration.task,
+    ...(registration.policy.ownerGateReason !== undefined && { ownerGateReason: registration.policy.ownerGateReason }),
     phase,
     headSha,
     phaseSince: since,
@@ -288,15 +301,16 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   };
 }
 
-/** Step entries in completion order, a running step last, and every gate the run opened at its creation time. */
-export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[]): TimelineEntry[] {
+/** Step entries in completion order, a running step last, every gate the run opened at its creation time, and every hold, release, freeze and thaw at its time. */
+export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], events: readonly ShepherdEvent[] = []): TimelineEntry[] {
   const done = completedSteps(run).map((result) => ({ at: result.completedAt, entry: stepEntry(result) }));
   const running = Object.values(run.activeSteps).map((active) => ({
     at: active.startedAt,
     entry: { kind: "step", stepId: active.stepId, iteration: 0, startedAt: active.startedAt, completedAt: null, signal: null, status: "running" } satisfies TimelineEntry,
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
-  return [...done, ...running, ...opened].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
+  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
@@ -355,6 +369,10 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
   if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
+}
+
+function eventEntry({ kind, reason, actor, at, headSha }: ShepherdEvent): TimelineEntry {
+  return { kind: "event", event: kind, reason, actor, at, headSha };
 }
 
 function gateEntry(gate: GateRecord): TimelineEntry {

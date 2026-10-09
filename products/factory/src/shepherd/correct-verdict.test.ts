@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { correctVerdict, type CorrectTiming, type CorrectVerdictInput } from "./correct-verdict.js";
 import type { ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { ReviewerBrokerDown } from "./review-wait.js";
-import { correctionPrompt } from "./reviewer-brief.js";
+import { correctionPrompt } from "@titan-design/review-panel";
 
 const HEAD = "c".repeat(40);
 const WRITTEN_AT = 2_000;

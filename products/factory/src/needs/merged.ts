@@ -23,9 +23,9 @@ async function readSource(source: QueueSource): Promise<{ items: OwnerItem[]; ga
   }
 }
 
-export async function collectNeeds(sources: readonly QueueSource[]): Promise<NeedsList> {
+export async function collectNeeds(sources: readonly QueueSource[], { personal = false }: { personal?: boolean } = {}): Promise<NeedsList> {
   const reads = await Promise.all(sources.map(readSource));
-  const open = reads.flatMap((read) => read.items).filter((item) => !item.personal);
+  const open = reads.flatMap((read) => read.items).filter((item) => personal || !item.personal);
   const counts: Record<string, number> = {};
   for (const item of open) counts[item.sources[0]!.system] = (counts[item.sources[0]!.system] ?? 0) + 1;
   return {

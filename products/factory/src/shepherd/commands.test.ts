@@ -10,6 +10,7 @@ import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
+import type { Waiting } from "./waiting.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -42,6 +43,25 @@ async function failedRegistration(w: World, slice?: string, kind?: "correctness"
   expect(w.host.runtime.status(runId)?.status).toBe("failed");
   return runId;
 }
+
+describe("shepherd.waiting", () => {
+  it("lists nothing when no run waits", async () => {
+    const w = world({ frozen: true });
+
+    expect(await w.call("shepherd.waiting", {})).toEqual({ ok: true, data: { owner: [], seat: [] } });
+  });
+
+  it("marks an approve-merge gate current when the head its prompt names is the run's head", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const envelope = await w.call<Waiting>("shepherd.waiting", {});
+
+    expect(envelope).toMatchObject({ ok: true, data: { owner: [{ gateId: gateId(runId, "approve-merge"), head: H1, headIsCurrent: true }], seat: [] } });
+  });
+});
 
 describe("shepherd.register", () => {
   it("a second register for the same repo#pr returns the first run, starts no other, and updates the metadata", async () => {
@@ -88,6 +108,25 @@ describe("shepherd.register", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused/) });
     expect(shepherdRuns(w.host)).toEqual([]);
     expect(await w.call("shepherd.status", {})).toEqual({ ok: true, data: [] });
+  });
+
+  it("an owner-gate request with no reason is refused naming the four reasons, and starts no run", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", { ...pr1, policy: { merge: "owner-gate" } });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused.*gate-2-visual, g10-security, proof-fixture, owner-asked/) });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("an owner-gate request with a reason registers and stores it", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, { ...pr1, policy: { merge: "owner-gate", ownerGateReason: "proof-fixture" } });
+
+    expect(registration.policy).toMatchObject({ merge: "owner-gate", ownerGateReason: "proof-fixture" });
   });
 
   it("a PR whose head is not the branch given is refused and starts no run", async () => {

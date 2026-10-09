@@ -125,9 +125,27 @@ describe("console LAN config", () => {
     expect(() => lan({ TITAN_CONSOLE_LAN_NAMES: names })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
   });
 
+  // A localhost label anywhere can resolve to loopback, and a numeric last label is read as an IPv4 address by a WHATWG URL.
+  it.each(["localhost.localdomain", "box.localhost.lan", "127.1", "box.0x7f", "lan.2130706433"])("refuses the loopback-shaped LAN name %j", (names) => {
+    expect(() => lan({ TITAN_CONSOLE_LAN_NAMES: names })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
+  });
+
+  it("keeps a name whose labels only contain digits before the last", () => {
+    expect(lan({ TITAN_CONSOLE_LAN_NAMES: "10.box,rack-7.lan" }).lanNames).toEqual(["10.box", "rack-7.lan"]);
+  });
+
   it("keeps the LAN token in the state directory unless TITAN_CONSOLE_TOKEN is given", () => {
     expect(lan({}).lanTokenPath).toBe(path.join(HOME, ".local/state/titan-console", "lan.token"));
     expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).lanTokenPath).toBe("/var/console/lan.token");
     expect(lan({ TITAN_CONSOLE_TOKEN: "~/secrets/lan.token" }).lanTokenPath).toBe(path.join(HOME, "secrets", "lan.token"));
+  });
+
+  it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
+  });
+
+  it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
+    expect(() => lan({ TITAN_CONSOLE_OWNER_WRITES: value })).toThrow(/TITAN_CONSOLE_OWNER_WRITES/);
   });
 });

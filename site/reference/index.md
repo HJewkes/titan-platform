@@ -12,7 +12,7 @@ Domain-free building blocks. No titan dependencies.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
-| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state without I/O: usage readings, token-free login state, account labels and secret redaction | none |
+| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read and the usage file | none |
 | [`app-paths`](/reference/app-paths) | Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies | none |
 | [`authority`](/reference/authority) | The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator | none |
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
@@ -26,7 +26,7 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
-| `tool-guard` | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority` |
+| [`tool-guard`](/reference/tool-guard) | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority` |
 
 ## Tier 1 — engines
 
@@ -40,6 +40,7 @@ Reusable machinery over the primitives.
 | [`agent-surface`](/reference/agent-surface) | Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan | none |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
+| [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `store-sqlite` |
 | [`matrix-bus`](/reference/matrix-bus) | Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap | none |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |

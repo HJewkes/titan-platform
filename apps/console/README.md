@@ -52,6 +52,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_HOST` | none | Turns LAN mode on: one IP address on this machine's interfaces, served behind auth. Loopback, a wildcard, a name or an address the machine does not have is refused |
 | `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. A port, an IP or a loopback name is refused |
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
+| `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Leave it unset until the LAN carries TLS. Any value but `0` or `1` is refused |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -87,7 +88,8 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
   a copied cookie stays valid until a rotation.
 
 The LAN is plain HTTP, so a cookie crosses the network in clear text. Nothing is exposed until
-the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step (TP-1981).
+the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step. The unit and
+the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.md).
 
 ## The daemon
 
@@ -118,6 +120,29 @@ Three rules hold for every later slice.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
 - **Read-only.** There is no command that writes, answers a queue item, or controls an agent.
+  A later one must take a class below.
+
+## Who may run a command
+
+Every command the registry serves carries a class, set by `server/owner-guard.ts`. A refusal
+is 403 with the envelope code 77 (`EXIT.NOPERM`) and a reason that names the class. It never
+echoes a cookie, the token or a login code.
+
+| Class | Runs for |
+| --- | --- |
+| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command today is a read |
+| `deposit` | An HTTP call: on loopback, where every POST already needs an allowlisted `Origin` or `X-Titan-Client`, or on the LAN with either credential |
+| `owner-write` | Only the owner's session cookie on the LAN listener, from a peer that is not this machine, while `TITAN_CONSOLE_OWNER_WRITES=1` |
+
+Owner writes answer for the owner: answers, approvals and merge gates. Loopback carries no
+credential and every same-user process can read `lan.token`, so loopback and
+`Authorization: Bearer` both get 403. A same-user agent can still mint a login link and curl
+the LAN address, so a cookie arriving from one of this machine's own addresses is refused
+too. With the switch off, owner writes answer "owner writes disabled until TLS". The handler
+receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
+presence proof. Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
+The OS account is still the trust boundary: this stops an agent answering for the owner by
+accident or as a confused deputy, not a hostile process running as the same user.
 
 ## active-work reads
 

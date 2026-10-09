@@ -8,6 +8,7 @@ import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, typ
 import { awaitPrRoute, awaitPrStep } from "./await-pr.js";
 import { behindAt, inheritEscalation, reviewable } from "./behind.js";
 import { followingApprovals } from "./approval-carry.js";
+import { classifyingFailures } from "./failure-class.js";
 import { carriedVerdict, carryRoutes } from "./carry-merge.js";
 import { freezeHoldRoutes, heldByFrozenMain } from "./freeze-hold.js";
 import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflict-check.js";
@@ -144,7 +145,8 @@ async function afterLand(run: ShepherdRun, outcome: LandOutcome): Promise<LandOu
 
 async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<LandOutcome | undefined> {
   if (outcome.kind === "ci-failed") {
-    if (await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++)) return undefined;
+    const held = await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++);
+    if (held !== false) return held === true ? undefined : held;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
   }
@@ -351,5 +353,5 @@ export const DEFAULT_PHASES: ShepherdPhases = { wake: wakePhase, review: reviewP
 
 /** The registered workflow; params `repo`, `pr` or `branch`, and `policy` as an `EffectivePolicy` JSON string. */
 export function shepherdPrWorkflow(phases: ShepherdPhases = DEFAULT_PHASES): WorkflowDefinition {
-  return defineWorkflow({ name: "shepherd-pr", steps: SHEPHERD_STEPS, run: async (ctx) => void (await shepherdPr(ctx, shepherdPrParams(ctx), phases)) });
+  return defineWorkflow({ name: "shepherd-pr", steps: SHEPHERD_STEPS, run: classifyingFailures(async (ctx) => void (await shepherdPr(ctx, shepherdPrParams(ctx), phases))) });
 }

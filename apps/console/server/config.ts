@@ -36,6 +36,8 @@ export interface ConsoleConfig {
   lanNames: string[];
   /** The LAN secret; `login-link` and `token rotate` use it even when `lanHost` is null. */
   lanTokenPath: string;
+  /** `TITAN_CONSOLE_OWNER_WRITES=1` lets owner-write commands run on the LAN; off until the LAN carries TLS. */
+  ownerWrites: boolean;
 }
 
 /** What `resolveConfig` asks of the machine it runs on; a seam for tests. */
@@ -75,6 +77,7 @@ export function resolveConfig(
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+    ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
@@ -100,6 +103,13 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   return raw;
 }
 
+/** Only `1` turns owner writes on; any other value is refused rather than read as off, so a typo is never silent. */
+function ownerWritesFrom(raw: string | undefined): boolean {
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw === "1") return true;
+  throw new Error(`TITAN_CONSOLE_OWNER_WRITES must be 1 or 0, got "${raw}"`);
+}
+
 const WILDCARDS = new BlockList();
 WILDCARDS.addSubnet("0.0.0.0", 8, "ipv4");
 WILDCARDS.addAddress("::", "ipv6");
@@ -123,11 +133,15 @@ function lanHostFrom(raw: string | undefined, machine: Machine): string | null {
 }
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** The WHATWG URL parser reads a host whose last label is a number as IPv4, so `127.1` is loopback. */
+const NUMERIC_LABEL = /^(?:\d+|0x[0-9a-f]*)$/;
 
 /** Hostnames only: no port, no IP (the bound address is allowed already) and nothing loopback. */
 function isLanName(name: string): boolean {
-  if (name.length > 253 || isIP(name) !== 0 || isLoopbackHost(name) || name.endsWith(".localhost")) return false;
-  return name.split(".").every((label) => DNS_LABEL.test(label));
+  if (name.length > 253 || isIP(name) !== 0 || isLoopbackHost(name)) return false;
+  const labels = name.split(".");
+  if (NUMERIC_LABEL.test(labels.at(-1) ?? "") || labels.includes("localhost")) return false;
+  return labels.every((label) => DNS_LABEL.test(label));
 }
 
 /** `TITAN_CONSOLE_LAN_NAMES` is a comma list; the default is this machine's hostname and its `.local` mDNS name. */
