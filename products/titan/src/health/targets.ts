@@ -12,7 +12,7 @@ export interface HostEnv {
   home: string;
 }
 
-export interface LoadTargetsDeps extends HostEnv {
+interface LoadTargetsDeps extends HostEnv {
   readFile: (path: string) => string;
   warn: (line: string) => void;
 }
@@ -38,11 +38,11 @@ export function stateHome({ env, home }: HostEnv): string {
   return env.XDG_STATE_HOME || join(home, ".local", "state");
 }
 
-export function hostJsonPath({ env, home }: HostEnv): string {
+function hostJsonPath({ env, home }: HostEnv): string {
   return join(env.XDG_CONFIG_HOME || join(home, ".config"), "titan", "host.json");
 }
 
-export function defaultTargets(host: HostEnv): HealthTarget[] {
+function defaultTargets(host: HostEnv): HealthTarget[] {
   return [
     {
       name: "factory",

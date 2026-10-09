@@ -2,7 +2,7 @@ import type { HealthSample, HealthSampleInput } from "@titan-design/health";
 import { measureSelf } from "./self-cost.js";
 import type { HealthTarget } from "./targets.js";
 
-export interface SampleTickDeps {
+interface SampleTickDeps {
   probe: (target: HealthTarget) => Promise<HealthSample>;
   /** Writes every row in one transaction and returns how many it wrote. */
   append: (rows: readonly HealthSampleInput[]) => number;

@@ -6,21 +6,21 @@ import { appendSamples, openHealthStore, probeHttp, type HealthSample } from "@t
 import { sampleTick } from "./sample-tick.js";
 import { loadTargets, stateHome, type HealthTarget, type HostEnv } from "./targets.js";
 
-export interface HealthIo extends HostEnv {
+interface HealthIo extends HostEnv {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   setExitCode: (code: number) => void;
 }
 
 /** Exit 2: the tick could not be stored, so this minute is missing from the record. */
-export const EXIT_STORE = 2;
+const EXIT_STORE = 2;
 
 export function registerHealth(program: Command, io: HealthIo): void {
   const health = program.command("health").description("Sample and report the health of this host's services");
   registerSample(health, io);
 }
 
-export function defaultDbPath(host: HostEnv): string {
+function defaultDbPath(host: HostEnv): string {
   return join(stateHome(host), "titan", "health.sqlite3");
 }
 
