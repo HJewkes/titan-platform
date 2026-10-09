@@ -34,7 +34,7 @@ export class ReviewerBrokerBusy extends Error {
 
 /** The broker refused because the machine stop holds; a storm can outlast the busy wait, so the hold has its own, longer ceiling. */
 export class ReviewerMachineHold extends ReviewerBrokerBusy {
-  override readonly name = "ReviewerMachineHold";
+  override readonly name: string = "ReviewerMachineHold";
 }
 
 /** The factory's own spawn gate deferred the start; it admits oldest-first, so the queue's head must ask again within a window or the opening is lost. */
