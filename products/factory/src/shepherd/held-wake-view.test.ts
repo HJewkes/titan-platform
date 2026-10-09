@@ -117,9 +117,9 @@ describe("what the watch view shows after a wake no fixer took", () => {
     expect(nextAction).not.toContain("the seat was told");
   });
 
-  it("records no hold for a ci-red wake, and shows none once the owner awaits a fix", async () => {
+  it("records no hold for a ci-red wake, and shows none once the owner awaits a fix after the seat notice failed", async () => {
     const fake = fakeGitHub();
-    const w = world(fake, "failure", seat(false));
+    const w = world(fake, "failure", seat(true));
     fake.addPr({ headSha: H1 });
     const runId = start(w);
     await gateOpened(w.host, gateId(runId, "ci-failed"));
