@@ -1,7 +1,49 @@
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { vi } from "vitest";
+
+export function makeFifo(file: string): void {
+  const made = spawnSync("mkfifo", ["-m", "600", file]);
+  if (made.status !== 0) throw new Error(`mkfifo failed: ${String(made.stderr)}`);
+}
+
+// A reader blocked opening the FIFO would hang the test thread for good, and no in-process
+// timer can fire meanwhile. This child opens the write end from 1.5 s on, which releases such
+// a reader, so code that blocks shows up as slow instead of hanging the run.
+const UNBLOCK_FIFO = `
+const fs = require("node:fs");
+const started = Date.now();
+const tick = () => {
+  try {
+    fs.closeSync(fs.openSync(process.argv[1], fs.constants.O_WRONLY | fs.constants.O_NONBLOCK));
+    process.exit(0);
+  } catch {
+    if (Date.now() - started > 6000) process.exit(0);
+    setTimeout(tick, 100);
+  }
+};
+setTimeout(tick, 1500);
+`;
+
+export function unblockFifoLater(fifo: string): ChildProcess {
+  return spawn(process.execPath, ["-e", UNBLOCK_FIFO, fifo], { stdio: "ignore" });
+}
+
+// Runs `swap` once, straight after the first lstat of `file`, to stage a race.
+export function swapAfterLstat(file: string, swap: () => void): void {
+  const realLstat = fs.lstatSync;
+  let swapped = false;
+  vi.spyOn(fs, "lstatSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
+    const stat = (realLstat as (...args: unknown[]) => fs.Stats)(target, ...rest);
+    if (!swapped && String(target) === file) {
+      swapped = true;
+      swap();
+    }
+    return stat;
+  }) as typeof fs.lstatSync);
+}
 
 // Every node test works in a fresh temp dir passed in explicitly, so no test can reach a
 // real `~/.claude` or `~/.claude-profiles` credentials file.

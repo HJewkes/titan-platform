@@ -128,6 +128,17 @@ describe("readLoginState refuses before reading a byte", () => {
     expect(read).not.toHaveBeenCalled();
   });
 
+  it("refuses a hard-linked file, since its other name may sit outside the config dir", () => {
+    writeCredentials(fakeCredentials());
+    fs.linkSync(credentials, path.join(home, "second-name.json"));
+    const read = vi.spyOn(fs, "readSync");
+
+    const state = readLoginState(configDir, { now: NOW, uid });
+
+    expect(state).toEqual({ status: "refused", reason: "hard-linked" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("refuses a directory in the credentials file's place", () => {
     fs.mkdirSync(credentials, { recursive: true });
 
@@ -256,6 +267,24 @@ describe("readLoginState never leaks the canary", () => {
     expect(errorText(error)).toContain("ENOTDIR");
     expect(errorText(error)).not.toContain(CANARY);
     expectNoCanary();
+  });
+
+  it("zeroes the bytes it read when a later read fails, and redacts the error", () => {
+    writeCredentials(fakeCredentials());
+    const realRead = fs.readSync;
+    const buffers: Uint8Array[] = [];
+    vi.spyOn(fs, "readSync").mockImplementation(((fd: number, buffer: Uint8Array, ...rest: unknown[]) => {
+      buffers.push(buffer);
+      if (buffers.length > 1) throw Object.assign(new Error(`EIO: i/o error, read ${FAKE_ACCESS_TOKEN}`), { code: "EIO" });
+      return (realRead as (...args: unknown[]) => number)(fd, buffer, ...rest);
+    }) as typeof fs.readSync);
+
+    const error = thrown(() => readLoginState(configDir, { now: NOW, uid }));
+
+    expect(errorText(error)).toContain("EIO");
+    expect(errorText(error)).not.toContain(CANARY);
+    expect(buffers.length).toBe(2);
+    expect(buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
   });
 
   it("writes nothing to the console or standard streams", () => {

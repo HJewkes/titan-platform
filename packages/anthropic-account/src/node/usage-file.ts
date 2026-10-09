@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { redactSecrets } from "../redact.js";
 import { POLL_SESSION_ID, parseUsageReading, type UsageReading } from "../usage.js";
+import { readGatedFile } from "./gated-read.js";
 import { redactedError } from "./redact-error.js";
 
 export const USAGE_FILE = `${POLL_SESSION_ID}.json`;
@@ -31,14 +32,30 @@ function listReadingFiles(dir: string): string[] | null {
   }
 }
 
+// Another writer's file can carry anything in its strings, so a token-shaped one is
+// redacted before it is handed back.
+function redactStrings(reading: UsageReading): UsageReading {
+  const redacted: UsageReading = { ...reading, session_id: redactSecrets(reading.session_id) };
+  if (reading.source !== undefined) redacted.source = redactSecrets(reading.source);
+  if (reading.account !== undefined) redacted.account = redactSecrets(reading.account);
+  return redacted;
+}
+
+function parseReadingBytes(bytes: Buffer): UsageReading | null {
+  try {
+    const reading = parseUsageReading(JSON.parse(bytes.toString("utf8")));
+    return reading !== null && Object.keys(reading.rate_limits).length > 0 ? redactStrings(reading) : null;
+  } finally {
+    bytes.fill(0);
+  }
+}
+
 // The status line prunes its files while this runs, and any one file may be half-written
 // by another writer, so a file that cannot be read is skipped rather than fatal.
 function readReadingFile(file: string): UsageReading | null {
   try {
-    const stat = fs.lstatSync(file);
-    if (!stat.isFile() || stat.size > MAX_READING_BYTES) return null;
-    const reading = parseUsageReading(JSON.parse(fs.readFileSync(file, "utf8")));
-    return reading !== null && Object.keys(reading.rate_limits).length > 0 ? reading : null;
+    const read = readGatedFile(file, { maxBytes: MAX_READING_BYTES });
+    return read.status === "read" ? parseReadingBytes(read.bytes) : null;
   } catch {
     return null;
   }

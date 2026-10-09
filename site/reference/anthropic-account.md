@@ -93,7 +93,7 @@ type LoginState =
   | { status: "present"; expiresAt: number; canRefresh: boolean; subscriptionType?: string; rateLimitTier?: string }
   | { status: "expired"; expiresAt: number; canRefresh: boolean }
   | { status: "missing" }
-  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" };
+  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" | "hard-linked" };
 ```
 
 `loginStateFromCredentials(credentials, now)` takes the parsed `.credentials.json` object and
@@ -108,7 +108,7 @@ expiry. It returns:
 | `missing` | the input, or its `claudeAiOauth` block, is absent or null |
 | `refused` | `malformed`: the block has no access token, or an expiry outside epoch milliseconds from 1e12 to 1e14, so a seconds or microseconds value is refused |
 
-`mode-too-wide`, `foreign-owner` and `not-a-regular-file` come only from the `./node`
+`mode-too-wide`, `foreign-owner`, `not-a-regular-file` and `hard-linked` come only from the `./node`
 reader, which refuses a credentials file before reading it.
 
 `needsRefresh(state, now, marginMs)` is true when the access token expires within `marginMs`
@@ -177,10 +177,13 @@ reads a byte it:
    `lstat` fails the open (`not-a-regular-file`) and a FIFO cannot hang it.
 3. `fstat`s the open descriptor and refuses unless it is a regular file with the `lstat`'s
    device and inode (`not-a-regular-file`), owned by `uid` (`foreign-owner`), with no group
-   or other permission bits (`mode-too-wide`), and at most 64 KiB (`malformed`).
+   or other permission bits (`mode-too-wide`), with exactly one link (`hard-linked`), and at
+   most 64 KiB (`malformed`).
 
-The read and the checks use the same descriptor, so the file checked is the file read. The
-read stops at 64 KiB plus one byte, and the buffer is zeroed after parsing. Invalid JSON is
+A second hard link is refused because the file's other name may sit outside the config dir,
+under rules this check cannot see. The read and the checks use the same descriptor, so the
+file checked is the file read. The read stops at 64 KiB plus one byte. The buffer is zeroed
+after parsing, and also when a read fails partway through. Invalid JSON is
 `malformed`, and the parser's message, which quotes the input, is dropped. `uid` defaults to
 the process's uid; on a platform without one every file is refused as `foreign-owner`. An
 unexpected filesystem error is thrown through `redactSecrets`, with no `cause`.
@@ -203,8 +206,12 @@ reader accepts the file as written; a test restates its rules.
 
 `readUsage(configDir, { now? })` returns `{ reading, file, ageSeconds }` for the reading with
 the newest `written_at` across every `.json` file in the sessions dir, the poller's and each
-status-line session's, or `null`. It skips a file that is a symlink, larger than 256 KiB,
-invalid, or has no rate-limit window. `ageSeconds` is never negative.
+status-line session's, or `null`. Each file goes through the same `lstat`, `O_NOFOLLOW` open
+and `fstat` steps as the credentials file, without the owner, mode and link rules, so a
+symlink or FIFO swapped in mid-read is refused and never blocks. A file is skipped when it
+is not a regular file, is larger than 256 KiB (checked on the read itself, so growth after
+the `fstat` counts), is invalid, or has no rate-limit window. Its `session_id`, `source` and
+`account` pass through `redactSecrets`. `ageSeconds` is never negative.
 
 ## What it deliberately does not do
 

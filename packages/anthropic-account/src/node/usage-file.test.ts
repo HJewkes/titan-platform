@@ -2,17 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { CANARY, FAKE_ACCESS_TOKEN } from "../fixtures/fake-tokens.js";
+import type { ChildProcess } from "node:child_process";
+import { CANARY, FAKE_ACCESS_TOKEN, FAKE_JWT, FAKE_OPAQUE } from "../fixtures/fake-tokens.js";
 import {
   captureOutput,
   errorText,
+  makeFifo,
   makeTempHome,
   removeTempHome,
+  swapAfterLstat,
   thrown,
+  unblockFifoLater,
   writeFileWithMode,
 } from "../fixtures/temp-home.js";
 import type { UsageReading } from "../usage.js";
-import { USAGE_FILE, readUsage, sessionsDir, usageFilePath, writeReading } from "./usage-file.js";
+import { MAX_READING_BYTES, USAGE_FILE, readUsage, sessionsDir, usageFilePath, writeReading } from "./usage-file.js";
 
 const WRITTEN_AT = 1_791_460_800;
 
@@ -199,9 +203,95 @@ describe("readUsage", () => {
     expect(readUsage(configDir, { now: WRITTEN_AT * 1000 })?.file).toBe(usageFilePath(configDir));
   });
 
+  it("redacts a token-shaped session_id, account or source it returns", () => {
+    writeSessionFile("s.json", reading({ session_id: FAKE_OPAQUE, account: FAKE_ACCESS_TOKEN, source: FAKE_JWT }));
+
+    const read = readUsage(configDir, { now: WRITTEN_AT * 1000 });
+
+    expect(read?.reading.rate_limits).toEqual(reading().rate_limits);
+    expect(JSON.stringify(read)).not.toContain(CANARY);
+  });
+
   it("never reports a negative age for a reading from the future", () => {
     writeReading(configDir, reading());
 
     expect(readUsage(configDir, { now: (WRITTEN_AT - 30) * 1000 })?.ageSeconds).toBe(0);
+  });
+});
+
+describe("readUsage reads the file it checked", () => {
+  let unblocker: ChildProcess | undefined;
+
+  afterEach(() => {
+    unblocker?.kill();
+    unblocker = undefined;
+  });
+
+  const sessionFile = (): string => path.join(sessionsDir(configDir), "s.json");
+
+  it.skipIf(process.platform === "win32")(
+    "returns promptly when a file is swapped for a symlink to a FIFO after the lstat",
+    () => {
+      writeSessionFile("s.json", reading({ session_id: "s" }));
+      const fifo = path.join(home, "pipe");
+      makeFifo(fifo);
+      unblocker = unblockFifoLater(fifo);
+      swapAfterLstat(sessionFile(), () => {
+        fs.rmSync(sessionFile());
+        fs.symlinkSync(fifo, sessionFile());
+      });
+      const started = Date.now();
+
+      const read = readUsage(configDir, { now: WRITTEN_AT * 1000 });
+
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(read).toBeNull();
+    },
+    15_000,
+  );
+
+  it("does not follow a symlink to a reading outside the dir swapped in after the lstat", () => {
+    writeSessionFile("s.json", reading({ session_id: "s" }));
+    const outside = path.join(home, "outside.json");
+    writeFileWithMode(outside, JSON.stringify(reading({ session_id: "outside" })), 0o600);
+    swapAfterLstat(sessionFile(), () => {
+      fs.rmSync(sessionFile());
+      fs.symlinkSync(outside, sessionFile());
+    });
+
+    expect(readUsage(configDir, { now: WRITTEN_AT * 1000 })).toBeNull();
+  });
+
+  it("does not read past the cap a file that grew after the lstat", () => {
+    writeSessionFile("s.json", reading({ session_id: "s" }));
+    swapAfterLstat(sessionFile(), () => fs.appendFileSync(sessionFile(), " ".repeat(MAX_READING_BYTES)));
+
+    expect(readUsage(configDir, { now: WRITTEN_AT * 1000 })).toBeNull();
+  });
+});
+
+describe("writeReading beside another writer", () => {
+  it("lands one whole reading and no temp file when a second write runs mid-write", () => {
+    writeReading(configDir, reading());
+    const realRename = fs.renameSync;
+    const temps: string[] = [];
+    let seenMidWrite: ReturnType<typeof readUsage> = null;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      temps.push(String(from));
+      if (temps.length === 1) {
+        seenMidWrite = readUsage(configDir, { now: WRITTEN_AT * 1000 });
+        writeReading(configDir, reading({ written_at: WRITTEN_AT + 2 }));
+      }
+      realRename(from, to);
+    });
+
+    writeReading(configDir, reading({ written_at: WRITTEN_AT + 1 }));
+
+    expect(seenMidWrite).toMatchObject({ reading: reading() });
+    expect(new Set(temps).size).toBe(2);
+    expect(fs.readdirSync(sessionsDir(configDir))).toEqual([USAGE_FILE]);
+    expect(JSON.parse(fs.readFileSync(usageFilePath(configDir), "utf8"))).toEqual(
+      reading({ written_at: WRITTEN_AT + 1 }),
+    );
   });
 });
