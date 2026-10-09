@@ -192,6 +192,41 @@ describe("shepherd waiting", () => {
   });
 });
 
+describe("shepherd hold", () => {
+  async function servedRegistration(): Promise<{ deps: CliDeps; server: FactoryServer; runId: string; heldReason: () => string | null | undefined }> {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const server = await startFactoryServer({ dbPath, workflows: fixture.workflows, routes: fixture.routes, port: 0, runtimeId: "serve-host", logger: silentLogger, gatePollMs: 5 });
+    cleanups.push(() => server.close());
+    const registered = await callCommand<{ runId: string }>(server.host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    const runId = registered.data.runId;
+    return { deps, server, runId, heldReason: () => fixture.routes.shepherd!.store.get().byRun(runId)?.holdReason };
+  }
+
+  it("exits 65 on an untyped reason, prints no hold, and leaves the run unheld on serve", async () => {
+    const { deps, server, heldReason } = await servedRegistration();
+
+    const refused = await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "seat merges by the interim procedure", "--port", String(server.port)], deps);
+
+    expect(refused.code).toBe(65);
+    expect(refused.err).toContain("is not a hold class");
+    expect(refused.out).not.toContain("held");
+    expect(heldReason()).toBeNull();
+  });
+
+  it("exits 0 and prints the hold for a typed reason", async () => {
+    const { deps, server, runId } = await servedRegistration();
+
+    const held = await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "stalled: no step progress for 70 minutes; TP-3", "--port", String(server.port)], deps);
+
+    expect(held.code).toBe(EXIT.OK);
+    expect(held.out).toBe(`run ${runId}: held (stalled: no step progress for 70 minutes; TP-3)\n`);
+  });
+});
+
 describe("shepherd register with a bare task ID", () => {
   it("exits with a usage error naming the expected form when no initiative has the ID", async () => {
     const fetch = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [] } }))) as typeof globalThis.fetch;

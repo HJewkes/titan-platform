@@ -1,5 +1,49 @@
 # @titan-design/session-read
 
+## 0.11.0
+
+### Minor Changes
+
+- f34ae27: The Codex and Claude decoders and the recent Codex reader now throw `SessionIdentityError` (still a `TypeError` subclass) when a file's records belong to a different native session, so a consumer can quarantine such a file while letting real programming errors propagate.
+- a8faac4: Remove the deprecated `usage` event (breaking). `SessionEvent` no longer has a `usage` kind, `TranscriptDelta.usage` and the `UsageRow` type are gone, and `EventFolder` no longer folds usage. The `usage` rows counted a response written over two lines twice. Read `delta.requests` instead and dedupe on `requestId`, as session-graph's rollup already does.
+
+  No known consumer reads the removed API. `git grep -n -E 'delta\.usage|UsageRow'` finds 0 hits in each of these:
+
+  | repo                                | pinned sha | current `origin/main` |
+  | ----------------------------------- | ---------- | --------------------- |
+  | active-work                         | 1ebd7b9: 0 | d30d956: 0            |
+  | agent-chat                          | c1e47ca: 0 | 9383846: 0            |
+  | relay (private)                     | pinned: 0  | current: 0            |
+  | codewatch                           | 91dc543: 0 | dc9f4ef: 0            |
+  | brain                               | 760ce01: 0 | 760ce01: 0            |
+  | titan-platform outside session-read | n/a        | 513c0cce: 0           |
+
+  `EXTRACT_VERSION` stays at 7. No stored row comes from the `usage` event: session-graph rebuilds `session_model_usage` from `request` rows, so a re-extract would change nothing.
+
+- 1aed39d: session-read now exports `expandHome(file, homeDir?)`, which expands both a bare `~` and `~/…`; `toAbsolutePath` uses it, so a stored bare `~` path now resolves. session-graph drops its private copy and imports this one.
+- deb35d0: Export `splitPipelines`, which groups the simple commands of a raw Bash command into the pipelines a `|` joins, plus `splitCommands` and `simpleCommandHead`, the head of one simple command without its redirect targets.
+- 59ba612: `parseVerdictBlock` reads an optional `Closer: yes|no` line directly after Head on a FIX_FIRST block and returns it as `closer`; absent, on MERGE, malformed, duplicated or misplaced it stays undefined and the block parses as before. Shepherd carries `closer` on a FIX_FIRST verdict and opens approve-merge with the new `no-progress` escalation at the second consecutive FIX_FIRST that said `Closer: no`, before the `fix-first-runaway` cap. Any other round resets the streak.
+- c466784: session-read now exports `parseFileRef(ref)`, the inverse of `fileRef`: it returns `{ repo, path }` from a `file:` ref, a null repo for an unattributed ref, and null for a ref of another kind. `toRepoRelative` now strips a leaked `.worktrees/<name>/` prefix, so a file touched in a worktree that has since been removed resolves to the same repo-relative path as the live worktree, and returns posix paths. New ingests of such files write `file:<repo>/<path>` instead of `file:<repo>/.worktrees/<name>/<path>`; `parseFileRef` strips the prefix from refs already stored.
+
+### Patch Changes
+
+- 495e6f8: `claudeTranscriptRoots` now discovers Claude config profiles through `@titan-design/anthropic-account` instead of its own copy of the scan. Two behaviour changes follow from that package: a symlinked `~/.claude-profiles` directory is skipped, and an account label drops leading dots (a `CLAUDE_CONFIG_DIRS` entry `.work` is now labelled `work`, and a name that is empty after that is labelled `default`), so stored account names for such directories change. The default `~/.claude` root is still always listed.
+
+  Release order: `@titan-design/anthropic-account` is a new package whose first npm publish is done by the owner. Hold the "Version Packages" pull request until that package exists on npm, because this release depends on it.
+
+- 74f9f51: Docs: name the `LineReader` `initialTs` exception (and that `readTranscriptEvents` recovers it), list all 13 `SignalKind` members with the correct `pr_create` and `agent_spawn` sources, document `parseReviewVerdicts`, `assignedTaskIds` and `orientationEnd` in the README, and name Codex in the package description.
+- 1fd9652: Share one observation stream between the Claude and Codex readers: the backpressure queue, resume check, locator text selection and prefix-digest decode loop now live once. Codex `readCodexText` now resolves a moved source with the same full-identity rule as Claude: a fresh source must match the locator's `sourceId`, harness, format, namespace, conversation and provenance, not `sourceId` alone.
+- 295acf8: Drop a subshell closer from the last word of a git or gh command, so `(git push origin feat/q)` records branch `feat/q` rather than `feat/q)`. `EXTRACT_VERSION` is now 7, so stored intents re-extract on the next backfill.
+- ff6ff86: Wrap the README event-kind list. Docs only.
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [a109b70]
+- Updated dependencies [906b22b]
+- Updated dependencies [c85944c]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/anthropic-account@0.1.0
+
 ## 0.10.0
 
 ### Minor Changes

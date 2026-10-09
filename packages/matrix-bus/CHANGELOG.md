@@ -1,5 +1,11 @@
 # @titan-design/matrix-bus
 
+## 0.2.1
+
+### Patch Changes
+
+- 25b75c6: Document that an `io.titan.resolution` decision word that does not fit the item kind folds to null, and pin it with a test.
+
 ## 0.2.0
 
 ### Minor Changes
