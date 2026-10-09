@@ -3,6 +3,7 @@ import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
 import { describe, expect, it, vi } from "vitest";
 import { G10_RELEASE_STEP, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, withReviewerProfile, type G10Verdict } from "./g10-release.js";
+import type { Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -195,7 +196,7 @@ describe("a release at a clean merge-up of the reviewed head", () => {
     const reviewed = { kind: "MERGE" as const, headSha: HEAD, evidence, reviewerProfile: "bd-reviewer" };
     const carried = { kind: "MERGE" as const, headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, ...(mark && { mergeUpFrom: mark }) };
     const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
-    return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map([[HEAD, reviewed], [MOVED, carried]]), lastCi: { headSha: MOVED, verdict: "green" } as never } };
+    return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map<string, Verdict>([[HEAD, reviewed], [MOVED, carried]]), lastCi: { headSha: MOVED, verdict: "green" } as never } };
   }
 
   it("asks for a release at the moved head with the reviewed head's verdict ref and profile", async () => {

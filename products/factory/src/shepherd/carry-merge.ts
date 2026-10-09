@@ -207,7 +207,7 @@ export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, 
     seatGrants: merge.seatGrants,
     carry,
   });
-  return mergeUp ? { ...verdict, mergeUpFrom: fromHead } : verdict;
+  return mergeUp && verdict.kind === "MERGE" ? { ...verdict, mergeUpFrom: fromHead } : verdict;
 }
 
 /** The routes the carry steps dispatch to; the remerge probe reaches git as the tree probe does. */
