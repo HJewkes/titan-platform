@@ -24,7 +24,7 @@ let known: Set<number> = new Set();
  * reading is safe for both, so both are returned: `subs` is the reading bash 3.2 gives (and the
  * one this lexer always gave), `tails` is the text after the bodies that bash 5 skips. Each such
  * text is lexed once, stops where the next one begins, is returned once, and is charged by the length read;
- * once the budget is spent only the first reading is returned, which is what main gives.
+ * once the budget is spent the token is marked `tailsUnread` and the walk refuses the line.
  */
 export function readProcessSubstitution(s: LexState, start: number): SubsToken {
   const inner = newState(s.src, start, true, s.trials);
@@ -39,7 +39,9 @@ export function readProcessSubstitution(s: LexState, start: number): SubsToken {
     known.add(at);
     return first;
   }
-  first.tails = readTails(bookOf(s), at);
+  const read = readTails(bookOf(s), at);
+  first.tails = read.tails;
+  if (read.unread) first.tailsUnread = true;
   return first;
 }
 
@@ -56,8 +58,9 @@ function bookOf(s: LexState): Book {
 }
 
 /** The tail at `at` and every tail met while reading it, each only if no earlier call returned it. */
-function readTails(book: Book, at: number): Token[][] {
+function readTails(book: Book, at: number): { tails: Token[][]; unread: boolean } {
   const out: Token[][] = [];
+  let unread = false;
   const work = [at];
   queue = work;
   known = new Set([at]);
@@ -68,11 +71,12 @@ function readTails(book: Book, at: number): Token[][] {
       const tokens = book.tokens.get(next) ?? readTail(book, next);
       book.tokens.set(next, tokens);
       if (tokens) out.push(tokens);
+      else unread = true;
     }
   } finally {
     queue = null;
   }
-  return out;
+  return { tails: out, unread };
 }
 
 /** Tokens of the text from `start`, or null once the budget is spent; a text that does not lex adds nothing. */

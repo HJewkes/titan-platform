@@ -48,6 +48,8 @@ export interface SubsToken {
   subs: Token[][];
   /** The lines after a pending heredoc's body, read as bash 5 does; walked at the depth of the token itself. */
   tails: Token[][];
+  /** A tail could not be read (budget spent), so the bash 5 reading is unknown and the line must be refused. */
+  tailsUnread?: boolean;
 }
 
 /** `target` is the word after the operator; for a heredoc it is the delimiter and `body` is the text. */

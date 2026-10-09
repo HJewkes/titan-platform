@@ -1,4 +1,4 @@
-import { ParseError, tokenize } from "./lexer.js";
+import { ParseError, type SubsToken, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
@@ -141,13 +141,14 @@ function walk(tokens: Token[], w: Walk): void {
     if (token.type === "word") words.push(token);
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
-    if (token.type === "subs") walkTails(token.tails, w);
+    if (token.type === "subs") walkTails(token, w);
   }
   emit(words, redirects, w, null);
 }
 
 /** Tails get their own unsure budget, so the bash 5 reading never spends what main's reading of the body would have had. */
-function walkTails(tails: Token[][], w: Walk): void {
+function walkTails({ tails, tailsUnread }: SubsToken, w: Walk): void {
+  if (tailsUnread) throw new ReadingLimitError();
   const unsure = { ...w.unsure, left: MAX_UNSURE_WORDS };
   for (const tail of tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth, unsure });
 }

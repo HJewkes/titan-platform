@@ -128,6 +128,27 @@ describe("a heredoc opened inside a process substitution", () => {
   });
 });
 
+describe("a pending heredoc whose tails cannot all be read", () => {
+  const ATTACK = `cat <(cat <<EOF)\nit's\nEOF\n${PUSH}\necho \\'`;
+  const padding = (n: number) => Array.from({ length: n }, () => "$(cat <(cat <<D))").map((line, k) => line.replace("D)", `D${k})`));
+  const heredocs = (n: number) => Array.from({ length: n }, (_, k) => `D${k}`).join("\n");
+
+  it.each([200, 300])("the hook denies the push behind %i pending heredocs in a backtick substitution", async (n) => {
+    const command = `echo \`${padding(n).join("\n")}\n${heredocs(n)}\`\n${ATTACK}`;
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it("the hook denies the push behind 300 pending heredocs in an unquoted heredoc body", async () => {
+    const command = `cat <<X\n${padding(300).join("\n")}\n${heredocs(300)}\nX\n${ATTACK}`;
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it("refuses to classify a line whose tails were left unread", () => {
+    const command = `echo \`${padding(300).join("\n")}\n${heredocs(300)}\`\n${ATTACK}`;
+    expect(() => classifyCommand(command)).toThrow();
+  });
+});
+
 describe("a pending heredoc in a followed script", () => {
   const dir = mkdtempSync(join(tmpdir(), "procsub-script-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
