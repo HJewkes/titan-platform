@@ -1,0 +1,1353 @@
+[
+  {
+    "name": "well-formed MERGE",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Read the diff and the tests; nothing blocks.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\n",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "MERGE with an owner brief",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Looks right.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\n\nOWNER-BRIEF\nWhat: Moves the verdict parser into a package.\nWhy: A second caller needs the same rules.\nPros:\n- One implementation\nCons:\n- A release before the swap\nDoor: two-way\nEND-OWNER-BRIEF\n",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "MERGE with a malformed owner brief",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\n\nOWNER-BRIEF\nWhat: x\nDoor: sideways\nEND-OWNER-BRIEF\n",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "MERGE with a repo in other letter case",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: Octo/Demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "MERGE with no reader count",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "well-formed FIX_FIRST",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "1. The parser drops the last token.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\n",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "FIX_FIRST with Closer",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "1. Still drops it.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\nCloser: yes\n",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "FIX_FIRST with a postscript",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000001,
+        "text": "1. Drops the last token.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      },
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000002,
+        "text": "A search timed out; the verdict stands.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "FIX_FIRST after a stale-head verdict",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000001,
+        "text": "1. Stale.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: dddddddddddddddddddddddddddddddddddddddd",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      },
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000002,
+        "text": "Verdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "FIX_FIRST after a pre-dispatch verdict",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 999999,
+        "text": "1. Early.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      },
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000002,
+        "text": "Verdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "FIX_FIRST over the findings bound",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "wrong head",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: dddddddddddddddddddddddddddddddddddddddd",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "wrong PR",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#8\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "wrong repo",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/other#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "below the depth floor, MERGE",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 0
+      }
+    ]
+  },
+  {
+    "name": "below the depth floor, FIX_FIRST",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "1. Guess.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 0
+      }
+    ]
+  },
+  {
+    "name": "WAIT",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: WAIT\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: no block",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "I reviewed it and it looks fine.",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: two blocks",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: bad verdict",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: APPROVE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: no PR line",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: bad PR",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: no Head line",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "malformed: bad head",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: abc123",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "usage-limit notice",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "You've hit your weekly limit · resets Oct 10 at 6pm (UTC)",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "review quoting a limit",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "The note says: You've hit your weekly limit. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "silence",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": []
+  },
+  {
+    "name": "a different agent",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-2",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "a different session",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-2",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-2"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "a locator into another session",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-2"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "written before dispatch",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 999999,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "written at dispatch",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "an earlier message written after the final",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1009000,
+        "text": "later",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      },
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "a malformed earlier message, then MERGE",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000001,
+        "text": "rambling",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      },
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1000002,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  },
+  {
+    "name": "a startedAt input",
+    "input": {
+      "repo": "octo/demo",
+      "pr": 7,
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "reviewerAgentId": "reviewer-1",
+      "reviewerSessionId": "session-1",
+      "dispatchedAt": 1000000,
+      "startedAt": 1000100
+    },
+    "messages": [
+      {
+        "agentId": "reviewer-1",
+        "sessionId": "session-1",
+        "writtenAt": 1005000,
+        "text": "Verdict: MERGE\nPR: octo/demo#7\nHead: cccccccccccccccccccccccccccccccccccccccc",
+        "locator": {
+          "source": {
+            "conversation": {
+              "nativeId": "session-1"
+            }
+          },
+          "selector": {
+            "kind": "subrecord-text",
+            "path": [
+              "message",
+              "content",
+              0,
+              "text"
+            ]
+          }
+        },
+        "investigativeCalls": 4
+      }
+    ]
+  }
+]

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-read",
-  "version": "0.10.0",
+  "version": "0.11.1",
   "description": "Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@titan-design/locator": "workspace:^",
-    "@titan-design/agent-protocol": "workspace:^"
+    "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/anthropic-account": "workspace:^"
   }
 }

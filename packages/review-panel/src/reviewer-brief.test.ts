@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewCheckoutName, reviewerBrief } from "./reviewer-brief.js";
 
 // A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
 const REFUSAL_SET: Record<MalformedRefusal, true> = {
@@ -32,11 +32,27 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it("names the checkout to remove with the same name it extracts into", () => {
+    const brief = reviewerBrief(target);
+
+    expect(brief).toContain(`$TMPDIR/${reviewCheckoutName(target.pr, target.head)}\``);
+  });
+
   it("keeps the full suite off the Mac", () => {
     const brief = reviewerBrief(target);
 
     expect(brief).toContain("ssh basement basement-suite");
     expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+
+  it("carries the test rule it is given, so a reviewer on basement never ssh-es to itself", () => {
+    const testRule = "Call `basement-suite <repo> <branch>` directly, never through ssh.";
+
+    const brief = reviewerBrief({ ...target, testRule });
+
+    expect(brief).toContain(testRule);
+    expect(brief).not.toContain("ssh basement");
+    expect(brief).not.toContain("on the Mac");
   });
 });
 

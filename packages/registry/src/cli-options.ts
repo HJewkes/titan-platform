@@ -65,13 +65,13 @@ function appendOccurrence(value: string, previous: string[] | undefined): string
  * An array-typed field needs this so repeated occurrences of its flag accumulate instead of
  * each overwriting the last (commander's default behavior for a same-named option).
  */
-export function collectOptionParser(cmd: AnyCommand, key: string): ((value: string, previous: string[] | undefined) => string[]) | undefined {
+export function collectOptionParser(cmd: AnyCommand<never>, key: string): ((value: string, previous: string[] | undefined) => string[]) | undefined {
   return schemaKind(fieldSchema(cmd.args, key)) === "array" ? appendOccurrence : undefined;
 }
 
 /** Assemble the raw args record from commander positionals and parsed opts, coerced per schema. */
 export function collectCliArgs(
-  cmd: AnyCommand,
+  cmd: AnyCommand<never>,
   positionals: unknown[],
   opts: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -92,14 +92,14 @@ export function collectCliArgs(
 }
 
 /** commander option spec: boolean fields are bare flags, everything else takes `<value>`. */
-export function optionFlagSpec(cmd: AnyCommand, key: string, opt: CliOption): string {
+export function optionFlagSpec(cmd: AnyCommand<never>, key: string, opt: CliOption): string {
   const short = opt.short ? `${opt.short}, ` : "";
   const kind = schemaKind(fieldSchema(cmd.args, key));
   return kind === "boolean" ? `${short}${opt.long}` : `${short}${opt.long} <value>`;
 }
 
 /** commander argument display: `[name]` when the schema allows omission, else `<name>`. */
-export function positionalSpec(cmd: AnyCommand, name: string): string {
+export function positionalSpec(cmd: AnyCommand<never>, name: string): string {
   return isOptionalField(fieldSchema(cmd.args, name)) ? `[${name}]` : `<${name}>`;
 }
 
