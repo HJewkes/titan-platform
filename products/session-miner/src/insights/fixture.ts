@@ -73,6 +73,34 @@ export function seedInsightGraph(db: Db): void {
   insertRequest(db, { sessionId: "seat-1", ts: "2026-09-11T05:00:00Z", cacheWrite1h: 90_000 });
 }
 
+export interface FixtureBashCall {
+  toolUseId: string;
+  sessionId: string;
+  ts: string;
+  outputChars: number;
+  /** What the test's command port returns; null is a call that cannot be read back. */
+  command: string | null;
+  /** The recorded `command_heads` signal, when the extractor wrote one. */
+  heads?: string;
+}
+
+/** A Bash tool call with its transcript locator and tool result size; the command text stays with the test's port. */
+export function seedBashCall(db: Db, call: FixtureBashCall): void {
+  offset += 1;
+  db.prepare("INSERT OR IGNORE INTO transcript (source_id, source_key) VALUES (1, '/tmp/demo.jsonl')").run();
+  insertAt(db, "tool_call", { name: "Bash", family: "builtin", input_chars: 1 }, call);
+  db.prepare(`INSERT INTO fact (transcript_id, byte_offset, byte_length, event_type, ts, seq, session_id, tool_use_id)
+    VALUES (1, ?, 10, 'tool_decision', ?, ?, ?, ?)`).run(offset, call.ts, offset, call.sessionId, call.toolUseId);
+  insertAt(db, "context_block", { source: "tool_result", chars: call.outputChars }, call);
+  if (call.heads) insertAt(db, "session_signal", { signal: "command_heads", detail: call.heads }, call);
+}
+
+function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall): void {
+  const row = { transcript_id: 1, byte_offset: offset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
+  const names = Object.keys(row);
+  db.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map((n) => `@${n}`).join(", ")})`).run(row);
+}
+
 export interface FixtureMessage {
   ts: string;
   actor: string;
