@@ -57,6 +57,7 @@ function session(sessionId: string, title: string): Session {
 }
 
 const runsKey = (name: string) => snapshotKey("sessions.list", { agent: name, limit: 50 });
+const feedKey = (name?: string) => snapshotKey("agents.messages", name === undefined ? { limit: 200 } : { agent: name, limit: 200 });
 
 function snapshot(calls: Snapshot["calls"]): Snapshot {
   return { format: SNAPSHOT_FORMAT, createdAt: "2031-03-05T00:00:00.000Z", calls };
@@ -65,9 +66,9 @@ function snapshot(calls: Snapshot["calls"]): Snapshot {
 function healthy(): Snapshot {
   return snapshot({
     [snapshotKey("agents.roster", {})]: successEnvelope(ROSTER),
-    [snapshotKey("agents.messages", {})]: successEnvelope(messages(ALL_MESSAGES)),
-    [snapshotKey("agents.messages", { agent: "harbor-impl" })]: successEnvelope(messages(IMPL_MESSAGES)),
-    [snapshotKey("agents.messages", { agent: "harbor-coord" })]: successEnvelope(messages([])),
+    [feedKey()]: successEnvelope(messages(ALL_MESSAGES)),
+    [feedKey("harbor-impl")]: successEnvelope(messages(IMPL_MESSAGES)),
+    [feedKey("harbor-coord")]: successEnvelope(messages([])),
     [runsKey("harbor-impl")]: successEnvelope({ sessions: [session("run-1", "Dock index build")], nextBefore: null, degraded: null }),
     [runsKey("harbor-coord")]: successEnvelope({ sessions: [], nextBefore: null, degraded: null }),
     [runsKey("ghost")]: successEnvelope({ sessions: [], nextBefore: null, degraded: null }),
@@ -77,7 +78,7 @@ function healthy(): Snapshot {
 function brokerDown(): Snapshot {
   return snapshot({
     [snapshotKey("agents.roster", {})]: errorEnvelope(BROKER_DOWN, 69),
-    [snapshotKey("agents.messages", {})]: errorEnvelope(BROKER_DOWN, 69),
+    [feedKey()]: errorEnvelope(BROKER_DOWN, 69),
   });
 }
 
@@ -124,7 +125,7 @@ describe("the agents view", () => {
   });
 
   it("says the feed is empty over the broker's window", async () => {
-    renderConsole("#/agents?tab=messages", snapshot({ [snapshotKey("agents.messages", {})]: successEnvelope(messages([])) }));
+    renderConsole("#/agents?tab=messages", snapshot({ [feedKey()]: successEnvelope(messages([])) }));
     expect(await screen.findByText("No messages in the broker's last 1,000 events.")).toBeTruthy();
   });
 

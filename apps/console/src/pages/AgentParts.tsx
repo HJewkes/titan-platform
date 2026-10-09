@@ -25,6 +25,8 @@ type Message = ConsoleCommands["agents.messages"]["result"]["messages"][number];
 
 export const WINDOW_CAPTION = "Counted over the broker's last 1,000 events.";
 
+const FEED_PAGE = 200;
+
 /** The tab a `?tab=` deep link names, else the first. */
 export function tabFrom<Key extends string>(route: Route, keys: readonly Key[]): Key {
   const asked = new URLSearchParams(route.query ?? "").get("tab");
@@ -76,7 +78,7 @@ export function formatCost(costUsd: number | null): string {
 
 /** Messages newest first; `agent` narrows to one agent's sent and received. */
 export function MessageFeed({ agent, empty }: { agent?: string; empty: string }): ReactNode {
-  const feed = useQuery("agents.messages", agent === undefined ? {} : { agent });
+  const feed = useQuery("agents.messages", agent === undefined ? { limit: FEED_PAGE } : { agent, limit: FEED_PAGE });
   if (feed.status === "loading") return <Spinner size="sm" label="Loading messages" />;
   if (feed.data === undefined) return <BrokerFailure message={feed.error?.message} />;
   const { messages } = feed.data;
