@@ -47,7 +47,7 @@ describe("the shell", () => {
     renderConsole("#/", healthy());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
-    expect(await screen.findByText(/spawn tree and message feed/)).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Roster" })).toBeTruthy();
   });
 });
 
