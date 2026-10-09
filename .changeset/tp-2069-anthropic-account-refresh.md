@@ -1,0 +1,5 @@
+---
+"@titan-design/anthropic-account": minor
+---
+
+Add `refreshIfNeeded` to the `./node` subpath. When `needsRefresh` says a profile's access token is due, it takes Claude Code's own two refresh locks, re-reads `.credentials.json` through the 0600 gate, and sends Claude Code's refresh request: `POST https://platform.claude.com/v1/oauth/token` with `grant_type`, `refresh_token`, `client_id` and `scope`. It then writes the new credentials to a temp file in the same dir (exclusive, 0600, fsync), checks once more that no other writer changed the file, renames the temp file over it and fsyncs the dir. It never truncates in place, never steals a held lock, and yields to another writer with `refreshed-elsewhere`. Only the token fields and their expiries change; every other byte is kept. A rotated refresh token is stored. Every failure is a message-free value, and each one goes to an `onFailure` callback as an owner-queue deposit. The deposit names the profile label and the failure kind, and its `depositId` is stable per profile per UTC day.

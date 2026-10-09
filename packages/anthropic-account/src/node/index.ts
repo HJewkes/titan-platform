@@ -20,5 +20,18 @@ export type {
   PollOptions,
   PollResult,
 } from "./poll.js";
+export { REFRESH_LOCK } from "./credentials-write.js";
+export {
+  DEFAULT_REFRESH_SCOPES,
+  DEFAULT_REFRESH_TIMEOUT_MS,
+  DEPOSIT_ASKER,
+  MAX_REFRESH_TIMEOUT_MS,
+  MAX_TOKEN_RESPONSE_BYTES,
+  OAUTH_CLIENT_ID,
+  TOKEN_URL,
+  refreshFailureDeposit,
+  refreshIfNeeded,
+} from "./refresh.js";
+export type { RefreshFailureDeposit, RefreshFailureKind, RefreshOptions, RefreshResult } from "./refresh.js";
 export { MAX_READING_BYTES, USAGE_FILE, readUsage, sessionsDir, usageFilePath, writeReading } from "./usage-file.js";
 export type { UsageFileRead } from "./usage-file.js";
