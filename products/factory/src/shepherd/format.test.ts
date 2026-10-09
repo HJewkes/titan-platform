@@ -77,6 +77,15 @@ describe("the shepherd text view of each verb", () => {
     );
   });
 
+  it("prints a hold, release, freeze and thaw event with its reason and actor", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const entries = [
+      { kind: "event", event: "hold", reason: "g10-review", actor: "coord", at, headSha: null },
+      { kind: "event", event: "release", reason: null, actor: null, at, headSha: null },
+    ];
+    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(`acme/widgets#1 merging - merging\n  hold ${at}: g10-review (by coord)\n  release ${at}\n`);
+  });
+
   it("prints hold and release by the run's hold state", () => {
     expect(formatShepherd("shepherd.hold", { runId: "run-1", held: { reason: "owner review" } })).toBe("run run-1: held (owner review)\n");
     expect(formatShepherd("shepherd.release", { runId: "run-1", held: null })).toBe("run run-1: released\n");

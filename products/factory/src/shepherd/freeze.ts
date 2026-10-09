@@ -1,5 +1,6 @@
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { appendEvent } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
 
 export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
@@ -74,19 +75,25 @@ export class FreezeStore {
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string, cancelOnly = false): Freeze {
+    this.db.transaction(() => this.freezeRow(repo, redSha, cancelOnly))();
+    return this.active(repo)!;
+  }
+
+  private freezeRow(repo: RepoSlug, redSha: string, cancelOnly: boolean): void {
     const row = this.row(repo);
     const flag = cancelOnly ? 1 : 0;
     if (row && row.thawed_at === null) {
       if (row.red_sha !== redSha) this.db.prepare("UPDATE shepherd_freeze SET red_sha = ?, red_count = red_count + 1, cancel_only = ? WHERE repo = ?").run(redSha, flag, repoKey(repo));
-    } else {
-      this.db
-        .prepare(
-          `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode, cancel_only) VALUES (?, ?, 1, ?, ?, ?)
-           ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only`,
-        )
-        .run(repoKey(repo), redSha, new Date(this.now()).toISOString(), (row?.episode ?? 0) + 1, flag);
+      return;
     }
-    return this.active(repo)!;
+    const at = new Date(this.now()).toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode, cancel_only) VALUES (?, ?, 1, ?, ?, ?)
+         ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only`,
+      )
+      .run(repoKey(repo), redSha, at, (row?.episode ?? 0) + 1, flag);
+    appendEvent(this.db, { repo, kind: "freeze", at, headSha: redSha, reason: cancelOnly ? "main red from cancelled runs only" : "main red" });
   }
 
   /** False when `episode` is no longer the live one, so a late step never writes into a later episode. */
@@ -126,9 +133,12 @@ export class FreezeStore {
 
   /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. Every thaw, `unfreeze` included, ends here. */
   release(repo: RepoSlug, episode: number): boolean {
-    const thawed = this.db
-      .prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL")
-      .run(new Date(this.now()).toISOString(), repoKey(repo), episode).changes > 0;
+    const at = new Date(this.now()).toISOString();
+    const thawed = this.db.transaction(() => {
+      const changed = this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(at, repoKey(repo), episode).changes > 0;
+      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, headSha: this.row(repo)?.red_sha });
+      return changed;
+    })();
     if (thawed) this.onThaw(repo);
     return thawed;
   }

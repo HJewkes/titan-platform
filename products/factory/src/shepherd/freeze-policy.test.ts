@@ -4,6 +4,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
+import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, freezeCancelOnlyMigration, freezeMigration, freezeStoreRef, type FreezeStore } from "./freeze.js";
 import { MERGE_EVIDENCE_STEP, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { EffectivePolicy } from "./policy.js";
@@ -34,7 +35,7 @@ interface Scene {
 function scene(): Scene {
   const db = openDatabase(":memory:");
   dbs.push(db);
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef();
   store.bind(db);

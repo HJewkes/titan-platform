@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
@@ -17,7 +18,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(15)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };

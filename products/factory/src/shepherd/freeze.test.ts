@@ -5,6 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitH
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
+import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
 import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
@@ -28,7 +29,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -375,7 +376,7 @@ describe("redOnlyFromCancels", () => {
 describe("thaw notice from the freeze store ref", () => {
   function boundRef(): { ref: ReturnType<typeof freezeStoreRef>; thawed: string[]; unsubscribe: () => void } {
     const db = openDatabase(":memory:");
-    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12)]);
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(15)]);
     const ref = freezeStoreRef(() => 0);
     ref.bind(db);
     const thawed: string[] = [];
@@ -440,8 +441,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 15]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 15]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });
