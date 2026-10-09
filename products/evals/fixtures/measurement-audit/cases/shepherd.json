@@ -1,0 +1,147 @@
+{
+  "schema": "titan.case/v1",
+  "id": "shepherd-measurement-audit",
+  "unit": {
+    "id": "measurement-audit",
+    "version": "1.0.0"
+  },
+  "input": {
+    "area": "shepherd"
+  },
+  "expected": {
+    "metrics": [
+      "A1",
+      "A2",
+      "A3",
+      "A4",
+      "A5",
+      "A6",
+      "A7",
+      "A8",
+      "F1",
+      "F2",
+      "F3",
+      "F4",
+      "F5",
+      "F6",
+      "F7",
+      "F8",
+      "F9",
+      "F10",
+      "F11",
+      "F12",
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4",
+      "Q5",
+      "Q6",
+      "O1",
+      "O2",
+      "O3",
+      "O4",
+      "O5",
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "B5",
+      "B6",
+      "B7",
+      "B8"
+    ],
+    "gaps": [
+      {
+        "id": "S1",
+        "keyMetrics": [
+          "F3"
+        ]
+      },
+      {
+        "id": "S2",
+        "keyMetrics": [
+          "O1",
+          "O3"
+        ]
+      },
+      {
+        "id": "S3",
+        "keyMetrics": [
+          "F4",
+          "F12",
+          "C4"
+        ]
+      },
+      {
+        "id": "S4",
+        "keyMetrics": [
+          "F5",
+          "A8"
+        ]
+      },
+      {
+        "id": "S5",
+        "keyMetrics": [
+          "A1",
+          "A3"
+        ]
+      },
+      {
+        "id": "S6",
+        "keyMetrics": [
+          "C1",
+          "C2",
+          "C5"
+        ]
+      },
+      {
+        "id": "S7",
+        "keyMetrics": [
+          "Q2",
+          "Q3"
+        ]
+      },
+      {
+        "id": "S8",
+        "keyMetrics": [
+          "Q4"
+        ]
+      },
+      {
+        "id": "S9",
+        "keyMetrics": [
+          "A5"
+        ]
+      },
+      {
+        "id": "S10",
+        "keyMetrics": [
+          "B3",
+          "B4"
+        ]
+      },
+      {
+        "id": "S11",
+        "keyMetrics": [
+          "C1"
+        ]
+      }
+    ]
+  },
+  "split": "dev",
+  "tags": [
+    "gold",
+    "shepherd"
+  ],
+  "provenance": {
+    "source": "history",
+    "ref": "shepherd-measurement-audit-2026-10-08",
+    "labelVersion": 1
+  },
+  "visibility": "public"
+}
