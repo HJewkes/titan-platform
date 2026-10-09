@@ -1,6 +1,5 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
-import { failureOf } from "./error-class.js";
 import { landGateHead } from "./approval-carry.js";
 import type { OwnerOverride } from "./override-stats.js";
 
@@ -16,7 +15,7 @@ export function recordingOverrides(assisted: WorkflowContext["assisted"], review
     const asked = landGateHead(stepId, prompt);
     const declined = Declined.safeParse(answer.data);
     if (asked === undefined || !declined.success || declined.data.headSha !== asked || !reviewedMerge(asked)) return answer;
-    await record({ trigger: "owner-answer", head: asked, shepherd: "MERGE", other: declined.data.decision }).catch((error: unknown) => warn(`shepherd: could not record the override at ${asked}: ${failureOf(error)}`));
+    await record({ trigger: "owner-answer", head: asked, shepherd: "MERGE", other: declined.data.decision }).catch((error: unknown) => warn(`shepherd: could not record the override at ${asked}: ${error instanceof Error ? error.message : String(error)}`));
     return answer;
   };
 }
