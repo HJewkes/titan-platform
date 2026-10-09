@@ -4,17 +4,16 @@ import { TOKEN_HEADER, readToken } from "./broker.js";
 import type { ConsoleConfig } from "./config.js";
 
 /** The SSE event names the browser sees; each relayed frame is named for the upstream it came from. */
-export const RELAY_SOURCES = ["active-work", "agent-chat"] as const;
-export type RelaySource = (typeof RELAY_SOURCES)[number];
+export type RelaySource = "active-work" | "agent-chat";
 
 /** A kind the browser gets after an upstream stream reopens, since frames sent while it was down are lost. */
-export const RECONNECTED_KIND = "reconnected";
+const RECONNECTED_KIND = "reconnected";
 
 /**
  * The data of one relayed frame. Only the kind and the ids a page needs to decide what to refetch:
  * an upstream frame's body, meta, ref and any path it names never reach the browser.
  */
-export interface RelayedEvent {
+interface RelayedEvent {
   kind: string;
   /** The broker's event-log row id. */
   id?: number;
@@ -23,7 +22,7 @@ export interface RelayedEvent {
   target?: string;
 }
 
-export type RelayedIds = Omit<RelayedEvent, "kind">;
+type RelayedIds = Omit<RelayedEvent, "kind">;
 
 export interface RelayUpstream {
   source: RelaySource;
@@ -43,7 +42,7 @@ export interface RelayTiming {
   idleTimeoutMs: number;
 }
 
-export const DEFAULT_RELAY_TIMING: RelayTiming = { baseDelayMs: 500, maxDelayMs: 30_000, dialTimeoutMs: 3000, idleTimeoutMs: 60_000 };
+const DEFAULT_RELAY_TIMING: RelayTiming = { baseDelayMs: 500, maxDelayMs: 30_000, dialTimeoutMs: 3000, idleTimeoutMs: 60_000 };
 
 /** An unterminated frame past this many characters drops the connection rather than growing the parser's buffer. */
 export const MAX_FRAME_CHARS = 1 << 20;
@@ -53,7 +52,7 @@ const KEEPALIVES = new Set(["ready", "ping"]);
 const KIND = /^[A-Za-z][\w.-]{0,63}$/;
 const AGENT_NAME = /^[\w.:@-]{1,128}$/;
 
-export interface RelayOptions {
+interface RelayOptions {
   hub: Pick<EventHub, "broadcast">;
   upstreams: readonly RelayUpstream[];
   logger: Logger;
