@@ -3,8 +3,8 @@ import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Runs the helper; rejects on a non-zero exit or when the helper cannot start. */
-export type HelperRunner = (file: string, args: readonly string[]) => Promise<string>
+/** Runs the helper with `input` on stdin; rejects on a non-zero exit or when the helper cannot start. */
+export type HelperRunner = (file: string, args: readonly string[], input?: Uint8Array) => Promise<string>
 
 /** What lstat reports about one path component; undefined when it does not exist. Any other lstat error propagates. */
 export type StatPort = (path: string) => { readonly uid: number; readonly mode: number } | undefined
@@ -16,6 +16,8 @@ const NAMED: Record<string, string> = { "\t": "\\t", "\r": "\\r", "\\": "\\\\" }
 
 /** The helper's v4 UUID: anything else on stdout is not a proof, however the helper exited. */
 const PROOF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+const BASE64URL = /^[A-Za-z0-9_-]+$/
 
 const S_IFMT = 0o170000
 const S_IFREG = 0o100000
@@ -50,9 +52,12 @@ const defaultStat: StatPort = (path) => {
   }
 }
 
-const defaultRunner: HelperRunner = (file, args) =>
+const defaultReport = (line: string): void => void process.stderr.write(line)
+
+const defaultRunner: HelperRunner = (file, args, input) =>
   new Promise((resolve, reject) => {
-    execFile(file, [...args], { encoding: "utf8", timeout: DIALOG_TIMEOUT_MS }, (error, stdout) => (error ? reject(error) : resolve(stdout)))
+    const child = execFile(file, [...args], { encoding: "utf8", timeout: DIALOG_TIMEOUT_MS }, (error, stdout) => (error ? reject(error) : resolve(stdout)))
+    child.stdin?.end(input)
   })
 
 /** The path and every parent up to /, helper first. */
@@ -108,17 +113,8 @@ interface ConfirmOptions {
   report?: (line: string) => void
 }
 
-/**
- * Asks the owner for Touch ID or their login password. Returns the helper's proof id, or
- * undefined on cancel, a missing helper, a helper on a path someone else could replace, a
- * non-zero exit, no GUI session or output that is not a UUID. The path is checked with
- * lstat before each run. There is no environment fallback: an agent can set any variable,
- * but cannot satisfy the dialog.
- */
-export async function confirmOwner(
-  reason: string,
-  { run = defaultRunner, helperPaths = helperSearchOrder(), stat = defaultStat, getuid = () => process.getuid?.(), report = (line) => void process.stderr.write(line) }: ConfirmOptions = {},
-): Promise<string | undefined> {
+/** The checked helper path, or undefined after reporting why presence fails closed. */
+function checkedHelper({ helperPaths = helperSearchOrder(), stat = defaultStat, getuid = () => process.getuid?.(), report = defaultReport }: ConfirmOptions): string | undefined {
   let helper: ReturnType<typeof pickHelper>
   try {
     helper = pickHelper(helperPaths, stat, getuid())
@@ -130,9 +126,47 @@ export async function confirmOwner(
     report(`owner presence refused: ${helper.refusal}\n`)
     return undefined
   }
+  return helper.path
+}
+
+/**
+ * Asks the owner for Touch ID or their login password. Returns the helper's proof id, or
+ * undefined on cancel, a missing helper, a helper on a path someone else could replace, a
+ * non-zero exit, no GUI session or output that is not a UUID. The path is checked with
+ * lstat before each run. There is no environment fallback: an agent can set any variable,
+ * but cannot satisfy the dialog.
+ */
+export async function confirmOwner(reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
+  const helper = checkedHelper(options)
+  if (helper === undefined) return undefined
   try {
-    const proof = (await run(helper.path, [escapeReason(reason)])).trim()
+    const proof = (await (options.run ?? defaultRunner)(helper, [escapeReason(reason)])).trim()
     return PROOF.test(proof) ? proof : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** A DER ECDSA P-256 signature is a SEQUENCE (0x30) of two INTEGERs, 8 to 72 bytes in all. */
+function isDerSignature(text: string): boolean {
+  if (!BASE64URL.test(text)) return false
+  const der = Buffer.from(text, "base64url")
+  return der.length >= 8 && der.length <= 72 && der[0] === 0x30
+}
+
+/**
+ * Signs `statement` with the owner's Secure Enclave key after the same dialog as confirmOwner,
+ * with the escaped `reason` in it. Returns the base64url DER ECDSA P-256 SHA-256 signature over
+ * the exact bytes, or undefined on cancel, a missing key, the same helper path refusals, no GUI
+ * session or output that is not a DER signature. The verifier, not this function, decides
+ * whether the signature is the owner's.
+ */
+export async function signStatement(statement: Uint8Array, reason: string, options: ConfirmOptions = {}): Promise<string | undefined> {
+  const helper = checkedHelper(options)
+  if (helper === undefined) return undefined
+  try {
+    const signature = (await (options.run ?? defaultRunner)(helper, ["sign", "--", escapeReason(reason)], statement)).trim()
+    return isDerSignature(signature) ? signature : undefined
   } catch {
     return undefined
   }
