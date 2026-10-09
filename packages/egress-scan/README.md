@@ -113,7 +113,9 @@ only the range endpoints: a leak added and then removed is still in the pushed h
   (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `anthropic` (`sk-ant-`),
   `aws-access-key` (`AKIA`/`ASIA` plus 16), `slack` (`xox[abprs]-`) and `private-key` (a PEM
   private-key header). Each shape checks its length and charset and must stand alone, so a bare
-  prefix, a truncated token, a git sha or a base64 run does not match. Each kind is reported
+  prefix, a truncated token, a git sha or a base64 run does not match. `/`, `_`, a `\n`-style
+  escape and a `%XX` escape count as separators, so a token in a URL path, a variable name or
+  a JSON log line still matches. Each kind is reported
   once per line. Build test fixtures at runtime (`"ghp_" + "A".repeat(36)`).
 
 ## Allow file

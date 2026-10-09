@@ -68,6 +68,54 @@ describe("credential-token", () => {
     expect(matchRules(text)).toEqual([]);
   });
 
+  // `\\n` here is a literal backslash and n, the way JSON logs and .jsonl transcripts escape a break.
+  const escaped = [
+    ["github", fake.ghp],
+    ["anthropic", fake.anthropic],
+    ["aws-access-key", fake.akia],
+    ["slack", fake.slackBot],
+  ] as const;
+  it.each(escaped.flatMap(([kind, token]) => ["\\n", "\\t", "\\r", '\\"'].map((escape) => [kind, escape, token])))(
+    "flags %s after a %s escape",
+    (kind, escape, token) => {
+      expect(matchRules(`{"body":"x${escape}${token}"}`)).toEqual([{ rule: "credential-token", kind }]);
+    },
+  );
+
+  it.each([
+    ["a percent-encoded space", `q=%20${fake.ghp}`],
+    ["a percent-encoded equals sign", `token%3D${fake.ghp}`],
+    ["a URL path", `https://example.invalid/hook/${fake.ghp}/run`],
+    ["an underscore-joined name", `MY_TOKEN_${fake.ghp}`],
+    ["a trailing hyphen", `${fake.ghp}-x`],
+    ["an equals assignment", `TOKEN=${fake.ghp}`],
+    ["parentheses", `(${fake.ghp})`],
+    ["a code span", `\`${fake.ghp}\``],
+    ["URL credentials", `https://x:${fake.ghp}@github.com/o/r.git`],
+    ["trailing punctuation", `use ${fake.ghp}.`],
+  ])("flags a token in %s", (_label, text) => {
+    expect(matchRules(text)).toEqual([{ rule: "credential-token", kind: "github" }]);
+  });
+
+  it.each([
+    ["an underscore-joined name", "aws-access-key", `MY_KEY_${fake.akia}`],
+    ["a trailing hyphen", "aws-access-key", `${fake.akia}-x`],
+    ["a percent-encoded equals sign", "slack", `token%3D${fake.slackBot}`],
+    ["a URL path", "anthropic", `/keys/${fake.anthropic}/x`],
+    ["an admin key", "anthropic", "sk-ant-" + "admin01-" + alnum(93) + "AA"],
+  ])("flags a token in %s for %s", (_label, kind, text) => {
+    expect(matchRules(text)).toEqual([{ rule: "credential-token", kind }]);
+  });
+
+  it("ignores token-like runs glued inside a long base64 string", () => {
+    const blob = (inner: string) => alnum(40) + "+" + alnum(7) + inner + "+" + alnum(30) + "==";
+    for (const token of [fake.ghp, fake.akia, fake.slackBot]) {
+      expect(matchRules(blob("9" + token))).toEqual([]);
+      expect(matchRules(blob("+" + token))).toEqual([]);
+      expect(matchRules(blob(token.slice(0, -1) + "+" + token.slice(-1)))).toEqual([]);
+    }
+  });
+
   it("ignores lockfile integrity hashes whose base64 holds token-like runs", () => {
     const blob = "x".repeat(10) + "AKIA" + "Z".repeat(16) + "9ghp_" + "A".repeat(36) + "q".repeat(8) + "==";
     expect(matchRules(`      integrity: sha512-${blob}`)).toEqual([]);

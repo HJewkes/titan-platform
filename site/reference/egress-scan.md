@@ -68,7 +68,9 @@ formatReport(result.findings, { ...result, termsLoaded: true });
 
 Each `credential-token` shape pins its prefix, charset and length, and the token must stand
 alone: a bare prefix in prose, a truncated token, a git sha, or a run inside a base64 blob such
-as a lockfile integrity hash does not match. A finding reads
+as a lockfile integrity hash does not match. `/`, `_`, a `\n`-style escape and a `%XX` escape
+count as separators, so a token in a URL path, a variable name or a JSON log line still
+matches. A finding reads
 `<location> credential-token <kind>`, and each kind is reported once per line. Test fixtures build their tokens at runtime
 (`"ghp_" + "A".repeat(36)`), so no token-shaped literal is ever committed.
 

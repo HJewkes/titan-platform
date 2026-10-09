@@ -5,9 +5,11 @@ export interface TokenHit {
   readonly offset: number;
 }
 
-// A token must stand alone: a run glued to a longer word or a base64 blob is not one.
-const START = String.raw`(?<![A-Za-z0-9+/_-])`;
-const END = String.raw`(?![A-Za-z0-9+/_-])`;
+// A token must not be glued to a longer word or a base64 run, whose alphabet includes `+`.
+// `/` and `_` separate path segments and names, and a `\n`-style or `%XX` escape ends the
+// word before it, as in JSON logs and URLs.
+const START = String.raw`(?<=^|[^A-Za-z0-9+-]|\\[nrt]|%[0-9A-Fa-f]{2})`;
+const END = String.raw`(?![A-Za-z0-9+_])`;
 
 // Each shape pins its prefix, charset and length, so a bare prefix in prose never fires.
 const SHAPES: readonly { readonly kind: TokenKind; readonly pattern: RegExp }[] = [
