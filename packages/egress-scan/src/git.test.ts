@@ -14,6 +14,7 @@ import { scan } from "./scan.js";
 import { makeTestRepo, plantedHomePath, tempDir, ZERO_SHA, type TestRepo } from "./test-repo.js";
 
 const repos: TestRepo[] = [];
+const bares: string[] = [];
 
 function newRepo(): TestRepo {
   const repo = makeTestRepo();
@@ -23,6 +24,7 @@ function newRepo(): TestRepo {
 
 afterEach(() => {
   for (const repo of repos.splice(0)) fs.rmSync(repo.dir, { recursive: true, force: true });
+  for (const dir of bares.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
 function findings(repo: TestRepo, shas: readonly string[]): string[] {
@@ -52,6 +54,77 @@ describe("pre-push ranges", () => {
     const commits = commitsForUpdate(repo.dir, "origin", { localSha: second, remoteSha: ZERO_SHA });
 
     expect(commits).toEqual([first, second]);
+  });
+
+  describe("a branch that merged main", () => {
+    const flaggedFile = "notes.txt";
+    const flaggedLine = `see ${plantedHomePath()}\n`;
+
+    function setup() {
+      const repo = newRepo();
+      const bare = tempDir("egress-scan-remote-");
+      bares.push(bare);
+      spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+      repo.git(["remote", "add", "origin", bare]);
+      repo.commit("base");
+      repo.git(["push", "-q", "origin", "main"]);
+      repo.git(["checkout", "-q", "-b", "feature"]);
+      const branchTip = repo.commit("branch work");
+      repo.git(["push", "-q", "origin", "feature"]);
+      repo.git(["checkout", "-q", "main"]);
+      repo.write(flaggedFile, flaggedLine);
+      const onMain = repo.commit("flagged but already on the remote");
+      repo.git(["push", "-q", "origin", "main"]);
+      repo.git(["checkout", "-q", "feature"]);
+      return { repo, branchTip, onMain };
+    }
+
+    it("skips a flagged commit that came in from a main the remote already has", () => {
+      const { repo, branchTip, onMain } = setup();
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toEqual([merge]);
+      expect(commits).not.toContain(onMain);
+      expect(findings(repo, commits)).toEqual([]);
+    });
+
+    it("still refuses a new flagged commit made on the branch itself", () => {
+      const { repo, branchTip } = setup();
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      repo.write("fresh.txt", flaggedLine);
+      const fresh = repo.commit("flagged on the branch");
+
+      const commits = commitsForUpdate(repo.dir, "origin", {
+        localSha: fresh,
+        remoteSha: branchTip,
+      });
+
+      expect(commits).toContain(fresh);
+      expect(findings(repo, commits).length).toBeGreaterThan(0);
+    });
+
+    it("excludes only what the named remote has", () => {
+      const { repo, branchTip, onMain } = setup();
+      repo.git(["remote", "rename", "origin", "upstream"]);
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+      const commits = commitsForUpdate(repo.dir, "upstream", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toEqual([merge]);
+      expect(commits).not.toContain(onMain);
+    });
+
+    it("throws instead of passing when rev-list fails", () => {
+      const { repo, branchTip } = setup();
+
+      expect(() => commitsForUpdate(repo.dir, "origin", { localSha: "2".repeat(40), remoteSha: branchTip })).toThrow(
+        /rev-list failed/,
+      );
+    });
   });
 
   it("treats a remote sha missing locally as a new branch instead of failing", () => {
