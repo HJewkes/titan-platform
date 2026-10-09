@@ -48,6 +48,20 @@ export interface DigestSlot {
   hour: string;
 }
 
+/** Flow over the window: how long merged work took from task to merge, and how many merges an implementer hour bought. */
+export interface FlowStats {
+  /** Runs merged in the window. */
+  merged: number;
+  /** Merged runs with no task or no readable task file; left out of the p50, never imputed. */
+  missing: number;
+  taskToMergeP50Hours?: number;
+  implementerHours: number;
+  /** Exited implementers whose end time the roster does not give; left out of the hours. */
+  unmeasured: number;
+  /** Absent when no implementer hours were measured. */
+  mergesPerSlotHour?: number;
+}
+
 /** Everything one digest says, as data; ranking and rendering never read a source. */
 export interface DigestModel {
   slot: DigestSlot;
@@ -60,6 +74,8 @@ export interface DigestModel {
   spend: PoolLine[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
+  /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */
+  flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
   /** Sources that could not be read, one line each, so a gap is never silent. */
