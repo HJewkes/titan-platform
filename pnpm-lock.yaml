@@ -650,6 +650,9 @@ importers:
       '@titan-design/agent-protocol':
         specifier: workspace:^
         version: link:../agent-protocol
+      '@titan-design/anthropic-account':
+        specifier: workspace:^
+        version: link:../anthropic-account
       '@titan-design/locator':
         specifier: workspace:^
         version: link:../locator
