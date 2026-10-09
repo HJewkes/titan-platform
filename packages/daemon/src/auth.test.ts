@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import fs from "node:fs";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -573,19 +573,23 @@ describe("createContext receives what the gate recorded", () => {
     return { app: buildDaemonApp(auth, undefined, createContext), createContext };
   }
 
-  const rpc = (app: Hono, headers: Record<string, string>) =>
-    app.request("/rpc/greet", {
-      method: "POST",
-      body: JSON.stringify({ name: "x" }),
-      headers: { host: "localhost:7500", "content-type": "application/json", "x-titan-client": "test", ...headers },
-    });
+  const rpc = (app: Hono, headers: Record<string, string>, peer?: string) =>
+    app.request(
+      "/rpc/greet",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "x" }),
+        headers: { host: "localhost:7500", "content-type": "application/json", "x-titan-client": "test", ...headers },
+      },
+      peer === undefined ? undefined : { incoming: { socket: { remoteAddress: peer } } },
+    );
 
   it("passes the bearer credential", async () => {
     const secret = ensureTokenFile(tokenFile);
     const { app, createContext } = buildRpcApp(createDaemonAuth({ tokenFile }));
 
     expect((await rpc(app, { authorization: `Bearer ${secret}` })).status).toBe(200);
-    expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null });
+    expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null, peerLocal: true });
   });
 
   it("passes the session credential with its issue time", async () => {
@@ -594,7 +598,35 @@ describe("createContext receives what the gate recorded", () => {
     const issuedAt = T0 - MINUTE;
 
     expect((await rpc(app, { cookie: `${SESSION_COOKIE}=${signSession(secret, issuedAt)}` })).status).toBe(200);
-    expect(createContext).toHaveBeenCalledWith("http", { credential: "session", issuedAt });
+    expect(createContext).toHaveBeenCalledWith("http", { credential: "session", issuedAt, peerLocal: true });
+  });
+
+  const ownLanAddress = Object.values(networkInterfaces())
+    .flat()
+    .find((i) => i?.family === "IPv4" && !i.internal)?.address;
+
+  it.each([
+    ["a documentation address", "192.0.2.50", false],
+    ["a mapped documentation address", "::ffff:192.0.2.50", false],
+    ["loopback", "127.0.0.1", true],
+    ["mapped loopback", "::ffff:127.0.0.1", true],
+    ["IPv6 loopback", "::1", true],
+    ...(ownLanAddress ? [["this host's own LAN address", ownLanAddress, true] as const] : []),
+    ...(ownLanAddress ? [["this host's own mapped LAN address", `::ffff:${ownLanAddress}`, true] as const] : []),
+  ])("records peerLocal for %s", async (_label, peer, peerLocal) => {
+    const secret = ensureTokenFile(tokenFile);
+    const { app, createContext } = buildRpcApp(createDaemonAuth({ tokenFile }));
+
+    expect((await rpc(app, { authorization: `Bearer ${secret}` }, peer)).status).toBe(200);
+    expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null, peerLocal });
+  });
+
+  it("counts an unknown peer address as local, so a same-machine refusal fails closed", async () => {
+    const secret = ensureTokenFile(tokenFile);
+    const { app, createContext } = buildRpcApp(createDaemonAuth({ tokenFile }));
+
+    expect((await rpc(app, { authorization: `Bearer ${secret}` })).status).toBe(200);
+    expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null, peerLocal: true });
   });
 
   it("passes nothing on an ungated app", async () => {
