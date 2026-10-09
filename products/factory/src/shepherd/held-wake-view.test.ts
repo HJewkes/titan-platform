@@ -83,7 +83,7 @@ async function waitingForHead(host: FactoryHost, runId: string): Promise<void> {
 function seen({ host, store }: World, runId: string) {
   const run = host.runtime.status(runId)!;
   const wakeStep = Object.values(run.stepResults).find((result) => result.stepId.startsWith(WAKE_STEP))!;
-  const entry = timelineEntries(run, []).find((item) => item.stepId === wakeStep.stepId);
+  const entry = timelineEntries(run, []).find((item) => "stepId" in item && item.stepId === wakeStep.stepId);
   return { record: (wakeStep.data as { result: unknown }).result, entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
 }
 

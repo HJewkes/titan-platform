@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { appendEvent, eventsFor, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { EffectivePolicySchema, RegistrationRefused, stricterPolicy, type EffectivePolicy } from "./policy.js";
 
 export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
@@ -252,20 +253,36 @@ export class ShepherdStore implements HoldLookup {
   }
 
   /** A hold or a release clears any satisfaction, so a re-hold waits for its own reviewer again. */
-  hold(runId: string, reason: string, reviewer?: string): Registration {
-    return this.setHeld(runId, true, reason, reviewer ?? null);
+  hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
+    return this.setHeld(runId, true, reason, reviewer ?? null, by);
   }
 
-  release(runId: string): Registration {
-    return this.setHeld(runId, false, null, null);
+  release(runId: string, by: EventContext = {}): Registration {
+    return this.setHeld(runId, false, null, null, by);
   }
 
   /** Compare-and-swap: releases only while the run is still held under exactly `reason`; false when a release or another hold got there first. */
-  releaseIfHeld(runId: string, reason: string): boolean {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason = ?")
-      .run(this.stamp(), runId, reason).changes;
-    return changed === 1;
+  releaseIfHeld(runId: string, reason: string, by: EventContext = {}): boolean {
+    const release = this.db.transaction(() => {
+      const at = this.stamp();
+      const changed = this.db
+        .prepare("UPDATE shepherd_registration SET held = 0, hold_reason = NULL, hold_reviewer = NULL, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reason = ?")
+        .run(at, runId, reason).changes;
+      if (changed === 1) this.record(runId, "release", reason, at, by);
+      return changed === 1;
+    });
+    return release();
+  }
+
+  /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
+  eventsOf(runId: string): ShepherdEvent[] {
+    const registration = this.byRun(runId);
+    return registration ? eventsFor(this.db, runId, registration.repo) : [];
+  }
+
+  private record(runId: string, kind: EventKind, reason: string | null, at: string, by: EventContext): void {
+    const registration = this.byRun(runId)!;
+    appendEvent(this.db, { runId, repo: registration.repo, pr: registration.pr, kind, reason, at, actor: by.actor, headSha: by.headSha });
   }
 
   /** Compare-and-swap: records the MERGE only while the run is still held for `reviewer`; false when a release or re-hold got there first. */
@@ -315,11 +332,16 @@ export class ShepherdStore implements HoldLookup {
     return rows.map((row) => ({ runId: row.run_id, agentId: row.agent_id, name: row.name, role: row.role, predecessor: row.predecessor, at: row.at }));
   }
 
-  private setHeld(runId: string, held: boolean, reason: string | null, reviewer: string | null): Registration {
-    const changed = this.db
-      .prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?")
-      .run(held ? 1 : 0, reason, reviewer, this.stamp(), runId).changes;
-    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+  private setHeld(runId: string, held: boolean, reason: string | null, reviewer: string | null, by: EventContext): Registration {
+    const write = this.db.transaction(() => {
+      const at = this.stamp();
+      const changed = this.db
+        .prepare("UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?")
+        .run(held ? 1 : 0, reason, reviewer, at, runId).changes;
+      if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+      this.record(runId, held ? "hold" : "release", reason, at, by);
+    });
+    write();
     return this.byRun(runId)!;
   }
 

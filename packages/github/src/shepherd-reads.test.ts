@@ -110,6 +110,36 @@ describe("listPrCommits", () => {
   });
 });
 
+describe("listDefaultBranchCommits", () => {
+  const logged = (count: number, offset = 0) => Array.from({ length: count }, (_, i) => ({ sha: fakeSha(`m${offset + i}`), commit: { message: `subject ${offset + i}\n\nbody` } }));
+
+  it("reads every page of the default branch since the given time, as UTC", async () => {
+    const gh = scripted({ "page=2": [included({}, logged(5, 100))], "repos/octo/demo/commits": [included(nextLink("repositories/1/commits?per_page=100&page=2"), logged(100))] });
+
+    const commits = await wireOver(gh.exec).listDefaultBranchCommits(REPO, "2026-10-01T02:00:00+02:00");
+
+    expect(commits).toHaveLength(105);
+    expect(commits[0]).toEqual({ sha: fakeSha("m0"), message: "subject 0\n\nbody" });
+    expect(gh.calls[0]!.args).toContain("since=2026-10-01T00:00:00.000Z");
+  });
+
+  it("refuses a since that is not a timestamp before any call", async () => {
+    const gh = scripted({});
+
+    await expect(wireOver(gh.exec).listDefaultBranchCommits(REPO, "last week")).rejects.toThrow(/invalid since/);
+    expect(gh.calls).toHaveLength(0);
+  });
+
+  it("answers only the fake history at or after since, newest first", async () => {
+    const fake = fakeGitHub();
+    fake.history.push({ sha: fakeSha("old"), message: "old", committedAt: "2026-09-30T00:00:00Z" }, { sha: fakeSha("a"), message: "a", committedAt: "2026-10-01T00:00:00Z" }, { sha: fakeSha("b"), message: "b", committedAt: "2026-10-02T00:00:00Z" });
+
+    const commits = await githubPort(fake.wire).listDefaultBranchCommits("o/r", "2026-10-01T00:00:00Z");
+
+    expect(commits.map((commit) => commit.message)).toEqual(["b", "a"]);
+  });
+});
+
 describe("listPrFiles caps", () => {
   const files = (count: number) => Array.from({ length: count }, (_, i) => ({ path: `f${i}.ts`, status: "modified" }));
 
