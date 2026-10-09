@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { checkAreas } from "./areas.mjs";
 import {
   checkAgentsMatchesClaude,
   checkLayersMatchTiers,
@@ -185,6 +186,42 @@ describe.each(cases)("$rule", ({ check, root, message }) => {
 
   it("reports a violating tree with its remediation", async () => {
     const violations = await check(root());
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain(message);
+  });
+});
+
+function areasRoot(prefix, tiers, externalIds) {
+  const root = tempRoot(prefix);
+  mkdirSync(join(root, ".codewatch"));
+  mkdirSync(join(root, "scripts"));
+  const rule = { id: "package-layers", type: "layered-deps", $tiers: tiers };
+  writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [rule] }));
+  const areas = externalIds.map((id) => ({ id, tier: "product" }));
+  writeFileSync(join(root, "scripts", "areas-external.json"), JSON.stringify({ areas }));
+  return root;
+}
+
+const areaCases = [
+  {
+    rule: "R56 area ids are unique",
+    root: () => areasRoot("structure-areas-dup-", { 0: ["packages/relay"] }, ["relay"]),
+    message: "Area id `relay` is used twice.",
+  },
+  {
+    rule: "R56 every $tiers path has an area",
+    root: () => areasRoot("structure-areas-missing-", { 0: ["packages/Bad_Name"] }, []),
+    message: "`packages/Bad_Name` has no area",
+  },
+];
+
+describe.each(areaCases)("$rule", ({ root, message }) => {
+  it("holds in this repo", () => {
+    expect(checkAreas(REPO)).toEqual([]);
+  });
+
+  it("reports a violating tree with its remediation", () => {
+    const violations = checkAreas(root());
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain(message);
   });
