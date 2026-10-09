@@ -7,6 +7,12 @@ const BOT = address("noreply", "anthropic.com");
 const OWNER = address("owner.person", "mail.example.org");
 const OWNER_ALT = address("12345+owner", "users.noreply.github.com");
 
+const indent = (text: string): string =>
+  text
+    .split("\n")
+    .map((line) => (line === "" ? line : `  ${line}`))
+    .join("\n");
+
 function input(overrides: Partial<SquashInput> = {}): SquashInput {
   return {
     title: "TP-1: Add the widget",
@@ -65,7 +71,7 @@ describe("formatSquashMessage", () => {
         ].join("\n"),
         commits: [
           {
-            subject: "Add the widget",
+            subject: "Add the widget (#41)",
             body: [
               "* Earlier squashed commit",
               "",
@@ -97,7 +103,7 @@ describe("formatSquashMessage", () => {
         "",
         "## Changes",
         "",
-        "- **Add the widget.** Earlier squashed commit",
+        "- **Add the widget (#41).** Earlier squashed commit",
         "",
         "  Its body.",
         "",
@@ -182,7 +188,7 @@ describe("formatSquashMessage", () => {
     const result = formatSquashMessage(input({ body: list, commits: [{ subject: "Fix it", body: "* first\n* second\n\nMore." }] }));
 
     expect(result.body).toContain("## Summary\n\nFixes:\n\n* first\n* second\n\nMore text.\n\n");
-    expect(result.body).toContain("- **Fix it.** * first\n  * second\n\n  More.\n");
+    expect(result.body).toContain("- **Fix it.**\n\n  * first\n  * second\n\n  More.\n");
   });
 
   it("keeps the author's own Changes and Test plan sections, and re-formats them unchanged", () => {
@@ -223,6 +229,69 @@ describe("formatSquashMessage", () => {
     const once = formatSquashMessage(input({ body: "" }));
 
     const twice = formatSquashMessage(input({ title: once.subject, body: once.body }));
+
+    expect(twice).toEqual(once);
+  });
+
+  it("keeps an author's loose star list in a commit GitHub did not squash", () => {
+    const result = formatSquashMessage(input({ commits: [{ subject: "Fix it", body: "* first item\n\n* second item" }] }));
+
+    expect(result.body).toContain("- **Fix it.**\n\n  * first item\n\n  * second item\n");
+  });
+
+  it("keeps markdown structure in a commit body on its own lines", () => {
+    const body = "## Why\nBecause.\n\nHeading\n=====\n\n> quoted\n> more\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n    indented()\n    code()";
+
+    const result = formatSquashMessage(input({ commits: [{ subject: "Add it", body }] }));
+
+    expect(result.body).toContain(`- **Add it.**\n\n${indent(body)}\n`);
+  });
+
+  it("keeps blank lines, trailers and addresses inside code fences", () => {
+    const code = "```\na\n\n\nb\nCo-authored-by: x <" + OWNER + ">\n```";
+
+    const result = formatSquashMessage(input({ body: code, commits: [{ subject: "Add it", body: code }] }));
+
+    expect(result.body).toContain(`## Summary\n\n${code}\n\n`);
+    expect(result.body).toContain(`- **Add it.**\n\n${indent(code)}\n`);
+  });
+
+  it("keeps ssh remotes and URLs that carry an address, and inline code", () => {
+    const remote = address("git", "github.com") + ":o/x.git";
+    const url = "https://" + address("u:p", "host.example.com") + "/x";
+    const inline = "`" + OWNER + "`";
+    const body = `Clone ${remote} or ${url}, or mail ${inline}.`;
+
+    const result = formatSquashMessage(input({ body, commits: [{ subject: "Add it", body }] }));
+
+    expect(result.body).toContain(`## Summary\n\n${body}\n\n`);
+    expect(result.body).toContain(`- **Add it.** ${body}\n`);
+  });
+
+  it("keeps an author's trailing dash rule in the PR body and in a plain commit", () => {
+    const body = "Above\n\n---------";
+
+    const result = formatSquashMessage(input({ body, commits: [{ subject: "Add it", body }] }));
+
+    expect(result.body).toContain(`## Summary\n\n${body}\n\n`);
+    expect(result.body).toContain("- **Add it.** Above\n\n  ---------\n");
+  });
+
+  it("writes an empty title as the PR number alone, and re-formats it unchanged", () => {
+    const once = formatSquashMessage(input({ title: "  ", taskIds: [] }));
+
+    const twice = formatSquashMessage(input({ title: once.subject, body: once.body, taskIds: [] }));
+
+    expect(once.subject).toBe("(#42)");
+    expect(twice).toEqual(once);
+  });
+
+  it("re-formats a message with markdown structure and code unchanged", () => {
+    const body = "## Why\nBecause.\n\n```\na\n\n\nb\n```";
+    const original = input({ body, commits: [{ subject: "Add it", body }] });
+    const once = formatSquashMessage(original);
+
+    const twice = formatSquashMessage({ ...original, title: once.subject, body: once.body });
 
     expect(twice).toEqual(once);
   });
