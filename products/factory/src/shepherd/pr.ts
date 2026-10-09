@@ -16,7 +16,7 @@ import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
 import { verdictIsMergeAt } from "../gate-brief.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
+import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
@@ -58,8 +58,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   const pr = rawPr === undefined ? undefined : Number(rawPr);
   if (pr !== undefined && (!Number.isInteger(pr) || pr <= 0)) throw new Error(`shepherd-pr: param pr must be a positive integer, got ${rawPr}`);
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
-  const rawPolicy = ctx.param("policy");
-  const policy = rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
+  const policy = runPolicyCeiling(ctx.param("policy"));
   return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
