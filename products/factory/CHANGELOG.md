@@ -1,5 +1,38 @@
 # @titan-design/factory
 
+## 0.11.0
+
+### Minor Changes
+
+- c3792ba: Add the doc pilot's task source, claude-print draft route and pure draft check. The task source reads a docs task's title, done_when and status over the active-work rpc and never its notes. The draft route runs one sonnet turn through an injected agent runner and parses the reply with zod. `checkDraft` refuses unchanged content, a non-Markdown path, front-matter edits, a removed section, owner data in an added line and a line delta over the bound.
+- 9a3682b: Add `titan-factory shepherd coverage`: prints the Shepherd coverage report for the four charter seats over the 24 h ending now (`--end`, `--hours`, `--seat`, `--logs` move it), from a read-only ledger. `--min <share>` exits 1 when the total share is below the bar; `--json` prints the report.
+- 04058da: Add the Shepherd coverage fold: `coverage()` counts each seat's `merged` dispatch rows in a window once per PR and reports, per seat and in total, how many a completed Shepherd run merged. The report also lists the misses and the held runs whose reason is not a charter hold class. `readCoverage()` reads the seat logs and opens the factory ledger read-only. `mergedAt` is now exported from the shepherd stats module.
+- 1a1bdeb: Add the `measurement-audit` workflow and `titan-factory audit <area>`. The workflow inventories an area's stores and code, proposes metrics in the six families and baselines them read-only. It ranks the capture gaps as slices and writes a `titan.measurement-audit/v1` report to the required `--out` path once the area owner publishes it at the review gate.
+
+### Patch Changes
+
+- 619dc1e: Import `acceptVerdict`, the owner-brief parser, the Malformed refusals, `namesTarget` and the depth floor from `@titan-design/review-panel` and delete the local copies.
+- dc635a8: Shepherd's reviewer and fixer briefs now take their test rule from the host serve starts on: on basement they say to call `basement-suite` directly, never through ssh, and elsewhere they keep the `ssh basement basement-suite` form.
+- Updated dependencies [948d6de]
+- Updated dependencies [875eee0]
+- Updated dependencies [700f490]
+- Updated dependencies [9e29d34]
+- Updated dependencies [c754254]
+- Updated dependencies [619dc1e]
+- Updated dependencies [948d6de]
+- Updated dependencies [dc635a8]
+- Updated dependencies [1893149]
+- Updated dependencies [718eda8]
+- Updated dependencies [718eda8]
+- Updated dependencies [84bd62f]
+  - @titan-design/daemon@0.6.0
+  - @titan-design/health@0.2.0
+  - @titan-design/owner-queue@0.2.0
+  - @titan-design/review-panel@0.2.0
+  - @titan-design/rpc-client@0.4.0
+  - @titan-design/registry@0.4.0
+  - @titan-design/session-read@0.11.1
+
 ## 0.10.0
 
 ### Minor Changes

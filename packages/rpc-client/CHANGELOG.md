@@ -1,5 +1,11 @@
 # @titan-design/rpc-client
 
+## 0.4.0
+
+### Minor Changes
+
+- 948d6de: Export `createSseParser`, the incremental `text/event-stream` parser the live source already uses, so a server that reads another daemon's `/events` can reuse it.
+
 ## 0.3.0
 
 ### Minor Changes
