@@ -1,12 +1,13 @@
-import { statSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import type * as NetModule from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as daemonPackage from "@titan-design/daemon";
-import { SESSION_COOKIE, TokenFileError, daemonPaths, readPidFile, silentLogger, type DaemonHandle } from "@titan-design/daemon";
+import { SESSION_COOKIE, TokenFileError, daemonPaths, readPidFile, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
 import { createRpcClient, liveSource, snapshotKey } from "@titan-design/rpc-client";
 import { openSessionGraph } from "@titan-design/session-graph";
 import type { ConsoleCommands } from "./commands.js";
@@ -437,6 +438,128 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
       expect(replies.map((reply) => reply.status)).toEqual(calls.map(() => 200));
       expect(broker.requests.length).toBeGreaterThan(0);
       expect([...replies, daemonHealth].filter((reply) => reply.body.includes(uiToken))).toHaveLength(0);
+    } finally {
+      await broker.close();
+    }
+  });
+});
+
+/** Runs the real `titan-console token rotate` bin, so two of them race as two processes would. */
+function rotateInChild(tokenPath: string): Promise<void> {
+  const consoleDir = path.join(import.meta.dirname, "..");
+  const env = { ...process.env, TITAN_CONSOLE_TOKEN: tokenPath, TITAN_CONSOLE_STATE: path.dirname(tokenPath), TITAN_CONSOLE_LAN_NAMES: "lan-box" };
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, ["--import", "tsx", "server/cli.ts", "token", "rotate"], { cwd: consoleDir, env }, (err) => (err ? reject(err) : resolve()));
+  });
+}
+
+/** A broker that fails every read, putting the token it was sent into each failure. */
+async function startEchoingBroker(): Promise<FakeDaemon> {
+  const server = createServer((req, res) => {
+    const sent = String(req.headers["x-agent-chat-token"] ?? "");
+    const route = (req.url ?? "").split("?")[0];
+    if (route === "/api/history") {
+      res.writeHead(302, { location: `http://127.0.0.1:1/steal?token=${sent}` }).end();
+    } else if (route === "/api/queue") {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ items: sent }));
+    } else {
+      res.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: `bad token ${sent}` }));
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const close = (): Promise<void> => {
+    server.closeAllConnections();
+    return new Promise((resolve) => server.close(() => resolve()));
+  };
+  return { port: (server.address() as NetModule.AddressInfo).port, close };
+}
+
+describe.skipIf(process.platform !== "linux")("the console's LAN listener under hostile hosts, rotation and broker failures", () => {
+  const NAME = "lan-box";
+  const json = { "content-type": "application/json" };
+  let port: number;
+  let lanConfig: ConsoleConfig;
+
+  async function startLan(logger: Logger = silentLogger, overrides: Partial<ConsoleConfig> = {}): Promise<void> {
+    const page = path.join(dir, "index.html");
+    await writeFile(page, "<!doctype html><title>console shell</title>");
+    const lan = { ...config, lanHost: LAN, lanNames: [NAME], ...overrides };
+    handle = await startConsoleDaemon({ config: lan, staticRoot: page, logger });
+    port = handle.port;
+    lanConfig = { ...lan, port };
+  }
+
+  const sameOrigin = (): Record<string, string> => ({ host: `${NAME}:${port}`, origin: `http://${NAME}:${port}` });
+  const health = (headers: Record<string, string>): Promise<Reply> =>
+    send(LAN, port, "POST", "/rpc/upstreams.health", { ...json, ...sameOrigin(), ...headers }, "{}");
+  const bearer = (): Record<string, string> => ({ authorization: `Bearer ${readFileSync(config.lanTokenPath, "utf8").trim()}` });
+
+  async function signIn(): Promise<Record<string, string>> {
+    const code = new URL(createLoginLink(lanConfig)).searchParams.get("code") ?? "";
+    const reply = await send(LAN, port, "POST", "/auth/login", { ...json, ...sameOrigin() }, JSON.stringify({ code }));
+    expect(reply.status).toBe(200);
+    return { cookie: sessionCookie(reply)!.split(";")[0]! };
+  }
+
+  it("answers 403 to a signed-in GET / with a foreign Host or the LAN name without its port", async () => {
+    await startLan();
+    const credential = await signIn();
+
+    const own = await send(LAN, port, "GET", "/", { host: `${NAME}:${port}`, accept: "text/html", ...credential });
+    const foreign = await send(LAN, port, "GET", "/", { host: `evil.example:${port}`, accept: "text/html", ...credential });
+    const portless = await send(LAN, port, "GET", "/", { host: NAME, accept: "text/html", ...credential });
+
+    expect([own.status, foreign.status, portless.status]).toEqual([200, 403, 403]);
+    expect([foreign.body, portless.body].some((body) => body.includes("console shell"))).toBe(false);
+  });
+
+  it("answers 401 to the old bearer after token rotate, and 200 to the new one", async () => {
+    await startLan();
+    const old = bearer();
+    expect((await health(old)).status).toBe(200);
+
+    rotateLanToken(lanConfig);
+
+    expect((await health(old)).status).toBe(401);
+    expect((await health(bearer())).status).toBe(200);
+  });
+
+  it("leaves one 0600 token file and no live old credential after two concurrent rotates", async () => {
+    await startLan();
+    const oldCookie = await signIn();
+    const oldBearer = bearer();
+
+    await Promise.all([rotateInChild(config.lanTokenPath), rotateInChild(config.lanTokenPath)]);
+
+    expect(readdirSync(path.dirname(config.lanTokenPath)).filter((name) => name.includes("lan.token"))).toEqual(["lan.token"]);
+    expect(statSync(config.lanTokenPath).mode & 0o777).toBe(0o600);
+    expect([(await health(oldCookie)).status, (await health(oldBearer)).status]).toEqual([401, 401]);
+    expect((await health(bearer())).status).toBe(200);
+  }, 30_000);
+
+  it("keeps the ui.token out of every envelope and log line when the broker fails", async () => {
+    const uiToken = "synthetic-ui-token-9b2e7d";
+    const broker = await startEchoingBroker();
+    await writeFile(config.agentChatTokenPath, uiToken);
+    await chmod(config.agentChatTokenPath, 0o600);
+    const lines: string[] = [];
+    const record = (fields: Record<string, unknown>, message: string): void => {
+      lines.push(`${message} ${JSON.stringify(fields, (_key, value: unknown) => (value instanceof Error ? { message: value.message, stack: value.stack, cause: String(value.cause) } : value))}`);
+    };
+    try {
+      await startLan({ info: record, warn: record, error: record }, { agentChatPort: broker.port });
+      const credential = await signIn();
+      const calls: Array<[string, unknown]> = [
+        ["agents.roster", {}],
+        ["agents.graph", {}],
+        ["agents.messages", { agent: "impl", limit: 50 }],
+        ["agents.queue", {}],
+      ];
+
+      const replies = await Promise.all(calls.map(([command, args]) => send(LAN, port, "POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...credential }, JSON.stringify(args))));
+
+      expect(replies.map((reply) => (JSON.parse(reply.body) as { ok: boolean }).ok)).toEqual(calls.map(() => false));
+      expect([...replies.map((reply) => reply.body), ...lines].filter((text) => text.includes(uiToken))).toEqual([]);
     } finally {
       await broker.close();
     }
