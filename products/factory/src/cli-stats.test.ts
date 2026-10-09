@@ -24,7 +24,7 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], reviewCauses: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], reviewCauses: [] });
   });
 
   it("prints only the review causes with --rereviews", async () => {
@@ -74,7 +74,7 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     const report = JSON.parse(out.join(""));
-    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "failures", "reviewCauses"]);
+    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "failures", "reviewCauses"]);
     expect(report.failures).toEqual([
       { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
     ]);

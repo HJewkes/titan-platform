@@ -36,7 +36,7 @@ export interface RepoPath {
 }
 
 const PATH_PREFIXES = ["~/", "$HOME/", "${HOME}/", "/"] as const;
-const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
+export const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
 const PATH_SEGMENT = /^[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*$/;
 
 /** An allowlist: a known prefix then plain segments (inner spaces alias nothing); any other spelling is refused, since it could only miss a deny. */
