@@ -18,7 +18,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   once as `<asker>-<depositId>.json` (0600, temp file then a no-clobber link, 64 KB cap),
   `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects, and
   `writeAnswer`/`readAnswer` keep `<id>.answer.json` beside them. File names percent-encode
-  every byte outside `[A-Za-z0-9_]`, so no asker or depositId can name a path outside `dir`.
+  every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
+  `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
+  Readers still accept a deposit filed under its name from before A-Z was escaped.
 - `QueueSource` is the adapter port: `open()`, `tail(cursor, signal)` and `resolve(ref, answer)`.
 - `mergeByKeys(items)` joins items that share an exact key: `pr:<owner>/<repo>#<n>@<sha>`
   with the full 40-hex head sha (compared case-insensitively), `task:<id>`, `gate:<id>` or

@@ -1,5 +1,13 @@
 # @titan-design/retrieval
 
+## 0.3.1
+
+### Patch Changes
+
+- 5fe09ab: Honour a signal that is already aborted when the search starts: every retriever now degrades with reason `error` instead of running to completion.
+- Updated dependencies [1f7de27]
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes

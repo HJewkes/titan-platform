@@ -1,0 +1,11 @@
+# @titan-design/pm
+
+## 0.1.0
+
+### Minor Changes
+
+- a96b022: New tier-2 package with the zod task schema (`TaskSchema`) and its inferred `Task` type, ported from active-work with the same fields, defaults and refinements. Pure code: no fs, process or network.
+- f1ce2cd: Add `parent` (one task id) and `dep` (unique id list) to `TaskSchema`. Add `readEdges(task)`, which reads those fields and, during the migration window only, falls back to `epic:`/`parent:` and `dep:`/`blocked-by:` tags. Add `checkEdges(tasks, change)`, a pure check that returns `unknown-id` and `cycle` errors and a non-fatal `cross-initiative-parent` warning.
+- a4814b3: Add the deliverable registry: `DeliverableSchema` (`id`, `title`, `done_when`, `target`, `status` of `planned`, `active`, `shipped` or `dropped`, `owner_seat`, retrieval-only `tags`, `created`, `updated` and `shipped_at`, which is set exactly when the status is `shipped`), `DELIVERABLE_ID_REGEX`, `DELIVERABLE_STATUSES`, `deliverablesDir(activeRoot)` for `<activeRoot>/titan-platform/deliverables`, `deliverablePath(activeRoot, id)`, and `parseDeliverableRegistry(entries)`, which validates the files the host read and treats no entries, a missing directory, as an empty registry. `TaskSchema` gains an optional `deliverables` list of unique deliverable ids.
+- ef4358f: Add `taskTree(tasks, rootId)`, the subtree under a task by `parent` edges with each node's status and estimate, and `criticalPath(tasks, { deliverable })`, the total float of each open task over its `dep` edges and the longest open chain by estimate. A dep outside the set counts as satisfied, an unestimated task has duration 0, and dep cycles are reported rather than thrown. Until the category registry is wired in, `done` and `wont-do` count as closed.
+- 597745d: Add `CategoryRegistrySchema` for the closed `kind`, `status`, `cos` and `area` axes (it must list status `open`, `done`, `wont-do` and `icebox` and kind `epic`), `categoriesPath(activeRoot)`, `parseCategoryRegistry`, which reads a missing file as a null registry, and the pure `checkCategories(task, registry)`, which returns `unknown-category` and `cos-fixed-without-due` errors. `TaskSchema` gains optional `kind`, `cos`, `area` and `due`, and `status` is now any non-empty string: a null registry checks it against `BUILT_IN_STATUSES` (`open`, `done`).

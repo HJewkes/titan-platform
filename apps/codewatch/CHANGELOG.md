@@ -1,5 +1,23 @@
 # codewatch
 
+## 0.0.16
+
+### Patch Changes
+
+- 224485e: Export the reason vocabularies as const tuples: `EXCERPT_MISSING` (with `ExcerptMissing`, which now types `SourceRead.unavailable`) and `MISSING_REASONS` (which types `Missing`). Export `FindingSort`, the `findings.list` sort enum, and `SYNTHESIZED_KINDS` with `isStoredKind`, so a consumer can tell which nodes `node.neighbors` accepts. codewatch derives its sort keys and its stored-kind check from these instead of restating them.
+- 6fe8c70: Split DataTable into header and body row pieces so it passes max-function-lines without a suppression.
+- Updated dependencies [25ac9ce]
+- Updated dependencies [f4b785f]
+- Updated dependencies [fb488c6]
+- Updated dependencies [f88ac00]
+- Updated dependencies [224485e]
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/code-read@0.3.0
+  - @titan-design/react-app@0.1.2
+  - @titan-design/rpc-client@0.3.0
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.0.15
 
 ### Patch Changes

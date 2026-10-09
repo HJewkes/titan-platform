@@ -1,5 +1,16 @@
 # @titan-design/react-app
 
+## 0.1.2
+
+### Patch Changes
+
+- fb488c6: The query store's `drop` now clears the entry's pending drop timer and deletes only when the map still holds that entry, so a stale timer can no longer delete a re-watched query's newer entry and leave it stuck on `loading`.
+- Updated dependencies [f88ac00]
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/rpc-client@0.3.0
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

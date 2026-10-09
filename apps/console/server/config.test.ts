@@ -140,6 +140,12 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_TOKEN: "~/secrets/lan.token" }).lanTokenPath).toBe(path.join(HOME, "secrets", "lan.token"));
   });
 
+  it("keeps the inbox spool in the state directory unless TITAN_CONSOLE_INBOX_DIR is given", () => {
+    expect(lan({}).inboxDir).toBe(path.join(HOME, ".local/state/titan-console", "inbox", "deposits"));
+    expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).inboxDir).toBe("/var/console/inbox/deposits");
+    expect(lan({ TITAN_CONSOLE_INBOX_DIR: "~/inbox" }).inboxDir).toBe(path.join(HOME, "inbox"));
+  });
+
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);

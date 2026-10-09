@@ -1,0 +1,9 @@
+# @titan-design/anthropic-account
+
+## 0.1.0
+
+### Minor Changes
+
+- a109b70: Add `@titan-design/anthropic-account` with a pure core: `UsageReading`, `parseUsageReading` and `usageFromOAuthResponse` for rate-limit readings in the status-line shape; the token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`; `accountLabel`; and `redactSecrets` for strings and Errors. The root entry has no fs, process or network access.
+- 906b22b: Add the `./node` subpath: `discoverProfiles` lists `~/.claude` and `~/.claude-profiles/*` (or `CLAUDE_CONFIG_DIRS`) as labelled profiles; `readLoginState` reads `.credentials.json` only after an `lstat`, an `O_NOFOLLOW` open and an `fstat` on that descriptor show a regular file of mode 0600 or narrower owned by the caller, and refuses a second hard link, and returns a token-free `LoginState`; `readUsage` returns the newest reading in `status-cache/sessions`, read through the same descriptor gate with a bounded read and its strings redacted; `writeReading` writes `usage-poll.json` atomically with mode 0600. `RefusedReason` gains `not-a-regular-file` and `hard-linked`. The root entry stays pure.
+- c85944c: Add `pollUsage` and `pollAll` to the `./node` subpath. `pollUsage` reads a profile's access token through the 0600 credentials gate and sends one `GET https://api.anthropic.com/api/oauth/usage` through an injected `fetch`, with the token only in the Authorization header, `redirect: "error"`, a timeout and no retry. It never refreshes: a token within 60 s of expiry is reported `expired`. The body is capped at 64 KiB and parsed against a zod allowlist of window keys. Every failure is a message-free value: `missing`, `refused`, `expired`, `io`, `http-<status>`, `network` or `malformed`. `pollAll` polls every discovered profile and writes each reading with `writeReading`.
