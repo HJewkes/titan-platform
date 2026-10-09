@@ -18,10 +18,7 @@ const ICON_SIZE = 20;
 const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   home: { label: "Home", title: "Home", icon: <ActivityIcon size={ICON_SIZE} /> },
   initiatives: { label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
-  tasks: {
-    label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} />,
-    planned: { summary: "Tasks across initiatives grouped by derived stage, and task detail.", tasks: "TP-866a" },
-  },
+  tasks: { label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} /> },
   sessions: {
     label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} />,
     planned: { summary: "The sessions list, and one session with its conversation first.", tasks: "TP-862" },
