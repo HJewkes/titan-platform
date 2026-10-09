@@ -13,7 +13,7 @@ export type ReviewerRoles = ClassRoles & {
 };
 
 /** The panel's large-PR limit, so Shepherd and `planPanel` class the same diff alike. */
-export const G10_CHANGED_LINES = DEFAULT_CLASS_RULES.largeLines;
+const G10_CHANGED_LINES = DEFAULT_CLASS_RULES.largeLines;
 
 export const DEFAULT_REVIEWER_ROLES: ReviewerRoles = DEFAULT_CLASS_ROLES;
 
