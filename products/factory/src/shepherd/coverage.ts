@@ -42,19 +42,19 @@ export interface CoverageInput {
 }
 
 /** `merged` is the denominator: unique PRs merged in the window less the `excluded` ones; `share` is undefined when it is 0. */
-export interface CoverageCounts {
+interface CoverageCounts {
   merged: number;
   excluded: number;
   shepherd: number;
   share: number | undefined;
 }
 
-export interface SeatCoverage extends CoverageCounts {
+interface SeatCoverage extends CoverageCounts {
   seat: string;
 }
 
 /** A counted merge no completed Shepherd run landed; `unresolved` when the row's PR could not be tied to one repo. */
-export interface CoverageMiss {
+interface CoverageMiss {
   seat: string;
   pr: string;
   note: string;
@@ -62,7 +62,7 @@ export interface CoverageMiss {
   unresolved: boolean;
 }
 
-export interface UntypedHold {
+interface UntypedHold {
   runId: string;
   repo: string;
   pr: number | null;

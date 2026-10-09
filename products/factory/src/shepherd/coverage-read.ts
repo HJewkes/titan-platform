@@ -9,7 +9,7 @@ import { ShepherdStore } from "./store.js";
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 
 /** Every seat's `<logsDir>/<seat>/dispatch.jsonl`; a seat with no log reads as no rows. */
-export function readMergedRows(logsDir: string, seats: readonly string[]): { rows: MergedRow[]; skipped: number } {
+function readMergedRows(logsDir: string, seats: readonly string[]): { rows: MergedRow[]; skipped: number } {
   const parsed = seats.map((seat) => {
     const file = join(logsDir, seat, "dispatch.jsonl");
     return mergedRows(seat, existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -18,7 +18,7 @@ export function readMergedRows(logsDir: string, seats: readonly string[]): { row
 }
 
 /** Opened read-only, so a running serve is never disturbed; throws when the store cannot be opened. */
-export function readLedger(dbPath: string): { registrations: LedgerRegistration[]; runs: WorkflowRun[] } {
+function readLedger(dbPath: string): { registrations: LedgerRegistration[]; runs: WorkflowRun[] } {
   const db = openDatabase(dbPath, { readonly: true });
   try {
     const runs = new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
@@ -28,7 +28,7 @@ export function readLedger(dbPath: string): { registrations: LedgerRegistration[
   }
 }
 
-export interface CoverageSources {
+interface CoverageSources {
   dbPath: string;
   logsDir: string;
   /** Seat name to the `owner/name` remotes it owns, from the seat book. */
