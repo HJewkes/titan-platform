@@ -120,11 +120,13 @@ belong to `@titan-design/agent-dispatch`; they pass through untyped. An error's 
 
 `checkCoordinatorConfig` never throws. A schema failure returns `missing` or `invalid` errors
 and skips the reference checks; a document that parses then gets `reference` errors, each
-naming its key path:
+naming its key path. Lookups use own keys only, so a name such as `constructor` is not
+found by accident:
 
 - exactly one seat has `attended: true`, and `owner.seat` names it;
-- every seat `pool`, `overflow_pool` and `pools[]` entry, and every `limits.funds` entry, is a
-  key of `limits.pools`;
+- every seat `pool`, `overflow_pool` and `pools[]` entry is a key of `limits.pools`, and so is
+  every pool named inside `limits` (`funds`, `seats`, `profiles.<n>.pools` keys, `overrides[].pools`);
+- every `limits.seats` key is a seat;
 - every seat `repos[]` id is a key of `repos`; a repo used by two or more seats must list
   each of them in its `shared_with`;
 - seat prefixes are unique (names are unique because seats are keyed by name);

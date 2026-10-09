@@ -101,6 +101,38 @@ describe("checkCoordinatorConfig", () => {
     ]);
   });
 
+  it("refuses pool and repo names that only exist on every JavaScript object", () => {
+    const config = exampleConfig();
+    Object.assign(config.seats["web-coord"]!, { pool: "constructor", repos: ["toString"] });
+    config.limits.funds.default = ["hasOwnProperty"];
+    expect(errorPaths(config)).toEqual([
+      "seats.web-coord.pool",
+      "seats.web-coord.repos.0",
+      "limits.funds.default.0",
+    ]);
+  });
+
+  it("names limits.seats entries for an unknown seat or an unknown pool", () => {
+    const config = exampleConfig();
+    Object.assign(config.limits, {
+      seats: { ghost: { implementers: 1 }, operator: { pool: "nope", pools: ["main", "gone"] } },
+    });
+    expect(errorPaths(config)).toEqual([
+      "limits.seats.ghost",
+      "limits.seats.operator.pool",
+      "limits.seats.operator.pools.1",
+    ]);
+  });
+
+  it("names override and profile pools that are not limits pools", () => {
+    const config = exampleConfig();
+    Object.assign(config.limits, {
+      profiles: { reviewer: { pools: { main: {}, spare: {} } } },
+      overrides: [{ pools: ["spare"], until: "2030-01-01T00:00:00Z", decision: "d-1" }],
+    });
+    expect(errorPaths(config)).toEqual(["limits.profiles.reviewer.pools.spare", "limits.overrides.0.pools.0"]);
+  });
+
   it("refuses two attended seats", () => {
     const config = exampleConfig();
     config.seats["web-coord"]!.attended = true;

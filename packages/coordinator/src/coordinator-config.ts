@@ -93,21 +93,26 @@ function attendedErrors(config: CoordinatorConfig, seats: Seats): CoordinatorCon
   return errors;
 }
 
-function poolErrors(config: CoordinatorConfig, name: string, seat: CoordinatorSeat): CoordinatorConfigError[] {
-  const refs: [string, string | undefined][] = [
-    ["pool", seat.pool],
-    ["overflow_pool", seat.overflow_pool],
-    ...(seat.pools ?? []).map((pool, i): [string, string] => [`pools.${i}`, pool]),
+type PoolRefs = { pool?: string; overflow_pool?: string; pools?: string[] };
+
+function poolRefs(path: string, refs: PoolRefs): [path: string, pool: string][] {
+  return [
+    ...(refs.pool === undefined ? [] : [[`${path}.pool`, refs.pool] as [string, string]]),
+    ...(refs.overflow_pool === undefined ? [] : [[`${path}.overflow_pool`, refs.overflow_pool] as [string, string]]),
+    ...(refs.pools ?? []).map((pool, i): [string, string] => [`${path}.pools.${i}`, pool]),
   ];
+}
+
+function unknownPools(config: CoordinatorConfig, refs: [string, string][]): CoordinatorConfigError[] {
   return refs
-    .filter(([, pool]) => pool !== undefined && !(pool in config.limits.pools))
-    .map(([key, pool]) => reference(`seats.${name}.${key}`, `pool ${pool} is not in limits.pools`));
+    .filter(([, pool]) => !Object.hasOwn(config.limits.pools, pool))
+    .map(([path, pool]) => reference(path, `pool ${pool} is not in limits.pools`));
 }
 
 function repoErrors(config: CoordinatorConfig, seats: Seats, name: string, seat: CoordinatorSeat) {
   return (seat.repos ?? []).flatMap((id, i) => {
     const path = `seats.${name}.repos.${i}`;
-    const repo = config.repos[id];
+    const repo = Object.hasOwn(config.repos, id) ? config.repos[id] : undefined;
     if (!repo) return [reference(path, `repo ${id} is not in repos`)];
     const users = seats.filter(([, other]) => other.repos?.includes(id)).map(([user]) => user);
     const unlisted = users.filter((user) => !repo.shared_with?.includes(user));
@@ -118,24 +123,41 @@ function repoErrors(config: CoordinatorConfig, seats: Seats, name: string, seat:
 
 function seatErrors(config: CoordinatorConfig, seats: Seats): CoordinatorConfigError[] {
   return seats.flatMap(([name, seat], index) => {
-    const errors = [...poolErrors(config, name, seat), ...repoErrors(config, seats, name, seat)];
+    const errors = [...unknownPools(config, poolRefs(`seats.${name}`, seat)), ...repoErrors(config, seats, name, seat)];
     const earlier = seats.slice(0, index).find(([, other]) => other.prefix === seat.prefix);
     if (earlier) {
       errors.push(reference(`seats.${name}.prefix`, `prefix ${seat.prefix} is already used by ${earlier[0]}`));
     }
-    if ("config_dir" in seat) {
+    if (Object.hasOwn(seat, "config_dir")) {
       errors.push(reference(`seats.${name}.config_dir`, "config_dir belongs on the limits pool, not the seat"));
     }
     return errors;
   });
 }
 
-function fundErrors(config: CoordinatorConfig): CoordinatorConfigError[] {
-  return Object.entries(config.limits.funds ?? {}).flatMap(([fund, pools]) =>
-    pools.flatMap((pool, i) =>
-      pool in config.limits.pools ? [] : [reference(`limits.funds.${fund}.${i}`, `pool ${pool} is not in limits.pools`)],
+// The same pool walk as agent-dispatch's checkLimits, kept here because that one needs a
+// clock and reports no key paths.
+function limitsPoolRefs(config: CoordinatorConfig): [string, string][] {
+  const { funds = {}, seats = {}, profiles = {}, overrides = [] } = config.limits;
+  return [
+    ...Object.entries(funds).flatMap(([fund, pools]) =>
+      pools.map((pool, i): [string, string] => [`limits.funds.${fund}.${i}`, pool]),
     ),
-  );
+    ...Object.entries(seats).flatMap(([name, seat]) => poolRefs(`limits.seats.${name}`, seat)),
+    ...Object.entries(profiles).flatMap(([name, profile]) =>
+      Object.keys(profile.pools ?? {}).map((pool): [string, string] => [`limits.profiles.${name}.pools.${pool}`, pool]),
+    ),
+    ...overrides.flatMap((override, i) =>
+      (override.pools ?? []).map((pool, j): [string, string] => [`limits.overrides.${i}.pools.${j}`, pool]),
+    ),
+  ];
+}
+
+function limitsErrors(config: CoordinatorConfig): CoordinatorConfigError[] {
+  const unknownSeats = Object.keys(config.limits.seats ?? {})
+    .filter((name) => !Object.hasOwn(config.seats, name))
+    .map((name) => reference(`limits.seats.${name}`, `seat ${name} is not in seats`));
+  return [...unknownSeats, ...unknownPools(config, limitsPoolRefs(config))];
 }
 
 function policyErrors(config: CoordinatorConfig): CoordinatorConfigError[] {
@@ -156,7 +178,7 @@ export function checkCoordinatorConfig(raw: unknown): CoordinatorConfigResult {
   const errors = [
     ...attendedErrors(config, seats),
     ...seatErrors(config, seats),
-    ...fundErrors(config),
+    ...limitsErrors(config),
     ...policyErrors(config),
   ];
   return errors.length === 0 ? { ok: true, config } : { ok: false, errors };
