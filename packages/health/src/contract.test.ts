@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { healthReportSchema, healthSampleSchema, parseHealthReport, worstStatus } from "./index.js";
 
 const V1_REPORT = {
@@ -144,9 +144,29 @@ describe("parseHealthReport (read)", () => {
     expect(read).toEqual({ ok: true, report: { status: "pass", ok: true, port: 7410 }, ignored: ["version", "pid"] });
   });
 
-  it("keeps a check whose output is not a string", () => {
-    const read = parseHealthReport({ status: "pass", checks: { db: [{ status: "pass", output: { code: 7 } }] } });
-    expect(read).toMatchObject({ ok: true, report: { status: "pass", checks: { db: [{ output: { code: 7 } }] } } });
+  it("drops a mistyped check field and names it by path, keeping the rest of the check", () => {
+    const read = parseHealthReport({
+      status: "pass",
+      checks: { "db:responseTime": [{ status: "pass", output: { code: 7 }, componentType: 3, observedValue: 3 }] },
+    });
+    expect(read).toEqual({
+      ok: true,
+      report: { status: "pass", checks: { "db:responseTime": [{ status: "pass", observedValue: 3 }] } },
+      ignored: ["checks.db:responseTime.0.componentType", "checks.db:responseTime.0.output"],
+    });
+  });
+
+  it("returns check fields typed as the contract declares them", () => {
+    const read = parseHealthReport({ status: "pass", checks: { db: [{ status: "pass", output: "slow" }] } });
+    if (!read.ok) throw new Error(read.error);
+    const output = read.report.checks?.db?.[0]?.output;
+    expectTypeOf(output).toEqualTypeOf<string | undefined>();
+    expect(output?.trim()).toBe("slow");
+  });
+
+  it("reads a check entry that is not an object as warn", () => {
+    const read = parseHealthReport({ status: "pass", checks: { db: ["broken"] } });
+    expect(read).toEqual({ ok: true, report: { status: "warn", checks: { db: [{ status: "warn" }] } }, ignored: [] });
   });
 
   it("ignores a checks value that is not an object", () => {

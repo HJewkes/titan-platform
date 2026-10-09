@@ -503,7 +503,7 @@ Key exports:
 - `contract`: `HEALTH_STATUSES`, `healthCheckSchema`, `healthReportSchema`, `healthStatusSchema`, `parseHealthReport`, `worstStatus`, `HealthCheck`, `HealthReport`
 - `sample`: `SAMPLE_STATUSES`, `healthSampleSchema`, `sampleStatusSchema`
 - `probe-http`: `probeHttp`
-- +7 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/health)
+- +8 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/health)
 
 <a id="cap-hitl"></a>
 
