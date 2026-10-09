@@ -164,16 +164,21 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   `recommended.hidden`. Each answers 400 and files nothing.
 - **One file per deposit.** `owner-queue/spool`'s `writeDeposit` writes it at 0600 under
   `TITAN_CONSOLE_INBOX_DIR`. The file name percent-encodes `asker` and `depositId`, so `../`, `/`
-  and NUL cannot leave the spool.
+  and NUL cannot leave the spool, and `Bob` and `bob` get two files. An `asker` or `depositId`
+  holding a lone surrogate answers 400.
 - **Idempotent.** A repeat of an asker's `depositId` keeps the first body and answers its item
   id with `created: false`.
-- **Caps.** A deposit over 64 KB, measured as the spool stores it, answers 400. An asker with
-  200 open deposits, those with no answer file beside them, gets 429 (`EXIT.TEMPFAIL`) until one
-  is answered. Deposits run one at a time, so racing calls cannot pass the cap together.
+- **Caps.** A request body over 128 KB answers 413 before the daemon buffers it. A deposit over
+  64 KB, measured as the spool stores it, answers 400. The body cap is twice the stored one
+  because a client that writes non-ASCII as `\uXXXX` escapes sends up to twice the bytes. An
+  asker with 200 open deposits, those with no answer file beside them, gets 429
+  (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
+  open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.
 - **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
   identity, and a LAN credential names no agent. One agent can file under another's name, and
-  can spread past the cap across invented names. A deposit still cannot answer or resolve
-  anything, so this costs inbox noise, not owner authority.
+  can spread past the per-asker cap across invented names, up to the spool-wide 2000. A
+  deposit still cannot answer or resolve anything, so this costs inbox noise, not owner
+  authority.
 
 ## active-work reads
 
