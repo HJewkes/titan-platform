@@ -1,6 +1,19 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { ItemSchema, itemsDigest, keyIdOf, keyRing, StatementSchema, verifyProof, type ProofItem, type Statement } from "./presence-proof.js";
+import {
+  ItemSchema,
+  itemsDigest,
+  keyIdOf,
+  keyRing,
+  StatementSchema,
+  verifyProof,
+  type KeyRing,
+  type ProofInput,
+  type ProofItem,
+  type ProofResult,
+  type Refusal,
+  type Statement,
+} from "./presence-proof.js";
 
 const NOW = 1_791_500_100;
 const AUD = "basement";
@@ -35,18 +48,18 @@ function statementFor(publicKey: KeyObject, over: Partial<Statement> = {}, items
   };
 }
 
-function proofFrom(privateKey: KeyObject, statement: unknown) {
+function proofFrom(privateKey: KeyObject, statement: unknown): ProofInput {
   const bytes = Buffer.from(typeof statement === "string" ? statement : JSON.stringify(statement));
   const signature = sign("sha256", bytes, { key: privateKey, dsaEncoding: "der" });
   return { statementB64: bytes.toString("base64url"), signatureB64: signature.toString("base64url") };
 }
 
-function setup() {
+function setup(): { publicKey: KeyObject; privateKey: KeyObject; keys: KeyRing } {
   const { publicKey, privateKey } = newKey();
   return { publicKey, privateKey, keys: keyRing([publicKey]) };
 }
 
-const refusal = (result: ReturnType<typeof verifyProof>) => (result.ok ? "accepted" : result.refusal);
+const refusal = (result: ProofResult): Refusal | "accepted" => (result.ok ? "accepted" : result.refusal);
 
 function flip(b64: string, at: number): string {
   const bytes = Buffer.from(b64, "base64url");
@@ -239,9 +252,9 @@ describe("verifyProof", () => {
 
   it("refuses non-string input without throwing", () => {
     const { keys } = setup();
-    const bad = { statementB64: 5, signatureB64: null } as unknown as Parameters<typeof verifyProof>[0];
+    const bad = { statementB64: 5, signatureB64: null } as unknown as ProofInput;
     expect(refusal(verifyProof(bad, keys, NOW, AUD))).toBe("malformed");
-    expect(refusal(verifyProof(undefined as unknown as Parameters<typeof verifyProof>[0], keys, NOW, AUD))).toBe("malformed");
+    expect(refusal(verifyProof(undefined as unknown as ProofInput, keys, NOW, AUD))).toBe("malformed");
   });
 
   it("refuses a deeply nested payload without throwing", () => {
@@ -277,7 +290,7 @@ describe("itemsDigest", () => {
   });
 
   it("accepts a payload 30 levels deep and throws past it", () => {
-    const nested = (levels: number): Record<string, unknown> => JSON.parse(`${'{"a":'.repeat(levels)}1${"}".repeat(levels)}`);
+    const nested = (levels: number): ProofItem["payload"] => JSON.parse(`${'{"a":'.repeat(levels)}1${"}".repeat(levels)}`);
     expect(() => itemsDigest([item({ payload: nested(30) })])).not.toThrow();
     expect(() => itemsDigest([item({ payload: nested(31) })])).toThrow(RangeError);
   });
