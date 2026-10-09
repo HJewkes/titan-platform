@@ -203,6 +203,36 @@ describe("probeHttp when the target is down", () => {
     expect(sample).toMatchObject({ status: "fail", observed: { code: 302 } });
   });
 
+  it("keeps URL credentials out of a transport error it reports", async () => {
+    const url = "http://probe-user:s3cret-pass@127.0.0.1:7410/health";
+    const deps: ProbeHttpDeps = {
+      fetch: async (requested) => {
+        throw new Error(`connect failed for ${requested}`);
+      },
+    };
+
+    const sample = await probeHttp(target(url), deps);
+
+    expect(sample.status).toBe("fail");
+    expect(sample.output).not.toMatch(/s3cret-pass|probe-user/);
+    expect(sample.output).toContain("127.0.0.1:7410");
+  });
+
+  it("keeps URL credentials out of a probe error it reports", async () => {
+    const url = "http://probe-user:s3cret%20pass@127.0.0.1:7410/health";
+    const deps: ProbeHttpDeps = {
+      fetch: async () => new Response(JSON.stringify({ ok: true, pid: 1 }), { status: 200 }),
+      expectedPid: async () => {
+        throw new Error(`no pid file for probe-user:s3cret pass`);
+      },
+    };
+
+    const sample = await probeHttp(target(url), deps);
+
+    expect(sample.status).toBe("unknown");
+    expect(sample.output).not.toMatch(/s3cret|probe-user/);
+  });
+
   it("reads a URL that does not parse as unknown", async () => {
     const sample = await probeHttp(target("not a url"));
 

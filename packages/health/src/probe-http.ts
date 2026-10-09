@@ -54,7 +54,27 @@ export async function probeHttp(target: ProbeHttpTarget, deps: ProbeHttpDeps = {
     latencyMs: Math.max(0, (answeredAt ?? now()) - startedAt),
     source: "probe",
     ...verdict,
+    ...(verdict.output === undefined ? {} : { output: redactCredentials(verdict.output, target.url) }),
   };
+}
+
+// Samples are stored forever, so a user:pass@ in the target URL must never reach their text,
+// whichever error (fetch, URL parsing, the pid port) echoed it.
+function redactCredentials(text: string, url: string): string {
+  const userinfo = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)@/i.exec(url)?.[1];
+  if (!userinfo) return text;
+  const parts = [userinfo, ...userinfo.split(":")].flatMap((part) => [part, safeDecode(part)]);
+  // Longest first, so a whole userinfo is replaced before its pieces; one-letter pieces would mangle the text.
+  const secrets = [...new Set(parts)].filter((part) => part.length > 1).sort((a, b) => b.length - a.length);
+  return secrets.reduce((redacted, secret) => redacted.split(secret).join("***"), text);
+}
+
+function safeDecode(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
 }
 
 // Latency stops when the exchange ends, so a slow pid file read is not charged to the target.

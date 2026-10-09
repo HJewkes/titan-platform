@@ -111,7 +111,8 @@ the injected clock from before the request to after the body; the `expectedPid()
 not counted. `observed.code` holds the HTTP
 code when there was one, and each `observe` dot path is copied under its own name; a missing
 path is left out, never defaulted. The package never reads a pid file itself; the caller
-passes `expectedPid`.
+passes `expectedPid`. Credentials in the URL (`user:pass@`) are replaced with `***` in
+`output`, so they never reach a stored sample.
 
 ## The sample store
 
