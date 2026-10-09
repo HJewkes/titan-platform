@@ -46,6 +46,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-sent-back": "awaiting-approval",
   "sh-conflict-check": "awaiting-approval",
   "stuck-behind": "awaiting-approval",
+  "sh-seat-notice": "awaiting-approval",
   "merge-settle": "merging",
   merge: "merging",
   "sh-train-leave": "merging",

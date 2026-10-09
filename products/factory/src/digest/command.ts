@@ -1,13 +1,17 @@
 import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
+import type { GateRecord } from "@titan-design/hitl";
+import { ownerQueueSources } from "../needs/command.js";
+import { collectNeeds } from "../needs/merged.js";
 import type { GateSummary } from "../registry.js";
 import type { WatchRow } from "../shepherd/view.js";
 import type { DigestSources, GateFact } from "./collect.js";
+import type { GateReader } from "../needs/hitl-source.js";
 import { readFriction } from "./friction.js";
 import { buildDigest, deliverDigest } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
-import { digestDirectories, execProcess, fileSources, readAgentChat, type Exec } from "./sources.js";
+import { digestDirectories, execProcess, fileSources, queuesDirOf, readAgentChat, type Exec } from "./sources.js";
 
 /** Runs one factory registry command, on titan-factory serve or in process. */
 export type FactoryCall = (name: string, args: object) => Promise<JsonEnvelope<unknown>>;
@@ -54,15 +58,41 @@ function gateFact({ runId, stepId, gateId, prompt, resolve, summary, evidenceRef
   return { runId, stepId, gateId, prompt, resolve, createdAt, ...(summary !== undefined && { summary }), ...(evidenceRef !== undefined && { evidenceRef }) };
 }
 
-function factorySources(call: FactoryCall): Pick<DigestSources, "rows" | "gates"> {
+/** The gates a digest read over rpc, as the reader the hitl adapter takes; fields the rpc list omits stay unset. */
+function pendingGateReader(gates: readonly GateSummary[]): GateReader {
+  const records = gates.map(
+    (gate): GateRecord => ({
+      id: gate.gateId,
+      prompt: gate.prompt,
+      schema: undefined,
+      status: "pending",
+      payload: undefined,
+      reason: undefined,
+      createdAt: gate.createdAt,
+      resolvedAt: undefined,
+      expiresAt: undefined,
+      resolvedBy: undefined,
+      resolvedEvidence: undefined,
+      rule: undefined,
+      summary: gate.summary,
+      evidenceRef: gate.evidenceRef,
+      questions: gate.questions,
+    }),
+  );
+  return { get: (id) => records.find((record) => record.id === id), listPending: () => records };
+}
+
+function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: string): Pick<DigestSources, "rows" | "gates" | "needs"> {
   const data = async <T>(name: string, args: object): Promise<T> => {
     const envelope = await call(name, args);
     if (!envelope.ok) throw new Error(envelope.error);
     return envelope.data as T;
   };
+  const pendingGates = async (): Promise<GateSummary[]> => (await data<{ gates: GateSummary[] }>("factory.gates", {})).gates;
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
-    gates: async () => (await data<{ gates: GateSummary[] }>("factory.gates", {})).gates.map(gateFact),
+    gates: async () => (await pendingGates()).map(gateFact),
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), morningDir)),
   };
 }
 
@@ -73,7 +103,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
   const { slot, windowMinutes } = currentSlot(now, config.digest?.timezone ?? DEFAULT_TIMEZONE, config.digest?.slots ?? DEFAULT_SLOTS);
   const agentChatBin = config.shepherd?.agentChatBin ?? "agent-chat";
   const sources: DigestSources = {
-    ...factorySources(call),
+    ...factorySources(call, io.env, queuesDirOf(config)),
     ...fileSources(config),
     ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
     agentChat: (minutes) => readAgentChat(deps.exec ?? execProcess, agentChatBin, minutes),

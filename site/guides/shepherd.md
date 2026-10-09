@@ -290,14 +290,38 @@ refusal as `held`. Like a fixer that exits with no push, the repo's seat is told
 started and the run waits for a new head; if no notice is sent, `sh-sent-back` opens and names
 the refusal. The watch row's next action and the timeline's wake entry carry the refusal, and the
 row says the seat was told only when a notice was sent after that wake. A ci-red or conflict wake
-records no `held`. A ci-red wake still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
-spends one repair from the `repair-budget`.
+records no `held`. A ci-red wake no fixer took goes to the seat as described in
+[seat work](#seat-gates), and a conflict wake still stops the run as `not-mergeable`. Each such
+wake still spends one repair from the `repair-budget`.
 
 GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base
 cannot merge into the head. That is not a failure: the land round stops with reason `conflict` and
 takes the same route as a `dirty` PR. The first time, the implementer is woken with the conflict;
 if the conflict is still there on the next `update-branch`, `approve-merge` opens with
 `shepherd-route/conflict`. Any other `update-branch` error still fails the step.
+
+### Seat work goes to the seat {#seat-gates}
+
+Only owner approvals open an owner gate: `approve-merge` under an `owner-gate` or visual
+policy, one-way items, and holds that need the owner. Three gates are seat work. Before
+opening one, Shepherd records an `sh-seat-notice` step that messages the repo's seat, then
+takes the gate's default action:
+
+| Gate | When | Default action once the seat is told |
+| --- | --- | --- |
+| `ci-failed` | a red head no fixer took (a transient red still reruns first) | wait for a new head: the seat starts a fix round or a successor |
+| `sh-sent-back` | a `FIX_FIRST` or `NO_REPRO` no agent took, a spent repair budget, or a fixer exit (the exit notice above) | wait for a new head |
+| `stuck-behind` | the update budget and its retries are spent | answer `retry`: `update-branch` runs again with a fresh budget |
+
+The gate opens only when no notice was sent: no single seat owns the repo, no notice is wired,
+or the send failed. Its prompt then names why. A run tells the seat once per gate and head, and
+a restart replays the recorded notice instead of sending it again. A run that was already
+paused on one of these gates before the notice step existed keeps that gate.
+
+A review round's Ship pick at one head (decision 97) is the owner's merge approval at that
+head. Today it answers an `approve-merge` gate only after the gate is open, through
+`roundMergeDecisions` (`products/factory/src/shepherd/round-merge.ts`). Nothing reads a Ship
+record before the gate opens yet.
 
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.
@@ -359,7 +383,21 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
   and is left out. Releases do not appear: `shepherd release` records no actor.
 
-`--json` returns `{ "merges": [...], "ownerFriction": [...] }`. The morning digest shows today's
+- Per repo and ISO week, the time per stage: for each of `queued`, `ci`, `review`, `re-review`,
+  `hold` and `land`, how many runs spent time in it and the median, p90 (nearest rank) and
+  maximum minutes per run, summed over the run's visits. The ledger records only when a step
+  completed, so a step's time is the gap since the step before it, and the stage is that step's
+  phase (`ci` includes the fixer's wait for a new head; `hold` is the owner-decision gates). A
+  review after the run went back through CI or a fixer is a `re-review`, which covers a head
+  move and a clean merge-up. Time after the merge is in no stage. A hold polled inside the
+  merge step leaves no trace in the ledger, so `stats` counts it under `land`; `status` does
+  name a live hold.
+
+`shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
+the minutes it has been there, and the minutes since registration. `status --json` carries them
+as `stage` and `totalMinutes`.
+
+`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
 ## Seat policy {#seat-policy}
