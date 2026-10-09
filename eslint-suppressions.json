@@ -89,11 +89,6 @@
       "count": 1
     }
   },
-  "packages/daemon/src/daemon.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "packages/decider/src/router.ts": {
     "titan/max-function-lines": {
       "count": 1

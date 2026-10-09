@@ -18,6 +18,7 @@ Before adding code:
 | Unit | Tier | Use this when |
 | --- | --- | --- |
 | [`agent-protocol`](#cap-agent-protocol) | 0 | You need identity, execution-phase or usage types that stay the same whichever harness (Claude Code or Codex) ran the work. For a canonical, zod-validated execution-trace record (run, attempt, call, gate, artifact, cost) with a privacy redactor, import `./trace`. To count usage without double-counting deltas and snapshots, call `foldUsage`. |
+| [`anthropic-account`](#cap-anthropic-account) | 0 | You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. Pure code; it reads no files and makes no request, so the host reads the credentials and calls the endpoint. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead. |
 | [`app-paths`](#cap-app-paths) | 0 | You need an app's per-user data, config, cache or log directory (`appDirs`, the env-paths table with no `-nodejs` suffix), or active-work's data root and session graph path as active-work's own CLI resolves them (`activeWorkRoot`, `activeWorkGraphPath`, honouring `ACTIVE_ROOT`). Every function is pure over an injectable `{ env, home, platform }`. To expand `~` in a transcript path, use `expandHome` in session-read; to scan diffs for leaked data-directory paths, use egress-scan. |
 | [`authority`](#cap-authority) | 0 | Code must decide whether an owner, agent or automation process may merge, release, read a secret, spawn, spend, actuate hardware, answer a human verb or let the decider answer a routed question, and who may resolve the gate if one is needed. It is the policy table and a pure evaluator only; the gate itself is hitl. |
 | [`chat-protocol`](#cap-chat-protocol) | 0 | You store, render or forward a conversation on an agent-chat surface and need the one canonical message shape. Moving the bytes is messaging. The `./agents` subpath folds the agent-chat broker's sessions and history into an agent roster and a spawn and message graph. |
@@ -139,6 +140,22 @@ Key exports:
 - `usage-fold`: `foldUsage`
 - `index`: `conversationRef`, `conversationItemRef`
 - +23 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
+
+<a id="cap-anthropic-account"></a>
+
+### [`anthropic-account`](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
+
+Tier 0, `@titan-design/anthropic-account@0.0.0`. Anthropic account state without I/O: usage readings, token-free login state, account labels and secret redaction
+
+**Use this when:** You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. Pure code; it reads no files and makes no request, so the host reads the credentials and calls the endpoint. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.
+
+Key exports:
+
+- `usage`: `POLL_SESSION_ID`, `POLL_SOURCE`, `parseUsageReading`, `usageFromOAuthResponse`, `OAuthUsageOptions`, `UsageReading`
+- `login`: `loginStateFromCredentials`, `needsRefresh`
+- `profile`: `DEFAULT_LABEL`, `accountLabel`
+- `redact`: `REDACTED`, `redactSecrets`
+- +4 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/anthropic-account)
 
 <a id="cap-app-paths"></a>
 
@@ -452,7 +469,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +61 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +63 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -942,7 +959,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
-- +89 more in `products/factory/src/index.ts`
+- +92 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 
@@ -969,13 +986,14 @@ Tier product, private, `products/session-miner`. The session miner: index Claude
 
 Key exports:
 
-- `config`: `ConfigOverrides`, `resolveConfig`
+- `config`: `resolveConfig`
 - `context`: `createMinerContext`
 - `schema`: `MINER_MIGRATIONS`
-- `registry`: `MINER_VERSION`, `TOOL_PREFIX`, `createMinerRegistry`
+- `registry`: `createMinerRegistry`
 - `serve`: `runMinerMcpStdio`, `serveMinerUntilSignal`, `serveOptions`, `startMiner`
 - `cli`: `runCli`
-- +11 more in `products/session-miner/src/index.ts`
+- `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
+- +18 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 

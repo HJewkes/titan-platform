@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { defineWorkflow, stepIdMatches, type WorkflowDefinition } from "../definition.js";
-import { onCiFailed, type LandPrState } from "../workflows/land-pr.js";
+import type { LandPrState } from "../workflows/land-pr.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import type { SettleHold } from "../workflows/land-settle.js";
 import { codeRoute, land, newUpdateBound, type CiSnapshot, type LandOptions, type LandOutcome, type UpdateBound } from "../workflows/land.js";
@@ -29,7 +29,8 @@ import { outcomeRoutes, recordLanded, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, routeFor, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
-import { awaitedPast, conflictGate, sentBackGate, type PrTarget, type WakeRun } from "./gates.js";
+import { awaitedPast, conflictGate, type PrTarget, type WakeRun } from "./gates.js";
+import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 
@@ -145,7 +146,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
   if (outcome.kind === "ci-failed") {
     if (await heldByFrozenMain(run.ctx, run.target, outcome, run.freezeChecks++)) return undefined;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
-    return onCiFailed(run.ctx, run.target, outcome, run.state);
+    return ciFailedRoute(run, outcome);
   }
   if (!isConflict(run, outcome)) return outcome;
   run.failedRounds += 1;
@@ -187,7 +188,7 @@ function reviewingContext(run: ShepherdRun): WorkflowContext {
     resumedGate: () => ctx.resumedGate(),
     expireGates: (reason, isStale) => ctx.expireGates(reason, isStale),
     seed: (stepId, fn) => ctx.seed(stepId, fn),
-    assisted: followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview, gated, stepId) => (clearSuperseded(run, rereview, gated, stepId), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) }),
+    assisted: routingStuckBehind(run, () => run.lastCi?.headSha, followingApprovals(ctx, conflictCheckedGates(supersedingGates(ctx, (rereview, gated, stepId) => (clearSuperseded(run, rereview, gated, stepId), new LeaveLand())), (headSha) => conflictsAt(ctx, `sh-conflict-check:${run.conflictChecks++}`, { ...run.target, headSha }), leaveOnConflict), { target: run.target, reviewedMerge: (headSha) => !run.release && verdictIsMergeAt(run.reviews.get(headSha), headSha) })),
     authorize: (stepId, request, options) => ctx.authorize(stepId, request, options),
     dispatch: async (stepId, template, options) => {
       const done = await ctx.dispatch(stepId, template, options);
@@ -307,12 +308,6 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
   return { kind: "stopped", reason: "not-mergeable", headSha, detail: "mergeable_state is dirty and no agent took the conflict wake" };
 }
 
-/** No agent took the send-back, so a human chooses between waiting for a fix and abandoning. */
-function unhandledSendBack(run: ShepherdRun, kind: Verdict["kind"], headSha: string): Promise<LandOutcome | undefined> {
-  const prompt = `The review of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} said ${kind}, and no agent took the wake. Await a new head or abandon?`;
-  return sentBackGate(run, headSha, prompt, `a human abandoned the PR after a ${kind} review`);
-}
-
 /** The one place a merged outcome leaves the run; follow-ups that act on a merge extend this. */
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
@@ -346,6 +341,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
+    seatNoticeRoute(deps.now, deps.exitNotice),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps),
   ];
