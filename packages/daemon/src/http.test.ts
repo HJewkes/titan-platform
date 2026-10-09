@@ -125,6 +125,70 @@ describe("POST /rpc/:name", () => {
   });
 });
 
+describe("POST /rpc/:name body limit", () => {
+  const CHUNK = 16 * 1024;
+
+  /** A chunked body with no Content-Length, which records how many chunks the server pulled. */
+  function streamedBody(chunks: number): { body: ReadableStream<Uint8Array>; pulled: () => number } {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled === chunks) return controller.close();
+        pulled += 1;
+        controller.enqueue(new Uint8Array(CHUNK).fill(0x20));
+      },
+    });
+    return { body, pulled: () => pulled };
+  }
+
+  it("answers 413 to a streamed body past the cap without reading the rest of it", async () => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 4 * CHUNK } });
+    const stream = streamedBody(256);
+
+    const res = await postRpc(app, "greet", undefined, { body: stream.body, duplex: "half" } as RequestInit);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ ok: false, error: "Request body is too large", code: 64 });
+    expect(stream.pulled()).toBeLessThan(16);
+  });
+
+  it("answers 413 from a Content-Length past the cap", async () => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "x".repeat(64) }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it("caps every command at 1 MiB by default", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "x".repeat(1024 * 1024) }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it("applies a per-command cap to that command alone", async () => {
+    const app = buildApp({ rpcBodyLimit: { perCommand: { greet: 32 } } });
+    const body = JSON.stringify({ name: "x".repeat(64) });
+
+    expect((await postRpc(app, "greet", body)).status).toBe(413);
+    expect((await postRpc(app, "boom", body)).status).toBe(500);
+  });
+
+  it("runs a command whose streamed body is under the cap", async () => {
+    const encoded = new TextEncoder().encode(JSON.stringify({ name: "world" }));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoded);
+        controller.close();
+      },
+    });
+
+    const res = await postRpc(buildApp(), "greet", undefined, { body, duplex: "half" } as RequestInit);
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("request guards", () => {
   it("rejects a non-JSON body on a state-changing request", async () => {
     const res = await postRpc(buildApp(), "greet", "name=world", { headers: { "content-type": "text/plain" } });

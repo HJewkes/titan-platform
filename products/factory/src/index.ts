@@ -21,6 +21,12 @@ export type { CiSnapshot, FailingCheck, LandDeps, LandInput, LandOptions, LandOu
 export { LAND_STEPS, MAX_CI_CYCLES, MAX_UPDATE_CYCLES, land, landRoutes, readCi } from "./workflows/land.js";
 export type { LandPrDeps, LandPrParams } from "./workflows/land-pr.js";
 export { LAND_PR_STEPS, landPr, landPrParams, landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
+export type { AuditAgent, AuditAgentRequest, AuditPorts } from "./audit/ports.js";
+export type { AuditStepName, ManifestStep } from "./audit/manifest.js";
+export { AUDIT_MANIFEST, MEASUREMENT_AUDIT_STEPS } from "./audit/manifest.js";
+export { auditRoutes } from "./audit/routes.js";
+export { claudePrintAgent, systemAuditPorts } from "./audit/production.js";
+export { AUDIT_WORKFLOW, measurementAuditWorkflow } from "./audit/workflow.js";
 export type { AwaitHeadDeps, AwaitHeadTarget, AwaitHeadTiming } from "./workflows/await-head.js";
 export { AWAIT_HEAD_POLL_MS, AWAIT_HEAD_STEPS, awaitNewHead, awaitNewHeadRoute } from "./workflows/await-head.js";
 export type { ActiveWorkSourceOptions, DecisionTask } from "./needs/active-work-source.js";

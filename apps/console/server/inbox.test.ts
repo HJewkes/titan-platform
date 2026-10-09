@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue"
 import { readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import type { ConsoleConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
-import { INBOX_DEPOSIT, MAX_OPEN_DEPOSITS_PER_ASKER, fileDeposit } from "./inbox.js";
+import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT, MAX_OPEN_DEPOSITS, MAX_OPEN_DEPOSITS_PER_ASKER, fileDeposit } from "./inbox.js";
 import { closedPort, send, type Reply } from "./test-support.js";
 
 const ASKER = "pc-test-agent";
@@ -71,6 +71,36 @@ const post = (body: unknown, headers: Record<string, string> = { "x-titan-client
 
 const bodyOf = (reply: Reply): { ok: boolean; data?: { id: string; created: boolean }; error?: string } => JSON.parse(reply.body);
 
+/** Writes a chunked body with no Content-Length, chunk by chunk, and stops as soon as the console answers. */
+function streamOversizeDeposit(): Promise<{ status: number; sent: number; total: number }> {
+  const chunk = Buffer.alloc(16 * 1024, 0x20);
+  const total = 64 * 1024 * 1024;
+  const headers = { host: `127.0.0.1:${config.port}`, "content-type": "application/json", "x-titan-client": "test", "transfer-encoding": "chunked" };
+  return new Promise((resolve, reject) => {
+    let sent = 0;
+    let answered = false;
+    const req = request({ host: "127.0.0.1", port: config.port, path: `/rpc/${INBOX_DEPOSIT}`, method: "POST", headers }, (res) => {
+      answered = true;
+      res.resume();
+      res.on("end", () => {
+        req.destroy();
+        resolve({ status: res.statusCode ?? 0, sent, total });
+      });
+    });
+    req.on("error", (error) => {
+      if (!answered) reject(error);
+    });
+    const pump = (): void => {
+      while (!answered && sent < total) {
+        sent += chunk.length;
+        if (!req.write(chunk)) return void req.once("drain", pump);
+      }
+      if (!answered) req.end();
+    };
+    pump();
+  });
+}
+
 async function spoolFiles(): Promise<string[]> {
   return (await readdir(config.inboxDir).catch(() => [])).filter((name) => !name.startsWith("."));
 }
@@ -121,12 +151,63 @@ describe("inbox.deposit on loopback", () => {
     expect(await spoolFiles()).toEqual([]);
   });
 
+  it(`answers 413 to a Content-Length over ${INBOX_DEPOSIT_BODY_LIMIT} bytes`, async () => {
+    const reply = await post(deposit({ context: "x".repeat(INBOX_DEPOSIT_BODY_LIMIT) }));
+
+    expect(reply.status).toBe(413);
+    expect(await spoolFiles()).toEqual([]);
+  });
+
+  it("answers 413 to a chunked body past the cap before the client has sent it all", async () => {
+    const { status, sent, total } = await streamOversizeDeposit();
+
+    expect(status).toBe(413);
+    expect(sent).toBeLessThan(total);
+    expect(await spoolFiles()).toEqual([]);
+  });
+
   it("refuses a deposit over 64 KB with 400 and files nothing", async () => {
     const reply = await post(deposit({ context: "x".repeat(64 * 1024) }));
 
     expect(reply.status).toBe(400);
     expect(bodyOf(reply).error).toBe("deposit exceeds 65536 bytes");
     expect(await spoolFiles()).toEqual([]);
+  });
+
+  it.each(["__proto__", "constructor"])("refuses a body carrying a %s key with 400 and files nothing", async (key) => {
+    const raw = JSON.stringify(deposit()).replace(/^\{/, `{"${key}":{"status":"answered"},`);
+
+    const reply = await post(raw);
+
+    expect(reply.status).toBe(400);
+    expect(await spoolFiles()).toEqual([]);
+  });
+
+  it("refuses a __proto__ key nested in recommended with 400", async () => {
+    const raw = JSON.stringify(deposit()).replace('"recommended":{', '"recommended":{"__proto__":{"hidden":true},');
+
+    const reply = await post(raw);
+
+    expect(reply.status).toBe(400);
+    expect(await spoolFiles()).toEqual([]);
+  });
+
+  it("refuses a lone-surrogate asker with 400, so it cannot take the name of a U+FFFD asker", async () => {
+    await post(deposit({ asker: "agent-�" }));
+
+    const reply = await post(deposit({ asker: "agent-\uD800" }));
+
+    expect(reply.status).toBe(400);
+    expect(bodyOf(reply).error).toMatch(/well-formed/);
+    expect(await spoolFiles()).toHaveLength(1);
+  });
+
+  it("files Bob and bob as two deposits, never a created:false for the second", async () => {
+    const upper = await post(deposit({ asker: "Bob" }));
+    const lower = await post(deposit({ asker: "bob" }));
+
+    expect([bodyOf(upper).data?.created, bodyOf(lower).data?.created]).toEqual([true, true]);
+    expect(await spoolFiles()).toHaveLength(2);
   });
 
   it("refuses an asker too long to name a file with 400 rather than 500", async () => {
@@ -214,6 +295,19 @@ describe("the open-deposit cap", () => {
     const reply = await post(deposit());
 
     expect(reply.status).toBe(200);
+  });
+
+  it(`answers 429 once the spool holds ${MAX_OPEN_DEPOSITS} open deposits, however many askers were invented`, { timeout: 30_000 }, async () => {
+    for (let index = 0; index < MAX_OPEN_DEPOSITS; index += 1) {
+      await writeDeposit(config.inboxDir, deposit({ asker: `invented-${index}`, depositId: "seed" }));
+    }
+
+    const fresh = await post(deposit({ asker: "never-seen-before" }));
+    const repeat = await post(deposit({ asker: "invented-0", depositId: "seed" }));
+
+    expect(fresh.status).toBe(429);
+    expect(bodyOf(fresh).error).toBe(`the inbox already has ${MAX_OPEN_DEPOSITS} open deposits`);
+    expect(bodyOf(repeat).data).toEqual({ id: depositItemId("invented-0", "seed"), created: false });
   });
 });
 

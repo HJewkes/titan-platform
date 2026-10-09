@@ -16,7 +16,7 @@ import { assertRemoteHost, isLoopbackHost, NonLoopbackBindError, RemoteBindError
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type EventLimits, type HttpAppOptions } from "./http.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import type { McpServerOptions } from "./mcp.js";
@@ -52,6 +52,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   mountRoutes?: (app: Hono) => void;
   /** Host/Origin allowlists and the JSON body gate, shared by the hono routes and `/mcp`. */
   guards?: RequestGuardOptions;
+  /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
+  rpcBodyLimit?: RpcBodyLimit;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
@@ -152,6 +154,7 @@ function toHttpOptions<Ctx extends BaseContext>(
     eventLimits: options.eventLimits,
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
+    rpcBodyLimit: options.rpcBodyLimit,
   };
 }
 

@@ -15,6 +15,7 @@ import {
 } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { relayUpstreams, startEventsRelay } from "./events-relay.js";
+import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
 import { APP_VERSION } from "./paths.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
@@ -47,6 +48,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     port: config.port,
     stateDir: config.stateDir,
     ...(remote ? { remote } : {}),
+    rpcBodyLimit: { perCommand: { [INBOX_DEPOSIT]: INBOX_DEPOSIT_BODY_LIMIT } },
     // Targets only: /health must answer without waiting on an upstream.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
