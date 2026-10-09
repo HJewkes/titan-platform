@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 
 /** One owner action; `keys` are the PR refs and run ids it names, so the same ask from two sources merges into one. */
@@ -24,6 +25,15 @@ export interface Stuck {
   ref: string;
   reason: string;
   /** ISO time it has been stuck since; sorting puts the oldest first. */
+  since: string;
+}
+
+/** A throwaway proof PR's run, listed apart from the owner's asks so a mislabelled real PR is still seen. */
+export interface ProofFixture {
+  ref: string;
+  /** Each gate the run has pending, as a step id and its summary. */
+  gates: string[];
+  /** ISO time the run entered its phase; the section reads it as an age. */
   since: string;
 }
 
@@ -57,6 +67,10 @@ export interface DigestModel {
   stuck: Stuck[];
   seats: SeatLine[];
   spend: PoolLine[];
+  /** Live `proof-fixture` runs with their gates; absent when there are none. They count in no section above. */
+  proofFixtures?: ProofFixture[];
+  /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
+  waiting?: WaitingGate[];
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
   /** Sources that could not be read, one line each, so a gap is never silent. */

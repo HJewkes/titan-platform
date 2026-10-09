@@ -226,7 +226,12 @@ the active `merge` step of a run no runtime holds, when the head that step merge
 the pull request's head: the answer is no merge, so the run reads CI and reviews the new head. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
-its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
+its run alone. Resync, and the 5-minute check, also mark a merged run reverted: for each repo
+with a run that merged in the last 7 days, one paged read of main since the earliest such merge
+looks for a commit whose body says `This reverts commit <merge sha>` or whose title is
+`Revert "<merge commit subject>"`, with or without its own ` (#n)`. The run gets an
+`sh-reverted` step that records the merge sha and the reverting sha, and is never marked twice.
+`titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
 
 Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
@@ -236,7 +241,15 @@ reason starts `superseded: review again: ` and names the conditions, and the run
 policy again at the same head. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
-the same sweep at once for that repo's gates.
+the same sweep at once for that repo's gates. If a pull request's head cannot be read during
+that sweep, the repo stays queued and the next sweep tick tries it again. A thaw listener that
+throws is logged and does not stop the others.
+
+One gap is left to resync. A run that read `repo-not-frozen` as unmet, then saw the repo thaw
+before its gate opened, opens a gate the thaw sweep has already passed. That gate waits for the
+next `titan-factory shepherd resync` or server start. Shepherd does not sweep every
+transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
+again on every tick while the merge tree stays dirty.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
@@ -338,6 +351,7 @@ whose prompt names an older head. A gate at the current head stays pending.
 titan-factory shepherd status                  # every registration
 titan-factory shepherd status owner/repo       # one repo
 titan-factory shepherd status owner/repo#123   # one pull request
+titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 ```
@@ -371,6 +385,16 @@ agent by design and have no limit. With nothing registered the verbs print
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
 
+`shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
+PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes
+nothing. Gates the owner answers (`approve-merge`, `release`, `one-way`, `failed-rounds`, main-red
+and any kind not listed as seat work) come first; seat work (`ci-failed`, `sh-sent-back`, `stuck-behind`)
+is listed apart, because those are routed to the seat that owns the PR. `--json` prints
+`{ owner, seat }`, each an array of gates. Each gate carries `headIsCurrent`: true when the head
+the gate names is the run's current head, false when the run has moved on, null when the gate names
+none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
+The factory digest lists the five oldest owner gates under "Waiting on you".
+
 ## Stats {#stats}
 
 ```
@@ -399,11 +423,16 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   merge step leaves no trace in the ledger, so `stats` counts it under `land`; `status` does
   name a live hold.
 
+- Per repo and ISO week, red after merge: the merged runs that read main CI at their merge,
+  those whose stored `sh-main-ci` read was red, and the rate, plus those since marked
+  `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
+
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
 as `stage` and `totalMinutes`.
 
-`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
+`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
+each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
 ## Seat policy {#seat-policy}
@@ -423,7 +452,18 @@ lists `visual_paths` also gets `auto`, but only for pull requests that change no
 (see [Visual paths](#visual-paths)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
-`rebase`; default `squash`), `reviewer`, `priority` and `fixer`. An unknown key is refused.
+`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown key
+is refused.
+
+A request with `"merge":"owner-gate"` must also name why the owner is asked, with
+`ownerGateReason` set to `gate-2-visual`, `g10-security`, `proof-fixture` or `owner-asked`.
+Without it the registration is refused and the CLI exits 65 with a message naming the four
+reasons; the reason with any other merge mode is refused too. The reason is stored in the
+effective policy, a repeat registration keeps the first one, and the gate reason shows it:
+`policy owner-gate (gate-2-visual) waits for the owner`. A run registered owner-gate before
+this field, with no reason, keeps working and reads as legacy. The owner digest lists a
+`proof-fixture` run in its own "Proof fixtures" section, with its gates and age, and leaves it
+out of the asks, merged and stuck lists; `shepherd status` shows it as usual.
 
 Seat files are read from `shepherd.seatsDir` in the
 [config file](/guides/factory#the-config-file): every `*.md` file there, frontmatter only
@@ -478,7 +518,7 @@ A push after registration is judged at its own head, so a later commit that adds
 file gates. A remote that several seats list gets the union of their `visual_paths`, so a
 file any of them calls visual gates. If one of those seats has neither `visual_paths` nor
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
-`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate"}'` still gates
+`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
 
 The seat book is read again on every `register`, so a change applies without a restart. An

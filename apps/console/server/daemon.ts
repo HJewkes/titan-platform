@@ -15,7 +15,8 @@ import {
 } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { APP_VERSION } from "./paths.js";
-import { createConsoleRegistry, createContext } from "./registry.js";
+import type { ClassedCommand } from "./owner-guard.js";
+import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { createSources } from "./upstreams.js";
 
 export interface ConsoleDaemonOptions {
@@ -23,6 +24,8 @@ export interface ConsoleDaemonOptions {
   /** A built app to serve at `/`; the dev server serves the app itself and leaves this out. */
   staticRoot?: string;
   logger?: Logger;
+  /** Classed commands served beside the console's reads; a test's stub owner-write comes in here. */
+  extraCommands?: readonly ClassedCommand[];
 }
 
 /**
@@ -36,8 +39,8 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const sources = createSources(config);
   const { upstreams } = sources;
   return startDaemon({
-    registry: createConsoleRegistry(sources),
-    createContext,
+    registry: createConsoleRegistry(sources, options.extraCommands),
+    createContext: consoleContextFor(config.ownerWrites),
     version: APP_VERSION,
     port: config.port,
     stateDir: config.stateDir,

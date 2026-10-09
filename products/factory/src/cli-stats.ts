@@ -7,6 +7,7 @@ import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,7 +33,7 @@ function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[]
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
     .command("stats")
-    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes, and merges made outside Shepherd; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land)")
+    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes, and merges made outside Shepherd; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted")
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
@@ -50,7 +51,8 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
         const rows = shepherdStats(runs, { from: opts.from, to: opts.to });
         const friction = ownerFriction(readAllGates(db), now(), { from: opts.from, to: opts.to });
         const stages = stageStats(runs, { from: opts.from, to: opts.to });
-        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages }, null, 2)}\n` : formatStats(rows, friction, stages));
+        const red = redAfterMerge(runs, { from: opts.from, to: opts.to });
+        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red }, null, 2)}\n` : `${formatStats(rows, friction, stages)}${formatRedAfterMerge(red).map((line) => `${line}\n`).join("")}`);
       } finally {
         db.close();
       }

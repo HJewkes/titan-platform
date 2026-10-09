@@ -62,6 +62,10 @@
       {
         "text": "store-sqlite",
         "link": "/reference/store-sqlite"
+      },
+      {
+        "text": "tool-guard",
+        "link": "/reference/tool-guard"
       }
     ]
   },

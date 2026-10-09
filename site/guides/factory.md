@@ -58,7 +58,7 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 | Database | `--db <path>`, else `TITAN_FACTORY_DB`, else `dbPath` in the config file, else `$XDG_STATE_HOME/titan-factory/factory.sqlite3` |
 | Config file | `$XDG_CONFIG_HOME/titan-factory/config.json` |
 | Server lock | `daemon.pid` and `daemon.meta.json` in the database's directory, while `serve` runs |
-| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd or systemd |
+| Logs | stderr when you run `serve` by hand; `$XDG_STATE_HOME/titan-factory/serve.out.log` and `serve.err.log` under launchd or systemd. Each stderr line starts with its ISO time |
 
 `XDG_STATE_HOME` defaults to `~/.local/state` and `XDG_CONFIG_HOME` to `~/.config`
 (`products/factory/src/config.ts`). The database holds runs, gates and Shepherd
@@ -123,12 +123,14 @@ titan-factory serve --port 7411
 ```
 
 `serve` owns the database until SIGTERM or SIGINT. It adopts every unfinished run at start,
-and again every 30 seconds for runs whose owner died and whose lease lapsed. It binds
+and again every 30 seconds for runs whose owner died and whose lease lapsed. Its 5-minute
+Shepherd sweep also marks a merged run `sh-reverted` when a later main commit reverts its merge
+(see [Shepherd stats](./shepherd.md#stats)). It binds
 `127.0.0.1` and exposes these surfaces (`products/factory/src/serve.ts`):
 
 | Route | What it answers |
 | --- | --- |
-| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `ownerKeys` (the loaded owner key ids, or why none loaded), version, pid, port |
+| `GET /health` | run counts by status, pending gate count, the busy runs, the GitHub probe, `build` (sha and whether it is behind main), `lastDeploy`, `deploy` (the deploy alarm, when serve runs it), `ownerKeys` (the loaded owner key ids, or why none loaded), `startedAt`, `uptimeSeconds`, the start counts `restartCount`, `uncleanStartsTotal` (starts that found a stale pid file) and `restartsToday` (UTC), kept in `serve-starts.json` in the state directory, version, pid, port |
 | `POST /rpc/<command>` | one registry command; the body is its JSON arguments |
 | `POST /gates/resolve-proof` | applies an owner-signed proof and returns each item's outcome; see [Owner-signed proofs](#owner-signed-proofs) |
 | `/mcp` | the same commands as MCP tools over streamable HTTP |
@@ -146,8 +148,8 @@ curl -s http://127.0.0.1:7410/health
 `gh` error when it fails, and `checking` before the first probe lands. The probe runs in the
 background at most once a minute, so a health request never waits on `gh`.
 
-The registry commands are `factory.land`, `factory.status`, `factory.gates`, and the seven
-`shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
+The registry commands are `factory.land`, `factory.status`, `factory.gates`, `needs.list`,
+`needs.count`, and the seven `shepherd.*` commands. A `/rpc` call needs an `Origin` header or an `X-Titan-Client` header;
 without one the server answers 403.
 
 ```sh
@@ -159,8 +161,31 @@ curl -s -X POST http://127.0.0.1:7410/rpc/factory.gates \
 
 `factory.status` takes an optional `runId` and otherwise lists every unfinished run.
 `factory.gates` lists each pending gate with its prompt, its schema, and the CLI command
-that resolves it. The MCP tool names carry no prefix: `factory__land`, `factory__status`,
-`factory__gates`, `shepherd__register`, and so on. To add the server to Claude Code:
+that resolves it.
+
+`needs.list` returns `{ items, gaps }`. `items` is the merged OwnerItem[] that
+`titan-factory needs --json` prints: agent-chat, factory gates, Morning queues and
+needs-decision tasks, with duplicates folded. `gaps` names each source that could not be
+read, so an outage never looks like an empty queue. `needs.count` returns `total`, `byKind`,
+`byLens` and `gaps` for the same set. Both take the same optional filters:
+
+- `kind`: `decide`, `approve`, `do`, `review` or `know`.
+- `lens`: `blocking-agent`, `blocking-merge`, `stuck`, `planning` or `fyi`.
+- `initiative`: an initiative slug.
+- `personal`: `true` to include personal initiatives, which are otherwise left out.
+
+```sh
+curl -s -X POST http://127.0.0.1:7410/rpc/needs.list \
+  -H 'content-type: application/json' -H 'x-titan-client: shell' -d '{"kind":"approve"}'
+curl -s -X POST http://127.0.0.1:7410/rpc/needs.count \
+  -H 'content-type: application/json' -H 'x-titan-client: shell' -d '{}'
+```
+
+A permission prompt or endorsement from agent-chat is always a one-way `approve` item whose
+source names the broker's msg_id; nothing reshapes it into a decision.
+
+The MCP tool names carry no prefix: `factory__land`, `factory__status`,
+`factory__gates`, `needs__list`, `shepherd__register`, and so on. To add the server to Claude Code:
 
 ```sh
 claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp

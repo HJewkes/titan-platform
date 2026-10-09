@@ -2,6 +2,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
 import type { ResyncReport } from "./resync.js";
+import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
 type ShepherdResults = { [Name in ShepherdCommandName]: CommandMapOf<typeof SHEPHERD_COMMAND_MAP>[Name]["result"] };
@@ -13,6 +14,7 @@ const FORMATTERS: Formatters = {
   "shepherd.register": formatRegistered,
   "shepherd.status": formatRows,
   "shepherd.list": formatRows,
+  "shepherd.waiting": formatWaiting,
   "shepherd.timeline": formatTimeline,
   "shepherd.hold": formatHold,
   "shepherd.release": formatHold,
@@ -25,6 +27,19 @@ const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
 /** The human form of each `titan-factory shepherd` verb's result; `--json` prints the result itself instead. */
 export function formatShepherd<Name extends ShepherdCommandName>(name: Name, data: unknown): string {
   return FORMATTERS[name](RESULT_SCHEMAS[name].result.parse(data));
+}
+
+function waitingLine(gate: WaitingGate): string {
+  const target = gate.pr === null ? gate.repo : `${gate.repo}#${gate.pr}`;
+  const head = gate.head === null ? "-" : gate.head.slice(0, 7);
+  return `  ${gate.ageHours}h  ${gate.gateId}  ${target} ${head}  ${gate.task}${gate.headIsCurrent === false ? "  [head moved]" : ""}${gate.held === null ? "" : `  [held: ${gate.held}]`}`;
+}
+
+function formatWaiting(waiting: Waiting): string {
+  const { owner, seat } = waiting;
+  const overdue = overdueOwnerGates(waiting).length;
+  const section = (title: string, gates: readonly WaitingGate[]): string[] => [`${title} (${gates.length}), oldest first:`, ...(gates.length === 0 ? ["  none"] : gates.map(waitingLine))];
+  return `${[...section("waiting on the owner", owner), ...section("seat work", seat), ...(overdue > 0 ? [`${overdue} owner gate(s) over ${OVERDUE_HOURS} h`] : [])].join("\n")}\n`;
 }
 
 function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
@@ -69,6 +84,7 @@ function entryLine(entry: TimelineEntry): string {
   if (entry.kind === "step") return `  step ${entry.stepId} ${entry.status}${entry.completedAt ? ` ${entry.completedAt}` : ""}`;
   if (entry.kind === "ci") return `  ci ${entry.stepId} ${entry.headSha.slice(0, 7)} ${entry.conclusion}`;
   if (entry.kind === "gate") return `  gate ${entry.gateId} ${entry.status}${entry.resolvedBy ? ` by ${entry.resolvedBy}` : ""}`;
+  if (entry.kind === "event") return `  ${entry.event} ${entry.at}${entry.reason ? `: ${entry.reason}` : ""}${entry.actor ? ` (by ${entry.actor})` : ""}`;
   return `  ${entry.kind} ${entry.stepId}`;
 }
 
@@ -80,12 +96,13 @@ function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation)
   return `run ${runId} ${phase}: policy says ${decision.outcome} (${decision.reason}); ${held ? `held: ${held.reason}; ` : ""}${waiting}\n`;
 }
 
-function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [] }: ResyncReport): string {
+function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [], reverted = [] }: ResyncReport): string {
   const verb = dryRun ? "would end" : "ended";
   const runs = ended.map(({ runId, reason }) => `run ${runId.slice(0, 8)} ${verb}: ${reason}`);
   const gates = superseded.map(({ runId, from, to, condition }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its gate (${condition}): head ${from} -> ${to}`);
   const reviews = supersededReviews.map(({ runId, stepId, to }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its review step ${stepId}: head moved to ${to}`);
   const merges = supersededMerges.map(({ runId, stepId, to }) => `run ${runId.slice(0, 8)} ${dryRun ? "would answer" : "answered"} its merge step ${stepId} with no merge: head moved to ${to}`);
+  const reverts = reverted.map(({ runId, mergeSha, revertSha }) => `run ${runId.slice(0, 8)} ${dryRun ? "would be marked" : "marked"} reverted: merge ${mergeSha} reverted by ${revertSha}`);
   const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} stale gate(s)`;
-  return `${[...runs, ...gates, ...reviews, ...merges, summary].join("\n")}\n`;
+  return `${[...runs, ...gates, ...reviews, ...merges, ...reverts, summary].join("\n")}\n`;
 }

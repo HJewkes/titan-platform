@@ -11,7 +11,7 @@ import {
   EffectivePolicySchema,
   OWNER_GATE_POLICY,
   RegistrationRefused,
-  RequestedPolicySchema,
+  RequestedPolicyFields,
   resolveEffectivePolicy,
   shepherdGatePolicy,
   stricterPolicy,
@@ -25,6 +25,7 @@ import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import { waitingCommand } from "./waiting.js";
 import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
@@ -85,7 +86,7 @@ const RegisterArgs = z
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
-    policy: RequestedPolicySchema.optional(),
+    policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
   .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
@@ -302,6 +303,8 @@ const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], 
     rows(ctx.host, servicesOf(ctx)).filter((row) => (repo === undefined || row.repo === repo.toLowerCase()) && (pr === undefined || row.pr === pr)),
 });
 
+const waiting = waitingCommand((ctx) => rows(ctx.host, servicesOf(ctx)));
+
 const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, WatchRow[], FactoryContext>({
   name: "shepherd.list",
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
@@ -313,14 +316,14 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   name: "shepherd.timeline",
-  description: "The watch row for owner/repo#pr and every step result and gate its run recorded, oldest first",
+  description: "The watch row for owner/repo#pr and every step result, gate, hold, release, freeze and thaw its run recorded, oldest first",
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run), services.store.get().eventsOf(registration.runId)) };
   },
 });
 
@@ -378,6 +381,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
   "shepherd.status": statusCommand,
   "shepherd.list": listCommand,
+  "shepherd.waiting": waiting,
   "shepherd.timeline": timelineCommand,
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
