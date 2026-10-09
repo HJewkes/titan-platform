@@ -1,5 +1,5 @@
 import path from "node:path";
-import { loginStateFromCredentials, type LoginState } from "../login.js";
+import { loginStateFromCredentials, type LoginState, type RefusedReason } from "../login.js";
 import { readGatedFile } from "./gated-read.js";
 import { redactedError } from "./redact-error.js";
 
@@ -12,29 +12,40 @@ export interface ReadLoginOptions {
   uid?: number;
 }
 
+// The parsed object holds the tokens, so it stays inside this subpath and is never exported.
+export type CredentialsRead =
+  | { status: "parsed"; credentials: unknown }
+  | { status: "missing" }
+  | { status: "refused"; reason: RefusedReason };
+
 // Where the platform has no uid, no owner can match, so every file is refused.
-function currentUid(): number {
+export function currentUid(): number {
   return typeof process.getuid === "function" ? process.getuid() : -1;
 }
 
 // JSON.parse's SyntaxError quotes the input, so its message is dropped, never wrapped.
-function stateFromBytes(bytes: Buffer, now: number): LoginState {
-  let parsed: unknown;
+function parseBytes(bytes: Buffer): CredentialsRead {
   try {
-    parsed = JSON.parse(bytes.toString("utf8"));
+    return { status: "parsed", credentials: JSON.parse(bytes.toString("utf8")) };
   } catch {
     return { status: "refused", reason: "malformed" };
   } finally {
     bytes.fill(0);
   }
-  return loginStateFromCredentials(parsed, now);
 }
 
-function readCredentials(file: string, uid: number, now: number): LoginState {
+// Unexpected filesystem errors are thrown unredacted; the caller redacts.
+export function readCredentialsFile(configDir: string, uid: number): CredentialsRead {
+  const file = path.join(configDir, CREDENTIALS_FILE);
   const read = readGatedFile(file, { maxBytes: MAX_CREDENTIALS_BYTES, ownerUid: uid });
   if (read.status === "missing") return read;
-  if (read.status === "read") return stateFromBytes(read.bytes, now);
+  if (read.status === "read") return parseBytes(read.bytes);
   return { status: "refused", reason: read.reason === "too-large" ? "malformed" : read.reason };
+}
+
+function readCredentials(configDir: string, uid: number, now: number): LoginState {
+  const read = readCredentialsFile(configDir, uid);
+  return read.status === "parsed" ? loginStateFromCredentials(read.credentials, now) : read;
 }
 
 // Reads `<configDir>/.credentials.json` read-only. A symlink, a non-regular file, a mode
@@ -42,8 +53,7 @@ function readCredentials(file: string, uid: number, now: number): LoginState {
 // No token is returned, and a thrown error is redacted and carries no cause.
 export function readLoginState(configDir: string, options: ReadLoginOptions = {}): LoginState {
   try {
-    const file = path.join(configDir, CREDENTIALS_FILE);
-    return readCredentials(file, options.uid ?? currentUid(), options.now ?? Date.now());
+    return readCredentials(configDir, options.uid ?? currentUid(), options.now ?? Date.now());
   } catch (error) {
     throw redactedError(error, "reading the credentials file failed");
   }
