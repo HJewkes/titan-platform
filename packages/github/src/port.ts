@@ -72,6 +72,23 @@ export interface Commit {
   committedAt?: string;
 }
 
+/** The title and body a squash merge records, in place of GitHub's default. */
+export interface MergeMessage {
+  subject: string;
+  body: string;
+}
+
+export interface PrText {
+  title: string;
+  body: string;
+}
+
+/** A commit of a PR with its message split into subject line and the rest. */
+export interface CommitMessage {
+  subject: string;
+  body: string;
+}
+
 /** A commit on the default branch with its full message, subject line first. */
 export interface LoggedCommit {
   sha: string;
@@ -158,7 +175,11 @@ export interface GitHubWire {
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
-  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<{ sha: string }>;
+  /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{ sha: string }>;
+  getPrText(repo: RepoSlug, number: number): Promise<PrText>;
+  /** The PR's commits, oldest first, each with its full message; GitHub returns at most the first 250. */
+  listPrCommitMessages(repo: RepoSlug, number: number): Promise<CommitMessage[]>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
@@ -213,7 +234,11 @@ export interface GitHubPort {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
   pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
-  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
+  /** `message` is sent as the squash commit's title and body in place of GitHub's concatenation of the PR's commits. */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>>;
+  getPrText(repo: RepoSlug, number: number): Promise<PrText>;
+  /** The PR's commits, oldest first, each with its full message. */
+  listPrCommitMessages(repo: RepoSlug, number: number): Promise<CommitMessage[]>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
@@ -279,7 +304,9 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
-    merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep),
+    merge: async (repo, number, sha, method, message) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep, message),
+    getPrText: async (repo, number) => wire.getPrText(repoOf(repo), pr(number)),
+    listPrCommitMessages: async (repo, number) => wire.listPrCommitMessages(repoOf(repo), pr(number)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
