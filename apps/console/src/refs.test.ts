@@ -34,8 +34,8 @@ describe("refToRoute", () => {
 
 describe("a task's initiative", () => {
   const portfolio = [
-    { slug: "orbit-relay", topTask: { id: "OR-12" } },
-    { slug: "lantern-docs", topTask: { id: "LD-3" } },
+    { slug: "orbit-relay", taskPrefix: "OR" },
+    { slug: "lantern-docs", taskPrefix: "LD" },
     { slug: "atlas-archive" },
   ];
 

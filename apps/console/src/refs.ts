@@ -52,12 +52,8 @@ function taskPrefix(id: string): string | undefined {
   return TASK_ID.exec(id)?.[1];
 }
 
-/**
- * The initiative a task id belongs to, matched by prefix against the portfolio rows' task ids.
- * `work.initiatives` carries no prefix of its own, so an initiative with no open task cannot be matched.
- */
-export function initiativeForTask(id: string, initiatives: readonly { slug: string; topTask?: { id: string } }[]): string | undefined {
+/** The initiative a task id belongs to, matched against each portfolio row's brief `taskPrefix`. */
+export function initiativeForTask(id: string, initiatives: readonly { slug: string; taskPrefix?: string }[]): string | undefined {
   const prefix = taskPrefix(id);
-  if (!prefix) return undefined;
-  return initiatives.find((row) => row.topTask && taskPrefix(row.topTask.id) === prefix)?.slug;
+  return prefix ? initiatives.find((row) => row.taskPrefix === prefix)?.slug : undefined;
 }
