@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/review-panel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Review-panel types and the reviewer ports a caller satisfies",
   "type": "module",
   "main": "./dist/index.js",

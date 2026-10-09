@@ -125,6 +125,14 @@ describe("sweepReviewCheckouts", () => {
   });
 });
 
+describe("sweepReviewCheckouts without a root yet", () => {
+  it("removes nothing and does not fail when the root does not exist", async () => {
+    const missing = join(tmpdir(), "review-sweep-missing-root-never-created");
+
+    await expect(sweepReviewCheckouts({ root: missing, now: () => NOW })).resolves.toEqual([]);
+  });
+});
+
 describe("REVIEW_CHECKOUT_NAME", () => {
   it("matches the checkout name the reviewer brief tells reviewers to create", () => {
     expect(REVIEW_CHECKOUT_NAME.test(reviewCheckoutName(900, "0081c0d493fad60a9412b68f571bc279d79c527c"))).toBe(true);

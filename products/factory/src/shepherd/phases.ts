@@ -2,6 +2,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
@@ -82,4 +83,6 @@ export interface ShepherdDeps {
   exitNotice?: ExitNoticePorts;
   /** The test rules briefs carry, resolved once at serve start from its host; absent means the form for agents off basement. */
   suiteRules?: SuiteRules;
+  /** Where reviewers extract checkouts and how a run's dir is removed; absent means the app data dir and `rm -rf`. */
+  reviewCheckouts?: { root?: string; remove?: RemoveDir };
 }

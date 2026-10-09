@@ -1,9 +1,15 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
+import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
   override name = "ParseError";
+}
+
+/** A newline reached while a closed `$( )` or `<( )` still has a heredoc open, which bash 5 and bash 3.2 read differently. */
+export class SplitParseError extends ParseError {
+  override name = "SplitParseError";
 }
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
@@ -60,7 +66,7 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
-interface LexState {
+export interface LexState {
   src: string;
   i: number;
   nested: boolean;
@@ -68,6 +74,8 @@ interface LexState {
   tokens: Token[];
   word: WordToken | null;
   heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
+  /** A `$( )` or `<( )` closed on this line with a heredoc still open. */
+  leftOpen: boolean;
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
@@ -92,7 +100,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -200,25 +208,7 @@ function readOperator(s: LexState, op: string): void {
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
-  if (op === "\n") readHeredocBodies(s);
-}
-
-function readHeredocBodies(s: LexState): void {
-  for (const { token, stripTabs } of s.heredocs) {
-    const delim = token.target?.value;
-    let body = "";
-    while (s.i < s.src.length) {
-      const newline = s.src.indexOf("\n", s.i);
-      const end = newline === -1 ? s.src.length : newline;
-      const line = stripTabs ? s.src.slice(s.i, end).replace(/^\t+/, "") : s.src.slice(s.i, end);
-      s.i = end + 1;
-      if (line === delim) break;
-      body += `${line}\n`;
-    }
-    token.body = body;
-    if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length, sameSpend(s.trials));
-  }
-  s.heredocs = [];
+  if (op === "\n") readLineEnd(s);
 }
 
 function readEscape(s: LexState): void {
@@ -295,9 +285,16 @@ function pushRef(w: WordToken, name: string, text: string): void {
   w.value += text;
 }
 
-function readSubstitution(s: LexState, start: number): Token[] {
-  const inner = newState(s.src, start, true, s.trials);
+/** Every substitution on a line is lexed here, so a heredoc it leaves open stays pending on `line`, where bash 5 reads its body. */
+function lexNested(src: string, start: number, trials: ArithTrials, line: LexState | null): LexState {
+  const inner = newState(src, start, true, trials);
   lex(inner);
+  if (line && (inner.leftOpen || inner.heredocs.length > 0)) line.leftOpen = true;
+  return inner;
+}
+
+function readSubstitution(s: LexState, start: number): Token[] {
+  const inner = lexNested(s.src, start, s.trials, s);
   s.i = inner.i + 1;
   return inner.tokens;
 }
@@ -320,25 +317,31 @@ function readBalanced(s: LexState, w: WordToken, open: string, close: string): v
   if (name) pushRef(w, name, text);
   else {
     markComputed(w).value += text;
-    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials));
+    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials, { line: s, procsubs: open === "{" }));
   }
   s.i = i + 1;
 }
 
-/** Token lists of every `$(...)` and backtick substitution in `src` between `from` and `to`. */
-export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
+/** Token lists of every substitution in `src` between `from` and `to`; `at` is the line they sit on, null in a heredoc body. */
+export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src), at: { line: LexState; procsubs: boolean } | null = null): Token[][] {
   const found: Token[][] = [];
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
-    else if (c === "$" && src[j + 1] === "(" && src[j + 2] !== "(") {
-      const inner = newState(src, j + 2, true, trials);
-      lex(inner);
+    else if (opensSubstitution(src, j, at?.procsubs === true)) {
+      const inner = lexNested(src, j + 2, trials, at?.line ?? null);
       found.push(inner.tokens);
       j = inner.i;
     } else if (c === "`") j = scanBacktick(src, j, found, trials);
   }
   return found;
+}
+
+/** `<(` and `>(` substitute only where `procsubs` says so, as in `${...}`; in `$((...))` they compare. */
+function opensSubstitution(src: string, j: number, procsubs: boolean): boolean {
+  if (src[j + 1] !== "(") return false;
+  if (src[j] === "$") return src[j + 2] !== "(";
+  return procsubs && (src[j] === "<" || src[j] === ">");
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {

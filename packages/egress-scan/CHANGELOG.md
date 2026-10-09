@@ -1,5 +1,11 @@
 # @titan-design/egress-scan
 
+## 0.6.1
+
+### Patch Changes
+
+- 9babb5d: Pre-push no longer re-scans commits the remote already has when a branch merged main: the range for a known remote sha now also excludes every commit reachable from the remote's refs.
+
 ## 0.6.0
 
 ### Minor Changes

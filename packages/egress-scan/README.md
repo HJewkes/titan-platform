@@ -13,7 +13,7 @@ bin does that work for a pre-push hook and a CI job. Tracked by TP-405.
 ## Command line
 
 ```sh
-titan-egress-scan pre-push <remote>     # the commits a push sends; reads git's pre-push stdin
+titan-egress-scan pre-push <remote> [<url>]  # the commits a push sends; reads git's pre-push stdin
 titan-egress-scan range <base> <head>   # every commit in base..head, for CI
 titan-egress-scan tree                  # every tracked file at HEAD, once per repo at rollout
 titan-egress-scan text [--file <path>]  # free text from stdin or a file: PR title, body, branch name
@@ -23,7 +23,7 @@ titan-egress-scan install-hook          # write the pre-push hook
 Exit codes: 0 clean, 1 findings, 2 usage or configuration error. Findings go to stdout,
 notices and errors to stderr.
 
-- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch,
+- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch minus the commits the remote itself advertises (`git ls-remote` of the push URL git passes as the second argument; local tracking refs are never trusted, and if that URL is missing or does not answer within 20 seconds the plain `remote..local` is scanned),
   and for a new branch scans only the commits no ref of that remote has. `range` with an
   all-zero base scans the head commit alone. A merge commit is diffed against each parent
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path

@@ -1,5 +1,16 @@
 # @titan-design/review-panel
 
+## 0.2.0
+
+### Minor Changes
+
+- 619dc1e: Add Shepherd's verdict acceptor: `acceptVerdict`, the FIX_FIRST findings helpers (`fixFirstFindings`, `boundedFindings`), `parseOwnerBrief` and `OwnerBriefSchema`, the Malformed refusals (`MALFORMED_REFUSALS`, `MalformedSchema`, `readMalformed`), `namesTarget`, `namesPr` and the review depth floor (`DEPTH_FLOOR_REASON`, `isInvestigativeCall`). `zod` is now a peer dependency.
+- dc635a8: `reviewerBrief` takes an optional `testRule`, the line telling the reviewer where to run tests; absent, it keeps the `ssh basement basement-suite` form.
+
+### Patch Changes
+
+- @titan-design/session-read@0.11.1
+
 ## 0.1.0
 
 ### Minor Changes
