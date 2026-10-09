@@ -12,6 +12,7 @@ describe("parseAllow", () => {
     ["no reason", "docs/**.md home-path", /line 1: expected <glob> <rule-id> <reason>/],
     ["no task id in the reason", "docs/**.md home-path documented shape", /line 1: reason must name a task id/],
     ["a private-term entry", "docs/** private-term covered by TP-405", /line 1: private-term is never allowable/],
+    ["a credential-token entry", "docs/** credential-token fixture, TP-2107", /line 1: credential-token is never allowable/],
     ["an unknown rule", "docs/** credentials TP-405", /line 1: unknown rule id/],
   ])("fails an entry with %s", (_label, text, message) => {
     expect(() => parseAllow(text)).toThrow(AllowFileError);
@@ -40,8 +41,9 @@ describe("isAllowed", () => {
     expect(isAllowed(allow, "other/REPORT.md", "aw-data-path")).toBe(false);
   });
 
-  it("never allows a private term", () => {
+  it("never allows a private term or a credential token", () => {
     expect(isAllowed(allow, "REPORT.md", "private-term")).toBe(false);
+    expect(isAllowed(allow, "REPORT.md", "credential-token")).toBe(false);
   });
 });
 

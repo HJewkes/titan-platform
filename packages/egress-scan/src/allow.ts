@@ -1,7 +1,7 @@
 import { compileGlobs, expandBraces } from "@titan-design/fix-proof";
 import type { RuleId } from "./rules.js";
 
-export type AllowableRule = Exclude<RuleId, "private-term">;
+export type AllowableRule = Exclude<RuleId, "private-term" | "credential-token">;
 
 export interface AllowEntry {
   readonly glob: string;
@@ -28,6 +28,8 @@ export class AllowFileError extends Error {
 }
 
 const ALLOWABLE: readonly string[] = ["home-path", "aw-data-path"];
+// A credential in a pushed file is a leak wherever it sits; fixtures build theirs at runtime.
+const NEVER_ALLOWABLE: readonly string[] = ["private-term", "credential-token"];
 const TASK_ID = /\b[A-Z]+-\d+\b/;
 
 // A glob made only of wildcard segments would allow a rule across the whole tree.
@@ -53,7 +55,7 @@ function parseEntry(entry: string, line: number): AllowEntry {
   const fields = /^(\S+)\s+(\S+)\s+(.+)$/.exec(entry);
   if (!fields) throw new AllowFileError(line, "expected <glob> <rule-id> <reason>");
   const [, glob = "", rule = "", reason = ""] = fields;
-  if (rule === "private-term") throw new AllowFileError(line, "private-term is never allowable");
+  if (NEVER_ALLOWABLE.includes(rule)) throw new AllowFileError(line, `${rule} is never allowable`);
   if (!ALLOWABLE.includes(rule)) throw new AllowFileError(line, "unknown rule id");
   if (!TASK_ID.test(reason)) throw new AllowFileError(line, "reason must name a task id");
   return { glob, rule: rule as AllowableRule, line, matches: compileEntry(glob, line) };
@@ -70,6 +72,6 @@ export function parseAllow(text: string): AllowList {
 }
 
 export function isAllowed(allow: AllowList, path: string, rule: RuleId): boolean {
-  if (rule === "private-term") return false;
+  if (NEVER_ALLOWABLE.includes(rule)) return false;
   return allow.entries.some((entry) => entry.rule === rule && entry.matches(path));
 }

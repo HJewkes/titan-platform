@@ -27,6 +27,8 @@ export const ReviewConfigSchema = z.strictObject({
   profile: profileName,
   /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
   roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
+  /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
+  g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -76,6 +78,9 @@ export const SpawnGateConfigSchema = z.strictObject({
   pressureLevel: z.number().int().positive().optional(),
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
+  headroomIntervalMs: z.number().int().min(0).optional(),
+  burstMax: z.number().int().positive().optional(),
+  headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
 });
 

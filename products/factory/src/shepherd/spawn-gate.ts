@@ -16,13 +16,19 @@ interface SpawnLimits {
   pressureLevel: number;
   /** No new dispatch with less than this percent of memory free. */
   freeMemoryPct: number;
-  /** At most one factory spawn is admitted per window, so a burst of ready reviews does not start at once. */
+  /** Without headroom, at most one factory spawn is admitted per window, so a burst of ready reviews does not start at once; with it, at most `burstMax` per window. */
   windowMs: number;
+  /** The shorter interval between admits while the machine has headroom (see `hasHeadroom`). */
+  headroomIntervalMs: number;
+  /** The most admits inside any `windowMs`, whatever the interval. */
+  burstMax: number;
+  /** Headroom needs fewer unabsorbed reviews than this. */
+  headroomReviews: number;
   /** What one running review adds to the load5 reading it is compared with. */
   reviewLoad: number;
 }
 
-export const DEFAULT_SPAWN_LIMITS: SpawnLimits = { load5: 28, buildLoad5: 20, pressureLevel: 2, freeMemoryPct: 20, windowMs: 60_000, reviewLoad: 4 };
+export const DEFAULT_SPAWN_LIMITS: SpawnLimits = { load5: 28, buildLoad5: 20, pressureLevel: 2, freeMemoryPct: 20, windowMs: 60_000, headroomIntervalMs: 15_000, burstMax: 4, headroomReviews: 4, reviewLoad: 4 };
 
 /** A reading the machine would not give is absent, and the limit it feeds is not applied. */
 export interface MachineReadings {
@@ -36,6 +42,24 @@ type Admission = { admit: true } | { admit: false; reason: string };
 /** load5 is a five-minute average, so a review older than this is already in the reading. */
 const LOAD5_WINDOW_MS = 5 * 60_000;
 
+/** darwin's memory pressure level for normal, which the Linux PSI reading maps onto. */
+const PRESSURE_NORMAL = 1;
+
+/** Load5 under half of buildLoad5, pressure read as normal and few unabsorbed reviews: the shorter interval is safe. */
+function hasHeadroom(readings: MachineReadings, limits: SpawnLimits, unabsorbed: number): boolean {
+  return readings.load5 < limits.buildLoad5 / 2 && readings.pressureLevel !== undefined && readings.pressureLevel <= PRESSURE_NORMAL && unabsorbed < limits.headroomReviews;
+}
+
+/** Pure: the burst cap over the admits inside the window, then the interval since the last admit. */
+function admitPace(limits: SpawnLimits, recentStarts: readonly number[], now: number, headroom: boolean): Admission {
+  const inWindow = recentStarts.filter((startedAt) => now - startedAt < limits.windowMs).length;
+  if (inWindow >= limits.burstMax) return { admit: false, reason: `${inWindow} spawns were admitted inside the last ${limits.windowMs} ms, the burst cap ${limits.burstMax}` };
+  if (recentStarts.length === 0) return { admit: true };
+  const sinceLast = now - Math.max(...recentStarts);
+  const [interval, rule] = headroom ? [limits.headroomIntervalMs, "headroom interval"] : [limits.windowMs, "window"];
+  return sinceLast < interval ? { admit: false, reason: `another spawn was admitted ${sinceLast} ms ago, inside the ${interval} ms ${rule}` } : { admit: true };
+}
+
 /** Pure: the verdict for one spawn from the readings, the limits, the epoch-ms of earlier admissions and the start of each review already running. */
 export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews: readonly number[] = []): Admission {
   const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
@@ -45,9 +69,7 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
   if (build > limits.buildLoad5) return refuse(`load5 with ${unabsorbed} unabsorbed reviews`, build, limits.buildLoad5);
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
-  const last = Math.max(0, ...recentStarts);
-  if (recentStarts.length > 0 && now - last < limits.windowMs) return { admit: false, reason: `another spawn was admitted ${now - last} ms ago, inside the ${limits.windowMs} ms window` };
-  return { admit: true };
+  return admitPace(limits, recentStarts, now, hasHeadroom(readings, limits, unabsorbed));
 }
 
 /** What a review spawn tells the gate: whether its PR is the fix for its repo's red main, and which PR it is, so status can name its place. */
@@ -177,7 +199,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
         log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})`);
         throw new SpawnDeferred(verdict.reason);
       }
-      starts.splice(0, starts.length, at);
+      starts.splice(0, starts.length, ...starts.filter((startedAt) => at - startedAt < limits.windowMs), at);
       reviews.admitted(name, at);
       log(`shepherd: spawn_gate admitted ${name} (${seen})`);
     },

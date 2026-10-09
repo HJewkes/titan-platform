@@ -13,6 +13,7 @@ import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
@@ -62,6 +63,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
   ownerKeys?: () => OwnerKeys;
+  /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
+  needsSources?: NeedsSources;
 }
 
 interface OwnerProofs {
@@ -189,8 +192,8 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const { routeFor } = routedRunner(options.routes);
   const log = options.logger ?? consoleLogger;
   return {
-    registry: createFactoryRegistry(),
-    createContext: () => factoryContext(host, options.routes, proofs.aud),
+    registry: createFactoryRegistry(log),
+    createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,

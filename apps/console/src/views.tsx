@@ -1,17 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  ActivityIcon,
-  AwardIcon,
-  BotIcon,
-  BrainIcon,
-  EqualIcon,
-  HistoryIcon,
-  KanbanIcon,
-  LayersIcon,
-  TargetIcon,
-  type SideNavItem,
-} from "@titan-design/react-ui";
-import type { ViewKey } from "./router.js";
+import { ActivityIcon, BotIcon, BrainIcon, HistoryIcon, KanbanIcon, LayersIcon, type SideNavItem } from "@titan-design/react-ui";
+import { VIEW_KEYS, type ViewKey } from "./router.js";
 
 export interface ViewSpec {
   key: ViewKey;
@@ -19,45 +8,35 @@ export interface ViewSpec {
   label: string;
   title: string;
   icon: ReactNode;
-  /** What the view will show, and the tasks that build it; absent for a view that already exists. */
+  /** What the view will show, and the tasks that build it; the placeholder says so until a page is registered. */
   planned?: { summary: string; tasks: string };
 }
 
 const ICON_SIZE = 20;
 
-/** The planned views in rail order. Search, Stores and Flow borrow the nearest glyph until react-ui has one. */
-export const VIEWS: readonly ViewSpec[] = [
-  { key: "status", label: "Status", title: "Status", icon: <ActivityIcon size={ICON_SIZE} /> },
-  { key: "initiatives", label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
-  {
-    key: "tasks", label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} />,
-    planned: { summary: "A read-only board with derived columns, and task detail with its dependency tree.", tasks: "TP-866" },
+/** The rail of six. Home borrows the activity glyph because react-ui exports no home icon. */
+const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
+  home: { label: "Home", title: "Home", icon: <ActivityIcon size={ICON_SIZE} /> },
+  initiatives: { label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
+  tasks: {
+    label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} />,
+    planned: { summary: "Tasks across initiatives grouped by derived stage, and task detail.", tasks: "TP-866a" },
   },
-  {
-    key: "sessions", label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} />,
-    planned: { summary: "The sessions list, the conversation reader, the time-synced sidebar and replay.", tasks: "TP-862 and TP-863" },
+  sessions: {
+    label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} />,
+    planned: { summary: "The sessions list, and one session with its conversation first.", tasks: "TP-862" },
   },
-  {
-    key: "agents", label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} />,
-    planned: { summary: "The agent roster with costs, the agent topology and agent-to-agent chat.", tasks: "TP-864 and TP-865" },
+  agents: {
+    label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} />,
+    planned: { summary: "The agent roster, spawn tree and message feed, and one agent's runs and messages.", tasks: "TP-864a and TP-865a" },
   },
-  {
-    key: "productivity", label: "Flow", title: "Productivity and quality", icon: <AwardIcon size={ICON_SIZE} />,
-    planned: { summary: "Throughput, lead time, work-in-progress age and fix-proof verdicts.", tasks: "TP-867" },
+  knowledge: {
+    label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} />,
+    planned: { summary: "Notes and sources with a reader and search, and a Graph tab.", tasks: "TP-869 and TP-871a" },
   },
-  {
-    key: "knowledge", label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} />,
-    planned: { summary: "Notes and sources across initiatives, then the knowledge graph and retrieval explorer.", tasks: "TP-869 and TP-871" },
-  },
-  {
-    key: "search", label: "Search", title: "Search", icon: <TargetIcon size={ICON_SIZE} />,
-    planned: { summary: "Search across six record classes, and an inventory of what is stored where.", tasks: "TP-870" },
-  },
-  {
-    key: "stores", label: "Stores", title: "Stores", icon: <EqualIcon size={ICON_SIZE} />,
-    planned: { summary: "Every database and file root, with its size and row counts.", tasks: "TP-872" },
-  },
-];
+};
+
+export const VIEWS: readonly ViewSpec[] = VIEW_KEYS.map((key) => ({ key, ...SPECS[key] }));
 
 export const NAV_ITEMS: SideNavItem[] = VIEWS.map(({ key, label, icon }) => ({ key, label, icon }));
 

@@ -18,7 +18,7 @@ export interface BashCall {
 }
 
 const BASH_CALLS = `
-  SELECT tc.session_id AS sessionId, tc.tool_use_id AS toolUseId, t.source_key AS path, tc.byte_offset AS byteOffset,
+  SELECT tc.session_id AS sessionId, tc.tool_use_id AS toolUseId, tc.ts AS ts, t.source_key AS path, tc.byte_offset AS byteOffset,
          f.byte_length AS byteLength, s.detail AS heads
   FROM tool_call tc
   JOIN transcript t ON t.source_id = tc.transcript_id
@@ -27,8 +27,26 @@ const BASH_CALLS = `
        AND s.block_index = tc.block_index AND s.signal = 'command_heads'
   WHERE tc.name = 'Bash' AND (@since IS NULL OR tc.ts >= @since) AND (@until IS NULL OR tc.ts < @until)`;
 
-export function readBashCalls(db: Db, window: { since?: string; until?: string }): BashCall[] {
-  return db.prepare(BASH_CALLS).all({ since: window.since ?? null, until: window.until ?? null }) as BashCall[];
+/** A Bash call with the time it ran, as the graph's `tool_call` row records it. */
+export interface TimedBashCall extends BashCall {
+  ts: string;
+}
+
+export function readBashCalls(db: Db, window: { since?: string; until?: string }): TimedBashCall[] {
+  return db.prepare(BASH_CALLS).all({ since: window.since ?? null, until: window.until ?? null }) as TimedBashCall[];
+}
+
+const READ_CONCURRENCY = 32;
+
+/** Each call's command text through `command`, a bounded batch at a time, in call order. */
+export async function readCommands<Call extends BashCall>(calls: readonly Call[], command: (call: Call) => Promise<string | null>): Promise<{ call: Call; text: string | null }[]> {
+  const read: { call: Call; text: string | null }[] = [];
+  for (let i = 0; i < calls.length; i += READ_CONCURRENCY) {
+    const batch = calls.slice(i, i + READ_CONCURRENCY);
+    const texts = await Promise.all(batch.map((call) => command(call)));
+    texts.forEach((text, j) => read.push({ call: batch[j]!, text }));
+  }
+  return read;
 }
 
 export function readAgentNames(db: Db): Map<string, string> {

@@ -8,11 +8,10 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import {
-  EffectivePolicySchema,
-  OWNER_GATE_POLICY,
   RegistrationRefused,
-  RequestedPolicySchema,
+  RequestedPolicyFields,
   resolveEffectivePolicy,
+  runPolicyCeiling,
   shepherdGatePolicy,
   stricterPolicy,
   type EffectivePolicy,
@@ -87,7 +86,7 @@ const RegisterArgs = z
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
-    policy: RequestedPolicySchema.optional(),
+    policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
   .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
@@ -265,8 +264,7 @@ function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 /** Reports what the run would decide and why it waits; it never signals the run or resolves a gate. */

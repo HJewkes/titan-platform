@@ -108,7 +108,7 @@ describe("stageStats", () => {
 describe("the live stage in a watch row", () => {
   it("names the current stage, its age and the total, and calls a merge waiting on a hold a hold", () => {
     const run = { ...runOf("a", [["ci-wait", 5], ["sh-review", 20]]), status: "running" as const, currentStep: "merge:0" };
-    const registration = { repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null } as unknown as Parameters<typeof watchRow>[0]["registration"];
+    const registration = { repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Parameters<typeof watchRow>[0]["registration"];
     const now = new Date(T0 + 50 * MINUTE);
 
     const plain = watchRow({ registration, run, now });

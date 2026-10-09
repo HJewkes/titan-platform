@@ -24,7 +24,7 @@ import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -88,8 +88,7 @@ function runFacts(sources: EvidenceSources, run: WorkflowRun, gate: GateRecord, 
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 const VerdictRecord = z.looseObject({ kind: z.literal("verdict"), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
