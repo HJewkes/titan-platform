@@ -407,6 +407,37 @@ describe("thaw notice from the freeze store ref", () => {
   });
 });
 
+describe("the freeze store on a database another connection writes", () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+  it("still freezes when another connection tries to commit between the freeze's read and its write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "freeze-race-"));
+    dirs.push(dir);
+    const path = join(dir, "factory.db");
+    const host = openDatabase(path);
+    runMigrations(host, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    const cli = openDatabase(path);
+    cli.pragma("busy_timeout = 0");
+    const cliWrite = () => {
+      try {
+        cli.prepare("INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode) VALUES (?, ?, 1, ?, 1)").run(B, RED, "2026-10-09T00:00:00Z");
+      } catch {
+        return;
+      }
+    };
+    const freezes = new FreezeStore(host, () => {
+      cliWrite();
+      return 0;
+    });
+
+    expect(() => freezes.freeze(A, RED)).not.toThrow();
+    expect(freezes.get(A)).toMatchObject({ redSha: RED, episode: 1 });
+    cli.close();
+    host.close();
+  });
+});
+
 describe("the freeze migration", () => {
   const dirs: string[] = [];
   afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));

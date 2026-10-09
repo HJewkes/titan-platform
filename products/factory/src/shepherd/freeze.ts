@@ -75,7 +75,8 @@ export class FreezeStore {
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string, cancelOnly = false): Freeze {
-    this.db.transaction(() => this.freezeRow(repo, redSha, cancelOnly))();
+    // Immediate, because a deferred read-then-write fails with "database is locked" when the CLI's connection commits in between.
+    this.db.transaction(() => this.freezeRow(repo, redSha, cancelOnly)).immediate();
     return this.active(repo)!;
   }
 
