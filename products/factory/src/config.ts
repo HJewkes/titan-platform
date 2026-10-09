@@ -60,9 +60,8 @@ export const DigestConfigSchema = z.strictObject({
   icloudDir: absolutePath.optional(),
   timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
+  /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
-  /** Where the owner-queue reader finds the seat Morning files; absent means the active-work default. */
-  queueDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
 });
 
@@ -86,7 +85,7 @@ export const SpawnGateConfigSchema = z.strictObject({
   reviewLoad: z.number().min(0).optional(),
 });
 
-/** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. */
+/** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
 export const ServiceConfigSchema = z.strictObject({
   labelPrefix: noNul.min(1).optional(),
 });

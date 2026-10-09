@@ -51,19 +51,19 @@ describe("createMorningSource", () => {
 
 describe("morningQueuesDir", () => {
   it("roots the queues at ACTIVE_ROOT", () => {
-    expect(morningQueuesDir({ ACTIVE_ROOT: "/srv/aw" })).toBe("/srv/aw/claude-channels/sources/autonomy/queues");
+    expect(morningQueuesDir({ ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: join(dir, "no-config") })).toBe("/srv/aw/claude-channels/sources/autonomy/queues");
   });
 
-  it("uses digest.queueDir from the factory config when set", () => {
+  it("uses digest.queuesDir from the factory config when set", () => {
     const config = join(dir, "config-home");
     const env = { ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: config };
     mkdirSync(dirname(configPath(env)), { recursive: true });
-    writeFileSync(configPath(env), JSON.stringify({ digest: { queueDir: "/srv/queues" } }));
+    writeFileSync(configPath(env), JSON.stringify({ digest: { queuesDir: "/srv/queues" } }));
 
     expect(morningQueuesDir(env)).toBe("/srv/queues");
   });
 
-  it("keeps today's path when the config sets no queueDir", () => {
+  it("keeps today's path when the config sets no queuesDir", () => {
     const env = { ACTIVE_ROOT: "/srv/aw", XDG_CONFIG_HOME: join(dir, "no-config") };
 
     expect(morningQueuesDir(env)).toBe("/srv/aw/claude-channels/sources/autonomy/queues");

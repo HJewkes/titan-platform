@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { configuredLabelPrefix, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
+import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -24,25 +24,16 @@ function keyValue(plist: string, key: string): string {
 }
 
 describe("service label prefix", () => {
-  const home = (config?: unknown): NodeJS.ProcessEnv => {
-    const dir = mkdtempSync(join(tmpdir(), "service-label-"));
-    dirs.push(dir);
-    if (config !== undefined) {
-      mkdirSync(join(dir, "titan-factory"));
-      writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify(config));
-    }
-    return { XDG_CONFIG_HOME: dir };
-  };
-
-  it("keeps the default label byte-identical when the config sets no prefix", () => {
-    expect(configuredLabelPrefix(home())).toBeUndefined();
-    expect(serviceLabel(configuredLabelPrefix(home({})))).toBe("dev.hjewkes.titan-factory");
+  it("keeps the default label byte-identical when no prefix is given", () => {
+    expect(serviceLabel()).toBe("dev.hjewkes.titan-factory");
+    expect(keyValue(renderPlist(options), "Label")).toBe("dev.hjewkes.titan-factory");
+    expect(plistPath("/srv/h")).toBe("/srv/h/Library/LaunchAgents/dev.hjewkes.titan-factory.plist");
   });
 
-  it("follows service.labelPrefix when the config sets one", () => {
-    const prefix = configuredLabelPrefix(home({ service: { labelPrefix: "dev.ex." } }));
-
-    expect(serviceLabel(prefix)).toBe("dev.ex.titan-factory");
+  it("follows a configured prefix in the label, the plist and its path", () => {
+    expect(serviceLabel("dev.ex.")).toBe("dev.ex.titan-factory");
+    expect(keyValue(renderPlist({ ...options, labelPrefix: "dev.ex." }), "Label")).toBe("dev.ex.titan-factory");
+    expect(plistPath("/srv/h", "dev.ex.")).toBe("/srv/h/Library/LaunchAgents/dev.ex.titan-factory.plist");
   });
 });
 
