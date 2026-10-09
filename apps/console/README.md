@@ -142,14 +142,14 @@ too. With the switch off, owner writes answer "owner writes disabled until TLS".
 receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-console
 presence proof. An owner-write handler is defined with `ownerWrite: true` and wrapped by
 `ownerWriteCommand`. `readCommand` and `depositCommand` refuse a marked handler at runtime,
-when they wrap it and again at registry build. The type check is narrower. Passing a handler
-whose `run` needs `ctx.ownerPresence` under its own type fails to compile. Once the handler is
-widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's return type,
-an array) or cast, it compiles, because `run` is a bivariant method in
-`@titan-design/registry`. The `ownerWrite` mark is then the only guard. An unmarked handler that
-reads a required `ownerPresence` fails closed, since the field is absent. One that declares it
-optional is served as a read or deposit, with no presence proof. That is the known open gap,
-tracked by TP-2115, which also makes `run` a property so widening no longer compiles.
+when they wrap it and again at registry build. The types refuse it too. `run` is a property in
+`@titan-design/registry`, so a handler whose `run` needs `ctx.ownerPresence` neither passes to
+`readCommand` or `depositCommand` nor widens to `Command<…, ConsoleContext>` or `AnyCommand`
+(an annotation, a factory's return type, an array). Both helpers also refuse a handler whose
+context has any key `ConsoleContext` lacks, so one that declares `ownerPresence` optional fails
+to compile too. Only a cast gets past the types, and the `ownerWrite` mark is the guard then.
+TypeScript has no exact types, so an optional-presence handler widened before it reaches a
+helper still compiles; it runs with no proof, because only `ownerWriteCommand` adds one.
 Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
