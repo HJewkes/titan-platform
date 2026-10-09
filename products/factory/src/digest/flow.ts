@@ -16,7 +16,7 @@ export interface FlowPorts {
   roster(): Promise<AgentSpan[]>;
 }
 
-export const IMPLEMENTER_PROFILES: ReadonlySet<string> = new Set(["implementer", "implementer-lite", "bd-implementer"]);
+const IMPLEMENTER_PROFILES: ReadonlySet<string> = new Set(["implementer", "implementer-lite", "bd-implementer"]);
 
 const HOUR_MS = 3_600_000;
 const round = (value: number, places: number): number => Math.round(value * 10 ** places) / 10 ** places;
