@@ -65,14 +65,18 @@ export async function landPr(ctx: WorkflowContext, params: LandPrParams, options
 
 type RedHead = Extract<LandOutcome, { kind: "ci-failed" }>;
 
-export async function onCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState): Promise<LandOutcome | undefined> {
-  if (state.reruns === 0 && isTransient(red.failing)) return rerun(ctx, params, red, state);
-  const decision = await askCiFailed(ctx, params, red);
+/** `unsent` names why no seat was told, for the gate's prompt; land-pr has no seat. */
+export async function onCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead, state: LandPrState, unsent = ""): Promise<LandOutcome | undefined> {
+  if (rerunsFirst(red, state)) return rerun(ctx, params, red, state);
+  const decision = await askCiFailed(ctx, params, red, unsent);
   if (decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha: red.headSha, detail: "a human abandoned the red head" };
   if (decision === "rerun") return rerun(ctx, params, red, state);
   await step(ctx, `await-new-head:${state.waits++}`, { repo: params.repo, pr: params.pr, headSha: red.headSha }, AwaitHeadResult);
   return undefined;
 }
+
+/** A run's first transient red reruns before anyone is asked. */
+export const rerunsFirst = (red: RedHead, state: LandPrState): boolean => state.reruns === 0 && isTransient(red.failing);
 
 /** Only a failure GitHub Actions can rerun qualifies; a cancelled check from another app would just fail again. */
 function isTransient(failing: FailingCheck[]): boolean {
@@ -88,10 +92,10 @@ export async function rerun(ctx: WorkflowContext, params: LandPrParams, red: Red
  * The answer must name the red head shown, so a decision about one head never applies to another. A gate the head
  * sweep superseded because the PR moved past that head reads as await-fix, so the run lands the new head unanswered.
  */
-async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead): Promise<"rerun" | "abandon" | "await-fix"> {
+async function askCiFailed(ctx: WorkflowContext, params: LandPrParams, red: RedHead, unsent: string): Promise<"rerun" | "abandon" | "await-fix"> {
   const { schema, brief } = ciFailedDecision({ repo: params.repo, pr: params.pr, headSha: red.headSha, failing: red.failing });
   const checks = red.failing.map((check) => `${check.name} (${check.conclusion ?? "no conclusion"}) ${check.url}`).join("; ");
-  const prompt = `CI failed on PR #${params.pr} in ${params.repo} at head ${red.headSha}: ${checks || "no failing check named"}. Rerun, abandon, or await a fix?`;
+  const prompt = `CI failed on PR #${params.pr} in ${params.repo} at head ${red.headSha}: ${checks || "no failing check named"}${unsent}. Rerun, abandon, or await a fix?`;
   const answered = await askAtHead(ctx, "ci-failed", prompt, { schema, brief });
   if (!answered) return "await-fix";
   const answer = schema.safeParse(answered.data);
