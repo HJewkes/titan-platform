@@ -383,7 +383,21 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
   and is left out. Releases do not appear: `shepherd release` records no actor.
 
-`--json` returns `{ "merges": [...], "ownerFriction": [...] }`. The morning digest shows today's
+- Per repo and ISO week, the time per stage: for each of `queued`, `ci`, `review`, `re-review`,
+  `hold` and `land`, how many runs spent time in it and the median, p90 (nearest rank) and
+  maximum minutes per run, summed over the run's visits. The ledger records only when a step
+  completed, so a step's time is the gap since the step before it, and the stage is that step's
+  phase (`ci` includes the fixer's wait for a new head; `hold` is the owner-decision gates). A
+  review after the run went back through CI or a fixer is a `re-review`, which covers a head
+  move and a clean merge-up. Time after the merge is in no stage. A hold polled inside the
+  merge step leaves no trace in the ledger, so `stats` counts it under `land`; `status` does
+  name a live hold.
+
+`shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
+the minutes it has been there, and the minutes since registration. `status --json` carries them
+as `stage` and `totalMinutes`.
+
+`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
 ## Seat policy {#seat-policy}
@@ -590,6 +604,10 @@ repeats from a fresh clock, so a crash can lengthen the wait but never shorten t
 ```sh
 titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","headSha":"<40 hex>"}'
 ```
+
+One owner signature can also answer many merge gates at once: see
+[owner-signed proofs](/guides/factory#owner-signed-proofs). A gate whose head moved or whose PR
+closed is skipped.
 
 | Gate | Opens when | Payload |
 | --- | --- | --- |

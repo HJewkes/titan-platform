@@ -2,6 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it, vi } from "vitest";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
@@ -310,5 +311,22 @@ describe("unlessSeatFixFirst", () => {
     expect(await unlessSeatFixFirst(roster, readerOf([]), target, fixFirst)).toBe(fixFirst);
     expect(await unlessSeatFixFirst(roster, readerOf([]), target, { kind: "none" })).toEqual({ kind: "none" });
     expect(roster).not.toHaveBeenCalled();
+  });
+});
+
+describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
+  const POSTSCRIPT = `A background search timed out. The verdict stands.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+  const textOf = (result: unknown) => (result as { text: string }).text;
+
+  it("keeps a hold reviewer's findings when a postscript restating the block follows them", () => {
+    const result = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, verdictAt("FIX_FIRST"), 2), said(SEAT, POSTSCRIPT, 3)]);
+
+    expect(textOf(result)).toBe(`${verdictAt("FIX_FIRST")}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
+  });
+
+  it("keeps a seat reviewer's findings when a postscript restating the block follows them", async () => {
+    const result = await seatFixFirst(rosterOf(SEAT), readerOf([said(SEAT, verdictAt("FIX_FIRST"), 5), said(SEAT, POSTSCRIPT, 6)]), target);
+
+    expect(textOf(result)).toBe(`Seat reviewer ${SEAT.name} said FIX_FIRST at this head.\n\n${verdictAt("FIX_FIRST")}${FINDINGS_SEPARATOR}${POSTSCRIPT}`);
   });
 });

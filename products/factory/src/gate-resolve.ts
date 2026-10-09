@@ -48,7 +48,8 @@ export async function resolveGate(host: FactoryHost, io: ResolveIo, runId: strin
   return EXIT.OK;
 }
 
-function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
+/** The gate the run waits on at `stepId` now, if any. */
+export function pendingGateId(host: FactoryHost, runId: string, stepId: string): string | undefined {
   const base = `${runId}/${stepId}`;
   return host.pendingGates().find(({ gate }) => stepIdMatches(base, gate.id))?.gate.id;
 }
