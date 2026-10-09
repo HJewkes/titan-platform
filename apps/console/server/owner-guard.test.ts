@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "v
 import { z } from "zod";
 import * as daemonPackage from "@titan-design/daemon";
 import { silentLogger, type DaemonHandle, type RequestAuth } from "@titan-design/daemon";
-import { EXIT, defineCommand, invokeCommand } from "@titan-design/registry";
+import { EXIT, defineCommand, invokeCommand, type AnyCommand, type Command } from "@titan-design/registry";
 import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
@@ -61,6 +61,28 @@ const ownerAnswer = {
 };
 
 const stubOwnerWrite = ownerWriteCommand(ownerAnswer);
+
+const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, OwnerAnswerContext>({
+  name: "test.needs-presence",
+  description: "Test-only handler that reads the presence proof but carries no owner-write mark",
+  args: z.object({}),
+  result: z.object({ ok: z.boolean() }),
+  run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
+});
+
+/** Each way a handler reaches a helper typed as a console command; every one of them typechecks today. */
+function widenings<Args, Result>(handler: Command<Args, Result, OwnerAnswerContext>): Array<[string, AnyCommand<ConsoleContext>]> {
+  const annotated: Command<Args, Result, ConsoleContext> = handler;
+  const asAny: AnyCommand<ConsoleContext> = handler;
+  const fromFactory = (): Command<Args, Result, ConsoleContext> => handler;
+  const list: AnyCommand<ConsoleContext>[] = [handler];
+  return [
+    ["a console-context annotation", annotated],
+    ["an AnyCommand annotation", asAny],
+    ["a factory's return type", fromFactory()],
+    ["an AnyCommand array", list[0]!],
+  ];
+}
 
 const stubDeposit = depositCommand({
   name: DEPOSIT,
@@ -175,19 +197,40 @@ describe("classes fail closed", () => {
   });
 
   it("fails to compile a read or a deposit whose run needs the owner's presence proof, even without the mark", () => {
-    const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, OwnerAnswerContext>({
-      name: "test.needs-presence",
-      description: "Test-only handler that reads the presence proof but carries no owner-write mark",
-      args: z.object({}),
-      result: z.object({ ok: z.boolean() }),
-      run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
-    });
-
     // Type-only: with no mark there is nothing for the runtime guard to see, so neither wrapper is called.
     // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
     expectTypeOf(() => readCommand(needsPresence)).toBeFunction();
     // @ts-expect-error the console context carries no presence proof, so it cannot satisfy this run
     expectTypeOf(() => depositCommand(needsPresence)).toBeFunction();
+  });
+
+  // Widening passes the type check because `run` is a bivariant method in the registry (TP-2115).
+  it.each(widenings(ownerAnswer))("refuses at runtime a marked owner-write handler widened by %s", (_label, widened) => {
+    expect(() => readCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read`);
+    expect(() => depositCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit`);
+  });
+
+  it.each(widenings(needsPresence))("fails closed when an unmarked handler needing presence is widened by %s and run", async (_label, widened) => {
+    const replies = await Promise.all([
+      invokeCommand(readCommand(widened), {}, context("http", SESSION_AUTH)),
+      invokeCommand(depositCommand(widened), {}, context("http", SESSION_AUTH)),
+    ]);
+
+    expect(replies.map(({ envelope }) => envelope.ok)).toEqual([false, false]);
+  });
+
+  it("serves an unmarked handler whose presence is optional: the known open gap, tracked by TP-2115", async () => {
+    const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, ConsoleContext & { ownerPresence?: { issuedAt: number } }>({
+      name: "test.optional-presence",
+      description: "Test-only handler that treats the presence proof as optional and carries no mark",
+      args: z.object({}),
+      result: z.object({ present: z.boolean() }),
+      run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
+    });
+
+    const { envelope } = await invokeCommand(readCommand(optionalPresence), {}, context("http", SESSION_AUTH));
+
+    expect(envelope).toEqual({ ok: true, data: { present: false } });
   });
 
   it("fails startup on an owner-write handler hand-classed as a read", () => {

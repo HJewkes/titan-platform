@@ -50,7 +50,11 @@ type OwnerWriteHandler<Args, Result> = Command<Args, Result, OwnerWriteContext> 
 /**
  * `run` is a method on `Command`, so its context parameter is bivariant and a handler that needs
  * `OwnerWriteContext` would typecheck as a read or a deposit. This is `never` for any context a
- * plain console context cannot satisfy, and refuses the owner-write mark, so that wrapping fails to compile.
+ * plain console context cannot satisfy, and refuses the owner-write mark, so passing such a
+ * handler with its own type fails to compile. It only sees the type the caller holds: once a
+ * handler is widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's
+ * return type, an array) or cast, the check passes, and the `ownerWrite` mark is the runtime
+ * backstop. Making `run` a property in the registry (TP-2115) closes that.
  */
 type ServedWithoutOwner<Ctx> = ConsoleContext extends Ctx ? { readonly ownerWrite?: never } : never;
 
