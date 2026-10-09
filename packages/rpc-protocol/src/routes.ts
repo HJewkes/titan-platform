@@ -18,6 +18,8 @@ export const CLIENT_HEADER = "x-titan-client";
 export const RPC_STATUS = {
   /** Invalid JSON body, or a command failing with `EXIT.DATAERR`. */
   BAD_REQUEST: 400,
+  /** A command refusing this caller with `EXIT.NOPERM`. */
+  FORBIDDEN: 403,
   /** No command by that name. */
   NOT_FOUND: 404,
   /** The command failed with any other code. */
@@ -25,6 +27,9 @@ export const RPC_STATUS = {
 } as const;
 
 /** DATAERR is the caller's fault whether it came from schema validation or the command. */
-export function rpcFailureStatus(code: number): typeof RPC_STATUS.BAD_REQUEST | typeof RPC_STATUS.FAILED {
-  return code === EXIT.DATAERR ? RPC_STATUS.BAD_REQUEST : RPC_STATUS.FAILED;
+export function rpcFailureStatus(
+  code: number,
+): typeof RPC_STATUS.BAD_REQUEST | typeof RPC_STATUS.FORBIDDEN | typeof RPC_STATUS.FAILED {
+  if (code === EXIT.DATAERR) return RPC_STATUS.BAD_REQUEST;
+  return code === EXIT.NOPERM ? RPC_STATUS.FORBIDDEN : RPC_STATUS.FAILED;
 }

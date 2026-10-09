@@ -7,7 +7,7 @@ import { pause } from "./write-read-back.js";
 import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
+import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkTimestamp } from "./validate.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -70,6 +70,12 @@ export interface Commit {
   tree?: string;
   /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
   committedAt?: string;
+}
+
+/** A commit on the default branch with its full message, subject line first. */
+export interface LoggedCommit {
+  sha: string;
+  message: string;
 }
 
 export interface PutFileRequest {
@@ -154,6 +160,8 @@ export interface GitHubWire {
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
   /** The PR's commit shas, oldest first; GitHub returns at most the first 250. */
   listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
+  /** Commits on the default branch committed at or after `since`, newest first, every page. */
+  listCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   getAuthenticatedLogin(): Promise<string>;
   listIssueComments(repo: RepoSlug, number: number): Promise<IssueComment[]>;
@@ -207,6 +215,8 @@ export interface GitHubPort {
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
   /** The PR's commit shas, oldest first. GitHub stops at the first 250, so a list whose last sha is not the head is short. */
   listPrCommits(repo: RepoSlug, number: number): Promise<string[]>;
+  /** Commits on the default branch committed at or after `since`, newest first; one paged read covers every PR merged since. */
+  listDefaultBranchCommits(repo: RepoSlug, since: string): Promise<LoggedCommit[]>;
   /** The merge base of `base` and `head`, and the paths changed since it; check `truncated` before trusting the list. */
   compareFiles(repo: RepoSlug, base: string, head: string): Promise<CompareResult>;
   /**
@@ -269,6 +279,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
+    listDefaultBranchCommits: async (repo, since) => wire.listCommits(repoOf(repo), checkTimestamp("since", since)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
     upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),

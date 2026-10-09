@@ -27,6 +27,7 @@ import type { ServicePorts } from "./service-control.js";
 import type { ShepherdCommandName } from "./shepherd/commands.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
+import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -182,6 +183,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
+  verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
+    .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   verb("hold <ref>", "hold owner/repo#N so no merge goes through until release")
     .requiredOption("--reason <text>", "why it is held")
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
@@ -246,7 +249,7 @@ function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvel
   }
   if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
   else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
-  return EXIT.OK;
+  return name === "shepherd.waiting" && overdueOwnerGates(WaitingSchema.parse(envelope.data)).length > 0 ? EXIT.FAILURE : EXIT.OK;
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
