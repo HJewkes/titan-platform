@@ -42,31 +42,15 @@ export const charterDefaultsSchema = z.looseObject({
   heartbeat_cron: z.string().optional(),
 });
 
-export const charterPoolSchema = z.looseObject({
-  config_dir: z.string().min(1),
-  human_uses: z.boolean(),
-  ceiling_five_hour: z.number().nonnegative(),
-  per_day_points: z.number().nonnegative(),
-  reserve_seven_day: z.number().nonnegative().optional(),
-  sonnet_band_points: z.number().nonnegative().optional(),
-});
-
-const poolNames = z.array(z.string().min(1));
-
-// Each key is an initiative slug naming the pools that may fund its spawns; `default`
-// covers every initiative not listed.
-export const charterFundsSchema = z.object({ default: poolNames }).catchall(poolNames);
-
 // Unknown keys pass through so a new charter key never breaks the parse; hard stops are
-// closed because a misspelt class would silently stop guarding anything.
+// closed because a misspelt class would silently stop guarding anything. Pools and funds
+// are account limits owned by @titan-design/agent-dispatch, so they pass through untyped.
 export const charterPolicySchema = z.looseObject({
   schema: z.literal("autonomy-charter/v1"),
   seats: z.array(z.string().min(1)).min(1),
   hub: z.string().min(1),
   hard_stops: z.array(hardStopClassSchema),
   defaults: charterDefaultsSchema,
-  funds: charterFundsSchema,
-  pools: z.record(z.string(), charterPoolSchema),
   title: z.string().optional(),
   created: z.string().optional(),
   owner_seat: z.string().optional(),
@@ -83,8 +67,6 @@ export const charterPolicyErrorSchema = z.object({
 
 export type HardStopClass = z.infer<typeof hardStopClassSchema>;
 export type CharterDefaults = z.infer<typeof charterDefaultsSchema>;
-export type CharterPool = z.infer<typeof charterPoolSchema>;
-export type CharterFunds = z.infer<typeof charterFundsSchema>;
 export type CharterPolicy = z.infer<typeof charterPolicySchema>;
 export type CharterPolicyError = z.infer<typeof charterPolicyErrorSchema>;
 export type CharterPolicyResult =

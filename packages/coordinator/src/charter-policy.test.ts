@@ -11,7 +11,7 @@ function withoutKey(path: readonly string[]): Record<string, unknown> {
 }
 
 describe("parseCharterPolicy", () => {
-  it("parses the charter front matter with every default, fund and pool", () => {
+  it("parses the charter front matter with every default", () => {
     const result = parseCharterPolicy(charter);
 
     expect(result.ok).toBe(true);
@@ -21,8 +21,7 @@ describe("parseCharterPolicy", () => {
     expect(result.policy.defaults.gate_free_bonus).toBe(1.15);
     expect(result.policy.defaults.retire_k.reviewer).toBe(300);
     expect(result.policy.defaults.teleport_k).toBe(250);
-    expect(result.policy.funds.default).toEqual(["pool-a", "pool-b", "pool-c"]);
-    expect(result.policy.pools["pool-d"]?.reserve_seven_day).toBe(14);
+    expect(result.policy.defaults.heartbeat_cron).toBe("17,47 * * * *");
   });
 
   it.each([
@@ -30,8 +29,6 @@ describe("parseCharterPolicy", () => {
     ["hub"],
     ["hard_stops"],
     ["defaults"],
-    ["funds"],
-    ["pools"],
     ["defaults", "kind_weights"],
     ["defaults", "share_caps"],
     ["defaults", "score_terms"],
@@ -40,9 +37,6 @@ describe("parseCharterPolicy", () => {
     ["defaults", "size"],
     ["defaults", "retire_k"],
     ["defaults", "teleport_k"],
-    ["funds", "default"],
-    ["pools", "pool-a", "ceiling_five_hour"],
-    ["pools", "pool-a", "config_dir"],
   ])("names %s when it is missing", (...path) => {
     const result = parseCharterPolicy(withoutKey(path));
 
@@ -59,14 +53,11 @@ describe("parseCharterPolicy", () => {
   });
 
   it("refuses a wrong type", () => {
-    const pools = { ...charter.pools, "pool-a": { ...charter.pools["pool-a"], ceiling_five_hour: "100" } };
+    const defaults = { ...charter.defaults, teleport_k: "250" };
 
-    const result = parseCharterPolicy({ ...charter, pools });
+    const result = parseCharterPolicy({ ...charter, defaults });
 
-    expect(result).toMatchObject({
-      ok: false,
-      errors: [{ code: "invalid", path: "pools.pool-a.ceiling_five_hour" }],
-    });
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "invalid", path: "defaults.teleport_k" }] });
   });
 
   it("refuses an unknown schema version", () => {
@@ -79,15 +70,18 @@ describe("parseCharterPolicy", () => {
     expect(parseCharterPolicy("schema: autonomy-charter/v1")).toMatchObject({ ok: false });
   });
 
-  it.each([
-    ["with", { sonnet_band_points: 10, reserve_seven_day: 14 }],
-    ["without", {}],
-  ])("parses a pool %s the optional band and reserve keys", (_label, optional) => {
-    const pool = { config_dir: "/home/user/cfg/pool-e", human_uses: false, ceiling_five_hour: 90, per_day_points: 20 };
+  it("parses front matter that has no pools or funds", () => {
+    expect("pools" in charter || "funds" in charter).toBe(false);
 
-    const result = parseCharterPolicy({ ...charter, pools: { "pool-e": { ...pool, ...optional } } });
+    expect(parseCharterPolicy(charter).ok).toBe(true);
+  });
 
-    expect(result.ok).toBe(true);
+  it("passes pools and funds through untyped", () => {
+    const pools = { "pool-a": { ceiling_five_hour: "any shape" } };
+
+    const result = parseCharterPolicy({ ...charter, pools, funds: "unchecked" });
+
+    expect(result).toMatchObject({ ok: true, policy: { pools, funds: "unchecked" } });
   });
 
   it("keeps an unknown top-level key", () => {

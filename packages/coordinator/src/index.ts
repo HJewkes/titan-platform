@@ -1,20 +1,16 @@
 export {
   HARD_STOP_CLASSES,
   charterDefaultsSchema,
-  charterFundsSchema,
   charterPolicyErrorSchema,
   charterPolicySchema,
-  charterPoolSchema,
   hardStopClassSchema,
   parseCharterPolicy,
 } from "./charter-policy.js";
 export type {
   CharterDefaults,
-  CharterFunds,
   CharterPolicy,
   CharterPolicyError,
   CharterPolicyResult,
-  CharterPool,
   HardStopClass,
 } from "./charter-policy.js";
 export {

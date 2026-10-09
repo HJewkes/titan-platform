@@ -7,10 +7,20 @@
   "design": "../plan.md",
   "retro": "../notes/retro.md",
   "root": "/home/user/autonomy",
-  "seats": ["seat-a", "seat-b", "seat-c", "seat-d", "seat-e"],
+  "seats": [
+    "seat-a",
+    "seat-b",
+    "seat-c",
+    "seat-d",
+    "seat-e"
+  ],
   "hub": "seat-a",
   "charter_owner": "seat-a",
-  "human_only_initiatives": ["init-x", "init-y", "init-z"],
+  "human_only_initiatives": [
+    "init-x",
+    "init-y",
+    "init-z"
+  ],
   "hard_stops": [
     "ruleset-write",
     "tag-move",
@@ -35,57 +45,46 @@
       "docs": 0.5,
       "nit": 0.35
     },
-    "share_caps": { "agent-tooling": 0.3, "nit": 0.2, "discovery": 0.25 },
+    "share_caps": {
+      "agent-tooling": 0.3,
+      "nit": 0.2,
+      "discovery": 0.25
+    },
     "initiative_decay": 0.85,
-    "score_terms": { "severity": 0.4, "priority_pct": 0.3, "unblocks": 0.2, "staleness": 0.1 },
-    "severity": { "critical": 1.0, "high": 0.7, "medium": 0.4, "low": 0.15, "unset": 0.3 },
-    "readiness": { "ready": 1.0, "untriaged": 0.6, "blocked": 0.25 },
-    "size": { "le3": 1.0, "le8": 0.9, "gt8": 0.75 },
+    "score_terms": {
+      "severity": 0.4,
+      "priority_pct": 0.3,
+      "unblocks": 0.2,
+      "staleness": 0.1
+    },
+    "severity": {
+      "critical": 1.0,
+      "high": 0.7,
+      "medium": 0.4,
+      "low": 0.15,
+      "unset": 0.3
+    },
+    "readiness": {
+      "ready": 1.0,
+      "untriaged": 0.6,
+      "blocked": 0.25
+    },
+    "size": {
+      "le3": 1.0,
+      "le8": 0.9,
+      "gt8": 0.75
+    },
     "stop_short_factor": 0.8,
     "gate_free_bonus": 1.15,
-    "retire_k": { "implementer": 200, "reviewer": 300, "planner": 250 },
+    "retire_k": {
+      "implementer": 200,
+      "reviewer": 300,
+      "planner": 250
+    },
     "teleport_k": 250,
     "worktrees_per_repo_per_seat": 12,
     "worktrees_left_free_per_repo": 2,
     "stale_pr_days": 7,
     "heartbeat_cron": "17,47 * * * *"
-  },
-  "funds": {
-    "default": ["pool-a", "pool-b", "pool-c"],
-    "init-p": ["pool-c"],
-    "init-q": ["pool-c"]
-  },
-  "pools": {
-    "pool-a": {
-      "config_dir": "/home/user/cfg/pool-a",
-      "human_uses": false,
-      "reserve_seven_day": 0,
-      "sonnet_band_points": 0,
-      "ceiling_five_hour": 100,
-      "per_day_points": 30
-    },
-    "pool-b": {
-      "config_dir": "/home/user/cfg/pool-b",
-      "human_uses": false,
-      "reserve_seven_day": 0,
-      "sonnet_band_points": 0,
-      "ceiling_five_hour": 95,
-      "per_day_points": 30
-    },
-    "pool-c": {
-      "config_dir": "/home/user/cfg/pool-c",
-      "human_uses": false,
-      "reserve_seven_day": 0,
-      "sonnet_band_points": 0,
-      "ceiling_five_hour": 100,
-      "per_day_points": 45
-    },
-    "pool-d": {
-      "config_dir": "/home/user/cfg/pool-d",
-      "human_uses": false,
-      "reserve_seven_day": 14,
-      "ceiling_five_hour": 95,
-      "per_day_points": 45
-    }
   }
 }
