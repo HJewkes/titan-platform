@@ -532,9 +532,9 @@ repeats from a fresh clock, so a crash can lengthen the wait but never shorten t
 titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","headSha":"<40 hex>"}'
 ```
 
-To answer many merge gates after one presence check, use
-[`gate resolve-batch`](/guides/factory#gate-resolve-batch). It takes a list of gate, PR and head sha
-items, and skips any gate whose head moved or whose PR closed.
+One owner signature can also answer many merge gates at once: see
+[owner-signed proofs](/guides/factory#owner-signed-proofs). A gate whose head moved or whose PR
+closed is skipped.
 
 | Gate | Opens when | Payload |
 | --- | --- | --- |
