@@ -9,6 +9,7 @@ import {
   TS_FUNCTION_DECLARATION,
   TS_FUNCTION_DECL_TYPES,
   TS_FUNCTION_TYPES,
+  TS_METHOD_DEFINITION,
 } from "./node-kinds.js";
 
 const sorted = (set: ReadonlySet<string>) => [...set].sort();
@@ -43,5 +44,9 @@ describe("shared node-kind table keeps each caller's former set", () => {
 
   it("names the hoisted declaration dead-code exempts after a terminal", () => {
     expect(TS_FUNCTION_DECLARATION).toBe("function_declaration");
+  });
+
+  it("names the method node style-analyzer counts beside the plain declaration", () => {
+    expect(TS_METHOD_DEFINITION).toBe("method_definition");
   });
 });
