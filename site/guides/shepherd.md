@@ -57,7 +57,13 @@ reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back uncha
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
-nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. The kind
+nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. A tree-equal
+update carries only when it is a clean merge-up: its first parent is the reviewed head (or a
+head an earlier merge-up carried that MERGE to), its second parent is on the base branch, and
+its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
+commit or a rebase gets a fresh review. The run log records each clean merge-up as an
+`sh-merge-up` step naming the reviewed head, the new head, the base commit and the rule
+`clean-merge-up`. The kind
 does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
 replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
 `unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
@@ -512,6 +518,14 @@ merge waiting at the old head ends at its next poll without merging. The run rea
 reviews the new head, then comes back to the merge step there, where the same hold applies.
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
+
+A hold whose reason starts `g10-review:` releases itself in the `sh-g10-release` step when an
+opus reviewer Shepherd spawned says `MERGE` and the required checks are green at that head.
+When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
+`MERGE` stands at the new head: the step releases the hold there once its checks are green,
+with no fresh review and no seat release. A head reached by any other move, or carried by the
+remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
+seat releases it.
 
 ## Merge train {#merge-train}
 

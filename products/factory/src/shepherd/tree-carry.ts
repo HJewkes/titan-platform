@@ -24,7 +24,7 @@ export type Git = (gitDir: string, args: readonly string[], signal?: AbortSignal
 /** `fromHead` is the head whose MERGE would be carried, `head` the new green head. */
 export type CarryInput = z.infer<typeof CarryInputSchema>;
 
-/** `base` is the head's second parent, the base commit an update merged in. */
+/** `base` is the head's second parent, the base commit an update merged in; `firstParent` is the head it was merged into. */
 export type CarryResult = z.infer<typeof CarryResultSchema>;
 
 export interface CarryOptions {
@@ -39,7 +39,7 @@ export interface CarryOptions {
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 export const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
 const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
-export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), reason: z.string().optional() });
+export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
 /** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
@@ -116,12 +116,12 @@ export function fetchArgs(url: string, input: CarryInput): string[] {
   return ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, input.fromHead, input.head, `+refs/heads/${input.baseRef}:${remoteBase(input.baseRef)}`];
 }
 
-/** The second parent of a two-parent head, or a reason it is not one. */
-async function secondParent(git: Git, dir: string, head: string, signal?: AbortSignal): Promise<string | CarryResult> {
+/** Both parents of a two-parent head, or a reason it is not one. */
+async function mergeParents(git: Git, dir: string, head: string, signal?: AbortSignal): Promise<{ first: string; base: string } | CarryResult> {
   const parents = (await must(git, dir, ["rev-list", "--parents", "-n", "1", head], signal)).split(" ").slice(1);
-  const base = parents[1];
-  if (parents.length !== 2 || base === undefined) return { equal: false, reason: `${head} has ${parents.length} parents, not the two of a merge update` };
-  return base;
+  const [first, base] = parents;
+  if (parents.length !== 2 || first === undefined || base === undefined) return { equal: false, reason: `${head} has ${parents.length} parents, not the two of a merge update` };
+  return { first, base };
 }
 
 /** Equal only when the head is exactly the reviewed head merged cleanly onto a commit of the base branch. */
@@ -140,8 +140,9 @@ async function compareTrees(git: Git, dir: string, input: CarryInput, base: stri
 async function probe(git: Git, dir: string, url: string, input: CarryInput, signal?: AbortSignal): Promise<CarryResult> {
   await ensureCache(git, dir, signal);
   await must(git, dir, fetchArgs(url, input), signal);
-  const base = await secondParent(git, dir, input.head, signal);
-  return typeof base === "string" ? compareTrees(git, dir, input, base, signal) : base;
+  const parents = await mergeParents(git, dir, input.head, signal);
+  if (!("first" in parents)) return parents;
+  return { ...(await compareTrees(git, dir, input, parents.base, signal)), firstParent: parents.first };
 }
 
 const queues = new Map<string, Promise<unknown>>();
