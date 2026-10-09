@@ -1,5 +1,5 @@
 import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
-import type { Token } from "./lexer.js";
+import type { Token, WordToken } from "./lexer.js";
 import { ValueWalkError } from "./unsure-readings.js";
 import type { AssignedPart, Vars } from "./vars.js";
 
@@ -76,10 +76,7 @@ const SUBSCRIPT_CODE_RE = /\[[\s\S]*(?:\$\(|`)/;
  */
 export function assignedSubstitutions(write: AssignedPart, scope: ValueScope, run: object): Token[][] {
   const text = leftBy(write, scope.vars);
-  if (text === null) {
-    if (write.text !== null && CODE_RE.test(write.text)) throw new ValueWalkError();
-    return [];
-  }
+  if (write.dynamic || text === null) return refuseUnresolved(write, text);
   if (!SUBSCRIPT_CODE_RE.test(text)) return [];
   const state = walked.get(run) ?? { reads: new Map<string, boolean>(), lists: 0 };
   walked.set(run, state);
@@ -88,11 +85,32 @@ export function assignedSubstitutions(write: AssignedPart, scope: ValueScope, ru
   return found;
 }
 
+/**
+ * A write whose stored value is not fully known cannot be walked, so it refuses the line when it types code behind
+ * a bracket, in the word itself or in a command that makes its value, and when an append adds any code to an
+ * unknown value. Knowing less never makes a write safer.
+ */
+function refuseUnresolved(write: AssignedPart, joined: string | null): Token[][] {
+  const typed = [joined ?? write.text, write.text, ...write.sources];
+  if (typed.some((t) => SUBSCRIPT_CODE_RE.test(t)) || (joined === null && CODE_RE.test(write.text))) throw new ValueWalkError();
+  return [];
+}
+
 const CODE_RE = /\$\(|`/;
+
+/** The typed text of every word, and of the commands and heredoc bodies, that a word substitutes into itself. */
+export function substitutedSources(word: WordToken): string[] {
+  return word.subs.flatMap((list) => list.flatMap(tokenSources));
+}
+
+function tokenSources(token: Token): string[] {
+  if (token.type === "word") return [token.value, ...substitutedSources(token)];
+  if (token.type === "redirect") return [token.body ?? "", ...(token.target ? [token.target.value, ...substitutedSources(token.target)] : []), ...token.subs.flatMap((list) => list.flatMap(tokenSources))];
+  return token.type === "subs" ? token.subs.flatMap((list) => list.flatMap(tokenSources)) : [];
+}
 
 /** The text the variable holds after the write, null when the old value it adds to is unknown. */
 function leftBy(write: AssignedPart, vars: Vars): string | null {
-  if (write.text === null) return null;
   if (!write.append || write.text.startsWith("(")) return write.text;
   const prior = write.element ? null : vars.get(write.name);
   return typeof prior === "string" ? prior + write.text : prior === undefined ? write.text : null;

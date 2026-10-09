@@ -193,12 +193,18 @@ export function parseAssignment(w: WordToken): Assignment | null {
   return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
 }
 
-/** What an assignment word writes: its text as typed, null when only known at run time, and whether it adds to the old value. */
+/**
+ * What an assignment word writes: the text it types after the `=`, with each command substitution cut out as the
+ * lexer does, whether any part of it is only known at run time, whether it adds to the old value, and the typed
+ * source of what is substituted into it (`sources`, filled by whoever has the substitutions' tokens).
+ */
 export interface AssignedPart {
   name: string;
-  text: string | null;
+  text: string;
+  dynamic: boolean;
   append: boolean;
   element: boolean;
+  sources: string[];
 }
 
 /** The part of a `NAME=text`, `NAME+=text` or `NAME[i]=text` word that is written, whatever the variable tracks. */
@@ -206,7 +212,7 @@ export function assignedPart(w: WordToken): AssignedPart | null {
   const parts = ASSIGNMENT_PARTS_RE.exec(w.value);
   if (!parts || w.hidden) return null;
   const [whole, name = "", subscript, plus] = parts;
-  return { name, text: w.dynamic ? null : w.value.slice(whole.length), append: plus === "+", element: subscript !== undefined };
+  return { name, text: w.value.slice(whole.length), dynamic: w.dynamic, append: plus === "+", element: subscript !== undefined, sources: [] };
 }
 
 function splitAssignment(w: WordToken): Assignment | null {
