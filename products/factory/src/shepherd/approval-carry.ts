@@ -18,7 +18,7 @@ interface ApprovalCarry {
   reviewedMerge: (headSha: string) => boolean;
 }
 
-function landGateHead(stepId: string, prompt: string): string | undefined {
+export function landGateHead(stepId: string, prompt: string): string | undefined {
   const match = LAND_GATE.exec(prompt);
   return stepIdMatches("approve-merge", stepId) && match && match[2] !== ESCALATION_TABLE ? match[1] : undefined;
 }

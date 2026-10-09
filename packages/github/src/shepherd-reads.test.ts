@@ -47,6 +47,14 @@ describe("listPrFiles", () => {
     expect(files).toEqual([{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }, { path: "b.ts", status: "added" }]);
   });
 
+  it("carries each file's additions and deletions from the same list", async () => {
+    const gh = scripted({ "pulls/7/files": [included({}, [{ filename: "a.ts", status: "modified", additions: 12, deletions: 3 }])], "repos/octo/demo/pulls/7": [included({}, { changed_files: 1 })] });
+
+    const files = await wireOver(gh.exec).listPrFiles(REPO, 7);
+
+    expect(files).toEqual([{ path: "a.ts", status: "modified", additions: 12, deletions: 3 }]);
+  });
+
   it("returns 130 entries when the files span two pages", async () => {
     const gh = scripted({
       "page=2": [included({}, changed(30, 100))],

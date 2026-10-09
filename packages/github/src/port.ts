@@ -98,6 +98,10 @@ export interface PrFile {
   path: string;
   previousPath?: string;
   status: string;
+  /** Lines added; absent when the wire does not report it. */
+  additions?: number;
+  /** Lines deleted; absent when the wire does not report it. */
+  deletions?: number;
 }
 
 export interface CompareResult {
