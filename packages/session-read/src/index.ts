@@ -16,6 +16,9 @@ export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } fr
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
 export { IGNORED_PATH, TASK_ID, commandCwd, commandHeads, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 export { expandHome } from "./expand-home.js";
+export { simpleCommandHead } from "./command-heads.js";
+export type { ShellWord } from "./shell-split.js";
+export { splitCommands, splitPipelines } from "./shell-split.js";
 export type { DiscoveredTranscript, TranscriptRoot } from "./discover.js";
 export { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
 export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";

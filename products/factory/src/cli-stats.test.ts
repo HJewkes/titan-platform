@@ -24,7 +24,7 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [] });
   });
 
   it("reports owner touches and the wait per gate kind from the gate store", async () => {
@@ -54,13 +54,38 @@ describe("shepherd stats verb", () => {
     new WorkflowRunStore(store).create(failed("run-2", "step ci-wait:0 (iteration 0) failed: ci-wait timed out after 2700000 ms: waiting on check"));
     store.close();
     const { out, io } = capture();
+    const human = capture();
 
     const code = await runCli(["--db", db, "shepherd", "stats", "--failures", "--json"], io);
+    await runCli(["--db", db, "shepherd", "stats", "--failures"], human.io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join("")).failures).toEqual([
+    const report = JSON.parse(out.join(""));
+    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "failures"]);
+    expect(report.failures).toEqual([
       { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
     ]);
+    expect(human.out.join("")).toContain("failures by class:\nacme/widgets  2026-W41  failed 2  ci-timeout 1  land-rules 1\n");
+  });
+
+  it("reports the merged runs whose main CI went red, with their PRs, in JSON and in the human report", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    for (const [pr, verdict] of [[1, "red"], [2, "green"]] as const) {
+      const read = { stepId: "sh-main-ci", iteration: 0, agentId: null, signal: null, completedAt: "2026-10-07T09:00:00.000Z", data: { result: { verdict } } };
+      const run = { id: `run-${pr}`, workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: String(pr) }, currentStep: null, activeSteps: {}, revision: 0, ownerGeneration: 0, error: null };
+      new WorkflowRunStore(store).create({ ...run, status: "completed", stepResults: { "sh-main-ci:0": read }, startedAt: read.completedAt, completedAt: read.completedAt });
+    }
+    store.close();
+    const json = capture();
+    const human = capture();
+
+    await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
+    await runCli(["--db", db, "shepherd", "stats"], human.io);
+
+    expect(JSON.parse(json.out.join("")).redAfterMerge).toEqual([{ repo: "acme/widgets", week: "2026-W41", merged: 2, red: 1, rate: 0.5, redPrs: [1], reverted: 0, revertedPrs: [] }]);
+    expect(human.out.join("")).toContain("red after merge:\nacme/widgets  2026-W41  merged 2  red 1 (50.0%)  reverted 0\n");
   });
 
   it("refuses a malformed date", async () => {

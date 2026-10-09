@@ -1,5 +1,6 @@
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, request, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 
 const RPC_PREFIX = "/rpc/";
@@ -84,4 +85,28 @@ export async function startFakeBroker(data: FakeBrokerData): Promise<FakeBroker>
     return closeServer(server);
   };
   return { port: (server.address() as AddressInfo).port, close, requests };
+}
+
+export interface Reply {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}
+
+/** A raw request, so a test sets the Host and Origin headers that fetch would fill in itself. */
+export function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: address, port, path: route, method, headers }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+}
+
+export function sessionCookie(reply: Reply): string | undefined {
+  const cookies = [reply.headers["set-cookie"] ?? []].flat();
+  return cookies.find((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`));
 }

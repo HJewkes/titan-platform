@@ -142,6 +142,19 @@ export class WorkflowRunStore {
     run.owner = { ...fence, leaseUntil: timestamps.leaseUntil };
   }
 
+  /**
+   * Adds a result under `key` to a run that already finished, for a fact learnt after it ended; no runtime owns such a
+   * run, so no fence applies. False when the run is unfinished or already has that key, so a repeat never rewrites one.
+   */
+  annotate(id: string, key: string, result: StepResult): boolean {
+    const path = `$.${JSON.stringify(key)}`;
+    const changed = this.db.prepare(
+      `UPDATE ${this.table} SET step_results = json_set(step_results, ?, json(?)), revision = revision + 1
+       WHERE id = ? AND status IN ('completed', 'failed', 'cancelled') AND json_type(step_results, ?) IS NULL`,
+    ).run(path, JSON.stringify(result), id, path).changes;
+    return changed === 1;
+  }
+
   release(run: WorkflowRun, fence: WorkflowOwnerFence): void {
     const nextRevision = run.revision + 1;
     const result = this.db.prepare(

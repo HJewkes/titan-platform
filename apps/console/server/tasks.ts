@@ -1,7 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
-import { EXIT, defineCommand } from "@titan-design/registry";
+import { EXIT } from "@titan-design/registry";
 import { failure, type ActiveWork, type ReadResult, type WireTask } from "./active-work.js";
+import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
@@ -63,14 +64,14 @@ const SESSION_LIMIT = 50;
 export function tasksCommands(source: TasksSource) {
   const evidence = source.evidence ?? gitEvidenceReader();
   return {
-    "work.tasks": defineCommand({
+    "work.tasks": readCommand({
       name: "work.tasks",
       description: "Open tasks across every initiative, each with a derived stage, the rule that produced it and its evidence",
       args: z.object({}),
       result: z.custom<TasksResult>(),
       run: () => readTasks(source, evidence),
     }),
-    "work.task": defineCommand({
+    "work.task": readCommand({
       name: "work.task",
       description: "One task with its derived stage, mentions, artifacts with PR state, and the sessions spawned for it",
       args: z.object({ id: z.string().regex(/^[A-Z][A-Z0-9]*-\d+$/) }),
