@@ -82,4 +82,14 @@ describe("systemServicePorts label prefix", () => {
 
     expect(systemServicePorts().labelPrefix).toBeUndefined();
   });
+
+  it("keeps the default label when the config is malformed", () => {
+    const root = mkdtempSync(join(tmpdir(), "factory-ports-bad-"));
+    dirs.push(root);
+    mkdirSync(join(root, "titan-factory"));
+    writeFileSync(join(root, "titan-factory", "config.json"), "{ not json");
+    vi.stubEnv("XDG_CONFIG_HOME", root);
+
+    expect(systemServicePorts().labelPrefix).toBeUndefined();
+  });
 });

@@ -55,10 +55,14 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
-/** Resolved when the ports are built, from the same env the CLI runs under; an invalid config surfaces here as it does for every other verb that loads it. */
+/** Resolved when the ports are built, from the env the CLI runs under. A malformed config falls back to the default label: `service plist` must print without a readable config, and every verb that needs the config reports its error itself. */
 function configuredLabelPrefix(env: NodeJS.ProcessEnv): { labelPrefix?: string } {
-  const labelPrefix = loadConfig(configPath(env)).service?.labelPrefix;
-  return labelPrefix === undefined ? {} : { labelPrefix };
+  try {
+    const labelPrefix = loadConfig(configPath(env)).service?.labelPrefix;
+    return labelPrefix === undefined ? {} : { labelPrefix };
+  } catch {
+    return {};
+  }
 }
 
 export function systemServicePorts(): ServicePorts {
