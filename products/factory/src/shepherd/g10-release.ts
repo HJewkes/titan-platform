@@ -37,17 +37,24 @@ interface G10Checks {
   green: boolean;
 }
 
+const MergeUpSchema = z.looseObject({ fromHead: z.string(), head: z.string() });
+/** A clean merge-up the run recorded from the reviewed head to the head it made; see `merge-up-carry.ts`. */
+type MergeUp = z.infer<typeof MergeUpSchema>;
+
+/** The head a MERGE stands at: the head it was written at, or the head a clean merge-up of that head made. */
+const standsAt = (verdict: G10Verdict, mergeUp: MergeUp | undefined): string => (mergeUp?.fromHead === verdict.head ? mergeUp.head : verdict.head);
+
 /**
  * True when the run is held as `g10-review` and an opus reviewer's MERGE stands at the PR's head as read now, with
  * the required checks green at that same head. The head is the caller's fresh read, never the run's recorded one.
  */
-export function satisfiesG10(run: G10Run, verdict: G10Verdict | undefined, prHead: string, checks: G10Checks, reviewProfile: string | undefined): boolean {
+export function satisfiesG10(run: G10Run, verdict: G10Verdict | undefined, prHead: string, checks: G10Checks, reviewProfile: string | undefined, mergeUp?: MergeUp): boolean {
   if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS) return false;
   if (!isOpusProfile(reviewProfile)) return false;
-  return verdict?.value === "MERGE" && verdict.head === prHead && checks.green && checks.head === prHead;
+  return verdict?.value === "MERGE" && standsAt(verdict, mergeUp) === prHead && checks.green && checks.head === prHead;
 }
 
-const G10ReleaseInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), verdict: G10VerdictSchema, reviewerProfile: z.string(), checks: z.looseObject({ head: z.string(), green: z.boolean() }) });
+const G10ReleaseInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), verdict: G10VerdictSchema, reviewerProfile: z.string(), checks: z.looseObject({ head: z.string(), green: z.boolean() }), mergeUp: MergeUpSchema.optional() });
 const G10ReleaseResult = z.looseObject({ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional() });
 
 /** The hold is read after the PR head, and released only if it is still held under the reason that was judged, so a re-hold in between stands. */
@@ -59,7 +66,7 @@ export function g10ReleaseRoutes(deps: ShepherdDeps) {
       const store = deps.store.get();
       const registration = store.byRun(input.runId);
       const run = { held: registration?.held ?? false, holdReason: registration?.holdReason ?? null };
-      const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile);
+      const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);
       const released = judged && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason);
       return { released, head: prHead, ...(released && { verdict: input.verdict }) };
     }),
@@ -92,17 +99,33 @@ function mergeRefAt(verdict: Verdict | undefined, head: string): G10Verdict | un
 /** Verdicts that already released a hold in this run; a replay rebuilds the set from the recorded steps, so a re-hold waits for a verdict not yet used. */
 const used = new WeakMap<WorkflowContext, Set<string>>();
 
+interface Judged {
+  verdict: G10Verdict;
+  reviewerProfile: string;
+  mergeUp?: MergeUp;
+}
+
+/** The opus MERGE written at this head, or at the reviewed head a recorded clean merge-up carried to it; any other carry has none. */
+function judgedAt(reviews: ReadonlyMap<string, Verdict>, head: string): Judged | undefined {
+  const merge = reviews.get(head);
+  if (merge?.kind !== "MERGE") return undefined;
+  const fromHead = merge.mergeUpFrom ?? head;
+  const source = reviews.get(fromHead);
+  const verdict = mergeRefAt(source, fromHead);
+  const reviewerProfile = source?.kind === "MERGE" ? source.reviewerProfile : undefined;
+  if (!verdict || reviewerProfile === undefined || !isOpusProfile(reviewerProfile)) return undefined;
+  return { verdict, reviewerProfile, ...(fromHead !== head && { mergeUp: { fromHead, head } }) };
+}
+
 /** Records the release as a step, so `shepherd status` and the ledger show it; the route re-reads the PR head and the hold before it writes. */
 export async function releaseG10Hold(run: G10WorkflowRun, holdReason: string | null | undefined): Promise<void> {
   const ci = run.lastCi;
   if (holdClassOf(holdReason) !== G10_REVIEW_CLASS || !ci) return;
-  const merge = run.reviews.get(ci.headSha);
-  const verdict = mergeRefAt(merge, ci.headSha);
-  const reviewerProfile = merge?.kind === "MERGE" ? merge.reviewerProfile : undefined;
-  const key = JSON.stringify([ci.headSha, verdict?.locator]);
-  if (!verdict || reviewerProfile === undefined || !isOpusProfile(reviewerProfile) || used.get(run.ctx)?.has(key)) return;
+  const judged = judgedAt(run.reviews, ci.headSha);
+  const key = JSON.stringify([ci.headSha, judged?.verdict.locator]);
+  if (!judged || used.get(run.ctx)?.has(key)) return;
   const attempt = run.ctx.iteration(G10_RELEASE_STEP);
-  const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, verdict, reviewerProfile, checks: { head: ci.headSha, green: ci.verdict === "green" } };
+  const input = { runId: run.ctx.runId, ...run.target, head: ci.headSha, ...judged, checks: { head: ci.headSha, green: ci.verdict === "green" } };
   const done = await step(run.ctx, `${G10_RELEASE_STEP}:${ci.headSha}:${attempt}`, input, G10ReleaseResult);
   if (done.released) used.set(run.ctx, (used.get(run.ctx) ?? new Set()).add(key));
 }

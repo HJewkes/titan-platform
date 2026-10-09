@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
@@ -36,6 +37,10 @@ export const WatchRowSchema = z.object({
   stalled: z.object({ reason: z.string() }).nullable(),
   /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
+  /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
+  stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
+  /** Whole minutes from the run's registration to its end, or to now while it runs. */
+  totalMinutes: z.number().int().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -239,6 +244,14 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phas
   return holding ? undefined : overstayReason(phase, since, now);
 }
 
+/** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
+function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, holding: boolean, now: Date): WatchRow["stage"] {
+  if (TERMINAL_PHASE[run.status]) return null;
+  const open = stageSpans(steps, run.startedAt, { phase, at: now.getTime() }).find((span) => span.open);
+  if (open === undefined) return null;
+  return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
+}
+
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
 function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["held"] {
   if (!held) return null;
@@ -270,6 +283,8 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
+    stage: liveStage(run, steps, phase, holding, now),
+    totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
   };
 }
 

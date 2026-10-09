@@ -36,6 +36,7 @@ titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  #
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
+titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -129,6 +130,65 @@ still writable by your OS user, so an agent that rewrites it can skip the dialog
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
 killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prints the run as
 `held ... leased by <runtime> until <time>` and leaves it alone.
+
+## Owner-signed proofs: `applyProof`
+
+`applyProof` in `src/gate-batch.ts` is the server-side core behind owner presence across hosts. It
+applies a statement the owner's key signed. `serve` exposes it as `POST /gates/resolve-proof`
+(below); the Mac client that signs comes next.
+
+1. `verifyProof` (`src/presence-proof.ts`) checks the ECDSA P-256 signature over the exact statement
+   bytes. It then checks the key, the time window, the audience (this factory's hostname) and the
+   digest. A statement with more than one item may not name a release or hardware step.
+2. A nonce already in `gate_batch` is refused as `replayed-nonce`. The nonce column is UNIQUE, so a
+   race refuses too. Replays are deduplicated on the nonce, never on the signature bytes, because a
+   re-encoded (high-S) signature still verifies.
+3. Every item is checked against its live gate record. The gate must exist. A merge gate must ask
+   about the item's PR. In a batch, every gate must be an `approve-merge` gate pinned to one head,
+   answered `{"decision":"merge","headSha":<the item's head>}`. Neither a `shepherd-release` merge
+   nor a release or hardware gate may ride in a batch; those stay one per proof. Any refusal here
+   (`item-refused`, naming the item) records and resolves nothing.
+4. The proof is recorded in one transaction before anything fires (tables `gate_batch` and
+   `gate_batch_item`, migration 15). The record keeps the key id, nonce, digest, the exact statement
+   text, the base64url signature, `aud`, `iat` and `exp`, with every item marked `signed`. Anyone can
+   re-verify the record offline with the public key.
+5. The items then fire in order. Just before an item fires, three checks run. Its gate must still be
+   pending, the run must still wait on that exact gate, and a merge gate must still ask about the
+   item's head. With a GitHub port, a merge gate's PR must also be open at that head. An item that
+   fails is skipped and named: `skipped-closed`, `skipped-moved`, or `skipped-unreadable` when the PR
+   read fails.
+6. Every other item is signalled with the resolver `{class: "owner-terminal", id: "key:<keyId>",
+   channel: "factory-proof", confirmEvent: "proof:<batchId>"}`. The gate store still checks the
+   payload against the gate's schema. An item is marked `firing` before its resolve, then `resolved`
+   or `failed`. The first failure stops the batch, and later items stay `signed`, so a process that
+   dies mid-batch leaves the item it died on marked `firing`.
+
+A one-item proof is the single-gate case. It may answer any gate, including a release, hardware or
+main-red gate, with the payload the owner signed.
+
+### `POST /gates/resolve-proof` and the owner key directory
+
+`src/resolve-proof.ts` mounts the route on `serve` through the daemon's `mountRoutes`. It is in
+no registry, so it is never an MCP tool or RPC command, and it runs behind the daemon's Host,
+Origin, client-header and JSON guards. The body is `{"statement", "signature"}`, both base64url.
+
+| Answer | When |
+| --- | --- |
+| 200 `{ok: true, batchId, items}` | the proof applied; each item is `resolved`, `skipped-*` or `failed` |
+| 400 | the body is not `{statement, signature}`, or the statement is malformed |
+| 403 `refusal` | a `verifyProof` refusal: `bad-signature`, `unknown-key`, `expired`, `wrong-aud`, ... |
+| 409 `refusal` | `replayed-nonce`, or `item-refused` naming the item |
+| 413 | the body is over 512 KiB; reading stops at the limit, whatever Content-Length says |
+| 503 `owner keys not installed` | the key directory was refused; `detail` says why |
+
+`src/owner-keys.ts` loads the keys once at start from `/etc/titan-factory/owner-keys/*.pem`,
+a path fixed in code with no environment or config override. Every component from the
+directory up to `/`, and every key file, is checked with lstat: owned by uid 0, no group or
+other write bit, no symlink. Any failed check, or any key that is not ECDSA P-256, refuses the
+whole set. Because the directory is root-only, no file can be swapped between its check and
+its read. `/health` reports `ownerKeys: {count, ids}` or `{count: 0, refusal}`, and
+`factory.gates` returns `aud`, this host's name, for the signer to bind. Rotating a key means
+installing the new `.pem`, removing the old one, then `titan-factory service restart`.
 
 ## Shepherd commands
 
@@ -289,6 +349,18 @@ emits the difference.
 
 `titan-factory queue-counts` prints each source's open count, split by kind. It prints no item
 text. It exits 69 when a source cannot be read and still prints the others.
+
+`titan-factory needs` prints the owner's one list. It reads agent-chat, the factory gates, the
+Morning queue files and the open `needs-decision` tasks, drops personal initiatives, and folds
+items that share an exact key (`gate:<id>`, `run:<id>`, `task:<ID>`, or `pr:<owner>/<repo>#<n>@<full sha>`)
+into one. The first line counts what each source read (`36 gates, 88 Morning items, 145 tasks,
+19 broker items (approve 3, decide 2, know 14)`). An overlap report follows, naming each subject
+two sources share and whether merging folded it; a merged item lists what it was merged from.
+`--json` prints the merged `OwnerItem[]` instead. A source that cannot be read prints a line on
+stderr and the command exits 69 after printing the rest.
+
+`titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
+items, which are news and not asks.
 
 ## Install as a LaunchAgent
 
@@ -483,8 +555,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest`, `queue-counts` and `service` |
-| `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates) and the `queue-counts` verb |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest`, `queue-counts`, `needs` and `service` |
+| `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates), the merge step over all four, and the `queue-counts` and `needs` verbs |
 | `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |

@@ -1,7 +1,10 @@
+import type { NeedsList } from "../needs/merged.js";
+import type { OwnerItem } from "@titan-design/owner-queue";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import { waitingGates } from "../shepherd/waiting.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
+import { subjectOf } from "../needs/overlap.js";
 import type { AgentChatDigest, Ask, DigestModel, DigestSlot, Merged, SeatLine, Stuck } from "./model.js";
 
 export interface GateFact {
@@ -23,6 +26,8 @@ export interface DigestSources {
   /** Throws when agent-chat is missing, slow, or too old to print JSON. */
   agentChat(windowMinutes: number): Promise<AgentChatDigest>;
   queueAsks(): Ask[] | Promise<Ask[]>;
+  /** The merged owner list (`titan-factory needs`). When set, it is the whole of "Needs you"; gates, seat queues and the agent-chat asks are not read for it. */
+  needs?(): Promise<NeedsList>;
   seatCosts(since: Date): SeatLine[];
   /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
   friction?(now: Date): FrictionDay | undefined;
@@ -57,13 +62,15 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
+  const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
+  gaps.push(...(needs?.gaps ?? []));
   const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
   const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
+    needsYou: needs ? ownerAsks(needs.items, rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
@@ -89,6 +96,51 @@ function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[], since: 
       ...(Date.parse(gate.createdAt) < since.getTime() && { since: gate.createdAt }),
     };
   });
+}
+
+/** The digest's documented order: factory gates, then seat queues, then needs-decision tasks, then the broker. */
+const SYSTEM_ORDER = ["hitl", "morning", "active-work", "agent-chat"];
+/** An item merged from several systems sorts by the earliest, so a gate that a Morning line also names stays among the gates. */
+const systemRank = (item: OwnerItem): number => {
+  const ranks = item.sources.map((source) => SYSTEM_ORDER.indexOf(source.system)).filter((rank) => rank >= 0);
+  return ranks.length > 0 ? Math.min(...ranks) : SYSTEM_ORDER.length;
+};
+
+/** News (kind `know`) is not an ask. The sort is stable, so each system keeps the order its source read in. */
+function ownerAsks(items: readonly OwnerItem[], rows: readonly WatchRow[], since: Date): Ask[] {
+  return items
+    .filter((item) => item.kind !== "know")
+    .sort((a, b) => systemRank(a) - systemRank(b))
+    .map((item) => ownerAsk(item, rows, since));
+}
+
+const runOfItem = (item: OwnerItem): string | undefined => item.keys.find((key) => key.startsWith("run:"))?.slice("run:".length);
+
+/** A gate's line names its PR and step, from the Shepherd row for its run, and a gate open since before the window says so. */
+function gateDetail(item: OwnerItem, rows: readonly WatchRow[], since: Date): Pick<Ask, "since"> & { prefix: string; keys: string[] } {
+  const gateId = item.sources.find((source) => source.system === "hitl")!.ref;
+  const runId = runOfItem(item);
+  const row = rows.find((r) => r.runId === runId);
+  const step = gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
+  return {
+    prefix: `${row ? refOf(row) : (runId ?? gateId).slice(0, 8)} ${step}: `,
+    keys: row?.pr != null ? [prKey(row.repo, row.pr)] : [],
+    ...(Date.parse(item.openedAt) < since.getTime() && { since: item.openedAt }),
+  };
+}
+
+/** Keys a digest compares by: PR and run refs loosened to repo and number, gate ids as they are. Task ids stay out, as the Morning asks leave them. */
+function ownerAsk(item: OwnerItem, rows: readonly WatchRow[], since: Date): Ask {
+  const gate = item.sources.some((source) => source.system === "hitl") ? gateDetail(item, rows, since) : undefined;
+  const keys = [...item.keys.filter((key) => !key.startsWith("task:")).map((key) => subjectOf(key) ?? key), ...(gate?.keys ?? [])];
+  return {
+    text: `${gate?.prefix ?? ""}${item.summary}`,
+    ...(item.command !== undefined && { command: item.command }),
+    source: item.seat ?? item.sources[0]!.system,
+    keys: [...new Set(keys)],
+    ...(item.evidenceRef !== undefined && { evidence: item.evidenceRef }),
+    ...(gate?.since !== undefined && { since: gate.since }),
+  };
 }
 
 function chatAsks(chat: AgentChatDigest): Ask[] {

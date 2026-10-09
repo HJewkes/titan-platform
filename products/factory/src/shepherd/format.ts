@@ -61,7 +61,13 @@ function rowLine(row: WatchRow): string {
   const target = row.pr === null ? `${row.repo} ${row.branch}` : `${row.repo}#${row.pr}`;
   const head = row.headSha === null ? "-" : row.headSha.slice(0, 7);
   const blockers = [row.held && heldLine(row.held), row.stalled && `stalled: ${row.stalled.reason}`].filter(Boolean);
-  return `${target} ${row.phase} ${head} ${row.nextAction}${blockers.length > 0 ? ` [${blockers.join("; ")}]` : ""}`;
+  return `${target} ${row.phase} ${head} ${row.nextAction}${timeSuffix(row)}${blockers.length > 0 ? ` [${blockers.join("; ")}]` : ""}`;
+}
+
+/** The live stage with its age, then the minutes since registration; nothing for a row that carries neither. */
+function timeSuffix({ stage, totalMinutes }: WatchRow): string {
+  const parts = [stage && `${stage.name} ${stage.minutes}m`, totalMinutes !== undefined && `${totalMinutes}m total`].filter(Boolean);
+  return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
 }
 
 /** A satisfied hold names the head and the reviewer session whose MERGE lets a merge there through. */
