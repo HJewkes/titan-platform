@@ -7,6 +7,7 @@ import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,6 +16,7 @@ interface StatsOpts {
   from?: string;
   to?: string;
   json?: boolean;
+  cost?: boolean;
 }
 
 function formatStages(weeks: readonly StageWeek[]): string[] {
@@ -36,6 +38,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
+    .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
     .action((opts: StatsOpts) => {
       const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
       if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));
@@ -47,6 +50,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
       }
       try {
         const runs = new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
+        if (opts.cost) return reviewCost(runs, claudeTranscripts(), opts).then((cost) => io.stdout(opts.json ? `${JSON.stringify({ reviewCost: cost }, null, 2)}\n` : formatReviewCost(cost)));
         const rows = shepherdStats(runs, { from: opts.from, to: opts.to });
         const friction = ownerFriction(readAllGates(db), now(), { from: opts.from, to: opts.to });
         const stages = stageStats(runs, { from: opts.from, to: opts.to });

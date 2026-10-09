@@ -406,6 +406,22 @@ as `stage` and `totalMinutes`.
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
+### Review cost {#review-cost}
+
+```
+titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--cost` prints this report instead of the three above. For each merged PR it reads the reviewer
+transcript every `sh-await-verdict` locator names, across all the PR's runs and rounds, and prices
+each request with session-analytics `priceRequest`. It reports list-price dollars and tokens
+(input, cache read, cache write, output) per PR, then per repo and ISO week of the merge, then in
+total, with the p50 and p90 dollars per merged PR. A session read twice, or a request a resumed
+session repeats, counts once. A session that cannot be read (a missing transcript, a model with
+no price row, a parse error, or an external review with no transcript) is listed under
+`unreadable` with its reason and adds nothing to the dollars. A PR with one is left out of p50
+and p90, so they never treat a gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts

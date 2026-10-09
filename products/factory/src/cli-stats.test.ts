@@ -44,6 +44,17 @@ describe("shepherd stats verb", () => {
     expect(JSON.parse(out.join("")).ownerFriction).toEqual([{ day: "2026-10-07", ownerTouches: 1, kinds: [{ kind: "approve-merge", gates: 1, medianHours: 3, maxHours: 3 }] }]);
   });
 
+  it("prints the review cost section alone under --cost", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const { out, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--cost", "--json"], io);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.join(""))).toEqual({ reviewCost: { prs: [], weeks: [], totals: { prs: 0, completePrs: 0, usd: 0, tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }, unreadable: 0, p50Usd: null, p90Usd: null } } });
+  });
+
   it("refuses a malformed date", async () => {
     const { err, io } = capture();
 
