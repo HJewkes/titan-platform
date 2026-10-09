@@ -39,7 +39,7 @@ interface G10Checks {
 
 const MergeUpSchema = z.looseObject({ fromHead: z.string(), head: z.string() });
 /** A clean merge-up the run recorded from the reviewed head to the head it made; see `merge-up-carry.ts`. */
-export type MergeUp = z.infer<typeof MergeUpSchema>;
+type MergeUp = z.infer<typeof MergeUpSchema>;
 
 /** The head a MERGE stands at: the head it was written at, or the head a clean merge-up of that head made. */
 const standsAt = (verdict: G10Verdict, mergeUp: MergeUp | undefined): string => (mergeUp?.fromHead === verdict.head ? mergeUp.head : verdict.head);

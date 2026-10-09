@@ -6,7 +6,7 @@ import type { CarryResult } from "./tree-carry.js";
 
 /** Records that a MERGE moved across a clean merge-up of the base, so the run log names the rule that skipped the review. */
 export const MERGE_UP_STEP = "sh-merge-up";
-export const MERGE_UP_RULE = "clean-merge-up";
+const MERGE_UP_RULE = "clean-merge-up";
 
 const MergeUpRecord = z.looseObject({ fromHead: z.string(), head: z.string(), base: z.string(), rule: z.literal(MERGE_UP_RULE) });
 
@@ -29,7 +29,7 @@ function reviewedLine(reviews: ReadonlyMap<string, Verdict>, fromHead: string): 
  * refused a conflicted merge-tree and a second parent off the base branch; a conflict resolution, an extra commit or a
  * rebase fails one of these.
  */
-export function isCleanMergeUp(result: CarryResult, fromHead: string, reviews: ReadonlyMap<string, Verdict>): boolean {
+function isCleanMergeUp(result: CarryResult, fromHead: string, reviews: ReadonlyMap<string, Verdict>): boolean {
   const { equal, base, firstParent, headTree, mergeTree } = result;
   return equal && base !== undefined && firstParent !== undefined && !!headTree && headTree === mergeTree && reviewedLine(reviews, fromHead).has(firstParent);
 }
