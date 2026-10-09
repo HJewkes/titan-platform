@@ -22,4 +22,7 @@ Full reference: `site/reference/evals.md`.
 `fixtures/measurement-audit/` is the second unit. Its gold case is the Shepherd measurement
 audit: 44 metrics and 11 capture gaps. `scoreMeasurementAudit(gold, output)` returns metric
 recall, gap recall and cost in usd for a run's output; `samples/` holds a perfect, a partial
-and an empty output the tests score without running a model.
+and an empty output the tests score without running a model. The audit's twelfth slice, the
+metrics-registry entry, is left out of the gold gaps because every audit appends it, so it
+cannot tell runs apart. Gap recall matches slices to gaps one to one with the assignment that
+finds the most gaps, so slice order never changes the score.

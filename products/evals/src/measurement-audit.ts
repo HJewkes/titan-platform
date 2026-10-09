@@ -19,14 +19,26 @@ export interface AuditScore {
 
 const recall = (found: number, total: number): number => (total === 0 ? 0 : found / total);
 
-/** A gold gap is found by an unclaimed slice that names one of its key metrics; a slice claims at most one gap. */
+/**
+ * A gold gap is found by a slice that names one of its key metrics, and a slice finds at most one gap.
+ * Gaps share key metrics, so a first-match assignment depends on slice order; a maximum bipartite
+ * matching (augmenting paths) counts the most gaps any assignment can find.
+ */
 function countGapsFound(gold: AuditGold, output: AuditOutput): number {
-  const claimed = new Set<number>();
-  for (const gap of gold.gaps) {
-    const match = output.slices.findIndex((slice, index) => !claimed.has(index) && slice.metrics.some((id) => gap.keyMetrics.includes(id)));
-    if (match >= 0) claimed.add(match);
-  }
-  return claimed.size;
+  const candidates = gold.gaps.map((gap) =>
+    output.slices.flatMap((slice, index) => (slice.metrics.some((id) => gap.keyMetrics.includes(id)) ? [index] : [])),
+  );
+  const gapOfSlice = new Map<number, number>();
+  const augment = (gap: number, visited: Set<number>): boolean =>
+    (candidates[gap] ?? []).some((slice) => {
+      if (visited.has(slice)) return false;
+      visited.add(slice);
+      const holder = gapOfSlice.get(slice);
+      if (holder !== undefined && !augment(holder, visited)) return false;
+      gapOfSlice.set(slice, gap);
+      return true;
+    });
+  return candidates.filter((_, gap) => augment(gap, new Set())).length;
 }
 
 export function scoreMeasurementAudit(gold: AuditGold, output: AuditOutput): AuditScore {

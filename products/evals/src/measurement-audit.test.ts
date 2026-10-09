@@ -50,4 +50,15 @@ describe("scoreMeasurementAudit", () => {
 
     expect(scoreMeasurementAudit(gold, output).gapRecall).toBeCloseTo(1 / 11);
   });
+
+  it("finds both gaps that share a key metric whichever order their slices come in", () => {
+    const sharedGold: AuditGold = { metrics: [], gaps: gold.gaps.filter((gap) => gap.id === "S6" || gap.id === "S11") };
+    const tokenCost = { title: "token cost", metrics: ["C1"] };
+    const reviewerProfile = { title: "record reviewerProfile", metrics: ["C2"] };
+    expect(sharedGold.gaps).toHaveLength(2);
+
+    for (const slices of [[tokenCost, reviewerProfile], [reviewerProfile, tokenCost]]) {
+      expect(scoreMeasurementAudit(sharedGold, { metrics: [], slices, costUsd: 0 }).gapRecall).toBe(1);
+    }
+  });
 });
