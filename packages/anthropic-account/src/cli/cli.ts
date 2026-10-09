@@ -5,7 +5,7 @@ import { runStatus, type StatusFormat } from "./status-command.js";
 
 export type { CliContext } from "./context.js";
 
-export const USAGE = [
+const USAGE = [
   `usage: ${PROGRAM} poll [--write [--refresh]]`,
   `       ${PROGRAM} status [--json | --statusline]`,
   "",

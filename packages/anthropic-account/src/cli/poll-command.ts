@@ -6,9 +6,9 @@ import { EXIT_FAILED, EXIT_LOGIN, EXIT_OK, exitFor, failureLine, printableLabel,
 
 // The timer runs every 150 s, so a token due within 10 minutes gets several tries before
 // it lapses.
-export const REFRESH_MARGIN_MS = 10 * 60_000;
+const REFRESH_MARGIN_MS = 10 * 60_000;
 
-export interface PollFlags {
+interface PollFlags {
   write: boolean;
   refresh: boolean;
 }
