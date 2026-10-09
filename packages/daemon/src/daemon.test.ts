@@ -362,20 +362,42 @@ function sendHead(address: string, port: number, route: string, headers: Record<
   });
 }
 
-async function freePort(): Promise<number> {
-  const probe = createServer();
-  probe.listen(0, "127.0.0.1");
-  await once(probe, "listening");
-  const { port } = probe.address() as AddressInfo;
-  await new Promise((resolve) => probe.close(resolve));
-  return port;
+async function holdPort(address: string, port = 0): Promise<{ port: number; release: () => Promise<void> }> {
+  const server = createServer();
+  server.listen(port, address);
+  await once(server, "listening");
+  return { port: (server.address() as AddressInfo).port, release: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 
-async function refusesConnection(address: string, port: number): Promise<boolean> {
-  return send(address, port, "GET", "/health").then(
+/** Released means this process can bind the address and port again right now. */
+async function canBind(address: string, port: number): Promise<boolean> {
+  return holdPort(address, port).then(
+    ({ release }) => release().then(() => true),
     () => false,
-    () => true,
   );
+}
+
+const LOOPBACK_RACE_ATTEMPTS = 5;
+
+/**
+ * Run a start that is expected to fail on a port probed free, then released. Parallel test files
+ * bind ephemeral ports too and can take it in that gap; only that loss, the daemon's own
+ * loopback bind refused, earns a fresh port.
+ */
+async function failOnProbedPort(start: (port: number) => Promise<DaemonHandle>): Promise<{ port: number; failure: unknown }> {
+  for (let attempt = 1; ; attempt++) {
+    const probe = await holdPort("127.0.0.1");
+    await probe.release();
+    const failure = await start(probe.port).then(
+      async (started) => {
+        await started.close();
+        return new Error("started when it should have failed");
+      },
+      (err: unknown) => err,
+    );
+    const lostRace = failure instanceof DaemonPortInUseError && failure.host === "127.0.0.1";
+    if (!lostRace || attempt === LOOPBACK_RACE_ATTEMPTS) return { port: probe.port, failure };
+  }
 }
 
 describe("startDaemon remote host refusal", () => {
@@ -402,33 +424,37 @@ describe("startDaemon remote host refusal", () => {
     await expect(attempt).rejects.toBeInstanceOf(RemoteBindError);
   });
 
+  // The loopback port stays held: a start that bound before reading the file would fail with
+  // DaemonPortInUseError instead, so the token error proves the file is read first.
   it("refuses a missing token file before binding", async () => {
-    const port = await freePort();
-    const attempt = startDaemon(options({ port, remote: { host: "192.0.2.1", tokenFile: path.join(stateDir, "absent.token") } }));
+    const held = await holdPort("127.0.0.1");
+    try {
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile: path.join(stateDir, "absent.token") } }));
 
-    await expect(attempt).rejects.toMatchObject({ code: "ENOENT" });
-    expect(await refusesConnection("127.0.0.1", port)).toBe(true);
+      await expect(attempt).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await held.release();
+    }
   });
 
   it("refuses a group-readable token file before binding", async () => {
-    const port = await freePort();
+    const held = await holdPort("127.0.0.1");
     await chmod(tokenFile, 0o640);
-    const attempt = startDaemon(options({ port, remote: { host: "192.0.2.1", tokenFile } }));
+    try {
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile } }));
 
-    await expect(attempt).rejects.toBeInstanceOf(TokenFileError);
-    expect(await refusesConnection("127.0.0.1", port)).toBe(true);
+      await expect(attempt).rejects.toBeInstanceOf(TokenFileError);
+    } finally {
+      await held.release();
+    }
   });
 
   it("binds both listeners or neither: a remote bind failure closes loopback and writes no pid file", async () => {
-    const port = await freePort();
-
-    const failure = await startDaemon(options({ port, remote: { host: "192.0.2.1", tokenFile } })).catch((err: unknown) => err);
+    const { port, failure } = await failOnProbedPort((probed) => startDaemon(options({ port: probed, remote: { host: "192.0.2.1", tokenFile } })));
 
     expect(failure).toMatchObject({ code: "EADDRNOTAVAIL" });
-    expect(await refusesConnection("127.0.0.1", port)).toBe(true);
+    expect(await canBind("127.0.0.1", port)).toBe(true);
     expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
-    handle = await startDaemon(options({ port }));
-    expect(handle.port).toBe(port);
   });
 });
 
@@ -571,25 +597,25 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     await handle!.close();
     handle = null;
 
-    expect(await refusesConnection("127.0.0.1", port)).toBe(true);
-    expect(await refusesConnection(REMOTE, port)).toBe(true);
+    expect(await canBind("127.0.0.1", port)).toBe(true);
+    expect(await canBind(REMOTE, port)).toBe(true);
     expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
   });
 
   it("binds neither when the remote port is taken, and names the remote host", async () => {
-    const port = await freePort();
-    const squatter = createServer();
-    squatter.listen(port, REMOTE);
-    await once(squatter, "listening");
+    const squatters: Array<() => Promise<void>> = [];
     try {
-      const failure = await startDaemon(options({ port, remote: { host: REMOTE, tokenFile } })).catch((err: unknown) => err);
+      const { port, failure } = await failOnProbedPort(async (probed) => {
+        squatters.push((await holdPort(REMOTE, probed)).release);
+        return startDaemon(options({ port: probed, remote: { host: REMOTE, tokenFile } }));
+      });
 
       expect(failure).toBeInstanceOf(DaemonPortInUseError);
       expect(failure).toMatchObject({ port, host: REMOTE });
-      expect(await refusesConnection("127.0.0.1", port)).toBe(true);
+      expect(await canBind("127.0.0.1", port)).toBe(true);
       expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
     } finally {
-      squatter.close();
+      await Promise.all(squatters.map((release) => release()));
     }
   });
 
@@ -607,13 +633,12 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
       ];
       return replies.map(({ status, headers, body }) => JSON.stringify({ status, body, headers: { ...headers, date: undefined } }));
     };
-    const port = await freePort();
-
-    handle = await startDaemon(options({ port }));
-    const plain = await probes(port);
+    // No reply carries the port, so each daemon takes its own ephemeral one.
+    handle = await startDaemon(options());
+    const plain = await probes(handle.port);
     await handle.close();
-    handle = await startDaemon(options({ port, remote: { host: REMOTE, tokenFile } }));
-    const withRemote = await probes(port);
+    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile } }));
+    const withRemote = await probes(handle.port);
 
     expect(withRemote).toEqual(plain);
   });
