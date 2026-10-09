@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Lists exports no other module imports (R12), against the shrink-only baseline in .codewatch/dead-exports.json.
 // Exits 1 on a new dead export, or 0 under --report-only; with BASE_REF set, exits 1 whenever the baseline gained
-// an entry over BASE_REF's copy, report-only or not. Exits 2 on an index failure, a lock timeout, a BASE_REF that
+// an entry over BASE_REF's copy, report-only or not. Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that
 // names no commit, an unknown flag, a --db path that does not exist or holds no "head" snapshot, or an
 // out-of-memory abort at the 1 GB heap cap, which the check runs under in a child process.
 // --update drops fixed entries from the baseline and never adds one. --db <path> reads the latest "head"
@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { identifierMentions, maskSource, wholeImportSpecifiers } from "./dead-code-check-source.mjs";
-import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -22,7 +22,6 @@ const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
 const BASELINE_PATH = ".codewatch/dead-exports.json";
 const BASELINE = path.join(ROOT, BASELINE_PATH);
 const TIERS = ["packages", "products", "apps"];
-const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
 const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
 const IMPORTER_EDGES = new Set(["imports", "references", "calls"]);
@@ -297,7 +296,13 @@ async function supervise(args) {
   const cleanups = [];
   const log = (m) => console.error(m);
   cleanupOnSignal(cleanups);
-  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log });
+  try {
+    await acquire({ timeoutMs: lockWaitMs(), log });
+  } catch (err) {
+    if (!(err instanceof LockTimeoutError)) throw err;
+    log(err.message);
+    return BUSY_EXIT_CODE;
+  }
   cleanups.push(() => release(DEFAULT_LOCK_DIR));
   const workDir = mkdtempSync(path.join(tmpdir(), "dead-check-"));
   cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
