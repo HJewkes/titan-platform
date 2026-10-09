@@ -49,7 +49,7 @@ export interface ConsoleConfig {
 
 export const LAN_NEEDS_TLS = "TITAN_CONSOLE_HOST needs TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only";
 
-export interface LanTls {
+interface LanTls {
   certFile: string;
   keyFile: string;
 }

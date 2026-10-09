@@ -98,7 +98,7 @@ export interface Reply {
 }
 
 /** What an HTTPS request trusts: the test certificate, and the name to verify it against. */
-export interface ClientTls {
+interface ClientTls {
   ca: string;
   servername: string;
 }
