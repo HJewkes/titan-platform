@@ -328,6 +328,27 @@ agent by design and have no limit. With nothing registered the verbs print
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
 
+## Stats {#stats}
+
+```
+titan-factory shepherd stats [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+Reads the store read-only, so it is safe beside a running `serve`. Two reports, both in UTC:
+
+- Per repo and ISO week: merges, those whose wait between the reviewer's `MERGE` and the merge
+  itself exceeded 60 minutes (with their total hours), and merges made outside Shepherd.
+- Per day, the owner's friction. **Owner touches** counts the gates an owner class resolved that
+  day. For each gate kind (the gate's step id without its iteration, such as `approve-merge`,
+  `ci-failed`, `sh-sent-back`, `stuck-behind`, `main-frozen`) it shows how many gates waited and
+  the median and maximum hours they waited on the owner. A gate resolved by the owner waited from
+  its opening to its resolve and counts on the resolve day. A gate still pending is waiting on the
+  owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
+  and is left out. Releases do not appear: `shepherd release` records no actor.
+
+`--json` returns `{ "merges": [...], "ownerFriction": [...] }`. The morning digest shows today's
+two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts
