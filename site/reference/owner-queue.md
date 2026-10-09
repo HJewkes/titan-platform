@@ -121,10 +121,20 @@ for (const item of items) {
   when none is filed and throws on a malformed one.
 
 File names come from untrusted values. `depositFileName(asker, depositId)` and
-`answerFileName(id)` percent-encode every UTF-8 byte outside `[A-Za-z0-9_]`, so `/`, `\`,
+`answerFileName(id)` percent-encode every UTF-8 byte outside `[a-z0-9_]`, so `/`, `\`,
 `.`, `-` and NUL never reach the name raw. A name can never leave `dir`, `-` stays an
 unambiguous separator (`a-b` + `c` and `a` + `b-c` get different files), and a name over 255
-bytes is refused.
+bytes is refused. Uppercase letters are escaped too, so `Bob` and `bob` get different files
+even on a case-insensitive filesystem. A value holding a lone surrogate is refused with a
+`RangeError`: UTF-8 would turn it into U+FFFD and give it the name of a value that really
+holds U+FFFD.
+
+Before uppercase letters were escaped, `Bob` was filed as `Bob-…json`. `depositFileNames` and
+`answerFileNames` list the current name first and that legacy name second, and every reader
+accepts both: `readSpool`, `readAnswer`, and the repeat check in `writeDeposit` and
+`writeAnswer`. Writers only ever create the current name. When a name is already taken,
+`writeDeposit` reads the file there and throws `SpoolNameCollisionError` unless it holds the
+same asker and `depositId`. It never answers `created: false` for an id it did not file.
 
 ## Stale rules
 
