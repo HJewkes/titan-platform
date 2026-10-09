@@ -8,7 +8,7 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, SplitReadingError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
@@ -41,6 +41,8 @@ const OVERSIZE_REASON =
   "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const READINGS_REASON =
   "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
+const SPLIT_REASON =
+  "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body from the next lines and bash 3.2 runs those lines, and one of the two readings does not parse or is too long to check; close the heredoc inside the substitution.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -96,9 +98,14 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   try {
     return { ok: true, actions: classify(event, ctx) };
   } catch (error) {
-    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize", limit: error instanceof ScriptBudgetError ? scriptsReason(error.overrun) : READINGS_REASON };
+    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize", limit: limitReason(error) };
     return { ok: false, cls: error instanceof ParseError ? "parse" : "exception" };
   }
+}
+
+function limitReason(error: ReadingLimitError): string {
+  if (error instanceof ScriptBudgetError) return scriptsReason(error.overrun);
+  return error instanceof SplitReadingError ? SPLIT_REASON : READINGS_REASON;
 }
 
 /** The limit a line's scripts hit, how far past it they go, and a split that then passes. */

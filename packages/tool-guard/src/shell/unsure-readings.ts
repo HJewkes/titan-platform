@@ -46,6 +46,15 @@ export class ScriptBudgetError extends ReadingLimitError {
   }
 }
 
+/** A line bash 5 and bash 3.2 read differently around a heredoc a substitution left open, where one reading did not lex or was past its budget. */
+export class SplitReadingError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a reading of a heredoc left open by a substitution could not be checked";
+    this.name = "SplitReadingError";
+  }
+}
+
 export interface UnsureBudget {
   left: number;
   /** Past the budget, walk no more readings instead of throwing, so the rest is read as main reads it. */

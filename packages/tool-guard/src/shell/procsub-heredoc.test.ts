@@ -128,6 +128,34 @@ describe("a heredoc opened inside a process substitution", () => {
   });
 });
 
+describe("every heredoc pending on the line, in the order bash 5 reads the bodies", () => {
+  const SWALLOW = `${PUSH}\n\\"'\n#"`;
+
+  it.each([
+    ["a heredoc opened after the substitution", `cat <(cat <<EOF) <<A\nA\nit"s\nEOF\nit's\nA\n${SWALLOW}`],
+    ["a heredoc opened before the substitution", `cat <<A <(cat <<EOF)\nA\nit"s\nEOF\nit's\nA\n${SWALLOW}`],
+    ["two process substitutions", `cat <(cat <<EOF) <(cat <<B)\nB\nit"s\nEOF\nit's\nB\n${SWALLOW}`],
+    ["a substitution closed inside another", `cat <(cat <<B <(cat <<EOF))\nB\nit"s\nEOF\nit's\nB\n${SWALLOW}`],
+    ["a command substitution", `echo $(cat <<EOF)\nit's\nEOF\n${PUSH}\necho \\'`],
+    ["a command substitution then a process substitution", `echo $(cat <<EOF) <(cat <<B)\nB\nit"s\nEOF\nit's\nB\n${SWALLOW}`],
+    ["a line inside a command substitution", `echo $(cat <(cat <<EOF) <<A\nA\nit"s\nEOF\nit's\nA\n${PUSH}\n)`],
+    ["a body whose quote bash 3.2 never closes", `cat <(cat <<EOF)\nit"s\nEOF\n${PUSH}`],
+  ])("the hook denies a push bash 5 runs after %s", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it("the hook names the open heredoc when it refuses a line bash 3.2 cannot parse", async () => {
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const command = "cat <(cat <<EOF)\nit\"s\nEOF\nls";
+    const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
+    expect((await handle(input, { PATH: "/usr/bin" }, port)).stdout).toContain("close the heredoc inside the substitution");
+  });
+
+  it("the hook lets the same shape pass when nothing after the bodies pushes", async () => {
+    expect(await hookDenies(`cat <(cat <<EOF) <<A\nA\nbody\nEOF\nbody\nA\nls`)).toBe(false);
+  });
+});
+
 describe("a pending heredoc whose tails cannot all be read", () => {
   const ATTACK = `cat <(cat <<EOF)\nit's\nEOF\n${PUSH}\necho \\'`;
   const padding = (n: number) => Array.from({ length: n }, () => "$(cat <(cat <<D))").map((line, k) => line.replace("D)", `D${k})`));

@@ -1,11 +1,19 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { readProcessSubstitution } from "./procsub-heredoc.js";
+import { readBash5Tail, tailsTaken } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
 export class ParseError extends Error {
   override name = "ParseError";
 }
+
+/** The text does not lex as bash 3.2 reads it, after bash 5 took a reading of it that skips heredoc bodies. */
+export class SplitParseError extends ParseError {
+  override name = "SplitParseError";
+}
+
+/** Above zero while a `((` trial lex runs: its tokens are thrown away, so it must not claim a tail. */
+let trialDepth = 0;
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
 export interface VarRef {
@@ -40,15 +48,15 @@ export interface WordToken {
 export interface OpToken {
   type: "op";
   value: string;
+  /** On a newline: the text after every body bash 5 reads there, see `readBash5Tail`. `tailsUnread`: one could not be read, so the line is refused. */
+  tails?: Token[][];
+  tailsUnread?: boolean;
 }
 
 /** Process substitutions, `<(...)` and `>(...)`. */
 export interface SubsToken {
   type: "subs";
   subs: Token[][];
-  /** The lines after a pending heredoc's body, read as bash 5 does; walked at the depth of the token itself. `tailsUnread`: one could not be read, so the line is refused. */
-  tails: Token[][];
-  tailsUnread?: boolean;
 }
 
 /** `target` is the word after the operator; for a heredoc it is the delimiter and `body` is the text. */
@@ -64,6 +72,8 @@ export interface RedirectToken {
 
 export type Token = WordToken | OpToken | SubsToken | RedirectToken;
 
+export type PendingHeredoc = { token: RedirectToken; stripTabs: boolean };
+
 export interface LexState {
   src: string;
   i: number;
@@ -71,8 +81,10 @@ export interface LexState {
   depth: number;
   tokens: Token[];
   word: WordToken | null;
-  heredocs: Array<{ token: RedirectToken; stripTabs: boolean }>;
-  redirect: { token: RedirectToken; stripTabs: boolean } | null;
+  heredocs: PendingHeredoc[];
+  /** Heredocs left open by a `$( )` or `<( )` closed on this line. Bash 5 reads their bodies as each one closes, so before `heredocs`; bash 3.2 never does. */
+  readAhead: PendingHeredoc[];
+  redirect: PendingHeredoc | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
@@ -91,15 +103,21 @@ const SUBSCRIPT_ACTIVE = "\\'\"`$";
 /** Splits a command string into words, operators, redirections and substitutions. Throws `ParseError`. */
 export function tokenize(src: string, trials = newTrials(src)): Token[] {
   const s = newState(src, 0, false, trials);
-  lex(s);
+  const taken = tailsTaken();
+  try {
+    lex(s);
+  } catch (error) {
+    if (error instanceof ParseError && tailsTaken() > taken) throw new SplitParseError(error.message);
+    throw error;
+  }
   return s.tokens;
 }
 
 export function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], readAhead: [], redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
 }
 
-export function lex(s: LexState): void {
+function lex(s: LexState): void {
   while (s.i < s.src.length) {
     if (s.nested && s.depth === 0 && s.src[s.i] === ")") return endWord(s);
     step(s);
@@ -154,11 +172,14 @@ function arithmeticEnd(s: LexState): number {
   const trial = newState(s.src, s.i + 2, true, s.trials);
   trial.arithEnd = Number.POSITIVE_INFINITY;
   let reached = s.src.length;
+  trialDepth++;
   try {
     lex(trial);
     reached = trial.i;
   } catch (error) {
     if (!(error instanceof ParseError) || spent(s.trials)) throw error;
+  } finally {
+    trialDepth--;
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
   return reached < s.src.length && s.src[reached + 1] === ")" ? reached : -1;
@@ -203,8 +224,12 @@ function readOperator(s: LexState, op: string): void {
   s.i += op.length;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
-  s.tokens.push({ type: "op", value: op });
-  if (op === "\n") readHeredocBodies(s);
+  const token: OpToken = { type: "op", value: op };
+  s.tokens.push(token);
+  if (op !== "\n") return;
+  if (s.readAhead.length > 0 && trialDepth === 0) readBash5Tail(s, token);
+  s.readAhead = [];
+  readHeredocBodies(s);
 }
 
 function readHeredocBodies(s: LexState): void {
@@ -303,6 +328,7 @@ function readSubstitution(s: LexState, start: number): Token[] {
   const inner = newState(s.src, start, true, s.trials);
   lex(inner);
   s.i = inner.i + 1;
+  s.readAhead.push(...inner.readAhead, ...inner.heredocs);
   return inner.tokens;
 }
 
@@ -379,7 +405,7 @@ function readRedirect(s: LexState): void {
   const op = (REDIRECT_RE.exec(s.src) as RegExpExecArray)[0];
   s.i += op.length;
   if ((op === "<" || op === ">") && s.src[s.i] === "(") {
-    s.tokens.push(readProcessSubstitution(s, s.i + 1));
+    s.tokens.push({ type: "subs", subs: [readSubstitution(s, s.i + 1)] });
     return;
   }
   const heredoc = op === "<<" || op === "<<-";

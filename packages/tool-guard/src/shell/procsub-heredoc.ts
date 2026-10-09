@@ -1,7 +1,5 @@
 import { type ArithTrials, chargeTrial, newTrials, spent } from "./arith-trials.js";
-import { endWord, type LexState, lex, newState, ParseError, step, type SubsToken, type Token } from "./lexer.js";
-
-type Pending = LexState["heredocs"];
+import { endWord, type LexState, newState, type OpToken, ParseError, type PendingHeredoc, step, type Token } from "./lexer.js";
 
 /** What is known about one source's tails. The trials are the tails' own: main's `((` positions and budget stay untouched. */
 interface Book {
@@ -17,32 +15,35 @@ const budgets = new WeakMap<ArithTrials["spend"], ArithTrials["spend"]>();
 /** Tail starts met while a tail is being read; null outside of that. */
 let queue: number[] | null = null;
 let known: Set<number> = new Set();
+let taken = 0;
+
+/** How many bash 5 tails have been taken so far, so a reading that fails after one can be told apart. */
+export function tailsTaken(): number {
+  return taken;
+}
 
 /**
- * A heredoc still pending when a process substitution closes takes its body from the lines after
- * the current one in bash 5, and not at all in bash 3.2, which lexes those lines as commands. No single
- * reading is safe for both, so both are returned: `subs` is the reading bash 3.2 gives (and the
- * one this lexer always gave), `tails` is the text after the bodies that bash 5 skips. Each such
- * text is lexed once, stops where the next one begins, is returned once, and is charged by the length read;
- * once the budget is spent the token is marked `tailsUnread` and the walk refuses the line.
+ * A heredoc still pending when a `$( )` or `<( )` closes takes its body from the lines after the
+ * current one in bash 5, and not at all in bash 3.2, which lexes those lines as commands. No single
+ * reading is safe for both, so the newline `s` just read gets both: the tokens after it are the
+ * reading bash 3.2 gives (and the one this lexer always gave), `tails` the text bash 5 runs after
+ * every body pending on the line, read in bash 5's order: each substitution's as it closed, then the
+ * line's own. Each such text is lexed once, stops where the next one begins, is returned once,
+ * and is charged by the length read; once the budget is spent the newline is marked `tailsUnread`
+ * and the walk refuses the line. `tokenize` refuses it too when bash 3.2's reading fails after a tail.
  */
-export function readProcessSubstitution(s: LexState, start: number): SubsToken {
-  const inner = newState(s.src, start, true, s.trials);
-  lex(inner);
-  s.i = inner.i + 1;
-  const first: SubsToken = { type: "subs", subs: [inner.tokens], tails: [] };
-  if (inner.heredocs.length === 0 || s.arithEnd === Number.POSITIVE_INFINITY) return first;
-  const at = skipBodies(s.src, inner.i, [...s.heredocs, ...inner.heredocs]);
-  if (at === null) return first;
+export function readBash5Tail(s: LexState, newline: OpToken): void {
+  const at = skipBodies(s.src, s.i - 1, [...s.readAhead, ...s.heredocs]);
+  if (at === null) return;
   if (queue !== null) {
     queue.push(at);
     known.add(at);
-    return first;
+    return;
   }
+  taken++;
   const read = readTails(bookOf(s), at);
-  first.tails = read.tails;
-  if (read.unread) first.tailsUnread = true;
-  return first;
+  newline.tails = read.tails;
+  if (read.unread) newline.tailsUnread = true;
 }
 
 function bookOf(s: LexState): Book {
@@ -95,12 +96,12 @@ function readTail(book: Book, start: number): Token[] | null {
 
 /** At a clean command boundary where another tail begins, reading on would only repeat that tail. */
 function joinsKnownTail(s: LexState): boolean {
-  const clean = !s.word && !s.redirect && s.depth === 0 && s.heredocs.length === 0 && s.i >= s.subscriptEnd && s.i >= s.arithEnd;
+  const clean = !s.word && !s.redirect && s.depth === 0 && s.heredocs.length === 0 && s.readAhead.length === 0 && s.i >= s.subscriptEnd && s.i >= s.arithEnd;
   return clean && known.has(s.i);
 }
 
 /** Index just past the last body line, or null when a delimiter is missing or the bodies reach the end. */
-function skipBodies(src: string, from: number, pending: Pending): number | null {
+function skipBodies(src: string, from: number, pending: PendingHeredoc[]): number | null {
   let i = src.indexOf("\n", from);
   for (const { token, stripTabs } of pending) {
     const delim = token.target?.value;

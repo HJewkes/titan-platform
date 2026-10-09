@@ -1,5 +1,5 @@
-import { ParseError, type SubsToken, tokenize } from "./lexer.js";
-import type { RedirectToken, Token, WordToken } from "./lexer.js";
+import { ParseError, SplitParseError, tokenize } from "./lexer.js";
+import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
@@ -12,7 +12,7 @@ import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, SplitReadingError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -117,8 +117,18 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
+  walk(tokenizeLine(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
   return out;
+}
+
+/** Bash 5 runs a line whose bash 3.2 reading does not parse, so that ParseError is a refusal, not a pass. */
+function tokenizeLine(src: string): Token[] {
+  try {
+    return tokenize(src);
+  } catch (error) {
+    if (error instanceof SplitParseError) throw new SplitReadingError();
+    throw error;
+  }
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -136,19 +146,19 @@ function walk(tokens: Token[], w: Walk): void {
       if (token.value !== "&&") w.chain = { start: token.value };
       trackCompound(token, w.scope.vars);
       scope(token.value, w);
+      walkTails(token, w);
       continue;
     }
     if (token.type === "word") words.push(token);
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
-    if (token.type === "subs") walkTails(token, w);
   }
   emit(words, redirects, w, null);
 }
 
 /** Tails get their own unsure budget, so the bash 5 reading never spends what main's reading of the body would have had. */
-function walkTails({ tails, tailsUnread }: SubsToken, w: Walk): void {
-  if (tailsUnread) throw new ReadingLimitError();
+function walkTails({ tails = [], tailsUnread }: OpToken, w: Walk): void {
+  if (tailsUnread) throw new SplitReadingError();
   const unsure = { ...w.unsure, left: MAX_UNSURE_WORDS };
   for (const tail of tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth, unsure });
 }
@@ -268,7 +278,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
-    walk(tokenize(text), child(w, [...wrapping, script.wrap]));
+    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));
   }
 }
 
