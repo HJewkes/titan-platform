@@ -1010,7 +1010,7 @@ Key exports:
 - `cli`: `runCli`
 - `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
 - `insights/post-filter`: `normaliseStage`
-- +31 more in `products/session-miner/src/index.ts`
+- +42 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 
