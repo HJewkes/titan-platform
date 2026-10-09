@@ -1,9 +1,26 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
+import { configPath, loadConfig } from "./config.js";
 
-export const SERVICE_LABEL = "dev.hjewkes.titan-factory";
+const DEFAULT_LABEL_PREFIX = "dev.hjewkes.";
+const SERVICE_NAME = "titan-factory";
+
+export function serviceLabel(prefix: string = DEFAULT_LABEL_PREFIX): string {
+  return `${prefix}${SERVICE_NAME}`;
+}
+
+/** An unreadable config falls back to the default here; the verbs that need the config report its error themselves. */
+export function configuredLabelPrefix(env: NodeJS.ProcessEnv): string | undefined {
+  try {
+    return loadConfig(configPath(env)).service?.labelPrefix;
+  } catch {
+    return undefined;
+  }
+}
+
+export const SERVICE_LABEL = serviceLabel(configuredLabelPrefix(process.env));
 /** The launchd label without its owner prefix, the rule active-work's `active-work.service` follows too. */
-export const UNIT_NAME = `${SERVICE_LABEL.replace(/^dev\.hjewkes\./, "")}.service`;
+export const UNIT_NAME = `${SERVICE_NAME}.service`;
 
 export interface PlistOptions {
   /** Absolute path of the built `bin.js`. */

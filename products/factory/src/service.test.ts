@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, renderUnit, SERVICE_LABEL, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
+import { configuredLabelPrefix, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -22,6 +22,29 @@ function keyValue(plist: string, key: string): string {
   if (!match) throw new Error(`no ${key} in plist`);
   return match[2] ?? match[1]!;
 }
+
+describe("service label prefix", () => {
+  const home = (config?: unknown): NodeJS.ProcessEnv => {
+    const dir = mkdtempSync(join(tmpdir(), "service-label-"));
+    dirs.push(dir);
+    if (config !== undefined) {
+      mkdirSync(join(dir, "titan-factory"));
+      writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify(config));
+    }
+    return { XDG_CONFIG_HOME: dir };
+  };
+
+  it("keeps the default label byte-identical when the config sets no prefix", () => {
+    expect(configuredLabelPrefix(home())).toBeUndefined();
+    expect(serviceLabel(configuredLabelPrefix(home({})))).toBe("dev.hjewkes.titan-factory");
+  });
+
+  it("follows service.labelPrefix when the config sets one", () => {
+    const prefix = configuredLabelPrefix(home({ service: { labelPrefix: "dev.ex." } }));
+
+    expect(serviceLabel(prefix)).toBe("dev.ex.titan-factory");
+  });
+});
 
 describe("titan-factory service plist", () => {
   it("names the job and keeps it running from load", () => {

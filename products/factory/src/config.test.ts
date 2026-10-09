@@ -225,3 +225,20 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
   });
 });
+
+describe("digest.queueDir and service.labelPrefix", () => {
+  it("loads both keys when set and leaves them absent otherwise", () => {
+    const set = loadConfig(configPath(xdg({ digest: { queueDir: "/srv/queues" }, service: { labelPrefix: "dev.ex." } })));
+    const unset = loadConfig(configPath(xdg({})));
+
+    expect(set.digest?.queueDir).toBe("/srv/queues");
+    expect(set.service?.labelPrefix).toBe("dev.ex.");
+    expect(unset.digest?.queueDir).toBeUndefined();
+    expect(unset.service).toBeUndefined();
+  });
+
+  it("refuses a relative queueDir and an empty labelPrefix", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { queueDir: "queues" } })))).toThrow(/absolute/);
+    expect(() => loadConfig(configPath(xdg({ service: { labelPrefix: "" } })))).toThrow(/labelPrefix/);
+  });
+});

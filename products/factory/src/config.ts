@@ -61,6 +61,8 @@ export const DigestConfigSchema = z.strictObject({
   timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
   queuesDir: absolutePath.optional(),
+  /** Where the owner-queue reader finds the seat Morning files; absent means the active-work default. */
+  queueDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
 });
 
@@ -82,6 +84,11 @@ export const SpawnGateConfigSchema = z.strictObject({
   burstMax: z.number().int().positive().optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
+});
+
+/** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. */
+export const ServiceConfigSchema = z.strictObject({
+  labelPrefix: noNul.min(1).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
@@ -113,6 +120,7 @@ export const FactoryConfigSchema = z.object({
   remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
+  service: ServiceConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),

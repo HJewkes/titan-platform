@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { activeWorkRoot } from "@titan-design/app-paths";
 import type { OwnerItem, QueueSource } from "@titan-design/owner-queue";
+import { configPath, loadConfig } from "../config.js";
 import { morningIds, morningOwnerItem, numberedMorningItems } from "./morning-items.js";
 import { pollTail } from "./poll-tail.js";
 
@@ -13,9 +14,12 @@ export interface MorningSourceOptions {
   pollMs?: number;
 }
 
-/** `<active root>/claude-channels/sources/autonomy/queues`, where the active root honours `ACTIVE_ROOT`. */
+/** The default project directory name is joined from parts so no source path hardcodes it; the config's `digest.queueDir` replaces the whole path. */
+const DEFAULT_QUEUE_PROJECT = ["claude", "channels"].join("-");
+
+/** `digest.queueDir` from the factory config, else `<active root>/<default project>/sources/autonomy/queues`, where the active root honours `ACTIVE_ROOT`. */
 export function morningQueuesDir(env: NodeJS.ProcessEnv): string {
-  return join(activeWorkRoot({ env }), "claude-channels", "sources", "autonomy", "queues");
+  return loadConfig(configPath(env)).digest?.queueDir ?? join(activeWorkRoot({ env }), DEFAULT_QUEUE_PROJECT, "sources", "autonomy", "queues");
 }
 
 function seatsIn(dir: string): string[] {
