@@ -587,4 +587,38 @@ describe("isInvestigativeCall", () => {
 
     expect(counted).toEqual([false, false, false, false]);
   });
+
+  const bashCommand = async (command: string) => (await observed({ type: "tool_use", id: "x", name: "Bash", input: { command } }))[0];
+
+  it.each([
+    "cd /tmp/review-1-x && grep -rn foo src",
+    "dir=/tmp/r1 && git fetch origin && git -C \"$dir\" diff main",
+    "pnpm exec vitest run src/a.test.ts",
+    "cd /tmp/r && FOO=1 pnpm vitest run",
+    "git fetch origin; ls -la",
+    "git status | head -5",
+    "cd x && npm run verify",
+    "npm test",
+    "node --test a.test.js",
+    "git -C /tmp/r log --oneline",
+    "git -C /tmp/r merge-tree a b",
+    "git -C /tmp/r ls-files",
+    "wc -l a && find . -name x && tail -n 3 a",
+    "echo 'a && b' && grep 'x && y' f",
+  ])("counts the reviewer shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(true);
+  });
+
+  it.each([
+    "cd /tmp/review-1-x",
+    "echo hello",
+    "git fetch origin",
+    "rm -rf /tmp/review-1-x",
+    "cd /tmp/r && mkdir -p out && echo done",
+    "git worktree add /tmp/r origin/main && git fetch",
+    "echo 'x && grep y'",
+    "echo \"a ; cat b\"",
+  ])("does not count the session-setup shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(false);
+  });
 });
