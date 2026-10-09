@@ -133,8 +133,8 @@ killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prin
 ## Owner-signed proofs: `applyProof`
 
 `applyProof` in `src/gate-batch.ts` is the server-side core behind owner presence across hosts. It
-applies a statement the owner's key signed. It is not wired to a route or verb yet: the
-`POST /gates/resolve-proof` route and the Mac client that signs come next.
+applies a statement the owner's key signed. `serve` exposes it as `POST /gates/resolve-proof`
+(below); the Mac client that signs comes next.
 
 1. `verifyProof` (`src/presence-proof.ts`) checks the ECDSA P-256 signature over the exact statement
    bytes. It then checks the key, the time window, the audience (this factory's hostname) and the
@@ -164,6 +164,30 @@ applies a statement the owner's key signed. It is not wired to a route or verb y
 
 A one-item proof is the single-gate case. It may answer any gate, including a release, hardware or
 main-red gate, with the payload the owner signed.
+
+### `POST /gates/resolve-proof` and the owner key directory
+
+`src/resolve-proof.ts` mounts the route on `serve` through the daemon's `mountRoutes`. It is in
+no registry, so it is never an MCP tool or RPC command, and it runs behind the daemon's Host,
+Origin, client-header and JSON guards. The body is `{"statement", "signature"}`, both base64url.
+
+| Answer | When |
+| --- | --- |
+| 200 `{ok: true, batchId, items}` | the proof applied; each item is `resolved`, `skipped-*` or `failed` |
+| 400 | the body is not `{statement, signature}`, or the statement is malformed |
+| 403 `refusal` | a `verifyProof` refusal: `bad-signature`, `unknown-key`, `expired`, `wrong-aud`, ... |
+| 409 `refusal` | `replayed-nonce`, or `item-refused` naming the item |
+| 413 | the body is over 512 KiB; reading stops at the limit, whatever Content-Length says |
+| 503 `owner keys not installed` | the key directory was refused; `detail` says why |
+
+`src/owner-keys.ts` loads the keys once at start from `/etc/titan-factory/owner-keys/*.pem`,
+a path fixed in code with no environment or config override. Every component from the
+directory up to `/`, and every key file, is checked with lstat: owned by uid 0, no group or
+other write bit, no symlink. Any failed check, or any key that is not ECDSA P-256, refuses the
+whole set. Because the directory is root-only, no file can be swapped between its check and
+its read. `/health` reports `ownerKeys: {count, ids}` or `{count: 0, refusal}`, and
+`factory.gates` returns `aud`, this host's name, for the signer to bind. Rotating a key means
+installing the new `.pem`, removing the old one, then `titan-factory service restart`.
 
 ## Shepherd commands
 
