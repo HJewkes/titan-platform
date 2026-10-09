@@ -81,6 +81,17 @@ defaults to `probe`. `unknown` means the probe could not decide, such as an erro
 probe; it never counts as up. Only imports set `dedupKey`, so a re-import adds nothing while
 two identical probe results are both kept.
 
+## The metrics subpath
+
+`@titan-design/health/metrics` holds the schemas for the measurement workflow: `titan.metrics/v1`
+(a system's registry entry: stores, metrics with source anchor, query, cadence, SLO and surfaces,
+reports, last audit) and `titan.measurement-audit/v1` (an audit report). `validateEntry(entry,
+"write" | "read")` dispatches on the entry's `schema` id. Write mode refuses unknown keys at every
+depth; read mode keeps them, so an older reader survives a newer writer. The exports are
+`metricsEntrySchema`, `metricsEntryReadSchema`, `measurementAuditSchema`,
+`measurementAuditReadSchema`, `validateEntry`, and the vocabularies `METRIC_FAMILIES`,
+`METRIC_UNITS`, `CADENCES` and `SURFACES`.
+
 ## What it deliberately does not do
 
 - It holds no thresholds. Which fields make a product's check warn or fail is that product's
