@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { MALFORMED_REFUSALS } from "./review-schemas.js";
-import { MAX_CORRECTION_PROMPT_CHARS, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
+
+const REFUSALS = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"] as const satisfies readonly MalformedRefusal[];
 
 const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40) };
 
@@ -46,7 +47,7 @@ describe("reviewerBrief Closer line", () => {
 });
 
 describe("correctionPrompt", () => {
-  const refusals = Object.keys(MALFORMED_REFUSALS) as (keyof typeof MALFORMED_REFUSALS)[];
+  const refusals = REFUSALS;
   const longTarget = { repo: `${"o".repeat(39)}/${"r".repeat(100)}` as const, pr: Number.MAX_SAFE_INTEGER, head: "f".repeat(40) };
 
   it("has one sentence for every refusal", () => {
