@@ -13,17 +13,20 @@ Record each step's output in the pull request.
 ## 0. Build from the PR branch
 
 ```sh
-B=agent-chat/tc-tp-2039-enclave-helper
+SHA=$(gh pr view 849 --repo HJewkes/titan-platform --json headRefOid --jq .headRefOid)
+echo "probing $SHA"
 W="$TMPDIR/tp-2039"
 mkdir -p "$W"
-git -C ~/projects/titan-platform fetch origin "$B"
-git -C ~/projects/titan-platform show "origin/$B:products/factory/native/owner-presence.swift" > "$W/owner-presence.swift"
+git -C ~/projects/titan-platform fetch origin "$SHA"
+git -C ~/projects/titan-platform show "$SHA:products/factory/native/owner-presence.swift" > "$W/owner-presence.swift"
 /usr/bin/swiftc -O "$W/owner-presence.swift" -o "$W/owner-presence"
 echo "swiftc exit $?"
 H="$W/owner-presence"
 ```
 
-Expected: `swiftc exit 0`, with no warnings. These are the same flags `scripts/factory-build-helper.mjs` uses.
+Expected: `probing <40 hex>`, then `swiftc exit 0`, with no warnings. These are the same flags
+`scripts/factory-build-helper.mjs` uses. Record the SHA with the results: the probe proves only
+that head. If the PR head moves afterwards, rerun the runbook against the new head.
 If the build fails, stop and send the compiler output back to the implementer.
 
 ## 1. Usage

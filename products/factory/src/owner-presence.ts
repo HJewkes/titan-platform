@@ -57,6 +57,9 @@ const defaultReport = (line: string): void => void process.stderr.write(line)
 const defaultRunner: HelperRunner = (file, args, input) =>
   new Promise((resolve, reject) => {
     const child = execFile(file, [...args], { encoding: "utf8", timeout: DIALOG_TIMEOUT_MS }, (error, stdout) => (error ? reject(error) : resolve(stdout)))
+    // A helper that exits before reading stdin (an older build, a usage error) makes the write fail with EPIPE;
+    // unhandled, that would crash the CLI instead of failing closed through the exit status.
+    child.stdin?.on("error", () => {})
     child.stdin?.end(input)
   })
 

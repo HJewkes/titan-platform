@@ -98,7 +98,10 @@ func writeKey(_ blob: Data, to url: URL, replace: Bool) {
     }
     defer { close(fd) }
     let written = blob.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-    guard written == blob.count else { fail(.failed, "short write to \(url.path)") }
+    guard written == blob.count else {
+        unlink(url.path)
+        fail(.failed, "short write to \(url.path); removed it")
+    }
 }
 
 @available(macOS 11, *)
@@ -157,17 +160,23 @@ func sign(_ invocation: Invocation) {
     }
 }
 
+// The reply block may be imported @Sendable, which forbids mutating a captured local var; the
+// semaphore orders the write before the read, so the box is safe to share.
+final class Outcome: @unchecked Sendable {
+    var granted = false
+}
+
 func confirmPresence(reason: String) {
     let context = LAContext()
     requireDialog(context)
     let done = DispatchSemaphore(value: 0)
-    var granted = false
+    let outcome = Outcome()
     context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, _ in
-        granted = ok
+        outcome.granted = ok
         done.signal()
     }
     done.wait()
-    guard granted else { exit(Exit.denied.rawValue) }
+    guard outcome.granted else { exit(Exit.denied.rawValue) }
     print(UUID().uuidString.lowercased())
 }
 

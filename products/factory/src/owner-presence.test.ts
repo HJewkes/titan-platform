@@ -241,4 +241,16 @@ describe("signStatement", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("returns undefined when a real helper exits without reading a statement larger than the pipe buffer", async () => {
+    const root = mkdtempSync(join(tmpdir(), "owner-presence-sign-"));
+    try {
+      const helper = join(root, "helper");
+      writeFileSync(helper, "#!/bin/sh\nexit 64\n", { mode: 0o755 });
+      const stat: StatPort = (path) => ({ uid: OWNER, mode: path === helper ? FILE : DIR });
+      expect(await signStatement(new Uint8Array(1 << 20), "r", { stat, getuid: () => OWNER, helperPaths: [helper] })).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
