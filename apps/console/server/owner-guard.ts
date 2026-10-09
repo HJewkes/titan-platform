@@ -51,16 +51,19 @@ type OwnerWriteHandler<Args, Result> = Command<Args, Result, OwnerWriteContext> 
  * `run` is a property on `Command`, so a handler that needs `OwnerWriteContext` cannot be widened
  * to a console command at all. A context whose extra fields are all optional still accepts a plain
  * console context, so this is also `never` for any context with a key the console does not supply:
- * a handler that reads `ownerPresence?` would otherwise run as a read with the proof absent. It
- * refuses the owner-write mark too. It sees only the type the caller holds, so a handler widened
- * or cast before it gets here passes; the mark is the runtime backstop, and only
- * `ownerWriteCommand` ever adds the proof.
+ * a handler that reads `ownerPresence?` would otherwise run as a read with the proof absent. The
+ * keys are taken from each member of a union context, because `keyof` a union sees only the keys
+ * every member shares. It refuses the owner-write mark too. It sees only the type the caller holds,
+ * so a handler widened or cast before it gets here passes; the mark is the runtime backstop, and
+ * only `ownerWriteCommand` ever adds the proof.
  */
-type ServedWithoutOwner<Ctx> = [Exclude<keyof Ctx, keyof ConsoleContext>] extends [never]
+type ServedWithoutOwner<Ctx> = [Exclude<KeysOfUnion<Ctx>, keyof ConsoleContext>] extends [never]
   ? ConsoleContext extends Ctx
     ? { readonly ownerWrite?: never }
     : never
   : never;
+
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
 
 export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
 

@@ -80,6 +80,16 @@ const optionalPresence = defineCommand<Record<string, never>, { present: boolean
   run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
 });
 
+type EitherPresenceContext = ConsoleContext | OwnerAnswerContext;
+
+const eitherPresence = defineCommand<Record<string, never>, { present: boolean }, EitherPresenceContext>({
+  name: "test.either-presence",
+  description: "Test-only handler whose context may or may not carry the presence proof, with no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: "ownerPresence" in ctx }),
+});
+
 /**
  * Each way a handler reaches a helper typed as a console command. None compiles, because `run` is a
  * property; the runtime tests below stand in for a caller that casts past the types instead.
@@ -237,6 +247,14 @@ describe("classes fail closed", () => {
     expectTypeOf(() => readCommand(optionalPresence)).toBeFunction();
     // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
     expectTypeOf(() => depositCommand(optionalPresence)).toBeFunction();
+  });
+
+  it("fails to compile a read or a deposit whose context is a union with one member carrying presence", () => {
+    // keyof a union sees only the shared keys, so the check must look at each member's keys.
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => readCommand(eitherPresence)).toBeFunction();
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => depositCommand(eitherPresence)).toBeFunction();
   });
 
   it.each(widenings(ownerAnswer))("refuses at runtime a marked owner-write handler widened by %s", (_label, widened) => {

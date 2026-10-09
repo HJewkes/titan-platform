@@ -149,8 +149,9 @@ when they wrap it and again at registry build. The types refuse it too. `run` is
 `@titan-design/registry`, so a handler whose `run` needs `ctx.ownerPresence` neither passes to
 `readCommand` or `depositCommand` nor widens to `Command<…, ConsoleContext>` or `AnyCommand`
 (an annotation, a factory's return type, an array). Both helpers also refuse a handler whose
-context has any key `ConsoleContext` lacks, so one that declares `ownerPresence` optional fails
-to compile too. Only a cast gets past the types, and the `ownerWrite` mark is the guard then.
+context has any key `ConsoleContext` lacks, checked in every member of a union context. One
+that declares `ownerPresence` optional, or takes `ConsoleContext | OwnerWriteContext`, fails to
+compile too. Only widening or a cast gets past the types, and the `ownerWrite` mark is the guard then.
 TypeScript has no exact types, so an optional-presence handler widened before it reaches a
 helper still compiles; it runs with no proof, because only `ownerWriteCommand` adds one.
 Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
