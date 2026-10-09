@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import { FAILURE_CLASSES, failureClassOf, type FailureClass } from "./failure-class.js";
 import { inRange, isoWeek } from "./stats.js";
 
-export interface FailureRow {
+interface FailureRow {
   repo: string;
   /** ISO week the run failed, or started when it never finished. */
   week: string;
