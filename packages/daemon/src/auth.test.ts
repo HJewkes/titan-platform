@@ -605,15 +605,16 @@ describe("createContext receives what the gate recorded", () => {
     .flat()
     .find((i) => i?.family === "IPv4" && !i.internal)?.address;
 
-  it.each([
+  const peers: Array<[string, string, boolean]> = [
     ["a documentation address", "192.0.2.50", false],
     ["a mapped documentation address", "::ffff:192.0.2.50", false],
     ["loopback", "127.0.0.1", true],
     ["mapped loopback", "::ffff:127.0.0.1", true],
     ["IPv6 loopback", "::1", true],
-    ...(ownLanAddress ? [["this host's own LAN address", ownLanAddress, true] as const] : []),
-    ...(ownLanAddress ? [["this host's own mapped LAN address", `::ffff:${ownLanAddress}`, true] as const] : []),
-  ])("records peerLocal for %s", async (_label, peer, peerLocal) => {
+  ];
+  if (ownLanAddress) peers.push(["this host's own LAN address", ownLanAddress, true], ["this host's own mapped LAN address", `::ffff:${ownLanAddress}`, true]);
+
+  it.each(peers)("records peerLocal for %s", async (_label, peer, peerLocal) => {
     const secret = ensureTokenFile(tokenFile);
     const { app, createContext } = buildRpcApp(createDaemonAuth({ tokenFile }));
 

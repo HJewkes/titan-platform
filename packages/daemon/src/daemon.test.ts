@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SESSION_COOKIE, TokenFileError, ensureTokenFile, signSession } from "./auth.js";
 import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
+import type * as BindGuardModule from "./bind-guard.js";
 import { NonLoopbackBindError, RemoteBindError, assertRemoteHost } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
@@ -18,7 +19,7 @@ import { createTestContext, createTestRegistry, type TestContext } from "./test-
 // The one test seam for the remote listener: 127.0.0.2 is loopback, so the remote suite lets
 // exactly that address past the refusal. Every other host still meets the real check.
 vi.mock("./bind-guard.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./bind-guard.js")>();
+  const actual = await importOriginal<typeof BindGuardModule>();
   return { ...actual, assertRemoteHost: vi.fn(actual.assertRemoteHost) };
 });
 
@@ -384,7 +385,7 @@ describe("startDaemon remote host refusal", () => {
     ensureTokenFile(tokenFile);
   });
 
-  it.each(["0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0", "127.0.0.1", REMOTE, "::1", "::ffff:127.0.0.1", "localhost", "basement", "", "[192.168.1.20]"])(
+  it.each(["0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0", "127.0.0.1", REMOTE, "::1", "::ffff:127.0.0.1", "localhost", "lan-box", "", "[192.168.1.20]"])(
     "refuses remote.host %j before binding or writing the pid file",
     async (host) => {
       const attempt = startDaemon(options({ remote: { host, tokenFile } }));
@@ -450,7 +451,7 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
   });
 
   async function startRemote(overrides: Partial<StartDaemonOptions<TestContext>> = {}): Promise<number> {
-    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile, allowedHosts: ["basement"] }, ...overrides }));
+    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile, allowedHosts: ["lan-box"] }, ...overrides }));
     return handle.port;
   }
 
@@ -491,7 +492,7 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
   it("answers the configured LAN name with the bound port", async () => {
     const port = await startRemote();
 
-    expect((await send(REMOTE, port, "GET", "/health", { host: `basement:${port}`, ...bearer() })).status).toBe(200);
+    expect((await send(REMOTE, port, "GET", "/health", { host: `lan-box:${port}`, ...bearer() })).status).toBe(200);
   });
 
   it("refuses a cross-site Origin on a cookie POST", async () => {
@@ -502,7 +503,7 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     expect(res.status).toBe(403);
   });
 
-  it.each([`http://${REMOTE}`, "http://basement", `https://${REMOTE}`])("refuses the portless Origin %s on a cookie POST", async (origin) => {
+  it.each([`http://${REMOTE}`, "http://lan-box", `https://${REMOTE}`])("refuses the portless Origin %s on a cookie POST", async (origin) => {
     const port = await startRemote();
 
     const res = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...cookie(), origin }, "{}");
@@ -550,7 +551,7 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
 
     const health = await send("127.0.0.1", port, "GET", "/health");
     const rpc = await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, "x-titan-client": "test" }, '{"name":"local"}');
-    const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `basement:${port}` });
+    const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `lan-box:${port}` });
 
     expect([health.status, rpc.status, lanName.status]).toEqual([200, 200, 403]);
   });
