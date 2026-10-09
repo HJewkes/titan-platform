@@ -3,6 +3,9 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 import { daemonPaths, readPidFile } from "@titan-design/daemon";
 import { appendSamples, openHealthStore, probeHttp, type HealthSample } from "@titan-design/health";
+import { registerCost } from "./cli-cost.js";
+import { registerUptime } from "./cli-uptime.js";
+import { registerImport } from "./import-stopgap.js";
 import { sampleTick } from "./sample-tick.js";
 import { loadTargets, stateHome, type HealthTarget, type HostEnv } from "./targets.js";
 
@@ -18,6 +21,9 @@ const EXIT_STORE = 2;
 export function registerHealth(program: Command, io: HealthIo): void {
   const health = program.command("health").description("Sample and report the health of this host's services");
   registerSample(health, io);
+  registerUptime(health, io, () => defaultDbPath(io));
+  registerCost(health, io, () => defaultDbPath(io));
+  registerImport(health, io, () => defaultDbPath(io));
 }
 
 function defaultDbPath(host: HostEnv): string {
