@@ -1,0 +1,98 @@
+/**
+ * Who may run each console command. Every command the registry serves carries a class:
+ *
+ * - `read` runs anywhere, as it always has.
+ * - `deposit` runs over HTTP: on loopback, where the request guard already demands an
+ *   allowlisted Origin or `X-Titan-Client` on every POST, or on the LAN with any credential.
+ * - `owner-write` answers for the owner, so it runs only for a session cookie on the LAN
+ *   listener, from a peer that is not this machine, and only while `TITAN_CONSOLE_OWNER_WRITES`
+ *   is on. Loopback has no credentials and the bearer is a file every same-user process can
+ *   read, so neither may answer for the owner. A same-user agent can still mint a login link,
+ *   so a cookie from this machine's own addresses is refused too.
+ *
+ * Commands run only through `POST /rpc/:name`, so no owner-write command is reachable by GET.
+ * The OS account is still the trust boundary: this stops an agent answering for the owner by
+ * accident or as a confused deputy, not a hostile process with the user's privileges.
+ * Refusals carry fixed text and never echo a header, cookie, token or login code.
+ */
+import type { RequestAuth, Surface } from "@titan-design/daemon";
+import { EXIT, type AnyCommand, type BaseContext, type Command } from "@titan-design/registry";
+
+export type CommandClass = "read" | "deposit" | "owner-write";
+
+/** `in-process` is a call made inside the daemon, such as the first-paint snapshot. */
+export type ConsoleSurface = Surface | "in-process";
+
+export interface ConsoleContext extends BaseContext {
+  surface: ConsoleSurface;
+  /** What the LAN listener's auth gate recorded; null on loopback, which is never gated. */
+  auth: RequestAuth | null;
+  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the LAN carries TLS. */
+  ownerWrites: boolean;
+}
+
+/** The owner-console presence proof: when the owner's verified session cookie was issued. */
+export interface OwnerPresence {
+  issuedAt: number;
+}
+
+export interface OwnerWriteContext extends ConsoleContext {
+  ownerPresence: OwnerPresence;
+}
+
+export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
+
+/** Thrown with `EXIT.NOPERM`, which `POST /rpc/:name` answers with 403. */
+export class CommandRefusedError extends Error {
+  readonly code = EXIT.NOPERM;
+
+  constructor(commandClass: CommandClass, reason: string) {
+    super(`${commandClass} command refused: ${reason}`);
+    this.name = "CommandRefusedError";
+  }
+}
+
+export const REFUSALS = {
+  notHttp: "it runs only over HTTP",
+  noCredential: "it needs the owner's session cookie on the LAN listener; loopback carries no credential",
+  bearer: "it needs the owner's session cookie; a bearer token cannot answer for the owner",
+  disabled: "owner writes disabled until TLS",
+  peerLocal: "the request comes from this machine; answer from another device",
+} as const;
+
+export function readCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+  return { ...command, commandClass: "read" };
+}
+
+export function depositCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+  return {
+    ...command,
+    commandClass: "deposit",
+    run: (args, ctx) => {
+      if (ctx.surface !== "http") throw new CommandRefusedError("deposit", REFUSALS.notHttp);
+      return command.run(args, ctx);
+    },
+  };
+}
+
+export function ownerWriteCommand<Args, Result>(command: Command<Args, Result, OwnerWriteContext>): ClassedCommand {
+  return {
+    ...command,
+    commandClass: "owner-write",
+    run: (args: Args, ctx: ConsoleContext) => command.run(args, { ...ctx, ownerPresence: admitOwner(ctx) }),
+  };
+}
+
+/** Returns the presence proof, or throws naming the first rule the request breaks. */
+export function admitOwner(ctx: ConsoleContext): OwnerPresence {
+  const refuse = (reason: string): never => {
+    throw new CommandRefusedError("owner-write", reason);
+  };
+  if (ctx.surface !== "http") refuse(REFUSALS.notHttp);
+  const { auth } = ctx;
+  if (auth === null) return refuse(REFUSALS.noCredential);
+  if (auth.credential !== "session" || auth.issuedAt === null) return refuse(REFUSALS.bearer);
+  if (!ctx.ownerWrites) refuse(REFUSALS.disabled);
+  if (auth.peerLocal) refuse(REFUSALS.peerLocal);
+  return { issuedAt: auth.issuedAt };
+}
