@@ -8,8 +8,7 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ValueWalkError } from "./shell/value-subscripts.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 

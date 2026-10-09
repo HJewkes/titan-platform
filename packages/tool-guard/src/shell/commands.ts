@@ -13,8 +13,8 @@ import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { arithmeticTexts } from "./writers.js";
-import { ValueWalkError, valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings } from "./unsure-readings.js";
+import { valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -155,16 +155,16 @@ function walk(tokens: Token[], w: Walk): void {
  * is dropped, since it may add actions to the line but not take any away.
  */
 function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
-  const { sure, maybe } = arithmeticTexts(op, words);
-  const scope = withPrefixAssignments(w.scope, words);
+  const head = words.findIndex((word) => parseAssignment(word) === null);
+  const { sure, maybe } = arithmeticTexts(op, words, head);
+  const scope = withPrefixAssignments(w.scope, words, head);
   const into = (text: Token[]) => walk(text, child(w, [...w.scope.wrapping, "subshell"]));
   for (const text of valueSubstitutions(sure, scope, w.out, true)) walkSure(() => into(text));
   for (const text of valueSubstitutions(maybe, scope, w.out, false)) walkOrDrop(() => into(text));
 }
 
 /** `X='...' let X` hands the builtin the value before the line records it, so the walk reads it from a copy. */
-function withPrefixAssignments(scope: Scope, words: WordToken[]): Scope {
-  const head = words.findIndex((w) => parseAssignment(w) === null);
+function withPrefixAssignments(scope: Scope, words: WordToken[], head: number): Scope {
   const prefix = head < 0 ? [] : words.slice(0, head).map(parseAssignment).filter((a) => a !== null);
   if (prefix.length === 0) return scope;
   const vars = childVars(scope.vars);

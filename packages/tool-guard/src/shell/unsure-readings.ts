@@ -12,6 +12,15 @@ export class ReadingLimitError extends Error {
   }
 }
 
+/** A value arithmetic surely reads that the walk cannot finish; the hook denies the line unchecked, as past the reading budget. */
+export class ValueWalkError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a value read as arithmetic cannot be walked to its end";
+    this.name = "ValueWalkError";
+  }
+}
+
 /**
  * Bytes of shell script one line may classify, across every reading of it. A 64 KiB script costs about 1.6 s with case
  * folding on, so distinct scripts behind dynamic wrapper words would otherwise pass the 5 s hook timeout.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { classify } from "../classify.js";
 import { extractCommands } from "./commands.js";
-import { ValueWalkError } from "./value-subscripts.js";
+import { ValueWalkError } from "./unsure-readings.js";
 import type { ClassifyContext } from "../types.js";
 
 const REPO = "/home/you/projects/app";
