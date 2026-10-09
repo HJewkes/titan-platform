@@ -4,6 +4,7 @@ import type { StepRoute } from "@titan-design/workflow";
 import { describe, expect, it, vi } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import { G10_RELEASE_STEP, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, withReviewerProfile, type G10Verdict } from "./g10-release.js";
+import type { Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
@@ -158,5 +159,59 @@ describe("releaseG10Hold", () => {
     const adversary = workflowRun("bd-reviewer");
     await releaseG10Hold(adversary.run, "g10-adversary: x");
     expect([external.dispatch, sonnet.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("a release at a clean merge-up of the reviewed head", () => {
+  const mergeUp = { fromHead: HEAD, head: MOVED };
+  const upInput = (pr: number, extra: object = {}) => ({ ...stepInput(pr, MOVED, HEAD), mergeUp, ...extra });
+
+  it("releases at the moved head on the opus MERGE written at the reviewed head", async () => {
+    const { store, pr, deps } = rig("g10-review: auth; TP-1", MOVED);
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, upInput(pr));
+    expect(done).toMatchObject({ released: true, head: MOVED, verdict: { head: HEAD } });
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it.each([
+    ["the merge-up is from another head", { mergeUp: { fromHead: fakeSha("other"), head: MOVED } }],
+    ["the merge-up is to another head than the PR's", { mergeUp: { fromHead: HEAD, head: fakeSha("other") } }],
+    ["the checks at the moved head are not green", { checks: { head: MOVED, green: false } }],
+  ])("keeps the hold when %s", async (_case, extra) => {
+    const { store, pr, deps } = rig("g10-review: auth; TP-1", MOVED);
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, upInput(pr, extra));
+    expect(done.released).toBe(false);
+    expect(store.byRun("run-1")?.held).toBe(true);
+  });
+
+  it("keeps a g10-adversary hold", async () => {
+    const { store, pr, deps } = rig("g10-adversary: authority; TP-1", MOVED);
+    const done = await runStep(g10ReleaseRoutes(deps)[0]!, upInput(pr));
+    expect(done.released).toBe(false);
+    expect(store.byRun("run-1")?.held).toBe(true);
+  });
+
+  function mergeUpRun(mark: string | undefined) {
+    const dispatch = vi.fn(async () => ({ data: { result: { released: true, head: MOVED } } }));
+    const evidence = { record: { head: HEAD, verdictLocator: mergeAt(HEAD).locator, reviewer: { agentId: "a-1", sessionId: "s-1" } } };
+    const reviewed = { kind: "MERGE" as const, headSha: HEAD, evidence, reviewerProfile: "bd-reviewer" };
+    const carried = { kind: "MERGE" as const, headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, ...(mark && { mergeUpFrom: mark }) };
+    const ctx = { runId: "run-1", iteration: () => 0, dispatch } as never;
+    return { dispatch, run: { ctx, target: { repo: REPO, pr: 1 }, reviews: new Map<string, Verdict>([[HEAD, reviewed], [MOVED, carried]]), lastCi: { headSha: MOVED, verdict: "green" } as never } };
+  }
+
+  it("asks for a release at the moved head with the reviewed head's verdict ref and profile", async () => {
+    const { dispatch, run } = mergeUpRun(HEAD);
+    await releaseG10Hold(run, "g10-review: x");
+    const vars = (dispatch.mock.calls[0] as unknown as [string, string, { vars: Record<string, string> }])[2].vars;
+    expect(JSON.parse(Object.values(vars)[0]!)).toMatchObject({ head: MOVED, verdict: { head: HEAD }, reviewerProfile: "bd-reviewer", mergeUp: { fromHead: HEAD, head: MOVED }, checks: { head: MOVED, green: true } });
+  });
+
+  it("asks for nothing on a carried MERGE that is not a clean merge-up, or under a g10-adversary hold", async () => {
+    const unmarked = mergeUpRun(undefined);
+    await releaseG10Hold(unmarked.run, "g10-review: x");
+    const adversary = mergeUpRun(HEAD);
+    await releaseG10Hold(adversary.run, "g10-adversary: x");
+    expect([unmarked.dispatch, adversary.dispatch].map((d) => d.mock.calls.length)).toEqual([0, 0]);
   });
 });

@@ -108,13 +108,13 @@ describe("acceptVerdict", () => {
     expect(acceptVerdict(input, [message({ text })])).toMatchObject({ verdict: "FIX_FIRST", text });
   });
 
-  it("cuts a FIX_FIRST message one character over the cap down to the cap, keeping its start and ending in the marker", () => {
+  it("cuts a FIX_FIRST message one character over the cap down to the cap, keeping its end behind the marker", () => {
     const text = fixFirstOf(MAX_FIX_FIRST_TEXT_CHARS + 1);
 
     const result = acceptVerdict(input, [message({ text })]) as Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }>;
 
     expect(result.text).toHaveLength(MAX_FIX_FIRST_TEXT_CHARS);
-    expect(result.text).toBe(text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED);
+    expect(result.text).toBe(FIX_FIRST_TRUNCATED + text.slice(text.length - (MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length)));
   });
 
   it("refuses a message from another agent id in the same session", () => {

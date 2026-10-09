@@ -33,6 +33,12 @@ describe("the shepherd text view of a hold", () => {
     expect(timeline).toContain(expected);
   });
 
+  it("shows the live stage with its age and the minutes since registration", () => {
+    const live = { ...row(null), stage: { name: "review" as const, minutes: 12 }, totalMinutes: 45 };
+
+    expect(formatShepherd("shepherd.status", [live])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging (review 12m, 45m total)\n`);
+  });
+
   it("shows an unsatisfied hold by its reason alone", () => {
     expect(formatShepherd("shepherd.status", [row({ reason: "owner review" })])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: owner review]\n`);
   });
