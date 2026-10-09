@@ -16,7 +16,7 @@ import { assertRemoteHost, isLoopbackHost, NonLoopbackBindError, RemoteBindError
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type HttpAppOptions } from "./http.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import type { McpServerOptions } from "./mcp.js";
@@ -46,6 +46,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   watchRoot?: string;
   /** Product state merged into the `/health` payload. */
   health?: () => Record<string, unknown>;
+  /** Bounds on `/events` subscribers; the subscriber cap counts both listeners together. */
+  eventLimits?: Partial<EventLimits>;
   /** Hook for product-owned routes. */
   mountRoutes?: (app: Hono) => void;
   /** Host/Origin allowlists and the JSON body gate, shared by the hono routes and `/mcp`. */
@@ -147,6 +149,7 @@ function toHttpOptions<Ctx extends BaseContext>(
     formatError: options.formatError,
     version: options.version,
     health: options.health,
+    eventLimits: options.eventLimits,
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
   };

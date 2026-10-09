@@ -1,6 +1,6 @@
 export type { Surface, SurfaceOptions } from "./surface.js";
-export type { HttpAppOptions } from "./http.js";
-export { buildHttpApp } from "./http.js";
+export type { EventLimits, HttpAppOptions } from "./http.js";
+export { DEFAULT_EVENT_LIMITS, buildHttpApp } from "./http.js";
 export type { HealthPayload, HealthPayloadInput } from "./health.js";
 export { buildHealthPayload } from "./health.js";
 export type { SseMessage, Subscriber } from "./events.js";

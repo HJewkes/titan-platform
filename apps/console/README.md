@@ -107,7 +107,7 @@ the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.m
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
-| `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
+| `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
 `work.tasks` derives stages from the local clones that any `artifacts.yml` names. Per clone it
@@ -124,6 +124,31 @@ Three rules hold for every later slice.
 - **Read-only, apart from deposits.** The one write is `inbox.deposit`, which files an item but
   cannot answer one. No command answers a queue item or controls an agent. A later one must
   take a class below.
+
+## Live updates
+
+The daemon holds one SSE connection to each upstream's `/events` (`server/events-relay.ts`)
+and rebroadcasts each upstream event on its own `/events`, one frame per upstream frame, keep-alives aside.
+The frame's SSE event name is its source and its data is a small JSON object:
+
+| Source | Upstream frame | What the browser gets |
+| --- | --- | --- |
+| `active-work` | `change`, whose data is the watched directory | `{ kind }` only; the path stays behind |
+| `agent-chat` | an event-log row: id, kind, actor, target, msgId, ref, body, meta | `{ kind, id, actor, target }`: the row id and the two agent names, each dropped unless it is an integer or a plain name. Body, meta, ref and msgId stay behind |
+| either | the stream reopened after a drop | `{ kind: "reconnected" }`, since frames sent while it was down are lost |
+
+- **Same auth as `/rpc`.** On the LAN listener `/events` sits behind the session cookie or
+  bearer like every other route; loopback is open, as for `/rpc`. The relay is read-only.
+- **Tokens stay in the daemon.** The broker token is read from `TITAN_CONSOLE_AGENT_CHAT_TOKEN`
+  on every dial and sent only to the broker, as a header, with redirects refused.
+- **Bounded.** One connection per upstream; a refused or dropped dial redials after 0.5 s,
+  doubling to 30 s. A dial with no answer in 3 s, a stream silent for 60 s (both upstreams
+  heartbeat every 25 s) and a frame over 1 MiB end the connection. Browser streams are capped
+  as in the table above. Stopping the daemon closes every upstream socket and timer.
+
+`useRelayInvalidation` (`src/data/live.ts`), mounted once by the shell, refetches the open
+pages' active-work reads (`work.*`, `graph.ego`) on an `active-work` frame and their `agents.*`
+reads on an `agent-chat` frame, and all of them after the browser's own stream reopens.
 
 ## Who may run a command
 
