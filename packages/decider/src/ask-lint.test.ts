@@ -208,10 +208,10 @@ describe("linear time and two false positives (TP-1684)", () => {
       }));
     };
 
-    const ratio = timeFor(14_000) / Math.max(timeFor(7000), 1);
+    const ratio = timeFor(14_000) / Math.max(timeFor(3500), 1);
 
-    // Linear growth doubles the time; quadratic quadruples it. A load spike shifts both sizes alike.
-    expect(ratio).toBeLessThan(3);
+    // 4x the ids: linear growth takes about 4x as long, quadratic about 16x. The bound of 8 leaves a wide gap on both sides.
+    expect(ratio).toBeLessThan(8);
   });
 
   it("does not read Node.js or a slash-separated list as a path", () => {
