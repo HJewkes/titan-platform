@@ -2,6 +2,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { ShepherdStoreRef } from "./store.js";
@@ -38,6 +39,8 @@ export type WakeOutcome =
 export interface ReviewRequest extends PhaseTarget {
   /** Spawn a reviewer under a never-held name, so a reviewer that went silent at this head is not asked again. */
   fresh?: boolean;
+  /** Why this head is reviewed; the intent step records it. */
+  cause?: ReviewCause;
 }
 
 /** Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, or a busy broker started nobody. */

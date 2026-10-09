@@ -13,6 +13,7 @@ import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
@@ -20,6 +21,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
+import { markRevertedRuns } from "./shepherd/reverts.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -61,6 +63,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
   ownerKeys?: () => OwnerKeys;
+  /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
+  needsSources?: NeedsSources;
 }
 
 interface OwnerProofs {
@@ -189,7 +193,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const log = options.logger ?? consoleLogger;
   return {
     registry: createFactoryRegistry(),
-    createContext: () => factoryContext(host, options.routes, proofs.aud),
+    createContext: () => factoryContext(host, options.routes, proofs.aud, options.needsSources),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
@@ -280,6 +284,9 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
     thawed.add(repo);
     throw err;
   }
+  const reverts = await markRevertedRuns(host, services);
+  for (const reverted of reverts.reverted) log.info({ ...reverted }, "marked a merged run reverted");
+  for (const failed of reverts.errors) log.warn({ ...failed }, "could not read main for reverts");
 }
 
 interface ThawWatch {

@@ -52,6 +52,15 @@ describe("stageSpans", () => {
     expect(minutesOf(run)).toEqual([{ stage: "land", minutes: 10 }]);
   });
 
+  it("keeps a merged run's stages unchanged when it is marked reverted days later", () => {
+    const steps: [string, number][] = [["ci-wait", 10], ["merge", 12], ["sh-main-ci", 30]];
+    const run = runOf("a", steps);
+    const reverted = runOf("a", [...steps, ["sh-reverted", 5 * 24 * 60]]);
+
+    expect(minutesOf(reverted)).toEqual(minutesOf(run));
+    expect(stageStats([reverted])).toEqual(stageStats([run]));
+  });
+
   it("adds the open span of the phase a run is in now", () => {
     const run = runOf("a", [["ci-wait", 5]]);
 
@@ -99,7 +108,7 @@ describe("stageStats", () => {
 describe("the live stage in a watch row", () => {
   it("names the current stage, its age and the total, and calls a merge waiting on a hold a hold", () => {
     const run = { ...runOf("a", [["ci-wait", 5], ["sh-review", 20]]), status: "running" as const, currentStep: "merge:0" };
-    const registration = { repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null } as unknown as Parameters<typeof watchRow>[0]["registration"];
+    const registration = { repo: "acme/widgets", pr: 1, branch: "b", task: "t", held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Parameters<typeof watchRow>[0]["registration"];
     const now = new Date(T0 + 50 * MINUTE);
 
     const plain = watchRow({ registration, run, now });

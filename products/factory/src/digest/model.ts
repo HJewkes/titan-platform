@@ -28,6 +28,15 @@ export interface Stuck {
   since: string;
 }
 
+/** A throwaway proof PR's run, listed apart from the owner's asks so a mislabelled real PR is still seen. */
+export interface ProofFixture {
+  ref: string;
+  /** Each gate the run has pending, as a step id and its summary. */
+  gates: string[];
+  /** ISO time the run entered its phase; the section reads it as an age. */
+  since: string;
+}
+
 export interface SeatLine {
   seat: string;
   dispatches: number;
@@ -48,6 +57,20 @@ export interface DigestSlot {
   hour: string;
 }
 
+/** Flow over the window: how long merged work took from task to merge, and how many merges an implementer hour bought. */
+export interface FlowStats {
+  /** Runs merged in the window. */
+  merged: number;
+  /** Merged runs with no task or no readable task file; left out of the p50, never imputed. */
+  missing: number;
+  taskToMergeP50Hours?: number;
+  implementerHours: number;
+  /** Non-live implementers whose end time the roster does not give. While any exist the rate is withheld, since the hours would count only agents still running. */
+  unmeasured: number;
+  /** Absent when no implementer hours were measured or any implementer's span could not be. */
+  mergesPerSlotHour?: number;
+}
+
 /** Everything one digest says, as data; ranking and rendering never read a source. */
 export interface DigestModel {
   slot: DigestSlot;
@@ -58,8 +81,12 @@ export interface DigestModel {
   stuck: Stuck[];
   seats: SeatLine[];
   spend: PoolLine[];
+  /** Live `proof-fixture` runs with their gates; absent when there are none. They count in no section above. */
+  proofFixtures?: ProofFixture[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
+  /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */
+  flow?: FlowStats;
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
   /** Sources that could not be read, one line each, so a gap is never silent. */

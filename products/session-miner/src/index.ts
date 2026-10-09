@@ -14,3 +14,7 @@ export type { SessionDetail, SessionSummary } from "./commands/sessions.js";
 export type { DrainSummary, TemplateRow } from "./commands/drain.js";
 export type { GraphHealth, GraphRefreshOptions, GraphRefreshResult } from "./graph-refresh.js";
 export { EXIT_LOCKED, checkGraph, runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
+export type { PostFilterUse } from "./insights/post-filter.js";
+export { OUR_CLIS, normaliseStage, patternId, postFilters } from "./insights/post-filter.js";
+export type { ToolGapRow, ToolGapsPorts, ToolGapsReport } from "./insights/tool-gaps.js";
+export { GAP_STATUSES, replacementFlags, toolGapsQuestion, toolGapsReport, toolGapsSchema } from "./insights/tool-gaps.js";

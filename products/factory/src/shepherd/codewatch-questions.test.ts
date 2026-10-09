@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_CODEWATCH_QUESTIONS, briefQuestions, codewatchReader, ghCodewatchReport, type FetchCodewatchReport } from "./codewatch-questions.js";
-import { MAX_REVIEWER_QUESTIONS } from "./reviewer-brief.js";
+import { MAX_REVIEWER_QUESTIONS } from "@titan-design/review-panel";
 
 const REPO = "octo/platform";
 const target = { repo: REPO, head: "a".repeat(40) };

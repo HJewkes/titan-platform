@@ -56,6 +56,22 @@ describe("agentChatSource open", () => {
     const approvals = items.filter((item) => item.door === "one-way").map((item) => item.id);
     expect(approvals).toEqual(["chat:m-33", "chat:m-34"]);
   });
+
+  it("yields exactly one one-way approve item for an approval_request row, naming its msg_id and never routed to the decider", async () => {
+    const row = brokerSnapshot().find((r) => r.kind === "approval_request")!;
+    const items = await agentChatSource(endpoint(() => json({ items: [row] })).endpoint).open();
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: "approve", door: "one-way", sources: [{ system: "agent-chat", ref: row.msgId }] });
+    expect(items[0]!.route?.target).not.toBe("decider");
+  });
+
+  it("keeps a permission prompt or endorsement an approve item whatever item kind its meta carries", async () => {
+    const rows = brokerSnapshot()
+      .filter((r) => r.kind === "approval_request" || r.kind === "endorse_request")
+      .map((r) => ({ ...r, meta: { ...r.meta, kind: "stalled" } }));
+    const items = await agentChatSource(endpoint(() => json({ items: rows })).endpoint).open();
+    expect(items.map((item) => [item.kind, item.door])).toEqual([["approve", "one-way"], ["approve", "one-way"]]);
+  });
 });
 
 describe("agentChatSource read failures", () => {

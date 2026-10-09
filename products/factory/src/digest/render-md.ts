@@ -1,6 +1,6 @@
 import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
-import type { Ask, PoolLine } from "./model.js";
+import type { Ask, DigestModel, FlowStats, PoolLine, ProofFixture } from "./model.js";
 import type { RankedDigest } from "./rank.js";
 
 export const WORD_LIMIT = 400;
@@ -61,6 +61,21 @@ function waitingLines(gates: readonly WaitingGate[] | undefined): string[] {
   return section("Waiting on you, oldest first", gates.map((g) => `- ${g.ageHours}h ${g.gateId} ${g.repo}#${g.pr}`), "");
 }
 
+function flowLines(flow: FlowStats | undefined): string[] {
+  if (flow === undefined) return [];
+  const p50 = flow.taskToMergeP50Hours === undefined ? "none" : `${flow.taskToMergeP50Hours}h`;
+  const missing = flow.missing > 0 ? ` (${flow.missing} of ${flow.merged} merges missing a task date)` : "";
+  const none = flow.unmeasured > 0 ? "not measured, the roster gives no end time for non-live implementers" : "none";
+  const rate = flow.mergesPerSlotHour === undefined ? none : `${flow.mergesPerSlotHour} (${flow.merged} merges, ${flow.implementerHours} hours)`;
+  return section("Flow", [`- Task to merge p50: ${p50}${missing}`, `- Merges per implementer slot-hour: ${rate}`], "");
+}
+
+function proofFixtureLines(fixtures: DigestModel["proofFixtures"], now: string): string[] {
+  if (fixtures === undefined) return [];
+  const line = (f: ProofFixture): string => `- ${f.ref}: ${f.gates.length > 0 ? f.gates.map((gate) => clip(gate, REASON_WORDS)).join("; ") : "no pending gate"} (${age(f.since, now)})`;
+  return section("Proof fixtures (not counted above)", fixtures.map(line), "");
+}
+
 function body(d: RankedDigest): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
@@ -69,7 +84,9 @@ function body(d: RankedDigest): string[] {
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
     ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
     ...section("Spend", spend, "No pool readings."),
+    ...proofFixtureLines(d.proofFixtures, d.generatedAt),
     ...waitingLines(d.waiting),
+    ...flowLines(d.flow),
     ...frictionLines(d.friction),
     ...(d.gaps.length > 0 ? section("Gaps", d.gaps.map((gap) => `- ${clip(gap, REASON_WORDS)}`), "") : []),
   ];

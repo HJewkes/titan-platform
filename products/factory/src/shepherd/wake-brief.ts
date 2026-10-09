@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { BLOCK_LINE, findingsText } from "./fix-first-findings.js";
 import { failureOf } from "./error-class.js";
-import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
+import { DEFECT_CLASS_HEADING } from "@titan-design/review-panel";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */

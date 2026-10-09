@@ -44,6 +44,7 @@ graph TD
     agentSurface["agent-surface"]
     daemon["daemon"]
     github["github"]
+    health["health"]
     hitl["hitl"]
     matrixBus["matrix-bus"]
     messaging["messaging"]
@@ -100,6 +101,7 @@ graph TD
   decider --> sessionRead
   decider --> storeSqlite
   egressScan --> fixProof
+  health --> storeSqlite
   hitl --> authority
   hitl --> storeSqlite
   memory --> embed
