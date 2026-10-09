@@ -13,14 +13,25 @@ const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
 export type MergeMode = (typeof MERGE_ORDER)[number];
 
-/** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused. */
-export const RequestedPolicySchema = z.strictObject({
+export const OWNER_GATE_REASONS = ["gate-2-visual", "g10-security", "proof-fixture", "owner-asked"] as const;
+
+export type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
+
+/** The request's fields alone, so an argument parser accepts a request that `resolveEffectivePolicy` then refuses as a registration. */
+export const RequestedPolicyFields = z.strictObject({
   merge: z.enum(MERGE_ORDER).optional(),
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]).optional(),
   reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean().optional(),
 });
+
+/** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused, and owner-gate must say why. */
+export const RequestedPolicySchema = RequestedPolicyFields.refine((request) => request.merge !== "owner-gate" || request.ownerGateReason !== undefined, {
+    message: `owner-gate needs ownerGateReason, one of ${OWNER_GATE_REASONS.join(", ")}`,
+    path: ["ownerGateReason"],
+  });
 
 export type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
 
@@ -30,6 +41,8 @@ export interface EffectivePolicy {
   reviewer?: string;
   priority?: number;
   fixer: boolean;
+  /** Why the owner is asked; absent on an owner-gate run registered before the field, which reads as legacy. */
+  ownerGateReason?: OwnerGateReason;
   /** The seat that set the ceiling, or `none` for a repo no seat lists. */
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
@@ -43,6 +56,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   reviewer: z.string().optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean(),
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
 });
@@ -76,6 +90,7 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.reviewer !== undefined && { reviewer: requested.reviewer }),
     ...(requested.priority !== undefined && { priority: requested.priority }),
     fixer: seat !== undefined && requested.fixer !== false,
+    ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
   };
@@ -85,7 +100,8 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
-  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
+  return { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
 }
 
 function parseRequest(request: unknown): RequestedPolicy {
@@ -105,7 +121,7 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
-      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
+      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
     },
   };
 }
@@ -161,4 +177,8 @@ function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdi
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const verdict = headSha === undefined ? undefined : verdictFor(headSha);
   return verdict ? `; review at this head: ${verdict.kind}` : "";
+}
+
+function reasonNote(effective: EffectivePolicy): string {
+  return effective.merge === "owner-gate" && effective.ownerGateReason ? ` (${effective.ownerGateReason})` : "";
 }

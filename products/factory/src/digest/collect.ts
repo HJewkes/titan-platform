@@ -42,6 +42,9 @@ export interface CollectOptions {
 const FINISHED = new Set(["done", "cancelled", "failed"]);
 const refOf = (row: WatchRow): string => (row.pr === null ? `${row.repo}@${row.branch}` : `${row.repo}#${row.pr}`);
 
+/** A throwaway proof PR is registered only to exercise the gates; its runs never feed an owner round, though `shepherd status` still lists them. */
+const proofFixtureRuns = (rows: readonly WatchRow[]): Set<string> => new Set(rows.filter((row) => row.ownerGateReason === "proof-fixture").map((row) => row.runId));
+
 /** A source that fails becomes a gap line; the other sections still render. */
 async function guarded<T>(gaps: string[], name: string, fallback: T, read: () => Promise<T> | T): Promise<T> {
   try {
@@ -55,8 +58,10 @@ async function guarded<T>(gaps: string[], name: string, fallback: T, read: () =>
 export async function collectDigest({ sources, now, windowMinutes, slot }: CollectOptions): Promise<DigestModel> {
   const gaps: string[] = [];
   const since = new Date(now.getTime() - windowMinutes * 60_000);
-  const rows = await guarded(gaps, "shepherd", [], () => sources.rows());
-  const gates = await guarded(gaps, "factory gates", [], () => sources.gates());
+  const allRows = await guarded(gaps, "shepherd", [], () => sources.rows());
+  const proofRuns = proofFixtureRuns(allRows);
+  const rows = allRows.filter((row) => !proofRuns.has(row.runId));
+  const gates = (await guarded(gaps, "factory gates", [], () => sources.gates())).filter((gate) => !proofRuns.has(gate.runId));
   const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
@@ -67,7 +72,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: needs ? ownerAsks(needs.items, rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
+    needsYou: needs ? ownerAsks(needs.items.filter((item) => !proofRuns.has(runOfItem(item) ?? "")), rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,

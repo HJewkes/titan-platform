@@ -156,3 +156,19 @@ describe("collectDigest with the merged owner list", () => {
     expect(model.needsYou.slice(0, 36).every((ask) => ask.keys.some((key) => key.startsWith("gate:")))).toBe(true);
   });
 });
+
+describe("proof-fixture runs", () => {
+  const PROOF = "22222222-2222-4222-8222-222222222222";
+
+  it("stay out of the rows, gates and asks that feed an owner round", async () => {
+    const real = watchRow({ pr: 1 });
+    const proof = watchRow({ pr: 2, runId: PROOF, ownerGateReason: "proof-fixture", held: { reason: "proof" } });
+    const gates = [gateFact(), gateFact({ gateId: `${PROOF}/approve-merge`, runId: PROOF })];
+
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => [real, proof], gates: async () => gates }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou).toHaveLength(1);
+    expect(JSON.stringify(model)).not.toContain(PROOF);
+    expect(model.stuck).toEqual([]);
+  });
+});
