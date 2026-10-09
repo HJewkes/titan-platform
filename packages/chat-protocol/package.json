@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/chat-protocol",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The canonical chat message document and envelope every agent-chat surface speaks",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,8 +36,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "zod": "^4.0.0"

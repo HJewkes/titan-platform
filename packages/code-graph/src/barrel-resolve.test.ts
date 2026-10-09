@@ -111,4 +111,74 @@ describe("resolveBarrelEdges", () => {
     ]);
     expect(resolved.every((e) => e.dstId !== e.srcId)).toBe(true);
   });
+
+  describe("characterization", () => {
+    it("emits edges in input order, passing non-barrel edges through and expanding barrel edges in target order", () => {
+      const nodes = [file("x"), file("y"), file("f"), file("g"), barrel("index.ts"), file("t1"), file("t2")];
+      const resolved = resolveBarrelEdges(nodes, [
+        edge("x", "y", 2),
+        edge("f", "index.ts", 10),
+        edge("index.ts", "t1", 3, "re-exports"),
+        edge("index.ts", "t2", 1, "re-exports"),
+        edge("g", "t1", 1),
+      ]);
+      expect(resolved).toEqual([
+        edge("x", "y", 2),
+        edge("f", "t1", 7.5),
+        edge("f", "t2", 2.5),
+        edge("g", "t1", 1),
+      ]);
+    });
+
+    it("treats an unweighted inbound edge as weight 1 and keeps its kind and other attrs", () => {
+      const nodes = [file("f"), barrel("index.ts"), file("t")];
+      const resolved = resolveBarrelEdges(nodes, [
+        { srcId: "f", dstId: "index.ts", kind: "references" },
+        { srcId: "index.ts", dstId: "t", kind: "re-exports" },
+      ]);
+      expect(resolved).toEqual([{ srcId: "f", dstId: "t", kind: "references", attrs: { weight: 1 } }]);
+    });
+
+    it("folds the shares of two paths to the same leaf into one edge", () => {
+      const nodes = [file("f"), barrel("top"), barrel("l"), barrel("r"), file("leaf")];
+      const resolved = resolveBarrelEdges(nodes, [
+        edge("f", "top", 4),
+        edge("top", "l", 1, "re-exports"),
+        edge("top", "r", 1, "re-exports"),
+        edge("l", "leaf", 1, "re-exports"),
+        edge("r", "leaf", 1, "re-exports"),
+      ]);
+      expect(resolved).toEqual([edge("f", "leaf", 4)]);
+    });
+
+    it("resolves a barrel re-export cycle to the entry barrel itself", () => {
+      const nodes = [file("f"), barrel("a"), barrel("b")];
+      const resolved = resolveBarrelEdges(nodes, [
+        edge("f", "a", 6),
+        edge("a", "b", 1, "re-exports"),
+        edge("b", "a", 1, "re-exports"),
+      ]);
+      expect(resolved).toEqual([edge("f", "a", 6)]);
+    });
+
+    it("excludes a barrel's references edges from its forwarding split", () => {
+      const nodes = [file("f"), barrel("index.ts"), file("t1"), file("t2"), symbol("t2#s")];
+      const resolved = resolveBarrelEdges(nodes, [
+        edge("f", "index.ts", 2),
+        edge("index.ts", "t1", 1, "re-exports"),
+        edge("index.ts", "t2#s", 9, "references"),
+      ]);
+      expect(resolved).toEqual([edge("f", "t1", 2), edge("index.ts", "t2#s", 9, "references")]);
+    });
+
+    it("drops only the self-edge when a barrel re-exports both the importer and another file", () => {
+      const nodes = [file("f"), barrel("index.ts"), file("t")];
+      const resolved = resolveBarrelEdges(nodes, [
+        edge("f", "index.ts", 4),
+        edge("index.ts", "f", 1, "re-exports"),
+        edge("index.ts", "t", 1, "re-exports"),
+      ]);
+      expect(resolved).toEqual([edge("f", "t", 2)]);
+    });
+  });
 });

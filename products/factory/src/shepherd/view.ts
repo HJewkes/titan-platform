@@ -2,8 +2,12 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
+import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { OWNER_GATE_REASONS } from "./policy.js";
 import { reviewWait } from "./review-wait.js";
+import { STAGES, stageSpans } from "./stage-times.js";
+import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import type { TrainHolder } from "./train.js";
@@ -17,12 +21,9 @@ type Tied<List extends readonly string[], Union extends string> = [Same<List[num
 const WAKE_KINDS: Tied<typeof KINDS, WakeInput["kind"]> = KINDS;
 const WAKE_MODES: Tied<typeof MODES, Extract<WakeStepResult, { kind: "woken" }>["mode"]> = MODES;
 
+export { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
+
 /** The read model `shepherd.list` and `shepherd.timeline` return; TP-466 section 2 pins these shapes for the UI. */
-export const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "merging", "post-merge", "done", "failed", "cancelled"] as const;
-
-export const PhaseSchema = z.enum(PHASES);
-export type Phase = z.infer<typeof PhaseSchema>;
-
 export const WatchRowSchema = z.object({
   repo: z.string(),
   pr: z.number().int().nullable(),
@@ -38,6 +39,12 @@ export const WatchRowSchema = z.object({
   stalled: z.object({ reason: z.string() }).nullable(),
   /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
+  /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
+  stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
+  /** Why an owner-gate run asks the owner; absent for other policies and for runs registered before the field. */
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
+  /** Whole minutes from the run's registration to its end, or to now while it runs. */
+  totalMinutes: z.number().int().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -62,6 +69,8 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     agent: z.string().nullable(),
     mode: z.enum(WAKE_MODES).nullable(),
     sessionId: z.string().nullable(),
+    /** Why a held wake started no fixer: agent-chat's refusal of the successor. */
+    held: z.string().optional(),
   }),
   z.object({
     kind: z.literal("verdict"),
@@ -80,72 +89,21 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
   }),
+  z.object({
+    kind: z.literal("event"),
+    event: z.enum(EVENT_KINDS),
+    reason: z.string().nullable(),
+    actor: z.string().nullable(),
+    at: z.string(),
+    headSha: z.string().nullable(),
+  }),
 ]);
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
 
-/** A step family to its phase, matched the way `stepIdMatches` matches declarations; an undeclared id reads as `ci` so a new step never breaks a view. */
-const STEP_PHASE: Readonly<Record<string, Phase>> = {
-  "sh-await-pr": "awaiting-pr",
-  "land-rules": "ci",
-  "ci-wait": "ci",
-  "update-branch": "ci",
-  rerun: "ci",
-  "sh-freeze-hold": "ci",
-  "sh-freeze-wait": "ci",
-  "sh-wake-implementer": "fixing",
-  "sh-wake-fix-first": "fixing",
-  "sh-repair": "fixing",
-  "sh-flake-check": "fixing",
-  "await-new-head": "fixing",
-  "sh-await-new-head": "fixing",
-  "sh-park": "review",
-  "sh-review-intent": "review",
-  "sh-review": "review",
-  "sh-late-verdict": "review",
-  "sh-correct-verdict": "review",
-  "sh-release-preflight": "review",
-  "sh-observe": "review",
-  "sh-merge-evidence": "review",
-  "sh-publish-review": "review",
-  "sh-carry": "review",
-  "sh-carry-scope": "review",
-  "sh-carry-seat": "review",
-  "sh-await-verdict": "review",
-  "sh-policy": "review",
-  "merge-policy": "awaiting-approval",
-  "approve-merge": "awaiting-approval",
-  "ci-failed": "awaiting-approval",
-  "sh-sent-back": "awaiting-approval",
-  "sh-conflict-check": "awaiting-approval",
-  "stuck-behind": "awaiting-approval",
-  merge: "merging",
-  "sh-train-leave": "merging",
-  "sh-landed": "post-merge",
-  "sh-main-ci": "post-merge",
-  "sh-redeploy": "post-merge",
-  "main-red": "post-merge",
-  "main-ci-timeout": "post-merge",
-  "main-red-again": "post-merge",
-  "main-frozen": "post-merge",
-  "sh-unfreeze": "post-merge",
-  "sh-thaw": "post-merge",
-  "sh-stopped": "post-merge",
-  "after-stages": "post-merge",
-  "sh-freeze": "post-merge",
-  "sh-file-fix-task": "post-merge",
-  "sh-spawn-fixer": "post-merge",
-  "sh-cleanup": "post-merge",
-};
-
 const TERMINAL_PHASE: Partial<Record<WorkflowRun["status"], Phase>> = { completed: "done", failed: "failed", cancelled: "cancelled" };
-
-export function stepPhase(stepId: string): Phase {
-  const family = Object.keys(STEP_PHASE).find((id) => stepIdMatches(id, stepId));
-  return family === undefined ? "ci" : STEP_PHASE[family]!;
-}
 
 /** Completed step results, oldest first. */
 function completedSteps(run: WorkflowRun): StepResult[] {
@@ -215,6 +173,28 @@ function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | 
 
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
+function lastIndexWhere<T>(items: readonly T[], match: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index--) if (match(items[index]!)) return index;
+  return -1;
+}
+
+const HeldWakeData =z.object({ result: z.object({ kind: z.literal("unhandled"), reason: z.string(), held: z.unknown() }) });
+const SentNoticeData = z.object({ result: z.object({ sent: z.literal(true) }) });
+
+/**
+ * While a held send-back waits for a new head, the refusal that held it is the next action, not an implementer's push.
+ * The seat counts as told only by a sent notice recorded after that wake: a NO_REPRO, or a failed notice, reached the
+ * wait through the owner's sent-back gate instead.
+ */
+function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.currentStep === null || !stepIdMatches("await-new-head", run.currentStep)) return undefined;
+  const at = lastIndexWhere(steps, (result) => stepIdMatches("sh-wake-implementer", result.stepId));
+  const wake = HeldWakeData.safeParse(steps[at]?.data);
+  if (!wake.success || wake.data.result.held === undefined) return undefined;
+  const told = steps.slice(at + 1).some((result) => stepIdMatches("sh-exit-notice", result.stepId) && SentNoticeData.safeParse(result.data).success);
+  return `no fixer could start (${wake.data.result.reason})${told ? "; the seat was told" : ""}, waiting for a new head`;
+}
+
 /** While a red head waits out a frozen main, the hold's own reason is the next action. */
 function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
   if (run.currentStep === null || !stepIdMatches("sh-freeze-wait", run.currentStep)) return undefined;
@@ -276,6 +256,14 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phas
   return holding ? undefined : overstayReason(phase, since, now);
 }
 
+/** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
+function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, holding: boolean, now: Date): WatchRow["stage"] {
+  if (TERMINAL_PHASE[run.status]) return null;
+  const open = stageSpans(steps, run.startedAt, { phase, at: now.getTime() }).find((span) => span.open);
+  if (open === undefined) return null;
+  return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
+}
+
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
 function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["held"] {
   if (!held) return null;
@@ -299,26 +287,30 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     branch: registration.branch ?? run.params.branch ?? "",
     runId: run.id,
     task: registration.task,
+    ...(registration.policy.ownerGateReason !== undefined && { ownerGateReason: registration.policy.ownerGateReason }),
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
+    stage: liveStage(run, steps, phase, holding, now),
+    totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
   };
 }
 
-/** Step entries in completion order, a running step last, and every gate the run opened at its creation time. */
-export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[]): TimelineEntry[] {
+/** Step entries in completion order, a running step last, every gate the run opened at its creation time, and every hold, release, freeze and thaw at its time. */
+export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], events: readonly ShepherdEvent[] = []): TimelineEntry[] {
   const done = completedSteps(run).map((result) => ({ at: result.completedAt, entry: stepEntry(result) }));
   const running = Object.values(run.activeSteps).map((active) => ({
     at: active.startedAt,
     entry: { kind: "step", stepId: active.stepId, iteration: 0, startedAt: active.startedAt, completedAt: null, signal: null, status: "running" } satisfies TimelineEntry,
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
-  return [...done, ...running, ...opened].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
+  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
@@ -340,7 +332,7 @@ const VerdictRecord = z.discriminatedUnion("kind", [
 ]);
 const WakeRecord = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("woken"), agent: z.string(), mode: z.enum(WAKE_MODES).optional(), sessionId: z.string().optional() }),
-  z.looseObject({ kind: z.literal("unhandled") }),
+  z.looseObject({ kind: z.literal("unhandled"), reason: z.string().optional(), held: z.unknown().optional() }),
 ]);
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
 
@@ -375,8 +367,12 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const parsed = WakeRecord.safeParse(payload);
   if (!parsed.success) return undefined;
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
-  if (parsed.data.kind === "unhandled") return unhandled;
+  if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
+}
+
+function eventEntry({ kind, reason, actor, at, headSha }: ShepherdEvent): TimelineEntry {
+  return { kind: "event", event: kind, reason, actor, at, headSha };
 }
 
 function gateEntry(gate: GateRecord): TimelineEntry {

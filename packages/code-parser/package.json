@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node-kinds": {
+      "types": "./dist/node-kinds.d.ts",
+      "import": "./dist/node-kinds.js"
     }
   },
   "files": [
@@ -32,8 +36,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "tree-sitter-python": "^0.25.0",

@@ -242,11 +242,13 @@ It is pure and opens nothing. The caller reads four sources and passes the recor
 
 | Input | From | Parser |
 |---|---|---|
-| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` reads the block with session-read's gate parser (full 40-hex head, `owner/name#n` PR; null otherwise, which the caller counts in `unparsedVerdicts`); the caller adds the row's id, time, target seat and sender |
+| `verdicts` | `message` rows of agent-chat's `events.db` whose body starts `Verdict:` | `parseVerdict(body)` reads the block with session-read's gate parser (full 40-hex head, `owner/name#n` PR; null otherwise, which `readVerdicts` counts for `unparsedVerdicts`); `readVerdicts` adds the row's id, time, target seat and sender |
 | `pulls` | `gh api repos/<owner>/<repo>/pulls/<n>`, one per PR a verdict names | none; map `.state`, `.merged_at`, `.head.sha` |
 | `denials` | each seat's transcript JSONL | `parseDenials(lines, seat)`, which joins each refusal to the tool call it refused |
 | `journals` | each seat's dated journal file | `parseSeatJournal(text, seat, date, utcOffsetMin)` reads `HH:MM` lines with `impl <used>/<cap>` and `No dispatch: <reason>` |
 
+`readVerdicts(db, window, seats)` reads the `verdicts` from an `events.db` connection the caller
+opened read-only, and counts the refused ones for `unparsedVerdicts`.
 `BLOCKED_FLOW_SOURCES` names the command and field behind each section, so a number in the
 report can be checked by hand. `asOf` is the moment waits are measured to, `window` clips every
 section, `splitAt` splits the wait by verdict time, and `seats` keeps only those seats.
@@ -269,7 +271,18 @@ It is pure and opens nothing. The caller passes:
 - `lastEvents`: each actor's newest `events.db` row before `asOf`, as `LastEventRecord`s, with
   any resolution or exit row that follows it.
 
+`readSpawns(db)` and `readLastPrompts(db, asOf)` read `spawns` and `lastEvents` from an
+`events.db` connection the caller opened read-only.
 `LIVENESS_SOURCES` holds the grep and sqlite commands that re-read each section.
+
+### The printed events.db commands run the readers' SQL
+
+Each events.db reader runs one exported constant, `VERDICTS_SQL`, `SPAWNS_SQL` or
+`LAST_PROMPTS_SQL`, and its `*_SOURCES` command is `eventsDbCommand(sql)` over that constant.
+The command binds each `@name` parameter through sqlite3's `.parameter set` to a placeholder
+such as `<asOf epoch ms>`; replace it with epoch milliseconds and the command runs as printed.
+The package never opens the file: the caller checks it exists and opens it read-only.
+`EVENTS_TABLE_DDL` is agent-chat's events table as the readers expect it, for test fixtures.
 `parseTeleportEvents(lines)`, under "Handoff threshold", reads the teleport lines of the same
 broker log.
 

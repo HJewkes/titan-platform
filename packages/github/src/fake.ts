@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, IssueComment, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -27,6 +27,8 @@ export interface FakeGitHub {
   /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
   notModified: number;
   rules: RequiredChecks;
+  /** What classic branch protection requires; empty reads as a branch with none. */
+  classicRules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
@@ -38,6 +40,14 @@ export interface FakeGitHub {
   pushHead(number: number, sha: string): void;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
+  /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
+  updateBranchFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next comment posts throw, one per call; `lands` means the comment was posted before the answer was lost. */
+  createCommentFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next merge PUTs throw, one per call; `lands` means the merge happened before the answer was lost. */
+  mergeFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next rerun-failed-jobs posts throw, one per call; `lands` means the rerun was queued before the answer was lost. */
+  rerunFaults?: { error: Error; lands?: boolean }[];
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
@@ -55,6 +65,8 @@ export interface FakeGitHub {
   prChangedFiles: Map<number, number>;
   /** PR number to its commit shas, oldest first; unset means the PR's head alone. `listPrCommits` returns at most 250, like GitHub. */
   prCommits: Map<number, string[]>;
+  /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
+  history: (LoggedCommit & { committedAt: string })[];
   /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
   compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number }>;
   /** PR number to its issue comments, in posting order. */
@@ -85,6 +97,7 @@ export function successRun(name: string, id: number, startedAt = "2026-01-01T00:
 
 /** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
 export const FAKE_APP_ID = 424242;
+const FAKE_MERGED_AT = "2026-01-01T00:00:00Z";
 
 /** An in-memory GitHub: one repo slug per key, strict rules, and unconditional writes like the real API. */
 export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: string; appId?: number } = {}): FakeGitHub {
@@ -102,6 +115,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
+    classicRules: { contexts: [], strict: false },
     reviewBypass: false,
     createdCheckRuns: [],
     commits: new Map(),
@@ -112,12 +126,14 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prFiles: new Map(),
     prChangedFiles: new Map(),
     prCommits: new Map(),
+    history: [],
     compares: new Map(),
     comments: new Map(),
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
     },
@@ -164,6 +180,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getPr", { ...pr });
     },
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
+    getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
@@ -175,11 +192,17 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getJobLog", log);
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
-    merge: async (_repo, number, sha, method) => record("merge", mergePr(fake, mustPr(prs, number), sha, method, nextSha)),
+    merge: async (_repo, number, sha, method) => {
+      record("merge", undefined);
+      return mergePr(fake, mustPr(prs, number), sha, method, nextSha);
+    },
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
+      const fault = fake.rerunFaults?.shift();
+      if (fault && !fault.lands) throw fault.error;
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
+      if (fault) throw fault.error;
     },
     listPrFiles: async (_repo, number) => {
       const all = fake.prFiles.get(number) ?? [];
@@ -187,6 +210,10 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("listPrFiles", { files, changedFiles: fake.prChangedFiles.get(number) ?? all.length });
     },
     listPrCommits: async (_repo, number) => record("listPrCommits", (fake.prCommits.get(number) ?? [mustPr(prs, number).headSha]).slice(0, PR_COMMITS_CAP)),
+    listCommits: async (_repo, since) => {
+      const after = fake.history.filter((commit) => Date.parse(commit.committedAt) >= Date.parse(since));
+      return record("listCommits", after.sort((a, b) => Date.parse(b.committedAt) - Date.parse(a.committedAt)).map(({ sha, message }) => ({ sha, message })));
+    },
     compareFiles: async (_repo, base, head) => {
       const input = fake.compares.get(`${base}...${head}`) ?? { mergeBaseSha: fake.refs.get(base) ?? base, files: [] };
       const truncated = input.files.length >= COMPARE_FILE_CAP || (input.totalCommits ?? 0) > COMPARE_COMMIT_CAP;
@@ -196,9 +223,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listIssueComments: async (_repo, number) => record("listIssueComments", (fake.comments.get(number) ?? []).map((comment) => ({ ...comment }))),
     createComment: async (_repo, number, body) => {
       record("createComment", undefined);
+      const fault = fake.createCommentFaults?.shift();
+      if (fault && !fault.lands) throw fault.error;
       const list = fake.comments.get(number) ?? [];
       const comment = { id: 5000 + ++counter, body, author: fake.actor };
       fake.comments.set(number, [...list, comment]);
+      if (fault) throw fault.error;
       return { id: comment.id };
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
@@ -265,8 +295,17 @@ function updateRef(fake: FakeGitHub, prs: Map<number, PullRequest>, branch: stri
 
 /** Like GitHub: refused unless the head is the expected one; the new head is a merge of head and base. */
 function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextSha: (tag: string) => string): void {
+  const fault = fake.updateBranchFaults?.shift();
+  if (fault) {
+    if (fault.lands) landUpdate(fake, pr, nextSha);
+    throw fault.error;
+  }
   if (pr.headSha !== expected) throw new FakeHttpError(422, "expected head sha did not match");
   if (fake.updateBranchConflict) throw new FakeHttpError(422, "merge conflict between base and head");
+  landUpdate(fake, pr, nextSha);
+}
+
+function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) => string): void {
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
   fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });
@@ -275,6 +314,14 @@ function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextS
 }
 
 function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeMethod, nextSha: (tag: string) => string): { sha: string } {
+  const fault = fake.mergeFaults?.shift();
+  if (fault && !fault.lands) throw fault.error;
+  const merged = landMerge(fake, pr, sha, nextSha);
+  if (fault) throw fault.error;
+  return merged;
+}
+
+function landMerge(fake: FakeGitHub, pr: PullRequest, sha: string, nextSha: (tag: string) => string): { sha: string } {
   if (pr.merged || pr.state !== "open") throw new FakeHttpError(405, "Pull Request is not mergeable");
   if (pr.headSha !== sha) throw new FakeHttpError(409, "Head branch was modified");
   if (fake.rules.strict && pr.behind) throw new FakeHttpError(405, "Head branch is not up to date with the base branch");
@@ -282,5 +329,6 @@ function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeM
   pr.merged = true;
   pr.state = "closed";
   pr.mergeSha = nextSha("merge");
+  pr.mergedAt = FAKE_MERGED_AT;
   return { sha: pr.mergeSha };
 }

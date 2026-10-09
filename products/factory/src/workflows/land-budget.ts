@@ -13,17 +13,62 @@ export interface UpdateBound {
   from: string[];
   /** When the first of those updates ran; absent when none has, or when it ran before updates recorded a time. */
   startedAt?: number;
+  /** Automatic retries spent since the budget ran out, with the head each one started from. */
+  retries?: number;
+  retryFrom?: string[];
+  /** The retry count when the update window last restarted, so a landed retry restarts it once. */
+  restartedAt?: number;
+}
+
+/** Extra update rounds, each after a longer wait, before a stuck-behind gate opens. */
+export const MAX_UPDATE_RETRIES = 3;
+const UPDATE_RETRY_BASE_MS = 2 * 60_000;
+
+/** The wait before retry `n` (0-based) doubles each time. */
+export function retryBackoffMs(n: number): number {
+  return UPDATE_RETRY_BASE_MS * 2 ** n;
+}
+
+export function retriesLeft(bound: UpdateBound): boolean {
+  return (bound.retries ?? 0) < MAX_UPDATE_RETRIES;
+}
+
+export function recordRetry(bound: UpdateBound, fromSha: string): void {
+  bound.retries = (bound.retries ?? 0) + 1;
+  (bound.retryFrom ??= []).push(fromSha);
+}
+
+/** True when a retry has run since the update window last restarted. */
+export function retryLanded(bound: UpdateBound): boolean {
+  return (bound.retries ?? 0) > (bound.restartedAt ?? 0);
+}
+
+/**
+ * A retry that moved the head and left the PR no longer behind has done its job: the update count and clock start over.
+ * The retries already spent stay on the bound, so a base that keeps racing still reaches the gate.
+ */
+export function restartUpdates(bound: UpdateBound): void {
+  bound.sinceGate = 0;
+  bound.from = [];
+  delete bound.startedAt;
+  bound.restartedAt = bound.retries ?? 0;
 }
 
 export function newUpdateBound(): UpdateBound {
   return { sinceGate: 0, from: [] };
 }
 
-/** Only a human answer restarts the update count; an allow per head must not let a racing base loop unasked. */
+/**
+ * A human answer restarts the update count and the retries; a landed retry restarts only the update count (see `restartUpdates`); an allow per head must
+ * not let a racing base loop unasked.
+ */
 export function resetBound(bound: UpdateBound): void {
   bound.sinceGate = 0;
   bound.from = [];
   delete bound.startedAt;
+  delete bound.retries;
+  delete bound.retryFrom;
+  delete bound.restartedAt;
 }
 
 export function recordUpdate(bound: UpdateBound, fromSha: string, at: number | undefined): void {
@@ -46,10 +91,11 @@ export function budgetSpent(bound: UpdateBound, readAt: number | undefined): boo
 
 /** The base kept moving while each updated head's CI ran; the owner sees every head the updates started from, and for how long. */
 export function stuckBehindReason(bound: UpdateBound, headSha: string, readAt: number | undefined): string {
-  const heads = [...bound.from, headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
+  const heads = [...bound.from, ...(bound.retryFrom ?? []), headSha].map((sha) => sha.slice(0, 7)).join(" -> ");
   const elapsed = elapsedMs(bound, readAt);
   const time = elapsed === undefined ? "" : ` over ${Math.round(elapsed / 60_000)} min (budget ${UPDATE_BUDGET_MS / 60_000} min)`;
-  return `still behind its base after ${bound.sinceGate} updates${time}, heads ${heads}`;
+  const retried = bound.retries ? ` and ${bound.retries} automatic retries with backoff` : "";
+  return `still behind its base after ${bound.sinceGate} updates${retried}${time}, heads ${heads}`;
 }
 
 /**

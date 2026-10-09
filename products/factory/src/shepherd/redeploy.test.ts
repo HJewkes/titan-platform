@@ -33,7 +33,7 @@ function withPr(): FakeGitHub {
 function world(conclusion: string | null, deployer: Deployer, fake: FakeGitHub = withPr(), dbPath = ":memory:") {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const base = githubPort(fake.wire);
-  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && conclusion !== null && fake.setRuns(sha, [successRun("validate", 5, undefined, conclusion)]), base.checkRuns(repo, sha)) };
+  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && conclusion !== null && fake.setRuns(sha, [successRun("validate", 5, undefined, conclusion), successRun("dag-check", 6)]), base.checkRuns(repo, sha)) };
   let clock = 0;
   const routes = factoryRoutesFor({ port, store: shepherdStoreRef(), now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), redeploy: deployer });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });

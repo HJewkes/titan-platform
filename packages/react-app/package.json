@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/react-app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React hooks over @titan-design/rpc-client and a Vite preset for daemon-backed apps",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,8 +36,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/rpc-client": "workspace:*",

@@ -20,12 +20,43 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Turbo replays a package's build or typecheck when its inputs hash the same. Only main saves; PRs restore main's cache.
+      - name: Restore turbo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm build
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
       - run: pnpm typecheck
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+      - name: Save turbo cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+      # Content strategy keys the cache on file contents, so a fresh checkout's mtimes do not matter. Only main saves.
+      # eslint cannot see edits to the workspace plugin's rules, so its source is part of the key.
+      - name: Restore eslint cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
+          restore-keys: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-
       - run: pnpm lint
+      - name: Save eslint cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .eslintcache
+          key: eslint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'packages/eslint-plugin/src/**') }}-${{ github.sha }}
       # Vitest orders files by the last run's durations; restoring main's results starts the slowest first.
       # It only orders files, so a miss leaves the step as it was and a hit never skips a test.
       - name: Restore vitest results
@@ -43,6 +74,7 @@ jobs:
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
       # CAPABILITIES.md and site/guides/capabilities.md are committed; a stale copy fails here.
       - run: pnpm capabilities:check
+      - run: pnpm metrics:check
       # Unfiltered, unlike pages.yml's PR trigger: a package added without
       # site/reference/<name>.md has to redden the required check, not the deploy.
       - run: pnpm docs:build
@@ -60,7 +92,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @titan-design/code-graph... run build
@@ -127,7 +159,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # prepare also builds it but swallows a failure; this step fails loudly.

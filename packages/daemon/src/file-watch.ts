@@ -48,118 +48,154 @@ const DEFAULT_ATTACH_TIMEOUT_MS = 5_000;
  * file or directory under the tree changes. `close()` tears down every watcher.
  */
 export function watchTree(root: string, onChange: () => void, options: WatchTreeOptions = {}): TreeWatcher {
-  const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
-  const watchers = new Map<string, FSWatcher>();
-  const attachWaiters = new Map<string, Set<() => void>>();
-  let debounceTimer: NodeJS.Timeout | null = null;
-  let rescanTimer: NodeJS.Timeout | null = null;
-  let closed = false;
-
-  const fire = (): void => {
-    if (closed) return;
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null;
-      if (!closed) onChange();
-    }, debounceMs);
-  };
-
-  /**
-   * Whether writes under `dir` reach the change feed. Per-directory when we attach
-   * per directory; under a recursive root watch every existing path beneath it is
-   * covered, with no handle of its own to look up.
-   */
-  const covered = (dir: string): boolean => {
-    if (closed) return false;
-    if (watchers.has(dir)) return true;
-    if (!RECURSIVE_WATCH) return false;
-    const rel = path.relative(root, dir);
-    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel) && existsSync(dir);
-  };
-
-  const notifyAttached = (dir: string): void => {
-    const waiters = attachWaiters.get(dir);
-    if (!waiters) return;
-    attachWaiters.delete(dir);
-    for (const resolve of waiters) resolve();
-  };
-
-  /** Under a recursive watch nothing "attaches", so coverage is rechecked on each event. */
-  const notifyNowCovered = (): void => {
-    for (const dir of [...attachWaiters.keys()]) if (covered(dir)) notifyAttached(dir);
-  };
-
-  const scheduleRescan = (): void => {
-    if (closed || rescanTimer) return;
-    rescanTimer = setTimeout(() => {
-      rescanTimer = null;
-      void addNewDirs(root);
-    }, debounceMs);
-  };
-
-  const watchDir = (dir: string, recursive = false): void => {
-    if (closed || watchers.has(dir)) return;
-    let w: FSWatcher;
-    try {
-      w = watch(dir, { persistent: false, recursive });
-    } catch (err) {
-      options.onError?.(err);
-      return;
-    }
-    w.on("error", (err) => options.onError?.(err));
-    w.on("change", () => {
-      fire();
-      // A new subdirectory may have appeared. One recursive handle already covers
-      // it, so only the per-directory mode has to go attach to it.
-      if (recursive) notifyNowCovered();
-      else scheduleRescan();
-    });
-    watchers.set(dir, w);
-    notifyAttached(dir);
-  };
-
-  const crawl: Crawl = {
-    isClosed: () => closed,
-    isWatched: (dir) => watchers.has(dir),
-    watchDir: (dir) => watchDir(dir),
-    fire,
-    onError: (err) => options.onError?.(err),
-  };
-  const addNewDirs = (dir: string): Promise<void> => attachBelow(crawl, dir);
-
-  const whenWatching = (dir: string, timeoutMs = DEFAULT_ATTACH_TIMEOUT_MS): Promise<boolean> => {
-    if (covered(dir)) return Promise.resolve(true);
-    if (closed) return Promise.resolve(false);
-    return new Promise<boolean>((resolve) => {
-      const done = (): void => {
-        clearTimeout(timer);
-        attachWaiters.get(dir)?.delete(done);
-        resolve(covered(dir));
-      };
-      const timer = setTimeout(done, timeoutMs);
-      timer.unref?.();
-      const waiters = attachWaiters.get(dir) ?? new Set<() => void>();
-      waiters.add(done);
-      attachWaiters.set(dir, waiters);
-    });
-  };
-
-  watchDir(root, RECURSIVE_WATCH);
-  if (!RECURSIVE_WATCH) attachBelowSync(crawl, root);
-
+  const tree = createTree(root, onChange, options);
+  watchDir(tree, root, RECURSIVE_WATCH);
+  if (!RECURSIVE_WATCH) attachBelowSync(tree.crawl, root);
   return {
-    isWatching: covered,
-    whenWatching,
-    close(): void {
-      closed = true;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      if (rescanTimer) clearTimeout(rescanTimer);
-      for (const w of watchers.values()) w.close();
-      watchers.clear();
-      for (const waiters of attachWaiters.values()) for (const resolve of waiters) resolve();
-      attachWaiters.clear();
+    isWatching: (dir) => covered(tree, dir),
+    whenWatching: (dir, timeoutMs) => whenWatching(tree, dir, timeoutMs),
+    close: () => closeTree(tree),
+  };
+}
+
+/** Everything one `watchTree` call shares between its watchers, timers and waiters. */
+interface Tree {
+  root: string;
+  onChange: () => void;
+  options: WatchTreeOptions;
+  debounceMs: number;
+  watchers: Map<string, FSWatcher>;
+  attachWaiters: Map<string, Set<() => void>>;
+  debounceTimer: NodeJS.Timeout | null;
+  rescanTimer: NodeJS.Timeout | null;
+  closed: boolean;
+  crawl: Crawl;
+}
+
+function createTree(root: string, onChange: () => void, options: WatchTreeOptions): Tree {
+  const tree: Tree = {
+    root,
+    onChange,
+    options,
+    debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
+    watchers: new Map(),
+    attachWaiters: new Map(),
+    debounceTimer: null,
+    rescanTimer: null,
+    closed: false,
+    crawl: {
+      isClosed: () => tree.closed,
+      isWatched: (dir) => tree.watchers.has(dir),
+      watchDir: (dir) => watchDir(tree, dir),
+      fire: () => fire(tree),
+      onError: (err) => tree.options.onError?.(err),
     },
   };
+  return tree;
+}
+
+function fire(tree: Tree): void {
+  if (tree.closed) return;
+  if (tree.debounceTimer) clearTimeout(tree.debounceTimer);
+  tree.debounceTimer = setTimeout(() => {
+    tree.debounceTimer = null;
+    if (!tree.closed) tree.onChange();
+  }, tree.debounceMs);
+}
+
+/**
+ * Whether writes under `dir` reach the change feed. Per-directory when we attach
+ * per directory; under a recursive root watch every existing path beneath it is
+ * covered, with no handle of its own to look up.
+ */
+function covered(tree: Tree, dir: string): boolean {
+  if (tree.closed) return false;
+  if (tree.watchers.has(dir)) return true;
+  if (!RECURSIVE_WATCH) return false;
+  return isStrictlyBelow(tree.root, dir) && existsSync(dir);
+}
+
+function isStrictlyBelow(root: string, dir: string): boolean {
+  const rel = path.relative(root, dir);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+function notifyAttached(tree: Tree, dir: string): void {
+  const waiters = tree.attachWaiters.get(dir);
+  if (!waiters) return;
+  tree.attachWaiters.delete(dir);
+  for (const resolve of waiters) resolve();
+}
+
+/** Under a recursive watch nothing "attaches", so coverage is rechecked on each event. */
+function notifyNowCovered(tree: Tree): void {
+  for (const dir of [...tree.attachWaiters.keys()]) if (covered(tree, dir)) notifyAttached(tree, dir);
+}
+
+function scheduleRescan(tree: Tree): void {
+  if (tree.closed || tree.rescanTimer) return;
+  tree.rescanTimer = setTimeout(() => {
+    tree.rescanTimer = null;
+    void attachBelow(tree.crawl, tree.root);
+  }, tree.debounceMs);
+}
+
+function watchDir(tree: Tree, dir: string, recursive = false): void {
+  if (tree.closed || tree.watchers.has(dir)) return;
+  const w = openWatcher(tree, dir, recursive);
+  if (!w) return;
+  w.on("error", (err) => tree.options.onError?.(err));
+  w.on("change", () => onWatcherChange(tree, recursive));
+  tree.watchers.set(dir, w);
+  notifyAttached(tree, dir);
+}
+
+function openWatcher(tree: Tree, dir: string, recursive: boolean): FSWatcher | null {
+  try {
+    return watch(dir, { persistent: false, recursive });
+  } catch (err) {
+    tree.options.onError?.(err);
+    return null;
+  }
+}
+
+function onWatcherChange(tree: Tree, recursive: boolean): void {
+  fire(tree);
+  // A new subdirectory may have appeared. One recursive handle already covers
+  // it, so only the per-directory mode has to go attach to it.
+  if (recursive) notifyNowCovered(tree);
+  else scheduleRescan(tree);
+}
+
+function whenWatching(tree: Tree, dir: string, timeoutMs = DEFAULT_ATTACH_TIMEOUT_MS): Promise<boolean> {
+  if (covered(tree, dir)) return Promise.resolve(true);
+  if (tree.closed) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      tree.attachWaiters.get(dir)?.delete(done);
+      resolve(covered(tree, dir));
+    };
+    const timer = setTimeout(done, timeoutMs);
+    timer.unref?.();
+    addWaiter(tree, dir, done);
+  });
+}
+
+function addWaiter(tree: Tree, dir: string, waiter: () => void): void {
+  const waiters = tree.attachWaiters.get(dir) ?? new Set<() => void>();
+  waiters.add(waiter);
+  tree.attachWaiters.set(dir, waiters);
+}
+
+function closeTree(tree: Tree): void {
+  tree.closed = true;
+  if (tree.debounceTimer) clearTimeout(tree.debounceTimer);
+  if (tree.rescanTimer) clearTimeout(tree.rescanTimer);
+  for (const w of tree.watchers.values()) w.close();
+  tree.watchers.clear();
+  for (const waiters of tree.attachWaiters.values()) for (const resolve of waiters) resolve();
+  tree.attachWaiters.clear();
 }
 
 /** What the per-directory crawl needs from its watcher. Only reached where `RECURSIVE_WATCH` is false. */

@@ -8,6 +8,8 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError } from "./shell/unsure-readings.js";
+import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
 export type DecideFn = (actions: readonly ClassifiedAction[], actor: ActorObservation) => GuardDecision;
@@ -29,13 +31,16 @@ type Env = Readonly<Record<string, string | undefined>>;
 type Event = Exclude<HookEvent, { kind: "other" }>;
 /** A decision's logged fields; an unclassified command logs action `unparsed` or `oversize` and spelling `<kind>.<action>`. */
 type Logged = Omit<Matched, "action" | "spelling"> & { action: string; spelling: string };
-type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass };
+/** A failure past one of classify's limits carries the reason the deny gives. */
+type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass; limit?: string };
 
 const PASS: HookResult = { stdout: "", log: [] };
 const UNPARSED_REASON =
   "authority-guard could not parse this command and it names a guarded action or path; split it into simpler commands.";
 const OVERSIZE_REASON =
   "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
+const READINGS_REASON =
+  "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -71,8 +76,9 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
   const actor = observeActor(env, event.sessionId);
-  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, port);
+  if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);
   const result = classifyEvent(event, port.context);
+  if (!result.ok && result.limit) return oversized(event, actor, result.limit, port);
   if (!result.ok) return failed(event, actor, result.cls, port);
   if (result.actions.length === 0) return PASS;
   return decided(event, actor, result.actions, port);
@@ -90,8 +96,18 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
   try {
     return { ok: true, actions: classify(event, ctx) };
   } catch (error) {
+    if (error instanceof ReadingLimitError) return { ok: false, cls: "oversize", limit: error instanceof ScriptBudgetError ? scriptsReason(error.overrun) : READINGS_REASON };
     return { ok: false, cls: error instanceof ParseError ? "parse" : "exception" };
   }
+}
+
+/** The limit a line's scripts hit, how far past it they go, and a split that then passes. */
+function scriptsReason(o: ScriptOverrun): string {
+  const kib = (bytes: number) => `${Math.ceil(bytes / 1024)} KiB`;
+  if (o.added && o.bytes * ADDED_SCRIPT_WEIGHT > MAX_SCRIPT_BYTES) {
+    return `authority-guard reads at most ${kib(MAX_SCRIPT_BYTES / ADDED_SCRIPT_WEIGHT)} of a script that only a variable in a wrapper position runs (\`$SUDO ./x.sh\`, \`timeout $T ./x.sh\`), and ${o.script} holds ${kib(o.bytes)}, so it refuses this command; write the wrapper out (\`sudo ./x.sh\`, \`timeout 5 ./x.sh\`) or run the script directly, so it is read as written.`;
+  }
+  return `authority-guard checks at most ${kib(MAX_SCRIPT_BYTES)} of script text in one command, counting a script that only a variable in a wrapper position runs ${ADDED_SCRIPT_WEIGHT} times, and this command's scripts reach ${kib(o.total)} at ${o.script}, so it refuses it; run ${o.script} in its own command.`;
 }
 
 /** A command or path that could not be classified denies only when its text names something guarded (D6). */
@@ -101,9 +117,10 @@ function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: Ho
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
 }
 
-function oversized(event: Event, actor: ActorObservation, port: HookPort): HookResult {
+/** Too large to check: an 8 KiB command, or one with more dynamic wrapper readings than classify walks. */
+function oversized(event: Event, actor: ActorObservation, reason: string, port: HookPort): HookResult {
   if (actor.bypass) return logged(formatErrorLine({ ts: port.now(), cls: "oversize", tool: event.toolName, session: event.sessionId }));
-  return unclassified(event, actor, "oversize", OVERSIZE_REASON, port);
+  return unclassified(event, actor, "oversize", reason, port);
 }
 
 function unclassified(event: Event, actor: ActorObservation, action: string, reason: string, port: HookPort): HookResult {

@@ -152,6 +152,11 @@ export interface WorkflowContext {
    * changed since the record can follow the path the run already took; undefined once the run is live.
    */
   historyNext(): string | undefined;
+  /**
+   * The step a resumed run was paused on and has not reached again: its gate is still pending, and no row records it
+   * until it is answered. Undefined for a live run, or once replay has reached that step.
+   */
+  resumedGate(): string | undefined;
   /** Aborts when the run is cancelled; pass it to anything long-running. */
   readonly signal: AbortSignal;
 }

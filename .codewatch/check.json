@@ -19,7 +19,9 @@
           "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
-          "packages/eslint-plugin"
+          "packages/eslint-plugin",
+          "packages/app-paths",
+          "packages/anthropic-account"
         ],
         "1": [
           "packages/retrieval",
@@ -34,7 +36,8 @@
           "packages/github",
           "packages/agent-dispatch",
           "packages/agent-surface",
-          "packages/worktree"
+          "packages/worktree",
+          "packages/health"
         ],
         "2": [
           "packages/session-read",
@@ -50,7 +53,9 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel",
+          "packages/pm"
         ],
         "ui": [
           "packages/react-app"
@@ -79,7 +84,9 @@
           "packages/egress-scan",
           "packages/fix-proof",
           "packages/tool-guard",
-          "packages/eslint-plugin"
+          "packages/eslint-plugin",
+          "packages/app-paths",
+          "packages/anthropic-account"
         ],
         [
           "packages/retrieval",
@@ -94,7 +101,8 @@
           "packages/github",
           "packages/agent-dispatch",
           "packages/agent-surface",
-          "packages/worktree"
+          "packages/worktree",
+          "packages/health"
         ],
         [
           "packages/session-read",
@@ -110,7 +118,9 @@
           "packages/queue-mirror",
           "packages/decider",
           "packages/coordinator",
-          "packages/owner-queue"
+          "packages/owner-queue",
+          "packages/review-panel",
+          "packages/pm"
         ],
         [
           "packages/react-app"

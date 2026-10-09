@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent-lifecycle",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Durable agent execution state and fenced ownership",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,8 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/agent-protocol": "workspace:^",

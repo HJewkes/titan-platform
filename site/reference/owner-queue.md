@@ -50,10 +50,130 @@ const list = rank(mergeByKeys([gate, ask]));
 // one item, id "gate:g-1", sources [hitl g-1, agent-chat m-1], keys [head, "task:PRJ1-7"]
 ```
 
+## Filing a deposit
+
+Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
+holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
+`recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
+`personal`, `unblocks`, `expiresAt`, plus `depositId`. `asker` and `depositId` are required;
+`keys` and `unblocks` default to empty and `personal` to false.
+
+The schema is strict at every level. The system alone sets `id`, `status`, `answer`, `route`,
+`authority`, `lint` and hidden picks, so a deposit carrying any of them is refused rather than
+stripped. Unknown fields are refused the same way.
+
+```ts
+import { fromDeposit } from "@titan-design/owner-queue";
+
+const item = fromDeposit(
+  {
+    depositId: "d-1", asker: "agent-a", kind: "decide", door: "two-way",
+    summary: "Pick a cache layout", context: "Two layouts fit the read path.",
+    options: [{ id: "flat", label: "Flat" }, { id: "nested", label: "Nested" }],
+    recommended: { optionId: "flat", by: "agent-a" },
+  },
+  new Date("2026-01-01T00:00:00Z"),
+);
+// status "open", lens "blocking-agent", sources [{ system: "deposit", ref: "agent-a/d-1" }]
+```
+
+`fromDeposit` throws on a refused deposit, opens the item at `now`, and takes its lens from
+`DEPOSIT_LENS`: `know` is `fyi`, `review` is `planning`, and every other kind is
+`blocking-agent`, since an agent is waiting on the answer. The id is `depositItemId(asker,
+depositId)`: `deposit:` and the first 32 hex characters of the SHA-256 of the JSON pair
+`[asker, depositId]`. Filing the same `depositId` again yields the same id, so a retried deposit
+names the item it already filed, and two askers using one `depositId` never collide.
+
+## The deposit spool
+
+The root export does no I/O. The `@titan-design/owner-queue/spool` subpath is the one
+exception: a directory of files that is the store of record for deposits and the owner's
+answers to them. Agents write it; the console and the factory read it.
+
+```ts
+import { readSpool, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+
+const dir = "/path/to/console-state/inbox/deposits";
+await writeDeposit(dir, {
+  depositId: "d-1", asker: "agent-a", kind: "know", door: "two-way",
+  summary: "Nightly build moved to 02:00", context: "",
+});
+// { file: ".../agent%2Da-d%2D1.json", created: true }
+
+const { items, rejects } = await readSpool(dir);
+for (const item of items) {
+  await writeAnswer(dir, item.id, { text: "ok", by: { class: "owner", id: "o", channel: "web" }, at: new Date().toISOString() });
+}
+```
+
+- `writeDeposit(dir, deposit)` parses with `ownerItemDepositSchema` and throws on a refused
+  deposit or one whose JSON is over `MAX_DEPOSIT_BYTES` (64 KB). It creates `dir` at 0700 if
+  needed, writes a 0600 temp file and links it into place. A link, unlike a rename, refuses
+  to replace an existing file, so the first write of an asker and `depositId` wins; a repeat
+  returns `created: false` and changes nothing, even when many writers race.
+- `readSpool(dir)` returns `{ items, rejects }`. Each valid deposit becomes an open item
+  through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
+  over the cap, a symlink, or a file whose name does not match its own asker and
+  `depositId` goes to `rejects` as `{ file, reason }`; reasons never quote file contents. A
+  missing `dir` reads as empty.
+- `writeAnswer(dir, id, answer)` and `readAnswer(dir, id)` keep `<id>.answer.json` beside the
+  deposits, written the same way. The first answer stays; `readAnswer` returns `undefined`
+  when none is filed and throws on a malformed one.
+
+File names come from untrusted values. `depositFileName(asker, depositId)` and
+`answerFileName(id)` percent-encode every UTF-8 byte outside `[a-z0-9_]`, so `/`, `\`,
+`.`, `-` and NUL never reach the name raw. A name can never leave `dir`, `-` stays an
+unambiguous separator (`a-b` + `c` and `a` + `b-c` get different files), and a name over 255
+bytes is refused. Uppercase letters are escaped too, so `Bob` and `bob` get different files
+even on a case-insensitive filesystem. A value holding a lone surrogate is refused with a
+`RangeError`: UTF-8 would turn it into U+FFFD and give it the name of a value that really
+holds U+FFFD.
+
+Before uppercase letters were escaped, `Bob` was filed as `Bob-…json`. `depositFileNames` and
+`answerFileNames` list the current name first and that legacy name second, and every reader
+accepts both: `readSpool`, `readAnswer`, and the repeat check in `writeDeposit` and
+`writeAnswer`. Writers only ever create the current name. When a name is already taken,
+`writeDeposit` reads the file there and throws `SpoolNameCollisionError` unless it holds the
+same asker and `depositId`. It never answers `created: false` for an id it did not file.
+
+## Stale rules
+
+An item can stop being a question without anyone answering it: its PR merged, a new commit
+moved the head it was pinned to, its task is done, or its asker retired and took its own
+default. `staleLabel(item, evidence)` says so from facts the caller has already read; it does
+no I/O and never guesses.
+
+```ts
+import { staleLabel } from "@titan-design/owner-queue";
+
+const label = staleLabel(gate, {
+  prs: { "org-a/repo-1#12": { state: "open", head: "0f1e2d3c4b5a69788796a5b4c3d2e1f098765432" } },
+});
+// { status: "gone-elsewhere", rule: "head-moved", reason: "new-head:0f1e2d3c4b5a69788796a5b4c3d2e1f098765432" }
+```
+
+| Rule | Fires when | Reason |
+|---|---|---|
+| `pr-merged` | any `pr:` key names a PR whose state is `merged` | `pr-merged:<owner>/<repo>#<n>` |
+| `head-moved` | a `pr:…@<sha>` key pins a full sha and the PR's live head is a different full sha | `new-head:<sha>` |
+| `task-done` | a `task:<id>` key names a task whose status is `done` | `task-done:<id>` |
+| `asker-retired` | `askers[item.asker].retired` and the asker declared an `onNoAnswer` other than `parked` | `asker-retired:<asker>` |
+
+- Rules run in that order and the first match wins, so a PR that merged on a newer head
+  reads as merged.
+- `onNoAnswer` is what the asker said it would do unanswered. A declared default means it
+  has acted, so the question is gone. `parked`, or no declaration, means the work waits on the
+  answer, so the item stays open for whoever resumes it.
+- A missing fact (no entry for the PR, task or asker, or a short sha on either side) never
+  labels an item. An item that is not `open` is never relabelled.
+- PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
+  ref as a merge key without its `@<sha>`.
+
 ## What it deliberately does not do
 
-- No I/O. Adapters, the projection store and the schedule belong to the product that runs them.
-- No stale rules, routing or answer forwarding yet. Those land in later releases or in decider.
+- No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
+  the product that runs them. Stale rules read evidence the caller fetched.
+- No routing or answer forwarding yet. Those land in later releases or in decider.
 - No fuzzy matching. Two items that describe the same thing in different words stay apart
   until a source gives them a shared key.
 

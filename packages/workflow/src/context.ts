@@ -4,9 +4,9 @@ import type { ZodType } from "zod";
 import { authorityOutcome, authorityStepResult, decisionVersion, authorizeResultOf, requireAuthority, type AuthorityGate, type AuthorityOutcome } from "./authorize.js";
 import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
-import type { ContextDeps, RecoveredStep } from "./context-deps.js";
+import type { CompletedStep, ContextDeps, Memo, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
-import { isRecoverable, runLegacyStep } from "./recovery.js";
+import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from "./recovery.js";
 import { messageOf } from "./runtime-values.js";
 import { reportingStepFailure } from "./step-failure.js";
 import { parseStepOutput } from "./step-output.js";
@@ -38,18 +38,6 @@ import {
 
 export type { ContextDeps, RecoveredStep } from "./context-deps.js";
 export { assistedGateId, gateIdFor, gateIsPending, memoKey, pendingGateId, type GatePredicate } from "./gate-ids.js";
-
-interface CompletedStep {
-  output: string;
-  runnerRef: string | null;
-  usage?: StepUsage;
-}
-
-interface Memo {
-  index: number;
-  key: string;
-  cached: StepResult | undefined;
-}
 
 
 /** Memoized workflow view. Every mutation is written through the runtime's owner fence. */
@@ -195,6 +183,8 @@ export class RunContext implements WorkflowContext {
 
   historyNext(): string | undefined { return recordedAfter(this.run.stepResults, this.answeredFrom); }
 
+  resumedGate(): string | undefined { return this.resumedGateStep ?? undefined; }
+
   /** A paused run already opened this gate, so a missing row is lost history: reopening it would ask the step again. */
   private requireResumedGate(stepId: string, gateId: string): void {
     if (this.resumedGateStep !== stepId) return;
@@ -334,10 +324,9 @@ export class RunContext implements WorkflowContext {
   }
 
   private holdForRecovery(stepId: string, evidence: string, gateId?: string): never {
-    this.run.status = "recovery_required";
-    this.run.error = evidence;
+    parkForRecovery(this.run, evidence);
     this.persist();
-    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId, evidence, ...(gateId ? { gateId } : {}) });
+    announceRecovery(this.deps.emit, this.runId, stepId, evidence, gateId);
     throw new WorkflowRecoveryRequiredError(this.runId, stepId, evidence);
   }
 

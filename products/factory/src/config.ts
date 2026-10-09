@@ -27,6 +27,8 @@ export const ReviewConfigSchema = z.strictObject({
   profile: profileName,
   /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
   roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
+  /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
+  g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
@@ -76,6 +78,9 @@ export const SpawnGateConfigSchema = z.strictObject({
   pressureLevel: z.number().int().positive().optional(),
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
+  headroomIntervalMs: z.number().int().min(0).optional(),
+  burstMax: z.number().int().positive().optional(),
+  headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
 });
 
@@ -90,9 +95,22 @@ export const ReviewCheckConfigSchema = z.strictObject({
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
+function isRemoteFactoryUrl(value: string): boolean {
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+}
+
+/** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
+const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
+
+/** The schema strips unknown keys, so a misspelt remoteFactory would silently leave the frozen database writable. */
+const misspeltRemoteFactory = (key: string): boolean => key !== "remoteFactory" && key.toLowerCase().replace(/[^a-z]/g, "").startsWith("remotefactory");
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
+  remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
   shepherd: z
@@ -106,10 +124,13 @@ export const FactoryConfigSchema = z.object({
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
+      /** The agent-chat seat told once when the deploy alarm goes up; absent means the alarm shows only in status. */
+      hubSeat: z.string().min(1).optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })
     .refine((s) => !s.fixer || s.agentChatBin, { message: "fixer needs an agentChatBin", path: ["agentChatBin"] })
+    .refine((s) => !s.hubSeat || s.agentChatBin, { message: "hubSeat needs an agentChatBin", path: ["agentChatBin"] })
     .optional(),
 });
 
@@ -144,7 +165,10 @@ function parseJson(path: string): unknown {
 
 export function loadConfig(path: string): FactoryConfig {
   if (!existsSync(path)) return {};
-  const parsed = FactoryConfigSchema.safeParse(parseJson(path));
+  const raw = parseJson(path);
+  const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
+  if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);
+  const parsed = FactoryConfigSchema.safeParse(raw);
   if (!parsed.success) throw new Error(`invalid config ${path}: ${parsed.error.issues.map((i) => `${i.path.join(".") || "$"}: ${i.message}`).join("; ")}`);
   return parsed.data;
 }

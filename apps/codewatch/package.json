@@ -1,6 +1,6 @@
 {
   "name": "codewatch",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "private": true,
   "description": "codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read",
   "type": "module",
@@ -14,8 +14,7 @@
     "export": "tsx server/export.ts",
     "fixtures": "tsx scripts/build-fixtures.ts",
     "call": "tsx server/call.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src server scripts vite.config.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/code-read": "workspace:*",

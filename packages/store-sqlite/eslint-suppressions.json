@@ -1,7 +1,0 @@
-{
-  "src/tables/span-fts.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  }
-}

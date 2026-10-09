@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/registry",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "zod command registry projected to CLI, MCP, and HTTP surfaces",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,8 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@titan-design/rpc-protocol": "workspace:*"

@@ -97,3 +97,24 @@ describe("changes.get against a baseline", () => {
     expect(changes()).toMatchObject({ snapshotId: 2, baselineSnapshotId: 1, comparable: true });
   });
 });
+
+describe("changes.get on a minimum rule", () => {
+  const minCov = (id: number, a: number, b: number): MemorySnapshot => ({
+    info: snapshotInfo(id),
+    nodes: [file("src/a.ts"), file("src/b.ts")],
+    metrics: [],
+    findings: [
+      { id: "min-cov|src/a.ts", rule: "min-cov", severity: "warning", nodeId: "src/a.ts", metric: "cov", value: a, threshold: 80, message: "" },
+      { id: "min-cov|src/b.ts", rule: "min-cov", severity: "warning", nodeId: "src/b.ts", metric: "cov", value: b, threshold: 80, message: "" },
+    ],
+    rules: [{ id: "min-cov", type: "metric-min", severity: "warning", text: "cov must be at least 80." }],
+  });
+  const call = answer(createQueryResolver(memorySource([minCov(2, 40, 50), minCov(1, 60, 20)])));
+
+  it("lists a falling value as worsened and a rising one as improved", () => {
+    const { findings } = call<Changes>("changes.get", { snapshot: 2, baseline: 1 });
+
+    expect(findings.worsened.map((c) => [c.finding.id, c.delta])).toEqual([["min-cov|src/a.ts", -20]]);
+    expect(findings.improved.map((c) => [c.finding.id, c.delta])).toEqual([["min-cov|src/b.ts", 30]]);
+  });
+});

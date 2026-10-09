@@ -29,6 +29,7 @@ export function runLayeredDepsRule(rule: LayeredDepsRule, ctx: RuleContext): Che
   const out: CheckViolation[] = [];
   for (const edge of ctx.edges) {
     if (!isImportEdge(edge)) continue;
+    if (rule.exemptTypeOnly === true && edge.attrs?.typeOnly === true) continue;
     if (hasExcludedRole(edge.srcId) || hasExcludedRole(edge.dstId)) continue;
     const srcPkg = packageOf(edge.srcId);
     const dstPkg = packageOf(edge.dstId);

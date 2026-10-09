@@ -1,0 +1,10 @@
+# @titan-design/owner-queue
+
+## 0.1.0
+
+### Minor Changes
+
+- 7313f6b: New package: the `OwnerItem` and `SourceRef` zod schemas, the `QueueSource` port, `mergeByKeys` (an exact shared key, including a PR's head sha, or no merge) and a deterministic `rank`. Pure, with no I/O.
+- e963a49: Add `staleLabel(item, evidence)`: pure stale rules that label an open item `gone-elsewhere` when its PR merged, its pinned head moved, its task is done, or its asker retired after declaring an `onNoAnswer` default other than `parked`. Exports `STALE_RULES`, `PARKED` and the `StaleEvidence`, `StaleLabel` and `StaleRule` types.
+- 4c1c075: Add the deposit format any agent can file into the owner inbox. `ownerItemDepositSchema` is a strict subset of `OwnerItem`: a deposit that carries `id`, `status`, `answer`, `route`, `authority`, `lint` or a hidden recommendation is refused, and `asker` and `depositId` (the idempotency key) are required. `fromDeposit(deposit, now)` parses a deposit and returns the open `OwnerItem` it files, with source `deposit:<asker>/<depositId>`, a lens derived from its kind (`DEPOSIT_LENS`) and an id from `depositItemId`. `SOURCE_SYSTEMS` gains `deposit`. Also exports the `OwnerItemDeposit` type.
+- 5b53b87: Add the `@titan-design/owner-queue/spool` subpath, the on-disk store of record for deposits and their answers. `writeDeposit(dir, deposit)` validates against `ownerItemDepositSchema`, refuses a deposit over `MAX_DEPOSIT_BYTES` (64 KB), and files `<asker>-<depositId>.json` at mode 0600 through a temp file, once: a repeated `depositId` from one asker keeps the first file and returns `created: false`. `readSpool(dir)` returns every valid deposit as an open `OwnerItem` (opened at the file's mtime) plus a `rejects` list of `{ file, reason }`, and one bad file never stops the read. `writeAnswer(dir, id, answer)` and `readAnswer(dir, id)` keep `<id>.answer.json` beside the deposits. File names percent-encode every byte outside `[A-Za-z0-9_]`, so an untrusted asker or depositId cannot write outside the spool. The root export still does no I/O.

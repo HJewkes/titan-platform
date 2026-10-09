@@ -10,8 +10,9 @@ import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanup
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, isFixersPr, recheckedFrozen, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
-import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
+import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
+import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
 import { spawnGate, type SpawnGate } from "./shepherd/spawn-gate.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
@@ -27,9 +28,11 @@ import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { shepherdEventMigration } from "./shepherd/events.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
@@ -42,6 +45,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   /** The per-repo merge train shepherd-pr runs merge through; defaults to one bound with the store. */
   train?: MergeTrainRef;
   holdPollMs?: number;
+  /** Paces the snapshot tick and is reported in `/health`; `configuredRoutes` wires one on the `rate_limit` reading. */
+  pacing?: TickPacing;
   agentChatBin?: string;
   /** The Claude config directory successors spawn under; the fixer's, since a successor is a fixer in a new session. */
   agentChatConfigDir?: string;
@@ -67,12 +72,14 @@ export interface FactoryRouteDeps extends LandPrDeps {
   reviewCheck?: GitHubPort;
   /** Starts `service deploy` after a green merge into the factory's own repo; absent means sh-redeploy spawns nothing. */
   redeploy?: Deployer;
+  /** Tells a repo's seat that a woken fixer exited with no push; absent means the owner gate takes every such exit. */
+  exitNotice?: ExitNoticePorts;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
 /** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12)];
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -85,17 +92,17 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const freeze = deps.freeze ?? freezeStoreRef(deps.now);
   const guard = firstReason(freezeGuard({ freezes: () => freeze.get(), registrations: holds, now: deps.now }), releaseGuard(holds, deps.now));
   const satisfy = holdSatisfierFor(deps);
-  const held = heldCheck(deps.port, holds, guard, satisfy);
+  const held = heldCheck(deps.port, holds, guard, satisfy, deps.snapshot);
   const train = deps.train ?? mergeTrainRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
-    route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
+    route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot)) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
-  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze };
+  const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing };
   return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
 }
 
@@ -142,7 +149,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => Seat
   if (!review || !agentChatBin) return undefined;
   const dispatch = agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir: review.configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, ...(codewatch && { codewatch }) };
+  return { dispatch, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
@@ -181,10 +188,12 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const review = configuredReview(shepherd, seats, roster, gate, fixerReview(freeze, store));
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
+  const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster })) : undefined;
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
   const port = overrides.port ?? githubPort(ghCliWire());
-  const snapshot = prSnapshot(port, { now: overrides.now });
-  return factoryRoutesFor({ port, snapshot, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
+  const pacing = tickPacing({ now: overrides.now });
+  const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
+  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

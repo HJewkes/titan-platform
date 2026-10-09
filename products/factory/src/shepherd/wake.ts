@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -7,16 +7,18 @@ import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { FLAKE_CHECK_STEPS, flakeCheckRoute } from "./flake-check.js";
+import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
-import type { ShepherdDeps, ShepherdPhases, WakeOutcome, WakeRequest } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, REPAIR_STEP, describeWake } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
+import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
+import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
@@ -27,7 +29,7 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_NEW_HEAD_STEP, kind: "dispatch" },
   { id: FIX_FIRST_STEP, kind: "dispatch" },
   { id: REPAIR_STEP, kind: "dispatch" },
-  ...FLAKE_CHECK_STEPS,
+  ...FIXER_EXIT_STEPS,
 ];
 
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
@@ -90,10 +92,14 @@ const WakeInputSchema = z.object({
 export type WakeInput = z.infer<typeof WakeInputSchema>;
 type Mode = "resume" | "successor" | "live";
 type Fallback = "resume" | "message";
-/** The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. */
-export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback } | { kind: "unhandled"; reason: string };
+/**
+ * The step's record: who took the wake and how, and the second ask that started its turn, for the wake analytics. A
+ * `held` wake is one whose successor agent-chat refused to start, so its seat can be told before the owner is asked.
+ */
+export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; sessionId?: string; fallback?: Fallback; askedAt?: number } | { kind: "unhandled"; reason: string; held?: { agent: string } };
 
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
+const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
 
 /** Waited out with no deadline: nothing was asked of the broker, or what was asked is checked on the next roster read. */
 const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
@@ -108,63 +114,22 @@ interface WakeTask {
   successors: readonly string[];
 }
 
-const HEAD_LINE = "end with a line `Head: <full sha>` naming the head you pushed.";
-
 function resumeMessage(task: WakeTask): string {
   const { input, pr } = task;
   const intro = `Shepherd is waking you on ${input.repo}#${input.pr}. ${task.reason}`;
   return `${intro}\n\n${task.payload}\n\nFix it on branch \`${pr.headRef}\`, push, and ${HEAD_LINE}`;
 }
 
-function successorBrief(task: WakeTask, predecessor: string, name: string): string {
-  const { input, pr } = task;
-  return [
-    `You are ${name}, taking over ${input.repo}#${input.pr} from ${predecessor}, whose session has ended. ${task.reason}`,
-    `Your worktree is cut from the repo's main checkout, not from the PR. Before editing, fetch the PR's head branch \`${pr.headRef}\` and check it out at the PR head ${pr.headSha}. Commit on top of it and push to it. Do not open a new PR.`,
-    task.payload,
-    `When pushed, register with Shepherd as this PR's implementer (\`titan-factory shepherd register\`), then ${HEAD_LINE}`,
-  ].join("\n\n");
-}
-
-function successorIndex(implementer: string, name: string): number | undefined {
-  const rest = name.startsWith(`${implementer}-s`) ? name.slice(implementer.length + 2) : "";
-  return /^[1-9]\d*$/.test(rest) ? Number(rest) : undefined;
-}
-
-/** The implementer, then its successors: the lineage's first, then `<implementer>-s<k>` names by `k`. */
-function chain(task: WakeTask, roster: readonly AgentRow[]): string[] {
-  const indexed = roster.flatMap((row) => {
-    const k = successorIndex(task.implementer, row.name);
-    return k === undefined ? [] : [{ name: row.name, k }];
-  });
-  return [...new Set([task.implementer, ...task.successors, ...indexed.sort((a, b) => a.k - b.k).map((row) => row.name)])];
-}
-
-/** A name can span several sessions; the latest generation is the one that holds it. */
-function latestRow(name: string, roster: readonly AgentRow[]): AgentRow | undefined {
-  return roster.filter((row) => row.name === name).reduce<AgentRow | undefined>((best, row) => (best === undefined || row.generation >= best.generation ? row : best), undefined);
-}
-
-function newestAgent(task: WakeTask, roster: readonly AgentRow[]): AgentRow | undefined {
-  return chain(task, roster)
-    .reverse()
-    .map((name) => latestRow(name, roster))
-    .find((row) => row !== undefined);
-}
-
-function successorName(task: WakeTask, roster: readonly AgentRow[]): string {
-  const taken = [...roster.map((row) => row.name), ...task.successors];
-  const highest = Math.max(0, ...taken.map((name) => successorIndex(task.implementer, name) ?? 0));
-  return `${task.implementer}-s${highest + 1}`;
-}
-
 type Choice =
   | { mode: "resume" | "live"; agent: string; message: string; sessionId: string }
   | { mode: "successor"; agent: string; predecessor: string; message: string; cwd: string };
 
+/** A retired agent, or one whose resume agent-chat refused this wake, is not asked again; a successor takes over from it. */
+const resumable = (newest: AgentRow, refused: ReadonlySet<string>): boolean => newest.status !== "retired" && !refused.has(newest.name);
+
 /** A string is why nobody can be woken. */
-async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[]): Promise<Choice | string> {
-  const path = newest.transcriptExists === true && newest.sessionId !== "" ? newest.transcriptPath : null;
+async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, newest: AgentRow, roster: readonly AgentRow[], refused: ReadonlySet<string>): Promise<Choice | string> {
+  const path = newest.transcriptExists === true && newest.sessionId !== "" && resumable(newest, refused) ? newest.transcriptPath : null;
   const warmth = typeof path === "string" ? await (wiring.readWarmth ?? readWarmth)(path) : undefined;
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
@@ -172,7 +137,7 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);
-  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent), cwd: checkout.dir };
+  return { mode: "successor", agent, predecessor: newest.name, message: successorBrief(task, newest.name, agent, lineageSeat(task, roster)), cwd: checkout.dir };
 }
 
 /** After a timeout the ask may have landed: a successor's name is on the roster, or the resumed agent is live again. A message leaves no mark. */
@@ -207,6 +172,26 @@ async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice
   }
 }
 
+/** What one ask came to: it was asked, the broker is waited out a poll, a successor is asked at once, or the step ends on a hold. */
+type Sent = "asked" | "wait" | "successor" | WakeStepResult;
+
+/**
+ * A resume agent-chat refuses, as of an agent on a model its pool no longer runs, is asked of a successor instead; a
+ * refused successor is `held`, with the refusal named. Any other failure, and a refused message to a live agent, stays
+ * a refusal: a successor beside a live agent would race it on the branch.
+ */
+async function askOrFallBack(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, refused: Set<string>, signal: AbortSignal): Promise<Sent> {
+  try {
+    return (await ask(deps, agents, choice, reask, signal)) ? "asked" : "wait";
+  } catch (error) {
+    signal.throwIfAborted();
+    if (choice.mode === "live" || !(error instanceof DispatchError)) throw error;
+    if (choice.mode === "successor") return held(choice.agent, error);
+    refused.add(choice.agent);
+    return "successor";
+  }
+}
+
 /** A successor joins the run's lineage, so the next wake counts it; the broker's id is used once the roster shows it. */
 async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, task: WakeTask, choice: Choice, signal: AbortSignal): Promise<void> {
   if (choice.mode !== "successor") return;
@@ -220,7 +205,7 @@ async function recordSuccessor(deps: ShepherdDeps, agents: ImplementerAgents, ta
  */
 async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, asked: Asked, signal: AbortSignal): Promise<WakeStepResult> {
   await recordSuccessor(deps, agents, task, asked.choice, signal);
-  const woke = wokenBy(asked.choice);
+  const woke = { ...wokenBy(asked.choice), askedAt: asked.at };
   if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), asked.at, signal)) return woke;
   const roster = await rosterWhileBrokerDown(deps, agents, signal);
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
@@ -230,7 +215,7 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   } catch (error) {
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
-  if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback };
+  if (await awaitTurn(turnWatch(deps, wiring, agents, task, asked.choice.agent, signal), at, signal)) return { ...woke, fallback, askedAt: at };
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
 }
 
@@ -284,6 +269,7 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 /** A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the ask a poll. */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
   let asked: Asked | undefined;
+  const refused = new Set<string>();
   const unreadable = unreadableHead(deps, task.input, signal);
   for (;;) {
     const roster = await rosterWhileBrokerDown(deps, agents, signal);
@@ -299,12 +285,14 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     }
     unreadable.read();
     if (read.moved) return wokenBy(liveChoice(task, newest));
-    const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster);
+    const choice = live ? liveChoice(task, newest) : await choose(deps, wiring, task, newest, roster, refused);
     if (typeof choice === "string") return unhandled(choice);
     const reask = sameAsk(asked?.choice, choice);
     asked = { choice, at: deps.now() };
-    if (await ask(deps, agents, choice, reask, signal)) return confirmTurn(deps, wiring, agents, task, asked, signal);
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    const sent = await askOrFallBack(deps, agents, choice, reask, refused, signal);
+    if (sent === "asked") return confirmTurn(deps, wiring, agents, task, asked, signal);
+    if (typeof sent === "object") return sent;
+    if (sent === "wait") await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
   }
 }
 
@@ -331,7 +319,7 @@ function exitedOn(deps: ShepherdDeps, wiring: WakeWiring): ((name: string, signa
   };
 }
 
-/** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate. */
+/** Never throws but for an abort: a refusal or a failed read is `unhandled`, so the run falls back to the owner gate; a `held` one tells the seat first. */
 async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: WakeInput, signal: AbortSignal): Promise<WakeStepResult> {
   const agents = agentsFor(deps, wiring);
   if (agents === undefined) return unhandled("shepherd.agentChatBin is not configured");
@@ -340,11 +328,16 @@ async function wakeImplementer(deps: ShepherdDeps, wiring: WakeWiring, input: Wa
     if (registration === undefined) return unhandled(`run ${input.runId} has no shepherd registration`);
     if (!registration.policy.fixer) return unhandled("seat grants no fixer");
     const task = await wakeTask(deps, input, registration);
-    return typeof task === "string" ? unhandled(task) : await wakeAgent(deps, wiring, agents, task, signal);
+    return typeof task === "string" ? unhandled(task) : heldOnlyIfHolding(input.kind, await wakeAgent(deps, wiring, agents, task, signal));
   } catch (error) {
     signal.throwIfAborted();
     return unhandled(`the wake was refused: ${failureOf(error)}`);
   }
+}
+
+/** The step's record is what `wakePhase` and the view both read, so a kind that never holds records no `held`. */
+function heldOnlyIfHolding(kind: WakeInput["kind"], result: WakeStepResult): WakeStepResult {
+  return result.kind === "unhandled" && result.held !== undefined && !HOLDING_KINDS.has(kind) ? unhandled(result.reason) : result;
 }
 
 /** A malformed input fails the step; the await step reads and never writes, so each repeats safely after a crash. */
@@ -353,12 +346,12 @@ export const wakeRoutes = (deps: ShepherdDeps, wiring: WakeWiring = {}): readonl
   awaitNewHeadRoute({ ...deps, agentExited: exitedOn(deps, wiring) }, AWAIT_NEW_HEAD_STEP),
   codeRoute(FIX_FIRST_STEP, deps.now, async (input: object) => input),
   codeRoute(REPAIR_STEP, deps.now, async (input: object) => input),
-  flakeCheckRoute(deps.port, deps.now),
+  ...fixerExitRoutes(deps.port, deps.now, deps.exitNotice),
 ];
 
 const Woke = z.discriminatedUnion("kind", [
-  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional() }),
-  z.looseObject({ kind: z.literal("unhandled"), reason: z.string() }),
+  z.looseObject({ kind: z.literal("woken"), agent: z.string(), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
+  z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
 
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
@@ -377,17 +370,19 @@ async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promis
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
-  if (woke.kind !== "woken") return { kind: "unhandled", reason: woke.reason };
-  return awaitFixerHead(ctx, request, woke);
+  if (woke.kind === "woken") return awaitFixerHead(ctx, request, woke);
+  if (woke.held === undefined) return { kind: "unhandled", reason: woke.reason };
+  const heldWake: HeldWake = { kind: "unhandled", reason: woke.reason, held: woke.held };
+  return heldWake;
 };
 
 /** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
-export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: { agent: string; sessionId?: string }): Promise<WakeOutcome> {
+export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence): Promise<WakeOutcome> {
   const target = { repo: request.repo, pr: request.pr, headSha: request.headSha, agent: woke.agent, ...(request.kind === "ci-red" && { untilGreen: true }) };
   const head = await step(ctx, `${AWAIT_NEW_HEAD_STEP}:${request.round}`, target, AwaitHeadResult);
   const woken = { kind: "woken" as const, agent: woke.agent, ...(woke.sessionId !== undefined && { sessionId: woke.sessionId }) };
   if (head.green) return { ...woken, sameHead: true };
-  if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}` };
+  if (head.exited) return { kind: "unhandled", exited: true, reason: `${woke.agent} exited without pushing a new head past ${request.headSha}`, wake: woke };
   if (head.headSha === request.headSha) return { kind: "unhandled", reason: `${request.repo}#${request.pr} closed at head ${request.headSha} before a new head` };
   return woken;
 }

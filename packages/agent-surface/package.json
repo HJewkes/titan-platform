@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/agent-surface",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,7 +35,6 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   }
 }

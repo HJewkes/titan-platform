@@ -9,7 +9,7 @@ import { sleep, step } from "../workflows/land.js";
 import type { ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
-import { acceptVerdict } from "./await-verdict.js";
+import { acceptVerdict } from "@titan-design/review-panel";
 import { acceptExternalVerdict } from "./external-review.js";
 import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";

@@ -140,46 +140,55 @@ interface OwnBindings {
 
 function ownBindings(fn: Node): OwnBindings {
   const out: OwnBindings = { locals: new Set(), declared: new Set(), declIds: new Set() };
-  for (const p of fn.childForFieldName("parameters")?.namedChildren ?? []) {
-    const id = p ? paramIdentifier(p) : null;
-    if (id) out.declIds.add(id.id);
-  }
-  const walk = (node: Node): void => {
-    if (SCOPE_TYPES.has(node.type)) return;
-    const id = assignedIdentifier(node);
-    if (id) {
-      out.locals.add(id.text);
-      out.declIds.add(id.id);
-    }
-    if (node.type === "global_statement" || node.type === "nonlocal_statement") {
-      for (const n of node.namedChildren) if (n) out.declared.add(n.text);
-    }
-    for (const child of node.namedChildren) if (child) walk(child);
-  };
+  for (const id of paramIdentifiers(fn.childForFieldName("parameters"))) out.declIds.add(id.id);
   const body = fn.childForFieldName("body");
-  if (body) walk(body);
+  if (body) collectOwnBindings(body, out);
   return out;
+}
+
+function paramIdentifiers(params: Node | null): Node[] {
+  const ids: Node[] = [];
+  for (const p of params?.namedChildren ?? []) {
+    const id = p ? paramIdentifier(p) : null;
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+function collectOwnBindings(node: Node, out: OwnBindings): void {
+  if (SCOPE_TYPES.has(node.type)) return;
+  recordOwnBinding(node, out);
+  for (const child of node.namedChildren) if (child) collectOwnBindings(child, out);
+}
+
+function recordOwnBinding(node: Node, out: OwnBindings): void {
+  const id = assignedIdentifier(node);
+  if (id) {
+    out.locals.add(id.text);
+    out.declIds.add(id.id);
+  }
+  if (node.type !== "global_statement" && node.type !== "nonlocal_statement") return;
+  for (const n of node.namedChildren) if (n) out.declared.add(n.text);
 }
 
 /** Names bound by parameters or plain assignment inside any scope nested in the function. */
 function nestedBindings(fn: Node): Set<string> {
   const out = new Set<string>();
-  const walk = (node: Node, nested: boolean): void => {
-    const inner = nested || (node !== fn && SCOPE_TYPES.has(node.type));
-    if (inner) {
-      const id = assignedIdentifier(node);
-      if (id) out.add(id.text);
-      if (node.type === "parameters" || node.type === "lambda_parameters") {
-        for (const p of node.namedChildren) {
-          const pid = p ? paramIdentifier(p) : null;
-          if (pid) out.add(pid.text);
-        }
-      }
-    }
-    for (const child of node.namedChildren) if (child) walk(child, inner);
-  };
-  walk(fn, false);
+  collectNestedBindings(fn, fn, false, out);
   return out;
+}
+
+function collectNestedBindings(node: Node, fn: Node, nested: boolean, out: Set<string>): void {
+  const inner = nested || (node !== fn && SCOPE_TYPES.has(node.type));
+  if (inner) recordNestedBinding(node, out);
+  for (const child of node.namedChildren) if (child) collectNestedBindings(child, fn, inner, out);
+}
+
+function recordNestedBinding(node: Node, out: Set<string>): void {
+  const id = assignedIdentifier(node);
+  if (id) out.add(id.text);
+  if (node.type !== "parameters" && node.type !== "lambda_parameters") return;
+  for (const pid of paramIdentifiers(node)) out.add(pid.text);
 }
 
 /** Identifier occurrences by name across the function's subtree, minus the own binding sites. */

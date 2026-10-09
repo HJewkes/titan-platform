@@ -36,7 +36,7 @@ for free. Tests use `fakeGitHub()`, an in-memory wire with effect counters, inst
 Verified against 0.0.0 (the workspace build), on the fake wire.
 
 ```ts
-import { evaluateChecks, fakeGitHub, githubPort, successRun } from "@titan-design/github";
+import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 
 const fake = fakeGitHub();
 const port = githubPort(fake.wire);
@@ -47,8 +47,6 @@ await port.ensureBranch("o/r", "feat/x", base);          // { sha, done: false, 
 
 const { pr } = await port.openPr("o/r", { head: "feat/x", base: "main", title: "x", body: "" });
 fake.setRuns(pr.headSha, [successRun("validate", 1)]);
-const runs = await port.latestCheckRuns("o/r", pr.headSha);
-evaluateChecks(["validate", "dag-check"], runs);         // { state: "pending", pending: ["dag-check"], failing: [] }
 ```
 
 Deciding a merge, where `dag-check` passed but was posted by an app that does not count:
@@ -74,7 +72,7 @@ Reading a PR's changes and leaving one evidence comment, on the fake wire:
 
 ```ts
 fake.prFiles.set(pr.number, [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]);
-await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]
+await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed", additions: 3, deletions: 1 }]
 await port.compareFiles("o/r", "main", "feat/x"); // { mergeBaseSha, files: [], truncated: false }
 
 const marker = "<!-- shepherd:evidence -->";
@@ -104,8 +102,8 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
 
 - `mergeableState` is computed lazily by GitHub. `unknown` is common and never means clean.
 - One head can carry several runs per check name, for example a success and a later
-  superseded `cancelled` run. `evaluateChecks` wants `latestCheckRuns`; `mergeReadiness`
-  wants every run from `checkRuns`, so a superseded red run still blocks the merge.
+  superseded `cancelled` run. `mergeReadiness` wants every run from `checkRuns`, so a
+  superseded red run still blocks the merge.
 - A required check with no run at all is `pending`, never passed.
 - A bad argument throws `GitHubInputError` naming the field before `gh` runs. A write whose
   precondition changed under it throws `GitHubConflictError`. A failed `gh` call throws
@@ -136,6 +134,9 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
 - GitHub silently caps `pulls/{n}/commits` at the first 250 commits (`PR_COMMITS_CAP`).
   `listPrCommits` returns the shas oldest first and does not detect the cap; a caller checks
   that the last sha is the PR's head and treats any other list as short.
+- `listDefaultBranchCommits(repo, since)` returns `{ sha, message }` for every commit on the
+  default branch committed at or after `since`, newest first, all pages. A wide `since` on a busy
+  repo is many pages; keep it to the window you need.
 - `listForcePushes` reads one GraphQL page of `FORCE_PUSHES_CAP` (100) head force-pushes and
   throws `ForcePushesTruncated` when GitHub says there are more. Treat that as "cannot decide",
   never as the whole list. `before` is null when GitHub no longer has the replaced commit.
@@ -153,6 +154,7 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
   when the old path matters.
 - `mergeSha` on an open PR is GitHub's test merge. It means the merge commit only once
   `merged` is true.
+- `mergedAt` is GitHub's ISO merge timestamp (REST `merged_at`), null until the PR merges.
 
 ### Check runs under a GitHub App
 

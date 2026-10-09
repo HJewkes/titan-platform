@@ -2,6 +2,7 @@ import { GITHUB_ACTIONS_APP_ID, type GitHubPort, type PullRequest, type RepoSlug
 import type { FactoryHost } from "../host.js";
 import { registerVersionPackages, type ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
+import { openOnBranch } from "./snapshot-reads.js";
 import { VERSION_PACKAGES_BRANCH, blockedOnlyByNpm, npmRegistry, publishedSince, type PackageRegistry } from "./release.js";
 
 /** How often `titan-factory serve` looks for a Version Packages PR in each shepherded repo. */
@@ -29,7 +30,7 @@ export async function sweepVersionPackages(host: FactoryHost, services: Shepherd
   for (const repo of repos) {
     let pr: PullRequest | null;
     try {
-      pr = await services.port.findPr(repo, VERSION_PACKAGES_BRANCH);
+      pr = await openOnBranch(services.port, services.snapshot, repo, VERSION_PACKAGES_BRANCH);
     } catch (error) {
       notes.push({ repo, error: failureOf(error) });
       continue;

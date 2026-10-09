@@ -70,11 +70,15 @@ function failClosed(cmd: Unwrapped): WordToken[][] {
   return [...replaced, ...(worst ? insertRuns(cmd.args, insert, [worst]) : [])];
 }
 
-/** Input that cannot be read: a protected utility is also read with its worst case, as the replace string or as appended words, so it fails closed. */
+/**
+ * Input that cannot be read: a protected utility is also read with its worst case, as the replace string or as appended words,
+ * so it fails closed. A replace string inside the arguments takes the worst case's last word, the record a push or merge reads.
+ */
 function unknownRuns(cmd: Unwrapped, replace: string | null): WordToken[][] {
   const worst = WORST_CASE[cmd.name ?? ""];
   if (!worst) return [cmd.args];
   if (replace === null) return [cmd.args, [...cmd.args, ...worst.map(literalWord)]];
-  if (cmd.args[0]?.value !== replace) return [cmd.args];
-  return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
+  if (cmd.args[0]?.value === replace) return [cmd.args, [...worst.map(literalWord), ...cmd.args.slice(1)]];
+  if (!replace || !cmd.args.some((a) => a.value.includes(replace))) return [cmd.args];
+  return [cmd.args, ...lineRuns(cmd.args, replace, worst.at(-1) as string, false)];
 }

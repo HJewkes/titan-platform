@@ -48,6 +48,8 @@ export interface DomainRun {
   domain: string;
   rows: number;
   evidence: number;
+  /** Rows that accepted a batch of decisions at once; they advance the watermark but are never evidence. */
+  bulk: number;
   /** Evidence rows whose question carried an instruction; they can confirm or ground nothing. */
   flagged: string[];
   rejected: RejectedCondenseDelta[];
@@ -122,7 +124,8 @@ async function reflect(reflector: Reflector, batch: DomainBatch, evidence: reado
 }
 
 async function condenseDomain(store: CondenseStore, domain: string, entries: readonly LedgerEntry[], reflector: Reflector, now: Date, run: CondenseRun): Promise<DomainRun> {
-  const evidence = entries.map((e) => e.row).filter(isEvidence);
+  const rows = entries.map((e) => e.row);
+  const evidence = rows.filter(isEvidence);
   const principles = principlesByDomain(store.playbook, now).get(domain) ?? [];
   const batch = domainBatch(domain, evidence, principles);
   const rejected: RejectedCondenseDelta[] = [];
@@ -131,7 +134,8 @@ async function condenseDomain(store: CondenseStore, domain: string, entries: rea
   run.added.push(...proposals.added);
   run.feedback.push(...recordFeedback(store.playbook, evidence, [...deltas.map((d) => d.delta), ...proposals.cites]));
   advance(store.watermarks, domain, entries);
-  return { domain, rows: entries.length, evidence: evidence.length, flagged: [...batch.flagged], rejected };
+  const bulk = rows.filter((row) => row.outcome === "bulk").length;
+  return { domain, rows: entries.length, evidence: evidence.length, bulk, flagged: [...batch.flagged], rejected };
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/retrieval",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,8 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
     "@huggingface/transformers": "^3.0.0"

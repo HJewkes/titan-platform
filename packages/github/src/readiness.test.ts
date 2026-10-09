@@ -5,7 +5,7 @@ import { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness, type MergeRea
 
 const HEAD = fakeSha("head");
 const OLD = fakeSha("old");
-const pr: PullRequest = { number: 4, state: "open", merged: false, mergeSha: null, headRef: "topic", headSha: HEAD, headRepo: "o/r", baseRef: "main", draft: false, mergeableState: "clean", behind: false };
+const pr: PullRequest = { number: 4, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: "topic", headSha: HEAD, headRepo: "o/r", baseRef: "main", draft: false, mergeableState: "clean", behind: false };
 const rules: RequiredChecks = { contexts: ["check"], strict: true };
 
 /** A run at the PR head unless `headSha` says otherwise. */

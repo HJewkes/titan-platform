@@ -11,23 +11,25 @@
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24 <25"
   },
   "scripts": {
-    "build": "pnpm -r run build",
-    "typecheck": "pnpm -r run typecheck",
-    "lint": "eslint scripts eslint.config.js vitest.config.ts && pnpm -r run lint",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint --concurrency=auto --cache --cache-strategy content --cache-location .eslintcache --suppressions-location eslint-suppressions.json scripts eslint.config.js vitest.config.ts \"packages/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" \"products/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" deploy/hub/src apps/codewatch/src apps/codewatch/server apps/codewatch/scripts apps/codewatch/vite.config.ts apps/console/src apps/console/server apps/console/vite.config.ts apps/console/tsup.config.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
     "dag:check": "node scripts/dag-check-self.mjs",
     "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
+    "areas": "node scripts/areas.mjs",
+    "metrics:check": "node scripts/metrics-check.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
     "egress:scan": "node packages/egress-scan/dist/bin.js",
     "docs:dev": "pnpm docs:reference && vitepress dev site",
-    "docs:build": "pnpm docs:reference && vitepress build site",
+    "docs:build": "node scripts/gen-docs-reference.mjs --check && vitepress build site",
     "docs:preview": "vitepress preview site",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/gen-capabilities.mjs",
@@ -47,10 +49,12 @@
     "globals": "^16.0.0",
     "mermaid": "^11.17.2",
     "tsup": "^8.0.0",
+    "turbo": "2.11.7",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.46.0",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yaml": "^2.9.1"
   }
 }

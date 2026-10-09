@@ -1,6 +1,12 @@
+import type { NeedsList } from "../needs/merged.js";
+import type { OwnerItem } from "@titan-design/owner-queue";
+import type { FrictionDay } from "../shepherd/owner-friction.js";
+import { waitingGates } from "../shepherd/waiting.js";
 import type { WatchRow } from "../shepherd/view.js";
+import { flowStats, implementerHours, mergedInWindow, taskToMerge, type FlowPorts } from "./flow.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
-import type { AgentChatDigest, Ask, DigestModel, DigestSlot, Merged, SeatLine, Stuck } from "./model.js";
+import { subjectOf } from "../needs/overlap.js";
+import type { AgentChatDigest, Ask, DigestModel, DigestSlot, FlowStats, Merged, ProofFixture, SeatLine, Stuck } from "./model.js";
 
 export interface GateFact {
   runId: string;
@@ -20,8 +26,14 @@ export interface DigestSources {
   gates(): Promise<GateFact[]>;
   /** Throws when agent-chat is missing, slow, or too old to print JSON. */
   agentChat(windowMinutes: number): Promise<AgentChatDigest>;
-  queueAsks(): Ask[];
+  queueAsks(): Ask[] | Promise<Ask[]>;
+  /** The merged owner list (`titan-factory needs`). When set, it is the whole of "Needs you"; gates, seat queues and the agent-chat asks are not read for it. */
+  needs?(): Promise<NeedsList>;
   seatCosts(since: Date): SeatLine[];
+  /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
+  friction?(now: Date): FrictionDay | undefined;
+  /** Task dates and the broker roster for the flow numbers. Optional: without it the digest leaves the section out. */
+  flow?: FlowPorts;
 }
 
 export interface CollectOptions {
@@ -31,8 +43,23 @@ export interface CollectOptions {
   slot: DigestSlot;
 }
 
+const WAITING_SHOWN = 5;
 const FINISHED = new Set(["done", "cancelled", "failed"]);
 const refOf = (row: WatchRow): string => (row.pr === null ? `${row.repo}@${row.branch}` : `${row.repo}#${row.pr}`);
+
+/** A run registered as a proof fixture is listed in its own digest section, never among the owner's asks, merges or stuck runs. */
+const proofFixtureRuns = (rows: readonly WatchRow[]): Set<string> => new Set(rows.filter((row) => row.ownerGateReason === "proof-fixture").map((row) => row.runId));
+
+function proofSection(allRows: readonly WatchRow[], proofRuns: ReadonlySet<string>, gates: readonly GateFact[], items: readonly OwnerItem[]): Pick<DigestModel, "proofFixtures"> {
+  const live = allRows.filter((row) => proofRuns.has(row.runId) && !FINISHED.has(row.phase));
+  return live.length > 0 ? { proofFixtures: live.map((row) => proofFixture(row, gates, items)) } : {};
+}
+
+function proofFixture(row: WatchRow, gates: readonly GateFact[], items: readonly OwnerItem[]): ProofFixture {
+  const pending = gates.filter((gate) => gate.runId === row.runId).map((gate) => gate.stepId);
+  const queued = items.filter((item) => runOfItem(item) === row.runId).map((item) => item.summary);
+  return { ref: refOf(row), gates: [...pending, ...queued], since: row.phaseSince };
+}
 
 /** A source that fails becomes a gap line; the other sections still render. */
 async function guarded<T>(gaps: string[], name: string, fallback: T, read: () => Promise<T> | T): Promise<T> {
@@ -47,22 +74,46 @@ async function guarded<T>(gaps: string[], name: string, fallback: T, read: () =>
 export async function collectDigest({ sources, now, windowMinutes, slot }: CollectOptions): Promise<DigestModel> {
   const gaps: string[] = [];
   const since = new Date(now.getTime() - windowMinutes * 60_000);
-  const rows = await guarded(gaps, "shepherd", [], () => sources.rows());
-  const gates = await guarded(gaps, "factory gates", [], () => sources.gates());
+  const allRows = await guarded(gaps, "shepherd", [], () => sources.rows());
+  const proofRuns = proofFixtureRuns(allRows);
+  const rows = allRows.filter((row) => !proofRuns.has(row.runId));
+  const allGates = await guarded(gaps, "factory gates", [], () => sources.gates());
+  const gates = allGates.filter((gate) => !proofRuns.has(gate.runId));
   const chat = await guarded<AgentChatDigest | undefined>(gaps, "agent-chat digest", undefined, () => sources.agentChat(windowMinutes));
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
+  const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
+  gaps.push(...(needs?.gaps ?? []));
+  const measured = await measuredSections(sources, gaps, rows, since, now);
+  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
+    needsYou: needs ? ownerAsks(needs.items.filter((item) => !proofRuns.has(runOfItem(item) ?? "")), rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
+    ...(waiting.length > 0 && { waiting }),
+    ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
+    ...measured,
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
+}
+
+/** Owner friction and flow, the sections that are left out when their port is missing or fails. */
+async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow">> {
+  const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
+  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now, gaps)) : undefined;
+  return { ...(friction && { friction }), ...(flow && { flow }) };
+}
+
+async function collectFlow(ports: FlowPorts, rows: readonly WatchRow[], since: Date, now: Date, gaps: string[]): Promise<FlowStats> {
+  const merged = mergedInWindow(rows, since);
+  const [tasks, spans] = await Promise.all([taskToMerge(merged, ports.taskCreated), ports.roster()]);
+  if (tasks.failure !== undefined) gaps.push(`flow tasks: ${tasks.failure}`);
+  return flowStats(merged, tasks, implementerHours(spans, since, now));
 }
 
 /** One ask per pending gate; a gate still pending from an earlier window repeats, marked with when it opened. */
@@ -80,6 +131,51 @@ function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[], since: 
       ...(Date.parse(gate.createdAt) < since.getTime() && { since: gate.createdAt }),
     };
   });
+}
+
+/** The digest's documented order: factory gates, then seat queues, then needs-decision tasks, then the broker. */
+const SYSTEM_ORDER = ["hitl", "morning", "active-work", "agent-chat"];
+/** An item merged from several systems sorts by the earliest, so a gate that a Morning line also names stays among the gates. */
+const systemRank = (item: OwnerItem): number => {
+  const ranks = item.sources.map((source) => SYSTEM_ORDER.indexOf(source.system)).filter((rank) => rank >= 0);
+  return ranks.length > 0 ? Math.min(...ranks) : SYSTEM_ORDER.length;
+};
+
+/** News (kind `know`) is not an ask. The sort is stable, so each system keeps the order its source read in. */
+function ownerAsks(items: readonly OwnerItem[], rows: readonly WatchRow[], since: Date): Ask[] {
+  return items
+    .filter((item) => item.kind !== "know")
+    .sort((a, b) => systemRank(a) - systemRank(b))
+    .map((item) => ownerAsk(item, rows, since));
+}
+
+const runOfItem = (item: OwnerItem): string | undefined => item.keys.find((key) => key.startsWith("run:"))?.slice("run:".length);
+
+/** A gate's line names its PR and step, from the Shepherd row for its run, and a gate open since before the window says so. */
+function gateDetail(item: OwnerItem, rows: readonly WatchRow[], since: Date): Pick<Ask, "since"> & { prefix: string; keys: string[] } {
+  const gateId = item.sources.find((source) => source.system === "hitl")!.ref;
+  const runId = runOfItem(item);
+  const row = rows.find((r) => r.runId === runId);
+  const step = gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
+  return {
+    prefix: `${row ? refOf(row) : (runId ?? gateId).slice(0, 8)} ${step}: `,
+    keys: row?.pr != null ? [prKey(row.repo, row.pr)] : [],
+    ...(Date.parse(item.openedAt) < since.getTime() && { since: item.openedAt }),
+  };
+}
+
+/** Keys a digest compares by: PR and run refs loosened to repo and number, gate ids as they are. Task ids stay out, as the Morning asks leave them. */
+function ownerAsk(item: OwnerItem, rows: readonly WatchRow[], since: Date): Ask {
+  const gate = item.sources.some((source) => source.system === "hitl") ? gateDetail(item, rows, since) : undefined;
+  const keys = [...item.keys.filter((key) => !key.startsWith("task:")).map((key) => subjectOf(key) ?? key), ...(gate?.keys ?? [])];
+  return {
+    text: `${gate?.prefix ?? ""}${item.summary}`,
+    ...(item.command !== undefined && { command: item.command }),
+    source: item.seat ?? item.sources[0]!.system,
+    keys: [...new Set(keys)],
+    ...(item.evidenceRef !== undefined && { evidence: item.evidenceRef }),
+    ...(gate?.since !== undefined && { since: gate.since }),
+  };
 }
 
 function chatAsks(chat: AgentChatDigest): Ask[] {

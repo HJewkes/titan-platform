@@ -1,20 +1,12 @@
-import { parseVerdictBlock } from "@titan-design/session-read";
+import { acceptVerdict, boundedFindings, type AwaitVerdictInput, type AwaitVerdictResult, type Presence, type ReviewerReader } from "@titan-design/review-panel";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
-import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
-import type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewerMessage, ReviewerReader } from "./review.js";
-import type { Presence } from "./presence.js";
-import { parseOwnerBrief, type Malformed } from "./review-schemas.js";
-import { namesTarget } from "./verdict-target.js";
 
 /** How long an exited or deregistered reviewer may stay gone before its wait ends; its final turn may still be landing on disk. */
 export const DEFAULT_EXIT_GRACE_MS = 60_000;
 /** A broker restart detaches every agent for a moment, so only a long detach counts as the reviewer leaving. */
 export const DEFAULT_DETACH_GRACE_MS = 10 * 60_000;
 export const HEAD = /^[0-9a-f]{40}$/;
-/** The most of a FIX_FIRST message the step output keeps, marker included; the findings come first, so the start is kept. */
-export const MAX_FIX_FIRST_TEXT_CHARS = 16_000;
-export const FIX_FIRST_TRUNCATED = "\n[truncated]";
 
 export interface AwaitVerdictTiming {
   now: () => number;
@@ -51,39 +43,10 @@ export function parseAwaitVerdictInput(raw: unknown): AwaitVerdictInput {
   return { repo, pr, head, reviewerAgentId, reviewerSessionId, dispatchedAt, ...(startedAt !== undefined && { startedAt }) };
 }
 
-function boundedFindings(text: string): string {
-  if (text.length <= MAX_FIX_FIRST_TEXT_CHARS) return text;
-  return text.slice(0, MAX_FIX_FIRST_TEXT_CHARS - FIX_FIRST_TRUNCATED.length) + FIX_FIRST_TRUNCATED;
-}
-
 export const bounded = (result: AwaitVerdictResult): AwaitVerdictResult => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? { ...result, text: boundedFindings(result.text) } : result);
 
-type MalformedNone = { kind: "none"; malformed: Malformed };
-const malformedNone = (refusal: Malformed["refusal"], writtenAt: number): MalformedNone => ({ kind: "none", malformed: { refusal, writtenAt } });
-
-/**
- * Accepts only the final message of the dispatched agent and session, written after dispatch, whose block names this PR at
- * this head. The reader's fields are not trusted: the locator must point into the dispatched session too, and no message
- * in the read may be written after the final one, so the latest message decides whatever order the reader gave.
- * A final message that passes those checks but whose block is refused, or names another repo, PR or head, is `none` with a
- * `malformed` record; silence, a foreign or earlier message and `WAIT` carry none. A MERGE or FIX_FIRST from a session that
- * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
- */
-export function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult {
-  const final = messages.at(-1);
-  if (!final) return { kind: "none" };
-  if (final.agentId !== input.reviewerAgentId || final.sessionId !== input.reviewerSessionId) return { kind: "none" };
-  if (final.locator?.source?.conversation?.nativeId !== input.reviewerSessionId) return { kind: "none" };
-  if (typeof final.writtenAt !== "number" || !(final.writtenAt > input.dispatchedAt)) return { kind: "none" };
-  if (messages.some((earlier) => earlier.writtenAt > final.writtenAt)) return { kind: "none" };
-  const block = parseVerdictBlock(final.text);
-  if (!("repo" in block)) return malformedNone(block.reason, final.writtenAt);
-  if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
-  if (!block.ok) return { kind: "none", reason: "wait" };
-  if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: boundedFindings(final.text), ...(block.closer && { closer: block.closer }) };
-}
+/** The step that records each head's verdict; a wake with no findings points the fixer at it. */
+export const AWAIT_VERDICT_STEP = "sh-await-verdict";
 
 /** The roster fields the wait reads; a `ReviewerAgent` row carries them. */
 type Roster = () => Promise<readonly { agentId: string; presence: Presence }[]>;

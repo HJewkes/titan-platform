@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/store-sqlite",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,8 +32,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.2"

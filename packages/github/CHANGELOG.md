@@ -1,5 +1,25 @@
 # @titan-design/github
 
+## 0.6.0
+
+### Minor Changes
+
+- 944ef91: Shepherd judges a main commit by the base branch's required contexts (rulesets, then classic protection, with per-context app pins) instead of every Actions job. A red non-required job such as `release` records a warning and no longer freezes the repo; a repo with no rules, or a rules read that fails, keeps the all-checks rule. The github port gains `classicRequiredChecks` and `RequiredChecks.pins`.
+- 7f4e467: Add `listDefaultBranchCommits(repo, since)` to the port: every default-branch commit committed at or after `since`, as `{ sha, message }` (`LoggedCommit`), newest first. The fake answers it from `history`.
+- 116dd59: Remove `evaluateChecks` and the `ChecksVerdict` type. It counted `skipped` and `neutral` as passed for a required check, which disagreed with `headCheckFindings` and `mergeReadiness`, where a required context needs a completed `success` run. Use `mergeReadiness` (or `headCheckFindings`) as the one rule. `isPassing` and `latestPerName` are unchanged.
+
+  Importers checked before removal, `git grep -E 'evaluateChecks|ChecksVerdict'` on each default branch: titan-platform origin/main f4b073d4 (only prose in changelogs, no code importer), active-work d30d9562: 0, agent-chat 93838463: 0, codewatch dc9f4eff: 0, relay e7a47577: 0, brain 760ce01a: 0.
+
+- 484fadc: `merge` and `rerunFailed` now survive a 5xx or an unreadable answer. Each failed write is followed by a read-back: a PR merged at the pinned head, or a run that is queued again, counts as done. Otherwise the write is sent once more, still pinned to the same head, and a second failure throws `WriteRetriesExhaustedError` naming the step. A 4xx is never retried. The fake GitHub gains `mergeFaults` and `rerunFaults`.
+
+### Patch Changes
+
+- 5facf32: Retry a comment post that fails with a 5xx or an unreadable answer: each retry first reads the PR's comments back and counts an existing marker comment as done, so the Shepherd merge-evidence comment is never posted twice. `GitHubPortOptions.sleep` injects the backoff wait.
+- 501b7c2: Give the `execGh` timeout test a per-run sleeper marker, so a concurrent run of the suite on one host can no longer fail its "leaves no gh child alive" check or have its sleeper killed.
+- b97a26d: Carry a pull request's merge time as `PullRequest.mergedAt` (`string | null`), mapped from REST `merged_at` and stamped by the fake on merge.
+- d4db9bc: `PrFile` carries `additions` and `deletions` from the PR's file list, read from the same `pulls/{n}/files` call as before.
+- d186dfb: `updateBranch` sends its PUT once more, with the same expected head, after an empty or unparseable answer or a 5xx. A 422 head mismatch on that retry reads as already updated; any other second failure rethrows the first error. gh's "unexpected end of JSON input" now counts as transient for reads too.
+
 ## 0.5.1
 
 ### Patch Changes

@@ -1,5 +1,27 @@
 # @titan-design/tool-guard
 
+## 0.3.0
+
+### Minor Changes
+
+- 661d2dc: The package is now public on npm, so the owner can pin it for the authority-guard PreToolUse hook. No code changed.
+
+### Patch Changes
+
+- c6a5bc5: Read a command word lower-cased too where the filesystem finds a program whatever its case (darwin, Windows), so `GIT push origin HEAD:main`, `/USR/BIN/GIT push`, `GH pr merge 5` and `NPM publish` classify as the lower-case spelling. The whole line is read a second time with every command word folded, so pipes, groups, branch switches and nested shells see the folded name. That reading only adds actions to the as-written one. The fold upper-cases then lower-cases, so the long s and ligatures APFS folds (`baſh`, `ſudo`, `ﬆdbuf`) read as `bash`, `sudo` and `stdbuf`. Builtins such as `cd` and `export` stay as written, because bash matches them exactly. `nodeContext` turns it on by platform through the new `ClassifyContext.foldCase`; Linux keeps reading the word as written.
+- 17adaec: Read xargs with no piped input and a dynamic word behind a wrapper as the push they may be. An unknown `-I` record fills every place its replace string appears with the worst case, so `xargs -I % git push origin %` reads as a protected push. A dynamic word that a wrapper reads as its positional or as the command word may expand to nothing, an option or another wrapper. The words are therefore also read without it, wrapper by wrapper, with the piped input still known: `timeout $O 5 git push` and `printf 'HEAD:main\n' | sudo $a xargs -I % git push origin %` now give a push verdict. Every such reading that runs a guarded program, a shell, `eval`, `find`, xargs or a dynamic command word is walked, since dropping a word is not monotone: `timeout $P git push` pushes only when `$P` is the duration. Readings that run anything else are skipped for free. A line whose walked readings would pass 512 words is refused as too large to check, like a command over 8 KiB, instead of being read in part. A script the line runs is not refused for that: past 512 words it reads its remaining commands as main does, without the readings, so a lone `./install.sh` of many `$SUDO cp` lines passes as on main; a script every reading runs is walked once. A shell script run by path is classified once per line state, so `timeout $P . a.sh` and its case-folded reading, or `. a.sh; bash a.sh`, read a 64 KiB script once instead of once per reading.
+
+  A line may classify at most 64 KiB of script text across all its readings. A shell script the line runs as written counts its size. A shell or interpreter script (python3, node, ruby, perl and the rest) that only an added reading runs counts four times its size, because main never reads it, so such a script is read up to 16 KiB. An interpreter script the line runs as written is not counted, as before. A script read again from the cache costs nothing. A line past the budget is refused as too large to check. The deny names the limit, the size reached and the script, and gives a split that then passes: write the wrapper out (`sudo ./x.sh`, not `$SUDO ./x.sh`) for a script over 16 KiB behind a variable, or run the named script in its own command. A lone script under 16 KiB behind a variable, such as `$SUDO ./install.sh`, is read and passes as on main.
+
+  Guarded path patterns are compiled once per process instead of once per path tested, so script and argument text naming many paths classifies about eight times faster.
+
+- Updated dependencies [2ff0840]
+- Updated dependencies [69db518]
+- Updated dependencies [c517313]
+- Updated dependencies [dcde08d]
+- Updated dependencies [20778a2]
+  - @titan-design/authority@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

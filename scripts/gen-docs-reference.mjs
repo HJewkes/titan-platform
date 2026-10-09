@@ -4,8 +4,11 @@
  * so adding a package never needs a hand edit to the nav.
  *
  * Reads `.codewatch/check.json` (the DAG) and each package.json, writes
- * `site/reference/index.md` and `site/.vitepress/reference-sidebar.json`, and
- * fails when a package has no hand-written page under `site/reference/`.
+ * `site/reference/index.md` and `site/.vitepress/reference-sidebar.json`, and fills the
+ * `<!-- generated:<name> start/end -->` blocks of the guides in MARKED_PAGES. Fails when a
+ * package has no hand-written page under `site/reference/`. With `--check`, which
+ * `docs:build` runs, it writes nothing and fails when a committed file differs from what it
+ * would write or a package has no family in `site/guides/package-families.md`.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -82,12 +85,25 @@ export function collect(base = root) {
   return [...entries, ...EXTERNAL];
 }
 
-function assertPagesExist(entries) {
-  const pages = new Set(readdirSync(join(root, "site", "reference")).filter((f) => f.endsWith(".md")));
+function assertPagesExist(base, entries) {
+  const pages = new Set(readdirSync(join(base, "site", "reference")).filter((f) => f.endsWith(".md")));
   const missing = entries.filter((e) => !e.private && !pages.has(`${e.dir}.md`)).map((e) => e.name);
   if (missing.length > 0) {
     throw new Error(`No reference page for: ${missing.join(", ")}. Add site/reference/<name>.md.`);
   }
+}
+
+const FAMILIES_PAGE = "site/guides/package-families.md";
+
+/**
+ * Every package under packages/, public or private, must be named in code font on the
+ * families page. The families are prose, so this reports the gap rather than writing it.
+ */
+function familyGap(base, entries) {
+  const text = readFileSync(join(base, FAMILIES_PAGE), "utf8");
+  const missing = entries.filter((e) => e.group === "packages" && !text.includes(`\`${e.dir}\``)).map((e) => e.dir);
+  if (missing.length === 0) return null;
+  return `No package family for: ${missing.join(", ")}. Add each to a family in ${FAMILIES_PAGE}.`;
 }
 
 function sidebar(entries) {
@@ -128,12 +144,140 @@ function indexPage(entries) {
   return lines.join("\n");
 }
 
-function main() {
-  const entries = collect();
-  assertPagesExist(entries);
-  writeFileSync(join(root, "site", ".vitepress", "reference-sidebar.json"), JSON.stringify(sidebar(entries), null, 2) + "\n");
-  writeFileSync(join(root, "site", "reference", "index.md"), indexPage(entries));
-  console.log(`reference: ${entries.length} workspace packages`);
+const GRAPH_TITLES = {
+  0: ["T0", "Tier 0 · primitives and contracts"],
+  1: ["T1", "Tier 1 · engines"],
+  2: ["T2", "Tier 2 · domain"],
+  ui: ["UI", "UI"],
+  product: ["P", "Products"],
+};
+
+/** Words mermaid's flowchart parser treats as keywords, so they cannot be node ids. */
+const MERMAID_KEYWORDS = new Set(["cluster", "end", "graph", "subgraph", "style", "class", "click", "default"]);
+
+function nodeId(dir) {
+  const id = dir.replace(/-(\w)/g, (_, c) => c.toUpperCase());
+  return MERMAID_KEYWORDS.has(id) ? `${id}Pkg` : id;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+const NUMBER_WORDS = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split(" ");
+const numberWord = (n) => NUMBER_WORDS[n] ?? String(n);
+
+function listProse(items) {
+  if (items.length < 2) return items.join("");
+  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+}
+
+/** Workspace units only: react-ui and deploy/hub sit outside the graph, as the page says. */
+function archGraph(entries) {
+  const units = entries.filter((e) => e.group !== undefined);
+  const byName = new Map(units.map((e) => [e.name, e]));
+  const lines = ["```mermaid", "graph TD"];
+  for (const tier of TIERS) {
+    const [id, title] = GRAPH_TITLES[tier];
+    const members = units.filter((e) => String(e.tier) === tier);
+    if (members.length === 0) continue;
+    lines.push(`  subgraph ${id}["${title}"]`, ...members.map((e) => `    ${nodeId(e.dir)}["${e.dir}"]`), "  end");
+  }
+  lines.push("");
+  for (const unit of units) {
+    const targets = unit.deps.filter((d) => byName.has(d)).sort();
+    lines.push(...targets.map((d) => `  ${nodeId(unit.dir)} --> ${nodeId(byName.get(d).dir)}`));
+  }
+  lines.push("```");
+  return lines.join("\n");
+}
+
+function leavesProse(entries) {
+  const leaves = TIERS.flatMap((tier) =>
+    entries.filter((e) => e.group === "packages" && String(e.tier) === tier && e.deps.length === 0),
+  );
+  const names = leaves.map((e) => `\`${e.dir}\``);
+  return `${listProse(names)} have no titan dependencies at all, which is why any of them can be adopted on its own.`;
+}
+
+function productsProse(entries) {
+  const products = entries.filter((e) => e.tier === "product");
+  const named = products.filter((e) => e.group !== "apps").map((e) => `\`${e.dir}\``);
+  const apps = products.filter((e) => e.group === "apps").map((e) => `\`${e.dir}\``);
+  if (apps.length === 1) named.push(`the ${apps[0]} app`);
+  if (apps.length > 1) named.push(`the ${apps.length > 2 ? listProse(apps) : apps.join(" and ")} apps`);
+  const units = `${numberWord(products.length)} unit${products.length === 1 ? "" : "s"}`;
+  return `The \`product\` tier holds ${units}: ${listProse(named)}.`;
+}
+
+function minerCount(entries) {
+  const miner = entries.find((e) => e.group === "products" && e.dir === "session-miner");
+  if (!miner) throw new Error("products/session-miner is missing; the miner-count block has nothing to count");
+  return numberWord(miner.deps.length);
+}
+
+/** Paragraph-level blocks sit on their own lines; `miner-count` sits inside a sentence. */
+function blocks(entries) {
+  return {
+    "arch-graph": `\n${archGraph(entries)}\n`,
+    "arch-leaves": `\n${leavesProse(entries)}\n`,
+    "arch-products": `\n${productsProse(entries)}\n`,
+    "miner-count": minerCount(entries),
+  };
+}
+
+export const MARKED_PAGES = {
+  "site/guides/architecture.md": ["arch-graph", "arch-leaves", "arch-products", "miner-count"],
+  "site/guides/index.md": ["miner-count"],
+};
+
+function fillMarkers(text, page, generated) {
+  let out = text;
+  for (const name of MARKED_PAGES[page]) {
+    const pattern = new RegExp(`(<!-- generated:${name} start -->)[\\s\\S]*?(<!-- generated:${name} end -->)`, "g");
+    if (!out.match(pattern)) throw new Error(`${page} has no <!-- generated:${name} start/end --> markers`);
+    out = out.replace(pattern, (_, start, end) => `${start}${generated[name]}${end}`);
+  }
+  return out;
+}
+
+/** Every file this script owns, as `{ path, content }` relative to `base`. */
+export function outputs(base = root) {
+  const entries = collect(base);
+  assertPagesExist(base, entries);
+  const generated = blocks(entries);
+  const marked = Object.keys(MARKED_PAGES).map((page) => ({
+    path: page,
+    content: fillMarkers(readFileSync(join(base, page), "utf8"), page, generated),
+  }));
+  return [
+    { path: "site/.vitepress/reference-sidebar.json", content: JSON.stringify(sidebar(entries), null, 2) + "\n" },
+    { path: "site/reference/index.md", content: indexPage(entries) },
+    ...marked,
+  ];
+}
+
+/** What `--check` fails on: committed files that differ from `outputs`, and a package with no family. */
+export function problems(base = root) {
+  const stale = outputs(base)
+    .filter(({ path, content }) => !existsSync(join(base, path)) || readFileSync(join(base, path), "utf8") !== content)
+    .map(({ path }) => path);
+  const found = [];
+  if (stale.length > 0) found.push(`Generated docs are out of date: ${stale.join(", ")}. Run \`pnpm docs:reference\` and commit the result.`);
+  const gap = familyGap(base, collect(base));
+  if (gap) found.push(gap);
+  return found;
+}
+
+function main(argv) {
+  if (argv.includes("--check")) {
+    const found = problems();
+    for (const problem of found) console.error(problem);
+    if (found.length > 0) process.exit(1);
+    console.log("reference: generated docs are up to date");
+    return;
+  }
+  const files = outputs();
+  for (const { path, content } of files) writeFileSync(join(root, path), content);
+  const gap = familyGap(root, collect());
+  if (gap) console.warn(`${gap} docs:build fails until then.`);
+  console.log(`reference: wrote ${files.length} generated files`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
