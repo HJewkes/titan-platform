@@ -12,3 +12,5 @@ export type { MinerStatus } from "./commands/status.js";
 export type { SearchHit, SearchResponse } from "./commands/search.js";
 export type { SessionDetail, SessionSummary } from "./commands/sessions.js";
 export type { DrainSummary, TemplateRow } from "./commands/drain.js";
+export type { GraphHealth, GraphRefreshOptions, GraphRefreshResult } from "./graph-refresh.js";
+export { EXIT_LOCKED, checkGraph, runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
