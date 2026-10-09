@@ -53,6 +53,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_LAN_NAMES` | the hostname and `<hostname>.local` | Comma list of DNS names the LAN listener answers to; the first goes into login links. A port, an IP or a loopback name is refused |
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Leave it unset until the LAN carries TLS. Any value but `0` or `1` is refused |
+| `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -105,6 +106,7 @@ the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.m
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, and `stageGuessed` when no evidence was found |
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -119,8 +121,9 @@ Three rules hold for every later slice.
   daemons at `127.0.0.1:<port>`; only the port is configurable.
 - **It starts nothing.** A probe is one `GET /health` with a one second timeout. An upstream
   that does not answer is reported as unreachable, and the console never spawns it.
-- **Read-only.** There is no command that writes, answers a queue item, or controls an agent.
-  A later one must take a class below.
+- **Read-only, apart from deposits.** The one write is `inbox.deposit`, which files an item but
+  cannot answer one. No command answers a queue item or controls an agent. A later one must
+  take a class below.
 
 ## Who may run a command
 
@@ -130,7 +133,7 @@ echoes a cookie, the token or a login code.
 
 | Class | Runs for |
 | --- | --- |
-| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command today is a read |
+| `read` | Anyone the listener lets in: loopback with no credentials, the LAN with a cookie or bearer. Every command but `inbox.deposit` is a read |
 | `deposit` | An HTTP call: on loopback, where every POST already needs an allowlisted `Origin` or `X-Titan-Client`, or on the LAN with either credential |
 | `owner-write` | Only the owner's session cookie on the LAN listener, from a peer that is not this machine, while `TITAN_CONSOLE_OWNER_WRITES=1` |
 
@@ -143,6 +146,34 @@ receives the verified session's `issuedAt` as `ctx.ownerPresence`, the owner-con
 presence proof. Commands run only through `POST /rpc/<name>`, so no owner write is a GET.
 The OS account is still the trust boundary: this stops an agent answering for the owner by
 accident or as a confused deputy, not a hostile process running as the same user.
+
+## Owner inbox deposits
+
+Any agent files an owner item with `inbox.deposit`, or from a shell:
+
+```sh
+titan-console inbox file '{"depositId":"ask-1","asker":"my-agent","kind":"decide",...}'
+titan-console inbox file - < deposit.json   # - or no argument reads stdin
+```
+
+The CLI posts to `127.0.0.1:$TITAN_CONSOLE_PORT` only, refuses a redirect, and prints the item
+id alone. On a refusal it prints the console's reason and exits 1; it never echoes the body.
+
+- **Strict body.** `ownerItemDepositSchema` from `@titan-design/owner-queue` refuses any field
+  only the system sets: `id`, `sources`, `status`, `answer`, `route`, `authority`, `lint` and
+  `recommended.hidden`. Each answers 400 and files nothing.
+- **One file per deposit.** `owner-queue/spool`'s `writeDeposit` writes it at 0600 under
+  `TITAN_CONSOLE_INBOX_DIR`. The file name percent-encodes `asker` and `depositId`, so `../`, `/`
+  and NUL cannot leave the spool.
+- **Idempotent.** A repeat of an asker's `depositId` keeps the first body and answers its item
+  id with `created: false`.
+- **Caps.** A deposit over 64 KB, measured as the spool stores it, answers 400. An asker with
+  200 open deposits, those with no answer file beside them, gets 429 (`EXIT.TEMPFAIL`) until one
+  is answered. Deposits run one at a time, so racing calls cannot pass the cap together.
+- **Trust limit.** `asker` comes from the body and is self-declared: loopback carries no
+  identity, and a LAN credential names no agent. One agent can file under another's name, and
+  can spread past the cap across invented names. A deposit still cannot answer or resolve
+  anything, so this costs inbox noise, not owner authority.
 
 ## active-work reads
 
