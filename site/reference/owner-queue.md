@@ -229,6 +229,65 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.
 
+## Relation keys
+
+Some items are about the same thing without being the same item: one question asked again in
+a later round, or two asks about one shared component. Relation keys record that. None of them
+is a merge key, so `mergeByKeys` never joins items on one; the approval flow reads them to
+re-check, group and order items instead.
+
+| Helper | Key | Meaning |
+|---|---|---|
+| `askKey(id)` | `ask:<id>` | the same question across rounds |
+| `roundAskKey(unit, questionId)` | `ask:<unit>/<questionId>` | a round question's default ask key |
+| `componentKey(name)` | `component:<name>` | a shared component |
+| `tokenKey(name)` | `token:<name>` | a shared design token |
+| `topicKey(name)` | `topic:<name>` | a shared topic |
+
+Component, token and topic names are lower-cased with runs of spaces turned to `-`, so
+`Date Picker` and `date picker` give one key. A blank name throws. `relationKind(key)` returns
+the kind of a relation key, or null for a merge key or anything else. `prKey(repo, pr, headSha)`
+builds a PR merge key in the canonical lower-case form.
+
+## Round questions as items
+
+The approval flow treats review-round questions as OwnerItems alongside every other ask.
+
+```ts
+import { answeredFromFeedback, buildOwnerRounds, fromRoundQuestions } from "@titan-design/owner-queue";
+
+const { manifest, bindings } = buildOwnerRounds(open, options).rounds[0]!;
+const context = { roundId: "decisions-r1", openedAt: "2026-01-01T00:00:00Z", bindings };
+
+const asked = fromRoundQuestions(manifest, context.roundId, context);
+const answered = answeredFromFeedback(feedbackJson, manifest, context);
+// a single-item question comes back as that item, with the owner's pick as its option id
+```
+
+- **Ids and keys.** An item is `round:<roundId>/<questionId>` with source
+  `{ system: "round", ref: "<roundId>#<questionId>" }` and the question's `ask:` key. With
+  the bindings `buildOwnerRounds` returned, a question that asked one item takes that item's
+  id and option ids, so a round built and then answered round-trips. A `Principle:` question
+  settles several items, so it stays a round item with options `yes` and `no`.
+- **Kinds.** A merge-bound pick-one is `approve` with lens `blocking-merge` and carries the
+  `pr:` key pinned to its head. A bound question is `decide` and any other is `review`, both
+  with lens `planning`.
+- **Text.** The prompt becomes a one-line summary of at most 280 characters. The context is
+  the question's section `deciding` and `context`, or the round's `context`. A pick question
+  with two to eight options keeps them; any other is asked as free text. A pick-one
+  recommendation on an offered option becomes `recommended`, hidden in an `after-answer` round.
+- **Answers.** `answeredFromFeedback` returns only the questions the feedback answered and
+  did not list in `unansweredQuestionIds`, with status `answered`, `at` its `submittedAt` and
+  `by` `ROUND_ANSWERER`. An offered pick becomes `optionId`; free text, picks, a scale value,
+  a pick the question does not offer and the comment become `text`.
+- **Validation.** Both functions parse with `ManifestSchema` and `FeedbackSchema` from
+  `@titan-design/review-schema` and throw on an invalid file, an invalid `openedAt`, or a
+  feedback whose unit or round differs from the manifest. round@2 carries no time, so
+  `openedAt` is the caller's.
+- **Until question ids are stable.** `buildOwnerRounds` numbers questions `q1`, `q2`, … per
+  round, so the default `ask:` key only matches within a unit and question id. Builders that
+  keep an id per ask make it match across rounds.
+
 ## What it deliberately does not do
 
 - No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
