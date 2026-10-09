@@ -129,7 +129,11 @@ function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
 
 const INVALID_JSON = Symbol("invalid-json");
 
-/** Refuses an oversized body with 413 from its Content-Length, or mid-stream once a chunked one passes the cap. */
+/**
+ * Refuses an oversized body with 413 from its Content-Length, or mid-stream once a chunked one
+ * passes the cap. A Content-Length is checked from the header alone: Node's parser never reads
+ * past it, and touching `raw.body` would make the node adapter build a second Request.
+ */
 function rpcBodyLimitMiddleware(limit: RpcBodyLimit = {}): MiddlewareHandler {
   const fallback = limit.maxBytes ?? DEFAULT_RPC_BODY_LIMIT;
   const perCommand = limit.perCommand ?? {};
@@ -137,6 +141,10 @@ function rpcBodyLimitMiddleware(limit: RpcBodyLimit = {}): MiddlewareHandler {
   return (c, next) => {
     const name = c.req.param("name") ?? "";
     const maxSize = Object.hasOwn(perCommand, name) ? perCommand[name]! : fallback;
+    const length = c.req.header("content-length");
+    if (length !== undefined && c.req.header("transfer-encoding") === undefined) {
+      return Number(length) > maxSize ? Promise.resolve(onError(c)) : next();
+    }
     const original = c.req.raw;
     return bodyLimit({ maxSize, onError })(c, () => {
       carryRequestAuth(original, c.req.raw);
