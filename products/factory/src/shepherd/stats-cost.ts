@@ -38,11 +38,11 @@ interface PrCost {
   pr: number;
   /** ISO week of the merge. */
   week: string;
-  /** Verdicts the reviewers gave on the PR, across all its runs. */
+  /** Reviews dispatched for the PR across all its runs, whether or not they came to a verdict. */
   rounds: number;
-  /** Distinct reviewer sessions those verdicts came from. */
+  /** Distinct reviewer sessions those rounds ran in. */
   sessions: number;
-  /** Sessions read in full; an unreadable session adds nothing here and is listed instead. */
+  /** Rounds priced in full; an unreadable round adds nothing here and is listed instead. */
   usd: number;
   tokens: CostTokens;
   unreadable: UnreadableSession[];
@@ -52,9 +52,9 @@ interface Rollup {
   prs: number;
   usd: number;
   tokens: CostTokens;
-  /** Unreadable sessions, summed over the PRs. */
+  /** Unreadable rounds, summed over the PRs. */
   unreadable: number;
-  /** Over PRs with no unreadable session; null when there are none. */
+  /** Over PRs with no unreadable round; null when there are none. */
   p50Usd: number | null;
   p90Usd: number | null;
 }
@@ -67,44 +67,62 @@ interface ReviewCostReport {
   totals: Rollup & { completePrs: number };
 }
 
-/** A round's requests are those made from its dispatch to its verdict, in ms; a standing or named reviewer serves several PRs in one session. */
-interface Verdict {
+/**
+ * One paid review, from its dispatch to the step that resolved it, in ms; a standing or named reviewer serves several PRs in one session.
+ * `to` is null when no step resolved it, and `path` is null until a verdict's locator names the transcript.
+ */
+interface Round {
   session: string;
   path: string | null;
   from: number;
-  to: number;
+  to: number | null;
 }
 
 interface MergedPr {
   repo: string;
   pr: number;
   mergedAt: number;
-  verdicts: Verdict[];
+  rounds: Round[];
 }
 
 const emptyTokens = (): CostTokens => ({ input: 0, cacheRead: 0, cacheWrite: 0, output: 0 });
 const round = (usd: number): number => Math.round(usd * 1e6) / 1e6;
 
-function verdictOf(result: Record<string, unknown>, window: { from: number; to: number }): Verdict | undefined {
-  if (result.kind !== "verdict") return undefined;
+/** The on-time wait, its `:corrected` reply and the late read each resolve a round, with a verdict or a timeout. */
+const RESOLVING_STEPS = new Set(["sh-await-verdict", "sh-late-verdict"]);
+
+/** A started reviewer's `sh-review` opens a round, and so does an external intent, which starts nobody; the intent's `at` bounds what can be the verdict. */
+function openedRound(name: string, result: Record<string, unknown>, runStart: number): Round | undefined {
+  const opened = (name === "sh-review" && result.kind === "dispatched") || (name === "sh-review-intent" && result.kind === "intent" && result.mode === "external");
+  if (!opened) return undefined;
+  const session = typeof result.sessionId === "string" ? result.sessionId : String(result.reviewer ?? "unknown");
+  return { session, path: null, from: typeof result.at === "number" ? result.at : runStart, to: null };
+}
+
+/** Only a verdict names its transcript; the dispatch knows the session but not where it is written. */
+function locatorOf(result: Record<string, unknown>): Partial<Pick<Round, "session" | "path">> {
+  if (result.kind !== "verdict") return {};
   const locator = result.locator as { source?: { path?: unknown; conversation?: { nativeId?: unknown } } } | undefined;
   const nativeId = locator?.source?.conversation?.nativeId;
   const reviewer = (result.reviewer as { sessionId?: unknown } | undefined)?.sessionId;
-  const session = typeof nativeId === "string" ? nativeId : typeof reviewer === "string" ? reviewer : "unknown";
-  return { session, path: typeof locator?.source?.path === "string" ? locator.source.path : null, ...window };
+  const session = typeof nativeId === "string" ? nativeId : typeof reviewer === "string" ? reviewer : undefined;
+  return { ...(session !== undefined && { session }), ...(typeof locator?.source?.path === "string" && { path: locator.source.path }) };
 }
 
-/** A round opens at the latest review intent before its verdict, or at the run's start for a run with none recorded. */
-function verdictsOf(run: WorkflowRun): Verdict[] {
-  const steps = Object.entries(run.stepResults);
-  const intents = steps.flatMap(([key, result]) => (stepName(key) === "sh-review-intent" && typeof payloadOf(result).at === "number" ? [payloadOf(result).at as number] : []));
-  return steps
-    .filter(([key]) => stepName(key) === "sh-await-verdict")
-    .flatMap(([, result]) => {
-      const to = Date.parse(result.completedAt);
-      const from = Math.max(Date.parse(run.startedAt), ...intents.filter((at) => at <= to));
-      return verdictOf(payloadOf(result), { from, to }) ?? [];
-    });
+/** Steps are stored in the order they were recorded, so a resolving step belongs to the latest round opened before it, and the last one ends it. */
+function roundsOf(run: WorkflowRun): Round[] {
+  const rounds: Round[] = [];
+  for (const [key, step] of Object.entries(run.stepResults)) {
+    const name = stepName(key);
+    const result = payloadOf(step);
+    const opened = openedRound(name, result, Date.parse(run.startedAt));
+    if (opened) rounds.push(opened);
+    const current = rounds.at(-1);
+    if (!current || !RESOLVING_STEPS.has(name)) continue;
+    current.to = Math.max(current.to ?? 0, Date.parse(step.completedAt));
+    Object.assign(current, locatorOf(result));
+  }
+  return rounds;
 }
 
 function prNumberOf(run: WorkflowRun): number | undefined {
@@ -120,23 +138,23 @@ function mergedPrs(runs: readonly WorkflowRun[]): MergedPr[] {
     const repo = run.params.repo?.toLowerCase();
     const pr = prNumberOf(run);
     if (!repo || pr === undefined) continue;
-    const entry = prs.get(`${repo}#${pr}`) ?? { repo, pr, mergedAt: Number.POSITIVE_INFINITY, verdicts: [], merged: false };
+    const entry = prs.get(`${repo}#${pr}`) ?? { repo, pr, mergedAt: Number.POSITIVE_INFINITY, rounds: [], merged: false };
     prs.set(`${repo}#${pr}`, entry);
     const merged = mergedAt(run);
     if (merged !== undefined) Object.assign(entry, { merged: true, mergedAt: Math.min(entry.mergedAt, merged) });
-    entry.verdicts.push(...verdictsOf(run));
+    entry.rounds.push(...roundsOf(run));
   }
   return [...prs.values()].filter((entry) => entry.merged).map(({ merged: _, ...entry }) => entry);
 }
 
-interface SessionCost {
+interface RoundCost {
   usd: number;
   tokens: CostTokens;
 }
 
-/** A request already counted anywhere in the report (a resumed session repeats its history) is skipped; an unpriced model voids the session. */
-function priceSession(requests: readonly SessionRequest[], seen: Set<string>): SessionCost | { reason: string } {
-  const cost: SessionCost = { usd: 0, tokens: emptyTokens() };
+/** A request already counted anywhere in the report (a resumed session repeats its history) is skipped; an unpriced model voids the round. */
+function priceRound(requests: readonly SessionRequest[], seen: Set<string>): RoundCost | { reason: string } {
+  const cost: RoundCost = { usd: 0, tokens: emptyTokens() };
   const fresh = [...new Map(requests.map((request) => [request.responseId, request])).values()].filter((request) => !seen.has(request.responseId));
   for (const { model, at, tokens } of fresh) {
     const priced = priceRequest({ inputTokens: tokens.input, cacheReadTokens: tokens.cacheRead, cacheCreation5mTokens: tokens.cacheWrite5m, cacheCreation1hTokens: tokens.cacheWrite1h, outputTokens: tokens.output }, model ?? "", at);
@@ -155,27 +173,32 @@ function addTokens(into: CostTokens, from: CostTokens): void {
   into.output += from.output;
 }
 
-const inRound = (rounds: readonly Verdict[]) => (request: SessionRequest): boolean => {
-  const at = Date.parse(request.at);
-  return rounds.some(({ from, to }) => at >= from && at <= to);
-};
-
-function sessionsOf(verdicts: readonly Verdict[]): Verdict[][] {
-  const sessions = new Map<string, Verdict[]>();
-  for (const verdict of verdicts) sessions.set(verdict.path ?? verdict.session, [...(sessions.get(verdict.path ?? verdict.session) ?? []), verdict]);
-  return [...sessions.values()];
+/** A round no verdict located, such as one that timed out, is read from the transcript another round's verdict named for its session. */
+function transcriptPaths(runs: readonly WorkflowRun[]): Map<string, string> {
+  const paths = new Map<string, string>();
+  for (const { session, path } of runs.flatMap(roundsOf)) if (path !== null) paths.set(session, path);
+  return paths;
 }
 
-/** Each session is priced only over the PR's rounds in it, and `seen` spans the report, so no request is priced twice. */
-async function costOfPr(pr: MergedPr, read: TranscriptPort["read"], seen: Set<string>): Promise<PrCost> {
-  const sessions = sessionsOf(pr.verdicts);
-  const cost: PrCost = { repo: pr.repo, pr: pr.pr, week: isoWeek(pr.mergedAt), rounds: pr.verdicts.length, sessions: sessions.length, usd: 0, tokens: emptyTokens(), unreadable: [] };
-  for (const rounds of sessions) {
-    const { session, path } = rounds[0]!;
-    const transcript: SessionRead = path === null ? { ok: false, reason: "no transcript path" } : await read(path);
-    const priced = transcript.ok ? priceSession(transcript.requests.filter(inRound(rounds)), seen) : transcript;
+/** A round is priced over its own window, or it is unreadable with a reason; none is priced as a silent zero. */
+async function costOfRound({ session, path, from, to }: Round, paths: ReadonlyMap<string, string>, read: TranscriptPort["read"], seen: Set<string>): Promise<RoundCost | { reason: string }> {
+  if (to === null) return { reason: "no step resolved the round" };
+  const located = path ?? paths.get(session);
+  if (located === undefined) return { reason: "no transcript path" };
+  const transcript = await read(located);
+  if (!transcript.ok) return transcript;
+  const requests = transcript.requests.filter((request) => Date.parse(request.at) >= from && Date.parse(request.at) <= to);
+  return requests.length === 0 ? { reason: "no requests in the round's window" } : priceRound(requests, seen);
+}
+
+/** `seen` spans the report, so a request in two rounds' windows is priced once. */
+async function costOfPr(pr: MergedPr, paths: ReadonlyMap<string, string>, read: TranscriptPort["read"], seen: Set<string>): Promise<PrCost> {
+  const sessions = new Set(pr.rounds.map((r) => r.session)).size;
+  const cost: PrCost = { repo: pr.repo, pr: pr.pr, week: isoWeek(pr.mergedAt), rounds: pr.rounds.length, sessions, usd: 0, tokens: emptyTokens(), unreadable: [] };
+  for (const reviewRound of pr.rounds) {
+    const priced = await costOfRound(reviewRound, paths, read, seen);
     if ("reason" in priced) {
-      cost.unreadable.push({ session, reason: priced.reason });
+      cost.unreadable.push({ session: reviewRound.session, reason: priced.reason });
       continue;
     }
     cost.usd += priced.usd;
@@ -204,14 +227,15 @@ function weeksOf(prs: readonly PrCost[]): CostWeek[] {
   return [...groups.values()].map((group) => ({ repo: group[0]!.repo, week: group[0]!.week, ...rollup(group) }));
 }
 
-/** Per merged PR: the list-price cost and tokens of its review rounds in the reviewer sessions its verdicts came from, rolled up per repo and ISO week. */
+/** Per merged PR: the list-price cost and tokens of every review round dispatched for it, each over its own window, rolled up per repo and ISO week. */
 export async function reviewCost(runs: readonly WorkflowRun[], port: TranscriptPort, range: { from?: string; to?: string } = {}): Promise<ReviewCostReport> {
   const merged = mergedPrs(runs).filter((pr) => inRange(pr.mergedAt, range));
   const prs: PrCost[] = [];
   const reads = new Map<string, Promise<SessionRead>>();
   const read = (path: string): Promise<SessionRead> => reads.get(path) ?? reads.set(path, port.read(path)).get(path)!;
   const seen = new Set<string>();
-  for (const pr of merged) prs.push(await costOfPr(pr, read, seen));
+  const paths = transcriptPaths(runs);
+  for (const pr of merged) prs.push(await costOfPr(pr, paths, read, seen));
   prs.sort((a, b) => a.repo.localeCompare(b.repo) || a.week.localeCompare(b.week) || a.pr - b.pr);
   return { prs, weeks: weeksOf(prs), totals: { ...rollup(prs), completePrs: prs.filter((pr) => pr.unreadable.length === 0).length } };
 }
@@ -229,7 +253,7 @@ export function formatReviewCost(report: ReviewCostReport): string {
   if (report.prs.length === 0) return "review cost: no merged PRs in range\n";
   const { totals } = report;
   const lines = [
-    "review cost per merged PR (an unreadable session adds nothing to the dollars; p50 and p90 cover only PRs read in full):",
+    "review cost per merged PR (an unreadable round adds nothing to the dollars; p50 and p90 cover only PRs read in full):",
     ...report.prs.flatMap(prText),
     "",
     "per repo and ISO week:",
