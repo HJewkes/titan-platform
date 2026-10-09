@@ -268,6 +268,11 @@ payload must match the schema stored with the gate:
 you did not see. `resume` and `factory.gates` print the exact command for each open gate;
 copy the run id and step id from there.
 
+Abandoning an `approve-merge` gate after the reviewer said MERGE at that head, or a seat
+reviewer and Shepherd's own review giving opposite verdicts at one head, records an
+`ownerOverride` on the run. `titan-factory shepherd stats` (and `--json`) reports the weekly
+rate per repo: overrides divided by runs with a MERGE verdict.
+
 ## Owner-signed proofs {#owner-signed-proofs}
 
 The factory host can apply a gate answer the owner signed on another machine. One signature can

@@ -33,12 +33,17 @@ const REDIRECT = /^(?:\d*|&)[<>]/;
 
 /** Every pipeline in a raw Bash command that starts at one of our CLIs and has at least one stage after it. */
 export function postFilters(command: string): PostFilterUse[] {
+  return ourPipelines(command).filter((use) => use.stages.length > 0);
+}
+
+/** Every pipeline in a raw Bash command that starts at one of our CLIs, piped on or not; an unpiped one has an empty pattern. */
+export function ourPipelines(command: string): PostFilterUse[] {
   const uses: PostFilterUse[] = [];
   for (const [first, ...tail] of splitPipelines(command)) {
-    const head = first && tail.length > 0 ? ourHead(throughSsh(first)) : null;
+    const head = first ? ourHead(throughSsh(first)) : null;
     if (!head) continue;
     const stages = tail.map(normaliseStage);
-    uses.push({ ...head, pattern: `| ${stages.join(" | ")}`, stages });
+    uses.push({ ...head, pattern: stages.length > 0 ? `| ${stages.join(" | ")}` : "", stages });
   }
   return uses;
 }
