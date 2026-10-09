@@ -116,9 +116,10 @@ stays out of the repo.
   (load5 under half of `buildLoad5`, memory pressure read as normal, and fewer than
   `headroomReviews` (4) reviews started in the last five minutes) they are spaced
   `headroomIntervalMs` (15 s) apart instead. At most `burstMax` (4) are admitted inside any
-  `windowMs`. Deferred reviews queue: the review of a red main's fix goes first, then the
-  oldest waiter, and a younger review is deferred with a reason naming the one ahead. A waiter
-  that has not asked for 10 minutes leaves the queue. Every deferral names the rule that refused.
+  `windowMs`. Every deferral names the rule that refused. A deferred review asks again on its
+  busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
+  machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
+  of recording `none`.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with

@@ -85,24 +85,19 @@ interface WaitingReview extends ReviewAsk {
   lastAsk: number;
 }
 
-/** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for longer has stopped asking. */
-export const REVIEW_STALE_MS = BUSY_LONGEST_WAIT_MS + 2 * 60_000;
+/** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for two of those has stopped asking. */
+export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
 
 /** Pure: the reviews that asked within `staleMs`, fixers first, then by first ask. */
 function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
   return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || a.firstAsk - b.firstAsk);
 }
 
-/**
- * Pure: a review waits while one ahead of it in the queue is still asking, so a red main's fix takes the next slot and the
- * oldest waiter the one after; each retries at a random point in its busy wait, so first come per poll starves the oldest. Any other spawn is untouched.
- */
-function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined, now: number): Admission {
-  if (!verdict.admit || review === undefined) return verdict;
-  const ahead = queue[0];
-  if (ahead === undefined || ahead.name === name) return verdict;
-  if (ahead.fixer) return { admit: false, reason: `the review ${ahead.name} of a red main's fix waits ahead` };
-  return { admit: false, reason: `the review ${ahead.name}, waiting for ${now - ahead.firstAsk} ms, waits ahead` };
+/** Pure: a review that is no fixer waits while a fixer's review is queued, so a red main's fix takes the next slot; any other spawn is untouched. */
+function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
+  if (!verdict.admit || review === undefined || review.fixer) return verdict;
+  const fixer = queue.find((waiting) => waiting.fixer && waiting.name !== name);
+  return fixer ? { admit: false, reason: `the review ${fixer.name} of a red main's fix waits ahead` } : verdict;
 }
 
 /** Each waiting review's place by `repo#pr`; in memory, because only the live host's steps can be waiting. */
@@ -198,7 +193,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
       const at = now();
       const readings = read();
       const queue = review ? reviews.ask(name, review, at) : [];
-      const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review, at);
+      const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review);
       const seen = `load5 ${readings.load5}, pressure ${readings.pressureLevel ?? "unread"}, free ${readings.freeMemoryPct ?? "unread"}%`;
       if (!verdict.admit) {
         log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})`);
