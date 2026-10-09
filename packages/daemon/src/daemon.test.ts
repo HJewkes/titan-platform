@@ -602,7 +602,8 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
         await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, origin: "http://evil.example" }, "{}"),
         await send("127.0.0.1", port, "GET", "/health", { host: "evil.example" }),
         await send("127.0.0.1", port, "GET", "/auth/login"),
-        await send("127.0.0.1", port, "GET", "/health", { host: "localhost" }).then((r) => ({ ...r, body: "" })),
+        // Uptime changes the length, so /health compares its status and field names only.
+        await send("127.0.0.1", port, "GET", "/health", { host: "localhost" }).then((r) => ({ status: r.status, headers: {}, body: Object.keys(JSON.parse(r.body)).sort().join() })),
       ];
       return replies.map(({ status, headers, body }) => JSON.stringify({ status, body, headers: { ...headers, date: undefined } }));
     };

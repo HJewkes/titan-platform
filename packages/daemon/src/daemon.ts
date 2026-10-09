@@ -9,18 +9,18 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isIPv6 } from "node:net";
 import { serve, type ServerType } from "@hono/node-server";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Hono } from "hono";
-import { EXIT, errorEnvelope, type BaseContext } from "@titan-design/registry";
+import type { BaseContext } from "@titan-design/registry";
 import { createDaemonAuth, type DaemonAuth } from "./auth.js";
 import { assertRemoteHost, isLoopbackHost, NonLoopbackBindError, RemoteBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
-import { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
+import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
-import { createMcpServer, type McpServerOptions } from "./mcp.js";
+import type { McpServerOptions } from "./mcp.js";
+import { handleMcpRequest, spliceMcpRoute } from "./mcp-http.js";
 import type { SurfaceOptions } from "./surface.js";
 
 export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
@@ -265,73 +265,6 @@ function mcpHandler<Ctx extends BaseContext>(
   return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
 }
 
-/**
- * Serve one `/mcp` request from a fresh server + transport.
- *
- * This bypasses hono because `StreamableHTTPServerTransport` takes ownership of the raw
- * Node response object. `sessionIdGenerator: undefined` keeps it stateless: every request
- * is self-contained, so no session state outlives the response.
- */
-async function handleMcpRequest<Ctx extends BaseContext>(
-  options: McpServerOptions<Ctx>,
-  guard: RequestGuard,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
-  const refusal = guard({
-    method: req.method ?? "GET",
-    host: req.headers.host,
-    origin: req.headers.origin,
-    client: headerValue(req.headers[CLIENT_HEADER]),
-    contentType: req.headers["content-type"],
-  });
-  if (refusal) return respondJson(res, refusal.status, refusal.message);
-
-  let body: unknown;
-  if (req.method === "POST") {
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      return respondJson(res, 400, "Invalid JSON body");
-    }
-  }
-  const server = createMcpServer(options);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => {
-    void transport.close();
-    void server.close();
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res, body);
-}
-
-function headerValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value.join(",") : value;
-}
-
-function respondJson(res: ServerResponse, status: number, error: string, code: number = EXIT.USAGE): void {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify(errorEnvelope(error, code)));
-}
-
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
-      if (raw.length === 0) return resolve(undefined);
-      try {
-        resolve(JSON.parse(raw));
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
 function listenLoopback(
   app: Hono,
   hostname: string,
@@ -363,28 +296,6 @@ function bind(app: Hono, hostname: string, port: number): { server: ServerType; 
     server.on("error", onBindError);
   });
   return { server, bound };
-}
-
-/** Route `/mcp` to the transport ahead of hono, falling through for everything else. */
-function spliceMcpRoute(server: ServerType, mcp: (req: IncomingMessage, res: ServerResponse) => Promise<void>): void {
-  const honoHandler = server.listeners("request")[0] as ((req: IncomingMessage, res: ServerResponse) => void) | undefined;
-  server.removeAllListeners("request");
-  server.on("request", (req: IncomingMessage, res: ServerResponse) => {
-    const url = req.url ?? "";
-    if (url === "/mcp" || url.startsWith("/mcp?") || url.startsWith("/mcp/")) {
-      void mcp(req, res).catch((err) => failRequest(res, err));
-      return;
-    }
-    honoHandler?.(req, res);
-  });
-}
-
-function failRequest(res: ServerResponse, err: unknown): void {
-  if (res.headersSent) {
-    res.destroy();
-    return;
-  }
-  respondJson(res, 500, String(err), EXIT.SOFTWARE);
 }
 
 function boundPortOf(server: ServerType, requested: number): number {
