@@ -82,6 +82,15 @@ describe("titan-factory service check", () => {
     expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
   });
 
+  it("exits 0 when /health also carries serve's start time and start counts", async () => {
+    const starts = { startedAt: "2026-10-08T21:00:00.000Z", uptimeSeconds: 90, restartCount: 3, uncleanStartsTotal: 1, restartsToday: 2 };
+
+    const { code, out } = await check({ print: running, health: healthy(starts) });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
   it("reports not loaded when launchctl has no job", async () => {
     const { code, out } = await check({ health: healthy() });
 

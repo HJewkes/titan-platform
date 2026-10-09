@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
-import { consoleLogger, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
+import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
@@ -9,6 +9,8 @@ import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
+import { timestampConsole } from "./serve-log.js";
+import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
 import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
@@ -67,15 +69,9 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
-  let daemon: DaemonHandle;
-  try {
-    daemon = await startDaemon(daemonOptions(host, options, github, build));
-  } catch (err) {
-    host.close();
-    throw err;
-  }
-  const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const log = options.logger ?? consoleLogger;
+  const daemon = await startCountedDaemon(host, options, github, build, log);
+  const unbindCarry = bindCarryStateDir(stateDirOf(options));
   const services = options.routes.shepherd;
   const held = new Set<string>();
   const thaws = watchThaws(services);
@@ -103,10 +99,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
-  const server = await startFactoryServer(options);
-  const reason = await untilStopped(stop);
-  (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
-  await server.close();
+  const restoreConsole = timestampConsole();
+  try {
+    const server = await startFactoryServer(options);
+    const reason = await untilStopped(stop);
+    (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
+    await server.close();
+  } finally {
+    restoreConsole();
+  }
 }
 
 function untilStopped(stop?: AbortSignal): Promise<string> {
@@ -127,7 +128,34 @@ function untilStopped(stop?: AbortSignal): Promise<string> {
 
 const stateDirOf = (options: FactoryServerOptions): string => options.stateDir ?? dirname(options.dbPath);
 
-function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BehindMain & { sha: string }): StartDaemonOptions<FactoryContext> {
+type BuildHealth = BehindMain & { sha: string };
+
+/** The pid file is read before startDaemon removes a stale one: a leftover file means the last serve exited without cleaning up. A refused start is not counted. */
+async function startCountedDaemon(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, log: Logger): Promise<DaemonHandle> {
+  const stateDir = stateDirOf(options);
+  try {
+    const unclean = (await readPidFile(daemonPaths(stateDir))) !== null;
+    const recorded: { start?: ServeStart } = {};
+    const daemon = await startDaemon(daemonOptions(host, options, github, build, () => recorded.start));
+    recorded.start = recordStart(stateDir, unclean, options, log);
+    return daemon;
+  } catch (err) {
+    host.close();
+    throw err;
+  }
+}
+
+/** A start record that cannot be written costs /health its start fields, never the start itself. */
+function recordStart(stateDir: string, unclean: boolean, options: FactoryServerOptions, log: Logger): ServeStart | undefined {
+  try {
+    return recordServeStart(stateDir, { unclean, now: new Date((options.now ?? Date.now)()) });
+  } catch (err) {
+    log.warn({ err }, "could not record the serve start");
+    return undefined;
+  }
+}
+
+function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github: GithubHealth, build: BuildHealth, start: () => ServeStart | undefined): StartDaemonOptions<FactoryContext> {
   const { routeFor } = routedRunner(options.routes);
   return {
     registry: createFactoryRegistry(),
@@ -145,12 +173,16 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
+      ...startHealth(start(), options),
     }),
     logger: options.logger,
   };
 }
 
-function buildHealth(options: FactoryServerOptions): BehindMain & { sha: string } {
+const startHealth = (start: ServeStart | undefined, options: FactoryServerOptions): Record<string, unknown> =>
+  start ? { ...serveStartsHealth(start, new Date((options.now ?? Date.now)())) } : {};
+
+function buildHealth(options: FactoryServerOptions): BuildHealth {
   const sha = options.build?.sha ?? buildSha();
   const probe = options.build?.behindMain ?? behindMain({ sha });
   void probe.refresh();

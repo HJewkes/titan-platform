@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DaemonAlreadyRunningError, silentLogger } from "@titan-design/daemon";
 import type { StepRoute } from "@titan-design/workflow";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
-import { startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
+import { serveFactoryUntilSignal, startFactoryServer, sweepCheckouts, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { crashAt } from "./test-support/crash.js";
 import { approveUntilSettled, gateId, gateOpened, landScenario, type LandScenario } from "./test-support/land.js";
 
@@ -147,6 +147,61 @@ describe("titan-factory serve", () => {
     const health = (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
 
     expect(health.build).toEqual({ sha: "unknown", behindMain: "unknown" });
+  });
+});
+
+describe("titan-factory serve start record", () => {
+  const healthOf = async (server: FactoryServer): Promise<Record<string, unknown>> => (await (await fetch(`http://127.0.0.1:${server.port}/health`)).json()) as Record<string, unknown>;
+
+  it("health reports when serve started, its uptime and the start counts beside the fields it had", async () => {
+    let clock = Date.parse("2026-10-08T21:00:00.000Z");
+    const server = await serve(dbFile(), landScenario(), { now: () => clock });
+    clock += 90_000;
+
+    const health = await healthOf(server);
+
+    expect(health).toMatchObject({ ok: true, pendingGates: 0, startedAt: "2026-10-08T21:00:00.000Z", uptimeSeconds: 90, restartCount: 1, uncleanStartsTotal: 0, restartsToday: 1 });
+  });
+
+  it("a second start after one left a stale pid file counts a restart and an unclean start", async () => {
+    const dbPath = dbFile();
+    const scenario = landScenario();
+    const now = () => Date.parse("2026-10-08T21:00:00.000Z");
+    await (await serve(dbPath, scenario, { now })).close();
+    writeFileSync(join(dirname(dbPath), "daemon.pid"), "999999999\n");
+
+    const second = await serve(dbPath, scenario, { now });
+
+    expect(await healthOf(second)).toMatchObject({ restartCount: 2, uncleanStartsTotal: 1, restartsToday: 2 });
+  });
+
+  it("a start refused because a server already runs is not counted", async () => {
+    const dbPath = dbFile();
+    const scenario = landScenario();
+    const first = await serve(dbPath, scenario);
+
+    await expect(serve(dbPath, scenario)).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+
+    expect(await healthOf(first)).toMatchObject({ restartCount: 1, uncleanStartsTotal: 0 });
+  });
+});
+
+describe("serveFactoryUntilSignal", () => {
+  it("stamps each serve log line with an ISO time until it shuts down", async () => {
+    const lines: unknown[][] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void lines.push(args));
+    cleanups.push(() => error.mockRestore());
+    const stop = new AbortController();
+    const scenario = landScenario();
+
+    const served = serveFactoryUntilSignal({ dbPath: dbFile(), workflows: [scenario.workflow], routes: scenario.routes, port: 0, github: { status: () => "ok", refresh: async () => undefined } }, stop.signal);
+    await vi.waitFor(() => expect(lines.some(([line]) => String(line).includes("daemon started"))).toBe(true));
+    stop.abort();
+    await served;
+    console.error("after");
+
+    expect(lines.find(([line]) => String(line).includes("daemon started"))?.[0]).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z \[info\] daemon started /);
+    expect(lines.at(-1)).toEqual(["after"]);
   });
 });
 
