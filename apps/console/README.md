@@ -87,7 +87,8 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
   a copied cookie stays valid until a rotation.
 
 The LAN is plain HTTP, so a cookie crosses the network in clear text. Nothing is exposed until
-the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step (TP-1981).
+the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an owner step. The unit and
+the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.md).
 
 ## The daemon
 
