@@ -11,7 +11,7 @@ export function evidenceMarker(head: string): string {
 }
 
 /** What a public PR comment may say about a verdict locator: no namespace, path or source id. */
-export interface LocatorReference {
+interface LocatorReference {
   sessionId: string;
   byteOffset?: number;
   subrecordIndex?: number;
