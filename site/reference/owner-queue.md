@@ -1,7 +1,7 @@
 # owner-queue
 
-**Tier 2.** Depends on `@titan-design/review-schema` (the round schema, from npm); `zod` is a
-peer dependency.
+**Tier 2.** Depends on `@titan-design/review-schema` (the round schema, from npm); `zod`
+`^4.3.6` is a peer dependency.
 
 ```sh
 npm install @titan-design/owner-queue zod
@@ -196,7 +196,7 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
   pick-one starting `Principle:`, stating the rule and listing each item as `(1) …; (2) …`,
   with options yes (the decider settles each by this rule) and no (ask each alone). A one-way
   item never batches. Each item goes to the first principle that covers it, and a principle
-  left with fewer than two items is not asked.
+  left with fewer than two items, or with a blank rule, is not asked.
 - **Shadow and graduated.** round@2 hides recommendations per round, not per question. An ask
   whose items all have a category in `graduated` goes in a round with
   `recommendations: "shown"`. Everything else, including an item with no category or a
@@ -206,7 +206,8 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
   the item's summary is the prompt and the `signsOff`, and the decider's pick becomes the
   recommendation when it has a confidence and a rationale (or a cite, shown as `Cite: …`).
   An item without options is a text question. round@2 refuses an option label shared by two
-  questions and a blanket sign-off such as "Approve", so such a label gets ` (q<n>)` appended.
+  questions, and a blanket sign-off such as "Approve" or "LGTM" in any prompt or label, so such
+  text gets ` (q<n>)` appended until it is neither; no option is ever dropped.
 - **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.

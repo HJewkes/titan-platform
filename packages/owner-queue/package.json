@@ -42,7 +42,7 @@
     "@titan-design/review-schema": "^0.1.0"
   },
   "peerDependencies": {
-    "zod": "^4.0.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "zod": "^4.4.3"

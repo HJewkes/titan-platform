@@ -172,6 +172,31 @@ describe("buildOwnerRounds", () => {
     expectValid(rounds.map((each) => each.manifest));
   });
 
+  it("keeps a text question valid when its summary reads as a blanket sign-off", () => {
+    const { rounds } = buildOwnerRounds([decide("a", { options: undefined, summary: "LGTM" })], base);
+
+    expect(rounds[0]!.manifest.questions[0]!.prompt).toBe("LGTM (q1)");
+    expectValid(rounds.map((each) => each.manifest));
+  });
+
+  it("keeps every option when several render to the same label", () => {
+    const same = ["x", "y", "z"].map((id) => ({ id, label: "Same" }));
+
+    const { rounds } = buildOwnerRounds([decide("a", { options: same })], base);
+
+    expect(rounds[0]!.bindings[0]!.options).toEqual({ Same: "x", "Same (q1)": "y", "Same (q1) (q1)": "z" });
+    expectValid(rounds.map((each) => each.manifest));
+  });
+
+  it("asks a principle's items alone when its rule is blank", () => {
+    const principle: Principle = { id: "p", rule: "  ", covers: ["a", "b"] };
+
+    const { rounds } = buildOwnerRounds([decide("a"), decide("b")], { ...base, principles: [principle] });
+
+    expect(rounds[0]!.bindings.map((each) => each.principleId)).toEqual([undefined, undefined]);
+    expectValid(rounds.map((each) => each.manifest));
+  });
+
   it("skips items that are not open Decide asks for the owner, with the reason", () => {
     const items = [
       decide("answered", { status: "answered" }),

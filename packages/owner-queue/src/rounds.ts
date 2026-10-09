@@ -11,7 +11,7 @@ export interface Principle {
   id: string;
   /** One sentence: the rule and its limits. The covered items are listed after it. */
   rule: string;
-  /** OwnerItem ids. One-way items are asked alone; fewer than two left and no principle is asked. */
+  /** OwnerItem ids. One-way items are asked alone; with fewer than two left, or a blank rule, the items are asked alone. */
   covers: readonly string[];
   /** `optionId` is "yes" or "no". */
   recommended?: Recommended;
@@ -81,7 +81,7 @@ function claimPrinciples(asked: OwnerItem[], principles: readonly Principle[]): 
   const claimed = new Map<string, Principle>();
   for (const principle of principles) {
     const members = [...new Set(principle.covers)].filter((id) => batchable.has(id) && !claimed.has(id));
-    if (members.length < 2) continue;
+    if (members.length < 2 || principle.rule.trim() === "") continue;
     for (const id of members) claimed.set(id, principle);
   }
   return claimed;
@@ -121,9 +121,13 @@ function batch(asks: Ask[], max: number): Ask[][] {
   return rounds;
 }
 
-/** round@2 refuses an option shared by two pick-ones and a blanket sign-off, so either gets the question id. */
-function distinct(text: string, used: Set<string>, questionId: string): string {
-  const shown = used.has(text) || isBlanketSignOff(text) ? `${text} (${questionId})` : text;
+/**
+ * round@2 refuses a blanket sign-off in any prompt or option and an option shared by two
+ * pick-ones, so the question id is appended until the text is neither. Prompts pass no `used`.
+ */
+function distinct(text: string, questionId: string, used = new Set<string>()): string {
+  let shown = text;
+  while (used.has(shown) || isBlanketSignOff(shown)) shown = `${shown} (${questionId})`;
   used.add(shown);
   return shown;
 }
@@ -150,8 +154,8 @@ function pickOne(
   used: Set<string>,
 ): { question: QuestionInput; labels: Record<string, string> } {
   const labels: Record<string, string> = {};
-  for (const choice of choices) labels[distinct(choice.label, used, questionId)] = choice.id;
-  const signsOff = isBlanketSignOff(prompt) ? `${prompt} (${questionId})` : prompt;
+  for (const choice of choices) labels[distinct(choice.label, questionId, used)] = choice.id;
+  const signsOff = distinct(prompt, questionId);
   const question: QuestionInput = { id: questionId, kind: "pick-one", prompt: signsOff, options: Object.keys(labels), signsOff };
   const shown = recommendation(recommended, labels);
   return { question: shown === undefined ? question : { ...question, recommendation: shown }, labels };
@@ -167,7 +171,9 @@ function itemQuestion(item: OwnerItem, questionId: string, used: Set<string>): R
     questionIds: [questionId],
   };
   const binding = { questionId, itemIds: [item.id], options: {} };
-  if (item.options === undefined) return { question: { id: questionId, kind: "text", prompt: item.summary }, section, binding };
+  if (item.options === undefined) {
+    return { question: { id: questionId, kind: "text", prompt: distinct(item.summary, questionId) }, section, binding };
+  }
   const choices = item.options.map((option) => ({
     id: option.id,
     label: option.description === undefined ? option.label : `${option.label}: ${option.description}`,
