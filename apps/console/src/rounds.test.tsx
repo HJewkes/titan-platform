@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { RpcProvider, embedSnapshot, pageDataSource } from "@titan-design/react-app";
@@ -10,7 +10,7 @@ import { App } from "./App.js";
 
 afterEach(cleanup);
 
-const source = { dir: fileURLToPath(new URL("../fixtures/rounds", import.meta.url)) };
+const source = { dir: path.join(import.meta.dirname, "..", "fixtures", "rounds") };
 const ROUND_IDS = ["kiln-schedule-r2", "kiln-schedule-r1", "orbit-retry-r1", "lantern-cards-r1", "legacy-r1"];
 
 /** The answers the console daemon gives over the synthetic rounds in `fixtures/rounds`. */
