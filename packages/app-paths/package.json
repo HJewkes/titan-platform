@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/app-paths",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,38 @@
 # @titan-design/session-graph
 
+## 0.14.0
+
+### Minor Changes
+
+- a5cfd4c: Add normalized readers: `hasNormalizedTables`, `countNormalizedSessions`, `countNormalizedEvents`, `normalizedSourcePath`, `normalizedConversationDetail` and `normalizedErrorFacts`. Every normalized reader, including `normalizedSessions` and `normalizedUsage`, now treats the tables as present only when both `normalized_event` and `normalized_source` exist. `normalizedConversationDetail` counts each turn's distinct tool calls in one grouped query.
+
+### Patch Changes
+
+- d31b4fe: Drop the unused `@titan-design/cluster` dependency. `applyAssets` now binds named parameters through the same binder as the audit apply path, so a boolean field in an asset row is coerced instead of throwing.
+- e4700f5: Document migration 10, the `request_cost` model-id boundary, in the README and the reference page.
+- 5b59475: `enrichTasks`, `enrichPrs` and `resolveOrigins` now soft-fail only the caller's resolver. A write error in the graph's own store propagates out of `refreshCorpus` instead of being reported as `failed: true`.
+- f34ae27: `indexCodexSource` now quarantines a source only for bad file contents (a parse error or a `SessionIdentityError`) and rethrows store and programming errors, matching the Claude path, so a SQLite failure during the swap no longer records the source as quarantined.
+- 1aed39d: session-read now exports `expandHome(file, homeDir?)`, which expands both a bare `~` and `~/…`; `toAbsolutePath` uses it, so a stored bare `~` path now resolves. session-graph drops its private copy and imports this one.
+- 388d791: Review nits: code-graph gains `excludeRoles` barrel and fixture test cases and a virtual-source index test that fails on any direct filesystem read; the session-graph price-prefix doc now names the combined `-YYYYMMDD[..]` form.
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [f34ae27]
+- Updated dependencies [495e6f8]
+- Updated dependencies [74f9f51]
+- Updated dependencies [a8faac4]
+- Updated dependencies [1aed39d]
+- Updated dependencies [1fd9652]
+- Updated dependencies [deb35d0]
+- Updated dependencies [295acf8]
+- Updated dependencies [1f7de27]
+- Updated dependencies [59ba612]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [c466784]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/session-read@0.11.0
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.13.2
 
 ### Patch Changes
