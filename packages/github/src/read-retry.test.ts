@@ -27,7 +27,7 @@ function wireOf(routes: Record<string, GhResult[]>) {
     return queue.length > 1 ? queue.shift()! : queue[0]!;
   };
   const wire = ghCliWire(exec, { sleep: async (ms) => void slept.push(ms) });
-  return { wire, port: githubPort(wire), calls, slept };
+  return { wire, port: githubPort(wire, { sleep: async (ms) => void slept.push(ms) }), calls, slept };
 }
 const compare = answer(200, { behind_by: 2 });
 
@@ -82,11 +82,13 @@ describe("gh read retry", () => {
     expect(gh.slept.reduce((sum, ms) => sum + ms, 0)).toBeLessThan(10_000);
   });
 
-  it("never repeats a write that failed with HTTP 500", async () => {
+  it("reads a merge back before sending it once more at the pinned head, then fails with the step named", async () => {
     const gh = wireOf({ "pulls/7/merge": [answer(500, "", "gh: HTTP 500")], "compare/": [compare], "pulls/7": [answer(200, pull(H1))] });
 
-    await expect(gh.port.merge(REPO, 7, H1, "squash")).rejects.toThrow(/HTTP 500/);
-    expect(gh.calls.filter((call) => call.includes("-X PUT"))).toHaveLength(1);
+    await expect(gh.port.merge(REPO, 7, H1, "squash")).rejects.toThrow(new RegExp(`merge PUT ${REPO}#7 at ${H1}.*HTTP 500`));
+    const puts = gh.calls.filter((call) => call.includes("-X PUT"));
+    expect(puts).toHaveLength(2);
+    expect(puts.every((put) => put.includes(`sha=${H1}`))).toBe(true);
   });
 
   it("update-branch retried after an unreadable answer sends the same expected head twice", async () => {
