@@ -1,6 +1,8 @@
+import path from "node:path";
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import { failure, type ActiveWork, type ReadResult, type WireInitiative, type WireInventoryInitiative, type WireTask } from "./active-work.js";
+import { readCommand } from "./owner-guard.js";
 
 const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 const severity = z.enum(SEVERITIES);
@@ -214,5 +216,138 @@ export async function readInitiative(activeWork: ActiveWork, slug: string, optio
     notes: notes.notes,
     sources: sources.sources,
     nestedSources,
+  };
+}
+
+const knowledgeKind = z.enum(["note", "source"]);
+
+const knowledgeRow = z.object({
+  /** `note:<slug>/<file>` or `source:<slug>/<path>`, the refs active-work's search and graph mint. */
+  ref: z.string(),
+  kind: knowledgeKind,
+  slug: z.string(),
+  /** Relative to `sources/notes/` for a note and to `sources/` for a source. */
+  file: z.string(),
+  title: z.string(),
+  /** A note's kind or a source's type. */
+  type: z.string(),
+  /** A note whose file time is unknown falls back to its `created` date. */
+  changed: z.string().nullable(),
+});
+
+export const notesResult = z.object({ fetchedAt: z.string(), records: z.array(knowledgeRow) });
+
+export const recordResult = knowledgeRow.omit({ type: true, changed: true }).extend({
+  fetchedAt: z.string(),
+  /** A note's kind; a source has none. */
+  type: z.string().nullable(),
+  created: z.string().nullable(),
+  body: z.string(),
+  /** True when the file is longer than active-work's read cap and `body` is its head. */
+  truncated: z.boolean(),
+});
+
+export const searchResult = z.object({
+  fetchedAt: z.string(),
+  query: z.string(),
+  hits: z.array(z.object({ ref: z.string(), class: z.string(), initiative: z.string().nullable(), title: z.string().nullable(), excerpt: z.string().nullable() })),
+  /** Retrievers that failed; the search still answers with what the others found. */
+  degraded: z.array(z.object({ retriever: z.string(), message: z.string() })),
+});
+
+type KnowledgeRow = z.infer<typeof knowledgeRow>;
+type KnowledgeKind = z.infer<typeof knowledgeKind>;
+
+const RECORD_REF = /^(note|source):([^/]+)\/(.+)$/;
+const SEARCH_LIMIT = 50;
+
+/** With personal initiatives excluded, a slug the inventory cannot vouch for, or a hit with no initiative, is dropped. */
+async function keepsSlug(activeWork: ActiveWork, options: WorkOptions): Promise<(slug: string | null) => boolean> {
+  if (!options.excludePersonal) return () => true;
+  const inventory = await activeWork.read("inventory");
+  const bySlug = new Map(inventory.initiatives.map((entry) => [entry.slug, entry]));
+  return (slug) => slug !== null && !isPersonal(inventory.human_only_known, bySlug.get(slug));
+}
+
+function noteRow(note: ReadResult<"note.list">["notes"][number]): KnowledgeRow {
+  return { ref: `note:${note.slug}/${note.filename}`, kind: "note", slug: note.slug, file: note.filename, title: note.title, type: note.kind, changed: note.mtime ?? note.created };
+}
+
+function sourceRow(source: ReadResult<"source.list">["sources"][number]): KnowledgeRow {
+  return { ref: `source:${source.slug}/${source.filename}`, kind: "source", slug: source.slug, file: source.filename, title: source.title, type: source.type, changed: source.mtime };
+}
+
+const newestFirst = (a: KnowledgeRow, b: KnowledgeRow): number => (b.changed ?? "").localeCompare(a.changed ?? "") || a.ref.localeCompare(b.ref);
+
+/** Notes and top-level sources across every initiative, newest change first. Nested source files are left out, as on the initiative page. */
+export async function readNotes(activeWork: ActiveWork, options: WorkOptions = {}): Promise<z.infer<typeof notesResult>> {
+  const [notes, sources, keeps] = await Promise.all([
+    activeWork.read("note.list", { all_initiatives: true }),
+    activeWork.read("source.list", { all_initiatives: true }),
+    keepsSlug(activeWork, options),
+  ]);
+  const records = [...notes.notes.map(noteRow), ...sources.sources.map(sourceRow)];
+  return { fetchedAt: new Date().toISOString(), records: records.filter((row) => keeps(row.slug)).sort(newestFirst) };
+}
+
+/** A `..` segment would step out of the notes or sources directory into the rest of the initiative. */
+function parseRecordRef(ref: string): { kind: KnowledgeKind; slug: string; file: string } {
+  const [, kind, slug, file] = RECORD_REF.exec(ref) ?? [];
+  if (!kind || !slug || !file || file.split("/").includes("..")) throw failure(`Not a note or source ref: ${ref}`, EXIT.DATAERR);
+  return { kind: kind as KnowledgeKind, slug, file };
+}
+
+const firstHeading = (body: string): string | undefined => /^#\s+(.+?)\s*$/m.exec(body)?.[1];
+
+/** One note or source by its ref. A personal one is refused before any file read when personal initiatives are excluded. */
+export async function readRecord(activeWork: ActiveWork, ref: string, options: WorkOptions = {}): Promise<z.infer<typeof recordResult>> {
+  const { kind, slug, file } = parseRecordRef(ref);
+  const keeps = await keepsSlug(activeWork, options);
+  if (!keeps(slug)) throw failure(`No record ${ref}`, EXIT.NOINPUT);
+  const head = { fetchedAt: new Date().toISOString(), ref, kind, slug, file };
+  if (kind === "note") {
+    const note = await activeWork.read("note.read", { slug, note: `sources/notes/${file}` });
+    return { ...head, title: note.title, type: note.kind, created: note.created, body: note.body, truncated: note.truncated };
+  }
+  const source = await activeWork.read("source.read", { slug, path: `sources/${file}` });
+  const body = briefBody(source.content).trimStart();
+  return { ...head, title: firstHeading(body) ?? path.posix.basename(file), type: null, created: null, body, truncated: source.truncated };
+}
+
+/** active-work's search across every initiative, keyed by ref. */
+export async function searchRecords(activeWork: ActiveWork, query: string, options: WorkOptions = {}): Promise<z.infer<typeof searchResult>> {
+  const [answer, keeps] = await Promise.all([activeWork.read("search", { query, limit: SEARCH_LIMIT }), keepsSlug(activeWork, options)]);
+  return {
+    fetchedAt: new Date().toISOString(),
+    query: answer.query,
+    hits: answer.hits.filter((hit) => keeps(hit.initiative)),
+    degraded: answer.degraded,
+  };
+}
+
+/** The knowledge page's reads: every note and source, one record by ref, and search. */
+export function knowledgeCommands(activeWork: ActiveWork, options: WorkOptions = {}) {
+  return {
+    "work.notes": readCommand({
+      name: "work.notes",
+      description: "Notes and top-level sources across every initiative, each with its note:<slug>/<file> or source:<slug>/<path> ref",
+      args: z.object({}),
+      result: notesResult,
+      run: () => readNotes(activeWork, options),
+    }),
+    "work.record": readCommand({
+      name: "work.record",
+      description: "One note or source by its ref, with its markdown body, flagged when active-work's read cap truncated it",
+      args: z.object({ ref: z.string().regex(RECORD_REF) }),
+      result: recordResult,
+      run: ({ ref }) => readRecord(activeWork, ref, options),
+    }),
+    "work.search": readCommand({
+      name: "work.search",
+      description: "active-work's search across every initiative: notes, briefs, sources, tasks and session records, as hits by ref",
+      args: z.object({ q: z.string().min(1) }),
+      result: searchResult,
+      run: ({ q }) => searchRecords(activeWork, q, options),
+    }),
   };
 }

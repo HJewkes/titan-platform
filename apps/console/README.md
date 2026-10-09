@@ -105,6 +105,9 @@ the install, login, rotate and rollback commands are in [docs/lan.md](docs/lan.m
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, and `stageGuessed` when no evidence was found |
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
+| `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
+| `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
 
@@ -149,7 +152,8 @@ accident or as a confused deputy, not a hostile process running as the same user
 `server/active-work.ts` is the only code that calls the active-work daemon. It posts to
 `/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
 `READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
-view never makes active-work call GitHub), `note.list`, `source.list` and `source.read`. Each
+view never makes active-work call GitHub), `note.list`, `note.read`, `source.list`, `source.read`
+and `search`. Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 
@@ -190,7 +194,8 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
 | `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
-| `#/knowledge`, `#/knowledge/<ref>` | Notes | Notes and sources with a reader, and a Graph tab | TP-869, TP-871a |
+| `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
+| `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
 A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,

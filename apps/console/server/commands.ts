@@ -7,7 +7,7 @@ import { readCommand } from "./owner-guard.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
-import { initiativeResult, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
+import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
 const upstreamHealth = z.object({
   id: z.enum(UPSTREAM_IDS),
@@ -40,6 +40,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, work 
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
+    ...knowledgeCommands(activeWork, work),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",

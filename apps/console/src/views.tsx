@@ -30,10 +30,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
     label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} />,
     planned: { summary: "The agent roster, spawn tree and message feed, and one agent's runs and messages.", tasks: "TP-864a and TP-865a" },
   },
-  knowledge: {
-    label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} />,
-    planned: { summary: "Notes and sources with a reader and search, and a Graph tab.", tasks: "TP-869 and TP-871a" },
-  },
+  knowledge: { label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} /> },
 };
 
 export const VIEWS: readonly ViewSpec[] = VIEW_KEYS.map((key) => ({ key, ...SPECS[key] }));

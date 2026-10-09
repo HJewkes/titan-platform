@@ -57,9 +57,17 @@ const loop = z.object({
   opened_at: z.string(),
 });
 
-const note = z.object({ id: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
+const note = z.object({ id: z.string(), slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
 
-const source = z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
+const source = z.object({ id: z.string(), slug: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
+
+const searchHit = z.object({
+  ref: z.string(),
+  class: z.string(),
+  initiative: z.string().nullable(),
+  title: z.string().nullable(),
+  excerpt: z.string().nullable(),
+});
 
 /** The active-work reads the console may call, with the part of each answer it uses. There is no write in this list. */
 const READS = {
@@ -72,8 +80,11 @@ const READS = {
   "session.list": z.object({ sessions: z.array(session) }),
   loops: z.object({ open: z.array(loop) }),
   "note.list": z.object({ notes: z.array(note) }),
+  "note.read": z.object({ slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), body: z.string(), truncated: z.boolean() }),
   "source.list": z.object({ sources: z.array(source) }),
   "source.read": z.object({ content: z.string(), truncated: z.boolean() }),
+  /** A retriever that failed is named in `degraded`; the hits it would have added are missing. */
+  search: z.object({ query: z.string(), hits: z.array(searchHit), degraded: z.array(z.object({ retriever: z.string(), message: z.string() })) }),
   "artifact.list": z.object({ items: z.array(z.object({ slug: z.string(), artifacts: z.object({ branches: z.array(artifactBranch), worktrees: z.array(artifactWorktree) }) })) }),
   /** Runs `gh` once per registered branch, so only a one-task read may call it. */
   "artifact.status": z.object({
