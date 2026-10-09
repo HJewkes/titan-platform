@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
+import { WorkflowRunStore } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { openFactoryHost } from "./host.js";
@@ -23,7 +24,7 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [] });
   });
 
   it("reports owner touches and the wait per gate kind from the gate store", async () => {
@@ -42,6 +43,26 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     expect(JSON.parse(out.join("")).ownerFriction).toEqual([{ day: "2026-10-07", ownerTouches: 1, kinds: [{ kind: "approve-merge", gates: 1, medianHours: 3, maxHours: 3 }] }]);
+  });
+
+  it("reports the merged runs whose main CI went red, with their PRs, in JSON and in the human report", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    for (const [pr, verdict] of [[1, "red"], [2, "green"]] as const) {
+      const read = { stepId: "sh-main-ci", iteration: 0, agentId: null, signal: null, completedAt: "2026-10-07T09:00:00.000Z", data: { result: { verdict } } };
+      const run = { id: `run-${pr}`, workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: String(pr) }, currentStep: null, activeSteps: {}, revision: 0, ownerGeneration: 0, error: null };
+      new WorkflowRunStore(store).create({ ...run, status: "completed", stepResults: { "sh-main-ci:0": read }, startedAt: read.completedAt, completedAt: read.completedAt });
+    }
+    store.close();
+    const json = capture();
+    const human = capture();
+
+    await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
+    await runCli(["--db", db, "shepherd", "stats"], human.io);
+
+    expect(JSON.parse(json.out.join("")).redAfterMerge).toEqual([{ repo: "acme/widgets", week: "2026-W41", merged: 2, red: 1, rate: 0.5, redPrs: [1], reverted: 0, revertedPrs: [] }]);
+    expect(human.out.join("")).toContain("red after merge:\nacme/widgets  2026-W41  merged 2  red 1 (50.0%)  reverted 0\n");
   });
 
   it("refuses a malformed date", async () => {

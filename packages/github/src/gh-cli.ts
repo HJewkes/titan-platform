@@ -63,6 +63,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
+    listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),

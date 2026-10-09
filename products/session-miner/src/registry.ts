@@ -8,7 +8,7 @@ import { sessionList, sessionShow } from "./commands/sessions.js";
 import { status } from "./commands/status.js";
 import type { MinerContext } from "./context.js";
 import { insightCommand } from "./insights/define.js";
-import { AGENT_CHAT_QUESTIONS, INSIGHT_QUESTIONS } from "./insights/questions.js";
+import { AGENT_CHAT_QUESTIONS, INSIGHT_QUESTIONS, TRANSCRIPT_QUESTIONS } from "./insights/questions.js";
 
 export const MINER_VERSION = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 export const TOOL_PREFIX = "miner__";
@@ -17,6 +17,6 @@ export const TOOL_PREFIX = "miner__";
 export function createMinerRegistry(): CommandRegistry<MinerContext> {
   const registry = createRegistry<MinerContext>();
   const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, playbookAdd, playbookRecall, playbookReflect, playbookStatus];
-  for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS].map(insightCommand)]) registry.register(cmd);
+  for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS].map(insightCommand)]) registry.register(cmd);
   return registry;
 }
