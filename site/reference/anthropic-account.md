@@ -226,7 +226,7 @@ for (const { label, result, writeError } of await pollAll({ fetch })) {
 }
 ```
 
-`pollUsage(profile, { fetch, now?, uid?, timeoutMs? })` reads the access token from
+`pollUsage(profile, { fetch?, now?, uid?, timeoutMs? })` reads the access token from
 `<configDir>/.credentials.json` through the same gate as `readLoginState`, sends one
 request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
 
@@ -238,7 +238,7 @@ request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
 | `io` | an unexpected filesystem error | no |
 | `http-<status>` | any status outside 2xx, a 3xx included | yes |
 | `network` | the fetch rejected or timed out, the body stalled past the timeout, or the response came from a followed redirect | yes |
-| `malformed` | a 2xx body over 64 KiB, not JSON, or with no known window | yes |
+| `malformed` | a 2xx body over 64 KiB, not JSON, with a known window in the wrong shape, or with no known window | yes |
 
 The request is `GET https://api.anthropic.com/api/oauth/usage` with three headers:
 `authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20` (Claude Code's own
@@ -246,18 +246,20 @@ value) and `accept: application/json`. It sets `redirect: "error"` and an
 `AbortSignal.timeout` of `timeoutMs` (default 10 s) that also bounds the body read. It is never retried. The token must be an
 RFC 6750 `b64token` of at most 4096 characters, so it cannot split a header; anything
 else is refused as `malformed` before a request. `now` defaults to `Date.now()`, sets
-`written_at`, and decides expiry; `uid` is as for `readLoginState`.
+`written_at`, and decides expiry; `uid` is as for `readLoginState`. `fetch` defaults to
+`globalThis.fetch`. Whatever `fetch` is passed receives the raw access token in the
+`authorization` header, so pass only one that does not log, forward or persist request headers.
 
 A 2xx body is parsed against an allowlist of window keys, `five_hour`, `seven_day`,
 `seven_day_opus`, `seven_day_sonnet` and `seven_day_oauth_apps`, each
 `{ utilization: number, resets_at: string | null }` with `resets_at` at most 64 characters. Every other key
-is dropped unread, a known window in another shape is dropped, and the rest goes through
+is dropped unread, a known window in another shape makes the whole reading `malformed`, and the rest goes through
 `usageFromOAuthResponse`. The reading's `account` is the profile's label, left out when
 `redactSecrets` would change it. A non-2xx body is cancelled without being read. It throws
 only a `RangeError`, with a fixed message, for a non-finite `now` or a `timeoutMs` that is
 not a positive number.
 
-`pollAll({ fetch, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
+`pollAll({ fetch?, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
 once, `profiles` or else `discoverProfiles(discover)`, and writes each reading with
 `writeReading`. It resolves to one `{ label, result, file?, writeError? }` per profile, in
 order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
