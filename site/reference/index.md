@@ -12,13 +12,13 @@ Domain-free building blocks. No titan dependencies.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
-| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read and the usage file | none |
+| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller | none |
 | [`app-paths`](/reference/app-paths) | Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies | none |
 | [`authority`](/reference/authority) | The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator | none |
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
 | [`cluster`](/reference/cluster) | Deterministic Drain template mining with pluggable line masking | none |
 | [`code-parser`](/reference/code-parser) | Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract | none |
-| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths and private terms, reporting location and rule id only | `fix-proof` |
+| [`egress-scan`](/reference/egress-scan) | Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only | `fix-proof` |
 | [`embed`](/reference/embed) | Local embedding runtime (local/Ollama/remote) with a zero-download hash fallback | none |
 | [`eslint-plugin`](/reference/eslint-plugin) | ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task | none |
 | [`evidence`](/reference/evidence) | Citation verification, overlap grouping, planted-control scoring and small-sample statistics for model-judged evidence | none |
@@ -40,6 +40,7 @@ Reusable machinery over the primitives.
 | [`agent-surface`](/reference/agent-surface) | Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan | none |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
+| [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `store-sqlite` |
 | [`matrix-bus`](/reference/matrix-bus) | Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap | none |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |

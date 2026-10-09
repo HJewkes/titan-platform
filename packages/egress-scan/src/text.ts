@@ -1,5 +1,5 @@
 import { locateRules, type TermRule } from "./rules.js";
-import type { Finding } from "./scan.js";
+import { toFinding, type Finding } from "./scan.js";
 
 export interface TextOptions {
   readonly terms?: readonly TermRule[];
@@ -9,10 +9,7 @@ export interface TextOptions {
 export function scanText(text: string, options: TextOptions = {}): Finding[] {
   const findings: Finding[] = [];
   text.split(/\r\n|\n|\r/).forEach((line, i) => {
-    for (const { rule, termIndex, offset } of locateRules(line, options.terms)) {
-      const location = `${i + 1}:${offset + 1}`;
-      findings.push(termIndex === undefined ? { location, rule } : { location, rule, termIndex });
-    }
+    for (const hit of locateRules(line, options.terms)) findings.push(toFinding(`${i + 1}:${hit.offset + 1}`, hit));
   });
   return findings;
 }
