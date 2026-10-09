@@ -72,6 +72,9 @@ interface RawRunRow {
   owner_lease_until: string | null;
 }
 
+/** The statuses of a run still owed work: a runtime may claim it, and everything else is final. */
+export const ACTIVE_STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required"];
+
 /** Durable workflow rows with independent runtime ownership and revision fencing. */
 export class WorkflowRunStore {
   private readonly table: string;
@@ -95,7 +98,7 @@ export class WorkflowRunStore {
     return raw ? toRun(raw) : undefined;
   }
 
-  listByStatus(statuses: WorkflowStatus[]): WorkflowRun[] {
+  listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[] {
     const rows = this.db.prepare(
       `SELECT * FROM ${this.table} WHERE status IN (SELECT value FROM json_each(?)) ORDER BY started_at`,
     ).all(JSON.stringify(statuses)) as RawRunRow[];
@@ -108,9 +111,9 @@ export class WorkflowRunStore {
     const result = this.db.prepare(
       `UPDATE ${this.table}
        SET owner_runtime_id = ?, owner_generation = owner_generation + 1, owner_lease_until = ?, revision = revision + 1
-       WHERE id = ? AND status IN ('running', 'paused', 'cancelling', 'recovery_required')
+       WHERE id = ? AND status IN (SELECT value FROM json_each(?))
          AND (owner_runtime_id IS NULL OR owner_lease_until <= ?)`,
-    ).run(runtimeId, timestamps.leaseUntil, id, timestamps.at);
+    ).run(runtimeId, timestamps.leaseUntil, id, JSON.stringify(ACTIVE_STATUSES), timestamps.at);
     return result.changes === 1 ? this.get(id) : undefined;
   }
 
