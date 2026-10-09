@@ -105,6 +105,11 @@ describe("an owner-gate request's reason", () => {
     expect(() => effective("acme/widgets", { merge: "owner-gate", ownerGateReason: "because" })).toThrow(RegistrationRefused);
   });
 
+  it("refuses a reason unless the merge is owner-gate", () => {
+    expect(() => effective("acme/gizmos", { merge: "auto", ownerGateReason: "proof-fixture" })).toThrow(/applies only with merge owner-gate/);
+    expect(() => effective("acme/gizmos", { ownerGateReason: "proof-fixture" })).toThrow(RegistrationRefused);
+  });
+
   it("accepts a reason and stores it in the effective policy", () => {
     expect(effective("acme/widgets", { merge: "owner-gate", ownerGateReason: "g10-security" })).toMatchObject({ merge: "owner-gate", ownerGateReason: "g10-security" });
   });
@@ -205,7 +210,7 @@ describe("shepherdGatePolicy under merge:auto", () => {
 
   it("never asks authority under owner-gate or never, so the table cannot lift the seat ceiling", () => {
     for (const merge of ["owner-gate", "never"] as const) {
-      shepherdGatePolicy(effective("acme/gizmos", { merge, ownerGateReason: "owner-asked" }), reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD });
+      shepherdGatePolicy(effective("acme/gizmos", merge === "owner-gate" ? { merge, ownerGateReason: "owner-asked" } : { merge }), reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD });
     }
 
     expect(evaluate).not.toHaveBeenCalled();

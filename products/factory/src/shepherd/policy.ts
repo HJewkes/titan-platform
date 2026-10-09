@@ -15,7 +15,7 @@ export type MergeMode = (typeof MERGE_ORDER)[number];
 
 export const OWNER_GATE_REASONS = ["gate-2-visual", "g10-security", "proof-fixture", "owner-asked"] as const;
 
-export type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
+type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
 
 /** The request's fields alone, so an argument parser accepts a request that `resolveEffectivePolicy` then refuses as a registration. */
 export const RequestedPolicyFields = z.strictObject({
@@ -28,10 +28,13 @@ export const RequestedPolicyFields = z.strictObject({
 });
 
 /** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused, and owner-gate must say why. */
-export const RequestedPolicySchema = RequestedPolicyFields.refine((request) => request.merge !== "owner-gate" || request.ownerGateReason !== undefined, {
-    message: `owner-gate needs ownerGateReason, one of ${OWNER_GATE_REASONS.join(", ")}`,
-    path: ["ownerGateReason"],
-  });
+const RequestedPolicySchema = RequestedPolicyFields.superRefine((request, ctx) => {
+  const path = ["ownerGateReason"];
+  if (request.merge === "owner-gate" && request.ownerGateReason === undefined) {
+    ctx.addIssue({ code: "custom", path, message: `owner-gate needs ownerGateReason, one of ${OWNER_GATE_REASONS.join(", ")}` });
+  }
+  if (request.merge !== "owner-gate" && request.ownerGateReason !== undefined) ctx.addIssue({ code: "custom", path, message: "ownerGateReason applies only with merge owner-gate" });
+});
 
 export type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
 
@@ -102,6 +105,13 @@ export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy)
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
   return { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+}
+
+/** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
+export function repeatedPolicy(repeat: EffectivePolicy, stored: EffectivePolicy): EffectivePolicy {
+  const narrowed = stricterPolicy(repeat, stored);
+  const ownerGateReason = stored.ownerGateReason ?? narrowed.ownerGateReason;
+  return { ...narrowed, ...(ownerGateReason && { ownerGateReason }) };
 }
 
 function parseRequest(request: unknown): RequestedPolicy {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fakeSources, NOW, SLOT, watchRow } from "../test-support/digest.js";
 import { collectDigest, type GateFact } from "./collect.js";
+import { rankDigest } from "./rank.js";
+import { renderMarkdown } from "./render-md.js";
 import { readAgentChat, type Exec } from "./sources.js";
 import type { OwnerItem } from "@titan-design/owner-queue";
 import { gateItem } from "../test-support/owner-queue-10-05.js";
@@ -160,7 +162,7 @@ describe("collectDigest with the merged owner list", () => {
 describe("proof-fixture runs", () => {
   const PROOF = "22222222-2222-4222-8222-222222222222";
 
-  it("stay out of the rows, gates and asks that feed an owner round", async () => {
+  it("leave the owner's asks and counts but are listed with their gates and age in their own section", async () => {
     const real = watchRow({ pr: 1 });
     const proof = watchRow({ pr: 2, runId: PROOF, ownerGateReason: "proof-fixture", held: { reason: "proof" } });
     const gates = [gateFact(), gateFact({ gateId: `${PROOF}/approve-merge`, runId: PROOF })];
@@ -168,7 +170,14 @@ describe("proof-fixture runs", () => {
     const model = await collectDigest({ sources: fakeSources({ rows: async () => [real, proof], gates: async () => gates }), now: NOW, windowMinutes: 360, slot: SLOT });
 
     expect(model.needsYou).toHaveLength(1);
-    expect(JSON.stringify(model)).not.toContain(PROOF);
     expect(model.stuck).toEqual([]);
+    expect(model.proofFixtures).toEqual([{ ref: "acme/widgets#2", gates: ["approve-merge"], since: proof.phaseSince }]);
+    expect(renderMarkdown(rankDigest(model))).toMatch(/## Proof fixtures \(not counted above\)\n- acme\/widgets#2: approve-merge \(\d+[mhd]\)/);
+  });
+
+  it("add no section when no run is a proof fixture", async () => {
+    const model = await collectDigest({ sources: fakeSources({ rows: async () => [watchRow({})] }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.proofFixtures).toBeUndefined();
   });
 });
