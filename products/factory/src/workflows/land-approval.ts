@@ -1,5 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
+import { approveMergeDecision } from "../gate-brief.js";
+import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
 
 /** The one head an approval answer may cover; land asks again at any other head. */
@@ -20,6 +22,17 @@ export type ApprovalAnswer = "merge" | "abandon" | { failed: string };
  * than ask afresh, and that record must name the head so an answer can never be read as covering another one.
  */
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
+
+/** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
+export function approveMergeGate(rule: PolicyRule, reviewedMerge?: (headSha: string) => boolean): AskApproval {
+  return async (ctx, { repo, pr, headSha, reason }) => {
+    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: reviewedMerge?.(headSha) ?? false });
+    const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
+    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
+    if (!answer.success) throw new Error(`approve-merge answer does not approve head ${headSha}: ${answer.error.message}`);
+    return answer.data.decision;
+  };
+}
 
 export const DEVICE_CHECK = "device-check";
 
