@@ -21,7 +21,6 @@ const SNAPSHOT_FIXTURES = new Set([
 ]);
 const EXIT_STATUS = /(?:^|\.)(?:exit_code|returncode|status_code|code)$/;
 const GOLDEN_READ = /\.(?:read_text|read_bytes|read)\(/;
-const LOOSE_CALLS = /^(?:isinstance|callable|hasattr|any|all|.*\.(?:startswith|endswith|match|search|fullmatch))$/;
 const EXACT_UNITTEST = /^assert(?:Equals?|ListEqual|DictEqual|TupleEqual|SetEqual|MultiLineEqual|SequenceEqual|CountEqual)$/;
 const ERROR_CALLS = /^(?:pytest\.raises|.*\.assertRaises(?:Regex)?)$/;
 
