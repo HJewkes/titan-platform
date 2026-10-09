@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { lintAsk, lintMorningList, lintOwnerQuestions, type AskFinding, type AskItemFindings } from "./ask-lint.js";
+import { lintAsk, lintMorningList, lintOwnerQuestions, type AskFinding, type AskLintStats, type AskItemFindings } from "./ask-lint.js";
 
 /** Verbatim items from the 2026-10-04 Morning list, and vc-65 rewritten under the contract. */
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "ask-lint");
@@ -196,22 +196,19 @@ describe("linear time and two false positives (TP-1684)", () => {
   });
 
   it("lints distinct ids in linear time, not quadratic", () => {
-    const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
-    const timeFor = (count: number) => {
+    // Counts the characters the id-context windows read, so a loaded runner cannot move the result.
+    const windowCharsFor = (count: number) => {
       const ids = Array.from({ length: count }, (_, i) => `VW-${i}`).join(" ");
-      const question = "Recommend yes. " + ids + NOW;
-      lintAsk({ question });
-      return median(Array.from({ length: 5 }, () => {
-        const start = performance.now();
-        lintAsk({ question });
-        return performance.now() - start;
-      }));
+      const stats: AskLintStats = { windowChars: 0 };
+      lintAsk({ question: "Recommend yes. " + ids + NOW }, stats);
+      return stats.windowChars;
     };
 
-    const ratio = timeFor(14_000) / Math.max(timeFor(7000), 1);
+    const ratio = windowCharsFor(14_000) / windowCharsFor(3500);
 
-    // Linear growth doubles the time; quadratic quadruples it. A load spike shifts both sizes alike.
-    expect(ratio).toBeLessThan(3);
+    // 4x the ids: linear growth reads about 4x the characters, quadratic about 16x. The bound of 8 sits between them.
+    expect(ratio).toBeLessThan(8);
+    expect(ratio).toBeGreaterThan(3);
   });
 
   it("does not read Node.js or a slash-separated list as a path", () => {

@@ -16,6 +16,10 @@ host validates a seat's config the same way everywhere. It also folds a seat's e
 into `SeatState` (`foldSeatEvents`), so seat state is computed from events rather than
 hand-kept, and can be tested with no broker running.
 
+The autonomy charter carries front matter too (`schema: autonomy-charter/v1`): the seat
+roster, the hub, the hard-stop classes and the scorer defaults. `charterPolicySchema` types it and `parseCharterPolicy` validates it, so generic charter
+rules can live in code rather than prose.
+
 ## When to reach for it
 
 Use it to validate or type a seat's front matter after you have parsed the YAML yourself.
@@ -43,6 +47,16 @@ const state = foldSeatEvents(
 // state.generation === 1; state.errors lists any refused or malformed event
 ```
 
+```ts
+import { parseCharterPolicy } from "@titan-design/coordinator";
+
+const result = parseCharterPolicy(charterFrontMatterObject);
+if (!result.ok) {
+  // e.g. [{ code: "missing", path: "defaults.teleport_k", message: "..." }]
+  console.error(result.errors);
+}
+```
+
 ## What it deliberately does not do
 
 It reads no files, parses no YAML and runs nothing. It has no notion of jobs or placement.
@@ -65,6 +79,15 @@ Paths come from a best-effort split of the command on whitespace, quotes, `=` an
 operators (`>`, `2>`, `|`, `&&`, `;`), with an option glued to a path (`-o/tmp/x`) trimmed.
 URLs are skipped. Other variables are not expanded. `errors[].index` counts from the start
 of each call's `events`, so a fold resumed with `from` restarts at 0.
+
+`parseCharterPolicy` never throws. It requires `schema`, `seats` (at least one), `hub`,
+`hard_stops` and `defaults`. Every hard stop must be one of `HARD_STOP_CLASSES` (the twelve
+classes); an unknown class is refused, since a misspelt one would guard nothing. In
+`defaults` the scorer terms, `retire_k`, `teleport_k` and the worktree counts are required;
+`gate_free_bonus`, `stale_pr_days` and `heartbeat_cron` are optional. Unknown keys pass
+through. `pools` and `funds` are deliberately not in the schema, because account limits
+belong to `@titan-design/agent-dispatch`; they pass through untyped. An error's `code` is
+`missing` when nothing sits at its `path`, and `invalid` otherwise.
 
 ## Where it came from
 

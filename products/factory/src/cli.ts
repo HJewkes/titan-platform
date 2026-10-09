@@ -14,6 +14,7 @@ import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
+import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
@@ -81,7 +82,13 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
   let exitCode: number = EXIT.OK;
   const dbPath = (): string => resolveDbPath({ env: io.env, dbFlag: program.opts<{ db?: string }>().db });
   const setExit = (code: number): void => void (exitCode = code);
+  let verb = "";
+  program.hook("preAction", (_program, action) => {
+    verb = verbPath(action);
+    if (FROZEN_HOST_WRITE_VERBS.has(verb)) refuseFrozenHost(io.env, verb);
+  });
   const withHost = async (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number): Promise<void> => {
+    refuseFrozenHost(io.env, verb);
     const routes = routesOf(deps);
     const host = openFactoryHost({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes });
     try {
@@ -93,6 +100,13 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
   for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
+}
+
+/** `shepherd hold` for the hold subcommand: every command name below the program. */
+function verbPath(command: Command): string {
+  const names: string[] = [];
+  for (let at: Command | null = command; at?.parent; at = at.parent) names.unshift(at.name());
+  return names.join(" ");
 }
 
 function registerResume(program: Command, { io, withHost }: Verbs): void {
@@ -289,7 +303,7 @@ async function parse(program: Command, argv: string[], io: CliIo, exitCode: () =
   } catch (err) {
     if (err instanceof CommanderError) return err.code === "commander.helpDisplayed" || err.code === "commander.version" ? EXIT.OK : EXIT.USAGE;
     io.stderr(`error: ${err instanceof Error ? err.message : String(err)}\n`);
-    return EXIT.FAILURE;
+    return err instanceof FrozenHostError ? EXIT.USAGE : EXIT.FAILURE;
   }
   return exitCode();
 }

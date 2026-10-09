@@ -1,5 +1,6 @@
 import type { NeedsList } from "../needs/merged.js";
 import type { OwnerItem } from "@titan-design/owner-queue";
+import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import { subjectOf } from "../needs/overlap.js";
@@ -27,6 +28,8 @@ export interface DigestSources {
   /** The merged owner list (`titan-factory needs`). When set, it is the whole of "Needs you"; gates, seat queues and the agent-chat asks are not read for it. */
   needs?(): Promise<NeedsList>;
   seatCosts(since: Date): SeatLine[];
+  /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
+  friction?(now: Date): FrictionDay | undefined;
 }
 
 export interface CollectOptions {
@@ -59,6 +62,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
   gaps.push(...(needs?.gaps ?? []));
+  const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
   return {
     slot,
     generatedAt: now.toISOString(),
@@ -68,6 +72,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
+    ...(friction && { friction }),
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
 }

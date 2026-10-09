@@ -43,6 +43,25 @@ titan-factory needs [--json]                                  # everything waiti
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
 Owner-specific bindings live in that config file, never in this repo.
 
+### A host whose database is frozen: `remoteFactory`
+
+When the live factory moves to another host, set `remoteFactory` in the old host's config file to
+the live factory's URL, for example `"remoteFactory": "http://127.0.0.1:7410"` over a port forward.
+It must be an `http` or `https` URL with no user or password, and a key that only looks like it
+(`remotefactory`, `remote_factory`) fails the load instead of being ignored. While it is set, stderr
+names the remote, says this host's database is frozen, and the verb exits 2:
+
+- `serve`, `resume`, `land`, `gate resolve` (and `gate resolve-batch`, once it lands), and
+  `shepherd register|hold|release|resync` are refused before they probe `--port` or open anything.
+  A serve answering that port on this host may be the frozen one, and nothing yet proves it is the
+  remote, so these never go over RPC either.
+- Every other verb still reads from a serve that answers, but refuses rather than open the local
+  database when none does. `shepherd stats` reads the file read-only and still works.
+
+The refusal ignores `--db` and `TITAN_FACTORY_DB`. With `remoteFactory` unset nothing changes. A
+LaunchAgent or systemd unit for `serve` on the frozen host restarts the refused serve forever, so
+run `titan-factory service uninstall` there first.
+
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
 an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
@@ -196,6 +215,22 @@ wake a live run again.
 The owner's `sh-sent-back` gate still opens in these cases: the message fails to send, no
 single seat owns the repo, the agent exits a second time at a head the seat was already told
 about, or the wake was a conflict or fix-proof wake.
+
+### A fixer that cannot start
+
+A wake never resumes a retired implementer. When agent-chat refuses to resume an ended
+implementer, as for one on a model its pool no longer runs, the same wake spawns a successor
+instead, under the same spawn load gate. Other failures are not refusals and still reach the
+owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
+`sh-wake-implementer` records the refusal and `held`. A held FIX_FIRST then takes the route of a
+fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
+the run waits for a new head with no owner gate open. When that notice is not sent, and for a
+held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
+next action and the wake's timeline entry name the refusal; the row says the seat was told only when
+`sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`
+and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
+still bounds how many such wakes a run makes. A refused message to a live implementer still
+opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
 
 ## Owner digest
 

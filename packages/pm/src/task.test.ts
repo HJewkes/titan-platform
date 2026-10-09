@@ -70,8 +70,22 @@ describe("TaskSchema", () => {
     expect(TaskSchema.safeParse({ ...validBase, id: "A1B2-99" }).success).toBe(true);
   });
 
-  it("rejects invalid status enum", () => {
-    expect(TaskSchema.safeParse({ ...validBase, status: "closed" }).success).toBe(false);
+  it("leaves an unknown status to the registry check and rejects only an empty one", () => {
+    expect(TaskSchema.safeParse({ ...validBase, status: "icebox" }).success).toBe(true);
+    expect(TaskSchema.safeParse({ ...validBase, status: "" }).success).toBe(false);
+  });
+
+  it("accepts kind, cos, area and due", () => {
+    const result = TaskSchema.safeParse({ ...validBase, kind: "epic", cos: "fixed", area: "pm", due: "2026-11-02" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a due that is not a calendar date", () => {
+    expect(TaskSchema.safeParse({ ...validBase, due: "2026-02-30" }).success).toBe(false);
+  });
+
+  it.each(["kind", "cos", "area"])("rejects an empty %s", (field) => {
+    expect(TaskSchema.safeParse({ ...validBase, [field]: "" }).success).toBe(false);
   });
 
   it("rejects invalid severity enum", () => {
@@ -126,6 +140,20 @@ describe("TaskSchema", () => {
 
   it("rejects a dep entry that is not a task id", () => {
     expect(TaskSchema.safeParse({ ...validBase, dep: ["ec-2"] }).success).toBe(false);
+  });
+
+  it("accepts a deliverables id list", () => {
+    const result = TaskSchema.safeParse({ ...validBase, deliverables: ["console-v1", "Relay2"] });
+    expect(result.data?.deliverables).toEqual(["console-v1", "Relay2"]);
+  });
+
+  it("rejects a deliverables list with a repeated id", () => {
+    const result = TaskSchema.safeParse({ ...validBase, deliverables: ["console-v1", "console-v1"] });
+    expect(result.error?.issues.some((i) => i.path[0] === "deliverables")).toBe(true);
+  });
+
+  it.each(["1st", "-x", "a_b", ""])("rejects deliverable id %j", (id) => {
+    expect(TaskSchema.safeParse({ ...validBase, deliverables: [id] }).success).toBe(false);
   });
 
   it("rejects empty title", () => {

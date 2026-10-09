@@ -56,6 +56,9 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@25.9.5)(jiti@1.21.7)(jsdom@30.1.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   apps/codewatch:
     dependencies:
@@ -249,7 +252,11 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
-  packages/agent-dispatch: {}
+  packages/agent-dispatch:
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/agent-lifecycle:
     dependencies:

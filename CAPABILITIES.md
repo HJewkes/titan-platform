@@ -33,7 +33,7 @@ Before adding code:
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
 | [`tool-guard`](#cap-tool-guard) | 0 | A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand. |
 | [`agent`](#cap-agent) | 1 | You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow. |
-| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. |
+| [`agent-dispatch`](#cap-agent-dispatch) | 1 | Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves. |
 | [`agent-lifecycle`](#cap-agent-lifecycle) | 1 | You need a durable record of which process owns a running agent execution, with fenced ownership so a stale owner cannot overwrite a newer one. |
 | [`agent-surface`](#cap-agent-surface) | 1 | A host must present a long-lived agent somewhere: detached and headless, or in an iTerm2 pane, tab or window it can later close and confirm closed. The host injects its launcher argv; `titan-agent-launch <plan.json>` is the launcher that execs a written plan with no shell, stamps its own pid, and keeps a stderr tail. For a bounded `claude -p` run that returns a result, use `runAgent` from `@titan-design/agent` with `harness: "claude-print"` instead. |
 | [`daemon`](#cap-daemon) | 1 | You want a registry reachable over loopback HTTP and MCP with health, SSE, file watching and a pid file, or just one of those utilities. It also carries a token-file, login-link and session-cookie auth gate for a listener beyond loopback. |
@@ -47,11 +47,11 @@ Before adding code:
 | [`worktree`](#cap-worktree) | 1 | You give each headless agent its own git worktree and branch under a per-repository budget, and must never lose its commits: allocation adopts a crashed agent's branch, release and park refuse a tree with uncommitted or unpushed work, and a sweep finds trees nobody released. Inputs are plain records and the budget is a parameter, so the caller keeps its own roster and journal. Launching the agent process is agent-surface; deciding which isolation strategy applies is agent-dispatch. |
 | [`code-graph`](#cap-code-graph) | 2 | A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python. |
 | [`code-read`](#cap-code-read) | 2 | A product serves code-graph snapshots to a UI, an agent or a workflow through a versioned read API, registered on a registry and hosted by daemon. |
-| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. |
+| [`coordinator`](#cap-coordinator) | 2 | You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. |
 | [`decider`](#cap-decider) | 2 | You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list. |
 | [`memory`](#cap-memory) | 2 | An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. |
-| [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, and a deterministic rank. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
-| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent and dep), read a task's parent and dep edges with `readEdges`, or check a proposed edge change for unknown ids and cycles with `checkEdges`. Pure code; it reads no files, so parse the task YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
+| [`owner-queue`](#cap-owner-queue) | 2 | You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired). The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror. |
+| [`pm`](#cap-pm) | 2 | You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead. |
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`) and the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy. Types only for now; to start an agent use agent-dispatch, and to parse a transcript use session-read. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Session parsing is session-read; storage is session-graph. |
@@ -395,7 +395,7 @@ Key exports:
 
 Tier 1, `@titan-design/agent-dispatch@0.4.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
-**Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead.
+**Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
 
 Key exports:
 
@@ -465,12 +465,12 @@ Tier 1, `@titan-design/github@0.5.1`. GitHub REST port over the gh CLI: validate
 Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
+- `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `app-token`: `appInstallationToken`
-- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +60 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
@@ -638,16 +638,17 @@ Key exports:
 
 ### [`coordinator`](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.0.0`. Seat config schema for the autonomy coordinator (pure code: zod schema and inferred types).
+Tier 2, `@titan-design/coordinator@0.0.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
-**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space.
+**Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path.
 
 Key exports:
 
+- `charter-policy`: `charterDefaultsSchema`, `charterPolicyErrorSchema`, `charterPolicySchema`, `hardStopClassSchema`, `parseCharterPolicy`
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
-- `seat-state`: `emptySeatState`, `foldSeatEvents`, `scratchPathOf`, `seatBackgroundSchema`, `seatClaimSchema`, `seatFoldErrorSchema`, `seatHoldSchema`
-- +10 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
+- `seat-state`: `emptySeatState`, `foldSeatEvents`
+- +21 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
 <a id="cap-decider"></a>
 
@@ -664,7 +665,7 @@ Key exports:
 - `exclusion`: `initiativeForCwd`, `isExcluded`
 - `classify`: `classifyQuestion`
 - `parse-answer`: `answerFor`, `parseAnswerText`
-- +174 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
+- +175 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/decider)
 
 <a id="cap-memory"></a>
 
@@ -688,15 +689,16 @@ Key exports:
 
 Tier 2, `@titan-design/owner-queue@0.0.0`. The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions
 
-**Use this when:** You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, and a deterministic rank. The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror.
+**Use this when:** You gather the things only the owner can answer from several stores of record (chat questions, hitl gates, task notes, review rounds) into one list and need one `OwnerItem` shape, a `QueueSource` port for adapters, a merge that joins duplicates only on an exact shared key including a PR's head sha, a deterministic rank, and pure stale rules that label an item gone elsewhere from source facts (PR merged, head moved, task done, asker retired). The root export holds no I/O; the one exception is the `/spool` subpath, the 0600 file spool where agents file deposits and the console keeps the owner's answers. Other adapters live in the product, the gate itself is hitl, routing is decider, and mirroring to Matrix is queue-mirror.
 
 Key exports:
 
-- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `LENSES`, `ownerItemSchema`, `sourceRefSchema`
+- `schema`: `DOORS`, `ITEM_KINDS`, `ITEM_STATUSES`, `ownerItemSchema`, `sourceRefSchema`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `merge`: `isMergeKey`, `mergeByKeys`
 - `rank`: `rank`
-- +12 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
+- `stale`: `staleLabel`
+- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
@@ -704,12 +706,16 @@ Key exports:
 
 Tier 2, `@titan-design/pm@0.0.0`. Project-management schemas: the zod task schema and its type, as active-work stores tasks
 
-**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent and dep), read a task's parent and dep edges with `readEdges`, or check a proposed edge change for unknown ids and cycles with `checkEdges`. Pure code; it reads no files, so parse the task YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
+**Use this when:** You need to validate or type an active-work task record (id, title, priority, status, dates and the optional severity, estimate, done_when, tags, notes, parent, dep, deliverables, kind, cos, area and due), read a task's parent and dep edges with `readEdges`, check a proposed edge change for unknown ids and cycles with `checkEdges`, validate a task's kind, status, cos and area against the category registry with `CategoryRegistrySchema` and `checkCategories`, or validate the platform-wide deliverable registry with `DeliverableSchema` and `parseDeliverableRegistry`. Pure code; it reads no files, so parse the task, registry and deliverable YAML in the host and hand the objects over. For a seat's front matter use `coordinator` instead.
 
 Key exports:
 
-- `task`: `TaskSchema`, `Task`
-- `edges`: `checkEdges`, `readEdges`, `CrossInitiativeParentWarning`, `EdgeChange`, `EdgeCheck`, `EdgeError`, `EdgeField`, `Edges`
+- `task`: `TaskSchema`
+- `deliverable`: `DeliverableSchema`, `deliverablePath`, `deliverablesDir`, `parseDeliverableRegistry`
+- `edges`: `checkEdges`, `readEdges`
+- `graph`: `criticalPath`, `taskTree`
+- `categories`: `CategoryRegistrySchema`, `categoriesPath`, `checkCategories`
+- +25 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
 

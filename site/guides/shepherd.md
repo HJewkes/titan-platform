@@ -210,11 +210,14 @@ whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
 request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
-`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate and a `ci-failed`
-gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
+`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate, a `ci-failed`
+gate and a `stuck-behind` gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
 failed-rounds gate starts the new head's review rounds from zero, so the run does not ask the
 owner again before the new head has failed its own rounds. A superseded `ci-failed` gate reads as
-`await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
+`await-fix`, so the run lands the new head with no owner answer. A superseded `stuck-behind`
+gate starts a new land round at the new head with a fresh update budget. Resync also answers
+the active `merge` step of a run no runtime holds, when the head that step merges is no longer
+the pull request's head: the answer is no merge, so the run reads CI and reviews the new head. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
 its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
@@ -280,6 +283,16 @@ is resumed or replaced by a successor. If no turn starts, one fallback goes out:
 the agent has ended by then, else a second message. If there is still no turn, the wake is
 unhandled.
 
+A retired implementer is never resumed; a successor takes the wake. When agent-chat refuses to
+resume an ended implementer, the same wake spawns a successor, under the spawn load gate. When
+it refuses the successor as well, a review's send-back holds: `sh-wake-implementer` records the
+refusal as `held`. Like a fixer that exits with no push, the repo's seat is told why no fixer
+started and the run waits for a new head; if no notice is sent, `sh-sent-back` opens and names
+the refusal. The watch row's next action and the timeline's wake entry carry the refusal, and the
+row says the seat was told only when a notice was sent after that wake. A ci-red or conflict wake
+records no `held`. A ci-red wake still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
+spends one repair from the `repair-budget`.
+
 GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base
 cannot merge into the head. That is not a failure: the land round stops with reason `conflict` and
 takes the same route as a `dirty` PR. The first time, the implementer is woken with the conflict;
@@ -327,6 +340,27 @@ agent by design and have no limit. With nothing registered the verbs print
 `no shepherded PRs`. `timeline` prints the same row and then every step, CI read and gate
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
+
+## Stats {#stats}
+
+```
+titan-factory shepherd stats [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+Reads the store read-only, so it is safe beside a running `serve`. Two reports, both in UTC:
+
+- Per repo and ISO week: merges, those whose wait between the reviewer's `MERGE` and the merge
+  itself exceeded 60 minutes (with their total hours), and merges made outside Shepherd.
+- Per day, the owner's friction. **Owner touches** counts the gates an owner class resolved that
+  day. For each gate kind (the gate's step id without its iteration, such as `approve-merge`,
+  `ci-failed`, `sh-sent-back`, `stuck-behind`, `main-frozen`) it shows how many gates waited and
+  the median and maximum hours they waited on the owner. A gate resolved by the owner waited from
+  its opening to its resolve and counts on the resolve day. A gate still pending is waiting on the
+  owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
+  and is left out. Releases do not appear: `shepherd release` records no actor.
+
+`--json` returns `{ "merges": [...], "ownerFriction": [...] }`. The morning digest shows today's
+two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
 ## Seat policy {#seat-policy}
 
@@ -435,10 +469,11 @@ Both are read from the registration and the run's current step, never stored. Th
 branch registration can be held only once its pull request exists. `--reviewer` names the
 reviewer whose verdict the run waits for; `release` clears it. Only that reviewer's `MERGE`, at
 the head being merged, satisfies the hold. A `MERGE` from Shepherd's own reviewer never does,
-so it cannot carry a held run past a seat's `FIX_FIRST`. When a fix round moves the head, the
-merge waiting at the old head ends once the hold's reviewer sends `MERGE` at the new one. A
-merge that waited on a hold does not go through on release: land reads CI again first,
-because the base or the head may have moved.
+so it cannot carry a held run past a seat's `FIX_FIRST`. When a push moves the head, the
+merge waiting at the old head ends at its next poll without merging. The run reads CI and
+reviews the new head, then comes back to the merge step there, where the same hold applies.
+The push never releases or changes the hold. A merge that waited on a hold does not go
+through on release: land reads CI again first, because the base or the head may have moved.
 
 ## Merge train {#merge-train}
 
@@ -537,7 +572,7 @@ titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","he
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
 | `ci-failed` | a head is red and no agent took the wake | `{"decision":"rerun"\|"abandon"\|"await-fix","headSha":"…"}` |
 | `stuck-behind` | in a repo that requires up-to-date heads, the branch is still behind after at least three updates and 120 minutes since the first; each update waits for the head's required checks to settle, except a check that has never reported, which stops blocking after 10 minutes so a workflow that exists only on the base can start. The prompt names every head, the elapsed time and the budget. A repo that does not require up-to-date heads never opens it: a stale green is approved as is and refreshed once before the merge | `{"decision":"retry"\|"abandon"}`. A coordinator may resolve this gate, and only with exactly `{"decision":"retry"}` (recorded with its agent name); abandon, and every other gate, stay owner-only |
-| `sh-sent-back` | a review sent the head back and no agent took the wake, or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}` |
+| `sh-sent-back` | a review sent the head back and no agent took the wake (a refused successor holds instead), or the run spent its repair budget: `MAX_REPAIRS` (10) fixer wakes across every wake kind and head (`repair-budget`) | `{"decision":"await-new-head"\|"abandon"}` |
 | `main-red` | main CI on the merge commit is unread, or red with no freeze store wired | `{"decision":"acknowledged","mergeSha":"…"}` |
 | `main-red-again` | main is red again while the episode already has a fixer | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |
 | `main-frozen` | the repo is frozen with no fix task, no fixer, or after a green merge that did not thaw it | `{"decision":"stay-frozen"\|"unfreeze","mergeSha":"…"}` |

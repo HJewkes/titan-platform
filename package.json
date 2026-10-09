@@ -22,6 +22,7 @@
     "dag:check": "node scripts/dag-check-self.mjs",
     "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
+    "areas": "node scripts/areas.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
@@ -52,6 +53,7 @@
     "typescript-eslint": "^8.46.0",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yaml": "^2.9.1"
   }
 }
