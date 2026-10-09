@@ -49,3 +49,37 @@ describe("a sure read the walk used to skip (TP-1624)", () => {
     expect(await verdict(command)).toBe("deny");
   });
 });
+
+describe("every place bash evaluates arithmetic reads a value (TP-1624)", () => {
+  it.each([
+    ["an arithmetic for header", `${SECRET}; for ((i=0; i<X; i++)); do :; done`],
+    ["an arithmetic for condition read with >", `${SECRET}; for ((i=9; i>X; i--)); do :; done`],
+    ["a bare name in a for header", `${SECRET}; for ((;X;)); do :; done`],
+    ["a (( )) that compares with <", `${SECRET}; (( i<X ))`],
+    ["a (( )) that compares with >", `${SECRET}; (( X>1 ))`],
+    ["an arithmetic for with a split header", `${SECRET}; for ((i=0;\\ni<X;\\ni++)); do :; done`],
+  ])("denies a push in a value named in %s", async (_, command) => {
+    expect(await verdict(command)).toBe("deny");
+  });
+});
+
+describe("a value that cannot run anything costs no hop (TP-1624)", () => {
+  const plain = (count: number) => Array.from({ length: count }, (_, i) => `v${i}=${i}`).join("; ");
+  const sum = (count: number) => Array.from({ length: count }, (_, i) => `v${i}`).join(" + ");
+
+  it.each([16, 17, 40])("passes an arithmetic line over %i plain numbers", async (count) => {
+    expect(await verdict(`${plain(count)}; echo $(( ${sum(count)} ))`)).toBe("pass");
+  });
+
+  it("passes plain numbers read by a for header and a (( ))", async () => {
+    expect(await verdict(`${plain(30)}; for ((i=0; i<v29; i++)); do (( ${sum(30)} )); done`)).toBe("pass");
+  });
+
+  it("still denies a push at the end of a chain of twenty names", async () => {
+    expect(await verdict(`${chain(20)}; N20='a[$(${PUSH})]'; (( N0 ))`)).toBe("deny");
+  });
+
+  it("still denies a push behind plain numbers", async () => {
+    expect(await verdict(`${plain(30)}; ${SECRET}; (( ${sum(30)} + X ))`)).toBe("deny");
+  });
+});

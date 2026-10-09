@@ -114,7 +114,7 @@ interface ArithmeticTexts {
  * wherever they sit; `head` is the index of the command word, after any prefix assignments, or -1; `[[ -n $msg ]]` does not evaluate `msg`, and `[` and `test` never do.
  */
 export function arithmeticTexts(op: Token | null, words: WordToken[], head: number): ArithmeticTexts {
-  const span = (op ? (compounds.get(op) ?? []) : []).flatMap((t) => (t.type === "word" ? [t.value] : []));
+  const span = (op ? (compounds.get(op) ?? []) : []).map(spanText);
   const values = words.map((w) => w.value);
   const command = head < 0 ? [] : values.slice(head);
   const operands = command[0] === "let" || command[0] === "[[" ? command.slice(1) : head < 0 ? [] : command;
@@ -137,6 +137,13 @@ function spanWrites(op: Token, expand: (w: WordToken) => WordToken, vars: Vars):
   const words = span.flatMap((t) => (t.type === "word" ? [expand(t)] : t.type === "redirect" && t.target ? [expand(t.target)] : []));
   if (span.some((t) => t.type === "subs") || words.some(runTimeExpression)) return null;
   return arithmeticWrites([span.map((t) => compoundText(t, expand)).join(" ")], vars);
+}
+
+/** A token of a `(( ))` header, with a `<` or `>` and its operand kept together, as the lexer reads them as a redirection. */
+function spanText(t: Token): string {
+  if (t.type === "word") return t.value;
+  if (t.type === "redirect") return t.op + (t.target?.value ?? "");
+  return t.type === "op" ? t.value : "";
 }
 
 /** The lexer reads `<` and `>` in an expression as redirections; `Y>>=1` keeps its operator whole. */
