@@ -224,6 +224,8 @@ interface Walk {
   nodes: Map<string, { kind: NodeKind; depth: 0 | 1 | 2; expanded: boolean }>;
   edges: Map<string, EgoEdge>;
   seen: Set<string>;
+  /** Dropped by a cap: final, so a later hop cannot bring the node back on the wrong ring or count it twice. */
+  excluded: Set<string>;
   counts: Partial<Record<NodeKind, number>>;
   omitted: Partial<Record<NodeKind, number>>;
   collapsed: Map<string, Collapsed & { refs: Set<string> }>;
@@ -238,7 +240,7 @@ interface Candidate {
 /** With no graph (`reads` null) only the mentions are walked, so the answer is depth 1. */
 function walk(reads: GraphReads | null, args: EgoArgs, mentions: readonly EgoEdge[]): Omit<EgoGraph, "sources" | "degraded"> {
   const center = args.ref;
-  const state: Walk = { center, nodes: new Map([[center, { kind: kindOf(center)!, depth: 0, expanded: false }]]), edges: new Map(), seen: new Set([center]), counts: {}, omitted: {}, collapsed: new Map() };
+  const state: Walk = { center, nodes: new Map([[center, { kind: kindOf(center)!, depth: 0, expanded: false }]]), edges: new Map(), seen: new Set([center]), excluded: new Set(), counts: {}, omitted: {}, collapsed: new Map() };
   const nodeCap = args.limit.nodes ?? EGO_CAPS.nodes;
   let frontier = [center];
   for (const hop of [1, 2] as const) {
@@ -248,7 +250,10 @@ function walk(reads: GraphReads | null, args: EgoArgs, mentions: readonly EgoEdg
     const kept = capLayer(candidates, nodeCap - state.nodes.size, hop === 1 ? EGO_CAPS.perKindAtDepth1 : Infinity);
     for (const candidate of candidates) {
       if (kept.has(candidate.ref)) state.nodes.set(candidate.ref, { kind: candidate.kind, depth: hop, expanded: false });
-      else state.omitted[candidate.kind] = (state.omitted[candidate.kind] ?? 0) + 1;
+      else {
+        state.excluded.add(candidate.ref);
+        state.omitted[candidate.kind] = (state.omitted[candidate.kind] ?? 0) + 1;
+      }
     }
     frontier = [...kept];
   }
@@ -282,7 +287,7 @@ function admit(state: Walk, links: readonly EgoEdge[], include: ReadonlySet<stri
     }
     const key = `${link.source}\u0000${link.kind}\u0000${link.target}`;
     if (!state.edges.has(key)) state.edges.set(key, link);
-    if (state.nodes.has(other)) continue;
+    if (state.nodes.has(other) || state.excluded.has(other)) continue;
     const before = candidates.get(other)?.newest ?? "";
     const at = link.validFrom ?? "";
     candidates.set(other, { ref: other, kind, newest: at > before ? at : before });

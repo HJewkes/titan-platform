@@ -214,6 +214,20 @@ describe("graph.ego caps", () => {
     expect(data.truncated).toMatchObject({ nodeCap: 150, edgeCap: 300, omitted: { task: 5 }, omittedEdges: 5 });
   });
 
+  it("keeps a node the depth-1 cap dropped out of depth 2, counted as omitted once", async () => {
+    const id = (i: number) => `0a1b2c3d-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    seed((graph) => {
+      for (let i = 1; i <= 41; i++) edge(graph, `session:${id(i)}`, "ran", "task:CR-1", { tValid: `2031-03-01T10:${String(i).padStart(2, "0")}:00Z` });
+      edge(graph, `session:${id(41)}`, "spawned", `session:${id(1)}`);
+    });
+    const { data } = await ego({ ref: "task:CR-1", depth: 2 });
+
+    expect(node(data, `session:${id(41)}`)?.depth).toBe(1);
+    expect(node(data, `session:${id(1)}`)).toBeUndefined();
+    expect(data.counts.session).toBe(41);
+    expect(data.truncated?.omitted).toEqual({ session: 1 });
+  });
+
   it("fills a lowered node cap round-robin so one kind cannot crowd out another", async () => {
     seed(crowded);
     const { data } = await ego({ ref: "initiative:crowd", limit: { nodes: 7, edges: 4 } });
