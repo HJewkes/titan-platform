@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "anthropic-account": "./dist/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,6 +20,7 @@
   },
   "files": [
     "dist",
+    "systemd",
     "README.md"
   ],
   "author": "Henry Jewkes",
