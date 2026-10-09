@@ -6,14 +6,15 @@ Tier 1 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
 - `healthReportSchema` (zod, a peer dependency) is the write schema for a health route's
-  payload. It follows draft-inadarei-api-health-check: `status` (`pass|warn|fail`), named
-  `checks`, `started_at` and `metrics`, plus the legacy `ok`, `version`, `pid`, `uptime_ms`
+  payload. It follows draft-inadarei-api-health-check: `status` (`pass|warn|fail`), `checks`
+  keyed `component:measurement` with an array of check objects each, `started_at` and `metrics`, plus the legacy `ok`, `version`, `pid`, `uptime_ms`
   and `port`. Product extension keys pass through. A `status` better than the worst check is
   refused.
-- `parseHealthReport(payload)` is the read side and returns `{ ok, report }` or `{ ok, error }`.
-  A legacy payload with only `ok` reads as pass or fail, the draft's `up`/`down`/`ok`/`error`
-  aliases are accepted, unknown fields are kept, a check status it does not know reads as
-  `warn`, and the result is never better than its worst check.
+- `parseHealthReport(payload)` is the read side and returns `{ ok, report, ignored }` or
+  `{ ok, error }`. Only a status or a legacy boolean `ok` is required. The draft's
+  `up`/`down`/`ok`/`error` aliases are accepted, unknown fields and check values are kept, a
+  mistyped known field is dropped and named in `ignored`, a check status it does not know
+  reads as `warn`, and the result is never better than its worst check.
 - `worstStatus(statuses)` folds statuses as fail > warn > pass; an empty list is pass.
 - `healthSampleSchema` is the strict write schema for one stored probe result: `ts`,
   `target`, `kind`, `status` (`pass|warn|fail|unknown`), `latencyMs`, `observed`, `output`,

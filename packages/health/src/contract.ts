@@ -15,6 +15,8 @@ export function worstStatus(statuses: Iterable<HealthStatus>): HealthStatus {
 
 export const healthCheckSchema = z.looseObject({
   status: healthStatusSchema,
+  componentId: z.string().optional(),
+  componentType: z.string().optional(),
   observedValue: z.unknown().optional(),
   observedUnit: z.string().optional(),
   output: z.string().optional(),
@@ -22,10 +24,12 @@ export const healthCheckSchema = z.looseObject({
 });
 export type HealthCheck = z.infer<typeof healthCheckSchema>;
 
-// Loose so products keep their extension keys (runs, build, lastDeploy, ...) on the same payload.
-const reportShape = z.looseObject({
-  status: healthStatusSchema,
-  checks: z.record(z.string(), healthCheckSchema).optional(),
+// The draft keys checks as "component:measurement", each holding one entry per node or instance.
+const checksSchema = z.record(z.string(), z.array(healthCheckSchema));
+type Checks = z.infer<typeof checksSchema>;
+
+// Every field but status and checks; the reader validates these one at a time and drops a mistyped one.
+const optionalFields = {
   started_at: z.string().optional(),
   metrics: z.record(z.string(), z.unknown()).optional(),
   ok: z.boolean().optional(),
@@ -33,7 +37,10 @@ const reportShape = z.looseObject({
   pid: z.number().int().optional(),
   uptime_ms: z.number().nonnegative().optional(),
   port: z.number().int().optional(),
-});
+};
+
+// Loose so products keep their extension keys (runs, build, lastDeploy, ...) on the same payload.
+const reportShape = z.looseObject({ status: healthStatusSchema, checks: checksSchema.optional(), ...optionalFields });
 
 /** The write schema: what a producer must emit. Its status may not be better than its worst check. */
 export const healthReportSchema = reportShape.refine(
@@ -42,10 +49,11 @@ export const healthReportSchema = reportShape.refine(
 );
 export type HealthReport = z.infer<typeof healthReportSchema>;
 
-export type HealthReportRead = { ok: true; report: HealthReport } | { ok: false; error: string };
+/** `ignored` names the known fields the reader dropped because their type was wrong. */
+export type HealthReportRead = { ok: true; report: HealthReport; ignored: string[] } | { ok: false; error: string };
 
-function checkStatuses(checks: Record<string, { status: HealthStatus }> | undefined): HealthStatus[] {
-  return Object.values(checks ?? {}).map((check) => check.status);
+function checkStatuses(checks: Checks | undefined): HealthStatus[] {
+  return Object.values(checks ?? {}).flatMap((entries) => entries.map((check) => check.status));
 }
 
 // The draft names these aliases for older producers.
@@ -57,13 +65,19 @@ function readStatus(value: unknown): HealthStatus | undefined {
   return parsed.success ? parsed.data : STATUS_ALIASES[value];
 }
 
-// A check status from a newer producer that this reader does not know stays visible without reading as down.
-function readChecks(raw: unknown): Record<string, HealthCheck> | undefined {
+// Only the status is coerced, so observed values and outputs survive whatever their type. A status
+// this reader does not know stays visible without reading as down.
+function readCheck(raw: unknown): HealthCheck {
+  const fields = isRecord(raw) ? raw : {};
+  return { ...fields, status: readStatus(fields.status) ?? "warn" } as HealthCheck;
+}
+
+// A bare object where the draft puts an array is read as a one-entry array rather than lost.
+function readChecks(raw: unknown): Checks | undefined {
   if (!isRecord(raw)) return undefined;
-  const checks: Record<string, HealthCheck> = {};
-  for (const [name, check] of Object.entries(raw)) {
-    const fields = isRecord(check) ? check : {};
-    checks[name] = { ...fields, status: readStatus(fields.status) ?? "warn" };
+  const checks: Checks = {};
+  for (const [name, entries] of Object.entries(raw)) {
+    checks[name] = (Array.isArray(entries) ? entries : [entries]).map(readCheck);
   }
   return checks;
 }
@@ -74,19 +88,33 @@ function readOwnStatus(raw: Record<string, unknown>): HealthStatus | undefined {
   return typeof raw.ok === "boolean" ? (raw.ok ? "pass" : "fail") : undefined;
 }
 
+function dropMistyped(fields: Record<string, unknown>): string[] {
+  const ignored: string[] = [];
+  for (const [name, schema] of Object.entries(optionalFields)) {
+    if (name in fields && !schema.safeParse(fields[name]).success) {
+      delete fields[name];
+      ignored.push(name);
+    }
+  }
+  return ignored;
+}
+
 /**
- * The read side: takes any payload a health route answered with. A legacy payload with only `ok`
- * maps to pass or fail, unknown fields are kept, and the status never reads better than a check.
+ * The read side: takes any payload a health route answered with. Only a status (or a legacy
+ * boolean `ok`) is required. Unknown fields are kept, a mistyped known field is dropped and named
+ * in `ignored`, and the status never reads better than a check.
  */
 export function parseHealthReport(payload: unknown): HealthReportRead {
   if (!isRecord(payload)) return { ok: false, error: "health payload is not a JSON object" };
   const own = readOwnStatus(payload);
   if (!own) return { ok: false, error: "health payload has neither a status nor a boolean ok" };
-  const checks = readChecks(payload.checks);
+  const { checks: rawChecks, ...rest } = payload;
+  const ignored = dropMistyped(rest);
+  const checks = readChecks(rawChecks);
+  if (rawChecks !== undefined && !checks) ignored.push("checks");
   const status = worstStatus([own, ...checkStatuses(checks)]);
-  const parsed = healthReportSchema.safeParse({ ...payload, status, ...(checks ? { checks } : {}) });
-  if (!parsed.success) return { ok: false, error: z.prettifyError(parsed.error) };
-  return { ok: true, report: parsed.data };
+  const report = { ...rest, status, ...(checks ? { checks } : {}) } as HealthReport;
+  return { ok: true, report, ignored };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
