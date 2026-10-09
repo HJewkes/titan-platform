@@ -68,6 +68,12 @@ function segmentHeads(words: readonly ShellWord[]): string[] {
   return [...(program && program !== 'cd' ? [head.join(' ')] : []), ...writes.map((t) => `>${writeName(t)}`)];
 }
 
+/** The head of one simple command, without the files it writes; null for `cd` or when it runs no program. */
+export function simpleCommandHead(words: readonly ShellWord[]): string | null {
+  const program = headOf(separateRedirects(words).command);
+  return program.length > 0 && program[0] !== 'cd' ? program.join(' ') : null;
+}
+
 /** The parent directory names which log a dated file belongs to, so `logs/a/2026-01-01.md` gives `a/2026-01-01.md`. */
 function writeName(target: string): string {
   const parent = path.basename(path.dirname(target));

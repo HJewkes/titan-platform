@@ -123,7 +123,9 @@ titan-factory serve --port 7411
 ```
 
 `serve` owns the database until SIGTERM or SIGINT. It adopts every unfinished run at start,
-and again every 30 seconds for runs whose owner died and whose lease lapsed. It binds
+and again every 30 seconds for runs whose owner died and whose lease lapsed. Its 5-minute
+Shepherd sweep also marks a merged run `sh-reverted` when a later main commit reverts its merge
+(see [Shepherd stats](./shepherd.md#stats)). It binds
 `127.0.0.1` and exposes these surfaces (`products/factory/src/serve.ts`):
 
 | Route | What it answers |
