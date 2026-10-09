@@ -35,6 +35,16 @@ describe("a subscript in a variable's value that holds code, whichever way the v
     ["a declared value", `declare ${HIDDEN}; (( X ))`],
     ["a prefix assignment", `${HIDDEN} true`],
     ["a plain (( ))", `${HIDDEN}; (( X ))`],
+    ["an append that completes the subscript, read as an integer", `X='a['; X+='$(${PUSH})]'; declare -i n=0; n=X`],
+    ["an append that completes the subscript, used as a key", `X='a['; X+='$(${PUSH})]'; a=([X]=1)`],
+    ["a compound array element", `arr=('a[$(${PUSH})]'); (( arr[0] ))`],
+    ["a compound array element read as an integer", `arr=('a[$(${PUSH})]'); declare -i n=0; n=\${arr[0]}`],
+    ["a later compound array element", `arr=(1 'a[$(${PUSH})]'); (( arr[1] ))`],
+    ["an element write", `a[1]='b[$(${PUSH})]'; declare -i n=0; n=\${a[1]}`],
+    ["an element append", `a[1]=x; a[1]+='b[$(${PUSH})]'; declare -i n=0; n=\${a[1]}`],
+    ["an appended compound array", `arr=(1); arr+=('a[$(${PUSH})]'); (( arr[1] ))`],
+    ["an append to a value read from input", `read P; P+='x [$(${PUSH})]'`],
+    ["an append to a declared value", `declare X='a['; declare X+='$(${PUSH})]'; (( X ))`],
   ])("denies a push behind %s", (_, command) => {
     expect(verdict(command)).toBe("deny");
   });
@@ -48,6 +58,9 @@ describe("benign arithmetic and values stay unchecked (TP-1624)", () => {
     ["a substring offset", "s=hello; echo ${s:1}"],
     ["git log with a numeric-looking word", "git log --oneline -n 3 -eq"],
     ["a value with a plain subscript", "X='a[1]'; (( X ))"],
+    ["a plain append", "P=1; P+=2; (( P ))"],
+    ["a plain compound array and element write", "arr=(1 2 3); a[1]=5; arr+=(4); (( arr[1] ))"],
+    ["an append of plain text to a value from input", "read P; P+=' more'"],
   ])("passes %s", (_, command) => {
     expect(verdict(command)).toBe("pass");
   });

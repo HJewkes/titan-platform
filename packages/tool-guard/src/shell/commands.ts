@@ -5,13 +5,13 @@ import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, parseAssignment, trackCompound, trackVars } from "./vars.js";
-import { normalizeDeclarations } from "./declarations.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, assignedPart, parseAssignment, trackCompound, trackVars } from "./vars.js";
+import { arrayElements, normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
-import type { Vars } from "./vars.js";
+import type { AssignedPart, Vars } from "./vars.js";
 import { arithmeticTexts } from "./writers.js";
 import { assignedSubstitutions, valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
@@ -157,6 +157,7 @@ function walk(tokens: Token[], w: Walk): void {
 function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
   const head = words.findIndex((word) => parseAssignment(word) === null);
   const { sure, maybe } = arithmeticTexts(op, words, head);
+  walkWritten(words, head, w);
   const scope = withPrefixAssignments(w.scope, words, head);
   const into = (text: Token[]) => walk(text, child(w, [...w.scope.wrapping, "subshell"]));
   for (const text of valueSubstitutions(sure, scope, w.out, true)) walkSure(() => into(text));
@@ -174,11 +175,20 @@ function withPrefixAssignments(scope: Scope, words: WordToken[], head: number): 
 
 const DECLARING = new Set(["export", "declare", "typeset", "local", "readonly"]);
 
-/** Walks the code a value being stored holds in a subscript, once, where it is assigned (see `assignedSubstitutions`). */
-function walkAssigned(cmd: Unwrapped, w: Walk): void {
-  const declared = cmd.name !== null && DECLARING.has(cmd.name) ? cmd.args.map(parseAssignment).filter((a) => a !== null) : [];
-  for (const [, value] of [...cmd.assigned, ...declared]) {
-    for (const text of assignedSubstitutions(value, w.scope, w.out)) walkSure(() => walk(text, child(w, [...w.scope.wrapping, "subshell"])));
+/** The words that write a variable: the assignments before the command word, and the operands of a declaration. */
+function writtenBy(words: WordToken[], head: number): AssignedPart[] {
+  const declared = head >= 0 && DECLARING.has(words[head]?.value ?? "") ? words.slice(head + 1) : [];
+  const own = head < 0 ? words : words.slice(0, head);
+  return [...own, ...declared].flatMap((word) => {
+    const part = assignedPart(word);
+    return part === null ? [] : [part, ...(arrayElements.get(word) ?? []).map((text) => ({ ...part, text, append: false, element: true }))];
+  });
+}
+
+/** Walks the code the text a write leaves in a variable holds in a subscript, once, where it is written. */
+function walkWritten(words: WordToken[], head: number, w: Walk): void {
+  for (const write of writtenBy(words, head)) {
+    for (const text of assignedSubstitutions(write, w.scope, w.out)) walkSure(() => walk(text, child(w, [...w.scope.wrapping, "subshell"])));
   }
 }
 
@@ -253,7 +263,6 @@ function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => 
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
-  walkAssigned(raw, w);
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;

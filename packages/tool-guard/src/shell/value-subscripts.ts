@@ -1,7 +1,7 @@
 import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
 import type { Token } from "./lexer.js";
 import { ValueWalkError } from "./unsure-readings.js";
-import type { Vars } from "./vars.js";
+import type { AssignedPart, Vars } from "./vars.js";
 
 /** A value that names another value is followed this many times; past it the chain ends with no verdict. */
 const MAX_HOPS = 16;
@@ -67,18 +67,35 @@ function leadsFurther(value: string, scope: ValueScope): boolean {
 const SUBSCRIPT_CODE_RE = /\[[\s\S]*(?:\$\(|`)/;
 
 /**
- * The substitutions in a value being assigned that bash runs when anything evaluates it as a subscript. Bash can
- * evaluate a stored value in more places than any list of syntax names (`n=X` on an integer, `a=([X]=1)`, a
- * heredoc's `$(( X ))`, a nameref), so the walk happens here, where the value is stored, and not where it is read.
- * Throws ValueWalkError when the value cannot be had in full, under the same budget as a read.
+ * The substitutions in the text a write leaves in a variable that bash runs when anything evaluates it as a
+ * subscript. Bash can evaluate a stored value in more places than any list of syntax names (`n=X` on an integer,
+ * `a=([X]=1)`, a heredoc's `$(( X ))`, a nameref), so the walk happens where the value is stored, and not where
+ * it is read, on what the write leaves: an append is the old value plus the new part, an element write or a
+ * compound array is its own text. When an append cannot be joined to an unknown old value but its part holds code,
+ * or the text cannot be had in full, this throws ValueWalkError.
  */
-export function assignedSubstitutions(value: string | null, scope: ValueScope, run: object): Token[][] {
-  if (value === null || !SUBSCRIPT_CODE_RE.test(value)) return [];
+export function assignedSubstitutions(write: AssignedPart, scope: ValueScope, run: object): Token[][] {
+  const text = leftBy(write, scope.vars);
+  if (text === null) {
+    if (write.text !== null && CODE_RE.test(write.text)) throw new ValueWalkError();
+    return [];
+  }
+  if (!SUBSCRIPT_CODE_RE.test(text)) return [];
   const state = walked.get(run) ?? { reads: new Map<string, boolean>(), lists: 0 };
   walked.set(run, state);
   const found: Token[][] = [];
-  if (!read(state, scope, value, true, found)) throw new ValueWalkError();
+  if (!read(state, scope, text, true, found)) throw new ValueWalkError();
   return found;
+}
+
+const CODE_RE = /\$\(|`/;
+
+/** The text the variable holds after the write, null when the old value it adds to is unknown. */
+function leftBy(write: AssignedPart, vars: Vars): string | null {
+  if (write.text === null) return null;
+  if (!write.append || write.text.startsWith("(")) return write.text;
+  const prior = write.element ? null : vars.get(write.name);
+  return typeof prior === "string" ? prior + write.text : prior === undefined ? write.text : null;
 }
 
 /** Adds the substitutions of a value this scope has not walked before; says whether the value was had in full. */

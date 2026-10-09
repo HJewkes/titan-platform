@@ -188,6 +188,9 @@ function withoutPlus(w: WordToken): WordToken {
  * `NAME=(a b)` as one word whose value is element 0, unknown unless it is plainly literal: a brace, glob or
  * `[i]=` element can change it. An append to a variable that is not a new local keeps its element 0.
  */
+/** The text of each element of a compound array assignment, which the one word that stands for it keeps only the first of. */
+export const arrayElements = new WeakMap<WordToken, string[]>();
+
 function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): number {
   const w = tokens[i] as WordToken;
   const end = tokens.findIndex((t, j) => j > i && t.type === "op" && t.value === ")");
@@ -199,12 +202,18 @@ function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): 
   const elements = inner.filter((t): t is WordToken => t.type === "word");
   const name = w.value.slice(0, w.value.indexOf(append ? "+=" : "="));
   const subs = elements.flatMap((e) => e.subs);
-  if (append && !p.local) p.out.push({ ...w, value: `${name}+=`, subs });
+  const texts = elements.flatMap((e) => (e.dynamic ? [] : [e.value]));
+  if (append && !p.local) pushArray({ ...w, value: `${name}+=`, subs }, texts, p);
   else {
     const first = elements[0];
     const subscripted = elements.some((e) => e.value.startsWith("["));
     const known = first !== undefined && !first.dynamic && !subscripted && !/[[*?{]/.test(first.value);
-    p.out.push({ ...w, value: `${name}=${first?.value ?? ""}`, dynamic: !known, refs: [], subs });
+    pushArray({ ...w, value: `${name}=${first?.value ?? ""}`, dynamic: !known, refs: [], subs }, texts, p);
   }
   return end + 1;
+}
+
+function pushArray(word: WordToken, texts: string[], p: Pass): void {
+  arrayElements.set(word, texts);
+  p.out.push(word);
 }
