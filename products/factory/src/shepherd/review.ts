@@ -1,3 +1,4 @@
+import type { OwnerOverride } from "./override-stats.js";
 import type { AgentIdentity } from "@titan-design/authority";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
@@ -70,6 +71,8 @@ export interface AcceptedVerdict {
   reviewer: AgentIdentity;
   /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
   ownerBrief?: OwnerBrief | null;
+  /** Set when a seat reviewer and Shepherd's own review gave opposite verdicts at this head (G10). */
+  ownerOverride?: OwnerOverride;
 }
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
@@ -243,8 +246,8 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
   return [
     codeRoute(REVIEW_INTENT_STEP, deps.now, brokerStep(deps, wiring, ReviewInputSchema, reviewIntent)),
     repeatAwareRoute(REVIEW_STEP, deps.now, brokerStep(deps, wiring, ReviewDispatchInputSchema, dispatchReview)),
-    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run)),
-    codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal))),
+    codeRoute(AWAIT_VERDICT_STEP, deps.now, seatVetoed(wiring, run, deps.now)),
+    codeRoute(LATE_VERDICT_STEP, deps.now, seatVetoed(wiring, (raw: unknown, signal) => lateVerdict(deps, wiring, parseAwaitVerdictInput(raw), signal), deps.now)),
     repeatAwareRoute(CORRECT_VERDICT_STEP, deps.now, brokerStep(deps, wiring, CorrectVerdictInputSchema, correctReviewer)),
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),

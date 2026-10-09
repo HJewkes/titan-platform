@@ -23,7 +23,7 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], ownerOverrides: [] });
   });
 
   it("reports owner touches and the wait per gate kind from the gate store", async () => {

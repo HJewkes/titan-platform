@@ -6,6 +6,7 @@ import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
+import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
@@ -22,10 +23,10 @@ function formatStages(weeks: readonly StageWeek[]): string[] {
   return lines.length === 0 ? [] : ["", "time per stage:", ...lines];
 }
 
-function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[]): string {
+function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[], overrides: readonly OverrideRow[]): string {
   const merges = rows.length === 0 ? ["no merges in range"] : rows.map((r) => `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  outside Shepherd ${r.outsideMerges}`);
   const days = friction.flatMap((d) => [`${d.day}  owner touches ${d.ownerTouches}`, ...d.kinds.map((k) => `  ${k.kind}  gates ${k.gates}  median ${k.medianHours}h  max ${k.maxHours}h`)]);
-  return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages)].join("\n")}\n`;
+  return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages), ...overrideLines(overrides)].join("\n")}\n`;
 }
 
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
@@ -50,7 +51,8 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
         const rows = shepherdStats(runs, { from: opts.from, to: opts.to });
         const friction = ownerFriction(readAllGates(db), now(), { from: opts.from, to: opts.to });
         const stages = stageStats(runs, { from: opts.from, to: opts.to });
-        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages }, null, 2)}\n` : formatStats(rows, friction, stages));
+        const overrides = overrideStats(runs, { from: opts.from, to: opts.to });
+        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, ownerOverrides: overrides }, null, 2)}\n` : formatStats(rows, friction, stages, overrides));
       } finally {
         db.close();
       }
