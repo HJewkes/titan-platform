@@ -130,6 +130,16 @@ describe("pollUsage sends the token only where it belongs", () => {
 });
 
 describe("pollUsage sends nothing when the login cannot be used", () => {
+  it("refuses a 4097-character token without calling fetch", async () => {
+    writeCredentials(fakeCredentials({ accessToken: "a".repeat(4097) }));
+    const { fetch, calls } = fakeFetch(() => json(oauthUsage));
+
+    const result = await poll(fetch);
+
+    expect(result).toEqual({ ok: false, failure: "refused", reason: "malformed" });
+    expect(calls).toHaveLength(0);
+  });
+
   it.each([
     ["missing", () => fs.mkdirSync(profile.configDir, { recursive: true }), { ok: false, failure: "missing" }],
     ["an empty oauth block", () => writeCredentials({ claudeAiOauth: null }), { ok: false, failure: "missing" }],
@@ -214,7 +224,6 @@ describe("pollUsage against a hostile server", () => {
       json({
         five_hour: { utilization: 12, resets_at: FAKE_ACCESS_TOKEN.slice(0, 40), token: FAKE_ACCESS_TOKEN },
         seven_day: { utilization: 3, resets_at: null },
-        seven_day_opus: { utilization: 5, resets_at: FAKE_ACCESS_TOKEN },
         access_token: FAKE_ACCESS_TOKEN,
         canary_echo: { utilization: 1, resets_at: null },
         echo: { authorization: `Bearer ${FAKE_ACCESS_TOKEN}` },
@@ -301,6 +310,65 @@ describe("pollUsage against a hostile server", () => {
     const { result } = await pollWith(() => new Response(body, { status: 200 }));
 
     expect(result).toEqual({ ok: false, failure: "malformed" });
+  });
+
+  it.each(["five_hour", "seven_day_opus"])("reports malformed when %s fails to parse, whatever the other windows hold", async (window) => {
+    const { result } = await pollWith(() =>
+      json({
+        five_hour: { utilization: 12, resets_at: null },
+        seven_day: { utilization: 3, resets_at: null },
+        [window]: { utilization: 5, resets_at: FAKE_ACCESS_TOKEN.repeat(4) },
+      }),
+    );
+
+    expect(result).toEqual({ ok: false, failure: "malformed" });
+  });
+
+  it("cancels an endless 200 stream once it passes the cap", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(8 * 1024).fill(0x20);
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(chunk);
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+
+    const { result } = await pollWith(() => new Response(body, { status: 200 }));
+
+    expect(result).toEqual({ ok: false, failure: "malformed" });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(MAX_RESPONSE_BYTES / chunk.byteLength + 1);
+  });
+
+  it("never pulls the body of a non-2xx response", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulled += 1;
+          controller.enqueue(new TextEncoder().encode(FAKE_ACCESS_TOKEN));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+
+    const { result } = await pollWith(() => new Response(body, { status: 500 }));
+
+    expect(result).toEqual({ ok: false, failure: "http-500" });
+    expect(pulled).toBe(0);
+    expect(cancelled).toBe(true);
   });
 
   it("reports network when the server never answers within the timeout", async () => {
