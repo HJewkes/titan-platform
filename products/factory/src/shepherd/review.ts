@@ -20,7 +20,7 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { withReviewerProfile } from "./g10-release.js";
 import { provablyIndependent } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
@@ -205,6 +205,22 @@ function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerF
   return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
 }
 
+/** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */
+async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: number | undefined): Promise<ReviewerFacts> {
+  try {
+    const changedLines = prChangedLines(await deps.port.listPrFiles(repo, pr), limit);
+    return changedLines === undefined ? { sizeUnread: true } : { changedLines };
+  } catch {
+    return { sizeUnread: true };
+  }
+}
+
+/** Only a spawn picks a profile, so only a spawn reads the PR's size. */
+async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent: ReviewIntent, target: ReviewTarget, roles: ReviewerRoles | undefined): Promise<ReviewerFacts> {
+  const facts = reviewerFacts(deps, runId);
+  return intent.mode === "spawn" ? { ...facts, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
+}
+
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles }, { intent, runId, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
@@ -212,7 +228,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
-  const facts = reviewerFacts(deps, runId);
+  const facts = await spawnFacts(deps, runId, intent, target, roles);
   const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
   if (asking) {
     const refused = await startReviewer(dispatch, intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));

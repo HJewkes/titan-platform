@@ -27,7 +27,12 @@ export interface DatabaseTenant {
 }
 
 /** Routes travel with the tenant they read, so every caller that passes the routes also opens their tables. */
-export type FactoryRoutes = readonly StepRoute[] & { readonly database?: DatabaseTenant; readonly shepherd?: ShepherdServices };
+export type FactoryRoutes = readonly StepRoute[] & {
+  readonly database?: DatabaseTenant;
+  readonly shepherd?: ShepherdServices;
+  /** Hands routes that start or read other runs the host they run on; returns the unbind, called on close. */
+  readonly bindHost?: (host: FactoryHost) => () => void;
+};
 
 export interface FactoryHostOptions {
   dbPath: string;
@@ -83,7 +88,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
-  return {
+  const host: FactoryHost = {
     runtime,
     gates,
     batches: new GateBatchStore(db, options.now),
@@ -92,10 +97,13 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
     close: () => {
       runtime.shutdown();
+      unbindHost?.();
       unbind?.();
       db.close();
     },
   };
+  const unbindHost = options.routes.bindHost?.(host);
+  return host;
 }
 
 function createRuntime(db: Db, gates: SqliteGateStore, options: FactoryHostOptions): WorkflowRuntime {

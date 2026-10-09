@@ -93,6 +93,7 @@ function syntheticConfig(): ConsoleConfig {
     lanNames: [],
     lanTokenPath: "/nonexistent/lan.token",
     ownerWrites: false,
+    inboxDir: "/nonexistent/inbox",
   };
 }
 
@@ -168,13 +169,13 @@ describe("classes fail closed", () => {
     );
   });
 
-  it("classes every console command at its definition, all of them reads today", () => {
+  it("classes every console command at its definition: inbox.deposit a deposit, the rest reads", () => {
     const classes = createConsoleRegistry(createSources(syntheticConfig()))
       .list()
       .map((command) => [command.name, (command as ClassedCommand).commandClass]);
 
-    expect(classes.length).toBeGreaterThan(0);
-    expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([]);
+    expect(classes.length).toBeGreaterThan(1);
+    expect(classes.filter(([, commandClass]) => commandClass !== "read")).toEqual([["inbox.deposit", "deposit"]]);
   });
 });
 
@@ -208,6 +209,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
       lanNames: [NAME],
       lanTokenPath: path.join(dir, "state", "lan.token"),
       ownerWrites: true,
+      inboxDir: path.join(dir, "state", "inbox", "deposits"),
     };
     await writeFile(config.sessionGraphPath, "synthetic");
     replies = [];

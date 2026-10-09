@@ -84,6 +84,7 @@ list-price caveat. Each question is also an MCP tool, `miner__insights__<questio
 | `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
 | `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
 | `tool-gaps` | post-filters piped after our CLIs, by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top` |
+| `tool-adoption` | per shipped flag or verb in the adoption registry, weekly uses of the new form against the old pipelines, flagged unadopted or unused two weeks after ship | none |
 
 The first four read the session graph and take the shared filters `--session`,
 `--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow` and `liveness` read
@@ -92,6 +93,7 @@ agent-chat's files instead (`TITAN_MINER_EVENTS_DB`, default `~/.agent-chat/even
 and `--until` and narrow with `--seat`. Options that name a local file (`--broker-log`,
 `--transcript`, `--journal`, `--pulls`) are accepted only on the CLI. `tool-gaps` reads each
 Bash command back from its transcript and runs `<cli> --help`; it takes every shared filter but `--role`.
+`tool-adoption` reads Bash commands back the same way and takes the same filters.
 
 ### Where state lives
 

@@ -22,14 +22,21 @@ export const RPC_STATUS = {
   FORBIDDEN: 403,
   /** No command by that name. */
   NOT_FOUND: 404,
+  /** A command refusing a caller over its limit with `EXIT.TEMPFAIL`. */
+  TOO_MANY_REQUESTS: 429,
   /** The command failed with any other code. */
   FAILED: 500,
 } as const;
 
+type RpcFailureStatus = (typeof RPC_STATUS)[Exclude<keyof typeof RPC_STATUS, "NOT_FOUND">];
+
+const STATUS_BY_CODE: ReadonlyMap<number, RpcFailureStatus> = new Map([
+  [EXIT.DATAERR, RPC_STATUS.BAD_REQUEST],
+  [EXIT.NOPERM, RPC_STATUS.FORBIDDEN],
+  [EXIT.TEMPFAIL, RPC_STATUS.TOO_MANY_REQUESTS],
+]);
+
 /** DATAERR is the caller's fault whether it came from schema validation or the command. */
-export function rpcFailureStatus(
-  code: number,
-): typeof RPC_STATUS.BAD_REQUEST | typeof RPC_STATUS.FORBIDDEN | typeof RPC_STATUS.FAILED {
-  if (code === EXIT.DATAERR) return RPC_STATUS.BAD_REQUEST;
-  return code === EXIT.NOPERM ? RPC_STATUS.FORBIDDEN : RPC_STATUS.FAILED;
+export function rpcFailureStatus(code: number): RpcFailureStatus {
+  return STATUS_BY_CODE.get(code) ?? RPC_STATUS.FAILED;
 }
