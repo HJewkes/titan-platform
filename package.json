@@ -19,6 +19,7 @@
     "lint": "eslint --concurrency=auto --cache --cache-strategy content --cache-location .eslintcache --suppressions-location eslint-suppressions.json scripts eslint.config.js vitest.config.ts \"packages/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" \"products/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" deploy/hub/src apps/codewatch/src apps/codewatch/server apps/codewatch/scripts apps/codewatch/vite.config.ts apps/console/src apps/console/server apps/console/vite.config.ts apps/console/tsup.config.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
+    "env:doctor": "node scripts/env-doctor.mjs",
     "dag:check": "node scripts/dag-check-self.mjs",
     "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
