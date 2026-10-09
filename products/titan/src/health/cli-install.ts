@@ -4,7 +4,7 @@ import { installTimer, uninstallTimer, type CommandResult, type InstallPorts } f
 import { stableNodePath } from "./units.js";
 import type { HostEnv } from "./targets.js";
 
-export interface InstallCliIo extends HostEnv {
+interface InstallCliIo extends HostEnv {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   setExitCode: (code: number) => void;

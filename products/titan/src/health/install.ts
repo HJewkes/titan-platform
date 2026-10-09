@@ -17,14 +17,14 @@ export interface InstallPorts extends HostEnv {
   systemctl: (args: readonly string[]) => Promise<CommandResult>;
 }
 
-export interface InstallIo {
+interface InstallIo {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
 }
 
 const FAILURE = 1;
 /** Exit 2: this platform has no systemd user manager to install into. */
-export const EXIT_UNSUPPORTED = 2;
+const EXIT_UNSUPPORTED = 2;
 
 const RELOAD = ["--user", "daemon-reload"];
 const ENABLE = ["--user", "enable", "--now", SAMPLE_TIMER];

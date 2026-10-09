@@ -5,7 +5,7 @@ import type { HostEnv } from "./targets.js";
 export const SAMPLE_SERVICE = "titan-health-sample.service";
 export const SAMPLE_TIMER = "titan-health-sample.timer";
 
-export interface SampleServiceOptions {
+interface SampleServiceOptions {
   /** Absolute; systemd runs it directly, so nothing depends on the user manager's PATH. */
   nodePath: string;
   /** The titan bin resolved at install time. */
@@ -79,7 +79,7 @@ export function sampleUnitDir({ env, home }: HostEnv): string {
   return join(config, "systemd", "user");
 }
 
-export interface NodeProbe {
+interface NodeProbe {
   exists: (path: string) => boolean;
   realpath: (path: string) => string;
 }
