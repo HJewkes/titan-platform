@@ -3,9 +3,9 @@ import { inRange, isoWeek } from "./stats.js";
 import { stepPhase, type Phase } from "./step-phase.js";
 
 export const STAGES = ["queued", "ci", "review", "re-review", "hold", "land"] as const;
-export type Stage = (typeof STAGES)[number];
+type Stage = (typeof STAGES)[number];
 
-export interface StageSpan {
+interface StageSpan {
   stage: Stage;
   startedAt: number;
   endedAt: number;
@@ -52,7 +52,7 @@ export function stageSpans(steps: readonly StepResult[], startedAt: string, open
   return spans;
 }
 
-export interface StageRow {
+interface StageRow {
   stage: Stage;
   /** Runs that spent time in the stage. */
   runs: number;
