@@ -65,9 +65,9 @@ export interface FlowStats {
   missing: number;
   taskToMergeP50Hours?: number;
   implementerHours: number;
-  /** Exited implementers whose end time the roster does not give; left out of the hours. */
+  /** Non-live implementers whose end time the roster does not give. While any exist the rate is withheld, since the hours would count only agents still running. */
   unmeasured: number;
-  /** Absent when no implementer hours were measured. */
+  /** Absent when no implementer hours were measured or any implementer's span could not be. */
   mergesPerSlotHour?: number;
 }
 

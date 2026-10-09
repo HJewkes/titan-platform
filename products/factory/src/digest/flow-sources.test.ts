@@ -8,7 +8,7 @@ describe("flow sources", () => {
   it("reads roster rows as spans, live where a session holds the name", async () => {
     const rows = [
       { profile: "implementer", presence: "live", spawnedAt: "2026-03-10T10:00:00Z", name: "a" },
-      { profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T10:00:00Z", endedAt: "2026-03-10T11:00:00Z" },
+      { profile: "implementer", presence: "exited", spawnedAt: "2026-03-10T10:00:00Z", exitedAt: "2026-03-10T11:00:00Z" },
     ];
 
     const spans = await agentChatSpans(roster(rows), "agent-chat")();
@@ -21,6 +21,14 @@ describe("flow sources", () => {
     const exec: Exec = async () => ({ code: 3, stdout: "", stderr: "no broker\n" });
 
     await expect(agentChatSpans(exec, "agent-chat")()).rejects.toThrow("exit 3: no broker");
+  });
+
+  it("fails the lookup when the daemon cannot be reached, rather than reporting the task absent", async () => {
+    const down = (async () => {
+      throw new Error("connection refused");
+    }) as typeof fetch;
+
+    await expect(activeWorkTaskDates({ origin: "http://127.0.0.1:1", fetch: down })("demo/T-1")).rejects.toThrow();
   });
 
   it("looks a task up in its initiative's list, reading each list once", async () => {

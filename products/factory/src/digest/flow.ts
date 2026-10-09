@@ -32,18 +32,19 @@ export const mergedInWindow = (rows: readonly WatchRow[], since: Date): WatchRow
   rows.filter((row) => row.phase === "done" && row.outcome?.kind === "merged" && Date.parse(row.phaseSince) >= since.getTime());
 
 /** Hours from each task's created date to its run's merge; a run with no task or an unreadable one is counted in `missing`, never imputed. */
-export async function taskToMerge(merged: readonly WatchRow[], taskCreated: FlowPorts["taskCreated"]): Promise<{ hours: number[]; missing: number }> {
+export async function taskToMerge(merged: readonly WatchRow[], taskCreated: FlowPorts["taskCreated"]): Promise<{ hours: number[]; missing: number; failure?: string }> {
   const hours: number[] = [];
+  let failure: string | undefined;
   for (const row of merged) {
-    const created = row.task.includes("/") ? await taskCreated(row.task).catch(() => undefined) : undefined;
+    const created = row.task.includes("/") ? await taskCreated(row.task).catch((error: unknown) => ((failure ??= error instanceof Error ? error.message.split("\n")[0] : String(error)), undefined)) : undefined;
     const start = created === undefined ? Number.NaN : Date.parse(`${created}T00:00:00Z`);
     if (Number.isNaN(start)) continue;
     hours.push((Date.parse(row.phaseSince) - start) / HOUR_MS);
   }
-  return { hours, missing: merged.length - hours.length };
+  return { hours, missing: merged.length - hours.length, ...(failure !== undefined && { failure }) };
 }
 
-/** Implementer hours inside the window; each span is clipped to it, and an exited agent with no end time is counted apart. */
+/** Implementer hours inside the window; each span is clipped to it. A non-live agent with no end time cannot be clipped, so it is counted apart and the rate is withheld. */
 export function implementerHours(spans: readonly AgentSpan[], since: Date, now: Date): { hours: number; unmeasured: number } {
   let ms = 0;
   let unmeasured = 0;
@@ -67,6 +68,6 @@ export function flowStats(merged: readonly WatchRow[], tasks: { hours: number[];
     ...(p50 !== undefined && { taskToMergeP50Hours: round(p50, 1) }),
     implementerHours: round(slots.hours, 2),
     unmeasured: slots.unmeasured,
-    ...(slots.hours > 0 && { mergesPerSlotHour: round(merged.length / slots.hours, 2) }),
+    ...(slots.unmeasured === 0 && slots.hours > 0 && { mergesPerSlotHour: round(merged.length / slots.hours, 2) }),
   };
 }

@@ -105,13 +105,14 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
 /** Owner friction and flow, the sections that are left out when their port is missing or fails. */
 async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow">> {
   const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
-  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now)) : undefined;
+  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now, gaps)) : undefined;
   return { ...(friction && { friction }), ...(flow && { flow }) };
 }
 
-async function collectFlow(ports: FlowPorts, rows: readonly WatchRow[], since: Date, now: Date): Promise<FlowStats> {
+async function collectFlow(ports: FlowPorts, rows: readonly WatchRow[], since: Date, now: Date, gaps: string[]): Promise<FlowStats> {
   const merged = mergedInWindow(rows, since);
   const [tasks, spans] = await Promise.all([taskToMerge(merged, ports.taskCreated), ports.roster()]);
+  if (tasks.failure !== undefined) gaps.push(`flow tasks: ${tasks.failure}`);
   return flowStats(merged, tasks, implementerHours(spans, since, now));
 }
 

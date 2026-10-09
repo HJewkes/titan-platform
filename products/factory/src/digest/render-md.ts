@@ -65,9 +65,9 @@ function flowLines(flow: FlowStats | undefined): string[] {
   if (flow === undefined) return [];
   const p50 = flow.taskToMergeP50Hours === undefined ? "none" : `${flow.taskToMergeP50Hours}h`;
   const missing = flow.missing > 0 ? ` (${flow.missing} of ${flow.merged} merges missing a task date)` : "";
-  const rate = flow.mergesPerSlotHour === undefined ? "none" : `${flow.mergesPerSlotHour} (${flow.merged} merges, ${flow.implementerHours} hours)`;
-  const unmeasured = flow.unmeasured > 0 ? [`- ${flow.unmeasured} exited implementers without an end time are not counted`] : [];
-  return section("Flow", [`- Task to merge p50: ${p50}${missing}`, `- Merges per implementer slot-hour: ${rate}`, ...unmeasured], "");
+  const none = flow.unmeasured > 0 ? "not measured, the roster gives no end time for non-live implementers" : "none";
+  const rate = flow.mergesPerSlotHour === undefined ? none : `${flow.mergesPerSlotHour} (${flow.merged} merges, ${flow.implementerHours} hours)`;
+  return section("Flow", [`- Task to merge p50: ${p50}${missing}`, `- Merges per implementer slot-hour: ${rate}`], "");
 }
 
 function proofFixtureLines(fixtures: DigestModel["proofFixtures"], now: string): string[] {

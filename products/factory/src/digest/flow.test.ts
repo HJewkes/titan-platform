@@ -83,11 +83,27 @@ describe("flow numbers in the digest", () => {
     expect(model.flow?.mergesPerSlotHour).toBeUndefined();
   });
 
-  it("skips an exited agent with no end time and counts it as unmeasured", async () => {
-    const model = await collect([], {}, [{ profile: "implementer", startedAt: hoursAgo(3), live: false }]);
+  it("withholds the rate when a non-live implementer has no end time, rather than counting only the live ones", async () => {
+    const spans = [span("implementer", 3), { profile: "implementer", startedAt: hoursAgo(5), live: false }];
 
-    expect(model.flow?.implementerHours).toBe(0);
+    const model = await collect([merged(1, "demo/T-1", 1)], {}, spans);
+    const markdown = renderMarkdown(rankDigest(model));
+
     expect(model.flow?.unmeasured).toBe(1);
+    expect(model.flow?.mergesPerSlotHour).toBeUndefined();
+    expect(markdown).toContain("Merges per implementer slot-hour: not measured");
+  });
+
+  it("notes a gap when the task source cannot be reached, besides counting the runs as missing", async () => {
+    const model = await collectDigest({
+      sources: fakeSources({ rows: async () => [merged(1, "demo/T-1", 1)], flow: { taskCreated: async () => Promise.reject(new Error("connection refused")), roster: async () => [] } }),
+      now: NOW,
+      windowMinutes: WINDOW_MINUTES,
+      slot: SLOT,
+    });
+
+    expect(model.flow?.missing).toBe(1);
+    expect(model.gaps).toContain("flow tasks: connection refused");
   });
 
   it("notes a gap and leaves the section out when a port fails", async () => {
