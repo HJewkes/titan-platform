@@ -328,6 +328,12 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     expect(shell.body).not.toContain("console shell");
   });
 
+  it("answers 401 to an unauthenticated LAN /events, which carries the upstream relay", async () => {
+    await startLan();
+
+    expect((await lan("GET", "/events", { accept: "text/event-stream" })).status).toBe(401);
+  });
+
   it("signs in with login-link's code in two steps: an inert GET, then a JSON POST that sets the cookie", async () => {
     const lanConfig = await startLan();
     const link = new URL(createLoginLink(lanConfig));

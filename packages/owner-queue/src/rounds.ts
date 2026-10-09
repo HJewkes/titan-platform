@@ -1,4 +1,4 @@
-import { isBlanketSignOff, MANIFEST_SCHEMA_ID, type ManifestInput } from "@titan-design/review-schema";
+import { isBlanketSignOff, isLoopbackUrl, MANIFEST_SCHEMA_ID, RoundSchema, type ManifestInput } from "@titan-design/review-schema";
 import { z } from "zod";
 import { ownerItemSchema, type OwnerItem } from "./schema.js";
 
@@ -39,6 +39,19 @@ export interface OwnerRoundOptions {
   /** Questions per round; a principle counts as one. Default 10. */
   maxQuestions?: number;
 }
+
+/** A caller's configuration error, thrown before any item is read; round@2 would refuse the result. */
+const optionsSchema = z.object({
+  unit: z.string().regex(/\S/, "unit must not be blank"),
+  storybookUrl: z.string().refine(isLoopbackUrl, "storybookUrl must be an http(s) URL on 127.0.0.1, localhost or [::1]"),
+  firstRound: z.number().int().min(1).optional(),
+  widths: z
+    .array(z.number().int().min(200).max(3840))
+    .min(1)
+    .refine((widths) => new Set(widths).size === widths.length, "widths must not repeat")
+    .optional(),
+  maxQuestions: z.number().int().min(1).optional(),
+});
 
 export interface RoundQuestionBinding {
   questionId: string;
@@ -242,6 +255,7 @@ function render(asks: Ask[], round: number, options: OwnerRoundOptions): OwnerRo
     sections: rendered.map((each) => each.section),
     recommendations: asks[0]!.shadow ? "after-answer" : "shown",
   };
+  RoundSchema.parse(manifest);
   return { manifest, bindings: rendered.map((each) => each.binding) };
 }
 
@@ -263,8 +277,12 @@ function admit(items: readonly OwnerItem[]): { asked: OwnerItem[]; skipped: Owne
  * ask, in input order (rank first). Items a principle covers become one `Principle:` question.
  * Asks with a shadow-mode item or a hidden pick go in rounds that reveal recommendations after
  * the answer; the rest go in rounds that show them. Pure: no I/O and no clock.
+ *
+ * Throws a ZodError on invalid options (a non-loopback storybookUrl, bad widths, a maxQuestions
+ * or firstRound below 1), and every manifest is parsed with RoundSchema before it is returned.
  */
 export function buildOwnerRounds(items: readonly OwnerItem[], options: OwnerRoundOptions): OwnerRounds {
+  optionsSchema.parse(options);
   const { asked, skipped } = admit(items);
   const principles = (options.principles ?? []).flatMap((each) => {
     const parsed = principleSchema.safeParse(each);
