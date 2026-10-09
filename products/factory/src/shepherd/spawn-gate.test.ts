@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agentChatAgents } from "./agents.js";
 import { fixersOver } from "./main-red.js";
 import { ReviewerBrokerBusy } from "./review.js";
-import { DEFAULT_BUSY_WAIT_MS, ReviewerMachineHold, ReviewerStillBusy, whileBrokerBusy } from "./review-wait.js";
+import { DEFAULT_BUSY_WAIT_MS, ReviewerMachineHold, ReviewerSpawnQueued, ReviewerStillBusy, whileBrokerBusy } from "./review-wait.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import type { RosterReader } from "./roster.js";
 import { admitSpawn, DEFAULT_SPAWN_LIMITS, REVIEW_STALE_MS, spawnGate, SpawnDeferred, type MachineReadings, type ReviewAsk } from "./spawn-gate.js";
@@ -148,7 +148,7 @@ describe("spawnGate under reviews retrying on the busy wait", () => {
       try {
         gate.admit(name, [], { fixer: false });
       } catch (error) {
-        throw error instanceof SpawnDeferred ? new ReviewerMachineHold(error.message) : error;
+        throw error instanceof SpawnDeferred ? new ReviewerSpawnQueued(error.message) : error;
       }
       return "started";
     };
@@ -317,6 +317,70 @@ describe("every factory-started agent passes the one gate", () => {
     await whileBrokerBusy(timing, new AbortController().signal, (text) => void waits.push(text), () => dispatch.spawn("rv-octo-demo-7", "brief", { repo: "octo/demo", pr: 7, head: "a".repeat(40) }));
 
     expect(ran()).toBe(true);
-    expect(waits).toEqual(["held by the machine stop: ReviewerMachineHold; asking again in 1 min"]);
+    expect(waits).toEqual(["held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"]);
+  });
+});
+
+describe("spawnGate admits deferred reviews oldest intent first", () => {
+  const intent = (intentAt: number): ReviewAsk => ({ fixer: false, intentAt });
+  const scene = () => {
+    const state = { readings: { ...idle, load5: 21 }, now: 100_000, lines: [] as string[] };
+    const gate = spawnGate({ read: () => state.readings, now: () => state.now, log: (line) => void state.lines.push(line) });
+    const ask = (name: string, review: ReviewAsk) => { try { gate.admit(name, [], review); return true; } catch { return false; } };
+    return { state, ask };
+  };
+
+  it("admits two deferred intents and a newer arrival oldest-first, whichever polls first", () => {
+    const { state, ask } = scene();
+    const older = ["rv-old-1", intent(10_000)] as const;
+    const middle = ["rv-mid-2", intent(20_000)] as const;
+    const newer = ["rv-new-3", intent(90_000)] as const;
+    const admitted: string[] = [];
+    const poll = (order: readonly (readonly [string, ReviewAsk])[]) => order.filter(([name]) => !admitted.includes(name)).forEach(([name, review]) => ask(name, review) && admitted.push(name));
+
+    poll([older, middle]);
+    state.readings = idle;
+    for (let round = 0; round < 3; round++, state.now += limits.windowMs) poll([newer, middle, older]);
+
+    expect(admitted).toEqual(["rv-old-1", "rv-mid-2", "rv-new-3"]);
+  });
+
+  it("refuses a newer intent while an older one waits, naming it", () => {
+    const { state, ask } = scene();
+    ask("rv-old-1", intent(10_000));
+    state.readings = idle;
+
+    expect(ask("rv-new-2", intent(50_000))).toBe(false);
+    expect(ask("rv-old-1", intent(10_000))).toBe(true);
+  });
+
+  it("orders by the recorded intent time, not by who asked the gate first", () => {
+    const { state, ask } = scene();
+    ask("rv-new-2", intent(50_000));
+    ask("rv-old-1", intent(10_000));
+    state.readings = idle;
+
+    expect(ask("rv-new-2", intent(50_000))).toBe(false);
+  });
+
+  it("does not let an older intent that stopped asking hold the line", () => {
+    const { state, ask } = scene();
+    ask("rv-dead-1", intent(10_000));
+    state.readings = idle;
+    state.now += REVIEW_STALE_MS;
+    ask("rv-new-2", intent(50_000));
+
+    state.now += 1;
+
+    expect(ask("rv-new-2", intent(50_000))).toBe(true);
+  });
+
+  it("logs the queue position and the oldest intent on each deferral", () => {
+    const { state, ask } = scene();
+    ask("rv-old-1", intent(10_000));
+    ask("rv-new-2", intent(50_000));
+
+    expect(state.lines.at(-1)).toContain("shepherd: spawn_gate deferred rv-new-2:");
+    expect(state.lines.at(-1)).toContain("deferred: queue position 2 of 2 (oldest intent rv-old-1 since 1970-01-01T00:00:10.000Z)");
   });
 });

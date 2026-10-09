@@ -37,6 +37,11 @@ export class ReviewerMachineHold extends ReviewerBrokerBusy {
   override readonly name = "ReviewerMachineHold";
 }
 
+/** The factory's own spawn gate deferred the start; it admits oldest-first, so the queue's head must ask again within a window or the opening is lost. */
+export class ReviewerSpawnQueued extends ReviewerMachineHold {
+  override readonly name = "ReviewerSpawnQueued";
+}
+
 /**
  * The busy wait ran out with the broker still refusing; nobody was started, so the review never began. The message is
  * built here from the refusal's class and the budget alone, since it becomes a stored step reason.
@@ -99,7 +104,7 @@ export async function whileBrokerBusy<T>(timing: BusyTiming, signal: AbortSignal
       spent[waitingOn ?? kind] += timing.now() - mark;
       const left = budget[kind] - spent[kind];
       if (left <= 0) throw new ReviewerStillBusy(error, budget[kind]);
-      const ms = Math.min(wait, left);
+      const ms = Math.min(error instanceof ReviewerSpawnQueued ? BUSY_FIRST_WAIT_MS : wait, left);
       note(`${kind === "hold" ? "held by the machine stop: " : ""}${errorClass(error)}; asking again in ${minutes(ms)}`);
       mark = timing.now();
       waitingOn = kind;

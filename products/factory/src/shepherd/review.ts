@@ -208,7 +208,7 @@ async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: 
 /** Only a spawn picks a profile, so only a spawn reads the PR's size. */
 async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent: ReviewIntent, target: ReviewTarget, roles: ReviewerRoles | undefined): Promise<ReviewerFacts> {
   const facts = reviewerFacts(deps, runId);
-  return intent.mode === "spawn" ? { ...facts, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
+  return intent.mode === "spawn" ? { ...facts, intentAt: intent.at, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
 }
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
