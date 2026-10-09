@@ -38,3 +38,5 @@ export {
   seatStateSchema,
 } from "./seat-state.js";
 export type { SeatFoldError, SeatFoldOptions, SeatState } from "./seat-state.js";
+export { projectSeatGeneration, sessionFactsPrSchema, sessionFactsSchema } from "./session-facts.js";
+export type { PrefixScopes, SeatGenerationActivity, SessionFacts } from "./session-facts.js";
