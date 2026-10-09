@@ -44,7 +44,12 @@ interface SlotRange {
 
 /** Whole slots only: a partial edge slot could read as missing just because its tick fell outside the window. */
 function slotRange(window: UptimeWindow): SlotRange {
-  const tickMs = (window.tickSeconds ?? DEFAULT_TICK_SECONDS) * 1000;
+  const tickSeconds = window.tickSeconds ?? DEFAULT_TICK_SECONDS;
+  // A zero tick makes every slot Infinity and the slot loop never ends.
+  if (!Number.isFinite(tickSeconds) || tickSeconds <= 0) {
+    throw new RangeError(`tickSeconds must be a positive finite number, got ${tickSeconds}`);
+  }
+  const tickMs = tickSeconds * 1000;
   const first = Math.ceil(window.from.getTime() / tickMs);
   const end = Math.max(first, Math.floor(window.to.getTime() / tickMs));
   return { first, end, tickMs };

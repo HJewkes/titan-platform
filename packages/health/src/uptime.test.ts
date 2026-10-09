@@ -96,6 +96,10 @@ describe("foldUptime", () => {
 
     expect(report).toMatchObject({ slots: 3, up: 2, down: 1, missing: 0 });
   });
+
+  it.each([0, -60, Number.NaN, Number.POSITIVE_INFINITY])("refuses a tick of %s instead of hanging", (tickSeconds) => {
+    expect(() => foldUptime([sample(0)], { from: at(0), to: at(2), tickSeconds })).toThrow(RangeError);
+  });
 });
 
 describe("uptime", () => {
@@ -111,5 +115,9 @@ describe("uptime", () => {
     const report = uptime(db, "factory", at(0), at(4));
 
     expect(report).toMatchObject({ slots: 4, up: 2, down: 1, missing: 1 });
+  });
+
+  it("refuses a zero tick instead of hanging", () => {
+    expect(() => uptime(db, "factory", at(0), at(4), { tickSeconds: 0 })).toThrow(RangeError);
   });
 });
