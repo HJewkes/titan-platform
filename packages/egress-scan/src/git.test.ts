@@ -74,6 +74,9 @@ describe("pre-push ranges", () => {
       repo.git(["checkout", "-q", "main"]);
       repo.write(flaggedFile, flaggedLine);
       const onMain = repo.commit("flagged but already on the remote");
+      // Removed again, so the merge's own diff stays clean and only the earlier commit carries the flag.
+      fs.rmSync(path.join(repo.dir, flaggedFile));
+      repo.commit("remove it again");
       repo.git(["push", "-q", "origin", "main"]);
       repo.git(["checkout", "-q", "feature"]);
       return { repo, branchTip, onMain };
