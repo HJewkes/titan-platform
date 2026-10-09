@@ -19,6 +19,8 @@ export interface StagedTask {
   status: "open" | "done";
   tags?: readonly string[];
   notes?: string;
+  /** The task's dep edges as `@titan-design/pm`'s `readEdges` gives them, from the field or the edge tags. */
+  dep: readonly string[];
 }
 
 /** A git ref or pull request whose name carries a task id. */
@@ -88,17 +90,15 @@ function blockedVerdict(task: StagedTask, evidence: StageEvidence): StageVerdict
   return undefined;
 }
 
-const DEPENDENCY_TAGS = ["dep:", "blocked-by:"];
 // A clause ends at a sentence break; a bare period is not one, since slice labels such as P3.14 contain it.
 const CLAUSE = /\b(depends(?:\s+on)?|blocked\s+by|waits?\s+on|after)\b(.*?)(?=[.!?;](?:\s|$)|\n|$)/gi;
 const SLICE_LABEL = /(?<![A-Za-z0-9.-])([A-Z]{1,2}\d+(?:\.\d+)*[a-z]?)(?![A-Za-z0-9-])/g;
 
 /**
- * `dep:` tags and ids named in dependency clauses, kept only while open. A `depends` clause that names slice labels
+ * Dep edges and ids named in dependency clauses, kept only while open. A `depends` clause that names slice labels
  * and no task id at all stays a blocker, since the label cannot be resolved here.
  */
 function dependenciesOf(task: StagedTask, notes: string, openIds: ReadonlySet<string>): { open: string[]; unresolved: string[] } {
-  const tagged = (task.tags ?? []).filter((tag) => DEPENDENCY_TAGS.some((prefix) => tag.startsWith(prefix))).flatMap((tag) => taskIdsIn(tag));
   const named: string[] = [];
   const unresolved: string[] = [];
   for (const [, keyword, span] of notes.matchAll(CLAUSE)) {
@@ -106,7 +106,7 @@ function dependenciesOf(task: StagedTask, notes: string, openIds: ReadonlySet<st
     named.push(...ids);
     if (ids.length === 0 && /^depends/i.test(keyword!)) unresolved.push(...[...span!.matchAll(SLICE_LABEL)].map((match) => match[1]!));
   }
-  const open = [...new Set([...tagged, ...named])].filter((id) => id !== task.id && openIds.has(id));
+  const open = [...new Set([...task.dep, ...named])].filter((id) => id !== task.id && openIds.has(id));
   return { open, unresolved: [...new Set(unresolved)] };
 }
 

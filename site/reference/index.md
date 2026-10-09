@@ -12,7 +12,7 @@ Domain-free building blocks. No titan dependencies.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`agent-protocol`](/reference/agent-protocol) | Harness-neutral identity and usage contracts for execution and session readers | none |
-| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller | none |
+| [`anthropic-account`](/reference/anthropic-account) | Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh | none |
 | [`app-paths`](/reference/app-paths) | Resolve an app's per-user data, config, cache and log directories, plus active-work's data root, with no runtime dependencies | none |
 | [`authority`](/reference/authority) | The authority decision table as data: who may merge, release, read secrets, spawn or actuate hardware, with a pure evaluator | none |
 | [`chat-protocol`](/reference/chat-protocol) | The canonical chat message document and envelope every agent-chat surface speaks | none |
@@ -93,4 +93,4 @@ Thin compositions of the tiers. Private, not published.
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `cluster`, `daemon`, `embed`, `github`, `locator`, `memory`, `registry`, `retrieval`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
 | `titan` | The titan host CLI: health sampling of the factory and the host | `daemon`, `health` |
 | `codewatch` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
-| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `app-paths`, `chat-protocol`, `daemon`, `github`, `owner-queue`, `react-app`, `react-ui`, `registry`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |
+| `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `app-paths`, `chat-protocol`, `daemon`, `github`, `owner-queue`, `pm`, `react-app`, `react-ui`, `registry`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |

@@ -184,6 +184,7 @@ graph TD
   console --> daemon
   console --> github
   console --> ownerQueue
+  console --> pm
   console --> reactApp
   console --> registry
   console --> rpcClient
