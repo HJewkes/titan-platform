@@ -265,3 +265,34 @@ describe("acceptVerdict malformed record", () => {
     expect(result).toEqual({ kind: "none", reason: "wait" });
   });
 });
+
+describe("acceptVerdict FIX_FIRST findings", () => {
+  const OLD_HEAD = "d".repeat(40);
+  const fixFirst = (head: string) => `Verdict: FIX_FIRST\nPR: octo/demo#7\nHead: ${head}`;
+  const VERDICT = `1. The parser drops the last token.\n\n${fixFirst(HEAD)}`;
+  const POSTSCRIPT = `A background search hit its time limit and was stopped. The verdict stands.\n\n${fixFirst(HEAD)}`;
+  const said = (text: string, writtenAt: number): ReviewerMessage => ({ ...verdictMessage(writtenAt), text });
+  const findingsOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "FIX_FIRST" ? result.text : undefined);
+
+  it("hands over the verdict's findings when a postscript restating the block follows it", () => {
+    const result = acceptVerdict(input, [said(VERDICT, DISPATCHED_AT + 1), said(POSTSCRIPT, DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(VERDICT);
+  });
+
+  it("never hands over a verdict written for an older head", () => {
+    const older = said(`1. Stale finding.\n\n${fixFirst(OLD_HEAD)}`, DISPATCHED_AT + 1);
+
+    const result = acceptVerdict(input, [older, said(POSTSCRIPT, DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(POSTSCRIPT);
+  });
+
+  it("never hands over a verdict written before the dispatch", () => {
+    const early = said(VERDICT, DISPATCHED_AT - 1);
+
+    const result = acceptVerdict(input, [early, said(fixFirst(HEAD), DISPATCHED_AT + 2)]);
+
+    expect(findingsOf(result)).toBe(fixFirst(HEAD));
+  });
+});

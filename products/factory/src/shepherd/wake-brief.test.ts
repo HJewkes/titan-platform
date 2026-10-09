@@ -165,3 +165,22 @@ describe("review wake brief: the PR's review comments", () => {
     expect((await wake()).payload).not.toContain("could not be read");
   });
 });
+
+describe("review wake brief: a verdict with no findings", () => {
+  const RUN = "run-1";
+  const blockOnly = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;
+
+  it.each([
+    ["a block with no findings", { text: blockOnly }],
+    ["no verdict text at all", {}],
+  ])("says so and points at the verdict step for %s", async (_label, payload) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, runId: RUN, payload };
+
+    const { reason } = await describeWake(githubPort(fake.wire), input, pr);
+
+    expect(reason).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
+    expect(reason).toContain(`step sh-await-verdict:${H1} of run ${RUN}`);
+  });
+});
