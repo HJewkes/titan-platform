@@ -1,0 +1,35 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "lantern-cards",
+  "round": 1,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "widths": [390, 1280],
+  "variants": [
+    { "key": "compact", "storyId": "lantern-card--compact", "label": "Compact card" },
+    { "key": "roomy", "storyId": "lantern-card--roomy", "label": "Roomy card" }
+  ],
+  "recommendations": "after-answer",
+  "sections": [
+    {
+      "id": "density",
+      "title": "Card density",
+      "deciding": "Which density the handbook cards use.",
+      "changed": "Two densities replace the single card.",
+      "context": "Card colours are out of scope.",
+      "kind": "CHOICE",
+      "parts": [{ "id": "card-density", "label": "Card density", "proposed": "density: \"compact\"", "lang": "ts" }],
+      "variantKeys": ["compact", "roomy"],
+      "questionIds": ["density-pick"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "density-pick",
+      "kind": "pick-one",
+      "prompt": "Which density should the handbook cards use?",
+      "options": ["compact", "roomy"],
+      "required": true,
+      "signsOff": "card-density"
+    }
+  ]
+}

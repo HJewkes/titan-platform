@@ -25,6 +25,7 @@
     "@titan-design/react-app": "workspace:*",
     "@titan-design/react-ui": "^0.20.0",
     "@titan-design/registry": "workspace:^",
+    "@titan-design/review-schema": "^0.1.0",
     "@titan-design/rpc-client": "workspace:*",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-graph": "workspace:^",

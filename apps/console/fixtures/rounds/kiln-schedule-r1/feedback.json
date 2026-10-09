@@ -1,0 +1,10 @@
+{
+  "schema": "titan-review/feedback@1",
+  "unit": "kiln-schedule",
+  "round": 1,
+  "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "submittedAt": "2031-03-02T10:00:00.000Z",
+  "answers": [{ "questionId": "unit-start", "pick": "Celsius", "agreed": true }],
+  "variants": [],
+  "general": ""
+}

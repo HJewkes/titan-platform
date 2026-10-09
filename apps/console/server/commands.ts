@@ -5,6 +5,7 @@ import type { ActiveWork } from "./active-work.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
+import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
@@ -25,11 +26,12 @@ export interface ConsoleSources {
   sessions: SessionsSource;
   activeWork: ActiveWork;
   inbox: InboxSource;
+  rounds: RoundsSource;
   work?: WorkOptions;
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, work }: ConsoleSources) {
   return {
     "upstreams.health": readCommand({
       name: "upstreams.health",
@@ -43,6 +45,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
     ...inboxCommands(inbox),
+    ...roundsCommands(rounds),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",

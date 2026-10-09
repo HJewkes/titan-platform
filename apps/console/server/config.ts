@@ -40,6 +40,8 @@ export interface ConsoleConfig {
   ownerWrites: boolean;
   /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
   inboxDir: string;
+  /** Review rounds, one `<round-id>/round.json` each; `TITAN_CONSOLE_ROUNDS_DIR` overrides. */
+  roundsDir: string;
 }
 
 /** What `resolveConfig` asks of the machine it runs on; a seam for tests. */
@@ -81,6 +83,7 @@ export function resolveConfig(
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
     inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
+    roundsDir: expandHome(env.TITAN_CONSOLE_ROUNDS_DIR || path.join(stateDir, "rounds"), home),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);

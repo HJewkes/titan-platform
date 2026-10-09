@@ -1,0 +1,60 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "kiln-schedule",
+  "round": 2,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "context": "The firing schedule calculator, second pass after the ramp rework.",
+  "widths": [1280],
+  "variants": [],
+  "recommendations": "after-answer",
+  "sections": [
+    {
+      "id": "ramp",
+      "title": "Firing ramp",
+      "deciding": "Which ramp the calculator proposes by default.",
+      "changed": "The default ramp moved from one slope to a staged climb.",
+      "context": "The cone table is shown for reference and is out of scope.",
+      "parts": [{ "id": "default-ramp", "label": "Default ramp", "current": "ramp: \"single\"", "proposed": "ramp: \"staged\"", "lang": "ts" }],
+      "questionIds": ["ramp-default", "hold-clarity"]
+    },
+    {
+      "id": "report",
+      "title": "Printed report",
+      "deciding": "What the printed schedule shows.",
+      "changed": "The report gained a rate column.",
+      "context": "Page size and fonts are unchanged.",
+      "questionIds": ["report-columns", "report-notes"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "ramp-default",
+      "kind": "pick-one",
+      "prompt": "Which ramp should the calculator propose by default?",
+      "options": ["Staged climb", "Single slope", "Ask each time"],
+      "required": true,
+      "signsOff": "default-ramp",
+      "recommendation": { "answer": "Staged climb", "rationale": "Staged climbs cracked fewer test tiles in the sample firings.", "confidence": 0.7, "by": "fixture-agent" }
+    },
+    {
+      "id": "hold-clarity",
+      "kind": "scale",
+      "prompt": "How clearly does the top hold step read?",
+      "min": 1,
+      "max": 5,
+      "recommendation": { "answer": 4, "rationale": "The hold has its own row now.", "confidence": 0.5, "by": "fixture-agent" }
+    },
+    {
+      "id": "report-columns",
+      "kind": "pick-many",
+      "prompt": "Which columns belong in the printed report?",
+      "options": ["Segment", "Target temperature", "Rate per hour", "Hold minutes"],
+      "recommendation": { "answer": ["Segment", "Target temperature", "Hold minutes"], "rationale": "The rate is derivable from the other columns.", "confidence": 0.6, "by": "fixture-agent" }
+    },
+    {
+      "id": "report-notes",
+      "kind": "text",
+      "prompt": "Anything else the report should say?"
+    }
+  ]
+}

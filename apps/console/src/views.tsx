@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ActivityIcon, BotIcon, BrainIcon, HistoryIcon, KanbanIcon, LayersIcon, type SideNavItem } from "@titan-design/react-ui";
+import { ActivityIcon, BotIcon, BrainIcon, HistoryIcon, KanbanIcon, LayersIcon, TargetIcon, type SideNavItem } from "@titan-design/react-ui";
 import { VIEW_KEYS, type ViewKey } from "./router.js";
 
 export interface ViewSpec {
@@ -14,7 +14,7 @@ export interface ViewSpec {
 
 const ICON_SIZE = 20;
 
-/** The rail of six. Home borrows the activity glyph because react-ui exports no home icon. */
+/** The rail. Home borrows the activity glyph and Rounds the target glyph, because react-ui exports no home or inbox icon. */
 const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   home: { label: "Home", title: "Home", icon: <ActivityIcon size={ICON_SIZE} /> },
   initiatives: { label: "Work", title: "Initiatives", icon: <LayersIcon size={ICON_SIZE} /> },
@@ -34,6 +34,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
     label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} />,
     planned: { summary: "Notes and sources with a reader and search, and a Graph tab.", tasks: "TP-869 and TP-871a" },
   },
+  rounds: { label: "Rounds", title: "Review rounds", icon: <TargetIcon size={ICON_SIZE} /> },
 };
 
 export const VIEWS: readonly ViewSpec[] = VIEW_KEYS.map((key) => ({ key, ...SPECS[key] }));

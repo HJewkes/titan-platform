@@ -129,7 +129,7 @@ describe("an initiative", () => {
 
 describe("an export", () => {
   const exported = async (options: FixtureOptions = {}) =>
-    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
+    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());

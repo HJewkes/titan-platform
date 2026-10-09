@@ -61,6 +61,7 @@ beforeEach(async () => {
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
+    roundsDir: path.join(dir, "state", "rounds"),
   };
   await writeFile(config.sessionGraphPath, "synthetic");
 });

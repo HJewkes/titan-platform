@@ -146,6 +146,12 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_INBOX_DIR: "~/inbox" }).inboxDir).toBe(path.join(HOME, "inbox"));
   });
 
+  it("keeps review rounds in the state directory unless TITAN_CONSOLE_ROUNDS_DIR is given", () => {
+    expect(lan({}).roundsDir).toBe(path.join(HOME, ".local/state/titan-console", "rounds"));
+    expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).roundsDir).toBe("/var/console/rounds");
+    expect(lan({ TITAN_CONSOLE_ROUNDS_DIR: "~/rounds" }).roundsDir).toBe(path.join(HOME, "rounds"));
+  });
+
   it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
     expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
     expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
