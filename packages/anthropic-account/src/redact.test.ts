@@ -13,6 +13,12 @@ describe("redactSecrets on a string", () => {
     ["a JSON refresh token field with a short value", `{"refresh_token": "${CANARY}2"}`],
     ["an api key header", `x-api-key=${CANARY}3`],
     ["a long base64url run", `cookie ${FAKE_OPAQUE} set`],
+    ["a double-quoted short bearer value", `Authorization: Bearer "${CANARY}4"`],
+    ["a single-quoted short bearer value", `Bearer '${CANARY}5'`],
+    ["a token= query value", `?token=${CANARY}6&x=1`],
+    ["an id_token field", `{"id_token":"${CANARY}7"}`],
+    ["a client_secret field", `client_secret=${CANARY}8`],
+    ["a password field", `{"password": "${CANARY}9"}`],
   ])("removes %s", (_case, text) => {
     const redacted = redactSecrets(text);
 
@@ -24,6 +30,10 @@ describe("redactSecrets on a string", () => {
     expect(redactSecrets(`GET /api/oauth/usage failed: Bearer ${FAKE_ACCESS_TOKEN} (401)`)).toBe(
       `GET /api/oauth/usage failed: Bearer ${REDACTED} (401)`,
     );
+  });
+
+  it("keeps the scheme of an Authorization header and redacts its quoted value", () => {
+    expect(redactSecrets(`Authorization: Bearer "${FAKE_ACCESS_TOKEN}"`)).toBe(`Authorization: Bearer "${REDACTED}"`);
   });
 
   it("leaves text with no secret unchanged", () => {
@@ -62,6 +72,30 @@ describe("redactSecrets on an Error", () => {
 
     expect(JSON.stringify(redacted, Object.getOwnPropertyNames(redacted))).not.toContain(CANARY);
     expect(String(redacted)).not.toContain(CANARY);
+  });
+
+  it("returns a fixed Error rather than rethrowing when the message getter throws a token", () => {
+    const hostile = new Error("x");
+    Object.defineProperty(hostile, "message", {
+      get(): never {
+        throw new Error(FAKE_ACCESS_TOKEN);
+      },
+    });
+
+    const redacted = redactSecrets(hostile);
+
+    expect(redacted.message).toBe(REDACTED);
+    expect(redacted.stack ?? "").not.toContain(CANARY);
+  });
+
+  it("returns a fixed Error rather than throwing when the message is not a string", () => {
+    const odd = new Error("x");
+    Object.defineProperty(odd, "message", { value: { token: FAKE_ACCESS_TOKEN } });
+
+    const redacted = redactSecrets(odd);
+
+    expect(redacted.message).toBe(REDACTED);
+    expect(JSON.stringify(redacted, Object.getOwnPropertyNames(redacted))).not.toContain(CANARY);
   });
 
   it("leaves the original untouched", () => {

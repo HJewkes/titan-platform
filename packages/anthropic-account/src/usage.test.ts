@@ -90,6 +90,16 @@ describe("usageFromOAuthResponse", () => {
     expect(usageFromOAuthResponse(body, { writtenAt: WRITTEN_AT })).toBeNull();
   });
 
+  it("returns null instead of throwing when a body's getter throws a token", () => {
+    const body = {
+      get five_hour(): never {
+        throw new Error(`leaked ${FAKE_ACCESS_TOKEN}`);
+      },
+    };
+
+    expect(usageFromOAuthResponse(body, { writtenAt: WRITTEN_AT })).toBeNull();
+  });
+
   it("lets no part of a hostile body other than a window reach the reading", () => {
     const body = {
       ...oauthUsage,

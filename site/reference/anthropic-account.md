@@ -105,13 +105,13 @@ expiry. It returns:
 | `present` | `claudeAiOauth` has an access token that expires after `now` |
 | `expired` | the access token expires at or before `now` |
 | `missing` | the input, or its `claudeAiOauth` block, is absent or null |
-| `refused` | `malformed`: the block has no access token, or an expiry that is not epoch milliseconds |
+| `refused` | `malformed`: the block has no access token, or an expiry outside epoch milliseconds from 1e12 to 1e14, so a seconds or microseconds value is refused |
 
 `mode-too-wide` and `foreign-owner` are reserved for the `./node` reader, which refuses a
 credentials file before reading it.
 
 `needsRefresh(state, now, marginMs)` is true when the access token expires within `marginMs`
-of `now`, or already has. It is false for `missing` and `refused`, which need a login, not a
+of `now`, and always true for an `expired` state, whatever `now` is passed. It is false for `missing` and `refused`, which need a login, not a
 refresh. It throws a `RangeError` for a negative or non-finite margin or a non-finite `now`.
 
 ## Credential safety
@@ -129,14 +129,17 @@ refresh. It throws a `RangeError` for a negative or non-finite margin or a non-f
 
 `redactSecrets(text)` returns the string with each match below replaced by `[REDACTED]`.
 `redactSecrets(error)` returns a new Error with the redacted message, name and stack, and no
-`cause`. The original is left untouched.
+`cause`. The original is left untouched. Redaction never throws: if the original's message
+cannot be read, or is not a string, the result is `new Error("[REDACTED]")`.
+
+`usageFromOAuthResponse` never throws either; a body whose getter throws gives `null`.
 
 | pattern | catches |
 |---|---|
 | `sk-ant-…` | OAuth access and refresh tokens and API keys |
 | `eyJ….…(.…)` | JWTs |
-| `Bearer …`, `Basic …` | an Authorization header value, of any length |
-| `access_token`, `refreshToken`, `authorization`, `api_key`, `x-api-key` followed by `:` or `=` | the value of a token field in JSON, a query string or a header, of any length |
+| `Bearer …`, `Basic …` | an Authorization header value, quoted or not, of any length |
+| `access_token`, `refresh_token`, `id_token`, `token`, `client_secret`, `password`, `authorization`, `api_key`, `x-api-key`, in any case and with or without the underscore, followed by `:` or `=` | the value of a secret field in JSON, a query string or a header, of any length |
 | 32 or more base64url characters in a row | any other long opaque token |
 
 The last pattern over-redacts on purpose: a git SHA or a long hyphenated name is redacted

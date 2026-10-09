@@ -46,6 +46,7 @@ describe("loginStateFromCredentials", () => {
     ["null", null],
     ["an object with no OAuth block", { mcpOAuth: {} }],
     ["a null OAuth block", { claudeAiOauth: null }],
+    ["an OAuth block only on the prototype", Object.create(fakeCredentials()) as unknown],
   ])("reports missing for %s", (_case, credentials) => {
     expect(loginStateFromCredentials(credentials, NOW)).toEqual({ status: "missing" });
   });
@@ -54,6 +55,8 @@ describe("loginStateFromCredentials", () => {
     ["no access token", { accessToken: undefined }],
     ["an empty access token", { accessToken: "" }],
     ["an expiry in seconds", { expiresAt: Math.floor(NOW / 1000) }],
+    ["an expiry in microseconds", { expiresAt: NOW * 1000 }],
+    ["a refresh expiry in microseconds", { refreshTokenExpiresAt: NOW * 1000 }],
     ["an expiry that is a string", { expiresAt: String(NOW) }],
   ])("refuses credentials with %s as malformed", (_case, overrides) => {
     expect(loginStateFromCredentials(fakeCredentials(overrides), NOW)).toEqual({
@@ -129,6 +132,12 @@ describe("needsRefresh", () => {
 
   it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])("rejects a margin of %s", (marginMs) => {
     expect(() => needsRefresh(present(NOW + HOUR), NOW, marginMs)).toThrow(RangeError);
+  });
+
+  it("always wants a refresh for an expired state, even judged from an earlier now", () => {
+    const expired: LoginState = { status: "expired", expiresAt: NOW - 1000, canRefresh: true };
+
+    expect(needsRefresh(expired, NOW - HOUR, 0)).toBe(true);
   });
 
   it("rejects a now that is not finite", () => {

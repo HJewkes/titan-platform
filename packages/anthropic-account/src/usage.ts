@@ -49,14 +49,28 @@ function windowFromOAuth(value: unknown): UsageWindow | null {
   return window;
 }
 
-export function usageFromOAuthResponse(body: unknown, options: OAuthUsageOptions): UsageReading | null {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+function windowsFromOAuth(body: unknown): Record<string, UsageWindow> {
   const rateLimits: Record<string, UsageWindow> = {};
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return rateLimits;
   for (const [name, value] of Object.entries(body)) {
     if (!WINDOW_NAME.test(name)) continue;
     const window = windowFromOAuth(value);
     if (window) rateLimits[name] = window;
   }
+  return rateLimits;
+}
+
+function safeWindowsFromOAuth(body: unknown): Record<string, UsageWindow> {
+  try {
+    return windowsFromOAuth(body);
+  } catch {
+    return {};
+  }
+}
+
+// A body whose getter throws gives null, because the exception could carry a token.
+export function usageFromOAuthResponse(body: unknown, options: OAuthUsageOptions): UsageReading | null {
+  const rateLimits = safeWindowsFromOAuth(body);
   if (Object.keys(rateLimits).length === 0) return null;
   return parseUsageReading({
     session_id: POLL_SESSION_ID,

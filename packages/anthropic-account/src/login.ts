@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { redactSecrets } from "./redact.js";
 
-// Epoch milliseconds from 2001 on. A seconds value is far below this, so a unit mix-up is
-// refused as malformed instead of reading as long expired.
-const epochMs = z.number().int().min(1_000_000_000_000);
+// Epoch milliseconds between 2001 and 5138. A seconds value falls below the range and a
+// microseconds value above it, so a unit mix-up is refused as malformed instead of reading
+// as long expired or as never expiring.
+const epochMs = z.number().int().min(1e12).max(1e14);
 
 // Token fields are checked for presence and type only; their values are never copied out.
 const oauthSchema = z.object({
@@ -59,6 +60,7 @@ function stateFromOAuth(oauth: OAuth, now: number): LoginState {
 
 function readOAuthField(credentials: unknown): unknown {
   if (typeof credentials !== "object" || credentials === null) return undefined;
+  if (!Object.hasOwn(credentials, "claudeAiOauth")) return undefined;
   return (credentials as Record<string, unknown>).claudeAiOauth;
 }
 
@@ -81,11 +83,12 @@ export function loginStateFromCredentials(credentials: unknown, now: number): Lo
   }
 }
 
-// True when the access token expires within `marginMs` of `now`, or already has. A state
-// with no expiry (missing, refused) never needs a refresh; it needs a login.
+// True when the access token expires within `marginMs` of `now`, and always for an expired
+// state, whatever `now` the caller passes. A state with no expiry (missing, refused) never needs a refresh; it needs a login.
 export function needsRefresh(state: LoginState, now: number, marginMs: number): boolean {
   assertFiniteNow(now);
   if (!Number.isFinite(marginMs) || marginMs < 0) throw new RangeError("marginMs must be a finite non-negative number");
-  if (state.status !== "present" && state.status !== "expired") return false;
+  if (state.status === "expired") return true;
+  if (state.status !== "present") return false;
   return state.expiresAt - now <= marginMs;
 }
