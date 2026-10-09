@@ -1,0 +1,18 @@
+# Refreshes active-work's session graph with active-work's own incremental refresh, then
+# quick_checks it read-only. Install steps: products/session-miner/README.md, "Scheduled refresh".
+[Unit]
+Description=Session miner: refresh the active-work session graph and quick_check it
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT and TITAN_MINER_GRAPH; required, so a host without it fails rather than checking the wrong file.
+EnvironmentFile=%h/.config/titan-session-miner/refresh.env
+ExecStart=/usr/bin/node %h/projects/titan-platform/products/session-miner/dist/bin.js --graph "${TITAN_MINER_GRAPH}" graph-refresh -- active-work miner refresh
+# 75 is "another run holds the lock": nothing happened and the next tick retries.
+SuccessExitStatus=75
+# A first catch-up pass is long; watermarks commit per transcript, so a killed pass keeps its progress.
+TimeoutStartSec=55min
+Nice=10
+IOSchedulingClass=idle
