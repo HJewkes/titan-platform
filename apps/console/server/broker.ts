@@ -9,7 +9,7 @@ import { failure, unexpectedShape } from "./active-work.js";
 export const BROKER_HISTORY_LIMIT = 1000;
 
 /** The header agent-chat's `/api/*` guard reads; the same one its own queue mirror sends. */
-const TOKEN_HEADER = "X-Agent-Chat-Token";
+export const TOKEN_HEADER = "X-Agent-Chat-Token";
 const TIMEOUT_MS = 3000;
 
 export interface BrokerSnapshot {
@@ -69,7 +69,7 @@ export function brokerReader(options: BrokerReaderOptions): BrokerReader {
   };
 }
 
-async function readToken(file: string): Promise<string> {
+export async function readToken(file: string): Promise<string> {
   const handle = await open(file, "r").catch(() => null);
   if (!handle) throw new BrokerUnavailable(`agent-chat ui token not readable at ${file}`);
   try {

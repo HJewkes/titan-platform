@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
+import { useRelayInvalidation } from "./data/live.js";
 import { PAGES } from "./pages/index.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
@@ -10,6 +11,7 @@ const BRAND = "agents";
 
 export function App(): ReactNode {
   const route = useRoute();
+  useRelayInvalidation();
   return (
     <AppShell
       brand={BRAND}

@@ -6,7 +6,7 @@
  */
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { streamSSE } from "hono/streaming";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import { EXIT, errorEnvelope, invokeCommand, type BaseContext } from "@titan-design/registry";
 import {
   EVENTS_PATH,
@@ -34,6 +34,8 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
   startedAt?: number;
   /** When present, `/events` streams its broadcasts; otherwise only heartbeats. */
   hub?: EventHub;
+  /** Bounds on `/events` subscribers; see `EventLimits` for the defaults. */
+  eventLimits?: Partial<EventLimits>;
   /**
    * Whether startup has finished. Until it has, `/health` answers 503: the port binds
    * before the pid file exists, so a caller treating a bound port as "ready" could find
@@ -109,12 +111,26 @@ function registerGuards<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
   });
 }
 
+export interface EventLimits {
+  /** Concurrent `/events` streams across every listener sharing the hub; one more answers 503. Defaults to 64. */
+  maxSubscribers: number;
+  /** Broadcasts a stream may hold unwritten; one more disconnects it, so a client never silently misses one. Defaults to 256. */
+  maxQueued: number;
+}
+
+export const DEFAULT_EVENT_LIMITS: EventLimits = { maxSubscribers: 64, maxQueued: 256 };
+
 function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
-  app.get(EVENTS_PATH, (c) =>
-    streamSSE(c, async (stream) => {
-      await stream.writeSSE({ event: SSE_EVENTS.READY, data: SSE_READY_DATA });
-      const unsubscribe = options.hub?.subscribe((message) => stream.writeSSE(message));
+  const limits = { ...DEFAULT_EVENT_LIMITS, ...options.eventLimits };
+  app.get(EVENTS_PATH, (c) => {
+    if (options.hub && options.hub.size >= limits.maxSubscribers) {
+      return c.json(errorEnvelope("Too many event subscribers", EXIT.UNAVAILABLE), 503);
+    }
+    return streamSSE(c, async (stream) => {
+      // Subscribed before the first await, so the size check above and this join are one step.
+      const unsubscribe = options.hub ? subscribeBounded(options.hub, stream, limits.maxQueued) : undefined;
       stream.onAbort(() => unsubscribe?.());
+      await stream.writeSSE({ event: SSE_EVENTS.READY, data: SSE_READY_DATA });
       // Hold the connection open, emitting periodic heartbeats so proxies and dead-peer
       // detection keep the stream healthy until the client aborts.
       while (!stream.aborted) {
@@ -123,8 +139,28 @@ function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
         await stream.writeSSE({ event: SSE_EVENTS.PING, data: String(Date.now()) });
       }
       unsubscribe?.();
-    }),
-  );
+    });
+  });
+}
+
+/** A write stays pending while the client is not reading, so the count is that client's backlog. */
+function subscribeBounded(hub: EventHub, stream: SSEStreamingApi, maxQueued: number): () => void {
+  let queued = 0;
+  const unsubscribe = hub.subscribe((message) => {
+    if (queued >= maxQueued) {
+      unsubscribe();
+      stream.abort();
+      return;
+    }
+    queued += 1;
+    void stream
+      .writeSSE(message)
+      .catch(() => stream.abort())
+      .finally(() => {
+        queued -= 1;
+      });
+  });
+  return unsubscribe;
 }
 
 const INVALID_JSON = Symbol("invalid-json");
