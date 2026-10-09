@@ -33,5 +33,14 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@titan-design/store-sqlite": "workspace:^"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
   }
 }

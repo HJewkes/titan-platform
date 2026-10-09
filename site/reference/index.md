@@ -40,7 +40,7 @@ Reusable machinery over the primitives.
 | [`agent-surface`](/reference/agent-surface) | Where a spawned agent is presented (headless or an iTerm2 pane, tab or window), and the launcher that execs its plan | none |
 | [`daemon`](/reference/daemon) | hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle | `registry`, `rpc-protocol` |
 | [`github`](/reference/github) | GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake | none |
-| [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | none |
+| [`health`](/reference/health) | health/v1 contract, probes, append-only sample store and uptime | `store-sqlite` |
 | [`hitl`](/reference/hitl) | Human-in-the-loop gate()/resolve() primitive | `authority`, `store-sqlite` |
 | [`matrix-bus`](/reference/matrix-bus) | Matrix client-server API over fetch: appservice client, io.titan.item codec, owner resolution fold, #queue bootstrap | none |
 | [`messaging`](/reference/messaging) | Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness | none |
