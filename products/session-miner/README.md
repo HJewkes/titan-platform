@@ -24,6 +24,7 @@ titan-miner playbook status
 titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
+titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -156,12 +157,54 @@ index stays valid with the playbook ignored, and a test asserts the row counts d
 
 A dashboard (waits on TP-10's UI split), vector search over the spans (the `embed`
 dependency is wired but no vector index is built yet), per-tool partitions for Drain (the
-fact table does not carry tool names for results yet), and a scheduler for periodic
-refreshes (the daemon serves; a supervisor drives `refresh`).
+fact table does not carry tool names for results yet).
 
 The playbook has no semantic recall yet: `memory` supports a vector index, but the miner
 does not build one, so recall is keyword-only.
 
+
+## Scheduled refresh (TP-2073)
+
+`titan-miner graph-refresh -- <command...>` is one scheduled pass over a graph. It is built
+for a graph another owner writes, such as active-work's, so it indexes nothing itself: it
+runs that owner's incremental refresh and then proves the file is whole.
+
+1. It takes `--lock <file>` (default `<state>/graph-refresh.lock`) without waiting. If
+   another live run holds it, it logs the holder's pid and exits 75. A lock whose pid is
+   gone was left by a killed run and is taken over.
+2. It runs the command with inherited stdio. The command must write the graph only inside
+   SQLite transactions, which both active-work's and the miner's own `refresh` do, so a pass
+   killed mid-write rolls back and the rows from before it stay.
+3. It opens the graph read-only and runs `PRAGMA quick_check`, then logs the session count
+   and the newest session's start time. The open is plain SQLite, so an owner's graph at an
+   older session-graph migration is still checked.
+
+Every failure is one stderr line starting `graph-refresh: FAILED:`, and the exit code is 70.
+Stdout carries one JSON line: `outcome` (`ok`, `locked`, `refresh-failed` or `corrupt`),
+`health` and `exitCode`.
+
+`ops/systemd/session-miner-refresh.{service,timer}` run it hourly on a Linux host over
+active-work's graph, with `active-work miner refresh` as the command. That command walks
+every Claude config dir (`~/.claude/projects` and `~/.claude-profiles/*/projects`) and
+skips a transcript whose watermark is current; it shares active-work's own refresh lock with
+the active-work daemon, so the two never write at once. The units assume this checkout at
+`~/projects/titan-platform`, built, and `active-work` in `~/.local/bin`. The service reads
+`ACTIVE_ROOT` and `TITAN_MINER_GRAPH` from `~/.config/titan-session-miner/refresh.env`, which
+it requires, so a host without that file fails instead of checking the wrong graph. To install
+(an owner step), with `<root>` for the active-work root:
+
+```sh
+pnpm -C ~/projects/titan-platform --filter @titan-design/session-miner... build
+mkdir -p ~/.config/titan-session-miner
+printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\n' > ~/.config/titan-session-miner/refresh.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-refresh.service ~/projects/titan-platform/ops/systemd/session-miner-refresh.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-refresh.timer
+```
+
+Then `systemctl --user start session-miner-refresh.service` runs a pass at once,
+`journalctl --user -u session-miner-refresh` shows its log, and a failed pass leaves the
+unit in `systemctl --user --failed`.
 
 ## Codex sessions
 

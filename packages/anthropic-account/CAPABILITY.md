@@ -1,0 +1,3 @@
+# anthropic-account: use this when
+
+You need to read a Claude Code account's state without touching a token: parse a status-line usage reading with `parseUsageReading`, map the OAuth usage endpoint's response into that shape with `usageFromOAuthResponse`, turn a parsed `.credentials.json` object into a token-free `LoginState` with `loginStateFromCredentials` and `needsRefresh`, name an account from its config dir with `accountLabel`, or scrub tokens from a log line or an Error with `redactSecrets`. Pure code; it reads no files and makes no request, so the host reads the credentials and calls the endpoint. For the harness-neutral usage and cost types of an agent run use `agent-protocol` instead.

@@ -118,7 +118,8 @@ await startDaemon({
 The guards keep web pages out but authenticate no one, which is fine on loopback and not on a
 LAN. `auth.ts` is the mechanism for a listener that needs a real credential. The product owns
 the policy: the file path, the CLI verbs that mint links and rotate the secret, and which
-listener the gate sits on. Nothing here is wired into `startDaemon` yet.
+listener the gate sits on. `startDaemon` wires it through the `remote` option (below);
+`buildHttpApp`'s `gate` option is the same gate for an app you bind yourself.
 
 ```ts
 import {
@@ -169,9 +170,45 @@ rotateTokenFile(tokenFile);                    // ends every session and voids e
 - **401s.** A browser `GET` asking for HTML gets a small page with a reload link; everything
   else gets a JSON envelope. Neither names a product's login command.
 - **`createContext(surface, auth)`.** The gate records `{ credential: "session" | "bearer",
-  issuedAt }` and `/rpc` passes it as `createContext`'s second argument, so a command can refuse
-  a credential kind. It is `undefined` only on an ungated listener and on MCP; a gated app
-  answers 401 rather than call `createContext` without it.
+  issuedAt, peerLocal }` and `/rpc` passes it as `createContext`'s second argument, so a command
+  can refuse a credential kind. It is `undefined` only on an ungated listener and on MCP; a gated
+  app answers 401 rather than call `createContext` without it.
+- **`peerLocal`.** True when the peer address is loopback or one of this machine's own interface
+  addresses, read from `os.networkInterfaces()` per request, or when no peer address is known
+  (`app.request()` in tests). Any local process can read the token file and mint a link, so a
+  command that must come from another device refuses when it is true.
+
+## A remote listener
+
+```ts
+const handle = await startDaemon({
+  ...options,                                   // host stays loopback, the default
+  port: 7500,
+  remote: { host: "192.168.1.20", tokenFile, allowedHosts: ["lan-box", "lan-box.local"] },
+});
+```
+
+- **Two listeners, one port.** Loopback is exactly as without `remote`: no auth, the loopback
+  allowlist. The second listener binds `remote.host` on the same port with its own hono app,
+  which shares the registry, hub, `health()` and `mountRoutes` (called once per app).
+- **Order.** The Host/Origin guard runs first, then the gate, then every route. A foreign Host
+  gets 403 before the gate, `/auth/login` included.
+- **Allowlist.** `remote.host` plus `remote.allowedHosts`, nothing else: `Host: localhost` gets
+  403 there, and the loopback allowlist never gains these names. Host and the derived origins
+  match only with the bound port (`portOnly`), because cookies ignore port: a page from another
+  service on port 80 of the same host would otherwise pass the Origin check with the cookie.
+  `guards.allowedOrigins` applies to loopback only.
+- **No `/mcp`.** It is spliced ahead of hono, where the gate would never see it, so the remote
+  bind takes no MCP handler at all; `/mcp` there is 401, then 404 with a credential.
+- **Refusals.** `RemoteBindError` for a loopback or wildcard address (`0.0.0.0`, `::`, their
+  long and IPv4-mapped forms, all of 127/8), for anything that is not a bare IP literal (a name
+  could resolve to either), and for a `remote` beside an unauthenticated non-loopback `host`.
+  The token file is read before anything binds, so a bad one never half-starts the daemon.
+- **Both or neither.** If the remote bind fails (`EADDRNOTAVAIL` while the interface is down,
+  or `DaemonPortInUseError` naming the remote host), loopback is closed and no pid file is
+  written. `close()` shuts both.
+- **Not covered.** An open `/events` stream outlives a token rotation, and the daemon does not
+  notice its address leaving the interface; both are known gaps.
 
 ## Serving a built front end
 
