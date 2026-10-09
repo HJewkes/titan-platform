@@ -258,16 +258,24 @@ function isReachableFrom(cwd: string, sha: string, tips: readonly string[]): boo
  * The patch text a commit is scanned by. A merge is diffed against each parent in turn, which blames it
  * for everything the other side brought in, including commits the remote already has. With the remote's
  * `tips`, a two-parent merge is instead diffed against a fresh re-merge of its parents: that is exactly
- * what the resolution added beyond them. Every parent's own content is scanned elsewhere, either because
- * the remote has it or because an unpushed parent is itself in the pushed range. A merge with more
- * parents is diffed against its unpushed parents, or against every parent when none is unpushed.
+ * what the resolution added beyond them. That is only sound when each parent's own content is scanned
+ * elsewhere: the remote advertises it, or it is among the `scanned` commits. A parent that is neither
+ * (one only a local tracking ref holds) keeps the per-parent diffs. A merge with more parents is diffed
+ * against its unpushed parents, or against every parent when none is unpushed.
  */
-function commitPatchText(cwd: string, sha: string, tips: readonly string[] | undefined, maxBytes: number): string {
+function commitPatchText(
+  cwd: string,
+  sha: string,
+  tips: readonly string[] | undefined,
+  scanned: ReadonlySet<string>,
+  maxBytes: number,
+): string {
   const parents = tips === undefined ? [] : parentsOf(cwd, sha);
   if (tips === undefined || parents.length < 2) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
-  if (parents.length === 2) return showCommit(cwd, sha, REMERGE_PATCH_FLAGS, maxBytes);
   const unpushed = parents.filter((parent) => !isReachableFrom(cwd, parent, tips));
-  if (unpushed.length === 0) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
+  const covered = unpushed.every((parent) => scanned.has(parent));
+  if (parents.length === 2 && covered) return showCommit(cwd, sha, REMERGE_PATCH_FLAGS, maxBytes);
+  if (parents.length === 2 || unpushed.length === 0) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
   return unpushed.map((parent) => diffAgainst(cwd, parent, sha, maxBytes)).join("");
 }
 
@@ -280,17 +288,19 @@ function diffAgainst(cwd: string, parent: string, sha: string, maxBytes: number)
 /**
  * One commit's idents, message and patch, read by separate calls so a merge's per-parent copies of
  * the message never land inside its patch. Throws `PatchTooLargeError` when either is over `maxPatchBytes`.
- * `tips` are the remote's advertised tips; without them every merge parent is diffed.
+ * `tips` are the remote's advertised tips and `scanned` the commits scanned alongside this one; without
+ * tips every merge parent is diffed.
  */
 export function readCommit(
   cwd: string,
   sha: string,
   maxPatchBytes = MAX_PATCH_BYTES,
   tips?: readonly string[],
+  scanned: ReadonlySet<string> = new Set(),
 ): ScanSource {
   requireRevision(sha, "commit");
   const { idents, message } = splitHeader(showCommit(cwd, sha, MESSAGE_FLAGS, maxPatchBytes));
-  const patch = parseDiff(commitPatchText(cwd, sha, tips, maxPatchBytes));
+  const patch = parseDiff(commitPatchText(cwd, sha, tips, scanned, maxPatchBytes));
   return requireAllText({ ...patch, sha, message, idents }, `commit ${sha.slice(0, 7)}`);
 }
 

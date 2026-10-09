@@ -280,7 +280,7 @@ describe("a merge commit against parents the remote already has", () => {
     const update = { localSha, remoteSha: branchTip };
     const commits = commitsForUpdate(repo.dir, "origin", update, { pushUrl: bare });
     const tips = listRemoteTips(repo.dir, { pushUrl: bare });
-    const result = scan(commits.map((sha) => readCommit(repo.dir, sha, undefined, tips)));
+    const result = scan(commits.map((sha) => readCommit(repo.dir, sha, undefined, tips, new Set(commits))));
     return result.findings.map((f) => `${f.location} ${f.rule}`);
   }
 
@@ -316,6 +316,32 @@ describe("a merge commit against parents the remote already has", () => {
     repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
 
     expect(pushFindings(repo, bare, branchTip)).toEqual([`commit ${fresh.slice(0, 7)} fresh.txt:1 home-path`]);
+  });
+
+  it("refuses a parent that only a local tracking ref holds, when fetch and push URLs name different repositories", () => {
+    const repo = newRepo();
+    const privateBare = tempDir("egress-scan-private-");
+    const publicBare = tempDir("egress-scan-public-");
+    bares.push(privateBare, publicBare);
+    for (const bare of [privateBare, publicBare]) spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    repo.git(["remote", "add", "origin", privateBare]);
+    repo.write("base.txt", "base\n");
+    const base = repo.commit("base");
+    repo.git(["push", "-q", publicBare, "main"]);
+    repo.write("landed.md", flaggedLine);
+    repo.commit("flagged, only on the private remote");
+    repo.git(["push", "-q", "origin", "main"]);
+    repo.git(["checkout", "-q", "-b", "fresh", base]);
+    repo.write("fresh.txt", "fresh\n");
+    repo.commit("branch work");
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "origin/main"]);
+    const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+    const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: ZERO_SHA }, { pushUrl: publicBare });
+    const tips = listRemoteTips(repo.dir, { pushUrl: publicBare });
+    const result = scan(commits.map((sha) => readCommit(repo.dir, sha, undefined, tips, new Set(commits))));
+
+    expect(result.findings.map((f) => `${f.location} ${f.rule}`)).toEqual([`commit ${merge.slice(0, 7)} landed.md:1 home-path`]);
   });
 
   it("refuses the landed text when the push URL cannot be listed", () => {

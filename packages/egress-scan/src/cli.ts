@@ -50,7 +50,8 @@ function readCommits(
   maxPatchBytes?: number,
   tips?: readonly string[],
 ): ScanSource[] {
-  return [...new Set(shas)].map((sha) => readCommit(root, sha, maxPatchBytes, tips));
+  const scanned = new Set(shas);
+  return [...scanned].map((sha) => readCommit(root, sha, maxPatchBytes, tips, scanned));
 }
 
 function prePushSources(root: string, remote: string, pushUrl: string | undefined, io: CliIo): ScanSource[] {

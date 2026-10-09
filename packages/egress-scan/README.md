@@ -30,7 +30,10 @@ notices and errors to stderr.
   both diffs name is reported once. In `pre-push`, with the push URL listed, a two-parent
   merge is instead diffed against a re-merge of its parents (`--diff-merges=remerge`, which
   honors `--text`), so only what the resolution added is scanned, not the other side's
-  already-pushed commits; each parent's own commits are scanned as commits. The message is read with `--encoding=UTF-8`, so
+  already-pushed commits; each parent's own commits are scanned as commits. A parent that is
+  neither advertised by the push URL nor in the scanned range (one only a local tracking ref
+  holds) keeps the per-parent diffs. `remerge` needs git 2.36 or newer; on an older git the
+  `git show` fails, so the scan exits 2 and every push of a merge commit is blocked. The message is read with `--encoding=UTF-8`, so
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
 - **Text.** `text` scans free text (a PR title, body or branch name) with the generic rules and
   the private term list, for the CC-269 and CC-270 callers. It reads stdin, or `--file <path>`
