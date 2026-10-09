@@ -169,7 +169,9 @@ describe("the console daemon", () => {
 
 describe("the console's remote listener options", () => {
   const startDaemonSpy = vi.mocked(daemonPackage.startDaemon);
-  beforeEach(() => startDaemonSpy.mockClear());
+  beforeEach(() => {
+    startDaemonSpy.mockClear();
+  });
 
   it("asks for no remote listener and no unauthenticated bind when TITAN_CONSOLE_HOST is unset", async () => {
     handle = await startConsoleDaemon({ config, logger: silentLogger });

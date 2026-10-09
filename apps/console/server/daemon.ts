@@ -11,6 +11,7 @@ import {
   startDaemon,
   type DaemonHandle,
   type Logger,
+  type RemoteListenerOptions,
 } from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { APP_VERSION } from "./paths.js";
@@ -24,9 +25,14 @@ export interface ConsoleDaemonOptions {
   logger?: Logger;
 }
 
-/** The console's one daemon: its commands and, when asked, the built app, on loopback only. */
+/**
+ * The console's one daemon: its commands and, when asked, the built app, on loopback, plus the
+ * LAN address behind auth when `lanHost` is set. The LAN is reached only through `remote`, which
+ * gates every route, so no setting binds it without auth.
+ */
 export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise<DaemonHandle> {
   const { config, staticRoot } = options;
+  const remote = lanListener(config);
   const sources = createSources(config);
   const { upstreams } = sources;
   return startDaemon({
@@ -35,11 +41,19 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
     version: APP_VERSION,
     port: config.port,
     stateDir: config.stateDir,
+    ...(remote ? { remote } : {}),
     // Targets only: /health must answer without waiting on an upstream.
     health: () => ({ upstreams: upstreams.map(({ id, target }) => ({ id, target })) }),
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
     logger: options.logger ?? consoleLogger,
   });
+}
+
+/** Creates the token file on first run; an untrustworthy one throws here, before anything binds. */
+function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
+  if (config.lanHost === null) return null;
+  ensureLanToken(config);
+  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames };
 }
 
 /** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
