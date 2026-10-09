@@ -102,7 +102,7 @@ const sample = await probeHttp(
 | 2xx body that is not JSON, or not a health payload | `fail` | `body is not JSON`, `payload: ...` |
 | Payload `port` is not `expectPort`, or `pid` is not `expectedPid()` | `fail` | `identity: ...` |
 | `expectedPid()` is null (no pid file) while the port answers | `fail` | `identity: ...` |
-| Bad URL, or `expectedPid()` throws | `unknown` | `probe error: ...` |
+| Bad URL, a URL with `user:pass@`, or `expectedPid()` throws | `unknown` | `probe error: ...` |
 | Otherwise | the payload's status via `parseHealthReport` | none |
 
 Identity is the TP-1056 risk: a stranger answering 200 on the port must not read as up, so
@@ -111,8 +111,8 @@ the injected clock from before the request to after the body; the `expectedPid()
 not counted. `observed.code` holds the HTTP
 code when there was one, and each `observe` dot path is copied under its own name; a missing
 path is left out, never defaulted. The package never reads a pid file itself; the caller
-passes `expectedPid`. Credentials in the URL (`user:pass@`) are replaced with `***` in
-`output`, so they never reach a stored sample.
+passes `expectedPid`. A URL that carries credentials (`user:pass@`) is refused before any
+request with fixed text, so no piece of them reaches a stored sample.
 
 ## The sample store
 

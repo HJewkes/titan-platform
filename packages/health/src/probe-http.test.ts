@@ -31,6 +31,8 @@ function target(url: string, extra: Partial<ProbeHttpTarget> = {}): ProbeHttpTar
   return { name: "factory", url, timeoutMs: 2000, ...extra };
 }
 
+const CREDENTIALS_REFUSED = "probe error: the URL carries credentials, refused before any request";
+
 const SERVE_HEALTH = {
   ok: true,
   pid: 4242,
@@ -203,34 +205,32 @@ describe("probeHttp when the target is down", () => {
     expect(sample).toMatchObject({ status: "fail", observed: { code: 302 } });
   });
 
-  it("keeps URL credentials out of a transport error it reports", async () => {
-    const url = "http://probe-user:s3cret-pass@127.0.0.1:7410/health";
-    const deps: ProbeHttpDeps = {
-      fetch: async (requested) => {
-        throw new Error(`connect failed for ${requested}`);
-      },
-    };
+  it("refuses a URL with credentials before any request, echoing no piece of them", async () => {
+    const port = new URL(await closedPortUrl()).port;
+    const url = `http://u1:p{a}ss|x y@127.0.0.1:${port}/h`;
 
-    const sample = await probeHttp(target(url), deps);
+    const sample = await probeHttp(target(url));
 
-    expect(sample.status).toBe("fail");
-    expect(sample.output).not.toMatch(/s3cret-pass|probe-user/);
-    expect(sample.output).toContain("127.0.0.1:7410");
+    expect(sample).toMatchObject({ status: "unknown", output: CREDENTIALS_REFUSED });
+    const stored = JSON.stringify(sample);
+    for (const piece of ["u1", "p{a}ss", "p%7Ba%7Dss", "|x", "%7Cx", "x y", "x%20y", "127.0.0.1"]) {
+      expect(stored).not.toContain(piece);
+    }
   });
 
-  it("keeps URL credentials out of a probe error it reports", async () => {
-    const url = "http://probe-user:s3cret%20pass@127.0.0.1:7410/health";
-    const deps: ProbeHttpDeps = {
-      fetch: async () => new Response(JSON.stringify({ ok: true, pid: 1 }), { status: 200 }),
-      expectedPid: async () => {
-        throw new Error(`no pid file for probe-user:s3cret pass`);
-      },
-    };
+  it("leaves the refusal text whole when the username is a common substring", async () => {
+    const port = new URL(await closedPortUrl()).port;
 
-    const sample = await probeHttp(target(url), deps);
+    const sample = await probeHttp(target(`http://ab:pw@127.0.0.1:${port}/h`));
+
+    expect(sample.output).toBe(CREDENTIALS_REFUSED);
+  });
+
+  it("keeps the text of a URL that does not parse out of the output", async () => {
+    const sample = await probeHttp(target("http://u1:s3cret@[bad/h"));
 
     expect(sample.status).toBe("unknown");
-    expect(sample.output).not.toMatch(/s3cret|probe-user/);
+    expect(JSON.stringify(sample)).not.toMatch(/s3cret|u1/);
   });
 
   it("reads a URL that does not parse as unknown", async () => {
