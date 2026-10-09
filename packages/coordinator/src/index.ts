@@ -1,4 +1,19 @@
 export {
+  HARD_STOP_CLASSES,
+  charterDefaultsSchema,
+  charterPolicyErrorSchema,
+  charterPolicySchema,
+  hardStopClassSchema,
+  parseCharterPolicy,
+} from "./charter-policy.js";
+export type {
+  CharterDefaults,
+  CharterPolicy,
+  CharterPolicyError,
+  CharterPolicyResult,
+  HardStopClass,
+} from "./charter-policy.js";
+export {
   seatConcurrencySchema,
   seatConfigSchema,
   seatRepoSchema,

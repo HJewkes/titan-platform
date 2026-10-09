@@ -55,7 +55,7 @@ Modules that know about a subject: transcripts, code, rules.
 | --- | --- | --- |
 | [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `retrieval`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
-| [`coordinator`](/reference/coordinator) | Seat config schema for the autonomy coordinator (pure code: zod schema and inferred types). | none |
+| [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | none |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
 | [`memory`](/reference/memory) | Decaying rule playbook: bullets, feedback, deterministic curation, recall | `embed`, `retrieval`, `store-sqlite` |
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | none |
