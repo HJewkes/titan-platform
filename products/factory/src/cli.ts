@@ -181,6 +181,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
+  verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
+    .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
   verb("hold <ref>", "hold owner/repo#N so no merge goes through until release")
     .requiredOption("--reason <text>", "why it is held")
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
