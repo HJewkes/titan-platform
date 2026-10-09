@@ -2,8 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { collectDigest, type DigestSources } from "./collect.js";
 import type { DigestSlot } from "./model.js";
+import type { DigestPushConfig } from "../config.js";
 import { DEFAULT_CAPS, NO_CAPS, rankDigest } from "./rank.js";
 import { renderMarkdown } from "./render-md.js";
+import { pushDigest, type PushDeps } from "./push.js";
 import type { Directories } from "./sources.js";
 
 export interface DigestRun {
@@ -24,8 +26,8 @@ export interface Delivery {
   warnings: string[];
 }
 
-/** The slot names the file, so a rerun for the same slot replaces it; a failed copy warns but keeps the local file. */
-export function deliverDigest(markdown: string, slot: DigestSlot, dirs: Directories): Delivery {
+/** The slot names the file, so a rerun for the same slot replaces it; a failed copy or push warns but keeps the local file. */
+export async function deliverDigest(markdown: string, slot: DigestSlot, dirs: Directories, push?: DigestPushConfig, pushDeps?: PushDeps): Promise<Delivery> {
   const name = `${slot.date}-${slot.hour}.md`;
   const write = (dir: string): string => {
     mkdirSync(dir, { recursive: true });
@@ -41,5 +43,7 @@ export function deliverDigest(markdown: string, slot: DigestSlot, dirs: Director
       warnings.push(`copy to ${dir} failed: ${(error as Error).message}`);
     }
   }
+  const pushWarning = push ? await pushDigest(markdown, slot, push, pushDeps) : undefined;
+  if (pushWarning) warnings.push(pushWarning);
   return { written, warnings };
 }
