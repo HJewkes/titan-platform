@@ -54,10 +54,13 @@ function words(text: string): Set<string> {
   return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word && !STOPWORDS.has(word)).map(stem));
 }
 
-/** Dice overlap of content words, so a title stuffed with every name stays far from each of them. */
-function similarity(a: Set<string>, b: Set<string>): number {
-  const shared = [...a].filter((word) => b.has(word)).length;
-  return share(2 * shared, a.size + b.size);
+/**
+ * Dice overlap of content words, so a title stuffed with every name stays far from each of them.
+ * Two shared words are required unless the name has only one, so "Service down" never passes for "Service up".
+ */
+function similarity(title: Set<string>, name: Set<string>): number {
+  const shared = [...title].filter((word) => name.has(word)).length;
+  return shared < Math.min(2, name.size) ? 0 : share(2 * shared, title.size + name.size);
 }
 
 function nameSimilarity(title: string, gold: GoldMetric): number {

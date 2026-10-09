@@ -139,6 +139,7 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> health
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths

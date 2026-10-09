@@ -106,6 +106,12 @@ describe("scoreMeasurementAudit", () => {
     expect(scoreMeasurementAudit(gold, report, run).metricRecall).toBeCloseTo(1 / 44);
   });
 
+  it.each(["Service down", "Stuck doors", "Cost"])("does not match the short wrong title %s to a gold metric on one shared word", (title) => {
+    const report = withMetricsAndSlices([{ id: "x", title }], []);
+
+    expect(scoreMeasurementAudit(gold, report, run).metricRecall).toBe(0);
+  });
+
   it("finds both gaps that share a key metric whichever order their slices come in", () => {
     const sharedGold: AuditGold = { metrics: gold.metrics, gaps: gold.gaps.filter((gap) => gap.id === "S6" || gap.id === "S11") };
     const metrics = goldNamed(["C1", "C2"]);
