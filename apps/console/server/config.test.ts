@@ -54,6 +54,16 @@ describe("console config", () => {
     expect(resolveConfig({ TITAN_CONSOLE_EVENTS_DB: "~/e.db" }, HOME).agentChatEventsDbPath).toBe(path.join(HOME, "e.db"));
   });
 
+  it("points node links at codewatch's default port unless TITAN_CONSOLE_CODEWATCH_URL is given", () => {
+    expect(resolveConfig({}, HOME).codewatchUrl).toBe("http://127.0.0.1:7433");
+    expect(resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "https://code.example.test/cw/" }, HOME).codewatchUrl).toBe("https://code.example.test/cw/");
+  });
+
+  it("refuses a codewatch address that cannot prefix a node link", () => {
+    expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "127.0.0.1:7433" }, HOME)).toThrow(/TITAN_CONSOLE_CODEWATCH_URL/);
+    expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "http://127.0.0.1:7433/#/home" }, HOME)).toThrow(/no #fragment/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([
