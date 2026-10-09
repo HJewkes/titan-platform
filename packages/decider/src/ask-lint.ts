@@ -127,13 +127,21 @@ function principleTriggers(text: string): string[] {
   return covered >= 2 ? [] : [`Principle: lists ${covered} covered items, needs 2 or more`];
 }
 
-function wordsAround(text: string, start: number, end: number): string[] {
-  const before = text.slice(Math.max(0, start - ID_WINDOW_CHARS), start).split(/\s+/).filter(Boolean).slice(-ID_WINDOW);
-  const after = text.slice(end, end + ID_WINDOW_CHARS).split(/\s+/).filter(Boolean).slice(0, ID_WINDOW);
+/** Test hook: lets a test assert how much text the id-context windows read, instead of timing the lint. */
+export interface AskLintStats {
+  windowChars: number;
+}
+
+function wordsAround(text: string, start: number, end: number, stats?: AskLintStats): string[] {
+  const beforeText = text.slice(Math.max(0, start - ID_WINDOW_CHARS), start);
+  const afterText = text.slice(end, end + ID_WINDOW_CHARS);
+  if (stats) stats.windowChars += beforeText.length + afterText.length;
+  const before = beforeText.split(/\s+/).filter(Boolean).slice(-ID_WINDOW);
+  const after = afterText.split(/\s+/).filter(Boolean).slice(0, ID_WINDOW);
   return [...before, ...after].filter((token) => !ID_IN_WORD.test(token) && isContentWord(token));
 }
 
-function bareIdTriggers(text: string): string[] {
+function bareIdTriggers(text: string, stats?: AskLintStats): string[] {
   const body = masked(text);
   const matches = [...body.matchAll(ID_TOKEN)];
   const counts = new Map<string, number>();
@@ -141,7 +149,7 @@ function bareIdTriggers(text: string): string[] {
   const triggers: string[] = [];
   for (const match of matches) {
     if ((counts.get(match[0]) ?? 0) > 1) continue;
-    const context = wordsAround(body, match.index, match.index + match[0].length).length;
+    const context = wordsAround(body, match.index, match.index + match[0].length, stats).length;
     if (context < MIN_ID_CONTEXT) triggers.push(`bare id ${match[0]} (${context} content words nearby)`);
   }
   return triggers;
@@ -176,7 +184,7 @@ function finding(rule: AskRule, triggers: readonly string[]): AskFinding[] {
 }
 
 /** Every contract rule the question breaks, in rule order; an empty list means it passes. */
-export function lintAsk(question: AskQuestion): AskFinding[] {
+export function lintAsk(question: AskQuestion, stats?: AskLintStats): AskFinding[] {
   const text = plainText(question.question);
   const options = question.options ?? [];
   const command = isCommandItem(text);
@@ -184,7 +192,7 @@ export function lintAsk(question: AskQuestion): AskFinding[] {
   const pointer = command ? null : pointerTrigger(text);
   return [
     ...finding("AQ1", batch),
-    ...finding("AQ2", [...bareIdTriggers(text), ...bareOptionTriggers(options)]),
+    ...finding("AQ2", [...bareIdTriggers(text, stats), ...bareOptionTriggers(options)]),
     ...finding("AQ3", command || NOW_MARKER.test(text) ? [] : ["no Now: marker"]),
     ...finding("AQ4", pointer ? [pointer] : []),
     ...finding("AQ5", recommends(question, text) ? [] : ["no recommendation in the first sentence"]),
