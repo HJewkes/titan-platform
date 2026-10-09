@@ -21,11 +21,13 @@ async function step<R>(ctx: WorkflowContext, stepId: string, input: object, sche
   return (await dispatch(ctx, stepId, input, schema)).data!.result;
 }
 
-function auditParams(ctx: WorkflowContext): { input: unknown; out?: string } {
+/** `out` is required up front: publish runs after the review gate, often in a later `resume`, where nothing would print the report. */
+function auditParams(ctx: WorkflowContext): { input: unknown; out: string } {
   const raw = ctx.param("input");
-  if (!raw) throw new Error(`${AUDIT_WORKFLOW}: param input is required`);
   const out = ctx.param("out");
-  return { input: JSON.parse(raw) as unknown, ...(out ? { out } : {}) };
+  if (!raw) throw new Error(`${AUDIT_WORKFLOW}: param input is required`);
+  if (!out) throw new Error(`${AUDIT_WORKFLOW}: param out is required`);
+  return { input: JSON.parse(raw) as unknown, out };
 }
 
 /** Steps 1 to 5: what the system stores, emits, is for, and which of its questions the surfaces answer today. */
@@ -69,7 +71,7 @@ async function measurementAudit(ctx: WorkflowContext): Promise<void> {
   const report = buildReport({ ...found, ...(await measure(ctx, found)) });
   const review = await ctx.assisted(auditStepId("review"), `Publish the ${report.system} measurement audit?`, { schema: S.ReviewAnswerSchema, brief: reviewBrief(report, ctx.runId) });
   if (S.ReviewAnswerSchema.parse(review.data).decision !== "publish") return;
-  await step(ctx, auditStepId("publish"), { report, out: out ?? null }, S.PublishedSchema);
+  await step(ctx, auditStepId("publish"), { report, out }, S.PublishedSchema);
 }
 
 export function measurementAuditWorkflow(): WorkflowDefinition {

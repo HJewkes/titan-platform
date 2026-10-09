@@ -66,8 +66,8 @@ async function measureOne(ports: AuditPorts, input: { query?: S.MetricQuery; sto
   }
 }
 
-async function publish(ports: AuditPorts, input: { report: unknown; out: string | null }) {
-  if (input.out) await ports.writeReport(input.out, `${JSON.stringify(input.report, null, 2)}\n`);
+async function publish(ports: AuditPorts, input: { report: unknown; out: string }) {
+  await ports.writeReport(input.out, `${JSON.stringify(input.report, null, 2)}\n`);
   return { path: input.out, report: input.report };
 }
 
@@ -83,6 +83,6 @@ export function auditRoutes(ports: AuditPorts): StepRoute[] {
     auditRoute(auditStepId("baseline"), now, (input: { query?: S.MetricQuery; store?: S.StoreRef }, signal) => measureOne(ports, input, signal)),
     agentRoute(ports, "gaps", S.GapProposalSchema),
     agentRoute(ports, "plan", S.SurfacePlanSchema),
-    auditRoute(auditStepId("publish"), now, (input: { report: unknown; out: string | null }) => publish(ports, input)),
+    auditRoute(auditStepId("publish"), now, (input: { report: unknown; out: string }) => publish(ports, input)),
   ];
 }

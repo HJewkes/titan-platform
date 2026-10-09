@@ -73,4 +73,4 @@ export const SurfacePlanSchema = z.object({ reports: z.array(metricsEntrySchema.
 
 export const ReviewAnswerSchema = z.object({ decision: z.enum(["publish", "discard"]) });
 
-export const PublishedSchema = z.object({ path: z.string().nullable(), report: z.unknown() });
+export const PublishedSchema = z.object({ path: z.string(), report: z.unknown() });

@@ -37,7 +37,7 @@ titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json pri
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
-titan-factory audit <area> --input <file> [--out <file>]      # run measurement-audit here up to the owner's review gate
+titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in

@@ -101,7 +101,7 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
     const ports = fakeAuditPorts();
     const host = openHost(ports);
 
-    const run = await host.runtime.wait(host.runtime.start(AUDIT_WORKFLOW, { input: JSON.stringify({ ...AUDIT_INPUT, system: "nowhere" }) }));
+    const run = await host.runtime.wait(host.runtime.start(AUDIT_WORKFLOW, { input: JSON.stringify({ ...AUDIT_INPUT, system: "nowhere" }), out: "/reports/nowhere.json" }));
 
     expect(run).toMatchObject({ status: "failed", error: expect.stringContaining('area "nowhere" is not in the area registry') });
     expect(ports.inventoried).toEqual([]);
@@ -110,9 +110,19 @@ describe("measurement-audit on Shepherd's recorded step outputs", () => {
   it("refuses a reaudit until the drift check exists", async () => {
     const host = openHost(fakeAuditPorts());
 
-    const run = await host.runtime.wait(host.runtime.start(AUDIT_WORKFLOW, { input: JSON.stringify({ ...AUDIT_INPUT, mode: "reaudit" }) }));
+    const run = await host.runtime.wait(host.runtime.start(AUDIT_WORKFLOW, { input: JSON.stringify({ ...AUDIT_INPUT, mode: "reaudit" }), out: "/reports/shepherd.json" }));
 
     expect(run).toMatchObject({ status: "failed", error: expect.stringContaining("reaudit") });
+  });
+
+  it("fails before any store is read when no out path is given, so a published report always lands somewhere", async () => {
+    const ports = fakeAuditPorts();
+    const host = openHost(ports);
+
+    const run = await host.runtime.wait(host.runtime.start(AUDIT_WORKFLOW, { input: JSON.stringify(AUDIT_INPUT) }));
+
+    expect(run).toMatchObject({ status: "failed", error: expect.stringContaining("param out is required") });
+    expect(ports.inventoried).toEqual([]);
   });
 
   it("is registered with the factory's workflows", () => {
