@@ -1,6 +1,14 @@
 import type { SourceTextLocator, VerdictBlockRefusal } from "@titan-design/session-read";
 import { z } from "zod";
 
+/** Why a review was dispatched at a head; a run recorded before causes existed reads as `unknown`. */
+export const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "unknown"] as const;
+export type ReviewCauseKind = (typeof REVIEW_CAUSES)[number];
+
+/** `reason` is a carry refusal, a retry reason, or the registered kind that does not carry. */
+export const ReviewCauseSchema = z.object({ cause: z.enum(REVIEW_CAUSES), reason: z.string().min(1).optional() });
+export type ReviewCause = z.infer<typeof ReviewCauseSchema>;
+
 const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().min(1) });
 
 /**

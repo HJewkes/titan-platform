@@ -400,6 +400,31 @@ as `stage` and `totalMinutes`.
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
+### Review causes {#review-causes}
+
+Each `sh-review-intent` step records why Shepherd dispatched a reviewer at that head, as
+`cause` and, for some causes, `reason`. The run derives it from its own steps, with no extra
+GitHub call:
+
+| Cause | When |
+|---|---|
+| `first` | The run's first review. |
+| `fix-round` | A new head after a `FIX_FIRST` or `NO_REPRO` send-back. |
+| `conflict`, `ci-fix` | A new head after a conflict or red-CI wake. |
+| `superseded` | The head moved while the last review ran. |
+| `update-branch` | Shepherd's own update-branch moved the head, and there was no `MERGE` to carry. |
+| `merge-up-not-carried` | Shepherd's update-branch moved a head with a `MERGE`, and the carry refused. `reason` is `not-one-merge`, `base-off-branch`, `remerge-touched`, `seat`, `base-unknown` or `probe-failed`. |
+| `kind-no-carry` | The `MERGE` could not carry because of the registration's kind. `reason` is that kind, or `unregistered`. |
+| `seat-push` | A push Shepherd did not make moved the head; after a `MERGE`, `reason` says why it did not carry. |
+| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
+| `hold` | The hold's reviewer is read again. |
+| `owner-request` | A resync asked for the review again. |
+| `unknown` | Recorded before causes existed, or nothing explains it. |
+
+`stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
+by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
+`--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts
