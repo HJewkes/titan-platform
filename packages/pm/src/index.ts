@@ -9,3 +9,18 @@ export type {
   EdgeField,
   Edges,
 } from "./edges.js";
+export {
+  BUILT_IN_STATUSES,
+  CategoryRegistrySchema,
+  categoriesPath,
+  checkCategories,
+  parseCategoryRegistry,
+} from "./categories.js";
+export type {
+  AreaEntry,
+  CategorizedTask,
+  CategoryAxis,
+  CategoryError,
+  CategoryRegistry,
+  StatusEntry,
+} from "./categories.js";

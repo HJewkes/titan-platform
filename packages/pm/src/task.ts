@@ -35,7 +35,13 @@ export const TaskSchema = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   estimate: z.number().positive().optional(),
   done_when: z.string().min(1).optional(),
-  status: z.enum(["open", "done"]),
+  // kind, status, cos and area are closed sets, but the set lives in the category registry, so
+  // checkCategories validates the values and the schema only requires a non-empty string.
+  status: z.string().min(1),
+  kind: z.string().min(1).optional(),
+  cos: z.string().min(1).optional(),
+  area: z.string().min(1).optional(),
+  due: isoDate.optional(),
   tags: z.array(z.string()).optional(),
   notes: z.string().optional(),
   created: isoDate,
