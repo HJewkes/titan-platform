@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { MALFORMED_REFUSALS } from "./review-schemas.js";
+import { suiteRules } from "./suite-host.js";
 import { MAX_CORRECTION_PROMPT_CHARS, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
 
 const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40) };
@@ -25,6 +26,14 @@ describe("reviewerBrief", () => {
 
     expect(brief).toContain("ssh basement basement-suite");
     expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+
+  it("carries the test rule it is given, so a reviewer on basement never ssh-es to itself", () => {
+    const brief = reviewerBrief({ ...target, testRule: suiteRules(true).reviewer });
+
+    expect(brief).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
+    expect(brief).not.toContain("ssh basement");
+    expect(brief).not.toContain("on the Mac");
   });
 });
 
