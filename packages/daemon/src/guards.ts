@@ -41,6 +41,8 @@ export interface RequestGuardOptions {
    * from any other service on the same host, and that page's requests carry the cookie.
    */
   portOnly?: boolean;
+  /** Derive only `https://` origins from `allowedHosts`: on a TLS listener an `http://` origin is another site. */
+  httpsOnly?: boolean;
 }
 
 export interface GuardRefusal {
@@ -79,19 +81,24 @@ interface Policy {
 export function createRequestGuard(options: RequestGuardOptions = {}, port: () => number = () => 0): RequestGuard {
   const hosts = (options.allowedHosts ?? DEFAULT_ALLOWED_HOSTS).map((host) => host.toLowerCase());
   const extraOrigins = (options.allowedOrigins ?? []).map((origin) => origin.toLowerCase());
-  const portOnly = options.portOnly === true;
+  const shape: PolicyShape = { portOnly: options.portOnly === true, schemes: options.httpsOnly === true ? ["https"] : ["http", "https"] };
   let cached: Policy | null = null;
 
   return (request) => {
     const bound = port();
-    if (!cached || cached.port !== bound) cached = buildPolicy(hosts, extraOrigins, bound, portOnly);
+    if (!cached || cached.port !== bound) cached = buildPolicy(hosts, extraOrigins, bound, shape);
     return refuse(request, cached);
   };
 }
 
-function buildPolicy(hosts: string[], extraOrigins: string[], port: number, portOnly: boolean): Policy {
+interface PolicyShape {
+  portOnly: boolean;
+  schemes: string[];
+}
+
+function buildPolicy(hosts: string[], extraOrigins: string[], port: number, { portOnly, schemes }: PolicyShape): Policy {
   const withPort = hosts.flatMap((host) => (portOnly ? [`${host}:${port}`] : [host, `${host}:${port}`]));
-  const derivedOrigins = withPort.flatMap((host) => [`http://${host}`, `https://${host}`]);
+  const derivedOrigins = withPort.flatMap((host) => schemes.map((scheme) => `${scheme}://${host}`));
   return { port, hosts: new Set(withPort), origins: new Set([...derivedOrigins, ...extraOrigins]) };
 }
 

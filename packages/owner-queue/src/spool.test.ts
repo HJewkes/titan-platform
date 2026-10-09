@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -6,7 +6,10 @@ import { depositItemId, type OwnerItemDeposit } from "./deposit.js";
 import type { OwnerAnswer } from "./schema.js";
 import {
   MAX_DEPOSIT_BYTES,
+  SpoolNameCollisionError,
+  answerFileNames,
   depositFileName,
+  depositFileNames,
   readAnswer,
   readSpool,
   writeAnswer,
@@ -104,7 +107,7 @@ describe("writeDeposit", () => {
     const names = await readdir(dir);
     expect(await readdir(root)).toEqual(["deposits"]);
     expect(names).toHaveLength(hostile.length);
-    for (const name of names) expect(name).toMatch(/^[A-Za-z0-9_%]+-[A-Za-z0-9_%]+\.json$/);
+    for (const name of names) expect(name).toMatch(/^[a-z0-9_%A-F]+-[a-z0-9_%A-F]+\.json$/);
     expect((await readSpool(dir)).items).toHaveLength(hostile.length);
   });
 
@@ -115,6 +118,61 @@ describe("writeDeposit", () => {
 
     expect(second.created).toBe(true);
     expect(await readdir(dir)).toHaveLength(2);
+  });
+
+  it.each([
+    ["asker", { asker: "agent-\uD800" }],
+    ["depositId", { depositId: "d-\uDC00" }],
+  ])("refuses a lone surrogate in the %s, which would otherwise take U+FFFD's name", async (_field, overrides) => {
+    await writeDeposit(dir, deposit({ asker: "agent-�", depositId: "d-�" }));
+
+    await expect(writeDeposit(dir, deposit({ asker: "agent-�", depositId: "d-�", ...overrides }))).rejects.toThrow(/well-formed/);
+    expect(await readdir(dir)).toHaveLength(1);
+  });
+
+  it("files a surrogate pair, which is well-formed", async () => {
+    const { created } = await writeDeposit(dir, deposit({ asker: "agent-😀" }));
+
+    expect(created).toBe(true);
+  });
+
+  it("gives Bob and bob names that differ even on a case-insensitive filesystem", async () => {
+    const upper = await writeDeposit(dir, deposit({ asker: "Bob" }));
+    const lower = await writeDeposit(dir, deposit({ asker: "bob" }));
+
+    expect([upper.created, lower.created]).toEqual([true, true]);
+    expect(depositFileName("Bob", "d-1").toLowerCase()).not.toBe(depositFileName("bob", "d-1").toLowerCase());
+  });
+
+  it("refuses rather than answer created:false when its name holds a different deposit", async () => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, depositFileName("bob", "d-1")), JSON.stringify(deposit({ asker: "Bob" })));
+
+    await expect(writeDeposit(dir, deposit({ asker: "bob" }))).rejects.toThrow(SpoolNameCollisionError);
+  });
+});
+
+describe("a deposit filed before A-Z was escaped", () => {
+  const LEGACY_NAME = "Bob-d%2D1.json";
+
+  beforeEach(async () => {
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, LEGACY_NAME), JSON.stringify(deposit({ asker: "Bob" })));
+  });
+
+  it("is still read under its legacy name", async () => {
+    const { items, rejects } = await readSpool(dir);
+
+    expect(rejects).toEqual([]);
+    expect(items.map((item) => item.id)).toEqual([depositItemId("Bob", "d-1")]);
+    expect(depositFileNames("Bob", "d-1")).toEqual([depositFileName("Bob", "d-1"), LEGACY_NAME]);
+  });
+
+  it("answers a repeat with created:false and writes no second copy", async () => {
+    const repeat = await writeDeposit(dir, deposit({ asker: "Bob" }));
+
+    expect(repeat).toEqual({ file: join(dir, LEGACY_NAME), created: false });
+    expect(await readdir(dir)).toEqual([LEGACY_NAME]);
   });
 });
 
@@ -179,6 +237,19 @@ describe("writeAnswer and readAnswer", () => {
 
     expect(second.created).toBe(false);
     expect(JSON.parse(await readFile(second.file, "utf8"))).toMatchObject({ optionId: "flat" });
+  });
+
+  it("reads and keeps an answer filed under its legacy name", async () => {
+    const [current, legacy] = answerFileNames("deposit:X");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, legacy!), JSON.stringify(ANSWER));
+
+    const second = await writeAnswer(dir, "deposit:X", { ...ANSWER, optionId: "nested" });
+
+    expect(legacy).toBe("deposit%3AX.answer.json");
+    expect(await readAnswer(dir, "deposit:X")).toEqual(ANSWER);
+    expect(second).toEqual({ file: join(dir, legacy!), created: false });
+    expect(await readdir(dir)).not.toContain(current);
   });
 
   it("refuses a malformed answer", async () => {

@@ -19,13 +19,12 @@ export const EXPIRY_MARGIN_MS = 60_000;
 // RFC 6750's b64token: anything else, such as a CR or LF, could split the header.
 const TOKEN_SHAPE = /^[A-Za-z0-9._~+/=-]{1,4096}$/;
 
-// The allowlist: every other key in the body is dropped before it is looked at, and a known
-// window in an unexpected shape is dropped rather than failing the reading.
+// The allowlist: every other key in the body is dropped before it is looked at. A known window
+// in an unexpected shape fails the whole reading, so a good window never masks a bad one.
 const responseWindow = z
   .object({ utilization: z.number().nonnegative(), resets_at: z.string().max(64).nullable() })
   .nullable()
-  .optional()
-  .catch(null);
+  .optional();
 
 const usageResponseSchema = z.object({
   five_hour: responseWindow,
@@ -46,7 +45,9 @@ export type PollFailure =
 export type PollResult = { ok: true; reading: UsageReading } | PollFailure;
 
 export interface PollOptions {
-  fetch: FetchLike;
+  // Receives the raw access token in the authorization header, so pass only a fetch you trust
+  // with it: one that does not log, forward or persist request headers. Defaults to globalThis.fetch.
+  fetch?: FetchLike;
   now?: number;
   // The uid that must own the credentials file. Defaults to this process's.
   uid?: number;
@@ -189,7 +190,7 @@ export async function pollUsage(profile: AccountProfile, options: PollOptions): 
   const access = readAccess(profile.configDir, options.uid ?? currentUid(), now);
   if (!("token" in access)) return access;
   try {
-    const response = await request(access.token, options.fetch, timeoutMs);
+    const response = await request(access.token, options.fetch ?? globalThis.fetch, timeoutMs);
     return await resultFrom(response, safeAccount(profile.label), Math.floor(now / 1000));
   } catch {
     return fail("network");

@@ -6,17 +6,33 @@
  * field, and this module never writes an answer file. That is why the deposit class runs on
  * unauthenticated loopback. `asker` comes from the body and is self-declared; nothing on
  * loopback names the caller, so the per-asker cap limits a runaway agent, not a hostile one.
+ * The spool-wide cap is what bounds a caller that invents a new asker for every deposit.
  */
 import { readdir } from "node:fs/promises";
 import { z } from "zod";
 import { CLIENT_HEADER } from "@titan-design/daemon";
 import { depositItemId, ownerItemDepositSchema, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { MAX_DEPOSIT_BYTES, answerFileName, depositFileName, writeDeposit } from "@titan-design/owner-queue/spool";
+import {
+  MAX_DEPOSIT_BYTES,
+  SpoolNameCollisionError,
+  answerFileNames,
+  depositFileName,
+  depositFileNames,
+  writeDeposit,
+} from "@titan-design/owner-queue/spool";
 import { EXIT } from "@titan-design/registry";
 import { depositCommand } from "./owner-guard.js";
 
 export const MAX_OPEN_DEPOSITS_PER_ASKER = 200;
+export const MAX_OPEN_DEPOSITS = 2000;
 export const INBOX_DEPOSIT = "inbox.deposit";
+
+/**
+ * The `/rpc` body cap for `inbox.deposit`, checked before the body is buffered. Twice the stored
+ * cap, because a client that writes non-ASCII as `\uXXXX` escapes (Python's default) sends up to
+ * twice the bytes the deposit stores; the stored cap is still checked after parsing.
+ */
+export const INBOX_DEPOSIT_BODY_LIMIT = 2 * MAX_DEPOSIT_BYTES;
 
 const DEPOSIT_SUFFIX = ".json";
 const ANSWER_SUFFIX = ".answer.json";
@@ -24,6 +40,8 @@ const ANSWER_SUFFIX = ".answer.json";
 export interface InboxSource {
   /** The spool directory; the daemon creates it 0700 on the first deposit. */
   dir: string;
+  /** Open deposits across every asker before a new one gets 429; defaults to {@link MAX_OPEN_DEPOSITS}. */
+  maxOpenDeposits?: number;
 }
 
 class DepositRefusedError extends Error {
@@ -40,6 +58,9 @@ class DepositRefusedError extends Error {
 /** A filesystem error names the spool's path, which a LAN caller has no business learning. */
 function withoutSpoolPath(error: unknown): never {
   if (error instanceof DepositRefusedError) throw error;
+  if (error instanceof SpoolNameCollisionError) {
+    throw new DepositRefusedError("this depositId's spool file is held by a different deposit; file under another depositId", EXIT.DATAERR);
+  }
   throw new DepositRefusedError("the inbox spool could not be written", EXIT.SOFTWARE, { cause: error });
 }
 
@@ -55,52 +76,80 @@ async function spoolNames(dir: string): Promise<string[]> {
   }
 }
 
-/** An undecodable name counts as open, so a strange depositId can only tighten its asker's cap. */
-function isAnswered(present: ReadonlySet<string>, asker: string, encodedDepositId: string): boolean {
+function decodedPart(part: string): string | undefined {
   try {
-    return present.has(answerFileName(depositItemId(asker, decodeURIComponent(encodedDepositId))));
+    return decodeURIComponent(part);
+  } catch {
+    return undefined;
+  }
+}
+
+interface FiledDeposit {
+  /** Undefined when the name does not decode; such a file still counts against the spool-wide cap. */
+  asker: string | undefined;
+  depositId: string | undefined;
+}
+
+/** "-" is escaped inside each encoded part, so the first "-" in a deposit name is the separator. */
+function parseDepositName(name: string): FiledDeposit {
+  const stem = name.slice(0, -DEPOSIT_SUFFIX.length);
+  const separator = stem.indexOf("-");
+  if (separator < 0) return { asker: undefined, depositId: undefined };
+  return { asker: decodedPart(stem.slice(0, separator)), depositId: decodedPart(stem.slice(separator + 1)) };
+}
+
+/** An undecodable name counts as open, so a strange file can only tighten a cap. */
+function isAnswered(present: ReadonlySet<string>, { asker, depositId }: FiledDeposit): boolean {
+  if (asker === undefined || depositId === undefined) return false;
+  try {
+    return answerFileNames(depositItemId(asker, depositId)).some((name) => present.has(name));
   } catch {
     return false;
   }
 }
 
-/**
- * Deposits by this asker with no answer beside them. Each name part is percent-encoded with "-"
- * escaped, so `<asker>-` is a prefix of this asker's deposit files and of no other asker's.
- */
-function openDepositCount(names: readonly string[], asker: string): number {
-  const prefix = depositFileName(asker, "").slice(0, -DEPOSIT_SUFFIX.length);
+/** The asker of every deposit file with no answer beside it, under either the current or the legacy name. */
+function openDepositAskers(names: readonly string[]): (string | undefined)[] {
   const present = new Set(names);
-  return names.filter(
-    (name) =>
-      name.startsWith(prefix) &&
-      name.endsWith(DEPOSIT_SUFFIX) &&
-      !name.endsWith(ANSWER_SUFFIX) &&
-      !isAnswered(present, asker, name.slice(prefix.length, -DEPOSIT_SUFFIX.length)),
-  ).length;
+  return names
+    .filter((name) => !name.startsWith(".") && name.endsWith(DEPOSIT_SUFFIX) && !name.endsWith(ANSWER_SUFFIX))
+    .map(parseDepositName)
+    .filter((filed) => !isAnswered(present, filed))
+    .map((filed) => filed.asker);
 }
 
 /** Size and name checks first, so an oversized or unnameable deposit is the caller's 400, never a 500. */
-function fileNameFor(deposit: OwnerItemDeposit): string {
+function assertNameable(deposit: OwnerItemDeposit): void {
   if (Buffer.byteLength(JSON.stringify(deposit)) > MAX_DEPOSIT_BYTES) {
     throw new DepositRefusedError(`deposit exceeds ${MAX_DEPOSIT_BYTES} bytes`, EXIT.DATAERR);
   }
   try {
-    return depositFileName(deposit.asker, deposit.depositId);
-  } catch {
-    throw new DepositRefusedError("asker and depositId are too long to name a spool file", EXIT.DATAERR);
+    depositFileName(deposit.asker, deposit.depositId);
+  } catch (error) {
+    throw new DepositRefusedError(`asker and depositId cannot name a spool file: ${(error as Error).message}`, EXIT.DATAERR);
   }
 }
 
-/** A repeat of a filed depositId returns its id even at the cap, since it adds nothing to the spool. */
-async function fileOnce(dir: string, deposit: OwnerItemDeposit): Promise<DepositResult> {
-  const name = fileNameFor(deposit);
-  const id = depositItemId(deposit.asker, deposit.depositId);
-  const names = await spoolNames(dir);
-  if (names.includes(name)) return { id, created: false };
-  if (openDepositCount(names, deposit.asker) >= MAX_OPEN_DEPOSITS_PER_ASKER) {
+function assertUnderCaps(names: readonly string[], asker: string, maxOpenDeposits: number): void {
+  const askers = openDepositAskers(names);
+  if (askers.filter((each) => each === asker).length >= MAX_OPEN_DEPOSITS_PER_ASKER) {
     throw new DepositRefusedError(`this asker already has ${MAX_OPEN_DEPOSITS_PER_ASKER} open deposits`, EXIT.TEMPFAIL);
   }
+  if (askers.length >= maxOpenDeposits) {
+    throw new DepositRefusedError(`the inbox already has ${maxOpenDeposits} open deposits`, EXIT.TEMPFAIL);
+  }
+}
+
+/**
+ * A repeat of a filed depositId returns its id even at a cap, since it adds nothing to the spool.
+ * The repeat still goes through writeDeposit, which proves the file under that name is this deposit.
+ */
+async function fileOnce(dir: string, deposit: OwnerItemDeposit, maxOpenDeposits: number): Promise<DepositResult> {
+  assertNameable(deposit);
+  const id = depositItemId(deposit.asker, deposit.depositId);
+  const names = await spoolNames(dir);
+  const isRepeat = depositFileNames(deposit.asker, deposit.depositId).some((name) => names.includes(name));
+  if (!isRepeat) assertUnderCaps(names, deposit.asker, maxOpenDeposits);
   const { created } = await writeDeposit(dir, deposit);
   return { id, created };
 }
@@ -115,7 +164,7 @@ function serializer(): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
-export function inboxCommands({ dir }: InboxSource) {
+export function inboxCommands({ dir, maxOpenDeposits = MAX_OPEN_DEPOSITS }: InboxSource) {
   const serialize = serializer();
   return {
     [INBOX_DEPOSIT]: depositCommand({
@@ -123,7 +172,7 @@ export function inboxCommands({ dir }: InboxSource) {
       description: "File one owner item into the owner inbox; a repeat depositId returns the item id it already has",
       args: ownerItemDepositSchema,
       result: depositResult,
-      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce(dir, deposit).catch(withoutSpoolPath)),
+      run: (deposit: OwnerItemDeposit) => serialize(() => fileOnce(dir, deposit, maxOpenDeposits).catch(withoutSpoolPath)),
     }),
   };
 }
