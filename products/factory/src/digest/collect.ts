@@ -21,7 +21,7 @@ export interface DigestSources {
   gates(): Promise<GateFact[]>;
   /** Throws when agent-chat is missing, slow, or too old to print JSON. */
   agentChat(windowMinutes: number): Promise<AgentChatDigest>;
-  queueAsks(): Ask[];
+  queueAsks(): Ask[] | Promise<Ask[]>;
   seatCosts(since: Date): SeatLine[];
   /** The owner-friction row for the day of `now`, or undefined when the store has none. Optional: a source that cannot read the gate store leaves the section out. */
   friction?(now: Date): FrictionDay | undefined;

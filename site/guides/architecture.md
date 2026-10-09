@@ -135,6 +135,7 @@ graph TD
   workflow --> hitl
   workflow --> storeSqlite
   factory --> agentDispatch
+  factory --> appPaths
   factory --> authority
   factory --> daemon
   factory --> fixProof

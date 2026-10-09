@@ -105,6 +105,29 @@ describe("TaskSchema", () => {
     expect(TaskSchema.safeParse({ ...validBase, done_at: "2026-13-01" }).success).toBe(false);
   });
 
+  it("accepts a parent id and a dep id list", () => {
+    const result = TaskSchema.safeParse({ ...validBase, parent: "EC-2", dep: ["EC-3", "XY-4"] });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a parent that is not a task id", () => {
+    expect(TaskSchema.safeParse({ ...validBase, parent: "some-epic" }).success).toBe(false);
+  });
+
+  it("rejects a list of parents", () => {
+    expect(TaskSchema.safeParse({ ...validBase, parent: ["EC-2", "EC-3"] }).success).toBe(false);
+  });
+
+  it("rejects a dep list with a repeated id", () => {
+    const result = TaskSchema.safeParse({ ...validBase, dep: ["EC-2", "EC-2"] });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.some((i) => i.path[0] === "dep")).toBe(true);
+  });
+
+  it("rejects a dep entry that is not a task id", () => {
+    expect(TaskSchema.safeParse({ ...validBase, dep: ["ec-2"] }).success).toBe(false);
+  });
+
   it("rejects empty title", () => {
     expect(TaskSchema.safeParse({ ...validBase, title: "" }).success).toBe(false);
   });
