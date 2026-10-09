@@ -126,6 +126,7 @@ graph TD
   sessionGraph --> sessionRead
   sessionGraph --> storeSqlite
   sessionRead --> agentProtocol
+  sessionRead --> anthropicAccount
   sessionRead --> locator
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
