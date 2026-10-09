@@ -96,7 +96,7 @@ async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
-    if (error instanceof SpawnDeferred) throw new ReviewerBrokerBusy(`spawn gate: ${error.message}`, { cause: error });
+    if (error instanceof SpawnDeferred) throw new ReviewerMachineHold(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
     if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });
