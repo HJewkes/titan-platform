@@ -144,14 +144,14 @@ function hasCommit(cwd: string, sha: string): boolean {
 }
 
 /** How the remote is listed: the URL git pushes to (the pre-push hook's second argument), and test seams. */
-export interface ListOptions {
+interface ListOptions {
   readonly pushUrl?: string | undefined;
   readonly timeoutMs?: number;
   readonly env?: NodeJS.ProcessEnv;
 }
 
 /** A slow remote must not hang a push, so listing it is cut off after this long. */
-export const LIST_TIMEOUT_MS = 20_000;
+const LIST_TIMEOUT_MS = 20_000;
 
 /** The commits one pushed ref update sends that the remote lacks, oldest first. */
 export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate, list: ListOptions = {}): string[] {
