@@ -1,9 +1,17 @@
-import { spawnSync } from "node:child_process";
+import { spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CANARY, FAKE_ACCESS_TOKEN, FAKE_REFRESH_TOKEN, HOUR, NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
-import { captureOutput, errorText, makeTempHome, removeTempHome, writeFileWithMode } from "../fixtures/temp-home.js";
+import {
+  captureOutput,
+  errorText,
+  makeFifo,
+  makeTempHome,
+  removeTempHome,
+  unblockFifoLater,
+  writeFileWithMode,
+} from "../fixtures/temp-home.js";
 import type { AccountProfile } from "../profile.js";
 import { REFRESH_LOCK, REFRESH_LOCK_HOLDER } from "./credentials-write.js";
 import { CREDENTIALS_FILE } from "./login.js";
@@ -99,7 +107,7 @@ function expectNoCanaryInFiles(dir: string): void {
 }
 
 // What a crash between taking and releasing the locks leaves: both lock dirs and the record.
-function leaveOwnLock(pid: number, inoOffset = 0): void {
+function leaveOwnLock(pid: number, inoOffset = 0, recordMode = 0o600): void {
   const primary = path.join(profile.configDir, REFRESH_LOCK);
   const legacy = `${profile.configDir}.lock`;
   fs.mkdirSync(primary);
@@ -109,8 +117,11 @@ function leaveOwnLock(pid: number, inoOffset = 0): void {
     return { ino: ino + inoOffset, ctimeMs };
   };
   const record = { pid, primary: identity(primary), legacy: identity(legacy) };
-  fs.writeFileSync(path.join(profile.configDir, REFRESH_LOCK_HOLDER), JSON.stringify(record));
+  writeFileWithMode(holderFile(), JSON.stringify(record), recordMode);
 }
+
+const holderFile = (): string => path.join(profile.configDir, REFRESH_LOCK_HOLDER);
+const deadPid = (): number => spawnSync(process.execPath, ["-e", ""]).pid;
 
 function expectNoLeftovers(): void {
   expect(fs.readdirSync(profile.configDir)).toEqual([CREDENTIALS_FILE]);
@@ -384,7 +395,7 @@ describe("refreshIfNeeded yields to another writer", () => {
 
   it("reclaims a lock this package left behind when its holder has exited", async () => {
     writeText(JSON.stringify(expiringCredentials()));
-    leaveOwnLock(spawnSync(process.execPath, ["-e", ""]).pid);
+    leaveOwnLock(deadPid());
     const { fetch, calls } = fakeFetch(() => granted());
 
     expect(await refresh(fetch)).toMatchObject({ status: "refreshed" });
@@ -404,7 +415,7 @@ describe("refreshIfNeeded yields to another writer", () => {
 
   it("never reclaims a lock whose holder record names a different lock", async () => {
     writeText(JSON.stringify(expiringCredentials()));
-    leaveOwnLock(spawnSync(process.execPath, ["-e", ""]).pid, 1);
+    leaveOwnLock(deadPid(), 1);
     const { fetch, calls } = fakeFetch(() => granted());
 
     expect(await refresh(fetch)).toEqual({ status: "locked" });
@@ -421,6 +432,87 @@ describe("refreshIfNeeded yields to another writer", () => {
     expect(calls).toHaveLength(0);
     expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(false);
     fs.rmdirSync(`${profile.configDir}.lock`);
+  });
+});
+
+describe("refreshIfNeeded trusts only its own regular file as the lock holder record", () => {
+  let unblocker: ChildProcess | undefined;
+
+  afterEach(() => {
+    unblocker?.kill();
+    unblocker = undefined;
+  });
+
+  it("never writes through a symlink at the record path", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    const target = path.join(home, "target.txt");
+    writeFileWithMode(target, "keep", 0o600);
+    fs.symlinkSync(target, holderFile());
+    const { fetch } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toMatchObject({ status: "refreshed" });
+    expect(fs.readFileSync(target, "utf8")).toBe("keep");
+    expectNoLeftovers();
+  });
+
+  it("replaces a record a crash left behind once its lock dirs are gone", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    const stale = { pid: deadPid(), primary: { ino: 1, ctimeMs: 1 } };
+    writeFileWithMode(holderFile(), JSON.stringify(stale), 0o600);
+    const { fetch } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toMatchObject({ status: "refreshed" });
+    expectNoLeftovers();
+  });
+
+  it.each([
+    ["is wider than 0600", () => leaveOwnLock(deadPid(), 0, 0o644)],
+    ["has a second name", () => (leaveOwnLock(deadPid()), fs.linkSync(holderFile(), path.join(home, "other")))],
+  ])("never reclaims a lock whose record %s", async (_name, leave) => {
+    writeText(JSON.stringify(expiringCredentials()));
+    leave();
+    const { fetch, calls } = fakeFetch(() => granted());
+
+    expect(await refresh(fetch)).toEqual({ status: "locked" });
+    expect(calls).toHaveLength(0);
+    expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "returns promptly, leaving the lock, when the record is a FIFO",
+    async () => {
+      writeText(JSON.stringify(expiringCredentials()));
+      fs.mkdirSync(path.join(profile.configDir, REFRESH_LOCK));
+      makeFifo(holderFile());
+      unblocker = unblockFifoLater(holderFile());
+      const started = Date.now();
+
+      const result = await refresh(fakeFetch(() => granted()).fetch);
+
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(result).toEqual({ status: "locked" });
+      expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
+    },
+    15_000,
+  );
+
+  it("keeps write-failed, and frees the lock dirs, when removing the record throws", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      throw new Error("EXDEV");
+    });
+    const realRm = fs.rmSync;
+    vi.spyOn(fs, "rmSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
+      if (String(target) === holderFile()) throw new Error("EACCES");
+      return (realRm as (...args: unknown[]) => void)(target, ...rest);
+    }) as typeof fs.rmSync);
+    const { fetch } = fakeFetch(() => granted({ refresh_token: NEW_REFRESH_TOKEN }));
+
+    const result = await refresh(fetch);
+
+    expect(result).toEqual({ status: "failed", failure: "write-failed", deposited: true });
+    expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(false);
+    expect(fs.existsSync(`${profile.configDir}.lock`)).toBe(false);
   });
 });
 

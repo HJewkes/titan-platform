@@ -304,17 +304,27 @@ async function refreshLocked(configDir: string, plan: RefreshPlan, settings: Set
   return store(configDir, plan, exchanged.tokens, settings);
 }
 
+// The outcome is already settled when the locks are released: a release that throws must not
+// turn a write-failed, which asks for a new login, into an io that only asks for a retry.
+function releaseQuietly(release: () => void): void {
+  try {
+    release();
+  } catch {
+    return;
+  }
+}
+
 // A filesystem error's message is not kept, so nothing it quotes can travel further.
 async function attempt(configDir: string, settings: Settings): Promise<RefreshResult> {
   try {
     const decided = decide(configDir, settings);
     if (!("plan" in decided)) return decided;
-    const release = acquireRefreshLock(configDir);
+    const release = acquireRefreshLock(configDir, settings.uid);
     if (release === null) return { status: "locked" };
     try {
       return await refreshLocked(configDir, decided.plan, settings);
     } finally {
-      release();
+      releaseQuietly(release);
     }
   } catch {
     return failed("io");
