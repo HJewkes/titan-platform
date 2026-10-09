@@ -6,7 +6,7 @@ import { holdClassOf } from "./g10-release.js";
  * holding under it are refused. The check runs at the `shepherd.hold` command only, so Shepherd's own holds never pass through it.
  */
 export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary"] as const;
-export type HoldClass = (typeof HOLD_CLASSES)[number];
+type HoldClass = (typeof HOLD_CLASSES)[number];
 
 /** Gate classes, not factory defects: they cite no task. Every other class names the open task for its defect. */
 export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary"]);
@@ -14,7 +14,7 @@ export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2",
 /** Syntax only: whether the task is open is not checked here. */
 const TASK_ID = /\b[A-Z]{2,5}-\d+\b/;
 
-export type HoldReasonCheck = { ok: true; holdClass: HoldClass } | { ok: false; refusal: string };
+type HoldReasonCheck = { ok: true; holdClass: HoldClass } | { ok: false; refusal: string };
 
 const isHoldClass = (value: string | undefined): value is HoldClass => (HOLD_CLASSES as readonly string[]).includes(value ?? "");
 
