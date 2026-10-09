@@ -469,7 +469,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +61 more in the [reference page](/reference/daemon)
+- +63 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -959,7 +959,7 @@ Key exports:
 - `config`: `FactoryConfigSchema`, `configPath`, `defaultDbPath`, `loadConfig`, `resolveDbPath`
 - `definition`: `assertDistinctStepIds`, `declarationFor`, `defineWorkflow`, `dispatchStepIds`, `guardedContext`, `stepIdMatches`
 - `evidence`: `evidenceRecord`
-- +89 more in `products/factory/src/index.ts`
+- +92 more in `products/factory/src/index.ts`
 
 <a id="cap-retrieval-eval"></a>
 
@@ -986,13 +986,14 @@ Tier product, private, `products/session-miner`. The session miner: index Claude
 
 Key exports:
 
-- `config`: `ConfigOverrides`, `resolveConfig`
+- `config`: `resolveConfig`
 - `context`: `createMinerContext`
 - `schema`: `MINER_MIGRATIONS`
-- `registry`: `MINER_VERSION`, `TOOL_PREFIX`, `createMinerRegistry`
+- `registry`: `createMinerRegistry`
 - `serve`: `runMinerMcpStdio`, `serveMinerUntilSignal`, `serveOptions`, `startMiner`
 - `cli`: `runCli`
-- +11 more in `products/session-miner/src/index.ts`
+- `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
+- +18 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 

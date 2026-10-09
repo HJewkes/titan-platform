@@ -7,6 +7,7 @@ import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { seatOrGate } from "./gate-route.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
 /** The steps `afterFixerExit` records: the flake check, then the seat notice. */
@@ -88,9 +89,10 @@ export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], hea
 
 /** The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. */
 async function noticeOrGate(run: ExitRun, kind: WakeRequest["kind"], headSha: string, exit: { reason: string; wake?: WakeEvidence; held?: string }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
-  const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
-  if (notice?.sent === true) return leave(await awaitNewHead(run, headSha));
-  const why = notice === undefined ? "" : ` (${notice.cause}: ${notice.detail})`;
-  const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${why}. Await a new head or abandon?`;
-  return leave(await sentBackGate(run, headSha, prompt, abandoned));
+  const tell = async () => {
+    const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
+    return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
+  };
+  const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
+  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha)), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
 }
