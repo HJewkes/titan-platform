@@ -250,6 +250,8 @@ interface GhPrFile {
   filename: string;
   previous_filename?: string;
   status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 /** The count comes from the PR itself; a missing one throws, because the port cannot then tell a capped list. */
@@ -257,7 +259,12 @@ async function listPrFiles(api: Rest, repo: string, number: number): Promise<{ f
   const { changed_files: changedFiles } = await api.get<{ changed_files?: number }>(`repos/${repo}/pulls/${number}`);
   if (typeof changedFiles !== "number") throw new Error(`pull ${number} on ${repo} reported no changed_files count`);
   const listed = await api.pages(`repos/${repo}/pulls/${number}/files`, { per_page: "100" }, (page: GhPrFile[]) => page);
-  return { changedFiles, files: listed.map((file) => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status })) };
+  return { changedFiles, files: listed.map(prFileOf) };
+}
+
+function prFileOf(file: GhPrFile): PrFile {
+  const counted = typeof file.additions === "number" && typeof file.deletions === "number";
+  return { path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status, ...(counted && { additions: file.additions, deletions: file.deletions }) };
 }
 
 async function listIssueComments(api: Rest, repo: string, number: number): Promise<IssueComment[]> {

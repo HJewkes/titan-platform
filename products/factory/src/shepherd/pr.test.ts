@@ -656,6 +656,66 @@ describe("the route table in a run", () => {
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
   });
+
+  describe("names why each review was dispatched", () => {
+    it("names a silent reviewer's fresh review a timeout retry", async () => {
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => (asked.push(request), request.fresh ? merges(ctx, request) : { kind: "none", cause: "timeout" }));
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      await w.host.runtime.wait(runId);
+
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "retry", reason: "timeout" }]);
+    });
+
+    it("names the review of a head pushed during the last review superseded", async () => {
+      const late: { w?: World } = {};
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => {
+        asked.push(request);
+        if (request.headSha === H1) late.w!.fake.pushHead(1, H2);
+        return merges(ctx, request);
+      });
+      late.w = w;
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      await w.host.runtime.wait(runId);
+
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "superseded" }]);
+    });
+
+    it("names the review of the head a FIX_FIRST's fixer pushed a fix round", async () => {
+      const fake = fakeGitHub();
+      const { phases, reviews } = fakePhases({ review: (request) => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "rename" } : { kind: "MERGE", headSha: H2, evidence: {} }), wake: pushes(fake, H2) });
+      const w = world(phases, undefined, fake);
+      w.fake.addPr({ headSha: H1 });
+      const runId = shepherdPr1(w);
+
+      await approveAndFinish(w.host, runId, H2);
+
+      expect(reviews.map((review) => review.cause)).toEqual([{ cause: "first" }, { cause: "fix-round" }]);
+    });
+
+    it("names the review of a security PR's update-branch head a kind that does not carry", async () => {
+      const late: { w?: World } = {};
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => {
+        asked.push(request);
+        if (request.headSha === H1) Object.assign(late.w!.fake.pr(1), { mergeableState: "behind", behind: true });
+        return merges(ctx, request);
+      });
+      late.w = w;
+      const greenRuns = w.fake.onGetPr!;
+      w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), pr.headSha !== H1 && (pr.mergeableState = "clean"));
+      const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
+      w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "security" });
+
+      await w.host.runtime.wait(runId);
+
+      expect(w.fake.effects.updateBranch).toBe(1);
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "kind-no-carry", reason: "security" }]);
+    });
+  });
 });
 
 describe("gate briefs", () => {
@@ -1262,5 +1322,44 @@ describe("the round after a wake's await-new-head", () => {
     expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
     expect(stepIds(w.host, runId).filter((id) => id === "sh-repair")).toHaveLength(1);
     expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
+  });
+});
+
+describe("owner override of a MERGE verdict", () => {
+  const mergeAt = (headSha: string) => ({ review: () => ({ kind: "MERGE" as const, headSha, evidence: {} }) });
+  const recordedOverride = (w: World, runId: string) => stepResult(w.host, runId, `sh-override:${H1}`);
+
+  it("records an owner-answer override when the owner abandons at a head the reviewer said MERGE at", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(recordedOverride(w, runId)).toMatchObject({ result: { ownerOverride: { trigger: "owner-answer", head: H1, shepherd: "MERGE", other: "abandon", at: expect.any(Number) } } });
+  });
+
+  it("records nothing when the owner merges after the reviewer's MERGE", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+
+  it("records nothing when the owner abandons without a reviewer MERGE at the head", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
   });
 });

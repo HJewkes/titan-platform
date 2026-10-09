@@ -88,6 +88,15 @@ describe("text", () => {
     expectNoMatchedText(result);
   });
 
+  it("reports a credential token by kind, never its value", () => {
+    const token = "ghp_" + "A".repeat(36);
+    const result = runText([], `title\n\nuse ${token} to push`);
+
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("3:5 credential-token github");
+    expectNoMatchedText(result, [token, "A".repeat(8)]);
+  });
+
   it("counts CRLF as one line break", () => {
     const result = runText([], `first\r\nsecond\r\nsee ${plantedHomePath()}\r\n`);
 

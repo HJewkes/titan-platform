@@ -54,3 +54,5 @@ export type {
   CoordinatorPolicy,
   CoordinatorSeat,
 } from "./coordinator-config.js";
+export { projectSeatGeneration, sessionFactsPrSchema, sessionFactsSchema } from "./session-facts.js";
+export type { PrefixScopes, SeatGenerationActivity, SessionFacts } from "./session-facts.js";

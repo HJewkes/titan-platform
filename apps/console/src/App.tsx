@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import { AppShell, BrandLockup, TopBar } from "@titan-design/react-ui";
-import { InitiativeDetailPage } from "./pages/InitiativeDetailPage.js";
-import { InitiativesPage } from "./pages/InitiativesPage.js";
+import { PAGES } from "./pages/index.js";
 import { PlaceholderPage } from "./pages/PlaceholderPage.js";
-import { StatusPage } from "./pages/StatusPage.js";
 import { navigate, useRoute, type Route } from "./router.js";
 import { NAV_ITEMS, viewFor } from "./views.js";
 
@@ -26,7 +24,6 @@ export function App(): ReactNode {
 }
 
 function Page({ route }: { route: Route }): ReactNode {
-  if (route.view === "status") return <StatusPage />;
-  if (route.view === "initiatives") return route.slug ? <InitiativeDetailPage slug={route.slug} /> : <InitiativesPage />;
-  return <PlaceholderPage view={viewFor(route.view)} />;
+  const Registered = PAGES[route.view];
+  return Registered ? <Registered route={route} /> : <PlaceholderPage view={viewFor(route.view)} />;
 }

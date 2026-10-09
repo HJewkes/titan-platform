@@ -8,11 +8,10 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import {
-  EffectivePolicySchema,
-  OWNER_GATE_POLICY,
   RegistrationRefused,
   RequestedPolicyFields,
   resolveEffectivePolicy,
+  runPolicyCeiling,
   shepherdGatePolicy,
   stricterPolicy,
   type EffectivePolicy,
@@ -264,8 +263,7 @@ function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 /** Reports what the run would decide and why it waits; it never signals the run or resolves a gate. */
