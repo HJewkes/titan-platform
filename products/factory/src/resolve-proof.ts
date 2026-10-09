@@ -16,7 +16,7 @@ type Status = 400 | 403 | 409 | 413 | 500 | 503;
 const TOO_LARGE = Symbol("too-large");
 const ProofBody = z.strictObject({ statement: z.string().min(1), signature: z.string().min(1) });
 
-export interface ResolveProofDeps {
+interface ResolveProofDeps {
   host: FactoryHost;
   keys: OwnerKeys;
   /** This factory's hostname; `factory.gates` reports the same value for the signer to bind. */
