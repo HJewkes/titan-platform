@@ -236,7 +236,15 @@ reason starts `superseded: review again: ` and names the conditions, and the run
 policy again at the same head. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
-the same sweep at once for that repo's gates.
+the same sweep at once for that repo's gates. If a pull request's head cannot be read during
+that sweep, the repo stays queued and the next sweep tick tries it again. A thaw listener that
+throws is logged and does not stop the others.
+
+One gap is left to resync. A run that read `repo-not-frozen` as unmet, then saw the repo thaw
+before its gate opened, opens a gate the thaw sweep has already passed. That gate waits for the
+next `titan-factory shepherd resync` or server start. Shepherd does not sweep every
+transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
+again on every tick while the merge tree stays dirty.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
@@ -338,6 +346,7 @@ whose prompt names an older head. A gate at the current head stays pending.
 titan-factory shepherd status                  # every registration
 titan-factory shepherd status owner/repo       # one repo
 titan-factory shepherd status owner/repo#123   # one pull request
+titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 ```
@@ -370,6 +379,16 @@ agent by design and have no limit. With nothing registered the verbs print
 `no shepherded PRs`. `timeline` prints the same row and then every step, CI read and gate
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
+
+`shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
+PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes
+nothing. Gates the owner answers (`approve-merge`, `release`, `one-way`, `failed-rounds`, main-red
+and any kind not listed as seat work) come first; seat work (`ci-failed`, `sh-sent-back`, `stuck-behind`)
+is listed apart, because those are routed to the seat that owns the PR. `--json` prints
+`{ owner, seat }`, each an array of gates. Each gate carries `headIsCurrent`: true when the head
+the gate names is the run's current head, false when the run has moved on, null when the gate names
+none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
+The factory digest lists the five oldest owner gates under "Waiting on you".
 
 ## Stats {#stats}
 

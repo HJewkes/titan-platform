@@ -11,9 +11,14 @@ export function gateHead(prompt: string): string | undefined {
   return HEAD_IN_PROMPT.exec(prompt)?.[1];
 }
 
+/** The PR head a head gate asks about; undefined for any other gate, such as main-red, whose prompt names a merge commit instead. */
+export function headGateAsks(gate: { id: string; prompt: string }): string | undefined {
+  return HEAD_GATES.test(gate.id) ? gateHead(gate.prompt) : undefined;
+}
+
 /** A cycle at a new head leaves no owner question about an older head open; a gate at this head stays. */
 export function expireStaleGates(ctx: WorkflowContext, headSha: string): void {
-  ctx.expireGates(`the run moved on to head ${headSha}`, (gate) => HEAD_GATES.test(gate.id) && ![undefined, headSha].includes(gateHead(gate.prompt)));
+  ctx.expireGates(`the run moved on to head ${headSha}`, (gate) => ![undefined, headSha].includes(headGateAsks(gate)));
 }
 
 /** How the head sweep's cancel reason starts; any other cancel of a head gate still fails the run. */

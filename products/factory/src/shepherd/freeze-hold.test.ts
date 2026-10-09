@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, swallowUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { freezeStoreRef, type FreezeStoreRef } from "./freeze.js";
@@ -240,5 +240,23 @@ describe("a ci-red wake under a frozen main", () => {
 
     expect(w.fake.effects.updateBranch).toBe(1);
     expect(w.wakes.map((wake) => wake.headSha)).not.toContain(H1);
+  });
+
+  it("stops as update-branch-unmoved when the update after a thaw never moves the red head, and spends no repair", async () => {
+    const w = world(["validate"], ["validate"]);
+    w.fake.rules.strict = false;
+    w.fake.pr(1).behind = true;
+    swallowUpdates(w.fake, 99);
+    const { episode } = w.freeze.get().freeze(REPO, RED);
+    const runId = start(w);
+    await waitingOnThaw(w, runId);
+
+    w.freeze.get().release(REPO, episode);
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("completed"), { timeout: 5_000 });
+
+    expect(resultOf(w, runId, "update-branch:sh-freeze-hold:0")).toMatchObject({ result: { unmoved: true, headSha: H1 } });
+    expect(resultOf(w, runId, "sh-stopped")).toMatchObject({ result: { kind: "stopped", reason: "update-branch-unmoved", headSha: H1 } });
+    expect(stepIds(w, runId)).not.toContain("sh-repair");
+    expect(w.wakes).toEqual([]);
   });
 });

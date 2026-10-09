@@ -24,11 +24,11 @@ export interface SupersededGate {
   condition: "head-moved" | "merge-tree-only" | "transient-only";
 }
 
-/** The open PR's head now; undefined while it cannot be read, and for a merged or closed PR, which the gone sweep ends. */
-export async function openHead(services: ShepherdServices, runId: string): Promise<string | undefined> {
+/** The open PR's head now; undefined while it cannot be read, which also calls `onUnreadable`, and for a merged or closed PR, which the gone sweep ends. */
+export async function openHead(services: ShepherdServices, runId: string, onUnreadable: () => void = () => undefined): Promise<string | undefined> {
   const registration = services.store.get().byRun(runId);
   if (!registration || registration.pr === null) return undefined;
-  const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => undefined);
+  const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => void onUnreadable());
   return pr?.state === "open" ? pr.headSha : undefined;
 }
 
