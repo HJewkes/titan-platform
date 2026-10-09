@@ -32,11 +32,12 @@ import { shepherdEventMigration } from "./shepherd/events.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), devicePrWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
