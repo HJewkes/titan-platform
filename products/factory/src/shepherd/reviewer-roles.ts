@@ -17,17 +17,18 @@ const G10_CHANGED_LINES = DEFAULT_CLASS_RULES.largeLines;
 
 export const DEFAULT_REVIEWER_ROLES: ReviewerRoles = DEFAULT_CLASS_ROLES;
 
-export function reviewerClassFor({ kind, unread, changedLines }: ReviewerFacts, limit: number = G10_CHANGED_LINES): ReviewerClass {
-  return unread || kind === "security" || (changedLines !== undefined && changedLines > limit) ? "g10" : "standard";
+export function reviewerClassFor({ kind, unread, sizeUnread, changedLines }: ReviewerFacts, limit: number = G10_CHANGED_LINES): ReviewerClass {
+  return unread || sizeUnread || kind === "security" || (changedLines !== undefined && changedLines > limit) ? "g10" : "standard";
 }
 
 export function reviewerRoleFor(facts: ReviewerFacts, roles: ReviewerRoles = DEFAULT_REVIEWER_ROLES): string {
   return roles[reviewerClassFor(facts, roles.g10ChangedLines)];
 }
 
-/** A PR's changed lines with generated registry files left out; undefined when a counted file carries no line counts. */
-export function prChangedLines(files: readonly PrFile[]): number | undefined {
-  return changedLineCount(files.map(({ path, additions, deletions }) => ({ path, additions: additions ?? Number.NaN, deletions: deletions ?? Number.NaN })));
+/** A PR's changed lines as `changedLineCount` counts them against `limit`; undefined when a file carries no line counts. */
+export function prChangedLines(files: readonly PrFile[], limit: number = G10_CHANGED_LINES): number | undefined {
+  const changed = files.map(({ path, previousPath, additions, deletions }) => ({ path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? Number.NaN, deletions: deletions ?? Number.NaN }));
+  return changedLineCount(changed, { generated: DEFAULT_CLASS_RULES.generated, largeLines: limit });
 }
 
 /** A class the config leaves out, or a config with no table, keeps the one `profile` it had before the table. */

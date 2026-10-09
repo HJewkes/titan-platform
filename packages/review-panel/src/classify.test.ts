@@ -97,11 +97,22 @@ describe("classifyPr", () => {
     expect(classifyPr({ ...facts([]), changedFiles }).touches).not.toContain("large");
   });
 
-  it("counts no lines when a counted file lacks them, and ignores a generated file that does", () => {
+  it("counts no lines when any file lacks them, generated or not", () => {
     const bare = { path: "docs/a.md" } as unknown as ChangedFile;
     const bareGenerated = { path: "CAPABILITIES.md" } as unknown as ChangedFile;
     expect(changedLineCount([file("docs/b.md"), bare])).toBeUndefined();
-    expect(changedLineCount([file("docs/b.md"), bareGenerated])).toBe(6);
+    expect(changedLineCount([file("docs/b.md"), bareGenerated])).toBeUndefined();
+  });
+
+  it("counts every line once generated files alone pass the large limit", () => {
+    const changedFiles = [file("packages/a/src/a.ts", 10, 0), file("site/reference/a.md", 5000, 0)];
+    expect(changedLineCount(changedFiles)).toBe(5010);
+    expect(classifyPr({ ...facts([]), changedFiles }).touches).toContain("large");
+  });
+
+  it("counts a rename into a generated path against the path it left", () => {
+    const renamed = { ...file("site/reference/a.md", 0, 450), previousPath: "packages/a/src/a.ts" };
+    expect(changedLineCount([renamed])).toBe(450);
   });
 
   it("falls back to file count when line counts are absent", () => {

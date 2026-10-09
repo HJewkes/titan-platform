@@ -42,10 +42,22 @@ function hasLineCounts(file: ChangedFile): boolean {
   return Number.isFinite(file.additions) && Number.isFinite(file.deletions);
 }
 
-/** Additions plus deletions over the files a person wrote; undefined when one of them carries no counts. */
-export function changedLineCount(files: readonly ChangedFile[], rules: Pick<ClassRules, "generated"> = DEFAULT_CLASS_RULES): number | undefined {
-  const written = files.filter((f) => !matchesAny(f.path, rules.generated));
-  return written.every(hasLineCounts) ? written.reduce((sum, f) => sum + f.additions + f.deletions, 0) : undefined;
+/** A rename counts as generated only when it also came from a generated path, so moving a source file there still counts. */
+function isGenerated(file: ChangedFile, generated: readonly string[]): boolean {
+  return matchesAny(file.path, generated) && (file.previousPath === undefined || matchesAny(file.previousPath, generated));
+}
+
+const lineSum = (files: readonly ChangedFile[]) => files.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+
+/**
+ * Additions plus deletions with generated files left out; undefined when any file carries no counts. Generated lines
+ * that alone pass `largeLines` are no regeneration but a hand edit, so then every line counts.
+ */
+export function changedLineCount(files: readonly ChangedFile[], rules: Pick<ClassRules, "generated" | "largeLines"> = DEFAULT_CLASS_RULES): number | undefined {
+  if (!files.every(hasLineCounts)) return undefined;
+  const generated = lineSum(files.filter((f) => isGenerated(f, rules.generated)));
+  const all = lineSum(files);
+  return generated > rules.largeLines ? all : all - generated;
 }
 
 function isLarge(files: readonly ChangedFile[], rules: ClassRules): boolean {

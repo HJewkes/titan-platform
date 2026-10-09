@@ -381,9 +381,10 @@ describe("reviewRoutes", () => {
   });
 });
 
-function portListing(files: PrFile[]) {
+function portListing(files: PrFile[], changedFiles = files.length) {
   const fake = fakeGitHub();
   fake.prFiles.set(7, files);
+  fake.prChangedFiles.set(7, changedFiles);
   return githubPort(fake.wire);
 }
 
@@ -461,6 +462,8 @@ describe("sh-review", () => {
     signal?: AbortSignal;
     /** PR 7's changed files on a fake GitHub; absent means the deps carry no port. */
     files?: PrFile[];
+    /** PR 7's own changed-file count; above the length of `files` the list reads as truncated. */
+    changedFiles?: number;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -472,7 +475,7 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), ...(options.files && { port: portListing(options.files) }) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -503,15 +506,15 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security" });
+    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security", sizeUnread: true });
   });
 
   describe("sizes the spawn by the PR's changed lines", () => {
     const correctness = { ...registration, kind: "correctness" };
     const roles: ReviewerRoles = { g10: "bd-reviewer", standard: "reviewer" };
-    const spawnSized = async (files: PrFile[]) => {
+    const spawnSized = async (files?: PrFile[], changedFiles?: number) => {
       const dispatch = fakeDispatch();
-      const { result } = await reviewSteps(dispatch, { registered: correctness, files, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      const { result } = await reviewSteps(dispatch, { registered: correctness, ...(files && { files }), ...(changedFiles !== undefined && { changedFiles }), wiring: { roles } }).review(spawnIntent, 0, "run-1");
       return { facts: dispatch.spawns[0]?.facts, profile: (result as { profile?: string } | undefined)?.profile };
     };
 
@@ -535,6 +538,24 @@ describe("sh-review", () => {
 
       expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 40 }, profile: "reviewer" });
     });
+
+    it("gives the g10 profile when GitHub truncates the file list", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 1, deletions: 0 }], 3_001);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    it("gives the g10 profile when a file carries no line counts", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified" }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    it("gives the g10 profile when the file list cannot be read", async () => {
+      const sized = await spawnSized();
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
   });
 
   it("sh-review gives the spawn the strict facts when the step carries no run id", async () => {
@@ -542,7 +563,7 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch).review(spawnIntent);
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true });
+    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true, sizeUnread: true });
   });
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {

@@ -42,8 +42,25 @@ describe("prChangedLines", () => {
     expect(reviewerClassFor({ kind: "correctness", changedLines: prChangedLines(files) })).toBe("standard");
   });
 
-  it("is unknown when a counted file carries no line counts", () => {
+  it("is unknown when a file carries no line counts", () => {
     expect(prChangedLines([{ path: "a.ts", status: "modified" }])).toBeUndefined();
+  });
+
+  it("counts generated lines once they alone pass the configured limit", () => {
+    const files = [{ path: "CAPABILITIES.md", status: "modified", additions: 150, deletions: 0 }];
+
+    expect(prChangedLines(files)).toBe(0);
+    expect(prChangedLines(files, 100)).toBe(150);
+  });
+
+  it("counts a renamed file's lines against the source path it left", () => {
+    expect(prChangedLines([{ path: "site/reference/a.md", previousPath: "products/factory/src/a.ts", status: "renamed", additions: 0, deletions: 401 }])).toBe(401);
+  });
+});
+
+describe("reviewerClassFor with an unread size", () => {
+  it("puts a correctness PR whose size could not be read in the g10 class", () => {
+    expect(reviewerClassFor({ kind: "correctness", sizeUnread: true })).toBe("g10");
   });
 });
 

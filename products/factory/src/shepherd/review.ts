@@ -202,20 +202,20 @@ function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerF
   return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
 }
 
-/** A list that cannot be read whole leaves the size unknown, so the kind alone picks the class, as it did before sizes were read. */
-async function changedLinesOf(deps: ShepherdDeps, { repo, pr }: ReviewTarget): Promise<number | undefined> {
+/** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */
+async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: number | undefined): Promise<ReviewerFacts> {
   try {
-    return prChangedLines(await deps.port.listPrFiles(repo, pr));
+    const changedLines = prChangedLines(await deps.port.listPrFiles(repo, pr), limit);
+    return changedLines === undefined ? { sizeUnread: true } : { changedLines };
   } catch {
-    return undefined;
+    return { sizeUnread: true };
   }
 }
 
 /** Only a spawn picks a profile, so only a spawn reads the PR's size. */
-async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent: ReviewIntent, target: ReviewTarget): Promise<ReviewerFacts> {
+async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent: ReviewIntent, target: ReviewTarget, roles: ReviewerRoles | undefined): Promise<ReviewerFacts> {
   const facts = reviewerFacts(deps, runId);
-  const changedLines = intent.mode === "spawn" ? await changedLinesOf(deps, target) : undefined;
-  return changedLines === undefined ? facts : { ...facts, changedLines };
+  return intent.mode === "spawn" ? { ...facts, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
 }
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
@@ -225,7 +225,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   // A held name was spawned by an earlier run, and a refused spawn holds none; a repeat that crashed before its resume landed asks again.
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
-  const facts = await spawnFacts(deps, runId, intent, target);
+  const facts = await spawnFacts(deps, runId, intent, target, roles);
   const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
   if (asking) {
     const refused = await startReviewer(dispatch, intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));

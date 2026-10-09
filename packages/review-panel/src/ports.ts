@@ -24,6 +24,8 @@ export interface ReviewerFacts {
   unread?: boolean;
   /** Additions plus deletions, generated files left out (`changedLineCount`); absent means unknown. */
   changedLines?: number;
+  /** The size could not be read, so the PR takes the stricter class. */
+  sizeUnread?: boolean;
 }
 
 /** One roster row, as the dispatch port reports it. */
