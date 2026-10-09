@@ -21,6 +21,7 @@ import { createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto"
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { EXIT, errorEnvelope } from "@titan-design/registry";
+import { isOwnAddress } from "./bind-guard.js";
 import { trackTokenFile } from "./token-file.js";
 
 export type { TokenFileProblem } from "./token-file.js";
@@ -142,6 +143,12 @@ export function createDaemonAuth(options: DaemonAuthOptions): DaemonAuth {
 export interface RequestAuth {
   credential: "session" | "bearer";
   issuedAt: number | null;
+  /**
+   * The peer is this machine: a loopback address or one of its own interface addresses, or an
+   * address the gate could not read. Any local process can read the token file, so a command
+   * that must come from another device refuses when this is true.
+   */
+  peerLocal: boolean;
 }
 
 const requestAuth = new WeakMap<Request, RequestAuth>();
@@ -167,12 +174,14 @@ export function authGate(auth: DaemonAuth): MiddlewareHandler {
     if (secret === null) return unavailable(c);
     const facts = authenticate(c, secret, Date.now());
     if (!facts) return unauthorized(c);
-    requestAuth.set(c.req.raw, facts);
+    requestAuth.set(c.req.raw, { ...facts, peerLocal: isPeerLocal(c) });
     await next();
   };
 }
 
-function authenticate(c: Context, secret: string, now: number): RequestAuth | null {
+type Credential = Omit<RequestAuth, "peerLocal">;
+
+function authenticate(c: Context, secret: string, now: number): Credential | null {
   const bearer = /^Bearer +(\S+) *$/i.exec(c.req.header("authorization") ?? "")?.[1];
   if (bearer !== undefined && safeEqual(bearer, secret, deriveKey(secret, "bearer"))) {
     return { credential: "bearer", issuedAt: null };
@@ -180,6 +189,13 @@ function authenticate(c: Context, secret: string, now: number): RequestAuth | nu
   const cookie = getCookie(c, SESSION_COOKIE);
   const session = cookie === undefined ? null : verifySession(secret, cookie, now);
   return session ? { credential: "session", issuedAt: session.issuedAt } : null;
+}
+
+/** `@hono/node-server` passes the raw request as `env.incoming`; anything else has no peer to read. */
+function isPeerLocal(c: Context): boolean {
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+  const address = env?.incoming?.socket?.remoteAddress;
+  return address === undefined || isOwnAddress(address);
 }
 
 /** Fail closed: a vanished or loosened token file authenticates no one. */
