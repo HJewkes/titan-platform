@@ -209,7 +209,6 @@ describe("linear time and two false positives (TP-1684)", () => {
     };
 
     const ratio = timeFor(14_000) / Math.max(timeFor(3500), 1);
-    if (process.env.ASK_LINT_RATIO_LOG) console.log("ask-lint ratio", ratio);
 
     // 4x the ids: linear growth takes about 4x as long, quadratic about 16x. The bound of 8 leaves a wide gap on both sides.
     expect(ratio).toBeLessThan(8);
