@@ -15,22 +15,21 @@ export interface HandoffRequest {
   kind: TaskKind;
 }
 
-export interface HandoffStatus {
+interface HandoffStatus {
   status: WorkflowRun["status"];
   /** Absent until the run records `sh-landed` or `sh-stopped`. */
   outcome?: "landed" | "stopped";
   mergeSha?: string;
 }
 
-/** How a workflow step hands a PR to Shepherd and watches the run it gets back. */
-export interface HandoffPort {
+/**
+ * How a workflow step hands a PR to Shepherd and watches the run it gets back. Routes are built before the host
+ * exists, so the port is bound once `openFactoryHost` has one.
+ */
+export interface HandoffRef {
   /** Idempotent per repo#pr: a repeat returns the registered run with `created: false`. */
   register(request: HandoffRequest): Promise<{ runId: string; created: boolean }>;
   status(runId: string): HandoffStatus;
-}
-
-/** Routes are built before the host exists, so the port is bound once `openFactoryHost` has one. */
-export interface HandoffRef extends HandoffPort {
   /** Returns the unbind; it clears only its own binding, so a stale unbind never drops a later host. */
   bind(host: FactoryHost): () => void;
 }
