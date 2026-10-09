@@ -73,6 +73,12 @@ export async function correctVerdict(dispatch: ReviewerDispatch, input: CorrectV
 
 type AwaitedOutput = z.infer<typeof Awaited>;
 
+/** How a correction that came to no verdict is worded, so a later review can tell a malformed verdict from silence. */
+export const UNPARSED_AFTER_CORRECTION = "the reviewer's verdict did not parse after one correction";
+const SILENT_AFTER_CORRECTION = "the reviewer wrote no verdict after its correction";
+
+export const isCorrectionFailure = (reason: unknown): boolean => typeof reason === "string" && (reason.startsWith(UNPARSED_AFTER_CORRECTION) || reason === SILENT_AFTER_CORRECTION);
+
 /**
  * A malformed final message gets one correction turn in the reviewer's own session, read by `replyStep` from the message written
  * after it. Only the first await's result reaches here, never the reply's, so a reviewer is corrected at most once per head.
@@ -85,5 +91,5 @@ export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictIn
   const reply = await step(ctx, options.replyStep, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
   if (reply.kind === "verdict") return reply;
   const again = readMalformed(reply);
-  return { kind: "none", reason: again ? `the reviewer's verdict did not parse after one correction (${again.refusal})` : "the reviewer wrote no verdict after its correction" };
+  return { kind: "none", reason: again ? `${UNPARSED_AFTER_CORRECTION} (${again.refusal})` : SILENT_AFTER_CORRECTION };
 }
