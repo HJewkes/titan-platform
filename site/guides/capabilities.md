@@ -504,7 +504,7 @@ Key exports:
 - `store`: `appendSamples`, `openHealthStore`, `readSamples`, `storeStats`
 - `uptime`: `foldUptime`, `uptime`
 - `sample`: `healthSampleSchema`
-- +18 more in the [reference page](/reference/health)
+- +19 more in the [reference page](/reference/health)
 
 <a id="cap-hitl"></a>
 

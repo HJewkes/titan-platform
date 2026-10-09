@@ -42,16 +42,35 @@ interface SlotRange {
   tickMs: number;
 }
 
-/** Whole slots only: a partial edge slot could read as missing just because its tick fell outside the window. */
-function slotRange(window: UptimeWindow): SlotRange {
-  const tickSeconds = window.tickSeconds ?? DEFAULT_TICK_SECONDS;
-  // A zero tick makes every slot Infinity and the slot loop never ends.
-  if (!Number.isFinite(tickSeconds) || tickSeconds <= 0) {
-    throw new RangeError(`tickSeconds must be a positive finite number, got ${tickSeconds}`);
+/** The most slots one report may span: a year of 1-second slots, so a bad window fails fast instead of looping. */
+export const MAX_UPTIME_SLOTS = 366 * 24 * 60 * 60;
+
+// Sample timestamps carry millisecond precision, so only a whole number of milliseconds is a measurable tick.
+function tickMsOf(tickSeconds: number): number {
+  const tickMs = Math.round(tickSeconds * 1000);
+  if (!Number.isSafeInteger(tickMs) || tickMs < 1 || !(Math.abs(tickMs - tickSeconds * 1000) <= 1e-6)) {
+    throw new RangeError(`tickSeconds must be a whole number of milliseconds of at least 0.001, got ${tickSeconds}`);
   }
-  const tickMs = tickSeconds * 1000;
-  const first = Math.ceil(window.from.getTime() / tickMs);
-  const end = Math.max(first, Math.floor(window.to.getTime() / tickMs));
+  return tickMs;
+}
+
+function epochMsOf(name: string, date: Date): number {
+  const ms = date.getTime();
+  if (!Number.isFinite(ms)) throw new RangeError(`${name} is not a valid date`);
+  return ms;
+}
+
+/**
+ * Every uptime report goes through here, so this is where a window that cannot be measured is refused.
+ * Whole slots only: a partial edge slot could read as missing just because its tick fell outside the window.
+ */
+function slotRange(window: UptimeWindow): SlotRange {
+  const tickMs = tickMsOf(window.tickSeconds ?? DEFAULT_TICK_SECONDS);
+  const first = Math.ceil(epochMsOf("from", window.from) / tickMs);
+  const end = Math.max(first, Math.floor(epochMsOf("to", window.to) / tickMs));
+  if (end - first > MAX_UPTIME_SLOTS) {
+    throw new RangeError(`window spans ${end - first} slots, more than MAX_UPTIME_SLOTS (${MAX_UPTIME_SLOTS})`);
+  }
   return { first, end, tickMs };
 }
 

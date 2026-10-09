@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "@titan-design/store-sqlite";
 import type { HealthSample, SampleStatus } from "./sample.js";
 import { appendSamples, openHealthStore } from "./store.js";
-import { foldUptime, uptime } from "./uptime.js";
+import { MAX_UPTIME_SLOTS, foldUptime, uptime } from "./uptime.js";
 
 const T0 = Date.parse("2026-01-01T00:00:00.000Z");
 const at = (minute: number) => new Date(T0 + minute * 60_000);
@@ -97,8 +97,30 @@ describe("foldUptime", () => {
     expect(report).toMatchObject({ slots: 3, up: 2, down: 1, missing: 0 });
   });
 
-  it.each([0, -60, Number.NaN, Number.POSITIVE_INFINITY])("refuses a tick of %s instead of hanging", (tickSeconds) => {
-    expect(() => foldUptime([sample(0)], { from: at(0), to: at(2), tickSeconds })).toThrow(RangeError);
+  it.each([0, -60, 1e-6, 0.0015, Number.NaN, Number.POSITIVE_INFINITY])(
+    "refuses a tick of %s seconds instead of hanging",
+    (tickSeconds) => {
+      expect(() => foldUptime([sample(0)], { from: at(0), to: at(2), tickSeconds })).toThrow(RangeError);
+    },
+  );
+
+  it("accepts a whole-millisecond tick", () => {
+    const report = foldUptime([], { from: at(0), to: new Date(T0 + 5), tickSeconds: 0.001 });
+
+    expect(report).toMatchObject({ slots: 5, missing: 5 });
+  });
+
+  it.each([
+    ["from", { from: new Date("bad"), to: at(2) }],
+    ["to", { from: at(0), to: new Date("bad") }],
+  ])("refuses an invalid %s date instead of reporting NaN slots", (_name, window) => {
+    expect(() => foldUptime([], window)).toThrow(RangeError);
+  });
+
+  it("refuses a window wider than MAX_UPTIME_SLOTS", () => {
+    const to = new Date(T0 + (MAX_UPTIME_SLOTS + 1) * 1000);
+
+    expect(() => foldUptime([], { from: at(0), to, tickSeconds: 1 })).toThrow(RangeError);
   });
 });
 

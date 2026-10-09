@@ -22,6 +22,7 @@ export {
 } from "./store.js";
 export {
   DEFAULT_TICK_SECONDS,
+  MAX_UPTIME_SLOTS,
   foldUptime,
   uptime,
   type UptimeGap,

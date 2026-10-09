@@ -126,6 +126,10 @@ uptime(db, "factory", new Date("2026-01-01T00:00:00Z"), new Date("2026-01-01T00:
 
 - Slots are `tickSeconds` wide (60 by default) and aligned to the epoch, so they line up with
   a wall-clock minutely timer. Only whole slots inside `[from, to)` count.
+- A window that cannot be measured throws a `RangeError` before any slot is counted: an
+  invalid `from` or `to`, a tick that is not a whole number of milliseconds of at least 1 ms,
+  or more than `MAX_UPTIME_SLOTS` slots (a year of 1-second slots). A reversed window is not
+  an error; it has 0 slots.
 - Several samples in one slot fold to the worst: fail > unknown > warn > pass.
 - `upShareOfWindow` is `up / slots`; `upShareOfObserved` is `up / (up + down)`. Each is `null`
   when its denominator is 0, as in an empty window.
