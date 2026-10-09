@@ -22,7 +22,7 @@ const EXIT_BELOW_MIN = 1;
 const TEXT_GAPS = 10;
 const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
 
-export function parseWindow(value: string): number {
+function parseWindow(value: string): number {
   const match = /^(\d+)([mhd])$/.exec(value);
   const ms = match ? Number(match[1]) * (UNIT_MS[match[2] ?? ""] ?? 0) : 0;
   if (ms <= 0) throw new InvalidArgumentError("expected a positive number of m, h or d, such as 24h");
@@ -71,7 +71,7 @@ export function withReadOnlyStore(dbPath: string, io: ReportIo, report: (db: Db)
   }
 }
 
-export interface CounterDelta {
+interface CounterDelta {
   first: number | null;
   last: number | null;
   /** Null when there is no reading or the counter dropped somewhere in the window. */
@@ -81,7 +81,7 @@ export interface CounterDelta {
 }
 
 /** Delta of one of serve's own counters across the window; restarts are read, never inferred from gaps. */
-export function counterDelta(samples: readonly HealthSample[], field: string): CounterDelta {
+function counterDelta(samples: readonly HealthSample[], field: string): CounterDelta {
   const readings = samples.map((s) => s.observed?.[field]).filter((v): v is number => typeof v === "number");
   const first = readings[0] ?? null;
   const last = readings.at(-1) ?? null;
@@ -90,7 +90,7 @@ export function counterDelta(samples: readonly HealthSample[], field: string): C
   return { first, last, delta, counterReset };
 }
 
-export interface UptimeCliReport extends UptimeReport {
+interface UptimeCliReport extends UptimeReport {
   target: string;
   from: string;
   to: string;

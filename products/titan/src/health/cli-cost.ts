@@ -3,12 +3,12 @@ import { readSamples, storeStats, type HealthSample, type HealthStoreStats } fro
 import { SELF_TARGET } from "./self-cost.js";
 import { windowOf, windowOptions, withReadOnlyStore, type ReportIo, type WindowOptions } from "./cli-uptime.js";
 
-export interface PerTick {
+interface PerTick {
   mean: number | null;
   max: number | null;
 }
 
-export interface CostReport {
+interface CostReport {
   from: string;
   to: string;
   /** One self row per stored tick, so this is the sampler's wakeup count. */
@@ -44,7 +44,7 @@ function perTick(rows: readonly Record<string, unknown>[], metric: SelfMetric): 
 }
 
 /** Folds the sampler's self rows; every counter covers the whole oneshot process, node startup included. */
-export function foldCost(selfRows: readonly HealthSample[], store: HealthStoreStats, from: Date, to: Date): CostReport {
+function foldCost(selfRows: readonly HealthSample[], store: HealthStoreStats, from: Date, to: Date): CostReport {
   const rows = selfRows.filter((s) => s.kind === "self").map((s) => s.observed ?? {});
   const metrics = Object.fromEntries(Object.entries(METRICS).map(([name, metric]) => [name, perTick(rows, metric)]));
   return {

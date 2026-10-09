@@ -22,7 +22,7 @@ const stopgapRowSchema = z.object({
 });
 type StopgapRow = z.infer<typeof stopgapRowSchema>;
 
-export interface ParsedStopgap {
+interface ParsedStopgap {
   samples: HealthSampleInput[];
   bad: number;
 }
