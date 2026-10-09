@@ -48,6 +48,22 @@ describe("console config", () => {
     expect(resolveConfig({ TITAN_CONSOLE_AGENT_CHAT_TOKEN: "~/t" }, HOME).agentChatTokenPath).toBe(path.join(HOME, "t"));
   });
 
+  it("reads agent-chat's events.db from AGENT_CHAT_HOME unless TITAN_CONSOLE_EVENTS_DB is given", () => {
+    expect(resolveConfig({}, HOME).agentChatEventsDbPath).toBe(path.join(HOME, ".agent-chat", "events.db"));
+    expect(resolveConfig({ AGENT_CHAT_HOME: "/var/chat" }, HOME).agentChatEventsDbPath).toBe("/var/chat/events.db");
+    expect(resolveConfig({ TITAN_CONSOLE_EVENTS_DB: "~/e.db" }, HOME).agentChatEventsDbPath).toBe(path.join(HOME, "e.db"));
+  });
+
+  it("points node links at codewatch's default port unless TITAN_CONSOLE_CODEWATCH_URL is given", () => {
+    expect(resolveConfig({}, HOME).codewatchUrl).toBe("http://127.0.0.1:7433");
+    expect(resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "https://code.example.test/cw/" }, HOME).codewatchUrl).toBe("https://code.example.test/cw/");
+  });
+
+  it("refuses a codewatch address that cannot prefix a node link", () => {
+    expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "127.0.0.1:7433" }, HOME)).toThrow(/TITAN_CONSOLE_CODEWATCH_URL/);
+    expect(() => resolveConfig({ TITAN_CONSOLE_CODEWATCH_URL: "http://127.0.0.1:7433/#/home" }, HOME)).toThrow(/no #fragment/);
+  });
+
   it("parses seat prefixes and refuses a malformed pair", () => {
     expect(resolveConfig({}, HOME).seatPrefixes).toEqual([]);
     expect(resolveConfig({ TITAN_CONSOLE_SEATS: "alpha=al, beta=be" }, HOME).seatPrefixes).toEqual([

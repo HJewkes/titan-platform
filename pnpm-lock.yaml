@@ -56,6 +56,9 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@25.9.5)(jiti@1.21.7)(jsdom@30.1.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   apps/codewatch:
     dependencies:
@@ -168,6 +171,9 @@ importers:
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
+      '@titan-design/store-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/store-sqlite
       '@titan-design/worktree':
         specifier: workspace:^
         version: link:../../packages/worktree
@@ -749,6 +755,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority

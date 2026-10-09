@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@titan-design/agent-dispatch": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
