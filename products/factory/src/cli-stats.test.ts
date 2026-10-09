@@ -24,7 +24,20 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [] });
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], reviewCauses: [] });
+  });
+
+  it("prints only the review causes with --rereviews", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const json = capture();
+    const text = capture();
+
+    const codes = [await runCli(["--db", db, "shepherd", "stats", "--rereviews", "--json"], json.io), await runCli(["--db", db, "shepherd", "stats", "--rereviews"], text.io)];
+
+    expect(codes).toEqual([0, 0]);
+    expect(JSON.parse(json.out.join(""))).toEqual({ reviewCauses: [] });
+    expect(text.out.join("")).toBe("no reviews in range\n");
   });
 
   it("reports owner touches and the wait per gate kind from the gate store", async () => {
@@ -61,7 +74,7 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     const report = JSON.parse(out.join(""));
-    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "failures"]);
+    expect(Object.keys(report)).toEqual(["merges", "ownerFriction", "stageTimes", "redAfterMerge", "ownerOverrides", "failures", "reviewCauses"]);
     expect(report.failures).toEqual([
       { repo: "acme/widgets", week: "2026-W41", failures: 2, byClass: { "ci-timeout": 1, "gh-api-5xx": 0, "land-rules": 1, "update-branch": 0, other: 0 } },
     ]);
@@ -86,6 +99,29 @@ describe("shepherd stats verb", () => {
 
     expect(JSON.parse(json.out.join("")).redAfterMerge).toEqual([{ repo: "acme/widgets", week: "2026-W41", merged: 2, red: 1, rate: 0.5, redPrs: [1], reverted: 0, revertedPrs: [] }]);
     expect(human.out.join("")).toContain("red after merge:\nacme/widgets  2026-W41  merged 2  red 1 (50.0%)  reverted 0\n");
+  });
+
+  it("reports review causes beside red-after-merge, in JSON and in the human report", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    const at = "2026-10-07T09:00:00.000Z";
+    const intent = { stepId: "sh-review-intent:abc", iteration: 0, agentId: null, signal: null, completedAt: at, data: { result: { kind: "intent", head: "abc", reviewer: "rv", at: 0, mode: "spawn", cause: { cause: "first" } } } };
+    const mainCi = { stepId: "sh-main-ci", iteration: 0, agentId: null, signal: null, completedAt: at, data: { result: { verdict: "red" } } };
+    const run = { id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "1" }, currentStep: null, activeSteps: {}, revision: 0, ownerGeneration: 0, error: null };
+    new WorkflowRunStore(store).create({ ...run, status: "completed", stepResults: { "sh-review-intent:abc:0": intent, "sh-main-ci:0": mainCi }, startedAt: at, completedAt: at });
+    store.close();
+    const json = capture();
+    const human = capture();
+
+    await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
+    await runCli(["--db", db, "shepherd", "stats"], human.io);
+    const report = JSON.parse(json.out.join(""));
+
+    expect(report.redAfterMerge).toHaveLength(1);
+    expect(report.reviewCauses).toEqual([{ repo: "acme/widgets", week: "2026-W41", reviews: 1, causes: { first: 1 } }]);
+    expect(human.out.join("")).toContain("red after merge:");
+    expect(human.out.join("")).toContain("review causes:\nacme/widgets  2026-W41  reviews 1\n  first  1\n");
   });
 
   it("refuses a malformed date", async () => {
