@@ -1,8 +1,9 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { FINDINGS_SEPARATOR, acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
+import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
+import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./review-schemas.js";
 
 const MINUTE = 60_000;

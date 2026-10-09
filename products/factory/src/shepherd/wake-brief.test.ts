@@ -3,7 +3,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type ReviewComment } from 
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
-import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
+import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -182,5 +182,14 @@ describe("review wake brief: a verdict with no findings", () => {
 
     expect(reason).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
     expect(reason).toContain(`step sh-await-verdict:${H1} of run ${RUN}`);
+  });
+});
+
+describe("defectClassSection", () => {
+  it("reads the newest defect class when the findings hold more than one FIX_FIRST", () => {
+    const verdict = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;
+    const text = `Defect class: the old guess.\n\n${verdict}\n\n---\n\nDefect class: the shared guard.\n\n${verdict}`;
+
+    expect(defectClassSection(text)).toBe("Defect class: the shared guard.");
   });
 });
