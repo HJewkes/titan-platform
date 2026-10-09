@@ -1,13 +1,13 @@
 import { lstat, readdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { reviewCheckoutRoot } from "./review-checkout.js";
 
 export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export const REVIEW_CHECKOUT_NAME = /^review-[1-9][0-9]*-[0-9a-f]{12}$/;
 
 export interface ReviewCheckoutSweepDeps {
-  /** Defaults to the system temp dir, where reviewers extract their checkouts. */
+  /** Defaults to the app data dir's review checkouts; a backstop for runs that never reached removal. */
   root?: string;
   now?: () => number;
   list?: (root: string) => Promise<string[]>;
@@ -18,9 +18,9 @@ export interface ReviewCheckoutSweepDeps {
   onError?: (path: string, error: unknown) => void;
 }
 
-/** Reviewers extract with `git archive`, so a checkout is a plain directory and `rm` is the whole removal. Returns the paths removed. */
+/** A run dir holds the head and base checkouts, both plain `git archive` trees, so `rm -rf` is the whole removal. Returns the paths removed. */
 export async function sweepReviewCheckouts(deps: ReviewCheckoutSweepDeps = {}): Promise<string[]> {
-  const root = deps.root ?? tmpdir();
+  const root = deps.root ?? reviewCheckoutRoot();
   const now = (deps.now ?? Date.now)();
   const list = deps.list ?? ((dir: string) => readdir(dir));
   const stat =
