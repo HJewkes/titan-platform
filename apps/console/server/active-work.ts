@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DeliverableSchema } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
 
@@ -21,6 +22,10 @@ const task = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   estimate: z.number().optional(),
   tags: z.array(z.string()).optional(),
+  // Edge and deliverable fields arrive from active-work 0.23 on; an older daemon carries edges as tags only.
+  parent: z.string().optional(),
+  dep: z.array(z.string()).optional(),
+  deliverables: z.array(z.string()).optional(),
   status: z.enum(["open", "done"]),
   notes: z.string().optional(),
   done_when: z.string().optional(),
@@ -81,6 +86,8 @@ const READS = {
     worktrees: z.array(artifactWorktree.extend({ branch: z.string().nullable(), present: z.boolean(), pr: z.number().optional() })),
   }),
   "context.graph": z.object({ references: z.array(reference) }),
+  /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
+  "deliverable.list": z.object({ deliverables: z.array(DeliverableSchema) }),
 };
 
 export type ReadName = keyof typeof READS;
