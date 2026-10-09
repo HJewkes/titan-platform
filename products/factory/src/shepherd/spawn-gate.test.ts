@@ -182,6 +182,63 @@ describe("spawnGate review priority", () => {
     expect({ admittedAtInterval, admittedAfterInterval }).toEqual({ admittedAtInterval: false, admittedAfterInterval: true });
   });
 
+  it("admits three staggered waiting reviews oldest first, whatever order they retry in", () => {
+    const { state, ask } = scene();
+    ask("rv-old-1", ordinary);
+    state.now += 1_000;
+    ask("rv-mid-2", ordinary);
+    state.now += 1_000;
+    ask("rv-new-3", ordinary);
+    state.readings = idle;
+    const admitted: string[] = [];
+    const poll = () => ["rv-new-3", "rv-mid-2", "rv-old-1"].filter((name) => !admitted.includes(name)).forEach((name) => ask(name, ordinary) && admitted.push(name));
+
+    for (let round = 0; round < 3; round++, state.now += limits.windowMs) poll();
+
+    expect(admitted).toEqual(["rv-old-1", "rv-mid-2", "rv-new-3"]);
+  });
+
+  it("refuses a younger review with a reason naming the older waiter", () => {
+    const { state, gate, ask } = scene();
+    ask("rv-old-1", ordinary);
+    state.now += 5_000;
+    state.readings = idle;
+
+    expect(() => gate.admit("rv-new-2", [], ordinary)).toThrow("the review rv-old-1, waiting for 5000 ms, waits ahead");
+  });
+
+  it("stops holding the queue for an older review that stopped asking 10 minutes ago", () => {
+    const { state, ask } = scene();
+    ask("rv-old-1", ordinary);
+    state.readings = idle;
+
+    state.now += 10 * 60_000;
+    const admittedAtExpiry = ask("rv-new-2", ordinary);
+    state.now += 1;
+    const admittedAfterExpiry = ask("rv-new-2", ordinary);
+
+    expect({ admittedAtExpiry, admittedAfterExpiry }).toEqual({ admittedAtExpiry: false, admittedAfterExpiry: true });
+  });
+
+  it("keeps the headroom interval and the burst cap while admitting waiters oldest first", () => {
+    const state = { readings: { ...idle, load5: 21 }, now: 1_000 };
+    const gate = spawnGate({ limits: { headroomIntervalMs: 5_000, burstMax: 2 }, read: () => state.readings, now: () => state.now, log: () => undefined });
+    const names = ["rv-a-1", "rv-b-2", "rv-c-3"];
+    const admitted: [string, number][] = [];
+    const poll = () => [...names].reverse().filter((name) => !admitted.some(([done]) => done === name)).forEach((name) => {
+      try { gate.admit(name, [], ordinary); admitted.push([name, state.now]); } catch { /* deferred */ }
+    });
+    for (const name of names) {
+      expect(() => gate.admit(name, [], ordinary)).toThrow(SpawnDeferred);
+      state.now += 1_000;
+    }
+    state.readings = idle;
+
+    for (; state.now <= 64_000; state.now += 1_000) poll();
+
+    expect(admitted).toEqual([["rv-a-1", 4_000], ["rv-b-2", 9_000], ["rv-c-3", 64_000]]);
+  });
+
   it("never holds back a spawn that is no review", () => {
     const { state, gate, ask } = scene();
     ask("rv-fix-3", fixer);
