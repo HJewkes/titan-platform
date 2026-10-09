@@ -44,6 +44,16 @@ describe("reviewerBrief", () => {
     expect(brief).toContain("ssh basement basement-suite");
     expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
   });
+
+  it("carries the test rule it is given, so a reviewer on basement never ssh-es to itself", () => {
+    const testRule = "Call `basement-suite <repo> <branch>` directly, never through ssh.";
+
+    const brief = reviewerBrief({ ...target, testRule });
+
+    expect(brief).toContain(testRule);
+    expect(brief).not.toContain("ssh basement");
+    expect(brief).not.toContain("on the Mac");
+  });
 });
 
 describe("reviewerBrief Closer line", () => {
