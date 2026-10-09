@@ -226,7 +226,12 @@ the active `merge` step of a run no runtime holds, when the head that step merge
 the pull request's head: the answer is no merge, so the run reads CI and reviews the new head. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
-its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
+its run alone. Resync, and the 5-minute check, also mark a merged run reverted: for each repo
+with a run that merged in the last 7 days, one paged read of main since the earliest such merge
+looks for a commit whose body says `This reverts commit <merge sha>` or whose title is
+`Revert "<merge commit subject>"`, with or without its own ` (#n)`. The run gets an
+`sh-reverted` step that records the merge sha and the reverting sha, and is never marked twice.
+`titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
 
 Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
@@ -399,11 +404,16 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   merge step leaves no trace in the ledger, so `stats` counts it under `land`; `status` does
   name a live hold.
 
+- Per repo and ISO week, red after merge: the merged runs that read main CI at their merge,
+  those whose stored `sh-main-ci` read was red, and the rate, plus those since marked
+  `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
+
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
 as `stage` and `totalMinutes`.
 
-`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...] }`. The morning digest shows today's
+`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
+each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
 
 ## Seat policy {#seat-policy}
