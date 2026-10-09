@@ -58,10 +58,7 @@ const EVIDENCE: RepoEvidence[] = [{
   openPrs: [{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }],
 }];
 
-const RELAY_V1 = {
-  id: "relay-v1", title: "Relay v1", done_when: "The relay ships.", target: "2031-04-01", status: "active", owner_seat: "relay-seat",
-  tags: [], created: "2031-01-05", updated: "2031-03-01", shipped_at: null,
-};
+const RELAY_V1 = { id: "relay-v1", title: "Relay v1", status: "active", target: "2031-04-01", owner_seat: "relay-seat", tags: [], tasks: { open: 1, done: 0 } };
 
 const EMPTY = { files: 0, bytes: 0, newest_mtime: null };
 const CLASSES = { tasks: EMPTY, sessions: EMPTY, notes: EMPTY, sources: EMPTY, nested_sources: EMPTY };
@@ -99,7 +96,7 @@ function answer(command: string, args: Record<string, unknown>): unknown {
       return { id: args.id, kind: "task", subject: null, references: REFERENCES, initiatives_scanned: [], errors: [] };
     case "deliverable.list":
       if (!registryServed) throw new Error("Unknown command deliverable.list");
-      return { deliverables: [{ ...RELAY_V1, open_tasks: 1, done_tasks: 0 }] };
+      return [RELAY_V1];
     case "inventory":
       return { initiatives: [{ slug: "orbit-relay", human_only: false }, { slug: "garden-plan", human_only: true }].map((entry) => ({ ...entry, total: EMPTY, classes: CLASSES })), human_only_known: true };
     default:

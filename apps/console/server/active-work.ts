@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DeliverableSchema } from "@titan-design/pm";
+import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
 
@@ -39,6 +39,17 @@ const artifactWorktree = z.object({ path: z.string(), repo: z.string(), branch: 
 const prInfo = z.object({ number: z.number(), state: z.string(), title: z.string(), url: z.string(), checks: z.string().optional() });
 
 const reference = z.object({ slug: z.string(), source: z.enum(["task", "session", "artifacts"]), file: z.string(), field: z.string(), text: z.string() });
+
+/** A `deliverable.list` row: the registry record's summary fields and its joined tasks' open and done counts. */
+const deliverable = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(DELIVERABLE_STATUSES),
+  target: z.string().nullable(),
+  owner_seat: z.string(),
+  tags: z.array(z.string()),
+  tasks: z.object({ open: z.number(), done: z.number() }),
+});
 
 const inventoryInitiative = z.object({
   slug: z.string(),
@@ -87,13 +98,14 @@ const READS = {
   }),
   "context.graph": z.object({ references: z.array(reference) }),
   /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
-  "deliverable.list": z.object({ deliverables: z.array(DeliverableSchema) }),
+  "deliverable.list": z.array(deliverable),
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
+export type WireDeliverable = z.infer<typeof deliverable>;
 export type WireInventoryInitiative = z.infer<typeof inventoryInitiative>;
 
 export interface ActiveWork {

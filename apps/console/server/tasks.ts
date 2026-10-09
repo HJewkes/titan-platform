@@ -1,8 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
-import { readEdges, taskTree, type Deliverable, type Task } from "@titan-design/pm";
+import { readEdges, taskTree, type Task } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
-import { failure, type ActiveWork, type ReadResult, type WireTask } from "./active-work.js";
+import { failure, type ActiveWork, type ReadResult, type WireDeliverable, type WireTask } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
@@ -64,8 +64,8 @@ export interface TaskDetail {
   evidence: EvidenceSummary;
   /** Tasks whose parent edge names this one, in active-work's priority order. */
   children: { id: string; title: string; status: string }[];
-  /** Each id in the task's `deliverables`, with its registry record, or null when no record has that id. */
-  deliverables: { id: string; record: Deliverable | null }[];
+  /** Each id in the task's `deliverables`, with its `deliverable.list` row, or null when no record has that id. */
+  deliverables: { id: string; record: WireDeliverable | null }[];
   /** Why the registry could not be read, such as a daemon older than active-work 0.23; every record is null then. */
   deliverablesDegraded: string | null;
 }
@@ -189,7 +189,7 @@ type DeliverableJoin = Pick<TaskDetail, "deliverables" | "deliverablesDegraded">
 async function joinDeliverables(activeWork: ActiveWork, ids: readonly string[]): Promise<DeliverableJoin> {
   if (ids.length === 0) return { deliverables: [], deliverablesDegraded: null };
   try {
-    const registry = new Map((await activeWork.read("deliverable.list")).deliverables.map((record) => [record.id, record]));
+    const registry = new Map((await activeWork.read("deliverable.list")).map((record) => [record.id, record]));
     return { deliverables: ids.map((id) => ({ id, record: registry.get(id) ?? null })), deliverablesDegraded: null };
   } catch (error) {
     return { deliverables: ids.map((id) => ({ id, record: null })), deliverablesDegraded: `Deliverables unread: ${(error as Error).message}` };
