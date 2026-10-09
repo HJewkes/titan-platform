@@ -241,11 +241,14 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   });
 }
 
+/** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
+const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+
 /** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
-    return EXIT.FAILURE;
+    return exitOf(envelope.code);
   }
   if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
   else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
