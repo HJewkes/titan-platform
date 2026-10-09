@@ -710,11 +710,12 @@ Tier 2, `@titan-design/pm@0.0.0`. Project-management schemas: the zod task schem
 
 Key exports:
 
-- `task`: `DELIVERABLE_ID_REGEX`, `TaskSchema`
+- `task`: `TaskSchema`
 - `deliverable`: `DeliverableSchema`, `deliverablePath`, `deliverablesDir`, `parseDeliverableRegistry`
 - `edges`: `checkEdges`, `readEdges`
-- `categories`: `CategoryRegistrySchema`, `categoriesPath`, `checkCategories`, `parseCategoryRegistry`
-- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
+- `graph`: `criticalPath`, `taskTree`
+- `categories`: `CategoryRegistrySchema`, `categoriesPath`, `checkCategories`
+- +25 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
 

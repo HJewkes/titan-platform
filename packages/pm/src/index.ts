@@ -17,6 +17,14 @@ export type {
   EdgeField,
   Edges,
 } from "./edges.js";
+export { criticalPath, taskTree } from "./graph.js";
+export type {
+  CriticalPathOptions,
+  CriticalPathResult,
+  ExternalDep,
+  TaskFloat,
+  TaskTreeNode,
+} from "./graph.js";
 export {
   BUILT_IN_STATUSES,
   CategoryRegistrySchema,
