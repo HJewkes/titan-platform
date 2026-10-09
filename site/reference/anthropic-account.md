@@ -297,15 +297,26 @@ Code's own refresh closely:
    with body `{ grant_type: "refresh_token", refresh_token, client_id, scope }`. The values
    are Claude Code 2.1.x's own. `client_id` is the stored `clientId`, or else Claude Code's
    (`OAUTH_CLIENT_ID`). `scope` is space-separated: the stored scopes when a `clientId` is
-   stored, and otherwise `DEFAULT_REFRESH_SCOPES` plus any `user:projects:*` scope already
+   stored (the defaults if it stores none), and otherwise `DEFAULT_REFRESH_SCOPES` plus any `user:projects:*` scope already
    held. It sets `redirect: "error"` and is never retried. Only a 200 counts. Its body must
    hold an `access_token` and an integer `expires_in`, and may hold a `refresh_token` and
    `refresh_token_expires_in`; each token must be an RFC 6750 `b64token`.
 5. Writes the new JSON to `.credentials.json.<pid>.<random>.tmp` in the config dir,
    exclusively, mode 0600, then `fsync`s it.
-6. Re-reads the credentials file through the gate once more. If another writer changed it
-   while the request was in flight, the temp file is removed, that writer's file stands,
-   and the result is `refreshed-elsewhere`.
+6. Re-reads the credentials file through the gate once more. If its bytes changed while the
+   request was in flight, the temp file is removed and the login is compared, not the
+   bytes. The old refresh token is spent by now, and a rotated one in the response may be
+   the only live one, so the new tokens are not dropped for an unrelated change:
+   - The file still holds the refresh token just spent, for example because a session
+     wrote another key. The new tokens are applied to that writer's file, and steps 5 to
+     7 run again.
+   - The file is unreadable or half-written. The refresher waits 100 ms and reads it
+     again.
+   - The file holds a different refresh token (a re-login, or a refresh elsewhere), or
+     it is gone (a logout). That writer's file stands, and the result is
+     `refreshed-elsewhere`.
+   - After four attempts the result is `failed` with `write-conflict`, which files a
+     deposit, and the file is left as the other writer left it.
 7. Renames the temp file over `.credentials.json`, then `fsync`s the dir, best effort.
 
 The file is never truncated in place, so a session reading it sees the old file or the new
@@ -318,10 +329,10 @@ directory this call made is removed.
 |---|---|---|
 | `fresh` | the token is not due | no |
 | `refreshed`, with `expiresAt` | the new credentials were written | no |
-| `refreshed-elsewhere` | the file changed after it was read | no |
+| `refreshed-elsewhere` | the file changed before the request, or another login or a logout replaced it after | no |
 | `locked` | a refresh lock is held | no |
 | `skipped`, with `reason` | the file is missing or refused by the gate, or the login is one Claude Code would not refresh: neither the `user:inference` scope nor a `subscriptionType` | no |
-| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `http-<status>`, `network`, `malformed` or `io` | yes |
+| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `write-conflict`, `http-<status>`, `network`, `malformed` or `io` | yes |
 
 Each failure calls `onFailure` once with a `RefreshFailureDeposit`. That is an owner-queue
 `OwnerItemDeposit`: asker `anthropic-account`, kind `do`, a one-line summary naming the

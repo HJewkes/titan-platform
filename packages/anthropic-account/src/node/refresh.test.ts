@@ -7,15 +7,8 @@ import type { AccountProfile } from "../profile.js";
 import { REFRESH_LOCK } from "./credentials-write.js";
 import { CREDENTIALS_FILE } from "./login.js";
 import type { FetchLike } from "./poll.js";
-import {
-  DEFAULT_REFRESH_SCOPES,
-  OAUTH_CLIENT_ID,
-  TOKEN_URL,
-  refreshFailureDeposit,
-  refreshIfNeeded,
-  type RefreshFailureDeposit,
-  type RefreshOptions,
-} from "./refresh.js";
+import { DEFAULT_REFRESH_SCOPES, OAUTH_CLIENT_ID, TOKEN_URL, refreshIfNeeded, type RefreshOptions } from "./refresh.js";
+import { refreshFailureDeposit, type RefreshFailureDeposit } from "./refresh-deposit.js";
 
 const uid = process.getuid?.() ?? 0;
 const MARGIN = 5 * 60_000;
@@ -251,12 +244,14 @@ describe("refreshIfNeeded writes the new credentials atomically", () => {
 });
 
 describe("refreshIfNeeded yields to another writer", () => {
-  it("does not overwrite a file another session changed while the request was in flight", async () => {
+  it("yields to a new login another session wrote while the request was in flight", async () => {
     writeText(JSON.stringify(expiringCredentials()));
-    const theirs = JSON.stringify(fakeCredentials({ accessToken: `${FAKE_ACCESS_TOKEN}theirs`, expiresAt: NOW + 8 * HOUR }));
+    const theirs = JSON.stringify(
+      fakeCredentials({ accessToken: `${FAKE_ACCESS_TOKEN}theirs`, refreshToken: `${FAKE_REFRESH_TOKEN}theirs` }),
+    );
     const { fetch } = fakeFetch(() => {
       writeText(theirs);
-      return granted();
+      return granted({ refresh_token: NEW_REFRESH_TOKEN });
     });
 
     const result = await refresh(fetch);
@@ -266,16 +261,67 @@ describe("refreshIfNeeded yields to another writer", () => {
     expectNoLeftovers();
   });
 
-  it("does not overwrite a file another writer is truncating in place", async () => {
+  it("keeps a rotated refresh token when another writer changed an unrelated key in flight", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    const theirs = JSON.stringify({ ...expiringCredentials(), mcpOAuth: { server: { note: "theirs" } } });
+    const { fetch } = fakeFetch(() => {
+      writeText(theirs);
+      return granted({ refresh_token: NEW_REFRESH_TOKEN });
+    });
+
+    const result = await refresh(fetch);
+
+    const expiresAt = NOW + 28_800_000;
+    expect(result).toEqual({ status: "refreshed", expiresAt });
+    const expected = theirs
+      .replace(FAKE_ACCESS_TOKEN, NEW_ACCESS_TOKEN)
+      .replace(FAKE_REFRESH_TOKEN, NEW_REFRESH_TOKEN)
+      .replace(String(EXPIRING), String(expiresAt));
+    expect(fs.readFileSync(file, "utf8")).toBe(expected);
+    expectNoLeftovers();
+  });
+
+  it("waits out a file another writer is rewriting in place, then merges onto its result", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    const theirs = JSON.stringify({ ...expiringCredentials(), mcpOAuth: {} });
+    const { fetch } = fakeFetch(() => {
+      writeText(theirs.slice(0, 40));
+      setTimeout(() => writeText(theirs), 50);
+      return granted({ refresh_token: NEW_REFRESH_TOKEN });
+    });
+
+    expect(await refresh(fetch)).toMatchObject({ status: "refreshed" });
+    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(stored.mcpOAuth).toEqual({});
+    expect(stored.claudeAiOauth.refreshToken).toBe(NEW_REFRESH_TOKEN);
+  });
+
+  it("files a write-conflict, never overwriting, when the file stays torn", async () => {
     writeText(JSON.stringify(expiringCredentials()));
     const torn = JSON.stringify(fakeCredentials()).slice(0, 40);
     const { fetch } = fakeFetch(() => {
       writeText(torn);
+      return granted({ refresh_token: NEW_REFRESH_TOKEN });
+    });
+
+    const result = await refresh(fetch);
+
+    expect(result).toEqual({ status: "failed", failure: "write-conflict", deposited: true });
+    expect(fs.readFileSync(file, "utf8")).toBe(torn);
+    expect(deposits[0]?.summary).toBe("Claude token refresh failed for profile default: write-conflict");
+    expectNoLeftovers();
+    expectNoCanary(result);
+  });
+
+  it("does not recreate a credentials file a logout removed in flight", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    const { fetch } = fakeFetch(() => {
+      fs.rmSync(file);
       return granted();
     });
 
     expect(await refresh(fetch)).toEqual({ status: "refreshed-elsewhere" });
-    expect(fs.readFileSync(file, "utf8")).toBe(torn);
+    expect(fs.readdirSync(profile.configDir)).toEqual([]);
   });
 
   it("lets only one of two concurrent refreshes send, and leaves one whole file", async () => {

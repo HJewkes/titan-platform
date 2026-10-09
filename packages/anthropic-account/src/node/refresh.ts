@@ -1,7 +1,7 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { loginStateFromCredentials, needsRefresh, type RefusedReason } from "../login.js";
 import type { AccountProfile } from "../profile.js";
-import { redactSecrets } from "../redact.js";
 import {
   acquireRefreshLock,
   jsonFormatOf,
@@ -12,6 +12,7 @@ import {
 } from "./credentials-write.js";
 import { currentUid } from "./login.js";
 import type { FetchLike } from "./poll.js";
+import { refreshFailureDeposit, type RefreshFailureDeposit, type RefreshFailureKind } from "./refresh-deposit.js";
 
 // Claude Code 2.1.x's production OAuth config: its TOKEN_URL and CLIENT_ID, and the scopes
 // its refresh asks for when the stored login names no client.
@@ -33,12 +34,14 @@ const INFERENCE_SCOPE = "user:inference";
 export const MAX_REFRESH_TIMEOUT_MS = 30_000;
 export const DEFAULT_REFRESH_TIMEOUT_MS = 10_000;
 export const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
-export const DEPOSIT_ASKER = "anthropic-account";
+// After the exchange, how often a store that lost a race re-reads and retries, and how long
+// it waits for a file caught mid-write.
+const STORE_ATTEMPTS = 4;
+const STORE_RETRY_MS = 100;
 
 // RFC 6750's b64token: anything else, such as a CR or LF, has no business in a token.
 const TOKEN_SHAPE = /^[A-Za-z0-9._~+/=-]{1,4096}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LABEL = /^[A-Za-z0-9_.-]{1,64}$/;
 const YEAR_SECONDS = 366 * 24 * 3600;
 
 const storedSchema = z.object({
@@ -60,28 +63,15 @@ const tokenResponseSchema = z.object({
 type TokenResponse = z.infer<typeof tokenResponseSchema>;
 type StoredOAuth = z.infer<typeof storedSchema>["claudeAiOauth"];
 
-export type RefreshFailureKind = "login-required" | "unrecognized-format" | "network" | "malformed" | "io" | `http-${number}`;
-
 export type RefreshResult =
   | { status: "fresh" }
   | { status: "refreshed"; expiresAt: number }
-  // Another writer changed the file after it was read; its version stands.
+  // Another writer replaced the login (its refresh token) after it was read; its version stands.
   | { status: "refreshed-elsewhere" }
   // Claude Code, or another refresher, holds the refresh lock.
   | { status: "locked" }
   | { status: "skipped"; reason: "missing" | "not-refreshable" | RefusedReason }
   | { status: "failed"; failure: RefreshFailureKind; deposited: boolean };
-
-// The shape of an owner-queue OwnerItemDeposit, so the caller can hand it to writeDeposit
-// unchanged. It names the profile and the failure kind, never a token.
-export interface RefreshFailureDeposit {
-  depositId: string;
-  asker: string;
-  kind: "do";
-  door: "two-way";
-  summary: string;
-  context: string;
-}
 
 export interface RefreshOptions {
   fetch: FetchLike;
@@ -104,10 +94,15 @@ interface Settings {
   timeoutMs: number;
 }
 
-interface RefreshPlan {
+// One version of the file: its exact text, its parse and its layout.
+interface CredentialsBase {
   text: string;
   credentials: Record<string, unknown>;
   format: JsonFormat;
+}
+
+interface RefreshPlan extends CredentialsBase {
+  refreshToken: string;
   body: string;
 }
 
@@ -170,7 +165,7 @@ function planFrom(text: string, credentials: Record<string, unknown>): RefreshRe
   if (!(oauth.scopes ?? []).includes(INFERENCE_SCOPE) && !oauth.subscriptionType) return skipped("not-refreshable");
   const format = jsonFormatOf(text, credentials);
   if (format === null) return failed("unrecognized-format");
-  return { plan: { text, credentials, format, body: requestBody(oauth) } };
+  return { plan: { text, credentials, format, refreshToken: oauth.refreshToken, body: requestBody(oauth) } };
 }
 
 function decide(configDir: string, settings: Settings): RefreshResult | { plan: RefreshPlan } {
@@ -242,26 +237,60 @@ async function exchange(body: string, settings: Settings): Promise<{ tokens: Tok
   }
 }
 
-// Spread keeps every key in its place, so only the refreshed values differ from the input.
-function serialize(plan: RefreshPlan, tokens: TokenResponse, now: number): { text: string; expiresAt: number } {
-  const oauth = plan.credentials.claudeAiOauth as Record<string, unknown>;
+// Spread keeps every key in its place, so only the refreshed values differ from the base.
+function serialize(base: CredentialsBase, tokens: TokenResponse, now: number): { text: string; expiresAt: number } {
+  const oauth = base.credentials.claudeAiOauth as Record<string, unknown>;
   const expiresAt = now + tokens.expires_in * 1000;
   const updated: Record<string, unknown> = { ...oauth, accessToken: tokens.access_token, expiresAt };
   if (tokens.refresh_token !== undefined) updated.refreshToken = tokens.refresh_token;
   if (tokens.refresh_token_expires_in !== undefined) {
     updated.refreshTokenExpiresAt = now + tokens.refresh_token_expires_in * 1000;
   }
-  const text = JSON.stringify({ ...plan.credentials, claudeAiOauth: updated }, null, plan.format.indent);
-  return { text: `${text}${plan.format.trailer}`, expiresAt };
+  const text = JSON.stringify({ ...base.credentials, claudeAiOauth: updated }, null, base.format.indent);
+  return { text: `${text}${base.format.trailer}`, expiresAt };
+}
+
+function storedRefreshToken(credentials: Record<string, unknown>): string | undefined {
+  const parsed = storedSchema.safeParse(credentials);
+  return parsed.success ? parsed.data.claudeAiOauth.refreshToken : undefined;
+}
+
+// The file changed under a spent refresh token. The login is the refresh token, not the
+// bytes: while the file still holds the token just spent, any other change (a key written
+// by a session, a write caught half-done) is merged under, never a reason to drop the new
+// tokens, which may hold the only live refresh token. Only a different login, or a logout,
+// is yielded to.
+function rebase(configDir: string, uid: number, spent: string): CredentialsBase | "yield" | "retry" {
+  const read = readCredentialsText(configDir, uid);
+  if (read.status === "missing") return "yield";
+  if (read.status !== "text") return "retry";
+  const credentials = parseObject(read.text);
+  if (credentials === null) return "retry";
+  if (storedRefreshToken(credentials) !== spent) return "yield";
+  const format = jsonFormatOf(read.text, credentials);
+  return format === null ? "retry" : { text: read.text, credentials, format };
+}
+
+async function store(configDir: string, plan: RefreshPlan, tokens: TokenResponse, settings: Settings): Promise<RefreshResult> {
+  let base: CredentialsBase = plan;
+  for (let attempt = 1; attempt <= STORE_ATTEMPTS; attempt++) {
+    const next = serialize(base, tokens, settings.now);
+    if (replaceCredentials(configDir, settings.uid, base.text, next.text) === "written") {
+      return { status: "refreshed", expiresAt: next.expiresAt };
+    }
+    const current = rebase(configDir, settings.uid, plan.refreshToken);
+    if (current === "yield") return { status: "refreshed-elsewhere" };
+    if (current === "retry") await delay(STORE_RETRY_MS);
+    else base = current;
+  }
+  return failed("write-conflict");
 }
 
 async function refreshLocked(configDir: string, plan: RefreshPlan, settings: Settings): Promise<RefreshResult> {
   if (!unchangedSince(configDir, settings.uid, plan.text)) return { status: "refreshed-elsewhere" };
   const exchanged = await exchange(plan.body, settings);
   if (!("tokens" in exchanged)) return exchanged;
-  const next = serialize(plan, exchanged.tokens, settings.now);
-  const written = replaceCredentials(configDir, settings.uid, plan.text, next.text);
-  return written === "written" ? { status: "refreshed", expiresAt: next.expiresAt } : { status: "refreshed-elsewhere" };
+  return store(configDir, plan, exchanged.tokens, settings);
 }
 
 // A filesystem error's message is not kept, so nothing it quotes can travel further.
@@ -279,33 +308,6 @@ async function attempt(configDir: string, settings: Settings): Promise<RefreshRe
   } catch {
     return failed("io");
   }
-}
-
-function depositLabel(label: string): string {
-  return LABEL.test(label) && redactSecrets(label) === label ? label : "unlabelled";
-}
-
-function contextFor(failure: RefreshFailureKind): string {
-  if (failure === "login-required" || failure === "http-400" || failure === "http-401" || failure === "http-403") {
-    return "The stored refresh token is missing, expired or was refused. Log in again with Claude Code in this profile's config dir.";
-  }
-  if (failure === "unrecognized-format") {
-    return "The credentials file is in a layout this refresher does not rewrite, so no refresh was sent. Log in again with Claude Code in this profile's config dir.";
-  }
-  return "The refresh will be retried on the next poll. If this repeats, check the network and the token endpoint.";
-}
-
-export function refreshFailureDeposit(label: string, failure: RefreshFailureKind, now: number): RefreshFailureDeposit {
-  const name = depositLabel(label);
-  const day = new Date(now).toISOString().slice(0, 10);
-  return {
-    depositId: `token-refresh-${name}-${day}`,
-    asker: DEPOSIT_ASKER,
-    kind: "do",
-    door: "two-way",
-    summary: `Claude token refresh failed for profile ${name}: ${failure}`,
-    context: contextFor(failure),
-  };
 }
 
 // A deposit that cannot be filed does not change the outcome; `deposited` says so.
