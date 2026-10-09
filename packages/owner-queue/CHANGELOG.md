@@ -1,5 +1,16 @@
 # @titan-design/owner-queue
 
+## 0.2.0
+
+### Minor Changes
+
+- 9e29d34: Add `buildOwnerRounds(items, options)`: open Decide items become `titan-review/round@2` manifests that pass `RoundSchema` from `@titan-design/review-schema` (now a dependency). One question and section per ask in input order; items a principle covers become one `Principle:` question, and one-way items never batch. Items and principles are parsed first (an unparseable item is skipped as `invalid`), and every prompt, section text and option label is normalised to round@2's rules in one place. Asks with a shadow-mode item or a hidden pick, on an item or its principle, go in `after-answer` rounds; the rest go in `shown` rounds. Each round returns bindings from question ids and shown labels back to item and option ids. The zod peer range rises to `^4.3.6`, review-schema's own.
+
+### Patch Changes
+
+- c754254: `buildOwnerRounds` refuses invalid options before reading any item: a non-loopback `storybookUrl`, `widths` that are empty, repeated or outside 200 to 3840, a NaN, zero or negative `maxQuestions` or `firstRound`, or a blank `unit` throws a `ZodError`. Every manifest is parsed with `RoundSchema` before it is returned, so a returned round is always one round@2 accepts.
+- 718eda8: Spool file names now escape A-Z, so `Bob` and `bob` no longer share a file on a case-insensitive filesystem. A lone surrogate in an asker, depositId or item id is refused with a `RangeError` rather than given U+FFFD's name. `writeDeposit` throws `SpoolNameCollisionError` instead of answering `created: false` when the name holds a different deposit. Deposits and answers filed under the old unescaped names are still read. `depositFileNames` and `answerFileNames` list both forms, and a repeat of an old deposit still answers `created: false`.
+
 ## 0.1.0
 
 ### Minor Changes
