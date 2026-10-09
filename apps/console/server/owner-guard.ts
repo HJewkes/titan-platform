@@ -28,7 +28,7 @@ export interface ConsoleContext extends BaseContext {
   surface: ConsoleSurface;
   /** What the LAN listener's auth gate recorded; null on loopback, which is never gated. */
   auth: RequestAuth | null;
-  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the LAN carries TLS. */
+  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the owner turns it on. */
   ownerWrites: boolean;
 }
 
@@ -81,7 +81,7 @@ export const REFUSALS = {
   notHttp: "it runs only over HTTP",
   noCredential: "it needs the owner's session cookie on the LAN listener; loopback carries no credential",
   bearer: "it needs the owner's session cookie; a bearer token cannot answer for the owner",
-  disabled: "owner writes disabled until TLS",
+  disabled: "owner writes are off",
   peerLocal: "the request comes from this machine; answer from another device",
 } as const;
 

@@ -38,7 +38,7 @@ export function isoWeek(at: number): string {
 }
 
 /** When Shepherd's own `merge` step landed the PR, or undefined if the run did not merge it. */
-function mergedAt(run: WorkflowRun): number | undefined {
+export function mergedAt(run: WorkflowRun): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "merge" && payloadOf(result).done === true)
     .map(([, result]) => Date.parse(result.completedAt));

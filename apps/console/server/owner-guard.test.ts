@@ -21,7 +21,7 @@ import {
   type ConsoleSurface,
 } from "./owner-guard.js";
 import { createConsoleRegistry } from "./registry.js";
-import { closedPort, send, sessionCookie, startFakeDaemon, type FakeDaemon, type Reply } from "./test-support.js";
+import { closedPort, send, sessionCookie, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8
@@ -145,6 +145,7 @@ function syntheticConfig(): ConsoleConfig {
     codewatchUrl: "http://codewatch.test:7433",
     lanHost: null,
     lanNames: [],
+    lanTls: null,
     lanTokenPath: "/nonexistent/lan.token",
     ownerWrites: false,
     inboxDir: "/nonexistent/inbox",
@@ -326,9 +327,11 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
   let replies: Reply[];
   let secrets: string[];
   let token: string;
+  let pair: SelfSignedPair;
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), "console-owner-guard-"));
+    pair = writeSelfSignedCert(dir, [NAME, LAN]);
     activeWork = await startFakeDaemon({ ok: true, version: "9.9.9", index: {} }, fixtureAnswer);
     config = {
       port: 0,
@@ -342,6 +345,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
       codewatchUrl: "http://codewatch.test:7433",
       lanHost: LAN,
       lanNames: [NAME],
+      lanTls: { certFile: pair.certFile, keyFile: pair.keyFile },
       lanTokenPath: path.join(dir, "state", "lan.token"),
       ownerWrites: true,
       inboxDir: path.join(dir, "state", "inbox", "deposits"),
@@ -383,9 +387,9 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     return settled;
   }
 
-  const sameOrigin = (): Record<string, string> => ({ origin: `http://${NAME}:${port}` });
+  const sameOrigin = (): Record<string, string> => ({ origin: `https://${NAME}:${port}` });
   const lan = (method: string, route: string, headers: Record<string, string>, body?: string): Promise<Reply> =>
-    record(send(LAN, port, method, route, { host: `${NAME}:${port}`, ...headers }, body));
+    record(send(LAN, port, method, route, { host: `${NAME}:${port}`, ...headers }, body, { ca: pair.cert, servername: NAME }));
   const lanRpc = (command: string, headers: Record<string, string>, args: unknown = {}): Promise<Reply> =>
     lan("POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...headers }, JSON.stringify(args));
   const loopbackRpc = (command: string, headers: Record<string, string> = { "x-titan-client": "test" }): Promise<Reply> =>
@@ -396,7 +400,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
   async function signIn(): Promise<{ cookie: string }> {
     const code = new URL(createLoginLink(config)).searchParams.get("code") ?? "";
     secrets.push(code);
-    const login = await send(LAN, port, "POST", "/auth/login", { host: `${NAME}:${port}`, ...json, ...sameOrigin() }, JSON.stringify({ code }));
+    const login = await send(LAN, port, "POST", "/auth/login", { host: `${NAME}:${port}`, ...json, ...sameOrigin() }, JSON.stringify({ code }), { ca: pair.cert, servername: NAME });
     const cookie = sessionCookie(login)!.split(";")[0]!;
     secrets.push(cookie.slice(cookie.indexOf("=") + 1));
     return { cookie };
@@ -433,7 +437,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     const cookie = await signIn();
 
     const crossSite = await lanRpc(OWNER_WRITE, { ...cookie, origin: "http://evil.example" }, { answer: "yes" });
-    const otherPort = await lanRpc(OWNER_WRITE, { ...cookie, origin: `http://${NAME}:${port + 1}` }, { answer: "yes" });
+    const otherPort = await lanRpc(OWNER_WRITE, { ...cookie, origin: `https://${NAME}:${port + 1}` }, { answer: "yes" });
 
     expect([crossSite.status, otherPort.status]).toEqual([403, 403]);
     expect(ran).toEqual([]);
@@ -448,7 +452,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     const withCookie = await lanRpc(OWNER_WRITE, cookie, { answer: "yes" });
 
     expect(withCookie.status).toBe(403);
-    expect(errorOf(withCookie)).toBe("owner-write command refused: owner writes disabled until TLS");
+    expect(errorOf(withCookie)).toBe("owner-write command refused: owner writes are off");
     expect(ran).toEqual([]);
     expectNoSecretInAnyReply();
   });
