@@ -18,5 +18,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `healthSampleSchema` is the strict write schema for one stored probe result: `ts`,
   `target`, `kind`, `status` (`pass|warn|fail|unknown`), `latencyMs`, `observed`, `output`,
   `source` (default `probe`) and `dedupKey` (imports only). Unknown fields are refused.
+- `probeHttp(target, deps)` GETs a health route once and returns one sample. It never
+  throws: a refused connection, a timeout, a non-2xx code, a body that is not a health payload
+  or a wrong pid or port is `fail`, and an error inside the probe is `unknown`. `fetch`, the
+  clock (`now`, `after`) and `expectedPid` are injected.
 
-The HTTP probe, the append-only sample store and uptime arrive in later TP-1651 slices.
+The append-only sample store and uptime arrive in later TP-1651 slices.
