@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto";
 import { z } from "zod";
+import { stepOf } from "./coordinator-evidence.js";
 
 const HEX = (length: number) => new RegExp(`^[0-9a-f]{${length}}$`);
 const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
@@ -18,7 +19,7 @@ const MAX_PAYLOAD_DEPTH = 32;
 const RELEASE_STEPS: ReadonlySet<string> = new Set(["after-stages"]);
 const HARDWARE_STEP = /device|hardware/;
 
-const ItemSchema = z.strictObject({
+export const ItemSchema = z.strictObject({
   gate: z.string().regex(GATE_ID),
   runId: z.string().min(1),
   stepId: z.string().min(1),
@@ -29,7 +30,7 @@ const ItemSchema = z.strictObject({
 });
 
 /** The v1 statement the owner's Mac signs; the server verifies the signature over its exact bytes before parsing it. */
-const StatementSchema = z.strictObject({
+export const StatementSchema = z.strictObject({
   v: z.literal(1),
   type: z.literal("titan-factory.gate-resolve"),
   aud: z.string().min(1),
@@ -44,7 +45,7 @@ const StatementSchema = z.strictObject({
 export type Statement = z.infer<typeof StatementSchema>;
 export type ProofItem = z.infer<typeof ItemSchema>;
 
-type Refusal =
+export type Refusal =
   | "bad-signature"
   | "unknown-key"
   | "expired"
@@ -55,15 +56,15 @@ type Refusal =
   | "malformed"
   | "mixed-release-batch";
 
-type ProofResult = { ok: true; statement: Statement; keyId: string } | { ok: false; refusal: Refusal };
+export type ProofResult = { ok: true; statement: Statement; keyId: string } | { ok: false; refusal: Refusal };
 
-interface ProofInput {
+export interface ProofInput {
   statementB64: string;
   signatureB64: string;
 }
 
 /** Installed owner public keys by key id. */
-type KeyRing = ReadonlyMap<string, KeyObject>;
+export type KeyRing = ReadonlyMap<string, KeyObject>;
 
 /** Sorted-key JSON, so the digest does not depend on the order a payload's keys were written in. Throws past the depth bound. */
 function canonical(value: unknown, depth = 0): string {
@@ -74,11 +75,6 @@ function canonical(value: unknown, depth = 0): string {
     return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner, depth + 1)}`).join(",")}}`;
   }
   return JSON.stringify(value);
-}
-
-/** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`; the same rule as coordinator-evidence's `stepOf`. */
-function stepOf(gateId: string): string {
-  return gateId.slice(gateId.lastIndexOf("/") + 1).replace(/:\d+$/, "");
 }
 
 /** The run a gate id belongs to: the text before its first `/`; undefined when there is none. */
@@ -97,7 +93,7 @@ function itemsConsistent(items: readonly ProofItem[]): boolean {
   return true;
 }
 
-/** What the owner approves: every item in order, covering the run, step and answer as well as the PR and head. Throws on a payload nested past 32 levels. */
+/** What the owner approves: every item in order, covering the run, step and answer as well as the PR and head. Throws on a payload nested more than 30 levels deep, since the row wrappers take two of the 32. */
 export function itemsDigest(items: readonly ProofItem[]): string {
   const rows = items.map(({ gate, runId, stepId, repo, pr, headSha, payload }) => [gate, runId, stepId, repo, pr, headSha, payload]);
   return createHash("sha256").update(canonical(rows)).digest("hex");

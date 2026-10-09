@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { itemsDigest, keyIdOf, keyRing, verifyProof, type ProofItem, type Statement } from "./presence-proof.js";
+import { ItemSchema, itemsDigest, keyIdOf, keyRing, StatementSchema, verifyProof, type ProofItem, type Statement } from "./presence-proof.js";
 
 const NOW = 1_791_500_100;
 const AUD = "basement";
@@ -276,9 +276,23 @@ describe("itemsDigest", () => {
     expect(itemsDigest([item(over)])).not.toBe(itemsDigest([item()]));
   });
 
+  it("accepts a payload 30 levels deep and throws past it", () => {
+    const nested = (levels: number): Record<string, unknown> => JSON.parse(`${'{"a":'.repeat(levels)}1${"}".repeat(levels)}`);
+    expect(() => itemsDigest([item({ payload: nested(30) })])).not.toThrow();
+    expect(() => itemsDigest([item({ payload: nested(31) })])).toThrow(RangeError);
+  });
+
   it("depends on item order", () => {
     const a = item();
     const b = item({ gate: "run2/merge:1", runId: "run2" });
     expect(itemsDigest([a, b])).not.toBe(itemsDigest([b, a]));
+  });
+});
+
+describe("statement schema", () => {
+  it("is exported for callers that build or check statements", () => {
+    const { publicKey } = setup();
+    expect(StatementSchema.safeParse(statementFor(publicKey)).success).toBe(true);
+    expect(ItemSchema.safeParse({ ...item(), extra: true }).success).toBe(false);
   });
 });
