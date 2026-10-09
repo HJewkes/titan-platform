@@ -470,7 +470,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +63 more in the [reference page](/reference/daemon)
+- +65 more in the [reference page](/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -601,12 +601,13 @@ Tier 1, `@titan-design/rpc-client@0.3.0`. Browser-safe typed client for titan da
 
 Key exports:
 
-- `client/client`: `CallArgs`, `CommandName`, `RpcError`, `createRpcClient`
+- `client/client`: `CallArgs`, `RpcError`, `createRpcClient`
 - `client/live-source`: `liveSource`
 - `client/static-source`: `staticSource`
 - `client/snapshot`: `SNAPSHOT_FORMAT`, `buildSnapshot`, `parseSnapshot`
 - `client/canonical-key`: `canonicalArgs`, `snapshotKey`, `wireArgs`
-- +11 more in the [reference page](/reference/rpc-client)
+- `client/sse-parser`: `createSseParser`
+- +12 more in the [reference page](/reference/rpc-client)
 
 <a id="cap-worktree"></a>
 

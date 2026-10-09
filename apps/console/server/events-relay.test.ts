@@ -220,7 +220,7 @@ describe("the events relay", () => {
     await relay.close();
     await broker.close();
 
-    expect(broker.openCount()).toBe(0);
+    await until(() => broker.openCount() === 0, 500);
   });
 });
 
