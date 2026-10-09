@@ -49,7 +49,7 @@ function mergeVerdictAt(step: [string, StepResult]): number | undefined {
 }
 
 /** The overrides a run recorded, from any of its steps. */
-export const runOverrides = (run: WorkflowRun): OwnerOverride[] => Object.values(run.stepResults).flatMap((result) => overrideOf(result) ?? []);
+const runOverrides = (run: WorkflowRun): OwnerOverride[] => Object.values(run.stepResults).flatMap((result) => overrideOf(result) ?? []);
 
 /** Per repo and ISO week of a run's first MERGE verdict: the overrides its runs recorded over the runs that had a MERGE verdict. */
 export function overrideStats(runs: readonly WorkflowRun[], range: { from?: string; to?: string } = {}): OverrideRow[] {
