@@ -54,13 +54,6 @@ export const TEST_KIND_SOURCE_METRIC_NAMES: readonly string[] = [
   ...TEST_FACT_METRICS.map(([name]) => name),
 ];
 
-/** Names recomputed over the whole graph on each index. */
-export const TEST_KIND_GRAPH_METRIC_NAMES: readonly string[] = [
-  "symbol_kind_output_boundary",
-  "symbol_kind_pure",
-  ...TESTS_BY_KIND_METRICS,
-];
-
 const PY_TEST_PATH = /(?:^|\/)(?:tests?\/|test_[^/]*\.py$|[^/]*_test\.py$|conftest\.py$)/;
 
 function flagRows<T>(nodeId: string, facts: T, table: readonly [string, keyof T][]): GraphMetric[] {
@@ -90,7 +83,7 @@ export function testKindSourceMetrics(fileId: string, file: ParsedFile, symbolNa
   return out;
 }
 
-export interface TestKindInput {
+interface TestKindInput {
   edges: readonly GraphEdge[];
   /** Every source-local row of the snapshot, fresh and reused alike. */
   sourceMetrics: readonly GraphMetric[];
