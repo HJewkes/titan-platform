@@ -96,12 +96,13 @@ function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation)
   return `run ${runId} ${phase}: policy says ${decision.outcome} (${decision.reason}); ${held ? `held: ${held.reason}; ` : ""}${waiting}\n`;
 }
 
-function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [] }: ResyncReport): string {
+function formatResync({ dryRun, ended, orphanGates, superseded, supersededReviews = [], supersededMerges = [], reverted = [] }: ResyncReport): string {
   const verb = dryRun ? "would end" : "ended";
   const runs = ended.map(({ runId, reason }) => `run ${runId.slice(0, 8)} ${verb}: ${reason}`);
   const gates = superseded.map(({ runId, from, to, condition }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its gate (${condition}): head ${from} -> ${to}`);
   const reviews = supersededReviews.map(({ runId, stepId, to }) => `run ${runId.slice(0, 8)} ${dryRun ? "would supersede" : "superseded"} its review step ${stepId}: head moved to ${to}`);
   const merges = supersededMerges.map(({ runId, stepId, to }) => `run ${runId.slice(0, 8)} ${dryRun ? "would answer" : "answered"} its merge step ${stepId} with no merge: head moved to ${to}`);
+  const reverts = reverted.map(({ runId, mergeSha, revertSha }) => `run ${runId.slice(0, 8)} ${dryRun ? "would be marked" : "marked"} reverted: merge ${mergeSha} reverted by ${revertSha}`);
   const summary = `${dryRun ? "would cancel" : "cancelled"} ${orphanGates.length} orphaned gate(s); ${dryRun ? "would supersede" : "superseded"} ${superseded.length} stale gate(s)`;
-  return `${[...runs, ...gates, ...reviews, ...merges, summary].join("\n")}\n`;
+  return `${[...runs, ...gates, ...reviews, ...merges, ...reverts, summary].join("\n")}\n`;
 }

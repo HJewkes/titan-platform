@@ -134,6 +134,9 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
 - GitHub silently caps `pulls/{n}/commits` at the first 250 commits (`PR_COMMITS_CAP`).
   `listPrCommits` returns the shas oldest first and does not detect the cap; a caller checks
   that the last sha is the PR's head and treats any other list as short.
+- `listDefaultBranchCommits(repo, since)` returns `{ sha, message }` for every commit on the
+  default branch committed at or after `since`, newest first, all pages. A wide `since` on a busy
+  repo is many pages; keep it to the window you need.
 - `listForcePushes` reads one GraphQL page of `FORCE_PUSHES_CAP` (100) head force-pushes and
   throws `ForcePushesTruncated` when GitHub says there are more. Treat that as "cannot decide",
   never as the whole list. `before` is null when GitHub no longer has the replaced commit.

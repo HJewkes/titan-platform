@@ -20,6 +20,7 @@ import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
+import { markRevertedRuns } from "./shepherd/reverts.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -280,6 +281,9 @@ async function sweepThawed(host: FactoryHost, services: ShepherdServices, log: L
     thawed.add(repo);
     throw err;
   }
+  const reverts = await markRevertedRuns(host, services);
+  for (const reverted of reverts.reverted) log.info({ ...reverted }, "marked a merged run reverted");
+  for (const failed of reverts.errors) log.warn({ ...failed }, "could not read main for reverts");
 }
 
 interface ThawWatch {
