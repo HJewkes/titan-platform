@@ -249,19 +249,20 @@ function parentsOf(cwd: string, sha: string): string[] {
   return lines(git(cwd, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, sha]))[0]?.split(" ").slice(1) ?? [];
 }
 
-function isReachableFrom(cwd: string, sha: string, tips: readonly string[]): boolean {
-  if (tips.length === 0) return false;
-  return git(cwd, ["rev-list", "-n", "1", sha, "--not", ...tips, END_OF_OPTIONS]).trim() === "";
+/** True when everything `sha` reaches that the remote's `tips` lack is among the `scanned` commits. */
+function isCoveredBy(cwd: string, sha: string, tips: readonly string[], scanned: ReadonlySet<string>): boolean {
+  const notOnRemote = lines(git(cwd, ["rev-list", sha, ...(tips.length > 0 ? ["--not", ...tips] : []), END_OF_OPTIONS]));
+  return notOnRemote.every((reached) => scanned.has(reached));
 }
 
 /**
  * The patch text a commit is scanned by. A merge is diffed against each parent in turn, which blames it
  * for everything the other side brought in, including commits the remote already has. With the remote's
  * `tips`, a two-parent merge is instead diffed against a fresh re-merge of its parents: that is exactly
- * what the resolution added beyond them. That is only sound when each parent's own content is scanned
- * elsewhere: the remote advertises it, or it is among the `scanned` commits. A parent that is neither
- * (one only a local tracking ref holds) keeps the per-parent diffs. A merge with more parents is diffed
- * against its unpushed parents, or against every parent when none is unpushed.
+ * what the resolution added beyond them. That is only sound when each parent's whole ancestry is scanned
+ * elsewhere: the remote advertises it, or it is among the `scanned` commits. When anything a parent
+ * reaches is neither (a commit only a local tracking ref holds), or the merge has more than two parents,
+ * the per-parent diffs apply.
  */
 function commitPatchText(
   cwd: string,
@@ -271,18 +272,9 @@ function commitPatchText(
   maxBytes: number,
 ): string {
   const parents = tips === undefined ? [] : parentsOf(cwd, sha);
-  if (tips === undefined || parents.length < 2) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
-  const unpushed = parents.filter((parent) => !isReachableFrom(cwd, parent, tips));
-  const covered = unpushed.every((parent) => scanned.has(parent));
-  if (parents.length === 2 && covered) return showCommit(cwd, sha, REMERGE_PATCH_FLAGS, maxBytes);
-  if (parents.length === 2 || unpushed.length === 0) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
-  return unpushed.map((parent) => diffAgainst(cwd, parent, sha, maxBytes)).join("");
-}
-
-function diffAgainst(cwd: string, parent: string, sha: string, maxBytes: number): string {
-  const result = runGit(cwd, ["diff", ...PATCH_FLAGS, END_OF_OPTIONS, parent, sha], maxBytes);
-  if (isOverBuffer(result.error)) throw new PatchTooLargeError(sha, maxBytes);
-  return stdoutOf(result, "diff");
+  if (tips === undefined || parents.length !== 2) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
+  const covered = parents.every((parent) => isCoveredBy(cwd, parent, tips, scanned));
+  return showCommit(cwd, sha, covered ? REMERGE_PATCH_FLAGS : COMMIT_PATCH_FLAGS, maxBytes);
 }
 
 /**
