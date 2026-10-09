@@ -6,9 +6,9 @@
 npm install @titan-design/anthropic-account zod
 ```
 
-Status: 0.2. The root entry is pure code with no fs, process or network access, and a test
-fails if it gains any. File access lives on the `./node` subpath; network access arrives
-there later.
+Status: 0.3. The root entry is pure code with no fs, process or network access, and a test
+fails if it gains any. File and network access live on the `./node` subpath, and the
+network call goes through a `fetch` the caller passes in.
 
 ## The problem it solves
 
@@ -213,11 +213,65 @@ is not a regular file, is larger than 256 KiB (checked on the read itself, so gr
 the `fstat` counts), is invalid, or has no rate-limit window. Its `session_id`, `source` and
 `account` pass through `redactSecrets`. `ageSeconds` is never negative.
 
+## Polling the usage endpoint
+
+```ts
+import { pollAll, pollUsage } from "@titan-design/anthropic-account/node";
+
+const result = await pollUsage({ label: "agents", configDir }, { fetch });
+if (!result.ok) console.error(`agents: ${result.failure}`);
+
+for (const { label, result, writeError } of await pollAll({ fetch })) {
+  console.error(`${label}: ${result.ok ? "ok" : result.failure}${writeError ? " (write failed)" : ""}`);
+}
+```
+
+`pollUsage(profile, { fetch, now?, uid?, timeoutMs? })` reads the access token from
+`<configDir>/.credentials.json` through the same gate as `readLoginState`, sends one
+request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
+
+| failure | when | request sent |
+|---|---|---|
+| `missing` | no credentials file, or no `claudeAiOauth` block | no |
+| `refused` | the gate refused the file, or the block or its token is malformed; `reason` says which | no |
+| `expired` | the token expires within 60 s of `now` (`EXPIRY_MARGIN_MS`), or already has | no |
+| `io` | an unexpected filesystem error | no |
+| `http-<status>` | any status outside 2xx, a 3xx included | yes |
+| `network` | the fetch rejected or timed out, the body stalled past the timeout, or the response came from a followed redirect | yes |
+| `malformed` | a 2xx body over 64 KiB, not JSON, or with no known window | yes |
+
+The request is `GET https://api.anthropic.com/api/oauth/usage` with three headers:
+`authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20` (Claude Code's own
+value) and `accept: application/json`. It sets `redirect: "error"` and an
+`AbortSignal.timeout` of `timeoutMs` (default 10 s) that also bounds the body read. It is never retried. The token must be an
+RFC 6750 `b64token` of at most 4096 characters, so it cannot split a header; anything
+else is refused as `malformed` before a request. `now` defaults to `Date.now()`, sets
+`written_at`, and decides expiry; `uid` is as for `readLoginState`.
+
+A 2xx body is parsed against an allowlist of window keys, `five_hour`, `seven_day`,
+`seven_day_opus`, `seven_day_sonnet` and `seven_day_oauth_apps`, each
+`{ utilization: number, resets_at: string | null }` with `resets_at` at most 64 characters. Every other key
+is dropped unread, a known window in another shape is dropped, and the rest goes through
+`usageFromOAuthResponse`. The reading's `account` is the profile's label, left out when
+`redactSecrets` would change it. A non-2xx body is cancelled without being read. It throws
+only a `RangeError`, with a fixed message, for a non-finite `now` or a `timeoutMs` that is
+not a positive number.
+
+`pollAll({ fetch, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
+once, `profiles` or else `discoverProfiles(discover)`, and writes each reading with
+`writeReading`. It resolves to one `{ label, result, file?, writeError? }` per profile, in
+order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
+One profile's failure never stops another.
+
 ## What it deliberately does not do
 
 The root reads no files, makes no request and writes nothing. The `./node` subpath writes
-only the usage file. Neither calls the usage endpoint yet, and neither refreshes a token.
-Neither returns, logs or stores a token.
+only the usage file and sends only the usage request, through the caller's `fetch`. Neither
+refreshes a token or touches the refresh token: an expired token is reported, not renewed.
+Neither returns, logs or stores a token, and no failure carries a message. The tests use
+canary tokens, a fake `fetch` and a temp home, and assert the canary is absent from every
+result, error, captured console or stream line and written file, including when the server
+echoes the token in its body, a header, a redirect `Location` or an error body.
 
 ## Gotchas
 
