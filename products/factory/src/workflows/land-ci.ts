@@ -63,9 +63,19 @@ function judgedReads(port: GitHubPort, input: CiInput, reads: PrReads, options: 
 }
 
 /** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is a failure, nothing is still running. */
-function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, runs: readonly CheckRun[]): CheckFinding[] {
+function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): CheckFinding[] {
+  const runs = withoutSupersededCancels(allRuns);
   if (input.contexts.length === 0) return openRepoFindings(headSha, runs);
   return headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+}
+
+/**
+ * A newer push cancels the older run of the same check, so that cancel is not a verdict on the head. Only a cancel is
+ * dropped, and only when a newer run of that name exists: a superseded failure still counts, and a lone cancel stays red.
+ */
+function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
+  const supersededBy = (run: CheckRun) => runs.some((other) => other !== run && other.name === run.name && other.headSha === run.headSha && other.appId === run.appId && latestPerName([run, other])[0] === other);
+  return runs.filter((run) => run.conclusion !== "cancelled" || !supersededBy(run));
 }
 
 /** True when every required check at `headSha` has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */

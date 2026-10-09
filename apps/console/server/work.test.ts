@@ -9,7 +9,7 @@ import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js"
 import { readInitiative, readPortfolio, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
-const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), seatPrefixes: [] };
+const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
 const NO_SESSIONS = { graphPath: "/nonexistent/graph.sqlite3" };
 
 let daemon: FakeDaemon | undefined;
