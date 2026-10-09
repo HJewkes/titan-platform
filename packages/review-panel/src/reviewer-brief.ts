@@ -1,6 +1,19 @@
-import type { RepoSlug } from "@titan-design/github";
-import { OWNER_BRIEF_END, OWNER_BRIEF_START, MAX_OWNER_BRIEF_CHARS, type MalformedRefusal } from "./review-schemas.js";
-import { reviewCheckoutName } from "./review-checkout-sweep.js";
+import type { VerdictBlockRefusal } from "@titan-design/session-read";
+
+type RepoSlug = string;
+
+/** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
+export const MAX_OWNER_BRIEF_CHARS = 2000;
+export const OWNER_BRIEF_START = "OWNER-BRIEF";
+export const OWNER_BRIEF_END = "END-OWNER-BRIEF";
+
+/** Why a reviewer's final message was no verdict: the parser refused its block, or the block named another repo, PR or head. */
+export type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
+
+/** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
+export function reviewCheckoutName(pr: number, head: string): string {
+  return `review-${pr}-${head.slice(0, 12)}`;
+}
 
 export const MAX_REVIEWER_QUESTIONS = 8;
 
@@ -59,6 +72,11 @@ function ownerBriefLines(): string[] {
   ];
 }
 
+function endingInstruction(input: ReviewerBriefInput): string {
+  if (input.ownerBrief) return "End your final message with these three lines, the verdict filled in, followed only by the owner block described below:";
+  return "End your final message with exactly these three lines, the verdict filled in and nothing after them" + ((input.fixFirsts ?? 0) >= 1 ? " but the Closer line a FIX_FIRST adds:" : ":");
+}
+
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 export function reviewerBrief(input: ReviewerBriefInput): string {
   const { repo, pr, head } = input;
@@ -82,9 +100,7 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
     "For FIX_FIRST, list every blocking item, then name the defect class the items share and the boundary where one fix covers it.",
     ...recurringLines(input.fixFirsts ?? 0),
     "",
-    input.ownerBrief
-      ? "End your final message with these three lines, the verdict filled in, followed only by the owner block described below:"
-      : "End your final message with exactly these three lines, the verdict filled in and nothing after them" + ((input.fixFirsts ?? 0) >= 1 ? " but the Closer line a FIX_FIRST adds:" : ":"),
+    endingInstruction(input),
     "",
     "Verdict: <MERGE or FIX_FIRST>",
     `PR: ${repo}#${pr}`,
