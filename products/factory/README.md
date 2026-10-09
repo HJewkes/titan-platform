@@ -207,6 +207,22 @@ The owner's `sh-sent-back` gate still opens in these cases: the message fails to
 single seat owns the repo, the agent exits a second time at a head the seat was already told
 about, or the wake was a conflict or fix-proof wake.
 
+### A fixer that cannot start
+
+A wake never resumes a retired implementer. When agent-chat refuses to resume an ended
+implementer, as for one on a model its pool no longer runs, the same wake spawns a successor
+instead, under the same spawn load gate. Other failures are not refusals and still reach the
+owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
+`sh-wake-implementer` records the refusal and `held`. A held FIX_FIRST then takes the route of a
+fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
+the run waits for a new head with no owner gate open. When that notice is not sent, and for a
+held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
+next action and the wake's timeline entry name the refusal; the row says the seat was told only when
+`sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`
+and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
+still bounds how many such wakes a run makes. A refused message to a live implementer still
+opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:

@@ -4,6 +4,7 @@ import { configPath, loadConfig } from "../config.js";
 import type { GateSummary } from "../registry.js";
 import type { WatchRow } from "../shepherd/view.js";
 import type { DigestSources, GateFact } from "./collect.js";
+import { readFriction } from "./friction.js";
 import { buildDigest, deliverDigest } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
 import { digestDirectories, execProcess, fileSources, readAgentChat, type Exec } from "./sources.js";
@@ -24,6 +25,8 @@ export interface DigestFlags {
 }
 
 export interface DigestDeps {
+  /** The factory store, read for owner friction; without it the digest leaves that section out. */
+  dbPath?: string;
   exec?: Exec;
   now?: Date;
 }
@@ -72,6 +75,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
   const sources: DigestSources = {
     ...factorySources(call),
     ...fileSources(config),
+    ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
     agentChat: (minutes) => readAgentChat(deps.exec ?? execProcess, agentChatBin, minutes),
   };
   const markdown = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true });
