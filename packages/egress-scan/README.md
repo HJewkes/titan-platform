@@ -27,7 +27,10 @@ notices and errors to stderr.
   and for a new branch scans only the commits no ref of that remote has. `range` with an
   all-zero base scans the head commit alone. A merge commit is diffed against each parent
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
-  both diffs name is reported once. The message is read with `--encoding=UTF-8`, so
+  both diffs name is reported once. In `pre-push`, with the push URL listed, a two-parent
+  merge is instead diffed against a re-merge of its parents (`--diff-merges=remerge`, which
+  honors `--text`), so only what the resolution added is scanned, not the other side's
+  already-pushed commits; each parent's own commits are scanned as commits. The message is read with `--encoding=UTF-8`, so
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
 - **Text.** `text` scans free text (a PR title, body or branch name) with the generic rules and
   the private term list, for the CC-269 and CC-270 callers. It reads stdin, or `--file <path>`

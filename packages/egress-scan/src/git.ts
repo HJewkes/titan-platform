@@ -56,6 +56,8 @@ const MESSAGE_FLAGS = ["--no-patch", "--encoding=UTF-8", "--format=%an%x00%ae%x0
 const IDENT_FIELDS = ["author.name", "author.email", "committer.name", "committer.email"];
 // A combined diff ignores `--text`, so a merge is diffed against each parent in turn instead.
 const COMMIT_PATCH_FLAGS = ["--diff-merges=separate", "--format=", ...PATCH_FLAGS];
+// A merge's diff against a fresh re-merge of its parents, which honors `--text` unlike a combined diff.
+const REMERGE_PATCH_FLAGS = ["--diff-merges=remerge", "--format=", ...PATCH_FLAGS];
 const MAX_BUFFER = 1024 * 1024 * 1024;
 // Every revision argument follows this, so a value that starts with a dash cannot become an option.
 const END_OF_OPTIONS = "--end-of-options";
@@ -146,6 +148,8 @@ function hasCommit(cwd: string, sha: string): boolean {
 /** How the remote is listed: the URL git pushes to (the pre-push hook's second argument), and test seams. */
 interface ListOptions {
   readonly pushUrl?: string | undefined;
+  /** Tips already listed from the push URL, so a push lists the remote once. */
+  readonly tips?: readonly string[] | undefined;
   readonly timeoutMs?: number;
   readonly env?: NodeJS.ProcessEnv;
 }
@@ -179,24 +183,34 @@ function listPushUrl(cwd: string, list: ListOptions): string | undefined {
 }
 
 /**
+ * The tips the push URL advertises that this clone has, or undefined when it cannot be listed.
+ * The tips are read from the URL git pushes to, not the fetch URL, which can name a different repository.
+ * Local tracking refs prove nothing, since anyone can write them.
+ */
+export function listRemoteTips(cwd: string, list: ListOptions): string[] | undefined {
+  const listing = listPushUrl(cwd, list);
+  if (listing === undefined) return undefined;
+  const tips = lines(listing)
+    .map((line) => line.split("\t")[0] ?? "")
+    .filter((sha) => isFullSha(sha) && hasCommit(cwd, sha));
+  return [...new Set(tips)];
+}
+
+/**
  * What an existing branch's range leaves out. A branch that merged main also carries main commits the
  * remote already has, so the remote's advertised tips are excluded along with the branch's old tip.
- * The tips are read from the URL git pushes to, not the fetch URL, which can name a different repository.
- * Local tracking refs prove nothing, since anyone can write them; when the push URL is missing or the
- * remote cannot be listed in time, the range is the plain `remote..local`, which scans more and never less.
+ * When the push URL is missing or the remote cannot be listed in time, the range is the plain
+ * `remote..local`, which scans more and never less.
  */
 function knownExclusions(cwd: string, remoteSha: string, list: ListOptions): string[] {
-  const listing = listPushUrl(cwd, list);
-  if (listing === undefined) {
+  const tips = list.tips ?? listRemoteTips(cwd, list);
+  if (tips === undefined) {
     process.stderr.write(
       `titan-egress-scan: could not list the push URL; scanning the full ${remoteSha.slice(0, 7)}..local range\n`
     );
     return [remoteSha];
   }
-  const tips = lines(listing)
-    .map((line) => line.split("\t")[0] ?? "")
-    .filter((sha) => isFullSha(sha) && hasCommit(cwd, sha));
-  return [remoteSha, ...new Set(tips)];
+  return [remoteSha, ...tips];
 }
 
 /** The commits in `base..head`, oldest first; an all-zero base means `head` alone. */
@@ -231,14 +245,52 @@ function splitHeader(text: string): { idents: IdentField[]; message: string[] } 
   return { idents, message };
 }
 
+function parentsOf(cwd: string, sha: string): string[] {
+  return lines(git(cwd, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, sha]))[0]?.split(" ").slice(1) ?? [];
+}
+
+function isReachableFrom(cwd: string, sha: string, tips: readonly string[]): boolean {
+  if (tips.length === 0) return false;
+  return git(cwd, ["rev-list", "-n", "1", sha, "--not", ...tips, END_OF_OPTIONS]).trim() === "";
+}
+
+/**
+ * The patch text a commit is scanned by. A merge is diffed against each parent in turn, which blames it
+ * for everything the other side brought in, including commits the remote already has. With the remote's
+ * `tips`, a two-parent merge is instead diffed against a fresh re-merge of its parents: that is exactly
+ * what the resolution added beyond them. Every parent's own content is scanned elsewhere, either because
+ * the remote has it or because an unpushed parent is itself in the pushed range. A merge with more
+ * parents is diffed against its unpushed parents, or against every parent when none is unpushed.
+ */
+function commitPatchText(cwd: string, sha: string, tips: readonly string[] | undefined, maxBytes: number): string {
+  const parents = tips === undefined ? [] : parentsOf(cwd, sha);
+  if (tips === undefined || parents.length < 2) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
+  if (parents.length === 2) return showCommit(cwd, sha, REMERGE_PATCH_FLAGS, maxBytes);
+  const unpushed = parents.filter((parent) => !isReachableFrom(cwd, parent, tips));
+  if (unpushed.length === 0) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
+  return unpushed.map((parent) => diffAgainst(cwd, parent, sha, maxBytes)).join("");
+}
+
+function diffAgainst(cwd: string, parent: string, sha: string, maxBytes: number): string {
+  const result = runGit(cwd, ["diff", ...PATCH_FLAGS, END_OF_OPTIONS, parent, sha], maxBytes);
+  if (isOverBuffer(result.error)) throw new PatchTooLargeError(sha, maxBytes);
+  return stdoutOf(result, "diff");
+}
+
 /**
  * One commit's idents, message and patch, read by separate calls so a merge's per-parent copies of
  * the message never land inside its patch. Throws `PatchTooLargeError` when either is over `maxPatchBytes`.
+ * `tips` are the remote's advertised tips; without them every merge parent is diffed.
  */
-export function readCommit(cwd: string, sha: string, maxPatchBytes = MAX_PATCH_BYTES): ScanSource {
+export function readCommit(
+  cwd: string,
+  sha: string,
+  maxPatchBytes = MAX_PATCH_BYTES,
+  tips?: readonly string[],
+): ScanSource {
   requireRevision(sha, "commit");
   const { idents, message } = splitHeader(showCommit(cwd, sha, MESSAGE_FLAGS, maxPatchBytes));
-  const patch = parseDiff(showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxPatchBytes));
+  const patch = parseDiff(commitPatchText(cwd, sha, tips, maxPatchBytes));
   return requireAllText({ ...patch, sha, message, idents }, `commit ${sha.slice(0, 7)}`);
 }
 
