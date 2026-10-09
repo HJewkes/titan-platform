@@ -751,7 +751,9 @@ metrics are recomputed on every index and never carried forward under reuse.
 
 Ported in TP-133, strictly as codewatch had it. `linkTestsToSources` pairs each test file
 with non-test files in two passes. Pass 1 uses path conventions: it strips a `.test` or `.spec`
-infix and collapses a `__tests__/`, `test/` or `tests/` segment. Pass 2 gives a test that
+infix and collapses a `__tests__/`, `test/` or `tests/` segment. A pytest file named
+`test_<name>.py` or `<name>_test.py` that no path rewrite pairs goes to the one non-test
+`<name>.py` in the tree, and to none when several share the name (TP-2170). Pass 2 gives a test that
 pass 1 left unpaired its strongest co-edited non-test partner, with at least 2 shared commits.
 
 `indexPaths` writes `linked_test_count` on each linked source, with or without git. With git
@@ -759,6 +761,25 @@ history on it also writes `test_bus_factor_{w}` and `test_top_author_share_{w}` 
 primary window. These summarize churn authorship across all tests linked to a source, so a
 file can be well spread in production code and a single-author silo in its tests. All three
 are recomputed on every index and never carried forward.
+
+### Test kinds (Python)
+
+Added in TP-2170. Facts about code; which code kinds need which test kinds is the
+consumer's policy. Values are 0 or 1 unless they are counts.
+
+| Metric | Written on | What it says |
+|---|---|---|
+| `symbol_kind_parser`, `symbol_kind_io` | each function outside a test file | parses or decodes input; does file, process, socket or HTTP I/O itself |
+| `symbol_output_signal`, `symbol_global_writes` | each function outside a test file | prints, argparse, CLI or route decorator, `__main__` guard call; writes module state |
+| `symbol_kind_output_boundary` | each function outside a test file | the output signal, a console script, or a call from a `__main__.py` |
+| `symbol_kind_pure` | each function outside a test file | no parser, and no I/O, output or global write in anything it reaches through `calls` |
+| `test_kind_*` (snapshot, exact_output, loose_output, error_path, property, roundtrip) | each pytest test function | the kinds of check the test makes |
+| `symbol_tests_*` (snapshot, exact_output, loose_output_only, error_path, property, roundtrip) | each source function a test reaches | how many tests of each kind reach it |
+
+A test reaches what its `calls` edges reach. A test that reaches no source function, such as
+a click `CliRunner` test, reaches the output boundaries of the sources the test linker pairs
+its file with. The per-function facts are carried forward under reuse; the boundary,
+purity and count metrics are recomputed on every index.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.
