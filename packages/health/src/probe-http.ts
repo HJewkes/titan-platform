@@ -12,7 +12,7 @@ export interface ProbeHttpTarget {
 }
 
 export interface ProbeHttpDeps {
-  fetch?: (url: string, init?: { signal?: AbortSignal }) => Promise<Response>;
+  fetch?: (url: string, init?: { signal?: AbortSignal; redirect?: RequestRedirect }) => Promise<Response>;
   /** Epoch milliseconds. */
   now?: () => number;
   /** Runs `fire` once `ms` have passed and returns a cancel. */
@@ -40,9 +40,10 @@ function realAfter(ms: number, fire: () => void): () => void {
 export async function probeHttp(target: ProbeHttpTarget, deps: ProbeHttpDeps = {}): Promise<HealthSample> {
   const now = deps.now ?? Date.now;
   const startedAt = now();
+  let answeredAt: number | undefined;
   let verdict: Verdict;
   try {
-    verdict = await probeOnce(target, deps);
+    verdict = await probeOnce(target, deps, () => (answeredAt = now()));
   } catch (error) {
     verdict = { status: "unknown", output: `probe error: ${errorMessage(error)}` };
   }
@@ -50,15 +51,17 @@ export async function probeHttp(target: ProbeHttpTarget, deps: ProbeHttpDeps = {
     ts: new Date(startedAt).toISOString(),
     target: target.name,
     kind: "http",
-    latencyMs: Math.max(0, now() - startedAt),
+    latencyMs: Math.max(0, (answeredAt ?? now()) - startedAt),
     source: "probe",
     ...verdict,
   };
 }
 
-async function probeOnce(target: ProbeHttpTarget, deps: ProbeHttpDeps): Promise<Verdict> {
+// Latency stops when the exchange ends, so a slow pid file read is not charged to the target.
+async function probeOnce(target: ProbeHttpTarget, deps: ProbeHttpDeps, markAnswered: () => void): Promise<Verdict> {
   const url = new URL(target.url).href;
   const exchange = await exchangeWithin(url, target.timeoutMs, deps);
+  markAnswered();
   if (exchange.kind === "timeout") return { status: "fail", output: `timeout after ${target.timeoutMs} ms` };
   if (exchange.kind === "unreachable") return { status: "fail", output: `unreachable: ${exchange.reason}` };
   return await judgeAnswer(target, exchange, deps);
@@ -76,7 +79,8 @@ async function exchangeWithin(url: string, timeoutMs: number, deps: ProbeHttpDep
     });
   });
   const request = (async (): Promise<Exchange> => {
-    const response = await doFetch(url, { signal: controller.signal });
+    // A redirect is judged as itself; following it would score whatever the health route points at.
+    const response = await doFetch(url, { signal: controller.signal, redirect: "manual" });
     return { kind: "answer", code: response.status, body: await response.text() };
   })().catch((error: unknown): Exchange => ({ kind: "unreachable", reason: transportReason(error) }));
   try {

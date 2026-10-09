@@ -96,7 +96,7 @@ const sample = await probeHttp(
 |---|---|---|
 | Connection refused or reset | `fail` | `unreachable: <code>` |
 | No full answer within `timeoutMs` (headers and body) | `fail` | `timeout after <ms> ms` |
-| Non-2xx | `fail` | `HTTP <code>` |
+| Non-2xx, redirects included (they are not followed) | `fail` | `HTTP <code>` |
 | 2xx body that is not JSON, or not a health payload | `fail` | `body is not JSON`, `payload: ...` |
 | Payload `port` is not `expectPort`, or `pid` is not `expectedPid()` | `fail` | `identity: ...` |
 | `expectedPid()` is null (no pid file) while the port answers | `fail` | `identity: ...` |
@@ -105,7 +105,8 @@ const sample = await probeHttp(
 
 Identity is the TP-1056 risk: a stranger answering 200 on the port must not read as up, so
 a payload that reports no pid or port fails a check it was asked for. `latencyMs` runs on
-the injected clock from before the request to after the body. `observed.code` holds the HTTP
+the injected clock from before the request to after the body; the `expectedPid()` lookup is
+not counted. `observed.code` holds the HTTP
 code when there was one, and each `observe` dot path is copied under its own name; a missing
 path is left out, never defaulted. The package never reads a pid file itself; the caller
 passes `expectedPid`.

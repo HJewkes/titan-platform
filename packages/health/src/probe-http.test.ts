@@ -173,6 +173,36 @@ describe("probeHttp when the target is down", () => {
     expect(sample).toMatchObject({ status: "fail", output: "timeout after 250 ms" });
   });
 
+  it("times out a server that sends headers and then stalls mid-body", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write('{"ok":');
+    });
+    servers.push(server);
+    await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/health`;
+
+    const sample = await probeHttp(target(url, { timeoutMs: 100 }));
+    server.closeAllConnections();
+
+    expect(sample).toMatchObject({ status: "fail", output: "timeout after 100 ms" });
+  });
+
+  it("reads a redirect as fail instead of following it", async () => {
+    const landing = await serve(200, JSON.stringify({ ok: true }));
+    const server = createServer((_req, res) => {
+      res.writeHead(302, { location: landing });
+      res.end();
+    });
+    servers.push(server);
+    await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/health`;
+
+    const sample = await probeHttp(target(url));
+
+    expect(sample).toMatchObject({ status: "fail", observed: { code: 302 } });
+  });
+
   it("reads a URL that does not parse as unknown", async () => {
     const sample = await probeHttp(target("not a url"));
 
@@ -195,6 +225,25 @@ describe("probeHttp measurements", () => {
 
     expect(sample.latencyMs).toBe(40);
     expect(sample.ts).toBe(new Date(1_700_000_000_000).toISOString());
+  });
+
+  it("leaves the pid lookup out of the latency", async () => {
+    let clock = 1_700_000_000_000;
+    const deps: ProbeHttpDeps = {
+      now: () => clock,
+      fetch: async () => {
+        clock += 40;
+        return new Response(JSON.stringify({ ok: true, pid: 7 }), { status: 200 });
+      },
+      expectedPid: async () => {
+        clock += 500;
+        return 7;
+      },
+    };
+
+    const sample = await probeHttp(target("http://127.0.0.1:7410/health"), deps);
+
+    expect(sample).toMatchObject({ status: "pass", latencyMs: 40 });
   });
 
   it("copies observe paths and omits a missing path rather than defaulting it", async () => {
