@@ -26,6 +26,9 @@ export class MergeHeldError extends Error {
  */
 export type HeldCheck = (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
 
+/** The open PR's head now; undefined for a PR merged or closed elsewhere. */
+type OpenHeadRead = (repo: RepoSlug, pr: number) => Promise<string | undefined>;
+
 /** Reads the hold's named reviewer at `sha` and records the newest verdict there: MERGE satisfies the hold, FIX_FIRST withdraws it. */
 export type HoldSatisfier = (repo: RepoSlug, pr: number, sha: string, baseRef: string) => Promise<void>;
 
@@ -118,6 +121,14 @@ export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: Fr
   };
 }
 
+/** Reads the head the way `heldCheck` does, through the snapshot when one is wired. */
+export function openHeadRead(port: GitHubPort, snapshot?: PrSnapshot): OpenHeadRead {
+  return async (repo, pr) => {
+    const { state, merged, headSha } = await openOrRead(port, snapshot, repo, pr);
+    return merged || state === "closed" ? undefined : headSha;
+  };
+}
+
 /** The port handed to `landRoutes`: its merge refuses a held PR, and any PR of a frozen repo but the fix task's; any other PR passes straight through. */
 export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: FreezeGuard, satisfy?: HoldSatisfier): GitHubPort {
   const held = heldCheck(port, holds, freeze, satisfy);
@@ -137,11 +148,11 @@ export interface HoldTiming {
   now?: () => number;
 }
 
-/** What the merge step answers after a wait: no merge, so land reads CI again, since the base may have moved while it was held. */
-const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
+/** What the merge step answers after a wait: no merge, so land reads CI again, since the base or the head may have moved while it was held. */
+export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming): StepRoute {
+export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead): StepRoute {
   const afterHold = codeRoute(route.match, timing.now ?? Date.now, async () => AFTER_HOLD);
   return {
     ...route,
@@ -149,7 +160,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
       run: async (input) => {
         let waited: boolean;
         try {
-          waited = await untilReleased(held, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          waited = await untilReleased({ held, headNow }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
@@ -162,18 +173,31 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
 interface MergeTarget {
   repo: RepoSlug;
   pr: number;
-  sha: string;
+  sha?: string;
+}
+
+interface HoldReads {
+  held: HeldCheck;
+  headNow: OpenHeadRead;
 }
 
 /**
- * True when the PR was held at least once before its release. A head that moved on past `sha` stays held at `sha`
- * forever, so a hold its reviewer satisfied at the new head ends the wait too: land then reads CI at that head.
+ * True when the PR was held at least once before its release. A merge at `sha` can never go through once the head has
+ * moved past it, so a push ends the wait too: land then reads CI and the run reviews the new head, where the same hold
+ * applies. A head that cannot be read counts as not moved.
  */
-async function untilReleased(held: HeldCheck, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+async function untilReleased({ held, headNow }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
     if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
-    if ((await held(target.repo, target.pr)) === undefined) return true;
+    if (await movedPast(headNow, target)) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);
   }
+}
+
+/** A target with no sha merges whatever the head is, so no push moves past it. */
+async function movedPast(headNow: OpenHeadRead, { repo, pr, sha }: MergeTarget): Promise<boolean> {
+  if (sha === undefined) return false;
+  const head = await headNow(repo, pr).catch(() => undefined);
+  return head !== undefined && head !== sha;
 }
