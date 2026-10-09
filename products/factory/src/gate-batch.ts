@@ -6,7 +6,7 @@ import type { BatchOutcome } from "./gate-batch-store.js";
 import { itemsRefusal } from "./gate-batch-plan.js";
 import { pendingGateId } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
-import { verifyProof, type keyRing, type ProofItem, type Statement } from "./presence-proof.js";
+import { verifyProof, type KeyRing, type ProofInput, type ProofItem, type Refusal, type Statement } from "./presence-proof.js";
 
 export interface ApplyDeps {
   /** Unix milliseconds. */
@@ -17,17 +17,13 @@ export interface ApplyDeps {
   port?: Pick<GitHubPort, "getPr">;
 }
 
-type KeyRing = ReturnType<typeof keyRing>;
-type ProofInput = Parameters<typeof verifyProof>[0];
-type VerifyRefusal = Extract<ReturnType<typeof verifyProof>, { ok: false }>["refusal"];
-
 interface ItemOutcome {
   gate: string;
   outcome: BatchOutcome;
   detail?: string;
 }
 
-type ApplyResult = { ok: true; batchId: string; items: ItemOutcome[] } | { ok: false; refusal: VerifyRefusal | "replayed-nonce" | "item-refused"; detail?: string };
+type ApplyResult = { ok: true; batchId: string; items: ItemOutcome[] } | { ok: false; refusal: Refusal | "replayed-nonce" | "item-refused"; detail?: string };
 
 interface Skip {
   outcome: Extract<BatchOutcome, `skipped-${string}`>;
