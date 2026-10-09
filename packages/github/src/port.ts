@@ -3,6 +3,7 @@ import { sendUpdateBranch } from "./update-branch-retry.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
+import { pause, writeWithReadBack, type Sleep } from "./write-read-back.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha } from "./validate.js";
@@ -232,7 +233,7 @@ export interface GitHubPortOptions {
    * token: `GET /user` answers 403 there, and `GET /app` needs an App JWT the installation token is not.
    */
   login?: string;
-  /** Waits between retries of a comment post; tests inject one that does not wait. */
+  /** Waits between retries of a comment post, a merge or a rerun; tests inject one that does not wait. */
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -241,6 +242,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
   const repoOf = checkRepo;
   const pr = (number: number) => checkPositiveInt("pr", number);
   const login = options.login === undefined ? memoizedLogin(wire) : async () => options.login!;
+  const sleep = options.sleep ?? pause;
   return {
     getHeadSha: async (repo, branch) => wire.getRef(repoOf(repo), checkRef("branch", branch)),
     ensureBranch: async (repo, branch, baseSha) => ensureBranch(wire, repoOf(repo), checkRef("branch", branch), checkSha("baseSha", baseSha)),
@@ -262,12 +264,12 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
-    merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method)),
-    rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId)),
+    merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep),
+    rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
     compareFiles: async (repo, base, head) => wire.compareFiles(repoOf(repo), checkRef("base", base), checkRef("head", head)),
-    upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, options.sleep),
+    upsertComment: async (repo, number, marker, body) => upsertComment(wire, login, repoOf(repo), pr(number), checkMarker(marker), body, sleep),
     listReviewComments: async (repo, number) => wire.listReviewComments(repoOf(repo), pr(number)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
   };
@@ -342,20 +344,26 @@ async function pushEmptyCommit(wire: GitHubWire, repo: RepoSlug, branch: string,
   return { sha: created.sha, done: true };
 }
 
-async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>> {
+async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep): Promise<WriteResult<{ mergeSha: string }>> {
   const pr = await wire.getPr(repo, number);
   if (pr.merged) return { mergeSha: pr.mergeSha ?? "", done: false, skipped: "merged" };
   if (pr.state === "closed") return { mergeSha: "", done: false, skipped: "closed" };
   if (pr.headSha !== sha) return { mergeSha: "", done: false, skipped: "head-moved" };
-  const merged = await wire.merge(repo, number, sha, method);
-  return { mergeSha: merged.sha, done: true };
+  const put = async () => ({ mergeSha: (await wire.merge(repo, number, sha, method)).sha, done: true as const });
+  return writeWithReadBack(`merge PUT ${repo}#${number} at ${sha}`, put, () => mergedAt(wire, repo, number, sha), sleep);
 }
 
-async function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number): Promise<WriteResult> {
+/** Only a merge of the pinned head counts as this write landing. */
+async function mergedAt(wire: GitHubWire, repo: RepoSlug, number: number, sha: string): Promise<WriteResult<{ mergeSha: string }> | undefined> {
+  const pr = await wire.getPr(repo, number);
+  return pr.merged && pr.headSha === sha && pr.mergeSha ? { mergeSha: pr.mergeSha, done: true } : undefined;
+}
+
+async function rerunFailed(wire: GitHubWire, repo: RepoSlug, runId: number, sleep: Sleep): Promise<WriteResult> {
   const status = await wire.getWorkflowRunStatus(repo, runId);
   if (status !== "completed") return { done: false, skipped: "in-progress" };
-  await wire.rerunFailedJobs(repo, runId);
-  return { done: true };
+  const requeued = async () => ((await wire.getWorkflowRunStatus(repo, runId)) === "completed" ? undefined : { done: true as const });
+  return writeWithReadBack(`rerun-failed-jobs ${repo} run ${runId}`, async () => (await wire.rerunFailedJobs(repo, runId), { done: true as const }), requeued, sleep);
 }
 
 /** The list came back shorter than the PR's own count, so a path may be missing. */

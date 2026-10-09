@@ -465,12 +465,12 @@ Tier 1, `@titan-design/github@0.5.1`. GitHub REST port over the gh CLI: validate
 Key exports:
 
 - `port`: `FileListTruncatedError`, `GitHubConflictError`, `githubPort`
+- `write-read-back`: `WriteRetriesExhaustedError`
 - `force-pushes`: `ForcePushesTruncated`
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- `app-token`: `appInstallationToken`
-- +59 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +60 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-hitl"></a>
 
