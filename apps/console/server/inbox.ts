@@ -28,11 +28,12 @@ export const MAX_OPEN_DEPOSITS = 2000;
 export const INBOX_DEPOSIT = "inbox.deposit";
 
 /**
- * The `/rpc` body cap for `inbox.deposit`, checked before the body is buffered. Twice the stored
- * cap, because a client that writes non-ASCII as `\uXXXX` escapes (Python's default) sends up to
- * twice the bytes the deposit stores; the stored cap is still checked after parsing.
+ * The `/rpc` body cap for `inbox.deposit`, checked before the body is buffered. Three times the
+ * stored cap, because a client that writes non-ASCII as `\uXXXX` escapes (Python's default) sends
+ * six bytes for each two-byte character (U+0080-07FF) and twelve for each four-byte astral one;
+ * the stored cap is still checked after parsing.
  */
-export const INBOX_DEPOSIT_BODY_LIMIT = 2 * MAX_DEPOSIT_BYTES;
+export const INBOX_DEPOSIT_BODY_LIMIT = 3 * MAX_DEPOSIT_BYTES;
 
 const DEPOSIT_SUFFIX = ".json";
 const ANSWER_SUFFIX = ".answer.json";

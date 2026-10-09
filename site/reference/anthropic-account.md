@@ -265,12 +265,112 @@ once, `profiles` or else `discoverProfiles(discover)`, and writes each reading w
 order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
 One profile's failure never stops another.
 
+## Refreshing an access token
+
+```ts
+import { refreshIfNeeded } from "@titan-design/anthropic-account/node";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
+
+const result = await refreshIfNeeded(
+  { label: "agents", configDir },
+  { fetch, marginMs: 10 * 60_000, onFailure: (deposit) => writeDeposit(spoolDir, deposit) },
+);
+```
+
+`refreshIfNeeded(profile, { fetch, marginMs, now?, uid?, timeoutMs?, onFailure? })` renews
+the profile's OAuth access token when `needsRefresh(state, now, marginMs)` says it is due,
+and writes the new credentials back. It is the one place in the package that writes a
+credentials file, and running Claude Code sessions read that file, so it follows Claude
+Code's own refresh closely:
+
+1. Reads `.credentials.json` through the `readLoginState` gate. Nothing happens unless the
+   token is due and the login has a usable refresh token. It also checks that
+   `JSON.stringify` reproduces the file's exact bytes, compact or indented by 2, 4 or a
+   tab. A layout it cannot reproduce fails as `unrecognized-format` before any request,
+   because a rotated refresh token that cannot be stored logs the profile out.
+2. Takes Claude Code's two refresh locks, `<configDir>/.oauth_refresh.lock` and
+   `<realpath(configDir)>.lock`. Each is a directory made with `mkdir`, the scheme
+   `proper-lockfile` uses. A lock that is already held is never stolen; the result is
+   `locked`, and the next poll tries again. Claude Code treats a lock older than 60 s as
+   stale, so `timeoutMs` is capped at 30 s (`MAX_REFRESH_TIMEOUT_MS`, default 10 s).
+3. Re-reads the file through the gate. If it changed, another session refreshed it, and the
+   result is `refreshed-elsewhere`.
+4. Sends `POST https://platform.claude.com/v1/oauth/token`, `content-type: application/json`,
+   with body `{ grant_type: "refresh_token", refresh_token, client_id, scope }`. The values
+   are Claude Code 2.1.x's own. `client_id` is the stored `clientId`, or else Claude Code's
+   (`OAUTH_CLIENT_ID`). `scope` is space-separated: the stored scopes when a `clientId` is
+   stored (the defaults if it stores none), and otherwise `DEFAULT_REFRESH_SCOPES` plus any `user:projects:*` scope already
+   held. It sets `redirect: "error"` and is never retried. Only a 200 counts. Its body must
+   hold an `access_token` and an integer `expires_in`, and may hold a `refresh_token` and
+   `refresh_token_expires_in`; each token must be an RFC 6750 `b64token`.
+5. Writes the new JSON to `.credentials.json.<pid>.<random>.tmp` in the config dir,
+   exclusively, mode 0600, then `fsync`s it.
+6. Re-reads the credentials file through the gate once more. If its bytes changed while the
+   request was in flight, the temp file is removed and the login is compared, not the
+   bytes. The old refresh token is spent by now, and a rotated one in the response may be
+   the only live one, so the new tokens are not dropped for an unrelated change:
+   - The file still holds the refresh token just spent, for example because a session
+     wrote another key. The new tokens are applied to that writer's file, and steps 5 to
+     7 run again.
+   - The file is unreadable or half-written. The refresher waits 100 ms and reads it
+     again.
+   - The file holds a different refresh token (a re-login, or a refresh elsewhere), or
+     it is gone (a logout). That writer's file stands, and the result is
+     `refreshed-elsewhere`.
+   - After four attempts the result is `failed` with `write-conflict`, which files a
+     deposit, and the file is left as the other writer left it.
+7. Renames the temp file over `.credentials.json`, then `fsync`s the dir, best effort. If
+   the write or the rename throws, the result is `failed` with `write-failed` when the
+   response rotated the refresh token, since the stored one no longer works, and with `io`
+   when it did not.
+
+The file is never truncated in place, so a session reading it sees the old file or the new
+one. Only `accessToken` and `expiresAt` (`now` plus `expires_in`) change. So do
+`refreshToken` and `refreshTokenExpiresAt` when the response rotates them. Every other key
+keeps its bytes and its position. Locks are released on every path, and only a lock
+directory this call made is removed.
+
+While it holds the locks, the refresher keeps a holder record,
+`.oauth_refresh.lock.anthropic-account`, beside them in the config dir: its pid and the
+inode and ctime of each lock dir it made. The record sits outside the lock dir because
+Claude Code removes a stale lock with `rmdir`. If a crash leaves the locks behind, the next
+call finds them held, sees the recorded pid has exited, removes only the dirs whose inode
+and ctime still match, and takes the locks again. A lock with no record, or one whose
+identity differs, is Claude Code's and is left alone.
+
+| result | when | deposit |
+|---|---|---|
+| `fresh` | the token is not due | no |
+| `refreshed`, with `expiresAt` | the new credentials were written | no |
+| `refreshed-elsewhere` | the file changed before the request, or another login or a logout replaced it after | no |
+| `locked` | a refresh lock is held | no |
+| `skipped`, with `reason` | the file is missing or refused by the gate, or the login is one Claude Code would not refresh: neither the `user:inference` scope nor a `subscriptionType` | no |
+| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `write-conflict`, `write-failed`, `http-<status>`, `network`, `malformed` or `io` | yes |
+
+Each failure calls `onFailure` once with a `RefreshFailureDeposit`. That is an owner-queue
+`OwnerItemDeposit`: asker `anthropic-account`, kind `do`, a one-line summary naming the
+profile label and the failure kind, and a fixed context line. A failure that needs a new
+login (`login-required`, `http-400`, `http-401`, `http-403`, `unrecognized-format`,
+`write-conflict`, `write-failed`) has the `depositId`
+`token-refresh-<label>-relogin-<UTC day>`. Any other failure, which a later poll may clear,
+has `token-refresh-<label>-<UTC day>`. The spool keeps the first deposit for each id, so a
+retry deposit filed earlier in the day never hides a log-in-again one, and a poller that
+retries files at most two items per profile per day. A label that is not a short plain name, or that `redactSecrets`
+would change, is written `unlabelled`. The package is tier 0 and owner-queue is tier 2, so
+the caller wires `writeDeposit`. A deposit that throws leaves `deposited: false`, and the
+result is otherwise unchanged.
+
+Like `pollUsage`, it never logs, and never throws for anything the file, the lock or the
+server does. An error body is cancelled unread, a fetch rejection or filesystem error is
+dropped with its message, and only a bad `now`, `marginMs` or `timeoutMs` throws a
+`RangeError` with a fixed message.
+
 ## What it deliberately does not do
 
-The root reads no files, makes no request and writes nothing. The `./node` subpath writes
-only the usage file and sends only the usage request, through the caller's `fetch`. Neither
-refreshes a token or touches the refresh token: an expired token is reported, not renewed.
-Neither returns, logs or stores a token, and no failure carries a message. The tests use
+The root reads no files, makes no request and writes nothing. Outside `refreshIfNeeded`, the
+`./node` subpath writes only the usage file and sends only the usage request, through the
+caller's `fetch`; `pollUsage` reports an expired token and never renews it. Nothing returns,
+logs or stores a token anywhere but the credentials file, and no failure carries a message. The tests use
 canary tokens, a fake `fetch` and a temp home, and assert the canary is absent from every
 result, error, captured console or stream line and written file, including when the server
 echoes the token in its body, a header, a redirect `Location` or an error body.
