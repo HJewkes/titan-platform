@@ -4,7 +4,7 @@ import { inRange } from "./stats.js";
 
 const HOUR_MS = 3_600_000;
 
-export interface KindWait {
+interface KindWait {
   /** The gate's step id without its iteration suffix, such as `approve-merge`. */
   kind: string;
   gates: number;
@@ -31,7 +31,7 @@ const OWNER_CLASSES: readonly string[] = RESOLVER_CLASSES;
 const isOwnerResolve = (gate: GateRecord): boolean => gate.status === "resolved" && gate.resolvedBy !== undefined && OWNER_CLASSES.includes(gate.resolvedBy.class);
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
-export const gateKind = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).split(":")[0]!;
+const gateKind = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).split(":")[0]!;
 
 const day = (at: number): string => new Date(at).toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
