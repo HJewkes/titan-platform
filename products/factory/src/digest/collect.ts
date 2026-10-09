@@ -67,7 +67,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     slot,
     generatedAt: now.toISOString(),
     since: since.toISOString(),
-    needsYou: needs ? needs.items.filter((item) => item.kind !== "know").map(ownerAsk) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
+    needsYou: needs ? ownerAsks(needs.items, rows, since) : [...gateAsks(gates, rows, since), ...queue, ...(chat ? chatAsks(chat) : [])],
     merged: [...shepherdMerged(rows, since), ...(chat?.mergedPrs ?? []).map((item) => ({ ref: refOfUrl(item.label), title: item.detail }))],
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
@@ -94,15 +94,48 @@ function gateAsks(gates: readonly GateFact[], rows: readonly WatchRow[], since: 
   });
 }
 
-/** Keys a digest compares by: PR and run refs loosened to repo and number, gate ids as they are. Task ids stay out, as the Morning asks leave them. */
-function ownerAsk(item: OwnerItem): Ask {
-  const keys = item.keys.filter((key) => !key.startsWith("task:")).map((key) => subjectOf(key) ?? key);
+/** The digest's documented order: factory gates, then seat queues, then needs-decision tasks, then the broker. */
+const SYSTEM_ORDER = ["hitl", "morning", "active-work", "agent-chat"];
+/** An item merged from several systems sorts by the earliest, so a gate that a Morning line also names stays among the gates. */
+const systemRank = (item: OwnerItem): number => {
+  const ranks = item.sources.map((source) => SYSTEM_ORDER.indexOf(source.system)).filter((rank) => rank >= 0);
+  return ranks.length > 0 ? Math.min(...ranks) : SYSTEM_ORDER.length;
+};
+
+/** News (kind `know`) is not an ask. The sort is stable, so each system keeps the order its source read in. */
+function ownerAsks(items: readonly OwnerItem[], rows: readonly WatchRow[], since: Date): Ask[] {
+  return items
+    .filter((item) => item.kind !== "know")
+    .sort((a, b) => systemRank(a) - systemRank(b))
+    .map((item) => ownerAsk(item, rows, since));
+}
+
+const runOfItem = (item: OwnerItem): string | undefined => item.keys.find((key) => key.startsWith("run:"))?.slice("run:".length);
+
+/** A gate's line names its PR and step, from the Shepherd row for its run, and a gate open since before the window says so. */
+function gateDetail(item: OwnerItem, rows: readonly WatchRow[], since: Date): Pick<Ask, "since"> & { prefix: string; keys: string[] } {
+  const gateId = item.sources.find((source) => source.system === "hitl")!.ref;
+  const runId = runOfItem(item);
+  const row = rows.find((r) => r.runId === runId);
+  const step = gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
   return {
-    text: item.summary,
+    prefix: `${row ? refOf(row) : (runId ?? gateId).slice(0, 8)} ${step}: `,
+    keys: row?.pr != null ? [prKey(row.repo, row.pr)] : [],
+    ...(Date.parse(item.openedAt) < since.getTime() && { since: item.openedAt }),
+  };
+}
+
+/** Keys a digest compares by: PR and run refs loosened to repo and number, gate ids as they are. Task ids stay out, as the Morning asks leave them. */
+function ownerAsk(item: OwnerItem, rows: readonly WatchRow[], since: Date): Ask {
+  const gate = item.sources.some((source) => source.system === "hitl") ? gateDetail(item, rows, since) : undefined;
+  const keys = [...item.keys.filter((key) => !key.startsWith("task:")).map((key) => subjectOf(key) ?? key), ...(gate?.keys ?? [])];
+  return {
+    text: `${gate?.prefix ?? ""}${item.summary}`,
     ...(item.command !== undefined && { command: item.command }),
     source: item.seat ?? item.sources[0]!.system,
     keys: [...new Set(keys)],
     ...(item.evidenceRef !== undefined && { evidence: item.evidenceRef }),
+    ...(gate?.since !== undefined && { since: gate.since }),
   };
 }
 

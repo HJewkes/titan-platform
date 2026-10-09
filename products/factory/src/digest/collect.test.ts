@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { fakeSources, NOW, SLOT, watchRow } from "../test-support/digest.js";
 import { collectDigest, type GateFact } from "./collect.js";
 import { readAgentChat, type Exec } from "./sources.js";
-import { collectNeeds } from "../needs/merged.js";
+import type { OwnerItem } from "@titan-design/owner-queue";
+import { gateItem } from "../test-support/owner-queue-10-05.js";
+import { collectNeeds, type NeedsList } from "../needs/merged.js";
 import { sources10_05 } from "../test-support/needs-10-05.js";
 
 const RUN = "33333333-3333-4333-8333-333333333333";
@@ -113,5 +115,44 @@ describe("collectDigest with the merged owner list", () => {
     const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
 
     expect(model.gaps).toContain("agent-chat: down");
+  });
+
+  const listOf = (items: OwnerItem[]): NeedsList => ({ items, gaps: [], overlaps: [], counts: {} });
+
+  function hitlItem(overrides: Partial<OwnerItem> = {}): OwnerItem {
+    return {
+      ...gateItem(1),
+      id: `gate:${RUN}/approve-merge`,
+      sources: [{ system: "hitl", ref: `${RUN}/approve-merge` }],
+      summary: "Merge it? Recommend merge.",
+      keys: [`gate:${RUN}/approve-merge`, `run:${RUN}`],
+      openedAt: "2026-03-10T19:00:00Z",
+      ...overrides,
+    };
+  }
+
+  it("names the gate's PR and step and keys it by that PR, as the gate read did", async () => {
+    const sources = fakeSources({ rows: async () => [watchRow({ runId: RUN, pr: 9 })], needs: async () => listOf([hitlItem()]) });
+
+    const model = await collectDigest({ sources, now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou[0]).toMatchObject({ text: "acme/widgets#9 approve-merge: Merge it? Recommend merge.", keys: expect.arrayContaining(["pr:widgets#9"]) });
+  });
+
+  it("marks a gate opened before the window as waiting since it opened", async () => {
+    const items = [hitlItem({ openedAt: "2026-03-10T13:29:00Z" }), hitlItem({ id: "gate:g-2", sources: [{ system: "hitl", ref: "g-2" }], openedAt: "2026-03-10T13:31:00Z" })];
+
+    const model = await collectDigest({ sources: fakeSources({ needs: async () => listOf(items) }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou.map((ask) => ask.since)).toEqual(["2026-03-10T13:29:00Z", undefined]);
+  });
+
+  it("lists factory gates first, then Morning items, tasks and broker asks, whatever order the sources read in", async () => {
+    const [chat, hitl, morning, tasks] = await sources10_05();
+    const list = await collectNeeds([chat!, tasks!, morning!, hitl!]);
+
+    const model = await collectDigest({ sources: fakeSources({ needs: async () => list }), now: NOW, windowMinutes: 360, slot: SLOT });
+
+    expect(model.needsYou.slice(0, 36).every((ask) => ask.keys.some((key) => key.startsWith("gate:")))).toBe(true);
   });
 });
