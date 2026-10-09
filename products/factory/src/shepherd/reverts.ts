@@ -9,7 +9,7 @@ import { payloadOf, stepName } from "./stats.js";
 export const REVERTED_STEP = "sh-reverted";
 
 /** A revert later than this after its merge is not looked for, so each repo's read stays a page or two of main. */
-export const REVERT_WINDOW_MS = 7 * 86_400_000;
+const REVERT_WINDOW_MS = 7 * 86_400_000;
 
 /** The merge commit is dated before sh-landed records it, and the title match needs the merge commit in the read. */
 const MERGE_SLACK_MS = 3_600_000;

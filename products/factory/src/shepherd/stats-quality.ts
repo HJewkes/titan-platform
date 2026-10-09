@@ -2,7 +2,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { REVERTED_STEP } from "./reverts.js";
 import { inRange, isoWeek, payloadOf, type StatsRange } from "./stats.js";
 
-export interface RedAfterMergeRow {
+interface RedAfterMergeRow {
   repo: string;
   /** ISO week of the main CI read, which follows its merge within the hour. */
   week: string;
