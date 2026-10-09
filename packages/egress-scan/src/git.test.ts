@@ -79,7 +79,7 @@ describe("pre-push ranges", () => {
       repo.commit("remove it again");
       repo.git(["push", "-q", "origin", "main"]);
       repo.git(["checkout", "-q", "feature"]);
-      return { repo, branchTip, onMain };
+      return { repo, bare, branchTip, onMain };
     }
 
     it("skips a flagged commit that came in from a main the remote already has", () => {
@@ -119,6 +119,51 @@ describe("pre-push ranges", () => {
 
       expect(commits).toEqual([merge]);
       expect(commits).not.toContain(onMain);
+    });
+
+    function mergeUnpushedBranch() {
+      const ctx = setup();
+      const { repo } = ctx;
+      repo.git(["checkout", "-q", "-b", "hidden", "main"]);
+      repo.write("hidden.txt", flaggedLine);
+      const hiddenTip = repo.commit("flagged and never pushed");
+      repo.git(["checkout", "-q", "feature"]);
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge hidden", "hidden"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+      return { ...ctx, hiddenTip, merge };
+    }
+
+    it("does not trust a local tracking ref the remote never had", () => {
+      const { repo, branchTip, hiddenTip, merge } = mergeUnpushedBranch();
+      repo.git(["update-ref", "refs/remotes/origin/fake", hiddenTip]);
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toContain(hiddenTip);
+      expect(findings(repo, commits).length).toBeGreaterThan(0);
+    });
+
+    it("does not trust a stale tracking ref whose branch the remote deleted", () => {
+      const { repo, bare, branchTip, hiddenTip, merge } = mergeUnpushedBranch();
+      repo.git(["push", "-q", "origin", "hidden:gone"]);
+      repo.git(["fetch", "-q", "origin"]);
+      spawnSync("git", ["-C", bare, "branch", "-q", "-D", "gone"]);
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toContain(hiddenTip);
+    });
+
+    it("falls back to the full remote..local range when the remote cannot be listed", () => {
+      const { repo, branchTip, onMain } = setup();
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+      repo.git(["remote", "set-url", "origin", path.join(repo.dir, "no-such-remote")]);
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toContain(onMain);
+      expect(commits).toContain(merge);
     });
 
     it("throws instead of passing when rev-list fails", () => {

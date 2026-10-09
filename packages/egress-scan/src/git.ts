@@ -149,11 +149,33 @@ export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate
   if (!isFullSha(update.localSha) || !isFullSha(update.remoteSha)) throw new ConfigError("push update is not a full sha");
   if (!isRemoteName(remote)) throw new ConfigError("remote is not a remote name");
   const known = !isZeroSha(update.remoteSha) && hasCommit(cwd, update.remoteSha);
-  // A branch that merged main also carries main commits the remote already has, so its remote refs
-  // are excluded as well as its own old tip. The second `--not` flips back, so the local sha after it counts as included.
-  const excluded = known ? [update.remoteSha, `--remotes=${remote}`] : [`--remotes=${remote}`];
+  // The second `--not` flips back, so the local sha after it counts as included.
+  const excluded = known ? knownExclusions(cwd, remote, update.remoteSha) : [`--remotes=${remote}`];
   const range = ["--not", ...excluded, "--not", END_OF_OPTIONS, update.localSha];
   return lines(git(cwd, ["rev-list", "--reverse", ...range]));
+}
+
+/**
+ * What an existing branch's range leaves out. A branch that merged main also carries main commits the
+ * remote already has, so the remote's advertised tips are excluded along with the branch's old tip.
+ * Local tracking refs prove nothing, since anyone can write them; when the remote cannot be listed
+ * the range is the plain `remote..local`, which scans more and never less.
+ */
+function knownExclusions(cwd: string, remote: string, remoteSha: string): string[] {
+  const listed = spawnSync("git", ["ls-remote", remote], {
+    cwd,
+    encoding: "utf-8",
+    maxBuffer: MAX_BUFFER,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (listed.error || listed.status !== 0) {
+    process.stderr.write(`titan-egress-scan: could not list ${remote}; scanning the full ${remoteSha.slice(0, 7)}..local range\n`);
+    return [remoteSha];
+  }
+  const tips = lines(listed.stdout)
+    .map((line) => line.split("\t")[0] ?? "")
+    .filter((sha) => isFullSha(sha) && hasCommit(cwd, sha));
+  return [remoteSha, ...new Set(tips)];
 }
 
 /** The commits in `base..head`, oldest first; an all-zero base means `head` alone. */

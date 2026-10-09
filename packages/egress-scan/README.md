@@ -23,7 +23,7 @@ titan-egress-scan install-hook          # write the pre-push hook
 Exit codes: 0 clean, 1 findings, 2 usage or configuration error. Findings go to stdout,
 notices and errors to stderr.
 
-- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch,
+- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch minus the commits the remote itself advertises (`git ls-remote`; local tracking refs are never trusted, and if the remote cannot be listed the plain `remote..local` is scanned),
   and for a new branch scans only the commits no ref of that remote has. `range` with an
   all-zero base scans the head commit alone. A merge commit is diffed against each parent
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
