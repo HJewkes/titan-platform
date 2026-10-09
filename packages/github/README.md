@@ -83,6 +83,18 @@ put in `body`) alone on a line; trailing whitespace on that line still counts. A
 concurrent callers can both post; there is no lock. Each read carries the same ETag cache and
 rate budget as the others.
 
+`formatSquashMessage({ title, body, prNumber, taskIds, commits })` is pure and builds a squash
+commit message: a subject of the PR title, any task id the title does not already name, and
+`(#<pr>)`; a body of `## Summary` (the PR body), `## Changes` (one `- **<subject>.** <body>`
+bullet per commit, each body's paragraphs joined onto one line, lists and fenced code kept as
+lines) and `Refs: <task ids>, #<pr>`. It drops `Co-authored-by` and `Signed-off-by` trailers,
+the "Generated with Claude Code" line, every email address, GitHub's `---------` separator and
+its `* <subject>` commit headers, and any commit merging main into the branch. An empty PR body
+omits `## Summary`. The same input always gives byte-identical output, and formatting its own
+output again (as title and body) changes nothing. The `titan-squash-message` bin reads the same
+input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
+with `--json`; bad input exits 2 naming the field.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).
