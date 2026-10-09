@@ -839,7 +839,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +198 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
+- +202 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -1004,12 +1004,12 @@ Key exports:
 
 - `config`: `resolveConfig`
 - `context`: `createMinerContext`
-- `schema`: `MINER_MIGRATIONS`
 - `registry`: `createMinerRegistry`
 - `serve`: `runMinerMcpStdio`, `serveMinerUntilSignal`, `serveOptions`, `startMiner`
 - `cli`: `runCli`
 - `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
-- +18 more in `products/session-miner/src/index.ts`
+- `insights/post-filter`: `normaliseStage`
+- +31 more in `products/session-miner/src/index.ts`
 
 <a id="cap-codewatch"></a>
 
