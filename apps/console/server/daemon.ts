@@ -1,4 +1,17 @@
-import { consoleLogger, mountStaticApp, startDaemon, type DaemonHandle, type Logger } from "@titan-design/daemon";
+import { mkdirSync } from "node:fs";
+import { isIPv6 } from "node:net";
+import path from "node:path";
+import {
+  LOGIN_PATH,
+  consoleLogger,
+  ensureTokenFile,
+  mintLoginCode,
+  mountStaticApp,
+  rotateTokenFile,
+  startDaemon,
+  type DaemonHandle,
+  type Logger,
+} from "@titan-design/daemon";
 import type { ConsoleConfig } from "./config.js";
 import { APP_VERSION } from "./paths.js";
 import { createConsoleRegistry, createContext } from "./registry.js";
@@ -36,4 +49,38 @@ export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void>
   };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+}
+
+/** The LAN address a browser dials: the first LAN name, else the bound IP. */
+export function lanOrigin(config: ConsoleConfig, port: number): string {
+  const name = config.lanNames[0] ?? (config.lanHost && isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost);
+  if (!name) throw new Error("No LAN name to put in a link: set TITAN_CONSOLE_LAN_NAMES or TITAN_CONSOLE_HOST");
+  return `http://${name}:${port}`;
+}
+
+/**
+ * A one-time, ten-minute login link. Minting needs only the token file, never the running daemon,
+ * so run it with the same TITAN_CONSOLE_* settings as the service. A daemon that restarts after
+ * minting refuses the link.
+ */
+export function createLoginLink(config: ConsoleConfig, now: number = Date.now()): string {
+  if (config.port === 0) throw new Error("TITAN_CONSOLE_PORT is 0, so there is no fixed port to put in a login link");
+  const origin = lanOrigin(config, config.port);
+  const code = mintLoginCode(ensureLanToken(config), now);
+  return `${origin}${LOGIN_PATH}?code=${encodeURIComponent(code)}`;
+}
+
+/** Ends every session and voids every outstanding link; the running daemon re-reads the file, so it needs no restart. */
+export function rotateLanToken(config: ConsoleConfig): void {
+  ensureTokenDir(config);
+  rotateTokenFile(config.lanTokenPath);
+}
+
+function ensureLanToken(config: ConsoleConfig): string {
+  ensureTokenDir(config);
+  return ensureTokenFile(config.lanTokenPath);
+}
+
+function ensureTokenDir(config: ConsoleConfig): void {
+  mkdirSync(path.dirname(config.lanTokenPath), { recursive: true, mode: 0o700 });
 }
