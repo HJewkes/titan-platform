@@ -55,8 +55,12 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
   it.each([
     ["a plain echo of the name", `${VALUE}; echo X`],
     ["a default expansion", `${VALUE}; s=hello; echo \${s:-X}`],
-  ])("does not run the value for %s", (_, command) => {
-    expect(spellings(command)).not.toContain("bash.merge.git-push-protected");
+  ])("classifies the push where the value is stored, for %s", (_, command) => {
+    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  });
+
+  it("leaves a value with no bracket before its substitution to the lines that evaluate it", () => {
+    expect(spellings(`X='$(${PUSH})'; echo X`)).not.toContain("bash.merge.git-push-protected");
   });
 
   it("keeps the verdict of the direct form", () => {

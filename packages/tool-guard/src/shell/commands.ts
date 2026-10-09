@@ -13,7 +13,7 @@ import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { arithmeticTexts } from "./writers.js";
-import { valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
+import { assignedSubstitutions, valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
@@ -172,6 +172,16 @@ function withPrefixAssignments(scope: Scope, words: WordToken[], head: number): 
   return { ...scope, vars };
 }
 
+const DECLARING = new Set(["export", "declare", "typeset", "local", "readonly"]);
+
+/** Walks the code a value being stored holds in a subscript, once, where it is assigned (see `assignedSubstitutions`). */
+function walkAssigned(cmd: Unwrapped, w: Walk): void {
+  const declared = cmd.name !== null && DECLARING.has(cmd.name) ? cmd.args.map(parseAssignment).filter((a) => a !== null) : [];
+  for (const [, value] of [...cmd.assigned, ...declared]) {
+    for (const text of assignedSubstitutions(value, w.scope, w.out)) walkSure(() => walk(text, child(w, [...w.scope.wrapping, "subshell"])));
+  }
+}
+
 /** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
 function walkSure(walkText: () => void): void {
   try {
@@ -243,6 +253,7 @@ function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => 
 }
 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
+  walkAssigned(raw, w);
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
     if (redirects.length === 0) return;

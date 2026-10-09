@@ -63,6 +63,24 @@ function leadsFurther(value: string, scope: ValueScope): boolean {
   return [...value.matchAll(NAME_RE)].some(([name]) => typeof scope.vars.get(name) === "string");
 }
 
+/** A value with a bracket before a substitution: code that runs only when the value is read as a subscript. */
+const SUBSCRIPT_CODE_RE = /\[[\s\S]*(?:\$\(|`)/;
+
+/**
+ * The substitutions in a value being assigned that bash runs when anything evaluates it as a subscript. Bash can
+ * evaluate a stored value in more places than any list of syntax names (`n=X` on an integer, `a=([X]=1)`, a
+ * heredoc's `$(( X ))`, a nameref), so the walk happens here, where the value is stored, and not where it is read.
+ * Throws ValueWalkError when the value cannot be had in full, under the same budget as a read.
+ */
+export function assignedSubstitutions(value: string | null, scope: ValueScope, run: object): Token[][] {
+  if (value === null || !SUBSCRIPT_CODE_RE.test(value)) return [];
+  const state = walked.get(run) ?? { reads: new Map<string, boolean>(), lists: 0 };
+  walked.set(run, state);
+  const found: Token[][] = [];
+  if (!read(state, scope, value, true, found)) throw new ValueWalkError();
+  return found;
+}
+
 /** Adds the substitutions of a value this scope has not walked before; says whether the value was had in full. */
 function read(state: Walked, scope: ValueScope, value: string, sure: boolean, found: Token[][]): boolean {
   const key = readKey(scope, value, sure);

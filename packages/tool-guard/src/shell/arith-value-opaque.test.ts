@@ -50,7 +50,7 @@ describe("a sure read the walk used to skip (TP-1624)", () => {
   });
 });
 
-describe("every place bash evaluates arithmetic reads a value (TP-1624)", () => {
+describe("the arithmetic contexts that read a value, each by name (TP-1624)", () => {
   it.each([
     ["an arithmetic for header", `${SECRET}; for ((i=0; i<X; i++)); do :; done`],
     ["an arithmetic for condition read with >", `${SECRET}; for ((i=9; i>X; i--)); do :; done`],
