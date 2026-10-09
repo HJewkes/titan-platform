@@ -142,6 +142,20 @@ describe("TaskSchema", () => {
     expect(TaskSchema.safeParse({ ...validBase, dep: ["ec-2"] }).success).toBe(false);
   });
 
+  it("accepts a deliverables id list", () => {
+    const result = TaskSchema.safeParse({ ...validBase, deliverables: ["console-v1", "Relay2"] });
+    expect(result.data?.deliverables).toEqual(["console-v1", "Relay2"]);
+  });
+
+  it("rejects a deliverables list with a repeated id", () => {
+    const result = TaskSchema.safeParse({ ...validBase, deliverables: ["console-v1", "console-v1"] });
+    expect(result.error?.issues.some((i) => i.path[0] === "deliverables")).toBe(true);
+  });
+
+  it.each(["1st", "-x", "a_b", ""])("rejects deliverable id %j", (id) => {
+    expect(TaskSchema.safeParse({ ...validBase, deliverables: [id] }).success).toBe(false);
+  });
+
   it("rejects empty title", () => {
     expect(TaskSchema.safeParse({ ...validBase, title: "" }).success).toBe(false);
   });
