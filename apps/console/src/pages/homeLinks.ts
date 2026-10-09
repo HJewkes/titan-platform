@@ -2,7 +2,7 @@ import { refToRoute } from "../refs.js";
 import { open } from "../router.js";
 
 /** Where Home sends a queue row: agent-chat owns every answer, so the console only links to it. */
-export const DEFAULT_QUEUE_URL = "http://127.0.0.1:7600/ui#queue";
+const DEFAULT_QUEUE_URL = "http://127.0.0.1:7600/ui#queue";
 
 export function openExternal(url: string): void {
   window.open(url, "_blank", "noopener");
