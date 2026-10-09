@@ -1,6 +1,8 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
+import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
+import { BLOCK_LINE, findingsText } from "./fix-first-findings.js";
 import { failureOf } from "./error-class.js";
 import { DEFECT_CLASS_HEADING } from "./reviewer-brief.js";
 
@@ -30,6 +32,8 @@ export interface WakeFacts {
   payload: unknown;
   /** Which FIX_FIRST of the run a review wake is, from 1; absent reads as the first. */
   fixFirst?: number;
+  /** The run whose step records hold the verdict, named when a review wake has no findings to hand over. */
+  runId?: string;
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
@@ -94,16 +98,15 @@ function conflictReason(input: WakeFacts, conflict: Conflict): string {
   return `${intro} The files both sides changed follow.${registries}`;
 }
 
-const FixFirst = z.looseObject({ text: z.string().min(1) });
-const VERDICT_LINE = /^\s*(?:Verdict|PR|Head):/;
+const FixFirst = z.looseObject({ text: z.string().optional() });
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
 
-/** The reviewer's defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
+/** The reviewer's newest defect-class section, from its heading to the verdict block; undefined when the reviewer wrote none. */
 export function defectClassSection(text: string): string | undefined {
   const lines = text.split("\n");
-  const start = lines.findIndex(isDefectHeading);
-  if (start < 0) return undefined;
-  const end = lines.findIndex((line, index) => index > start && VERDICT_LINE.test(line));
+  const start = lines.length - 1 - [...lines].reverse().findIndex(isDefectHeading);
+  if (start >= lines.length) return undefined;
+  const end = lines.findIndex((line, index) => index > start && BLOCK_LINE.test(line));
   return lines.slice(start, end < 0 ? undefined : end).join("\n").trim();
 }
 
@@ -115,9 +118,17 @@ function ordinal(n: number): string {
 const STRUCTURAL = "Do not patch the items one by one: fix the defect class at the one boundary where a single change covers every instance, then check that each blocking item in the findings is covered by it.";
 const NO_CLASS = "The reviewer named no defect class. Name the class these items share and the boundary where one fix covers it in your final message, then fix it there.";
 
+/** Handing a fixer a bare block, or nothing, reads as findings that were lost; saying so sends it to the record instead. */
+function noFindingsWake(input: WakeFacts, text: string): { reason: string; payload: string } {
+  const run = input.runId === undefined ? "" : ` of run ${input.runId}`;
+  const reason = `An independent review of head ${input.headSha} returned FIX_FIRST, but Shepherd found no findings in the reviewer's verdict for head ${input.headSha}. Read the recorded verdict in step ${AWAIT_VERDICT_STEP}:${input.headSha}${run} before you change anything, and say in your final message what you fixed and why.`;
+  return { reason, payload: dataFence("verdict as recorded", text === "" ? "(no verdict text)" : text) };
+}
+
 /** A repeat FIX_FIRST carries the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
-  const text = FixFirst.parse(input.payload).text;
+  const text = FixFirst.parse(input.payload).text ?? "";
+  if (findingsText(text) === "") return noFindingsWake(input, text);
   const nth = input.fixFirst ?? 1;
   const findings = dataFence("review findings", text);
   if (nth < STRUCTURAL_FIX_FIRST) return { reason: `An independent review of head ${input.headSha} returned FIX_FIRST. Its findings follow.`, payload: findings };
