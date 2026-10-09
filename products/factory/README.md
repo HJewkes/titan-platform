@@ -46,18 +46,20 @@ Owner-specific bindings live in that config file, never in this repo.
 
 When the live factory moves to another host, set `remoteFactory` in the old host's config file to
 the live factory's URL, for example `"remoteFactory": "http://127.0.0.1:7410"` over a port forward.
-It must be an `http` or `https` URL with no user or password. While it is set, every verb that can
-resolve, signal or cancel a gate in the local database exits 2 before it opens any database, and
-stderr names the remote and says this host's database is frozen:
+It must be an `http` or `https` URL with no user or password, and a key that only looks like it
+(`remotefactory`, `remote_factory`) fails the load instead of being ignored. While it is set, stderr
+names the remote, says this host's database is frozen, and the verb exits 2:
 
-- `gate resolve` (and `gate resolve-batch`, once it lands);
-- `resume`, which drives runs whose steps cancel or supersede gates;
-- `land` and `shepherd resync` when no serve answers on `--port`; with one answering they go over
-  RPC as before.
+- `serve`, `resume`, `land`, `gate resolve` (and `gate resolve-batch`, once it lands), and
+  `shepherd register|hold|release|resync` are refused before they probe `--port` or open anything.
+  A serve answering that port on this host may be the frozen one, and nothing yet proves it is the
+  remote, so these never go over RPC either.
+- Every other verb still reads from a serve that answers, but refuses rather than open the local
+  database when none does. `shepherd stats` reads the file read-only and still works.
 
-The refusal ignores `--db` and `TITAN_FACTORY_DB`. Read verbs (`shepherd status`, `digest run`,
-`queue-counts`, `shepherd stats`) still read the local copy. With `remoteFactory` unset nothing
-changes.
+The refusal ignores `--db` and `TITAN_FACTORY_DB`. With `remoteFactory` unset nothing changes. A
+LaunchAgent or systemd unit for `serve` on the frozen host restarts the refused serve forever, so
+run `titan-factory service uninstall` there first.
 
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in

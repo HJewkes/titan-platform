@@ -1,11 +1,29 @@
 import { configPath, loadConfig } from "./config.js";
 
 /**
- * The refusal a gate-writing verb prints when the config names a `remoteFactory`, else undefined.
- * It ignores `--db` and `TITAN_FACTORY_DB`, because a resolve on the frozen copy is lost wherever it points.
+ * Verbs that write runs or gates, refused before any probe or RPC: a serve answering `--port` on this host
+ * may be the frozen one, and nothing yet proves it is the remote.
  */
-export function remoteFactoryRefusal(env: NodeJS.ProcessEnv, verb: string): string | undefined {
+export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
+  "serve",
+  "resume",
+  "land",
+  "gate resolve",
+  "gate resolve-batch",
+  "shepherd register",
+  "shepherd hold",
+  "shepherd release",
+  "shepherd resync",
+]);
+
+export class FrozenHostError extends Error {}
+
+/**
+ * Throws when the config names a `remoteFactory`. It ignores `--db` and `TITAN_FACTORY_DB`, because a write
+ * to the frozen copy is lost wherever it points.
+ */
+export function refuseFrozenHost(env: NodeJS.ProcessEnv, verb: string): void {
   const remote = loadConfig(configPath(env)).remoteFactory;
-  if (!remote) return undefined;
-  return `error: ${verb} refused: this host's database is frozen; the live factory is ${remote}. Run it on that host; nothing was written here.\n`;
+  if (!remote) return;
+  throw new FrozenHostError(`${verb} refused: this host's database is frozen; the live factory is ${remote}. Run it on that host; nothing was written here.`);
 }
