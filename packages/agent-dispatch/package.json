@@ -11,12 +11,12 @@
       "import": "./dist/index.js"
     },
     "./limits": {
-      "types": "./dist/limits.d.ts",
-      "import": "./dist/limits.js"
+      "types": "./dist/limits/index.d.ts",
+      "import": "./dist/limits/index.js"
     },
     "./limits/node": {
-      "types": "./dist/limits-node.d.ts",
-      "import": "./dist/limits-node.js"
+      "types": "./dist/limits/node.d.ts",
+      "import": "./dist/limits/node.js"
     }
   },
   "files": [
