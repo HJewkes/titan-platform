@@ -23,6 +23,8 @@ const TASKS = [
   task("orbit-relay", "OR-5", { tags: ["parent:OR-6"] }),
   task("orbit-relay", "OR-6", { notes: "Epic for the relay." }),
   task("orbit-relay", "OR-7"),
+  // A migrated task: edges and deliverables are fields, and its tags are for retrieval only.
+  task("orbit-relay", "OR-8", { parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"], tags: ["origin:relay"] }),
   task("orbit-relay", "OR-9", { status: "done", done_at: "2031-02-01" }),
   task("garden-plan", "GP-1", { notes: "Order seed trays." }),
 ];
@@ -56,6 +58,8 @@ const EVIDENCE: RepoEvidence[] = [{
   openPrs: [{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }],
 }];
 
+const RELAY_V1 = { id: "relay-v1", title: "Relay v1", status: "active", target: "2031-04-01", owner_seat: "relay-seat", tags: [], tasks: { open: 1, done: 0 } };
+
 const EMPTY = { files: 0, bytes: 0, newest_mtime: null };
 const CLASSES = { tasks: EMPTY, sessions: EMPTY, notes: EMPTY, sources: EMPTY, nested_sources: EMPTY };
 
@@ -65,10 +69,12 @@ const OTHER = "0a1b2c3d-0000-4000-8000-0000000000bb";
 let daemon: FakeDaemon | undefined;
 let dir: string;
 let calls: string[];
+let registryServed: boolean;
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-tasks-"));
   calls = [];
+  registryServed = true;
 });
 
 afterEach(async () => {
@@ -88,6 +94,9 @@ function answer(command: string, args: Record<string, unknown>): unknown {
       return STATUS;
     case "context.graph":
       return { id: args.id, kind: "task", subject: null, references: REFERENCES, initiatives_scanned: [], errors: [] };
+    case "deliverable.list":
+      if (!registryServed) throw new Error("Unknown command deliverable.list");
+      return [RELAY_V1];
     case "inventory":
       return { initiatives: [{ slug: "orbit-relay", human_only: false }, { slug: "garden-plan", human_only: true }].map((entry) => ({ ...entry, total: EMPTY, classes: CLASSES })), human_only_known: true };
     default:
@@ -136,10 +145,22 @@ describe("work.tasks", () => {
       "OR-5": ["ready", "default", true],
       "OR-6": ["blocked", "open-slices", false],
       "OR-7": ["ready", "merged-commit", false],
+      "OR-8": ["blocked", "dependency", false],
       "GP-1": ["ready", "default", true],
     });
     expect(data.tasks.find((row) => row.id === "OR-2")?.stageReason).toBe("Depends on OR-5 (open)");
     expect(data.evidence).toEqual({ repos: ["example/orbit"], degraded: [] });
+  });
+
+  it("reads parent and dep the same from edge tags and from fields", async () => {
+    const { data } = await invoke<TasksResult>("work.tasks", {});
+
+    const edges = Object.fromEntries(data.tasks.map(({ id, parent, dep, deliverables }) => [id, { parent, dep, deliverables }]));
+    expect(edges["OR-2"]).toEqual({ parent: null, dep: ["OR-5"], deliverables: [] });
+    expect(edges["OR-5"]).toEqual({ parent: "OR-6", dep: [], deliverables: [] });
+    expect(edges["OR-8"]).toEqual({ parent: "OR-6", dep: ["OR-5"], deliverables: ["relay-v1", "relay-ghost"] });
+    expect(data.tasks.find((row) => row.id === "OR-8")?.stageReason).toBe("Depends on OR-5 (open)");
+    expect(data.tasks.find((row) => row.id === "OR-6")?.stageReason).toBe("2 open slices");
   });
 
   it("only ever uses the shared stage vocabulary", async () => {
@@ -182,6 +203,30 @@ describe("work.task", () => {
     expect(data.openPrs).toEqual([{ repo: "example/orbit", number: 41, headRef: "pc-or-1-retry" }]);
     expect(data.sessions.map((session) => session.sessionId)).toEqual([SESSION]);
     expect(data.sessionsDegraded).toBeNull();
+  });
+
+  it("lists the children a parent tag or a parent field names", async () => {
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-6" });
+    expect(data.children).toEqual([{ id: "OR-5", title: "Task OR-5", status: "open" }, { id: "OR-8", title: "Task OR-8", status: "open" }]);
+  });
+
+  it("joins each deliverable id to its registry record, and an unknown id to null", async () => {
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-8" });
+    expect(data.deliverables).toEqual([{ id: "relay-v1", record: RELAY_V1 }, { id: "relay-ghost", record: null }]);
+    expect(data.deliverablesDegraded).toBeNull();
+  });
+
+  it("asks for no registry when the task names no deliverable", async () => {
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-2" });
+    expect(data).toMatchObject({ deliverables: [], deliverablesDegraded: null, children: [] });
+    expect(calls).not.toContain("deliverable.list");
+  });
+
+  it("reports the registry as degraded, not failing, when active-work has no deliverable read", async () => {
+    registryServed = false;
+    const { data } = await invoke<TaskDetail>("work.task", { id: "OR-8" });
+    expect(data.deliverables).toEqual([{ id: "relay-v1", record: null }, { id: "relay-ghost", record: null }]);
+    expect(data.deliverablesDegraded).toContain("deliverable.list");
   });
 
   it("sends no absolute file path to the browser", async () => {

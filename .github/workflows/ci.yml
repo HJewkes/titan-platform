@@ -20,9 +20,11 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Check the toolchain against the canonical declarations
+        run: pnpm env:doctor
       # Turbo replays a package's build or typecheck when its inputs hash the same. Only main saves; PRs restore main's cache.
       - name: Restore turbo cache
         uses: actions/cache/restore@v4
@@ -92,7 +94,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @titan-design/code-graph... run build
@@ -159,7 +161,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # prepare also builds it but swallows a failure; this step fails loudly.

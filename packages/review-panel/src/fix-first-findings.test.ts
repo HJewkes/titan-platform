@@ -1,11 +1,10 @@
-import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import type { ReviewerMessage } from "./review.js";
+import type { ReviewerMessage } from "./ports.js";
 import { FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, fixFirstFindings } from "./fix-first-findings.js";
 
-const HEAD = fakeSha("findings-head");
-const OLD_HEAD = fakeSha("findings-old-head");
+const HEAD = "a".repeat(40);
+const OLD_HEAD = "b".repeat(40);
 const target = { repo: "octo/demo", pr: 7, head: HEAD };
 const block = (verdict: string, head = HEAD) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${head}`;
 const said = (text: string, writtenAt: number): ReviewerMessage => ({ agentId: "a", sessionId: "s", writtenAt, text, locator: {} as SourceTextLocator });

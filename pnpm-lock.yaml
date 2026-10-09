@@ -153,6 +153,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -367,6 +370,10 @@ importers:
         version: 4.5.4
 
   packages/coordinator:
+    dependencies:
+      '@titan-design/agent-dispatch':
+        specifier: workspace:^
+        version: link:../agent-dispatch
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -493,6 +500,10 @@ importers:
         version: 4.5.4
 
   packages/owner-queue:
+    dependencies:
+      '@titan-design/review-schema':
+        specifier: ^0.1.0
+        version: 0.1.0(zod@4.5.4)
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -592,6 +603,10 @@ importers:
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read
+    devDependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
 
   packages/rpc-client:
     dependencies:
@@ -778,6 +793,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
@@ -796,6 +814,9 @@ importers:
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
@@ -889,6 +910,21 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  products/titan:
+    dependencies:
+      '@titan-design/daemon':
+        specifier: workspace:^
+        version: link:../../packages/daemon
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -3305,6 +3341,12 @@ packages:
         optional: true
       react-native-web:
         optional: true
+
+  '@titan-design/review-schema@0.1.0':
+    resolution: {integrity: sha512-Q5mO3Uk1QcSqTWfV+s0UIvhDdV1WRUyHU1jsI215GKbYUuBYsFCTqm9qClC0gsFwWZyA9wJOY9nK94UfagWpQg==}
+    engines: {node: '>=22.0.0'}
+    peerDependencies:
+      zod: ^4.3.6
 
   '@ts-morph/common@0.26.1':
     resolution: {integrity: sha512-Sn28TGl/4cFpcM+jwsH1wLncYq3FtN/BIpem+HOygfBWPT5pAeS5dB4VFVzV8FbnOKHpDLZmvAl4AjPEev5idA==}
@@ -9563,6 +9605,10 @@ snapshots:
     transitivePeerDependencies:
       - '@react-spectrum/provider'
       - '@types/react-native'
+
+  '@titan-design/review-schema@0.1.0(zod@4.5.4)':
+    dependencies:
+      zod: 4.5.4
 
   '@ts-morph/common@0.26.1':
     dependencies:

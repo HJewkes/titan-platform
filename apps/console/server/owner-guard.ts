@@ -28,7 +28,7 @@ export interface ConsoleContext extends BaseContext {
   surface: ConsoleSurface;
   /** What the LAN listener's auth gate recorded; null on loopback, which is never gated. */
   auth: RequestAuth | null;
-  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the LAN carries TLS. */
+  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the owner turns it on. */
   ownerWrites: boolean;
 }
 
@@ -48,15 +48,22 @@ interface OwnerWriteContext extends ConsoleContext {
 type OwnerWriteHandler<Args, Result> = Command<Args, Result, OwnerWriteContext> & { readonly ownerWrite: true };
 
 /**
- * `run` is a method on `Command`, so its context parameter is bivariant and a handler that needs
- * `OwnerWriteContext` would typecheck as a read or a deposit. This is `never` for any context a
- * plain console context cannot satisfy, and refuses the owner-write mark, so passing such a
- * handler with its own type fails to compile. It only sees the type the caller holds: once a
- * handler is widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's
- * return type, an array) or cast, the check passes, and the `ownerWrite` mark is the runtime
- * backstop. Making `run` a property in the registry (TP-2115) closes that.
+ * `run` is a property on `Command`, so a handler that needs `OwnerWriteContext` cannot be widened
+ * to a console command at all. A context whose extra fields are all optional still accepts a plain
+ * console context, so this is also `never` for any context with a key the console does not supply:
+ * a handler that reads `ownerPresence?` would otherwise run as a read with the proof absent. The
+ * keys are taken from each member of a union context, because `keyof` a union sees only the keys
+ * every member shares. It refuses the owner-write mark too. It sees only the type the caller holds,
+ * so a handler widened or cast before it gets here passes; the mark is the runtime backstop, and
+ * only `ownerWriteCommand` ever adds the proof.
  */
-type ServedWithoutOwner<Ctx> = ConsoleContext extends Ctx ? { readonly ownerWrite?: never } : never;
+type ServedWithoutOwner<Ctx> = [Exclude<KeysOfUnion<Ctx>, keyof ConsoleContext>] extends [never]
+  ? ConsoleContext extends Ctx
+    ? { readonly ownerWrite?: never }
+    : never
+  : never;
+
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
 
 export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
 
@@ -74,7 +81,7 @@ export const REFUSALS = {
   notHttp: "it runs only over HTTP",
   noCredential: "it needs the owner's session cookie on the LAN listener; loopback carries no credential",
   bearer: "it needs the owner's session cookie; a bearer token cannot answer for the owner",
-  disabled: "owner writes disabled until TLS",
+  disabled: "owner writes are off",
   peerLocal: "the request comes from this machine; answer from another device",
 } as const;
 
@@ -113,8 +120,11 @@ export function readCommand<Args, Result, Ctx extends BaseContext>(
   return { ...command, commandClass: "read" };
 }
 
-/** `Ctx` is the handler's own context, inferred only so `ServedWithoutOwner` can check it. */
-export function depositCommand<Ctx extends BaseContext>(command: AnyCommand<ConsoleContext> & AnyCommand<Ctx> & ServedWithoutOwner<Ctx>): ClassedCommand {
+/**
+ * `Ctx` is the handler's own context, inferred only so `ServedWithoutOwner` can check it. A command
+ * already typed `AnyCommand<ConsoleContext>` gives no inference, and the default is that context.
+ */
+export function depositCommand<Ctx extends BaseContext = ConsoleContext>(command: AnyCommand<ConsoleContext> & AnyCommand<Ctx> & ServedWithoutOwner<Ctx>): ClassedCommand {
   assertUnclassed(command, "deposit");
   assertNotOwnerWrite(command, "deposit");
   return {
