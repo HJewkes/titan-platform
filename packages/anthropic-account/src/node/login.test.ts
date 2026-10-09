@@ -1,13 +1,16 @@
 import fs from "node:fs";
+import type { ChildProcess } from "node:child_process";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CANARY, FAKE_ACCESS_TOKEN, HOUR, NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
 import {
   captureOutput,
   errorText,
+  makeFifo,
   makeTempHome,
   removeTempHome,
   thrown,
+  unblockFifoLater,
   writeFileWithMode,
 } from "../fixtures/temp-home.js";
 import { CREDENTIALS_FILE, MAX_CREDENTIALS_BYTES, readLoginState } from "./login.js";
@@ -194,6 +197,53 @@ describe("readLoginState checks the descriptor it reads", () => {
 
     expect(state).toEqual({ status: "refused", reason: "mode-too-wide" });
     expect(read).not.toHaveBeenCalled();
+  });
+
+  // The dev/ino check alone would refuse this too, so only O_NOFOLLOW keeps the symlink
+  // from being followed to the very inode the lstat saw.
+  it("refuses a symlink to the same file swapped in after the lstat", () => {
+    writeCredentials(fakeCredentials());
+    const moved = path.join(home, "moved.json");
+    swapBeforeOpen(() => {
+      fs.renameSync(credentials, moved);
+      fs.symlinkSync(moved, credentials);
+    });
+    const read = vi.spyOn(fs, "readSync");
+
+    const state = readLoginState(configDir, { now: NOW, uid });
+
+    expect(state).toEqual({ status: "refused", reason: "not-a-regular-file" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  describe("with a FIFO renamed in after the lstat", () => {
+    let unblocker: ChildProcess | undefined;
+
+    afterEach(() => {
+      unblocker?.kill();
+      unblocker = undefined;
+    });
+
+    it.skipIf(process.platform === "win32")(
+      "refuses it promptly instead of blocking on the open",
+      () => {
+        writeCredentials(fakeCredentials());
+        const fifo = path.join(configDir, "pipe");
+        makeFifo(fifo);
+        // The rename moves the FIFO, so the unblocker opens it where the reader will.
+        unblocker = unblockFifoLater(credentials);
+        swapBeforeOpen(() => fs.renameSync(fifo, credentials));
+        const read = vi.spyOn(fs, "readSync");
+        const started = Date.now();
+
+        const state = readLoginState(configDir, { now: NOW, uid });
+
+        expect(Date.now() - started).toBeLessThan(500);
+        expect(state).toEqual({ status: "refused", reason: "not-a-regular-file" });
+        expect(read).not.toHaveBeenCalled();
+      },
+      15_000,
+    );
   });
 
   it("reports missing for a file removed after the lstat", () => {

@@ -250,6 +250,42 @@ describe("readUsage reads the file it checked", () => {
     15_000,
   );
 
+  it.skipIf(process.platform === "win32")(
+    "returns promptly when a FIFO is renamed over the file after the lstat",
+    () => {
+      writeSessionFile("s.json", reading({ session_id: "s" }));
+      const fifo = path.join(sessionsDir(configDir), "pipe");
+      makeFifo(fifo);
+      // The rename moves the FIFO, so the unblocker opens it where the reader will.
+      unblocker = unblockFifoLater(sessionFile());
+      swapAfterLstat(sessionFile(), () => fs.renameSync(fifo, sessionFile()));
+      const read = vi.spyOn(fs, "readSync");
+      const started = Date.now();
+
+      const result = readUsage(configDir, { now: WRITTEN_AT * 1000 });
+
+      expect(Date.now() - started).toBeLessThan(500);
+      expect(result).toBeNull();
+      expect(read).not.toHaveBeenCalled();
+    },
+    15_000,
+  );
+
+  // The dev/ino check alone would refuse this too, so only O_NOFOLLOW keeps the symlink
+  // from being followed to the very inode the lstat saw.
+  it("does not follow a symlink to the same file swapped in after the lstat", () => {
+    writeSessionFile("s.json", reading({ session_id: "s" }));
+    const moved = path.join(home, "moved.json");
+    swapAfterLstat(sessionFile(), () => {
+      fs.renameSync(sessionFile(), moved);
+      fs.symlinkSync(moved, sessionFile());
+    });
+    const read = vi.spyOn(fs, "readSync");
+
+    expect(readUsage(configDir, { now: WRITTEN_AT * 1000 })).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("does not follow a symlink to a reading outside the dir swapped in after the lstat", () => {
     writeSessionFile("s.json", reading({ session_id: "s" }));
     const outside = path.join(home, "outside.json");
