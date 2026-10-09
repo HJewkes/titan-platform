@@ -8,6 +8,7 @@ export {
   type HealthCheck,
   type HealthReport,
   type HealthReportRead,
+  type HealthReportReading,
   type HealthStatus,
 } from "./contract.js";
 export {

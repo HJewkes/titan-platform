@@ -12,9 +12,11 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   refused.
 - `parseHealthReport(payload)` is the read side and returns `{ ok, report, ignored }` or
   `{ ok, error }`. Only a status or a legacy boolean `ok` is required. The draft's
-  `up`/`down`/`ok`/`error` aliases are accepted, unknown fields and check values are kept, a
-  mistyped known field is dropped and named in `ignored`, a check status it does not know
-  reads as `warn`, and the result is never better than its worst check.
+  `up`/`down`/`ok`/`error` aliases are accepted, unknown fields are kept, a mistyped known
+  field at any depth is dropped and named by path in `ignored`, a check status it does not
+  know reads as `warn`, and the result is never better than its worst check. The report is
+  typed `HealthReportReading`, the output of a loose read schema that shares its field types
+  with the write schema, so the type never claims more than was checked.
 - `worstStatus(statuses)` folds statuses as fail > warn > pass; an empty list is pass.
 - `healthSampleSchema` is the strict write schema for one stored probe result: `ts`,
   `target`, `kind`, `status` (`pass|warn|fail|unknown`), `latencyMs`, `observed`, `output`,

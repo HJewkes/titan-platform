@@ -502,7 +502,7 @@ Key exports:
 
 - `contract`: `HEALTH_STATUSES`, `healthCheckSchema`, `healthReportSchema`, `healthStatusSchema`, `parseHealthReport`, `worstStatus`, `HealthCheck`, `HealthReport`, `HealthReportRead`
 - `sample`: `SAMPLE_STATUSES`, `healthSampleSchema`, `sampleStatusSchema`
-- +4 more in the [reference page](/reference/health)
+- +5 more in the [reference page](/reference/health)
 
 <a id="cap-hitl"></a>
 

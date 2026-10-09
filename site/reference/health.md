@@ -65,8 +65,7 @@ healthSampleSchema.parse({ ts: "2026-01-01T00:01:00Z", target: "factory", kind: 
 | `up`, `down`, `ok`, `error` | refused | read as pass or fail, per the draft |
 | Check status it does not know | refused | read as `warn` |
 | A check as a bare object, not an array | refused | read as a one-entry array |
-| Check fields other than status | typed | kept as sent, whatever their type |
-| Mistyped known field (`version: 2`, `pid: "42"`) | refused | dropped and named in `ignored` |
+| Mistyped known field, at any depth (`version: 2`, a check `output: {}`) | refused | dropped and named by path in `ignored` |
 | Unknown report field | kept (product extension keys) | kept |
 | Unknown sample field | refused | not applicable |
 
@@ -96,6 +95,10 @@ two identical probe results are both kept.
   payload is not an object or has neither a status nor a boolean `ok`. A probe should map
   that to a failing sample, not drop it. A mistyped field never fails the read; check
   `ignored` if identity depends on it, as a dropped `pid` does.
+- The read result is typed `HealthReportReading`, the output of a separate loose read schema
+  that shares its field types with the write schema. Every value it holds has been checked
+  against the type it claims; `ignored` names what was dropped to get there, such as
+  `checks.db:responseTime.0.output`.
 - The report schema is loose on unknown keys by design, so a typo in an optional field name
   is not caught there; the sample schema is strict.
 
