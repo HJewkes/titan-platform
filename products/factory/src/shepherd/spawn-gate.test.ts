@@ -319,6 +319,27 @@ describe("every factory-started agent passes the one gate", () => {
     expect(ran()).toBe(true);
     expect(waits).toEqual(["held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"]);
   });
+
+  it("starts the reviewer with the older recorded intent first though the newer asked first, and re-asks every minute while queued", async () => {
+    mkdirSync(join(dir, "co"));
+    const state = { load5: 40, now: 100_000, admitted: [] as string[] };
+    const log = (line: string) => void (line.startsWith("shepherd: spawn_gate admitted ") && state.admitted.push(line.split(" ")[3] ?? ""));
+    const gate = spawnGate({ read: () => ({ ...idle, load5: state.load5 }), now: () => state.now, log });
+    const dispatch = agentChatReviewerDispatch({ agentChatBin: bin(), roles: { g10: "rv", standard: "rv" }, cwdFor: () => join(dir, "co"), roster, gate });
+    const spawnFor = (pr: number, intentAt: number) => () => dispatch.spawn(`rv-octo-demo-${pr}`, "brief", { repo: "octo/demo", pr, head: "a".repeat(40) }, { intentAt });
+    const askOlder = spawnFor(7, 10_000);
+    const waits: string[] = [];
+    const sleep = async (ms: number) => {
+      state.now += ms;
+      state.load5 = 3;
+      if (!state.admitted.includes("rv-octo-demo-7")) await askOlder().catch(() => undefined);
+    };
+
+    await whileBrokerBusy({ now: () => state.now, busyWaitMs: 30 * 60_000, sleep }, new AbortController().signal, (text) => void waits.push(text), spawnFor(8, 50_000));
+
+    expect(state.admitted).toEqual(["rv-octo-demo-7", "rv-octo-demo-8"]);
+    expect(waits).toEqual(Array(2).fill("held by the machine stop: ReviewerSpawnQueued; asking again in 1 min"));
+  });
 });
 
 describe("spawnGate admits deferred reviews oldest intent first", () => {
