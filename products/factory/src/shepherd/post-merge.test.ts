@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
 import type { CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -362,14 +361,11 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup, mainRed });
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, store, freezes: () => freeze.get() };
 }
-
-/** A queued run waits out every recheck: hundreds of 1 ms sleeps, which a loaded CI runner stretches past waitFor's 1 s default. */
-const QUEUED_WAIT_TIMEOUT_MS = 4_000;
 
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), ...params });
@@ -493,7 +489,7 @@ describe("shepherd-pr after land", () => {
     const w = shepherdWorld(() => [{ ...successRun("validate", 1), status: "queued", conclusion: null }]);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-ci-timeout"), QUEUED_WAIT_TIMEOUT_MS);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     const sha = w.fake.pr(1).mergeSha!;
     expect(JSON.stringify(w.host.gates.get(gateId(runId, "main-ci-timeout")))).toContain(`no completed main run containing ${sha} within 240 min`);
