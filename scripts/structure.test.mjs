@@ -2,8 +2,9 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
-import { checkAreas } from "./areas.mjs";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { checkAreas, loadAreas } from "./areas.mjs";
+import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
   checkLayersMatchTiers,
@@ -214,6 +215,23 @@ const areaCases = [
     message: "`packages/Bad_Name` has no area",
   },
 ];
+
+// Warns, not fails, until W8 (TP-2101) seeds the first entries; then this becomes a failing rule.
+describe("R57 every product area has a metrics entry", () => {
+  it("warns for each product area in this repo with no entry, without failing", () => {
+    const warn = vi.spyOn(console, "warn");
+    const gaps = metricsCoverageGaps(REPO, loadAreas(REPO));
+    gaps.forEach((gap) => console.warn(`warning: ${gap}`));
+    expect(warn).toHaveBeenCalledTimes(gaps.length);
+    warn.mockRestore();
+  });
+
+  it("reports a product area with no entry as a warning", () => {
+    const root = tempRoot("structure-metrics-");
+    const gaps = metricsCoverageGaps(root, [{ id: "relay", tier: "product" }]);
+    expect(gaps).toEqual([expect.stringContaining("Product area `relay` has no `metrics/relay.yml`.")]);
+  });
+});
 
 describe.each(areaCases)("$rule", ({ root, message }) => {
   it("holds in this repo", () => {

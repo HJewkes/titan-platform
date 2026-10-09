@@ -150,6 +150,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
   });
 
+  it("reads a g10 changed-line limit and rejects one that is not a positive integer", () => {
+    const review = { profile: "rv", g10ChangedLines: 250 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", g10ChangedLines: 0 } } })))).toThrow(/g10ChangedLines/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 
@@ -216,5 +223,22 @@ describe("loadConfig", () => {
 
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
+  });
+});
+
+describe("digest.queuesDir and service.labelPrefix", () => {
+  it("loads both keys when set and leaves them absent otherwise", () => {
+    const set = loadConfig(configPath(xdg({ digest: { queuesDir: "/srv/queues" }, service: { labelPrefix: "dev.ex." } })));
+    const unset = loadConfig(configPath(xdg({})));
+
+    expect(set.digest?.queuesDir).toBe("/srv/queues");
+    expect(set.service?.labelPrefix).toBe("dev.ex.");
+    expect(unset.digest?.queuesDir).toBeUndefined();
+    expect(unset.service).toBeUndefined();
+  });
+
+  it("refuses a relative queuesDir and an empty labelPrefix", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { queuesDir: "queues" } })))).toThrow(/absolute/);
+    expect(() => loadConfig(configPath(xdg({ service: { labelPrefix: "" } })))).toThrow(/labelPrefix/);
   });
 });

@@ -25,7 +25,9 @@ health probe stores.
   leaves the process.
 - A monitor or probe reads someone else's health payload: use `parseHealthReport`, which
   accepts legacy payloads and newer ones it does not fully know.
-- A probe stores its results: write each one as a `healthSampleSchema` row.
+- A probe stores its results: append each tick's rows with `appendSamples`.
+- A report asks how long a target was up: `uptime` over the store, or `foldUptime` over
+  samples you already hold.
 
 Neighbours: serving the health route, with its pid file, is [daemon](./daemon.md); the SQLite
 primitives under the sample store are [store-sqlite](./store-sqlite.md).
@@ -81,6 +83,89 @@ defaults to `probe`. `unknown` means the probe could not decide, such as an erro
 probe; it never counts as up. Only imports set `dedupKey`, so a re-import adds nothing while
 two identical probe results are both kept.
 
+## The HTTP probe
+
+```ts
+const sample = await probeHttp(
+  { name: "factory", url: "http://127.0.0.1:7410/health", timeoutMs: 5000, expectPort: 7410, observe: ["build.sha"] },
+  { expectedPid: () => readPid() },
+);
+```
+
+`probeHttp` returns one sample and never throws for a target that is down.
+
+| Answer | `status` | `output` |
+|---|---|---|
+| Connection refused or reset | `fail` | `unreachable: <code>` |
+| No full answer within `timeoutMs` (headers and body) | `fail` | `timeout after <ms> ms` |
+| Non-2xx, redirects included (they are not followed) | `fail` | `HTTP <code>` |
+| 2xx body that is not JSON, or not a health payload | `fail` | `body is not JSON`, `payload: ...` |
+| Payload `port` is not `expectPort`, or `pid` is not `expectedPid()` | `fail` | `identity: ...` |
+| `expectedPid()` is null (no pid file) while the port answers | `fail` | `identity: ...` |
+| Bad URL, a URL with `user:pass@`, or `expectedPid()` throws | `unknown` | `probe error: ...` |
+| Otherwise | the payload's status via `parseHealthReport` | none |
+
+Identity is the TP-1056 risk: a stranger answering 200 on the port must not read as up, so
+a payload that reports no pid or port fails a check it was asked for. `latencyMs` runs on
+the injected clock from before the request to after the body; the `expectedPid()` lookup is
+not counted. `observed.code` holds the HTTP
+code when there was one, and each `observe` dot path is copied under its own name; a missing
+path is left out, never defaulted. The package never reads a pid file itself; the caller
+passes `expectedPid`. A URL that carries credentials (`user:pass@`) is refused before any
+request with fixed text, so no piece of them reaches a stored sample.
+
+## The sample store
+
+`openHealthStore(path)` opens a store-sqlite database (WAL) and applies `HEALTH_MIGRATIONS`;
+`openHealthStore(path, { readonly: true })` skips migration for a reader. Opening a file
+stamped by a newer schema throws `SchemaTooNewError`.
+
+- `appendSamples(db, samples)` parses every row with `healthSampleSchema` first, then inserts
+  all of them in one transaction and returns how many it wrote. One call per tick means one
+  commit per tick, whatever the number of targets.
+- Rows with a `dedupKey` are inserted with `INSERT OR IGNORE`, so a re-import adds nothing.
+  Rows without one are always inserted.
+- Nothing is ever removed. The module exports no delete, update or prune function, and
+  triggers on `health_sample` abort a plain `UPDATE` or `DELETE`. They are a guard against
+  mistakes, not a seal: a writer of the file can still drop them, and `INSERT OR REPLACE`
+  removes conflicting rows without firing them.
+- `readSamples(db, target, from, to)` returns `from <= ts < to`, oldest first, using the
+  `(target, ts_ms)` index. `storeStats(db)` returns `rows`, `bytes` (main database pages),
+  `oldestTs` and `newestTs`, so the cost of keeping everything stays visible.
+
+## Uptime
+
+```ts
+import { appendSamples, openHealthStore, uptime } from "@titan-design/health";
+
+const db = openHealthStore(":memory:");
+appendSamples(db, [
+  { ts: "2026-01-01T00:00:05Z", target: "factory", kind: "http", status: "pass" },
+  { ts: "2026-01-01T00:02:05Z", target: "factory", kind: "http", status: "fail" },
+]);
+uptime(db, "factory", new Date("2026-01-01T00:00:00Z"), new Date("2026-01-01T00:03:00Z"));
+// { slots: 3, up: 1, down: 1, unknown: 0, missing: 1, upShareOfWindow: 1/3,
+//   upShareOfObserved: 0.5, gaps: [{ from: "...T00:01:00.000Z", to: "...T00:02:00.000Z" }] }
+```
+
+| Slot holds | Counts as |
+|---|---|
+| no sample | `missing`, never up |
+| worst sample `pass` or `warn` | `up` |
+| worst sample `unknown` | `unknown`, neither up nor down |
+| worst sample `fail` | `down` |
+
+- Slots are `tickSeconds` wide (60 by default) and aligned to the epoch, so they line up with
+  a wall-clock minutely timer. Only whole slots inside `[from, to)` count.
+- A window that cannot be measured throws a `RangeError` before any slot is counted: an
+  invalid `from` or `to`, a tick that is not a whole number of milliseconds of at least 1 ms,
+  or more than `MAX_UPTIME_SLOTS` slots (a year of 1-second slots). A reversed window is not
+  an error; it has 0 slots.
+- Several samples in one slot fold to the worst: fail > unknown > warn > pass.
+- `upShareOfWindow` is `up / slots`; `upShareOfObserved` is `up / (up + down)`. Each is `null`
+  when its denominator is 0, as in an empty window.
+- Consecutive missing slots merge into one gap.
+
 ## The metrics subpath
 
 `@titan-design/health/metrics` holds the schemas for the measurement workflow: `titan.metrics/v1`
@@ -98,7 +183,9 @@ depth; read mode keeps them, so an older reader survives a newer writer. The exp
   policy, written as its own check functions.
 - It does not serve a route or run a daemon. Samples are taken by a short-lived sampler,
   not by a resident process.
-- It never prunes. Raw samples are kept for good.
+- It never prunes or samples down. Raw samples are kept for good, by owner decision.
+- It does not infer restarts from gaps. A restart shorter than a tick leaves no gap; read the
+  target's own restart counters from `observed` instead.
 
 ## Gotchas
 
@@ -115,5 +202,5 @@ depth; read mode keeps them, so an older reader survives a newer writer. The exp
 
 ## Where it came from
 
-New in TP-1651, the first unit of the in-host observability work. The HTTP probe, the
-append-only sample store and uptime follow in later slices of the same task.
+New in TP-1651, the first unit of the in-host observability work. The HTTP probe came
+in its second slice, and the append-only sample store and uptime in its third.

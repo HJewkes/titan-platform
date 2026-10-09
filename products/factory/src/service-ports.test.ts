@@ -1,11 +1,14 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { findOnPath, runCommand } from "./service-ports.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { findOnPath, runCommand, systemServicePorts } from "./service-ports.js";
 
 const dirs: string[] = [];
-afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+afterEach(() => {
+  vi.unstubAllEnvs();
+  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
 
 /** Two PATH directories: `first` holds a non-executable gh and a directory named claude, `second` holds a real gh and a symlink to it. */
 function pathDirs(): { first: string; second: string; pathVar: string } {
@@ -57,4 +60,39 @@ describe("runCommand", () => {
   it("resolves undefined when the binary is not on PATH", async () => {
     expect(await runCommand("tp-574-no-such-binary", ["mcp", "add"])).toBeUndefined();
   });
+});
+
+describe("systemServicePorts label prefix", () => {
+  function configHome(config: unknown): string {
+    const root = mkdtempSync(join(tmpdir(), "factory-ports-cfg-"));
+    dirs.push(root);
+    mkdirSync(join(root, "titan-factory"));
+    writeFileSync(join(root, "titan-factory", "config.json"), JSON.stringify(config));
+    return root;
+  }
+
+  it("carries service.labelPrefix from the config in the env", () => {
+    vi.stubEnv("XDG_CONFIG_HOME", configHome({ service: { labelPrefix: "dev.ex." } }));
+
+    const ports = systemServicePorts();
+
+    expect(ports.labelPrefix).toBe("dev.ex.");
+    expect(ports.configError).toBeUndefined();
+  });
+
+  it("leaves labelPrefix unset when the config names none", () => {
+    vi.stubEnv("XDG_CONFIG_HOME", configHome({}));
+
+    expect(systemServicePorts().labelPrefix).toBeUndefined();
+  });
+
+  it("carries the load error instead of a prefix when the config is malformed", () => {
+    vi.stubEnv("XDG_CONFIG_HOME", configHome({ service: { labelPrefix: "dev.ex." }, digest: { queuesdir: "/srv/queues" } }));
+
+    const ports = systemServicePorts();
+
+    expect(ports.labelPrefix).toBeUndefined();
+    expect(ports.configError).toMatch(/^invalid config .*config\.json: digest/);
+  });
+
 });

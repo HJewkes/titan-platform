@@ -3,11 +3,12 @@ import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
-import { approveMergeDecision, stuckBehindDecision } from "../gate-brief.js";
+import { stuckBehindDecision } from "../gate-brief.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
+import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
 import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
@@ -17,6 +18,7 @@ import type { PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
+export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
 /** A backstop: every legitimate loop passes a gate or the update bound long before this. */
@@ -71,6 +73,8 @@ export interface LandOptions {
   reviewedMerge?: (headSha: string) => boolean;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
+  /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
+  askApproval?: AskApproval;
 }
 
 export type LandOutcome =
@@ -231,14 +235,8 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
-  const reviewedMerge = options.reviewedMerge?.(ci.headSha) ?? false;
-  const { schema, brief } = approveMergeDecision({ repo: input.repo, pr: input.pr, headSha: ci.headSha, reason: decision.reason, reviewedMerge });
-  const prompt = `Merge PR #${input.pr} in ${input.repo} at head ${ci.headSha}? CI is green. Policy ${decision.rule.table}/${decision.rule.rowId}: ${decision.reason}`;
-  const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
-  if (!answer.success) throw new Error(`approve-merge answer does not approve head ${ci.headSha}: ${answer.error.message}`);
-  if (answer.data.decision === "abandon") return stopped("abandoned", ci.headSha, "a human declined the merge");
-  trust(state, ci.headSha, "human");
-  return undefined;
+  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge);
+  return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason }, () => trust(state, ci.headSha, "human"));
 }
 
 /** The recorded decision, not a fresh `decide`, drives the branch: a replay must not flip a gate to an allow. */

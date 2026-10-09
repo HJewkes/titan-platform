@@ -1,5 +1,16 @@
 # @titan-design/agent
 
+## 0.4.6
+
+### Patch Changes
+
+- d020cf9: Reject `wallTimeMs` above the local timer range (2^31 - 1) in shared preflight, so Codex requests fail with `invalid_request` instead of firing their deadline at once.
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [ff6ff86]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/agent-lifecycle@0.1.6
+
 ## 0.4.5
 
 ### Patch Changes

@@ -2,9 +2,9 @@ import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
-import { BLOCK_LINE, findingsText } from "./fix-first-findings.js";
 import { failureOf } from "./error-class.js";
-import { DEFECT_CLASS_HEADING } from "@titan-design/review-panel";
+import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
+import { MAC_SUITE_RULES } from "./suite-host.js";
 
 /** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
@@ -209,13 +209,10 @@ async function withReviewComments(port: GitHubPort, input: WakeFacts, wake: { re
   return { ...wake, payload: `${wake.payload}\n\n${COMMENTS_INTRO}\n${dataFence("review comments", section)}` };
 }
 
-/** A full suite on the Mac starves every other agent on it; basement-suite runs it on a box with slots for it. */
-const TEST_RULE = "Run only targeted tests on the Mac (the files your fix touches, with `pnpm exec vitest run <paths>`); run typecheck, lint, build checks and the full suite with `ssh basement basement-suite`. Never run a full `pnpm test` on the Mac.";
-
-/** Why the agent is woken, and the data that shows it, fenced. */
-export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
+/** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. */
+export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest, testRule: string = MAC_SUITE_RULES.fixer): Promise<{ reason: string; payload: string }> {
   const wake = await wakeBody(port, input, pr);
-  return { ...wake, reason: `${wake.reason}\n\n${TEST_RULE}` };
+  return { ...wake, reason: `${wake.reason}\n\n${testRule}` };
 }
 
 async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {

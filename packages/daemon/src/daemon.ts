@@ -1,27 +1,31 @@
 /**
  * Daemon lifecycle: bind the hono app on loopback, splice in `/mcp`, optionally open a second,
- * authenticated listener on one LAN address, watch a tree, and own a pid file until shutdown.
+ * HTTPS-only, authenticated listener on one remote address, watch a tree, and own a pid file
+ * until shutdown.
  *
  * `startDaemon` returns a handle so tests and embedders can close it; only
  * `runDaemonUntilSignal` waits on signals. Neither calls `process.exit` — the caller
  * decides how the process terminates.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isIPv6 } from "node:net";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
-import { createDaemonAuth, type DaemonAuth } from "./auth.js";
-import { assertRemoteHost, isLoopbackHost, NonLoopbackBindError, RemoteBindError } from "./bind-guard.js";
+import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type HttpAppOptions } from "./http.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
 import type { McpServerOptions } from "./mcp.js";
 import { handleMcpRequest, spliceMcpRoute } from "./mcp-http.js";
 import type { SurfaceOptions } from "./surface.js";
+import { DEFAULT_TLS_RELOAD_MS, remoteGuardOptions, remoteListener, type RemoteListener, type RemoteListenerOptions } from "./remote-listener.js";
+import { reloadTlsOnChange, tlsServerOptions } from "./tls-files.js";
+
+export type { RemoteListenerOptions };
 
 export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
   /** Reported by `/health`, `/version`, and the pid metadata. */
@@ -46,29 +50,17 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   watchRoot?: string;
   /** Product state merged into the `/health` payload. */
   health?: () => Record<string, unknown>;
+  /** Bounds on `/events` subscribers; the subscriber cap counts both listeners together. */
+  eventLimits?: Partial<EventLimits>;
   /** Hook for product-owned routes. */
   mountRoutes?: (app: Hono) => void;
   /** Host/Origin allowlists and the JSON body gate, shared by the hono routes and `/mcp`. */
   guards?: RequestGuardOptions;
+  /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
+  rpcBodyLimit?: RpcBodyLimit;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
-}
-
-/**
- * The remote listener runs the Host/Origin guard, then the auth gate, before every route, and
- * never serves `/mcp`. Its Host allowlist is `host` plus `allowedHosts` and nothing else, each
- * matched only with the bound port, and its origins are derived from that list alone. The
- * loopback listener is unchanged and never learns these names. `mountRoutes` runs once per
- * listener, each on its own app.
- */
-export interface RemoteListenerOptions {
-  /** A bare IP address on one of this host's interfaces. Loopback, wildcards and names throw `RemoteBindError`. */
-  host: string;
-  /** The shared secret. It must already exist; see `ensureTokenFile`. */
-  tokenFile: string;
-  /** Names the remote listener also answers to, such as a LAN DNS name. */
-  allowedHosts?: string[];
 }
 
 export interface DaemonHandle {
@@ -101,7 +93,7 @@ export class DaemonPortInUseError extends Error {
 export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<DaemonHandle> {
   const log = options.logger ?? consoleLogger;
   assertBindAllowed(options);
-  const remote = remoteListener(options);
+  const remote = remoteListener(options.remote, options.host ?? DEFAULT_HOST);
   const paths = daemonPaths(options.stateDir);
   await assertNotAlreadyRunning(paths, options.processStartTime ?? getProcessStartTime, log);
   const graceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
@@ -147,8 +139,10 @@ function toHttpOptions<Ctx extends BaseContext>(
     formatError: options.formatError,
     version: options.version,
     health: options.health,
+    eventLimits: options.eventLimits,
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
+    rpcBodyLimit: options.rpcBodyLimit,
   };
 }
 
@@ -162,27 +156,6 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
 function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
   const host = options.host ?? DEFAULT_HOST;
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
-}
-
-interface RemoteListener {
-  options: RemoteListenerOptions;
-  gate: DaemonAuth;
-}
-
-/** Checked, and the token file read, before anything binds: a bad remote config never half-starts. */
-function remoteListener<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): RemoteListener | null {
-  const remote = options.remote;
-  if (!remote) return null;
-  if (!isLoopbackHost(options.host ?? DEFAULT_HOST)) {
-    throw new RemoteBindError(remote.host, "the main listener is already unauthenticated beyond loopback");
-  }
-  assertRemoteHost(remote.host);
-  return { options: remote, gate: createDaemonAuth({ tokenFile: remote.tokenFile }) };
-}
-
-function remoteGuardOptions(remote: RemoteListenerOptions): RequestGuardOptions {
-  const literal = isIPv6(remote.host) ? `[${remote.host}]` : remote.host;
-  return { allowedHosts: [literal, ...(remote.allowedHosts ?? [])], portOnly: true };
 }
 
 interface RemoteBind<Ctx extends BaseContext> {
@@ -199,7 +172,7 @@ async function listenRemoteOrClose<Ctx extends BaseContext>({ remote, shared, po
   if (!remote) return [];
   const app = buildHttpApp({ ...shared, guards: remoteGuardOptions(remote.options), gate: remote.gate });
   try {
-    return [await listenRemote(app, remote.options.host, port)];
+    return [await listenRemote(app, remote, port, log)];
   } catch (err) {
     await closeServer(loopback, graceMs).catch((closeErr: unknown) => log.error({ err: closeErr }, "error closing loopback after a failed remote bind"));
     throw err;
@@ -276,15 +249,22 @@ function listenLoopback(
   return bound;
 }
 
-/** Takes no MCP handler: `/mcp` is spliced ahead of hono, so the auth gate would never see it. */
-function listenRemote(app: Hono, hostname: string, port: number): Promise<ServerType> {
-  return bind(app, hostname, port).bound;
+/**
+ * Takes no MCP handler: `/mcp` is spliced ahead of hono, so the auth gate would never see it.
+ * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
+ */
+async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
+  const server = await bind(app, remote.options.host, port, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
+  reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
+  return server;
 }
 
-function bind(app: Hono, hostname: string, port: number): { server: ServerType; bound: Promise<ServerType> } {
+type ServerFactory = Pick<Parameters<typeof serve>[0], "createServer" | "serverOptions">;
+
+function bind(app: Hono, hostname: string, port: number, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
   let server!: ServerType;
   const bound = new Promise<ServerType>((resolve, reject) => {
-    server = serve({ fetch: app.fetch, hostname, port }, () => {
+    server = serve({ fetch: app.fetch, hostname, port, ...factory } as Parameters<typeof serve>[0], () => {
       server.off("error", onBindError);
       resolve(server);
     });

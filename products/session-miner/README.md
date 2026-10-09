@@ -90,6 +90,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 | Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
 | Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
+| Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship | none |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -137,6 +138,17 @@ EXISTS-UNUSED when `<head> --help` names a flag that does a stage's job (`--limi
 already passes, NEW when it names none, and UNKNOWN when the help cannot be run. Output is the tool
 result characters of the calls. It refuses `--role`. Q9 is registered from `TRANSCRIPT_QUESTIONS`,
 and its tests inject the transcript reader and the help runner.
+
+Q10 tracks the flags and verbs listed in `src/insights/adoption-registry.ts`. Each entry names the
+task and merged PR, the merge time, the old head with the Q9 patterns the new form replaces, and the
+new head with the flags of which any one marks the new form (none when the verb itself is new). It
+reads Bash calls back like Q9, from `--since` or else the earliest ship, and counts a pipeline as the
+new form when it passes one of those flags, piped on or not, and as the old one when its normalised
+tail is one of the patterns. Uses before an entry's ship are ignored. Rows give weekly new/old counts
+from ship to `--until` (or now), and the old patterns with their Q9 `patternId`. Two weeks after
+ship an entry is flagged `unadopted` while the old patterns outnumber the new form in the uses since
+then, and `unused` while nobody ran the new form; before that it is `watching`. It refuses `--role`.
+To track a new opportunity, add an entry with the patterns Q9 reported for it.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a

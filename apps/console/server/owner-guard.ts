@@ -28,7 +28,7 @@ export interface ConsoleContext extends BaseContext {
   surface: ConsoleSurface;
   /** What the LAN listener's auth gate recorded; null on loopback, which is never gated. */
   auth: RequestAuth | null;
-  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the LAN carries TLS. */
+  /** `TITAN_CONSOLE_OWNER_WRITES=1`; off until the owner turns it on. */
   ownerWrites: boolean;
 }
 
@@ -40,6 +40,30 @@ interface OwnerPresence {
 interface OwnerWriteContext extends ConsoleContext {
   ownerPresence: OwnerPresence;
 }
+
+/**
+ * An owner-write handler carries `ownerWrite: true` from its definition, so a runtime check can
+ * tell it apart from a read or a deposit; `run`'s parameter types are gone by then.
+ */
+type OwnerWriteHandler<Args, Result> = Command<Args, Result, OwnerWriteContext> & { readonly ownerWrite: true };
+
+/**
+ * `run` is a property on `Command`, so a handler that needs `OwnerWriteContext` cannot be widened
+ * to a console command at all. A context whose extra fields are all optional still accepts a plain
+ * console context, so this is also `never` for any context with a key the console does not supply:
+ * a handler that reads `ownerPresence?` would otherwise run as a read with the proof absent. The
+ * keys are taken from each member of a union context, because `keyof` a union sees only the keys
+ * every member shares. It refuses the owner-write mark too. It sees only the type the caller holds,
+ * so a handler widened or cast before it gets here passes; the mark is the runtime backstop, and
+ * only `ownerWriteCommand` ever adds the proof.
+ */
+type ServedWithoutOwner<Ctx> = [Exclude<KeysOfUnion<Ctx>, keyof ConsoleContext>] extends [never]
+  ? ConsoleContext extends Ctx
+    ? { readonly ownerWrite?: never }
+    : never
+  : never;
+
+type KeysOfUnion<T> = T extends unknown ? keyof T : never;
 
 export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
 
@@ -57,7 +81,7 @@ export const REFUSALS = {
   notHttp: "it runs only over HTTP",
   noCredential: "it needs the owner's session cookie on the LAN listener; loopback carries no credential",
   bearer: "it needs the owner's session cookie; a bearer token cannot answer for the owner",
-  disabled: "owner writes disabled until TLS",
+  disabled: "owner writes are off",
   peerLocal: "the request comes from this machine; answer from another device",
 } as const;
 
@@ -71,33 +95,49 @@ function assertUnclassed(command: { readonly name: string }, commandClass: Comma
   }
 }
 
+/** The runtime half of `ServedWithoutOwner`, for a caller that cast its way past the types. */
+function assertNotOwnerWrite(command: { readonly name: string }, commandClass: CommandClass): void {
+  if ("ownerWrite" in command) {
+    throw new Error(`Console command ${command.name} is an owner-write handler; it cannot be served as ${commandClass}, only through ownerWriteCommand`);
+  }
+}
+
 /** Fails startup on a command with no class, or one outside the known classes, rather than serving it as a read. */
 export function assertClassed(command: AnyCommand<ConsoleContext>): asserts command is ClassedCommand {
   const commandClass: unknown = (command as Partial<ClassedCommand>).commandClass;
   if (!COMMAND_CLASSES.includes(commandClass as CommandClass)) {
     throw new Error(`Console command ${command.name} has no class; define it with readCommand, depositCommand or ownerWriteCommand`);
   }
+  if (commandClass !== "owner-write") assertNotOwnerWrite(command, commandClass as CommandClass);
 }
 
 /** Keeps the command's own args and result types, so `CommandMapOf` still types the browser's hooks. */
-export function readCommand<Args, Result, Ctx extends BaseContext>(command: Command<Args, Result, Ctx>): Command<Args, Result, Ctx> & { readonly commandClass: "read" } {
+export function readCommand<Args, Result, Ctx extends BaseContext>(
+  command: Command<Args, Result, Ctx> & ServedWithoutOwner<Ctx>,
+): Command<Args, Result, Ctx> & { readonly commandClass: "read" } {
   assertUnclassed(command, "read");
+  assertNotOwnerWrite(command, "read");
   return { ...command, commandClass: "read" };
 }
 
-export function depositCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+/**
+ * `Ctx` is the handler's own context, inferred only so `ServedWithoutOwner` can check it. A command
+ * already typed `AnyCommand<ConsoleContext>` gives no inference, and the default is that context.
+ */
+export function depositCommand<Ctx extends BaseContext = ConsoleContext>(command: AnyCommand<ConsoleContext> & AnyCommand<Ctx> & ServedWithoutOwner<Ctx>): ClassedCommand {
   assertUnclassed(command, "deposit");
+  assertNotOwnerWrite(command, "deposit");
   return {
     ...command,
     commandClass: "deposit",
-    run: (args, ctx) => {
+    run: (args, ctx: ConsoleContext) => {
       if (ctx.surface !== "http") throw new CommandRefusedError("deposit", REFUSALS.notHttp);
       return command.run(args, ctx);
     },
   };
 }
 
-export function ownerWriteCommand<Args, Result>(command: Command<Args, Result, OwnerWriteContext>): ClassedCommand {
+export function ownerWriteCommand<Args, Result>(command: OwnerWriteHandler<Args, Result>): ClassedCommand {
   assertUnclassed(command, "owner-write");
   return {
     ...command,

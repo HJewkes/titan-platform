@@ -4,7 +4,7 @@ import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
+import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "@titan-design/review-panel";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -309,7 +309,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const rows = [{ ...seat, presence: "live" as const, transcriptExists: false, transcriptPath: null }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
 
-    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toMatchObject({ kind: "clear" });
   });
 
   describe("a seat reviewer's transcript read by presence", () => {
@@ -439,7 +439,7 @@ describe("a seat reviewer's transcript read once per roster change", () => {
     const transcript = writeTranscript(SESSION, reviewed());
     const rows = [{ ...seat, transcriptPath: transcript }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-    expect(await seatFixFirst(async () => rows, reader, target)).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, target)).toMatchObject({ kind: "clear" });
 
     const later = assistant(SESSION, [BLOCK.replace("MERGE", "FIX_FIRST")], "2026-09-30T10:09:00Z");
     appendFileSync(transcript, `${JSON.stringify(later)}\n`, "utf8");

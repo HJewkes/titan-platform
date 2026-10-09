@@ -46,7 +46,7 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | Runs the command: 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 500 on any other thrown error |
+| `POST /rpc/:name` | Runs the command: 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 413 a body over `rpcBodyLimit` (1 MiB by default, checked before buffering), 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 429 a command refusing a caller over its limit (code 75), 500 on any other thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 The paths, the `/rpc` failure statuses, and the SSE event names come from
@@ -97,6 +97,14 @@ its own surfaces.
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope
 and exit codes are identical across surfaces. `ListTools` uses `commandToTool`, so tool
 names are `${toolPrefix}${command.replaceAll(".", "__")}`.
+
+`rpcBodyLimit` bounds one body, not how many are in flight. A `Content-Length` that is not a
+number gets 413 like one over the cap. N slow bodies on loopback can hold N times the cap
+until Node's request timeout (300 s by default) drops them. This is left unbounded on
+purpose: a loopback caller already runs as the owner's account and can spend memory in
+plainer ways, while a bound would refuse honest callers, such as several agents posting at
+once, with a status no client retries. The remote listener checks credentials before it
+reads a body, so this residual is loopback's alone.
 
 `/mcp` is spliced in ahead of hono on the raw Node server because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.

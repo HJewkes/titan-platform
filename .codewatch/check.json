@@ -66,7 +66,8 @@
           "apps/codewatch",
           "products/factory",
           "products/evals",
-          "apps/console"
+          "apps/console",
+          "products/titan"
         ]
       },
       "layers": [
@@ -131,7 +132,8 @@
           "apps/codewatch",
           "products/factory",
           "products/evals",
-          "apps/console"
+          "apps/console",
+          "products/titan"
         ]
       ]
     },
@@ -171,6 +173,13 @@
       "to": "apps/console/**"
     },
     {
+      "id": "product-isolation:products/session-miner->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/session-miner/**",
+      "to": "products/titan/**"
+    },
+    {
       "id": "product-isolation:products/retrieval-eval->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -204,6 +213,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/retrieval-eval/**",
       "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/retrieval-eval->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/retrieval-eval/**",
+      "to": "products/titan/**"
     },
     {
       "id": "product-isolation:apps/codewatch->products/session-miner",
@@ -241,6 +257,13 @@
       "to": "apps/console/**"
     },
     {
+      "id": "product-isolation:apps/codewatch->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/codewatch/**",
+      "to": "products/titan/**"
+    },
+    {
       "id": "product-isolation:products/factory->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -274,6 +297,13 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "products/factory/**",
       "to": "apps/console/**"
+    },
+    {
+      "id": "product-isolation:products/factory->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/factory/**",
+      "to": "products/titan/**"
     },
     {
       "id": "product-isolation:products/evals->products/session-miner",
@@ -311,6 +341,13 @@
       "to": "apps/console/**"
     },
     {
+      "id": "product-isolation:products/evals->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/evals/**",
+      "to": "products/titan/**"
+    },
+    {
       "id": "product-isolation:apps/console->products/session-miner",
       "type": "forbid-import",
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
@@ -344,6 +381,55 @@
       "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
       "from": "apps/console/**",
       "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:apps/console->products/titan",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "apps/console/**",
+      "to": "products/titan/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/session-miner",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/session-miner/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/retrieval-eval",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/retrieval-eval/**"
+    },
+    {
+      "id": "product-isolation:products/titan->apps/codewatch",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "apps/codewatch/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/factory",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/factory/**"
+    },
+    {
+      "id": "product-isolation:products/titan->products/evals",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "products/evals/**"
+    },
+    {
+      "id": "product-isolation:products/titan->apps/console",
+      "type": "forbid-import",
+      "$comment": "Products talk over a CLI, loopback HTTP or MCP. Move the shared code to a package.",
+      "from": "products/titan/**",
+      "to": "apps/console/**"
     },
     {
       "id": "code-graph-history-seam",
