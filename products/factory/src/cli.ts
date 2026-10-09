@@ -1,4 +1,5 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
+import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
@@ -99,7 +100,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

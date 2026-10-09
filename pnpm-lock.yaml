@@ -772,6 +772,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
@@ -790,6 +793,9 @@ importers:
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl

@@ -18,8 +18,8 @@ their `dist`, and a stale `dist` behaves like a different release (the `agent` b
 lacked the `claude-print` harness its source had).
 
 Slice S0 (TP-410) added the host, the step router and the two seams. Slices S1 and S2 (TP-411)
-added the GitHub port and the land core. Two workflows are registered in `src/workflows.ts`:
-`land-pr` and `shepherd-pr`.
+added the GitHub port and the land core. Three workflows are registered in `src/workflows.ts`:
+`land-pr`, `shepherd-pr` and `measurement-audit`.
 
 ## Commands
 
@@ -37,6 +37,7 @@ titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json pri
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
+titan-factory audit <area> --input <file> [--out <file>]      # run measurement-audit here up to the owner's review gate
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -361,6 +362,20 @@ stderr and the command exits 69 after printing the rest.
 
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
+
+## Measurement audit
+
+`measurement-audit` (`src/audit/`) audits what one system records and what it should. Its input is the
+`inputs` block of `titan.measurement-audit/v1` (system, code roots, stores, surfaces, owner, mode), as YAML or JSON.
+Its output is the `titan.measurement-audit/v1` report from `@titan-design/health/metrics`.
+
+The eleven steps follow the manifest in `src/audit/manifest.ts`. Each step is code, agent, or both, and each agent
+step names its model. The code steps open every store read-only and run only the commands of declared surfaces.
+Agent steps run `claude -p` once each through `@titan-design/agent`, with the inventory passed as data. A claimed
+Y metric whose baseline query fails or returns nothing is reported as P, and the failure is recorded as an error,
+never as a zero. The run stops at the `audit-review` gate for the area owner. After `gate resolve` with
+`{"decision":"publish"}`, `titan-factory resume` writes the report to `--out`. Only `mode: initial` runs for now;
+a reaudit needs the drift check. Tests inject `AuditPorts`, so no test calls a model.
 
 ## Install as a LaunchAgent
 
