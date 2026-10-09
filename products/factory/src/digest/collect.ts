@@ -84,8 +84,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
   const needs = sources.needs ? await guarded(gaps, "owner queue", undefined, () => sources.needs!()) : undefined;
   gaps.push(...(needs?.gaps ?? []));
-  const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
-  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now)) : undefined;
+  const measured = await measuredSections(sources, gaps, rows, since, now);
   const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
@@ -97,11 +96,17 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
     ...(waiting.length > 0 && { waiting }),
-    ...(flow && { flow }),
     ...proofSection(allRows, proofRuns, allGates, needs?.items ?? []),
-    ...(friction && { friction }),
+    ...measured,
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };
+}
+
+/** Owner friction and flow, the sections that are left out when their port is missing or fails. */
+async function measuredSections(sources: DigestSources, gaps: string[], rows: readonly WatchRow[], since: Date, now: Date): Promise<Pick<DigestModel, "friction" | "flow">> {
+  const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
+  const flow = sources.flow ? await guarded(gaps, "flow roster", undefined, () => collectFlow(sources.flow!, rows, since, now)) : undefined;
+  return { ...(friction && { friction }), ...(flow && { flow }) };
 }
 
 async function collectFlow(ports: FlowPorts, rows: readonly WatchRow[], since: Date, now: Date): Promise<FlowStats> {
