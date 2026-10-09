@@ -605,6 +605,10 @@ repeats from a fresh clock, so a crash can lengthen the wait but never shorten t
 titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","headSha":"<40 hex>"}'
 ```
 
+One owner signature can also answer many merge gates at once: see
+[owner-signed proofs](/guides/factory#owner-signed-proofs). A gate whose head moved or whose PR
+closed is skipped.
+
 | Gate | Opens when | Payload |
 | --- | --- | --- |
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |

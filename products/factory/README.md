@@ -131,6 +131,41 @@ still writable by your OS user, so an agent that rewrites it can skip the dialog
 killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prints the run as
 `held ... leased by <runtime> until <time>` and leaves it alone.
 
+## Owner-signed proofs: `applyProof`
+
+`applyProof` in `src/gate-batch.ts` is the server-side core behind owner presence across hosts. It
+applies a statement the owner's key signed. It is not wired to a route or verb yet: the
+`POST /gates/resolve-proof` route and the Mac client that signs come next.
+
+1. `verifyProof` (`src/presence-proof.ts`) checks the ECDSA P-256 signature over the exact statement
+   bytes. It then checks the key, the time window, the audience (this factory's hostname) and the
+   digest. A statement with more than one item may not name a release or hardware step.
+2. A nonce already in `gate_batch` is refused as `replayed-nonce`. The nonce column is UNIQUE, so a
+   race refuses too. Replays are deduplicated on the nonce, never on the signature bytes, because a
+   re-encoded (high-S) signature still verifies.
+3. Every item is checked against its live gate record. The gate must exist. A merge gate must ask
+   about the item's PR. In a batch, every gate must be an `approve-merge` gate pinned to one head,
+   answered `{"decision":"merge","headSha":<the item's head>}`. Neither a `shepherd-release` merge
+   nor a release or hardware gate may ride in a batch; those stay one per proof. Any refusal here
+   (`item-refused`, naming the item) records and resolves nothing.
+4. The proof is recorded in one transaction before anything fires (tables `gate_batch` and
+   `gate_batch_item`, migration 15). The record keeps the key id, nonce, digest, the exact statement
+   text, the base64url signature, `aud`, `iat` and `exp`, with every item marked `signed`. Anyone can
+   re-verify the record offline with the public key.
+5. The items then fire in order. Just before an item fires, three checks run. Its gate must still be
+   pending, the run must still wait on that exact gate, and a merge gate must still ask about the
+   item's head. With a GitHub port, a merge gate's PR must also be open at that head. An item that
+   fails is skipped and named: `skipped-closed`, `skipped-moved`, or `skipped-unreadable` when the PR
+   read fails.
+6. Every other item is signalled with the resolver `{class: "owner-terminal", id: "key:<keyId>",
+   channel: "factory-proof", confirmEvent: "proof:<batchId>"}`. The gate store still checks the
+   payload against the gate's schema. An item is marked `firing` before its resolve, then `resolved`
+   or `failed`. The first failure stops the batch, and later items stay `signed`, so a process that
+   dies mid-batch leaves the item it died on marked `firing`.
+
+A one-item proof is the single-gate case. It may answer any gate, including a release, hardware or
+main-red gate, with the payload the owner signed.
+
 ## Shepherd commands
 
 `shepherd.register`, `status`, `list`, `timeline`, `hold`, `release` and `merge` are registry

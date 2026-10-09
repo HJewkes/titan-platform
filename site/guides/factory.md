@@ -226,6 +226,26 @@ payload must match the schema stored with the gate:
 you did not see. `resume` and `factory.gates` print the exact command for each open gate;
 copy the run id and step id from there.
 
+## Owner-signed proofs {#owner-signed-proofs}
+
+The factory host can apply a gate answer the owner signed on another machine. One signature can
+cover one gate, or a batch of merge gates. `applyProof` is the server-side core. The route that
+receives proofs and the Mac client that signs them come in later slices. The flow:
+
+1. The signature is checked over the exact statement bytes, then the key, the time window, the
+   audience and the digest of the items.
+2. A nonce that was already used is refused, and nothing is resolved.
+3. Each item is checked against its live gate. In a batch, only plain merge gates answered `merge`
+   at the listed head may ride. Release gates (`shepherd-release` merges and `after-stages`) and
+   hardware gates stay one per proof.
+4. The proof is recorded, with its statement and signature, before any item fires.
+5. Each item fires only while its gate is still pending at the listed head, and, with a GitHub
+   port, while the PR is open at that head. An item that moved or closed is skipped and named.
+6. A resolved gate records the resolver `owner-terminal` `key:<keyId>`, channel
+   `factory-proof`. A failed resolve stops the batch, and the record shows which items fired.
+
+The package README has the record's columns and the exact checks.
+
 ## `resume`
 
 ```sh
