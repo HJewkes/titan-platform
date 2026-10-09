@@ -1,7 +1,7 @@
 # @titan-design/owner-queue
 
 One list of everything waiting on the owner: the `OwnerItem` schema, the `QueueSource` port,
-and merge-by-keys and rank as pure functions.
+and merge-by-keys, rank and the review-round builder as pure functions.
 
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
@@ -36,3 +36,13 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   head differs (`new-head:<sha>`), `task-done` (`task-done:<id>`) and `asker-retired`
   (`asker-retired:<asker>`), which fires only when the asker declared an `onNoAnswer` other
   than `parked`. A missing fact never labels an item.
+- `buildOwnerRounds(items, options)` turns open Decide items into `titan-review/round@2`
+  manifests that pass `RoundSchema` from `@titan-design/review-schema`. It returns
+  `{ rounds: [{ manifest, bindings }], skipped }`. Each ask is one question in its own section,
+  in input order (rank first). Items a `Principle` covers become one `Principle:` question
+  listing each; one-way items never batch. Asks whose items are all in `options.graduated`
+  and carry no hidden pick (on an item or its principle) fill rounds with `"shown"`; the rest
+  fill rounds with `recommendations: "after-answer"`. Items and principles are parsed first;
+  an item that does not parse is skipped as `invalid`, and text questions carry no
+  recommendation. A `binding` maps each question id to its item ids and each
+  shown option label back to the item's option id.
