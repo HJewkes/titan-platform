@@ -313,14 +313,14 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   name: "shepherd.timeline",
-  description: "The watch row for owner/repo#pr and every step result and gate its run recorded, oldest first",
+  description: "The watch row for owner/repo#pr and every step result, gate, hold, release, freeze and thaw its run recorded, oldest first",
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run), services.store.get().eventsOf(registration.runId)) };
   },
 });
 

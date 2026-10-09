@@ -69,6 +69,7 @@ function entryLine(entry: TimelineEntry): string {
   if (entry.kind === "step") return `  step ${entry.stepId} ${entry.status}${entry.completedAt ? ` ${entry.completedAt}` : ""}`;
   if (entry.kind === "ci") return `  ci ${entry.stepId} ${entry.headSha.slice(0, 7)} ${entry.conclusion}`;
   if (entry.kind === "gate") return `  gate ${entry.gateId} ${entry.status}${entry.resolvedBy ? ` by ${entry.resolvedBy}` : ""}`;
+  if (entry.kind === "event") return `  ${entry.event} ${entry.at}${entry.reason ? `: ${entry.reason}` : ""}${entry.actor ? ` (by ${entry.actor})` : ""}`;
   return `  ${entry.kind} ${entry.stepId}`;
 }
 
