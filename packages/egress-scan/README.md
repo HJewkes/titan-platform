@@ -1,7 +1,8 @@
 # @titan-design/egress-scan
 
 Finds text that must not leave the machine for a public repo: absolute home paths, paths
-into the active-work data directory, and terms from a private list kept outside any repo.
+into the active-work data directory, terms from a private list kept outside any repo, and
+credential tokens.
 A finding names its location and rule id and nothing else, so a report is safe to print
 in public CI logs.
 
@@ -30,7 +31,7 @@ notices and errors to stderr.
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
 - **Text.** `text` scans free text (a PR title, body or branch name) with the generic rules and
   the private term list, for the CC-269 and CC-270 callers. It reads stdin, or `--file <path>`
-  (never both); an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>]`, never
+  (never both); an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>][ <kind>]`, never
   the matched text; `\r\n` counts as one line break, and a column counts UTF-16 units from 1.
   Input over the 128 MiB limit exits 2. It needs no git repo and applies no allow file, since
   prose has no path to allow. Exit codes match `range` and `pre-push`.
@@ -108,6 +109,12 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 - `private-term`: one per line of the term list. `#` comments and blank lines are skipped.
   A plain term matches case-insensitively on word boundaries; a `re:` line is a regex
   compiled with `iu`. A term that matches the empty string is rejected. A finding carries `termIndex`, the term's line in the file.
+- `credential-token`: a credential shape, and the finding's `kind` names which: `github`
+  (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `anthropic` (`sk-ant-`),
+  `aws-access-key` (`AKIA`/`ASIA` plus 16), `slack` (`xox[abprs]-`) and `private-key` (a PEM
+  private-key header). Each shape checks its length and charset and must stand alone, so a bare
+  prefix, a truncated token, a git sha or a base64 run does not match. Each kind is reported
+  once per line. Build test fixtures at runtime (`"ghp_" + "A".repeat(36)`).
 
 ## Allow file
 
@@ -116,7 +123,7 @@ such as `TP-405`, and the glob must name at least one literal path segment.
 Braces expand (`docs/{a,b}.md`), and every alternative must name a literal segment. A glob
 that expands past 256 alternatives is malformed. A backslash is not an escape; it matches a
 literal backslash.
-`private-term` is never allowable. `parseAllow` throws `AllowFileError`
+`private-term` and `credential-token` are never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 
 ## Safety

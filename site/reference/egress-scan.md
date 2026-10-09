@@ -11,10 +11,10 @@ npm install @titan-design/egress-scan
 Public repos receive text written on a private machine. A path copied from a terminal
 carries the owner's login, a note can point into the active-work data directory, and a
 private project name can slip into a commit message. GitHub push protection catches
-credentials, but nothing caught these.
+credentials in pushes, but nothing caught these, and nothing checked PR text for credentials.
 
 The primitive is `scan`: it reads git patch text and returns findings of the form
-`{ location, rule, termIndex? }`. No field carries the matched text, so the report is safe
+`{ location, rule, termIndex?, kind? }`. No field carries the matched text, so the report is safe
 to print in public CI logs. `formatReport` takes findings and counts, never scanned text,
 so it cannot echo a line by construction.
 
@@ -51,7 +51,7 @@ const result = scan([parseCommit("0123456789abcdef", show)], { terms: parseTerms
 formatReport(result.findings, { ...result, termsLoaded: true });
 // commit 0123456 docs/setup.md:2 home-path
 // commit 0123456 docs/setup.md:2 private-term #2
-// egress-scan: 2 findings (home-path 1, aw-data-path 0, private-term 1)
+// egress-scan: 2 findings (home-path 1, aw-data-path 0, private-term 1, credential-token 0)
 // allowed: home-path 0, aw-data-path 0
 // binary files skipped: 0
 // private term list: loaded
@@ -64,6 +64,13 @@ formatReport(result.findings, { ...result, termsLoaded: true });
 | `home-path` | `/Users/<seg>`, `/home/<seg>`, `C:\Users\<seg>` and `C:/Users/<seg>` with the root in any case, also inside `file://` URLs with or without a host, and JSON-escaped | yes |
 | `aw-data-path` | the active-work data directory in each default shape: the macOS Application Support directory, the XDG data directory under `.local/share`, and Windows local `AppData`, with any prefix (`~`, `$HOME` or absolute) | yes |
 | `private-term` | each line of the private term list | never |
+| `credential-token` | a credential shape, reported with its kind: `github` (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`), `anthropic` (`sk-ant-`), `aws-access-key` (`AKIA` or `ASIA` plus 16), `slack` (`xoxa-`, `xoxb-`, `xoxp-`, `xoxr-`, `xoxs-`) and `private-key` (a PEM private-key header) | never |
+
+Each `credential-token` shape pins its prefix, charset and length, and the token must stand
+alone: a bare prefix in prose, a truncated token, a git sha, or a run inside a base64 blob such
+as a lockfile integrity hash does not match. A finding reads
+`<location> credential-token <kind>`, and each kind is reported once per line. Test fixtures build their tokens at runtime
+(`"ghp_" + "A".repeat(36)`), so no token-shaped literal is ever committed.
 
 A `home-path` segment is exempt when it is a placeholder: `Shared`, `runner`, `you`,
 `your-name`, `user`, `username`, `me`, `example`, `name`, `x`, `alice` or `bob` (any case),
@@ -113,7 +120,7 @@ notices and errors go to stderr.
   branch, a line already on main can be reported again under the merge.
 - **Free text.** `text` scans a PR title, body or branch name for the CC-269 and CC-270
   callers, with the generic rules and the private term list. It reads stdin, or `--file <path>`
-  but never both; an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>]` and
+  but never both; an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>][ <kind>]` and
   never the matched text. `\r\n` counts as one line break. Input over the 128 MiB limit exits 2.
   It needs no git repo and applies no allow file. Exit codes match `range` and `pre-push`.
 - **Idents and ref names.** Each scanned commit's raw author and committer name and email are
