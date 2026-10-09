@@ -149,6 +149,27 @@ describe("a pending heredoc whose tails cannot all be read", () => {
   });
 });
 
+describe("a pending heredoc whose tail does not lex", () => {
+  const openers = [
+    ["<(", "cat <(cat <<EOF)"],
+    [">(", "cat >(cat <<EOF)"],
+    ["$(<(", "echo $(cat <(cat <<EOF))"],
+  ];
+  const quotes = [
+    ["single", "it's", "echo '"],
+    ["double", 'say "hi', 'echo "'],
+  ];
+  const guarded = [
+    ["gh pr merge", "gh pr merge 1 --squash"],
+    ["git push", PUSH],
+  ];
+  const rows = openers.flatMap(([o, opener]) => quotes.flatMap(([q, body, tail]) => guarded.map(([g, cmd]) => [`${o} with a ${q} quote before ${g}`, `${opener}\n${body}\nEOF\n${cmd}\n${tail}`])));
+
+  it.each(rows)("the hook denies %s", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+});
+
 describe("a pending heredoc in a followed script", () => {
   const dir = mkdtempSync(join(tmpdir(), "procsub-script-"));
   afterAll(() => rmSync(dir, { recursive: true, force: true }));

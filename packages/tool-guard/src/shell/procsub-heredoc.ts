@@ -79,7 +79,7 @@ function readTails(book: Book, at: number): { tails: Token[][]; unread: boolean 
   return { tails: out, unread };
 }
 
-/** Tokens of the text from `start`, or null once the budget is spent; a text that does not lex adds nothing. */
+/** Tokens of the text from `start`, or null once the budget is spent or when it does not lex: neither is a reading the guard can vouch for. */
 function readTail(book: Book, start: number): Token[] | null {
   if (spent(book.trials)) return null;
   const state = newState(book.src, start, false, book.trials);
@@ -87,7 +87,7 @@ function readTail(book: Book, start: number): Token[] | null {
     while (state.i < book.src.length && !(state.i > start && joinsKnownTail(state))) step(state);
     endWord(state);
   } catch (error) {
-    if (error instanceof ParseError) return [];
+    if (error instanceof ParseError) return null;
     throw error;
   }
   return chargeTrial(book.trials, state.i - start) ? state.tokens : null;
