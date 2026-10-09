@@ -143,36 +143,57 @@ function hasCommit(cwd: string, sha: string): boolean {
   return spawnSync("git", ["cat-file", "-e", END_OF_OPTIONS, `${sha}^{commit}`], { cwd }).status === 0;
 }
 
+/** How the remote is listed: the URL git pushes to (the pre-push hook's second argument), and test seams. */
+export interface ListOptions {
+  readonly pushUrl?: string | undefined;
+  readonly timeoutMs?: number;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+/** A slow remote must not hang a push, so listing it is cut off after this long. */
+export const LIST_TIMEOUT_MS = 20_000;
+
 /** The commits one pushed ref update sends that the remote lacks, oldest first. */
-export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate): string[] {
+export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate, list: ListOptions = {}): string[] {
   if (isZeroSha(update.localSha)) return [];
   if (!isFullSha(update.localSha) || !isFullSha(update.remoteSha)) throw new ConfigError("push update is not a full sha");
   if (!isRemoteName(remote)) throw new ConfigError("remote is not a remote name");
   const known = !isZeroSha(update.remoteSha) && hasCommit(cwd, update.remoteSha);
   // The second `--not` flips back, so the local sha after it counts as included.
-  const excluded = known ? knownExclusions(cwd, remote, update.remoteSha) : [`--remotes=${remote}`];
+  const excluded = known ? knownExclusions(cwd, update.remoteSha, list) : [`--remotes=${remote}`];
   const range = ["--not", ...excluded, "--not", END_OF_OPTIONS, update.localSha];
   return lines(git(cwd, ["rev-list", "--reverse", ...range]));
+}
+
+function listPushUrl(cwd: string, list: ListOptions): string | undefined {
+  const { pushUrl } = list;
+  if (pushUrl === undefined || !isRemoteName(pushUrl)) return undefined;
+  const listed = spawnSync("git", ["ls-remote", "--", pushUrl], {
+    cwd,
+    encoding: "utf-8",
+    maxBuffer: MAX_BUFFER,
+    timeout: list.timeoutMs ?? LIST_TIMEOUT_MS,
+    env: { ...(list.env ?? process.env), GIT_TERMINAL_PROMPT: "0" },
+  });
+  return listed.error || listed.status !== 0 ? undefined : listed.stdout;
 }
 
 /**
  * What an existing branch's range leaves out. A branch that merged main also carries main commits the
  * remote already has, so the remote's advertised tips are excluded along with the branch's old tip.
- * Local tracking refs prove nothing, since anyone can write them; when the remote cannot be listed
- * the range is the plain `remote..local`, which scans more and never less.
+ * The tips are read from the URL git pushes to, not the fetch URL, which can name a different repository.
+ * Local tracking refs prove nothing, since anyone can write them; when the push URL is missing or the
+ * remote cannot be listed in time, the range is the plain `remote..local`, which scans more and never less.
  */
-function knownExclusions(cwd: string, remote: string, remoteSha: string): string[] {
-  const listed = spawnSync("git", ["ls-remote", remote], {
-    cwd,
-    encoding: "utf-8",
-    maxBuffer: MAX_BUFFER,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-  });
-  if (listed.error || listed.status !== 0) {
-    process.stderr.write(`titan-egress-scan: could not list ${remote}; scanning the full ${remoteSha.slice(0, 7)}..local range\n`);
+function knownExclusions(cwd: string, remoteSha: string, list: ListOptions): string[] {
+  const listing = listPushUrl(cwd, list);
+  if (listing === undefined) {
+    process.stderr.write(
+      `titan-egress-scan: could not list the push URL; scanning the full ${remoteSha.slice(0, 7)}..local range\n`
+    );
     return [remoteSha];
   }
-  const tips = lines(listed.stdout)
+  const tips = lines(listing)
     .map((line) => line.split("\t")[0] ?? "")
     .filter((sha) => isFullSha(sha) && hasCommit(cwd, sha));
   return [remoteSha, ...new Set(tips)];

@@ -83,11 +83,11 @@ describe("pre-push ranges", () => {
     }
 
     it("skips a flagged commit that came in from a main the remote already has", () => {
-      const { repo, branchTip, onMain } = setup();
+      const { repo, bare, branchTip, onMain } = setup();
       repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
       const merge = repo.git(["rev-parse", "HEAD"]).trim();
 
-      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip }, { pushUrl: bare });
 
       expect(commits).toEqual([merge]);
       expect(commits).not.toContain(onMain);
@@ -95,27 +95,24 @@ describe("pre-push ranges", () => {
     });
 
     it("still refuses a new flagged commit made on the branch itself", () => {
-      const { repo, branchTip } = setup();
+      const { repo, bare, branchTip } = setup();
       repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
       repo.write("fresh.txt", flaggedLine);
       const fresh = repo.commit("flagged on the branch");
 
-      const commits = commitsForUpdate(repo.dir, "origin", {
-        localSha: fresh,
-        remoteSha: branchTip,
-      });
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: fresh, remoteSha: branchTip }, { pushUrl: bare });
 
       expect(commits).toContain(fresh);
       expect(findings(repo, commits).length).toBeGreaterThan(0);
     });
 
     it("excludes only what the named remote has", () => {
-      const { repo, branchTip, onMain } = setup();
+      const { repo, bare, branchTip, onMain } = setup();
       repo.git(["remote", "rename", "origin", "upstream"]);
       repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
       const merge = repo.git(["rev-parse", "HEAD"]).trim();
 
-      const commits = commitsForUpdate(repo.dir, "upstream", { localSha: merge, remoteSha: branchTip });
+      const commits = commitsForUpdate(repo.dir, "upstream", { localSha: merge, remoteSha: branchTip }, { pushUrl: bare });
 
       expect(commits).toEqual([merge]);
       expect(commits).not.toContain(onMain);
@@ -134,10 +131,10 @@ describe("pre-push ranges", () => {
     }
 
     it("does not trust a local tracking ref the remote never had", () => {
-      const { repo, branchTip, hiddenTip, merge } = mergeUnpushedBranch();
+      const { repo, bare, branchTip, hiddenTip, merge } = mergeUnpushedBranch();
       repo.git(["update-ref", "refs/remotes/origin/fake", hiddenTip]);
 
-      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip }, { pushUrl: bare });
 
       expect(commits).toContain(hiddenTip);
       expect(findings(repo, commits).length).toBeGreaterThan(0);
@@ -149,7 +146,7 @@ describe("pre-push ranges", () => {
       repo.git(["fetch", "-q", "origin"]);
       spawnSync("git", ["-C", bare, "branch", "-q", "-D", "gone"]);
 
-      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip }, { pushUrl: bare });
 
       expect(commits).toContain(hiddenTip);
     });
@@ -158,18 +155,69 @@ describe("pre-push ranges", () => {
       const { repo, branchTip, onMain } = setup();
       repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
       const merge = repo.git(["rev-parse", "HEAD"]).trim();
-      repo.git(["remote", "set-url", "origin", path.join(repo.dir, "no-such-remote")]);
+      const gone = path.join(repo.dir, "no-such-remote");
 
-      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip }, { pushUrl: gone });
 
       expect(commits).toContain(onMain);
       expect(commits).toContain(merge);
     });
 
-    it("throws instead of passing when rev-list fails", () => {
-      const { repo, branchTip } = setup();
+    function splitUrls(rewrite: "pushurl" | "insteadOf") {
+      const ctx = mergeUnpushedBranch();
+      const { repo, bare } = ctx;
+      const priv = tempDir("egress-scan-private-");
+      bares.push(priv);
+      spawnSync("git", ["clone", "-q", "--bare", repo.dir, priv]);
+      repo.git(["remote", "set-url", "origin", priv]);
+      if (rewrite === "pushurl") repo.git(["remote", "set-url", "--push", "origin", bare]);
+      else repo.git(["config", `url.${bare}.pushInsteadOf`, priv]);
+      return ctx;
+    }
 
-      expect(() => commitsForUpdate(repo.dir, "origin", { localSha: "2".repeat(40), remoteSha: branchTip })).toThrow(
+    it.each(["pushurl", "insteadOf"] as const)("lists the push url, not the fetch url (%s)", (rewrite) => {
+      const { repo, bare, branchTip, hiddenTip, merge } = splitUrls(rewrite);
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip }, { pushUrl: bare });
+
+      expect(commits).toContain(hiddenTip);
+      expect(findings(repo, commits).length).toBeGreaterThan(0);
+    });
+
+    it("falls back to the full range when git passes no push url", () => {
+      const { repo, branchTip, onMain } = setup();
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+      const commits = commitsForUpdate(repo.dir, "origin", { localSha: merge, remoteSha: branchTip });
+
+      expect(commits).toContain(onMain);
+    });
+
+    it("falls back to the full range when listing the remote outlasts the timeout", () => {
+      const { repo, branchTip, onMain } = setup();
+      repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+      const merge = repo.git(["rev-parse", "HEAD"]).trim();
+      const hang = path.join(tempDir("egress-scan-hang-"), "ssh");
+      bares.push(path.dirname(hang));
+      fs.writeFileSync(hang, "#!/bin/sh\nexec sleep 3 >/dev/null 2>&1\n", { mode: 0o755 });
+
+      const started = Date.now();
+      const commits = commitsForUpdate(
+        repo.dir,
+        "origin",
+        { localSha: merge, remoteSha: branchTip },
+        { pushUrl: "ssh://host/repo", timeoutMs: 300, env: { ...process.env, GIT_SSH_COMMAND: hang } },
+      );
+
+      expect(Date.now() - started).toBeLessThan(2500);
+      expect(commits).toContain(onMain);
+    });
+
+    it("throws instead of passing when rev-list fails", () => {
+      const { repo, bare, branchTip } = setup();
+
+      expect(() => commitsForUpdate(repo.dir, "origin", { localSha: "2".repeat(40), remoteSha: branchTip }, { pushUrl: bare })).toThrow(
         /rev-list failed/,
       );
     });
