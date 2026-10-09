@@ -1,12 +1,15 @@
 import { useSyncExternalStore } from "react";
 
-export const VIEW_KEYS = ["status", "initiatives", "tasks", "sessions", "agents", "productivity", "knowledge", "search", "stores"] as const;
+/** The rail of six, in rail order. */
+export const VIEW_KEYS = ["home", "initiatives", "tasks", "sessions", "agents", "knowledge"] as const;
 export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export interface Route {
   view: ViewKey;
-  /** The initiative a detail route names; only the initiatives view reads it. */
-  slug?: string;
+  /** The record a detail route names: an initiative slug, task id, session id, agent name or knowledge ref. */
+  id?: string;
+  /** The text after `?`, kept whole so deep links such as `?task=` and `?tab=graph` reach the page. */
+  query?: string;
 }
 
 /** A hand-typed hash can hold a lone `%`; keep the raw text rather than throw during render. */
@@ -20,17 +23,23 @@ function safeDecode(text: string): string {
 
 /** Hash routes, because a page opened from disk has no server to answer a pushed path. */
 export function parseRoute(hash: string): Route {
-  const [, segment = "", detail = ""] = hash.replace(/^#/, "").split("?")[0]!.split("/");
-  const view = VIEW_KEYS.find((key) => key === segment) ?? "status";
-  return view === "initiatives" && detail ? { view, slug: safeDecode(detail) } : { view };
+  const raw = hash.replace(/^#/, "");
+  const queryAt = raw.indexOf("?");
+  const path = queryAt === -1 ? raw : raw.slice(0, queryAt);
+  const query = queryAt === -1 ? "" : raw.slice(queryAt + 1);
+  // A knowledge ref holds `/`; one typed unencoded still names one record, so the detail is the whole rest.
+  const [, segment = "", ...rest] = path.split("/");
+  const view = VIEW_KEYS.find((key) => key === segment) ?? "home";
+  const detail = view === "home" ? "" : rest.join("/");
+  return { view, ...(detail ? { id: safeDecode(detail) } : {}), ...(query ? { query } : {}) };
 }
 
 export function href(route: Route): string {
-  if (route.view === "status") return "#/";
-  return route.slug ? `#/${route.view}/${encodeURIComponent(route.slug)}` : `#/${route.view}`;
+  const path = route.view === "home" ? "#/" : route.id ? `#/${route.view}/${encodeURIComponent(route.id)}` : `#/${route.view}`;
+  return route.query ? `${path}?${route.query}` : path;
 }
 
-/** Takes the key a nav item reports; an unknown one lands on the status view. */
+/** Takes the key a nav item reports; an unknown one lands on the home view. */
 export function navigate(key: string): void {
   open(parseRoute(`#/${key}`));
 }

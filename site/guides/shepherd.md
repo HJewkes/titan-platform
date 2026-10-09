@@ -427,6 +427,12 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   those whose stored `sh-main-ci` read was red, and the rate, plus those since marked
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
+- With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
+  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
+  error's `[<class>] ` prefix; an older error without one is classified from its text. A
+  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `"failures": [{ repo, week, failures, byClass }]`.
+
 `shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
 the minutes it has been there, and the minutes since registration. `status --json` carries them
 as `stage` and `totalMinutes`.
@@ -434,6 +440,31 @@ as `stage` and `totalMinutes`.
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
 each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
+
+### Review causes {#review-causes}
+
+Each `sh-review-intent` step records why Shepherd dispatched a reviewer at that head, as
+`cause` and, for some causes, `reason`. The run derives it from its own steps, with no extra
+GitHub call:
+
+| Cause | When |
+|---|---|
+| `first` | The run's first review. |
+| `fix-round` | A new head after a `FIX_FIRST` or `NO_REPRO` send-back. |
+| `conflict`, `ci-fix` | A new head after a conflict or red-CI wake. |
+| `superseded` | The head moved while the last review ran. |
+| `update-branch` | Shepherd's own update-branch moved the head, and there was no `MERGE` to carry. |
+| `merge-up-not-carried` | Shepherd's update-branch moved a head with a `MERGE`, and the carry refused. `reason` is `not-one-merge`, `base-off-branch`, `remerge-touched`, `seat`, `base-unknown` or `probe-failed`. |
+| `kind-no-carry` | The `MERGE` could not carry because of the registration's kind. `reason` is that kind, or `unregistered`. |
+| `seat-push` | A push Shepherd did not make moved the head; after a `MERGE`, `reason` says why it did not carry. |
+| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
+| `hold` | The hold's reviewer is read again. |
+| `owner-request` | A resync asked for the review again. |
+| `unknown` | Recorded before causes existed, or nothing explains it. |
+
+`stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
+by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
+`--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
 
 ## Seat policy {#seat-policy}
 
@@ -452,7 +483,18 @@ lists `visual_paths` also gets `auto`, but only for pull requests that change no
 (see [Visual paths](#visual-paths)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
-`rebase`; default `squash`), `reviewer`, `priority` and `fixer`. An unknown key is refused.
+`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown key
+is refused.
+
+A request with `"merge":"owner-gate"` must also name why the owner is asked, with
+`ownerGateReason` set to `gate-2-visual`, `g10-security`, `proof-fixture` or `owner-asked`.
+Without it the registration is refused and the CLI exits 65 with a message naming the four
+reasons; the reason with any other merge mode is refused too. The reason is stored in the
+effective policy, a repeat registration keeps the first one, and the gate reason shows it:
+`policy owner-gate (gate-2-visual) waits for the owner`. A run registered owner-gate before
+this field, with no reason, keeps working and reads as legacy. The owner digest lists a
+`proof-fixture` run in its own "Proof fixtures" section, with its gates and age, and leaves it
+out of the asks, merged and stuck lists; `shepherd status` shows it as usual.
 
 Seat files are read from `shepherd.seatsDir` in the
 [config file](/guides/factory#the-config-file): every `*.md` file there, frontmatter only
@@ -507,7 +549,7 @@ A push after registration is judged at its own head, so a later commit that adds
 file gates. A remote that several seats list gets the union of their `visual_paths`, so a
 file any of them calls visual gates. If one of those seats has neither `visual_paths` nor
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
-`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate"}'` still gates
+`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
 
 The seat book is read again on every `register`, so a change applies without a restart. An

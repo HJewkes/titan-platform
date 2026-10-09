@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { parseVerdictBlock } from "@titan-design/session-read";
-import { MALFORMED_REFUSALS } from "./review-schemas.js";
-import { MAX_CORRECTION_PROMPT_CHARS, REFUSAL_SENTENCES, correctionPrompt, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_CORRECTION_PROMPT_CHARS, type MalformedRefusal, REFUSAL_SENTENCES, correctionPrompt, reviewCheckoutName, reviewerBrief } from "./reviewer-brief.js";
+
+// A Record forces every MalformedRefusal to appear, so a new refusal cannot skip the correction-prompt tests.
+const REFUSAL_SET: Record<MalformedRefusal, true> = {
+  no_block: true,
+  multiple_blocks: true,
+  bad_verdict: true,
+  missing_pr_line: true,
+  bad_pr: true,
+  missing_head_line: true,
+  bad_head: true,
+  wrong_target: true,
+};
+const REFUSALS = Object.keys(REFUSAL_SET) as MalformedRefusal[];
 
 const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40) };
 
@@ -20,6 +32,12 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it("names the checkout to remove with the same name it extracts into", () => {
+    const brief = reviewerBrief(target);
+
+    expect(brief).toContain(`$TMPDIR/${reviewCheckoutName(target.pr, target.head)}\``);
+  });
+
   it("keeps the full suite off the Mac", () => {
     const brief = reviewerBrief(target);
 
@@ -46,7 +64,7 @@ describe("reviewerBrief Closer line", () => {
 });
 
 describe("correctionPrompt", () => {
-  const refusals = Object.keys(MALFORMED_REFUSALS) as (keyof typeof MALFORMED_REFUSALS)[];
+  const refusals = REFUSALS;
   const longTarget = { repo: `${"o".repeat(39)}/${"r".repeat(100)}` as const, pr: Number.MAX_SAFE_INTEGER, head: "f".repeat(40) };
 
   it("has one sentence for every refusal", () => {

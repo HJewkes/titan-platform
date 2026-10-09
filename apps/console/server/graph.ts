@@ -1,9 +1,10 @@
 import path from "node:path";
 import { z } from "zod";
-import { EXIT, defineCommand } from "@titan-design/registry";
+import { EXIT } from "@titan-design/registry";
 import type { SessionGraph } from "@titan-design/session-graph";
 import { RELATIONS } from "@titan-design/session-read";
 import { failure, type ActiveWork, type ReadResult } from "./active-work.js";
+import { readCommand } from "./owner-guard.js";
 import { readGraph, type Degraded, type SessionsSource } from "./sessions.js";
 
 export interface GraphSource {
@@ -95,7 +96,7 @@ type EgoArgs = z.infer<typeof egoArgs>;
 
 export function graphCommands(source: GraphSource) {
   return {
-    "graph.ego": defineCommand({
+    "graph.ego": readCommand({
       name: "graph.ego",
       description: "Nodes and typed edges within one or two hops of a ref, from the session graph and active-work's context.graph, capped",
       args: egoArgs,

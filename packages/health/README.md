@@ -27,3 +27,14 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   clock (`now`, `after`) and `expectedPid` are injected.
 
 The append-only sample store and uptime arrive in later TP-1651 slices.
+
+## `@titan-design/health/metrics`
+
+- `validateEntry(entry, mode)` picks the schema from the entry's own `schema` id and returns
+  `{ ok, entry }` or `{ ok, errors }`. `mode` is `"write"` (unknown keys refused at every depth)
+  or `"read"` (unknown keys kept).
+- `metricsEntrySchema` / `metricsEntryReadSchema` cover `titan.metrics/v1`, a system's metric
+  registry entry. `measurementAuditSchema` / `measurementAuditReadSchema` cover
+  `titan.measurement-audit/v1`, an audit report.
+- `METRICS_SCHEMA_ID`, `AUDIT_SCHEMA_ID`, `METRIC_FAMILIES`, `METRIC_UNITS`, `CADENCES` and
+  `SURFACES` are the closed vocabularies.

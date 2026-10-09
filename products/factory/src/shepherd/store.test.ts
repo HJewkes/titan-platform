@@ -81,6 +81,16 @@ describe("shepherd registration store", () => {
     expect(updated.policy).toEqual(stored);
   });
 
+  it("a repeat registration cannot change the stored owner-gate reason", () => {
+    const store = openStore();
+    const stored: EffectivePolicy = { merge: "owner-gate", ownerGateReason: "gate-2-visual", mergeMethod: "squash", fixer: false, seat: "demo-seat" };
+    store.register({ ...base, policy: stored });
+
+    const updated = store.update("run-1", { ...base, policy: { ...stored, ownerGateReason: "proof-fixture" } });
+
+    expect(updated.policy.ownerGateReason).toBe("gate-2-visual");
+  });
+
   it("a repeat registration with a stricter policy narrows the stored one", () => {
     const store = openStore();
     store.register({ ...base, policy: { merge: "auto", mergeMethod: "squash", fixer: true, seat: "demo-seat" } });

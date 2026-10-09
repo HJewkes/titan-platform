@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, successRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ import { freshReviewerBase } from "./cleanup.js";
 import { codeRoute } from "../workflows/land.js";
 import type { MergeEvidence } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import { reviewCauseStats, type ReviewCause } from "./review-cause.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import {
   FIX_FIRST_TRUNCATED,
@@ -43,7 +44,7 @@ import {
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
-import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "./reviewer-brief.js";
+import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
@@ -380,6 +381,13 @@ describe("reviewRoutes", () => {
   });
 });
 
+function portListing(files: PrFile[], changedFiles = files.length) {
+  const fake = fakeGitHub();
+  fake.prFiles.set(7, files);
+  fake.prChangedFiles.set(7, changedFiles);
+  return githubPort(fake.wire);
+}
+
 const agent = (name: string, overrides: Partial<ReviewerAgent> = {}): ReviewerAgent => ({
   name,
   agentId: `agent-${name}`,
@@ -452,6 +460,10 @@ describe("sh-review", () => {
     /** Runs inside every sleep, after the clock has moved. */
     onSleep?: (ms: number) => void;
     signal?: AbortSignal;
+    /** PR 7's changed files on a fake GitHub; absent means the deps carry no port. */
+    files?: PrFile[];
+    /** PR 7's own changed-file count; above the length of `files` the list reads as truncated. */
+    changedFiles?: number;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -463,7 +475,7 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -494,7 +506,56 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security" });
+    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security", sizeUnread: true });
+  });
+
+  describe("sizes the spawn by the PR's changed lines", () => {
+    const correctness = { ...registration, kind: "correctness" };
+    const roles: ReviewerRoles = { g10: "bd-reviewer", standard: "reviewer" };
+    const spawnSized = async (files?: PrFile[], changedFiles?: number) => {
+      const dispatch = fakeDispatch();
+      const { result } = await reviewSteps(dispatch, { registered: correctness, ...(files && { files }), ...(changedFiles !== undefined && { changedFiles }), wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      return { facts: dispatch.spawns[0]?.facts, profile: (result as { profile?: string } | undefined)?.profile };
+    };
+
+    it("gives a 450-line correctness PR the g10 profile", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 400, deletions: 50 }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 450 }, profile: "bd-reviewer" });
+    });
+
+    it("gives a 30-line correctness PR the standard profile", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+    });
+
+    it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
+      const sized = await spawnSized([
+        { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },
+        { path: "CAPABILITIES.md", status: "modified", additions: 300, deletions: 61 },
+      ]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 40 }, profile: "reviewer" });
+    });
+
+    it("gives the g10 profile when GitHub truncates the file list", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 1, deletions: 0 }], 3_001);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    it("gives the g10 profile when a file carries no line counts", async () => {
+      const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified" }]);
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    it("gives the g10 profile when the file list cannot be read", async () => {
+      const sized = await spawnSized();
+
+      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
   });
 
   it("sh-review gives the spawn the strict facts when the step carries no run id", async () => {
@@ -502,7 +563,7 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch).review(spawnIntent);
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true });
+    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true, sizeUnread: true });
   });
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
@@ -1148,6 +1209,7 @@ describe("reviewPhase", () => {
     /** The hold's `--reviewer`. */
     holdReviewer?: string;
     fresh?: boolean;
+    cause?: ReviewCause;
     /** The profile each class of PR is spawned with; absent means the dispatch records none. */
     roles?: ReviewerRoles;
   }
@@ -1164,7 +1226,7 @@ describe("reviewPhase", () => {
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
-      for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }) }));
+      for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
     const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }) });
@@ -1190,6 +1252,12 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  it("records the dispatch's cause on sh-review-intent, so the ledger says why the head was reviewed", async () => {
+    const { resultOf } = await review({ dispatch: fakeDispatch(), policy: AUTO, cause: { cause: "merge-up-not-carried", reason: "not-one-merge" } });
+
+    expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ kind: "intent", head: H1, cause: { cause: "merge-up-not-carried", reason: "not-one-merge" } });
   });
 
   it("asks the reviewer for an owner brief when the run's policy is owner-gate, and not when it is auto", async () => {
@@ -1289,11 +1357,14 @@ describe("reviewPhase", () => {
     reviewer?: string;
     /** The machine guard refuses the first resume, and the host dies in the wait that follows. */
     busyResume?: boolean;
+    /** The cause the code after the restart names, which the run recorded before causes did not. */
+    causeOnReplay?: ReviewCause;
   }
 
   /** One host dies in a step and a second replays the run a minute later; the reviewer speaks a millisecond after it is started. */
-  async function replay({ dieIn, when, agents = [], reviewer, busyResume }: Replay) {
+  async function replay({ dieIn, when, agents = [], reviewer, busyResume, causeOnReplay }: Replay) {
     let clock = 10_000;
+    const named: { cause?: ReviewCause } = {};
     let spokeAt: number | undefined;
     let dieInSleep = false;
     const started = (name: string) => void ((spokeAt = clock + 1), dispatch.agents.some((held) => held.name === name) || dispatch.agents.push(agent(name, { presence: "live" })));
@@ -1307,7 +1378,7 @@ describe("reviewPhase", () => {
     const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
     const routes = reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000 });
     const verdicts: Verdict[] = [];
-    const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1 })) });
+    const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1, ...(named.cause && { cause: named.cause }) })) });
     const dir = mkdtempSync(join(tmpdir(), "factory-review-"));
     dirs.push(dir);
     let died!: () => void;
@@ -1318,10 +1389,11 @@ describe("reviewPhase", () => {
     store.get().register({ ...registration, pr: 1, runId, ...(reviewer && { policy: { ...OWNER_GATE_POLICY, reviewer } }) });
     await dead;
     clock += 60_000;
+    named.cause = causeOnReplay;
     const report = await crash.takeOver(routes).resume();
     crash.dispose();
     const dispatched = (Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data as { result: ReviewDispatchResult }).result;
-    return { verdicts, dispatch, dispatched };
+    return { verdicts, dispatch, dispatched, resumed: report.resumed[0]! };
   }
 
   it.each<[string, Replay, number]>([
@@ -1336,6 +1408,13 @@ describe("reviewPhase", () => {
     expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-octo-demo-1"]);
     expect(dispatched).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-1", agentId: "agent-rv-octo-demo-1", at });
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+  });
+
+  it("replays an intent recorded before causes existed without a cause, and counts it as unknown", async () => {
+    const { verdicts, resumed } = await replay({ dieIn: "sh-review", when: "before", causeOnReplay: { cause: "first" } });
+
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    expect(reviewCauseStats([{ ...resumed, params: { repo: REPO } }])).toMatchObject([{ repo: REPO, reviews: 1, causes: { unknown: 1 } }]);
   });
 
   it("resumes the standing reviewer once and takes its verdict when the host dies after the resume and before its step output is stored", async () => {

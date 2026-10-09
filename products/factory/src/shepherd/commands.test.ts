@@ -110,6 +110,25 @@ describe("shepherd.register", () => {
     expect(await w.call("shepherd.status", {})).toEqual({ ok: true, data: [] });
   });
 
+  it("an owner-gate request with no reason is refused naming the four reasons, and starts no run", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const envelope = await w.call("shepherd.register", { ...pr1, policy: { merge: "owner-gate" } });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/registration refused.*gate-2-visual, g10-security, proof-fixture, owner-asked/) });
+    expect(shepherdRuns(w.host)).toEqual([]);
+  });
+
+  it("an owner-gate request with a reason registers and stores it", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, { ...pr1, policy: { merge: "owner-gate", ownerGateReason: "proof-fixture" } });
+
+    expect(registration.policy).toMatchObject({ merge: "owner-gate", ownerGateReason: "proof-fixture" });
+  });
+
   it("a PR whose head is not the branch given is refused and starts no run", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: "agent-chat/other" });

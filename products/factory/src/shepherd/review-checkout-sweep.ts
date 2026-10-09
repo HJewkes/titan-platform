@@ -6,10 +6,6 @@ export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export const REVIEW_CHECKOUT_NAME = /^review-[1-9][0-9]*-[0-9a-f]{12}$/;
 
-export function reviewCheckoutName(pr: number, head: string): string {
-  return `review-${pr}-${head.slice(0, 12)}`;
-}
-
 export interface ReviewCheckoutSweepDeps {
   /** Defaults to the system temp dir, where reviewers extract their checkouts. */
   root?: string;

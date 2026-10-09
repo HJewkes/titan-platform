@@ -111,6 +111,17 @@ code when there was one, and each `observe` dot path is copied under its own nam
 path is left out, never defaulted. The package never reads a pid file itself; the caller
 passes `expectedPid`.
 
+## The metrics subpath
+
+`@titan-design/health/metrics` holds the schemas for the measurement workflow: `titan.metrics/v1`
+(a system's registry entry: stores, metrics with source anchor, query, cadence, SLO and surfaces,
+reports, last audit) and `titan.measurement-audit/v1` (an audit report). `validateEntry(entry,
+"write" | "read")` dispatches on the entry's `schema` id. Write mode refuses unknown keys at every
+depth; read mode keeps them, so an older reader survives a newer writer. The exports are
+`metricsEntrySchema`, `metricsEntryReadSchema`, `measurementAuditSchema`,
+`measurementAuditReadSchema`, `validateEntry`, and the vocabularies `METRIC_FAMILIES`,
+`METRIC_UNITS`, `CADENCES` and `SURFACES`.
+
 ## What it deliberately does not do
 
 - It holds no thresholds. Which fields make a product's check warn or fail is that product's

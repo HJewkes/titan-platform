@@ -6,8 +6,9 @@
 npm install @titan-design/anthropic-account zod
 ```
 
-Status: 0.1, pure code. The root entry has no fs, process or network access, and a test
-fails if it gains any. File and network access arrive later on a separate `./node` subpath.
+Status: 0.3. The root entry is pure code with no fs, process or network access, and a test
+fails if it gains any. File and network access live on the `./node` subpath, and the
+network call goes through a `fetch` the caller passes in.
 
 ## The problem it solves
 
@@ -92,7 +93,7 @@ type LoginState =
   | { status: "present"; expiresAt: number; canRefresh: boolean; subscriptionType?: string; rateLimitTier?: string }
   | { status: "expired"; expiresAt: number; canRefresh: boolean }
   | { status: "missing" }
-  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" };
+  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" | "hard-linked" };
 ```
 
 `loginStateFromCredentials(credentials, now)` takes the parsed `.credentials.json` object and
@@ -107,8 +108,8 @@ expiry. It returns:
 | `missing` | the input, or its `claudeAiOauth` block, is absent or null |
 | `refused` | `malformed`: the block has no access token, or an expiry outside epoch milliseconds from 1e12 to 1e14, so a seconds or microseconds value is refused |
 
-`mode-too-wide` and `foreign-owner` are reserved for the `./node` reader, which refuses a
-credentials file before reading it.
+`mode-too-wide`, `foreign-owner`, `not-a-regular-file` and `hard-linked` come only from the `./node`
+reader, which refuses a credentials file before reading it.
 
 `needsRefresh(state, now, marginMs)` is true when the access token expires within `marginMs`
 of `now`, and always true for an `expired` state, whatever `now` is passed. It is false for `missing` and `refused`, which need a login, not a
@@ -147,11 +148,130 @@ too. It does not catch an unlabelled opaque value that `+`, `/` or `.` breaks in
 shorter than 32 characters, so redaction backs up the rule that a token is never put in a
 message; it does not replace it.
 
+## The `./node` subpath
+
+```ts
+import { discoverProfiles, readLoginState, readUsage, writeReading } from "@titan-design/anthropic-account/node";
+
+for (const { label, configDir } of discoverProfiles()) {
+  const login = readLoginState(configDir);
+  const usage = readUsage(configDir);
+  console.log(label, login.status, usage?.ageSeconds);
+}
+```
+
+`discoverProfiles({ home?, env? })` returns `AccountProfile`s: `<home>/.claude` first, then
+each directory under `<home>/.claude-profiles` in name order, each labelled by
+`accountLabel`. A directory that does not exist is left out, and so is a symlink, at either
+level. A non-empty `CLAUDE_CONFIG_DIRS` in `env` replaces the scan: its entries, split on
+the path delimiter, are taken as given. `home` defaults to `os.homedir()` and `env` to
+`process.env`.
+
+`readLoginState(configDir, { now?, uid? })` reads `<configDir>/.credentials.json` and returns
+`loginStateFromCredentials`'s `LoginState`. It never writes, chmods or refreshes. Before it
+reads a byte it:
+
+1. `lstat`s the path: absent gives `missing`, and a symlink or anything but a regular file
+   gives `refused` with `not-a-regular-file`.
+2. Opens it read-only with `O_NOFOLLOW` and `O_NONBLOCK`, so a symlink swapped in after the
+   `lstat` fails the open (`not-a-regular-file`) and a FIFO cannot hang it.
+3. `fstat`s the open descriptor and refuses unless it is a regular file with the `lstat`'s
+   device and inode (`not-a-regular-file`), owned by `uid` (`foreign-owner`), with no group
+   or other permission bits (`mode-too-wide`), with exactly one link (`hard-linked`), and at
+   most 64 KiB (`malformed`).
+
+A second hard link is refused because the file's other name may sit outside the config dir,
+under rules this check cannot see. The read and the checks use the same descriptor, so the
+file checked is the file read. The read stops at 64 KiB plus one byte. The buffer is zeroed
+after parsing, and also when a read fails partway through. Invalid JSON is
+`malformed`, and the parser's message, which quotes the input, is dropped. `uid` defaults to
+the process's uid; on a platform without one every file is refused as `foreign-owner`. An
+unexpected filesystem error is thrown through `redactSecrets`, with no `cause`.
+
+`writeReading(configDir, reading)` writes `<configDir>/status-cache/sessions/usage-poll.json`
+and returns its path. It throws a `TypeError` with a fixed message, and writes nothing,
+unless the reading passes `parseUsageReading` with `session_id` `usage-poll` and its JSON
+is unchanged by `redactSecrets`. Only the fields `parseUsageReading` keeps are written. The
+write is atomic:
+
+1. Creates the sessions dir, mode 0700, if needed.
+2. Creates `.usage-poll.json.<pid>.<random>.tmp` in the same dir, exclusively, mode 0600.
+3. Writes the JSON, `fsync`s, and closes.
+4. Renames it over `usage-poll.json`, then `fsync`s the dir, best effort.
+
+A reader sees the old reading or the new one, never part of one. The temp name does not
+end in `.json`, so a reader that globs the dir never takes it. On a failure the temp file is
+removed and the error is thrown through `redactSecrets`. agent-chat's status-line budget
+reader accepts the file as written; a test restates its rules.
+
+`readUsage(configDir, { now? })` returns `{ reading, file, ageSeconds }` for the reading with
+the newest `written_at` across every `.json` file in the sessions dir, the poller's and each
+status-line session's, or `null`. Each file goes through the same `lstat`, `O_NOFOLLOW` open
+and `fstat` steps as the credentials file, without the owner, mode and link rules, so a
+symlink or FIFO swapped in mid-read is refused and never blocks. A file is skipped when it
+is not a regular file, is larger than 256 KiB (checked on the read itself, so growth after
+the `fstat` counts), is invalid, or has no rate-limit window. Its `session_id`, `source` and
+`account` pass through `redactSecrets`. `ageSeconds` is never negative.
+
+## Polling the usage endpoint
+
+```ts
+import { pollAll, pollUsage } from "@titan-design/anthropic-account/node";
+
+const result = await pollUsage({ label: "agents", configDir }, { fetch });
+if (!result.ok) console.error(`agents: ${result.failure}`);
+
+for (const { label, result, writeError } of await pollAll({ fetch })) {
+  console.error(`${label}: ${result.ok ? "ok" : result.failure}${writeError ? " (write failed)" : ""}`);
+}
+```
+
+`pollUsage(profile, { fetch, now?, uid?, timeoutMs? })` reads the access token from
+`<configDir>/.credentials.json` through the same gate as `readLoginState`, sends one
+request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
+
+| failure | when | request sent |
+|---|---|---|
+| `missing` | no credentials file, or no `claudeAiOauth` block | no |
+| `refused` | the gate refused the file, or the block or its token is malformed; `reason` says which | no |
+| `expired` | the token expires within 60 s of `now` (`EXPIRY_MARGIN_MS`), or already has | no |
+| `io` | an unexpected filesystem error | no |
+| `http-<status>` | any status outside 2xx, a 3xx included | yes |
+| `network` | the fetch rejected or timed out, the body stalled past the timeout, or the response came from a followed redirect | yes |
+| `malformed` | a 2xx body over 64 KiB, not JSON, or with no known window | yes |
+
+The request is `GET https://api.anthropic.com/api/oauth/usage` with three headers:
+`authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20` (Claude Code's own
+value) and `accept: application/json`. It sets `redirect: "error"` and an
+`AbortSignal.timeout` of `timeoutMs` (default 10 s) that also bounds the body read. It is never retried. The token must be an
+RFC 6750 `b64token` of at most 4096 characters, so it cannot split a header; anything
+else is refused as `malformed` before a request. `now` defaults to `Date.now()`, sets
+`written_at`, and decides expiry; `uid` is as for `readLoginState`.
+
+A 2xx body is parsed against an allowlist of window keys, `five_hour`, `seven_day`,
+`seven_day_opus`, `seven_day_sonnet` and `seven_day_oauth_apps`, each
+`{ utilization: number, resets_at: string | null }` with `resets_at` at most 64 characters. Every other key
+is dropped unread, a known window in another shape is dropped, and the rest goes through
+`usageFromOAuthResponse`. The reading's `account` is the profile's label, left out when
+`redactSecrets` would change it. A non-2xx body is cancelled without being read. It throws
+only a `RangeError`, with a fixed message, for a non-finite `now` or a `timeoutMs` that is
+not a positive number.
+
+`pollAll({ fetch, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
+once, `profiles` or else `discoverProfiles(discover)`, and writes each reading with
+`writeReading`. It resolves to one `{ label, result, file?, writeError? }` per profile, in
+order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
+One profile's failure never stops another.
+
 ## What it deliberately does not do
 
-It reads no files, makes no request and writes nothing. It does not discover config dirs,
-check a credentials file's mode, call the usage endpoint or refresh a token; those belong to
-the `./node` subpath. It never returns, logs or stores a token.
+The root reads no files, makes no request and writes nothing. The `./node` subpath writes
+only the usage file and sends only the usage request, through the caller's `fetch`. Neither
+refreshes a token or touches the refresh token: an expired token is reported, not renewed.
+Neither returns, logs or stores a token, and no failure carries a message. The tests use
+canary tokens, a fake `fetch` and a temp home, and assert the canary is absent from every
+result, error, captured console or stream line and written file, including when the server
+echoes the token in its body, a header, a redirect `Location` or an error body.
 
 ## Gotchas
 

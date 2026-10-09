@@ -7,12 +7,12 @@ import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
+import { HOME_PREFIXES } from "./seats.js";
 import { ReviewerMachineHold } from "./review-wait.js";
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
-const HOME_PREFIXES = ["~/", "$HOME/", "${HOME}/"];
 
 /** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
 export interface ReviewerRosterRow extends ReviewerAgent {
@@ -96,7 +96,7 @@ async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
-    if (error instanceof SpawnDeferred) throw new ReviewerBrokerBusy(`spawn gate: ${error.message}`, { cause: error });
+    if (error instanceof SpawnDeferred) throw new ReviewerMachineHold(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
     if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });

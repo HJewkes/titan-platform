@@ -1,7 +1,7 @@
 {
   "name": "@titan-design/anthropic-account",
   "version": "0.0.0",
-  "description": "Anthropic account state without I/O: usage readings, token-free login state, account labels and secret redaction",
+  "description": "Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file and the usage poller",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "files": [

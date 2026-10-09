@@ -309,7 +309,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const rows = [{ ...seat, presence: "live" as const, transcriptExists: false, transcriptPath: null }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
 
-    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toMatchObject({ kind: "clear" });
   });
 
   describe("a seat reviewer's transcript read by presence", () => {
@@ -439,7 +439,7 @@ describe("a seat reviewer's transcript read once per roster change", () => {
     const transcript = writeTranscript(SESSION, reviewed());
     const rows = [{ ...seat, transcriptPath: transcript }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-    expect(await seatFixFirst(async () => rows, reader, target)).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, target)).toMatchObject({ kind: "clear" });
 
     const later = assistant(SESSION, [BLOCK.replace("MERGE", "FIX_FIRST")], "2026-09-30T10:09:00Z");
     appendFileSync(transcript, `${JSON.stringify(later)}\n`, "utf8");
@@ -586,5 +586,51 @@ describe("isInvestigativeCall", () => {
     const counted = (await Promise.all(calls.map((call) => observed(call)))).flat();
 
     expect(counted).toEqual([false, false, false, false]);
+  });
+
+  const bashCommand = async (command: string) => (await observed({ type: "tool_use", id: "x", name: "Bash", input: { command } }))[0];
+
+  it.each([
+    "cd /tmp/review-1-x && grep -rn foo src",
+    "dir=/tmp/r1 && git fetch origin && git -C \"$dir\" diff main",
+    "pnpm exec vitest run src/a.test.ts",
+    "cd /tmp/r && FOO=1 pnpm vitest run",
+    "git fetch origin; head -3 README.md",
+    "cd /tmp/r\ngit diff main",
+    "grep -rn foo src | head -5",
+    "cd x && npm run verify",
+    "npm test",
+    "node --test a.test.js",
+    "git -C /tmp/r log --oneline",
+    "git -C /tmp/r merge-tree a b",
+    "git -C /tmp/r ls-files",
+    "wc -l a && tail -n 3 a",
+    "gh pr comment 1 --body-file - <<EOF\nbody\nEOF\ngrep -rn foo src",
+    "echo 'a && b' && grep 'x && y' f",
+  ])("counts the reviewer shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(true);
+  });
+
+  it.each([
+    "cd /tmp/review-1-x",
+    "echo hello",
+    "git fetch origin",
+    "rm -rf /tmp/review-1-x",
+    "cd /tmp/r && mkdir -p out && echo done",
+    "git worktree add /tmp/r origin/main && git fetch",
+    "echo 'x && grep y'",
+    "echo \"a ; cat b\"",
+    "git fetch origin abc 2>&1 | tail -2",
+    "git worktree add /tmp/x sha 2>&1 | tail -1",
+    "echo hi | head -1",
+    "git status | wc -l",
+    "mkdir -p /tmp/x && ls",
+    "mkdir -p /tmp/x && ls -la /tmp/x",
+    "ls /",
+    "true && find . -name x",
+    "gh pr comment 1 --body-file - <<'EOF'\nfind nothing here\nEOF",
+    "agent-chat gh-write -- pr review 1 --body-file - <<'EOF'\nhead looks good\ngrep found no other callers\nit's fine\nEOF",
+  ])("does not count the session-setup shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(false);
   });
 });
