@@ -1,5 +1,5 @@
 import { openDatabase } from "@titan-design/store-sqlite";
-import { WorkflowRunStore, type WorkflowStatus } from "@titan-design/workflow";
+import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
@@ -33,6 +33,17 @@ function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[]
   return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages)].join("\n")}\n`;
 }
 
+function shepherdReport(runs: readonly WorkflowRun[], gates: ReturnType<typeof readAllGates>, nowMs: number, opts: StatsOpts): string {
+  const range = { from: opts.from, to: opts.to };
+  const rows = shepherdStats(runs, range);
+  const friction = ownerFriction(gates, nowMs, range);
+  const stages = stageStats(runs, range);
+  const failures = opts.failures ? failureStats(runs, range) : undefined;
+  const red = redAfterMerge(runs, range);
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ...(failures && { failures }) }, null, 2)}\n`;
+  return [formatStats(rows, friction, stages), ...formatRedAfterMerge(red).map((line) => `${line}\n`), ...(failures ? formatFailures(failures).map((line) => `${line}\n`) : [])].join("");
+}
+
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
@@ -55,12 +66,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
       try {
         const runs = new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
         if (opts.cost) return reviewCost(runs, claudeTranscripts(), opts).then((cost) => io.stdout(opts.json ? `${JSON.stringify({ reviewCost: cost }, null, 2)}\n` : formatReviewCost(cost)));
-        const rows = shepherdStats(runs, { from: opts.from, to: opts.to });
-        const friction = ownerFriction(readAllGates(db), now(), { from: opts.from, to: opts.to });
-        const stages = stageStats(runs, { from: opts.from, to: opts.to });
-        const failures = opts.failures ? failureStats(runs, { from: opts.from, to: opts.to }) : undefined;
-        const red = redAfterMerge(runs, { from: opts.from, to: opts.to });
-        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ...(failures && { failures }) }, null, 2)}\n` : [formatStats(rows, friction, stages), ...formatRedAfterMerge(red).map((line) => `${line}\n`), ...(failures ? formatFailures(failures).map((line) => `${line}\n`) : [])].join(""));
+        io.stdout(shepherdReport(runs, readAllGates(db), now(), opts));
       } finally {
         db.close();
       }
