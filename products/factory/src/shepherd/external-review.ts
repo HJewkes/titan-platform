@@ -4,10 +4,9 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
-import { fixFirstFindings } from "./fix-first-findings.js";
 import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Registration } from "./store.js";
-import { namesTarget } from "./verdict-target.js";
+import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {

@@ -6,8 +6,9 @@
 npm install @titan-design/review-panel
 ```
 
-Status: types, ports, the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`) and the planner (`planPanel`,
-`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`). The briefs, verdict acceptor and aggregate land in later slices of TP-1916.
+Status: types, ports, the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`), the planner (`planPanel`,
+`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`), the reviewer briefs and the verdict acceptor (`acceptVerdict`). The
+aggregate lands in a later slice of TP-1916.
 
 ## The problem it solves
 
@@ -37,6 +38,14 @@ every caller plans, briefs and aggregates the same way:
 - The ports `ReviewerDispatch` (roster, spawn, resume), `ReviewerReader` (a reviewer's
   assistant messages) and their rows `ReviewerAgent` and `ReviewerMessage`, with
   `ReviewTarget` naming the head under review.
+- `acceptVerdict(input, messages)`: the pure acceptor. It takes only the final message of
+  the dispatched agent and session, written after dispatch, whose `Verdict:` block names
+  the PR at this head (`namesTarget`; repo case is ignored). A refused or misaimed block
+  is `none` with a `malformed` record (`readMalformed`, `MALFORMED_REFUSALS`); a MERGE or
+  FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
+  with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
+  by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
+  (`parseOwnerBrief`).
 
 ## When to reach for it
 
@@ -106,4 +115,8 @@ const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABL
 
 Slice 1 of TP-1916. The ports moved from Shepherd's `review.ts` in the factory product,
 unchanged, so its `reviewer-dispatch.ts` and `reviewer-reader.ts` adapters satisfy them as
-they are. The factory now imports them from here.
+they are. The factory now imports them from here. Slice 3 moved `acceptVerdict`, the
+owner-brief parser, the Malformed refusals, `namesTarget` and the depth floor out of
+Shepherd's `await-verdict.ts`, `review-schemas.ts`, `verdict-target.ts` and
+`depth-floor.ts`, unchanged; a differential test runs a frozen copy of the old acceptor
+against recorded messages to prove it.

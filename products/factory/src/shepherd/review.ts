@@ -1,6 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import type { SourceTextLocator } from "@titan-design/session-read";
-import type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import { DEPTH_FLOOR_REASON, type AcceptedVerdict, type AwaitVerdictInput, type AwaitVerdictResult, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
@@ -11,10 +10,9 @@ import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./cod
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema, type OwnerBrief } from "./review-schemas.js";
+import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import { dispatchedNoVerdictCause } from "./depth-floor.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { NoVerdictCause, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { EffectivePolicySchema, MERGE_ON_GREEN_GRANT, OWNER_GATE_POLICY } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
@@ -50,8 +48,9 @@ export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
 export { provablyIndependent } from "./lineage.js";
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
-export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
-export type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader };
+export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
+export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
+export type { AcceptedVerdict, AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader };
 
 export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 
@@ -61,21 +60,6 @@ type NoReview = { kind: "none"; reason: string };
 export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
-
-export interface AcceptedVerdict {
-  kind: "verdict";
-  head: string;
-  locator: SourceTextLocator;
-  /** The author of the accepted message, as the reader attributed it. */
-  reviewer: AgentIdentity;
-  /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
-  ownerBrief?: OwnerBrief | null;
-  /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
-  reviewerProfile?: string;
-}
-
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
-export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string };
 
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
@@ -307,6 +291,9 @@ type ExternalAwaiting = ReviewTarget & { external: string };
  * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate, and one whose
  * final message was malformed gets one correction turn.
  */
+/** A dispatched reviewer that wrote a verdict below the floor gave no verdict; any other silence is a timeout. */
+const dispatchedNoVerdictCause = (reason: unknown): NoVerdictCause => (reason === DEPTH_FLOOR_REASON ? "no-verdict" : "timeout");
+
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;

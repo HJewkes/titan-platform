@@ -4,7 +4,7 @@ import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
+import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "@titan-design/review-panel";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";

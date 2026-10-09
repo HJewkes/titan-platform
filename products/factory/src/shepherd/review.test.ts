@@ -43,7 +43,7 @@ import {
   type ReviewWiring,
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
-import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
+import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
