@@ -2,13 +2,15 @@ import type { RequestAuth, Surface } from "@titan-design/daemon";
 import { EXIT, createRegistry, errorEnvelope, invokeCommand, type CommandRegistry } from "@titan-design/registry";
 import { buildSnapshot, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { consoleCommands, type ConsoleSources } from "./commands.js";
-import { readCommand, type ClassedCommand, type ConsoleContext } from "./owner-guard.js";
+import { assertClassed, type ClassedCommand, type ConsoleContext } from "./owner-guard.js";
 
-/** Every command carries a class; the console's own commands are all reads. `extra` adds classed commands beside them. */
+/** Every command carries the class its definition gave it; one without a class fails startup instead of serving as a read. */
 export function createConsoleRegistry(sources: ConsoleSources, extra: readonly ClassedCommand[] = []): CommandRegistry<ConsoleContext> {
   const registry = createRegistry<ConsoleContext>();
-  for (const command of Object.values(consoleCommands(sources))) registry.register(readCommand(command));
-  for (const command of extra) registry.register(command);
+  for (const command of [...Object.values(consoleCommands(sources)), ...extra]) {
+    assertClassed(command);
+    registry.register(command);
+  }
   return registry;
 }
 

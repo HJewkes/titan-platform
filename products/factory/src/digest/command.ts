@@ -94,7 +94,7 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
     gates: async () => (await pendingGates()).map(gateFact),
-    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), morningDir)),
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir })),
   };
 }
 

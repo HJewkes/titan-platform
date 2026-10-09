@@ -18,7 +18,8 @@
 import type { RequestAuth, Surface } from "@titan-design/daemon";
 import { EXIT, type AnyCommand, type BaseContext, type Command } from "@titan-design/registry";
 
-type CommandClass = "read" | "deposit" | "owner-write";
+const COMMAND_CLASSES = ["read", "deposit", "owner-write"] as const;
+type CommandClass = (typeof COMMAND_CLASSES)[number];
 
 /** `in-process` is a call made inside the daemon, such as the first-paint snapshot. */
 export type ConsoleSurface = Surface | "in-process";
@@ -60,11 +61,32 @@ export const REFUSALS = {
   peerLocal: "the request comes from this machine; answer from another device",
 } as const;
 
-export function readCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+/**
+ * A class is set once, where the command is defined. Re-classing would let a wrapper turn an
+ * owner-write into a read and drop its guard, so every class helper refuses an already-classed command.
+ */
+function assertUnclassed(command: { readonly name: string }, commandClass: CommandClass): void {
+  if ("commandClass" in command) {
+    throw new Error(`Console command ${command.name} is already classed; it cannot be re-classed as ${commandClass}`);
+  }
+}
+
+/** Fails startup on a command with no class, or one outside the known classes, rather than serving it as a read. */
+export function assertClassed(command: AnyCommand<ConsoleContext>): asserts command is ClassedCommand {
+  const commandClass: unknown = (command as Partial<ClassedCommand>).commandClass;
+  if (!COMMAND_CLASSES.includes(commandClass as CommandClass)) {
+    throw new Error(`Console command ${command.name} has no class; define it with readCommand, depositCommand or ownerWriteCommand`);
+  }
+}
+
+/** Keeps the command's own args and result types, so `CommandMapOf` still types the browser's hooks. */
+export function readCommand<Args, Result, Ctx extends BaseContext>(command: Command<Args, Result, Ctx>): Command<Args, Result, Ctx> & { readonly commandClass: "read" } {
+  assertUnclassed(command, "read");
   return { ...command, commandClass: "read" };
 }
 
 export function depositCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+  assertUnclassed(command, "deposit");
   return {
     ...command,
     commandClass: "deposit",
@@ -76,6 +98,7 @@ export function depositCommand(command: AnyCommand<ConsoleContext>): ClassedComm
 }
 
 export function ownerWriteCommand<Args, Result>(command: Command<Args, Result, OwnerWriteContext>): ClassedCommand {
+  assertUnclassed(command, "owner-write");
   return {
     ...command,
     commandClass: "owner-write",

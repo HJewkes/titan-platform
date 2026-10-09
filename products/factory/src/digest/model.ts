@@ -28,6 +28,15 @@ export interface Stuck {
   since: string;
 }
 
+/** A throwaway proof PR's run, listed apart from the owner's asks so a mislabelled real PR is still seen. */
+export interface ProofFixture {
+  ref: string;
+  /** Each gate the run has pending, as a step id and its summary. */
+  gates: string[];
+  /** ISO time the run entered its phase; the section reads it as an age. */
+  since: string;
+}
+
 export interface SeatLine {
   seat: string;
   dispatches: number;
@@ -72,6 +81,8 @@ export interface DigestModel {
   stuck: Stuck[];
   seats: SeatLine[];
   spend: PoolLine[];
+  /** Live `proof-fixture` runs with their gates; absent when there are none. They count in no section above. */
+  proofFixtures?: ProofFixture[];
   /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
   waiting?: WaitingGate[];
   /** Task-to-merge p50 and merges per implementer slot-hour; absent when the task or roster port is not wired or the roster could not be read. */

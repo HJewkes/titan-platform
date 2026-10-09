@@ -78,6 +78,13 @@ export function checkMergeMethod(method: MergeMethod): MergeMethod {
   return method;
 }
 
+/** A timestamp rides in a query field; anything `Date.parse` cannot read is refused, and the rest is sent as UTC ISO 8601. */
+export function checkTimestamp(field: string, value: string): string {
+  const at = Date.parse(value);
+  if (!Number.isFinite(at)) throw new GitHubInputError(field, value, "expected an ISO 8601 timestamp");
+  return new Date(at).toISOString();
+}
+
 /** An empty marker matches every comment, so the first write would skip forever. */
 export function checkMarker(marker: string): string {
   if (marker.length === 0) throw new GitHubInputError("marker", marker, "expected a non-empty string");

@@ -252,7 +252,7 @@ describe("the script header", () => {
   it("documents the exit codes the script really returns", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
-    expect(header).toContain("Exits 2 on an index failure, a lock timeout, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
