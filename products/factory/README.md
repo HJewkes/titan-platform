@@ -106,6 +106,17 @@ Repeat the second command whenever the helper source changes. If `/usr/local/lib
 your user, as it can with an Intel Homebrew install, the check refuses that parent. `dist/bin.js` is
 still writable by your OS user, so an agent that rewrites it can skip the dialog.
 
+The helper also holds an owner signing key in the Mac's Secure Enclave, so another host can check a
+presence proof. `owner-presence keygen` creates an ECDSA P-256 key whose every use needs Touch ID or
+the login password, and writes only CryptoKit's opaque enclave blob, mode 0600, to
+`~/Library/Application Support/titan-factory/owner-key.se`. It refuses to overwrite that file
+without `--replace`. `owner-presence pubkey` prints the SPKI PEM, and `pubkey --id` prints the key id:
+the first 16 hex characters of sha256 over the SPKI DER. `owner-presence sign -- <reason>` reads the
+statement bytes on stdin, shows the dialog with the reason, and prints a base64url DER ECDSA P-256
+SHA-256 signature that `crypto.verify("sha256", bytes, { key: pem, dsaEncoding: "der" }, sig)`
+accepts. `--tag <tag>` picks `<tag>.se` instead, so a probe key never touches the owner key. In code,
+`signStatement(bytes, reason)` runs `sign` through the same path checks as `confirmOwner`.
+
 `resume` hydrates every unfinished run, drives each until it completes, fails, parks as
 `recovery_required`, or waits on a pending gate, then releases the runs and exits. A run
 killed with `kill -9` keeps its lease for 30 s. `resume` inside that window prints the run as
