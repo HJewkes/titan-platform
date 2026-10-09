@@ -179,9 +179,10 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   holding a lone surrogate answers 400.
 - **Idempotent.** A repeat of an asker's `depositId` keeps the first body and answers its item
   id with `created: false`.
-- **Caps.** A request body over 128 KB answers 413 before the daemon buffers it. A deposit over
-  64 KB, measured as the spool stores it, answers 400. The body cap is twice the stored one
-  because a client that writes non-ASCII as `\uXXXX` escapes sends up to twice the bytes. An
+- **Caps.** A request body over 192 KB answers 413 before the daemon buffers it. A deposit over
+  64 KB, measured as the spool stores it, answers 400. The body cap is three times the stored
+  one because a client that writes non-ASCII as `\uXXXX` escapes sends six bytes for each
+  two-byte character (U+0080 to U+07FF) and twelve for each four-byte astral one. An
   asker with 200 open deposits, those with no answer file beside them, gets 429
   (`EXIT.TEMPFAIL`) until one is answered, and so does every asker once the spool holds 2000
   open deposits. Deposits run one at a time, so racing calls cannot pass a cap together.

@@ -98,6 +98,14 @@ its own surfaces.
 and exit codes are identical across surfaces. `ListTools` uses `commandToTool`, so tool
 names are `${toolPrefix}${command.replaceAll(".", "__")}`.
 
+`rpcBodyLimit` bounds one body, not how many are in flight. A `Content-Length` that is not a
+number gets 413 like one over the cap. N slow bodies on loopback can hold N times the cap
+until Node's request timeout (300 s by default) drops them. This is left unbounded on
+purpose: a loopback caller already runs as the owner's account and can spend memory in
+plainer ways, while a bound would refuse honest callers, such as several agents posting at
+once, with a status no client retries. The remote listener checks credentials before it
+reads a body, so this residual is loopback's alone.
+
 `/mcp` is spliced in ahead of hono on the raw Node server because the SDK's
 `StreamableHTTPServerTransport` takes ownership of the response object.
 

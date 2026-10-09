@@ -80,9 +80,17 @@ exit codes are identical across surfaces.
 
 A `/rpc` body is capped before it is buffered: 1 MiB (`DEFAULT_RPC_BODY_LIMIT`) unless
 `rpcBodyLimit: { maxBytes, perCommand }` says otherwise, with `perCommand` keyed by command
-name. A `Content-Length` over the cap gets 413 at once. A chunked body is counted as it
-arrives and gets 413 as soon as it passes the cap; the server then discards the rest of it
-for at most 500 ms before it closes the socket, and never holds it in memory.
+name. A `Content-Length` over the cap, or one that is not a number, gets 413 at once. A
+chunked body is counted as it arrives and gets 413 as soon as it passes the cap; the server
+then discards the rest of it for at most 500 ms before it closes the socket, and never holds
+it in memory.
+
+The cap bounds one body, not how many are in flight. N slow bodies on loopback can hold N
+times the cap until Node's request timeout (300 s by default) drops them. This is left
+unbounded on purpose: a loopback caller already runs as the owner's account and can spend
+memory in plainer ways, while a bound would refuse honest callers, such as several agents
+posting at once, with a status no client retries. The remote listener checks credentials
+before it reads a body, so this residual is loopback's alone.
 
 ## Request guards
 
