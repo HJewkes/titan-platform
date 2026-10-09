@@ -6,13 +6,16 @@ import { EXIT, defineCommand } from "@titan-design/registry";
 import { SessionTimelineAccumulator, priceRequest, type SessionTimeline } from "@titan-design/session-analytics";
 import { SessionGraphNotMigratedError, openSessionGraph, type SessionGraph } from "@titan-design/session-graph";
 import {
-  RELATIONS, claudeSourceFromPath, claudeTranscriptRoots, expandHome, findClaudeSessionSource, readSessionObservations, sessionRef,
-  type SessionSourceDescriptor, type TranscriptRoot,
+  RELATIONS, claudeSourceFromPath, claudeTranscriptRoots, expandHome, fileRef, findClaudeSessionSource, parseFileRef, readSessionObservations,
+  sessionRef, toRepoRelative, type SessionSourceDescriptor, type TranscriptRoot,
 } from "@titan-design/session-read";
+import { DEFAULT_CODEWATCH_URL } from "./config.js";
 
 export interface SessionsSource {
   /** The session graph another process writes; it is only ever opened read-only, once per request. */
   graphPath: string;
+  /** Prefix of each touched file's `#/node/<id>` link. */
+  codewatchUrl?: string;
   /** Claude config roots searched for a transcript the graph has not indexed yet. */
   roots?: () => readonly TranscriptRoot[];
   /** Expands the `~/` that the graph stores transcript paths under. */
@@ -22,7 +25,7 @@ export interface SessionsSource {
 
 type DegradedReason ="graph-missing" | "graph-not-migrated" | "graph-unreadable" | "transcript-missing";
 
-interface Degraded {
+export interface Degraded {
   reason: DegradedReason;
   detail: string;
 }
@@ -65,9 +68,30 @@ export interface SessionsListResult {
   degraded: Degraded | null;
 }
 
-export type SessionTimelineResult =
-  | { status: "ok"; sessionId: string; source: "graph" | "filesystem"; path: string; session: SessionRow | null; timeline: SessionTimeline }
-  | { status: "degraded"; sessionId: string; degraded: Degraded; session: SessionRow | null };
+/** One distinct touched path, mapped to its code-graph node; `nodeId` and `href` are null for a path outside any repo. */
+interface TouchedFile {
+  /** As `timeline.files.touches` holds it, so a renderer can join the two. */
+  touchPath: string;
+  /** The session graph's `file:` ref for the path. */
+  ref: string;
+  repo: string | null;
+  /** Repo-relative posix path when `repo` is set, else the path as touched. */
+  path: string;
+  nodeId: string | null;
+  href: string | null;
+}
+
+interface TimelineOk {
+  status: "ok";
+  sessionId: string;
+  source: "graph" | "filesystem";
+  path: string;
+  session: SessionRow | null;
+  timeline: SessionTimeline;
+  touchedFiles: TouchedFile[];
+}
+
+export type SessionTimelineResult = TimelineOk | { status: "degraded"; sessionId: string; degraded: Degraded; session: SessionRow | null };
 
 /** A Claude session id is one filename component; anything else could walk out of the projects directory. */
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -101,7 +125,7 @@ export function sessionsCommands(source: SessionsSource) {
 type GraphRead<T> = { ok: true; value: T } | { ok: false; degraded: Degraded };
 
 /** `read` is synchronous so no statement outlives it: a reader held across an await would stall the writer's checkpoints. */
-async function readGraph<T>(graphPath: string, read: (graph: SessionGraph) => T): Promise<GraphRead<T>> {
+export async function readGraph<T>(graphPath: string, read: (graph: SessionGraph) => T): Promise<GraphRead<T>> {
   const info = await stat(graphPath).catch(() => null);
   if (!info?.isFile()) return { ok: false, degraded: { reason: "graph-missing", detail: `No session graph at ${graphPath}` } };
   let graph: SessionGraph;
@@ -258,14 +282,15 @@ async function readTimeline(source: SessionsSource, sessionId: string): Promise<
   const read = await readGraph(source.graphPath, (graph) => lookupSession(graph, sessionId, source.now ?? Date.now));
   const session = read.ok ? read.value : null;
   const roots = (source.roots ?? claudeTranscriptRoots)();
-  if (session) return timelineOfIndexed(session, roots, source.home ?? os.homedir());
+  const codewatchUrl = source.codewatchUrl ?? DEFAULT_CODEWATCH_URL;
+  if (session) return timelineOfIndexed(session, roots, source.home ?? os.homedir(), codewatchUrl);
   const found = locateTranscript(sessionId, roots);
-  if (found) return { status: "ok", sessionId, source: "filesystem", path: found.path, session: null, timeline: await timelineOf(found) };
+  if (found) return { status: "ok", sessionId, source: "filesystem", path: found.path, session: null, ...(await timelineOf(found, codewatchUrl)) };
   if (!read.ok) return { status: "degraded", sessionId, degraded: read.degraded, session: null };
   throw Object.assign(new Error(`No session ${sessionId} in the session graph or under any Claude config root`), { code: EXIT.NOINPUT });
 }
 
-async function timelineOfIndexed(session: SessionRow, roots: readonly TranscriptRoot[], home: string): Promise<SessionTimelineResult> {
+async function timelineOfIndexed(session: SessionRow, roots: readonly TranscriptRoot[], home: string, codewatchUrl: string): Promise<SessionTimelineResult> {
   const { sessionId, transcript } = session;
   const file = transcript ? expandHome(transcript.path, home) : null;
   const present = file !== null && transcript?.status !== "missing" && (await stat(file).catch(() => null))?.isFile() === true;
@@ -274,7 +299,7 @@ async function timelineOfIndexed(session: SessionRow, roots: readonly Transcript
     return { status: "degraded", sessionId, degraded: { reason: "transcript-missing", detail }, session };
   }
   const descriptor = claudeSourceFromPath(file, accountOf(file, roots));
-  return { status: "ok", sessionId, source: "graph", path: file, session, timeline: await timelineOf(descriptor) };
+  return { status: "ok", sessionId, source: "graph", path: file, session, ...(await timelineOf(descriptor, codewatchUrl)) };
 }
 
 function accountOf(file: string, roots: readonly TranscriptRoot[]): string {
@@ -298,8 +323,22 @@ function locateTranscript(sessionId: string, roots: readonly TranscriptRoot[]): 
   return found[0] ?? null;
 }
 
-async function timelineOf(source: SessionSourceDescriptor): Promise<SessionTimeline> {
+async function timelineOf(source: SessionSourceDescriptor, codewatchUrl: string): Promise<Pick<TimelineOk, "timeline" | "touchedFiles">> {
   const accumulator = new SessionTimelineAccumulator();
   for await (const observation of readSessionObservations(source)) accumulator.add(observation);
-  return accumulator.result();
+  const timeline = accumulator.result();
+  const distinct = new Set(timeline.files.touches.map((touch) => touch.path));
+  return { timeline, touchedFiles: [...distinct].map((touchPath) => touchedFile(touchPath, codewatchUrl)) };
+}
+
+/**
+ * A repo-relative posix path, with any leaked `.worktrees/<name>/` prefix stripped, is already
+ * a code-graph file id. The index is not consulted, so an id codewatch lacks (another repo,
+ * a renamed file, outside its indexed dirs) lands on its not-found page.
+ */
+function touchedFile(touchPath: string, codewatchUrl: string): TouchedFile {
+  const { repo, path: filePath } = parseFileRef(touchPath) ?? toRepoRelative(touchPath);
+  const nodeId = repo === null ? null : filePath;
+  const href = nodeId === null ? null : `${codewatchUrl}#/node/${encodeURIComponent(nodeId)}`;
+  return { touchPath, ref: fileRef(repo, filePath), repo, path: filePath, nodeId, href };
 }

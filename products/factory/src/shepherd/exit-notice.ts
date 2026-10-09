@@ -30,8 +30,11 @@ export interface ExitNoticePorts {
   send(seat: string, text: string): Promise<void>;
 }
 
-/** `unread`: a live wake the agent exited before reading, because its last report predates the ask. `read-no-push`: it took the wake and pushed nothing. */
-type ExitCause = "unread" | "read-no-push";
+/**
+ * `unread`: a live wake the agent exited before reading, because its last report predates the ask. `read-no-push`: it
+ * took the wake and pushed nothing. `held`: agent-chat refused to start the successor, so no agent took the wake.
+ */
+type ExitCause = "unread" | "read-no-push" | "held";
 
 const ExitNoticeInput = z.object({
   repo: z.string().min(1),
@@ -40,10 +43,12 @@ const ExitNoticeInput = z.object({
   round: z.number().int().nonnegative(),
   kind: z.enum(["ci-red", "review", "conflict", "fix-proof"]),
   wake: z.object({ agent: z.string().min(1), sessionId: z.string().optional(), mode: z.enum(["resume", "successor", "live"]).optional(), askedAt: z.number().optional(), fallback: z.enum(["resume", "message"]).optional() }),
+  /** Why a held wake's successor never started; the notice then reads no report, since no agent ran. */
+  held: z.string().optional(),
 });
 type ExitNoticeInput = z.infer<typeof ExitNoticeInput>;
 
-const ExitNoticeResult = z.looseObject({ sent: z.boolean(), cause: z.enum(["unread", "read-no-push"]), detail: z.string(), seat: z.string().optional(), report: z.string().optional() });
+const ExitNoticeResult = z.looseObject({ sent: z.boolean(), cause: z.enum(["unread", "read-no-push", "held"]), detail: z.string(), seat: z.string().optional(), report: z.string().optional() });
 type ExitNoticeResult = z.infer<typeof ExitNoticeResult>;
 
 /**
@@ -55,7 +60,8 @@ export function exitCause(wake: WakeEvidence, report: LastReport | undefined): E
   return report === undefined || wake.askedAt === undefined || report.writtenAt <= wake.askedAt ? "unread" : "read-no-push";
 }
 
-function causeText(cause: ExitCause, wake: WakeEvidence): string {
+function causeText(cause: ExitCause, wake: WakeEvidence, held?: string): string {
+  if (cause === "held") return held ?? `agent-chat refused to start ${wake.agent}`;
   if (cause === "unread") return `${wake.agent} was woken in live mode but wrote nothing after the wake, so it exited before reading the message`;
   return `${wake.agent} took the wake (mode ${wake.mode ?? "unrecorded"}) and wrote after it, but pushed nothing`;
 }
@@ -77,11 +83,21 @@ function writtenLine(report: LastReport): string {
  */
 export function noticeText(input: ExitNoticeInput, cause: ExitCause, report: LastReport | undefined): string {
   const { repo, pr, headSha, round, kind, wake } = input;
+  if (cause === "held") return heldText(input);
   return [
     `Shepherd: ${repo}#${pr} round ${round}: ${wake.agent} exited after the ${kind} wake (${wakeLine(wake)}) without pushing past head ${headSha}.`,
     `Why: ${causeText(cause, wake)}.`,
     report === undefined ? "Last report: none Shepherd could read." : `${writtenLine(report)}\n${dataFence("last report", bounded(report.text))}`,
     `The run waits for a new head, with no owner gate. Next: resume ${wake.agent} (\`agent-chat agent resume ${wake.agent}\`) or start a successor to push the fix, push a fix to the PR's branch yourself, or close the PR to end the run. A repeat \`shepherd register\` does not re-wake a live run.`,
+  ].join("\n");
+}
+
+/** A held wake started no agent, so the seat is told why and what it can start or push by hand. */
+function heldText({ repo, pr, headSha, round, kind, wake, held }: ExitNoticeInput): string {
+  return [
+    `Shepherd: ${repo}#${pr} round ${round}: no fixer took the ${kind} wake at head ${headSha}.`,
+    `Why: ${causeText("held", wake, held)}.`,
+    "The run waits for a new head, with no owner gate. Next: start a fixer on the PR's branch once agent-chat admits it, push a fix yourself, or close the PR to end the run.",
   ].join("\n");
 }
 
@@ -91,8 +107,8 @@ async function readReport(ports: ExitNoticePorts, input: ExitNoticeInput): Promi
 
 /** Never throws: no ports, no single seat, or a failed send records `sent: false`, and the run takes the owner gate. */
 export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: ExitNoticeInput): Promise<ExitNoticeResult> {
-  const report = ports && (await readReport(ports, input));
-  const cause = exitCause(input.wake, report);
+  const report = ports && input.held === undefined ? await readReport(ports, input) : undefined;
+  const cause = input.held === undefined ? exitCause(input.wake, report) : "held";
   const recorded = { cause, ...(report && { report: bounded(report.text) }) };
   if (ports === undefined) return { sent: false, ...recorded, detail: "no seat notice is wired" };
   let seat: string | undefined;
@@ -100,7 +116,7 @@ export async function sendExitNotice(ports: ExitNoticePorts | undefined, input: 
     seat = ports.seatFor(input.repo);
     if (seat === undefined) return { sent: false, ...recorded, detail: `no single seat owns ${input.repo}` };
     await ports.send(seat, noticeText(input, cause, report));
-    return { sent: true, seat, ...recorded, detail: causeText(cause, input.wake) };
+    return { sent: true, seat, ...recorded, detail: causeText(cause, input.wake, input.held) };
   } catch (error) {
     return { sent: false, ...(seat && { seat }), ...recorded, detail: `the seat notice failed: ${failureOf(error)}` };
   }
@@ -133,10 +149,10 @@ function recordedWithoutNotice(run: NoticeRun): boolean {
  * means the exit goes to the owner gate: a kind the seat does not follow, a second exit at a head already noticed, no
  * record of the wake, or a run whose record took the gate without a notice.
  */
-export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined): Promise<ExitNoticeResult | undefined> {
+export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], headSha: string, wake: WakeEvidence | undefined, held?: string): Promise<ExitNoticeResult | undefined> {
   const noticed = noticedHeads.get(run.ctx) ?? noticedHeads.set(run.ctx, new Set()).get(run.ctx)!;
   if (!SEAT_KINDS.has(kind) || noticed.has(headSha) || wake === undefined || recordedWithoutNotice(run)) return undefined;
-  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake }, ExitNoticeResult);
+  const result = await step(run.ctx, EXIT_NOTICE_STEP, { ...run.target, headSha, round: run.state.round, kind, wake, ...(held !== undefined && { held }) }, ExitNoticeResult);
   if (result.sent) noticed.add(headSha);
   return result;
 }

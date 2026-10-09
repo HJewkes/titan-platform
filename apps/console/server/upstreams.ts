@@ -102,6 +102,6 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
       eventsDbPath: config.agentChatEventsDbPath,
       seatPrefixes: config.seatPrefixes,
     },
-    sessions: { graphPath: config.sessionGraphPath },
+    sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
   };
 }
