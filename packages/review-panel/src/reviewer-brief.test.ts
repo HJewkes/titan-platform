@@ -37,8 +37,17 @@ describe("reviewerBrief", () => {
     const runDir = `/data/titan-factory/checkouts/reviews/${reviewCheckoutName(target.pr, target.head)}`;
 
     expect(brief).toContain(`dir="${runDir}" && mkdir -p "$dir/head"`);
-    expect(brief).toContain(`\`${runDir}/base\``);
-    expect(brief).toContain(`\`rm -rf ${runDir}\``);
+    expect(brief).toContain(`\`"${runDir}/base"\``);
+    expect(brief).toContain(`\`rm -rf "${runDir}"\``);
+  });
+
+  it("quotes the run dir in the removal command when the root has a space, as it does on macOS", () => {
+    const root = "/Volumes/x/Library/Application Support/titan-factory/checkouts/reviews";
+
+    const brief = reviewerBrief({ ...target, checkoutRoot: root });
+
+    expect(brief).toContain(`\`rm -rf "${root}/${reviewCheckoutName(target.pr, target.head)}"\``);
+    expect(brief).not.toMatch(/rm -rf \/Volumes/);
   });
 
   it("never points the reviewer at TMPDIR as a place to extract", () => {

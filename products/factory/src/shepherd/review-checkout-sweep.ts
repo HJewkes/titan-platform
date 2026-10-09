@@ -6,6 +6,16 @@ export const REVIEW_CHECKOUT_MAX_AGE_MS = 24 * 3_600_000;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 export const REVIEW_CHECKOUT_NAME = /^review-[1-9][0-9]*-[0-9a-f]{12}$/;
 
+/** The root does not exist until a reviewer first extracts into it, which is no failure. */
+async function listOrEmpty(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 export interface ReviewCheckoutSweepDeps {
   /** Defaults to the app data dir's review checkouts; a backstop for runs that never reached removal. */
   root?: string;
@@ -22,7 +32,7 @@ export interface ReviewCheckoutSweepDeps {
 export async function sweepReviewCheckouts(deps: ReviewCheckoutSweepDeps = {}): Promise<string[]> {
   const root = deps.root ?? reviewCheckoutRoot();
   const now = (deps.now ?? Date.now)();
-  const list = deps.list ?? ((dir: string) => readdir(dir));
+  const list = deps.list ?? listOrEmpty;
   const stat =
     deps.stat ??
     (async (path: string) => {

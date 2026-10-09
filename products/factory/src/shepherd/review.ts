@@ -219,13 +219,14 @@ async function dropCheckout(deps: ShepherdDeps, target: ReviewTarget): Promise<v
   await removeReviewCheckout(checkoutRootOf(deps), target, deps.reviewCheckouts?.remove);
 }
 
-/** Runs `work`, then removes the checkout whether it returned a verdict, none, or threw. */
-async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, work: () => Promise<T>): Promise<T> {
-  try {
-    return await work();
-  } finally {
-    await dropCheckout(deps, target);
-  }
+/**
+ * Removes the checkout once the reviewer is finished with it: when `work` returns and `finished` says so. A throw (an abort at
+ * shutdown, say) leaves it, because the reviewer outlives the step and a replay waits on it; the sweep is the backstop.
+ */
+async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, work: () => Promise<T>, finished: (result: T) => boolean): Promise<T> {
+  const result = await work();
+  if (finished(result)) await dropCheckout(deps, target);
+  return result;
 }
 
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
@@ -271,7 +272,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
     const input = parseAwaitVerdictInput(raw);
     const dispatch = wiring?.dispatch;
-    return wiring ? thenDropCheckout(deps, input, () => awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster()))) : { kind: "none" };
+    return wiring ? thenDropCheckout(deps, input, () => awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster())), (result) => result.kind === "verdict") : { kind: "none" };
   };
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [
@@ -292,7 +293,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   if (!dispatch) return { kind: "none" };
   const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS };
   const exited = async () => (await dispatch.roster()).every((agent) => agent.agentId !== input.reviewerAgentId || agent.presence === "exited");
-  return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal));
+  return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
 }
 
 /** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */

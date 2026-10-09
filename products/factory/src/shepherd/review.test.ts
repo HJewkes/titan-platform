@@ -397,7 +397,7 @@ describe("reviewRoutes", () => {
       expect(removals).toEqual([runDir]);
     });
 
-    it("removes it when the reviewer gives no verdict before the deadline", async () => {
+    it("keeps it when the on-time wait ends with no verdict, because the reviewer may still be writing one", async () => {
       let clock = 5_000;
       const ticking = { ...withFakeFs, now: () => (clock += 1_000) } as unknown as ShepherdDeps;
       const route = reviewRoutes(ticking, { reader: { read: async () => [] }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
@@ -405,7 +405,16 @@ describe("reviewRoutes", () => {
       const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
 
       expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "none" });
-      expect(removals).toEqual([runDir]);
+      expect(removals).toEqual([]);
+    });
+
+    it("keeps it when the verdict step is aborted, so a replay still finds the reviewer's checkout", async () => {
+      const abort = new AbortController();
+      const route = reviewRoutes(withFakeFs, { reader: { read: async () => { abort.abort(); throw new Error("aborted"); } }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
+
+      await route.runner.run({ prompt: JSON.stringify(input), signal: abort.signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never).catch(() => undefined);
+
+      expect(removals).toEqual([]);
     });
 
     it("still returns the verdict when the removal itself fails", async () => {
@@ -1214,7 +1223,7 @@ describe("reviewerBrief", () => {
   });
 
   it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you send your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf \/data\/reviews\/review-7-aaaaaaaaaaaa`.*exactly that directory/);
+    expect(brief()).toMatch(/After you send your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
