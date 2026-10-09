@@ -150,6 +150,9 @@ importers:
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
+      '@titan-design/owner-queue':
+        specifier: workspace:^
+        version: link:../../packages/owner-queue
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app

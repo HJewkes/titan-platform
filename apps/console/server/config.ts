@@ -38,6 +38,8 @@ export interface ConsoleConfig {
   lanTokenPath: string;
   /** `TITAN_CONSOLE_OWNER_WRITES=1` lets owner-write commands run on the LAN; off until the LAN carries TLS. */
   ownerWrites: boolean;
+  /** The owner-inbox spool `inbox.deposit` files into; `TITAN_CONSOLE_INBOX_DIR` overrides. */
+  inboxDir: string;
 }
 
 /** What `resolveConfig` asks of the machine it runs on; a seam for tests. */
@@ -78,6 +80,7 @@ export function resolveConfig(
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
     ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
+    inboxDir: expandHome(env.TITAN_CONSOLE_INBOX_DIR || path.join(stateDir, "inbox", "deposits"), home),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);

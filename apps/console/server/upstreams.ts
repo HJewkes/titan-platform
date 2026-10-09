@@ -103,5 +103,6 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
       seatPrefixes: config.seatPrefixes,
     },
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
+    inbox: { dir: config.inboxDir },
   };
 }
