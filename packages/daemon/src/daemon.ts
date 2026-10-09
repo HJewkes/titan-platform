@@ -1,19 +1,18 @@
 /**
  * Daemon lifecycle: bind the hono app on loopback, splice in `/mcp`, optionally open a second,
- * authenticated listener on one LAN address, watch a tree, and own a pid file until shutdown.
+ * HTTPS-only, authenticated listener on one remote address, watch a tree, and own a pid file
+ * until shutdown.
  *
  * `startDaemon` returns a handle so tests and embedders can close it; only
  * `runDaemonUntilSignal` waits on signals. Neither calls `process.exit` — the caller
  * decides how the process terminates.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createServer as createHttpsServer, type Server as HttpsServer, type ServerOptions as HttpsServerOptions } from "node:https";
-import { isIPv6 } from "node:net";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { serve, type ServerType } from "@hono/node-server";
 import type { Hono } from "hono";
 import type { BaseContext } from "@titan-design/registry";
-import { createDaemonAuth, type DaemonAuth } from "./auth.js";
-import { assertRemoteHost, isLoopbackHost, NonLoopbackBindError, RemoteBindError } from "./bind-guard.js";
+import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
 import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
@@ -23,7 +22,10 @@ import { consoleLogger, type Logger } from "./logger.js";
 import type { McpServerOptions } from "./mcp.js";
 import { handleMcpRequest, spliceMcpRoute } from "./mcp-http.js";
 import type { SurfaceOptions } from "./surface.js";
-import { trackTlsFiles, type RemoteTlsOptions, type TlsFileTracker, type TlsMaterial } from "./tls-files.js";
+import { DEFAULT_TLS_RELOAD_MS, remoteGuardOptions, remoteListener, type RemoteListener, type RemoteListenerOptions } from "./remote-listener.js";
+import { reloadTlsOnChange, tlsServerOptions } from "./tls-files.js";
+
+export type { RemoteListenerOptions };
 
 export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
   /** Reported by `/health`, `/version`, and the pid metadata. */
@@ -57,30 +59,6 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   logger?: Logger;
 }
 
-/**
- * The remote listener speaks only TLS, then runs the Host/Origin guard, then the auth gate,
- * before every route, and never serves `/mcp`. Its Host allowlist is `host` plus `allowedHosts`
- * and nothing else, each matched only with the bound port, and its origins are the `https://`
- * forms of that list alone. The loopback listener is unchanged and never learns these names.
- * `mountRoutes` runs once per listener, each on its own app.
- */
-export interface RemoteListenerOptions {
-  /** A bare IP address on one of this host's interfaces. Loopback, wildcards and names throw `RemoteBindError`. */
-  host: string;
-  /** The shared secret. It must already exist; see `ensureTokenFile`. */
-  tokenFile: string;
-  /** Names the remote listener also answers to, such as a tailnet name. The certificate must cover each. */
-  allowedHosts?: string[];
-  /**
-   * Required: a remote listener without it throws `RemoteBindError`, so no setting serves plain
-   * HTTP beyond loopback. The files are checked before anything binds and stat'd every
-   * `tlsReloadMs`; a changed pair that fails its checks is logged and the last good pair stays.
-   */
-  tls: RemoteTlsOptions;
-  /** How often the TLS files are checked for a change. Defaults to 60000. */
-  tlsReloadMs?: number;
-}
-
 export interface DaemonHandle {
   /** The bound port — the real one when `port: 0` was requested. */
   port: number;
@@ -91,7 +69,6 @@ export interface DaemonHandle {
 }
 
 const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
-const DEFAULT_TLS_RELOAD_MS = 60_000;
 const DEFAULT_HOST = "127.0.0.1";
 
 export class DaemonAlreadyRunningError extends Error {
@@ -112,7 +89,7 @@ export class DaemonPortInUseError extends Error {
 export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<DaemonHandle> {
   const log = options.logger ?? consoleLogger;
   assertBindAllowed(options);
-  const remote = remoteListener(options);
+  const remote = remoteListener(options.remote, options.host ?? DEFAULT_HOST);
   const paths = daemonPaths(options.stateDir);
   await assertNotAlreadyRunning(paths, options.processStartTime ?? getProcessStartTime, log);
   const graceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
@@ -173,31 +150,6 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
 function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
   const host = options.host ?? DEFAULT_HOST;
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
-}
-
-interface RemoteListener {
-  options: RemoteListenerOptions;
-  gate: DaemonAuth;
-  tls: TlsFileTracker;
-}
-
-/** Checked, and the token and TLS files read, before anything binds: a bad remote config never half-starts. */
-function remoteListener<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): RemoteListener | null {
-  const remote = options.remote;
-  if (!remote) return null;
-  if (!isLoopbackHost(options.host ?? DEFAULT_HOST)) {
-    throw new RemoteBindError(remote.host, "the main listener is already unauthenticated beyond loopback");
-  }
-  assertRemoteHost(remote.host);
-  // Checked at runtime too: a JavaScript caller, or a cast, can leave out the typed field.
-  if (!remote.tls?.certFile || !remote.tls.keyFile) throw new RemoteBindError(remote.host, "it has no TLS; pass remote.tls with certFile and keyFile");
-  const gate = createDaemonAuth({ tokenFile: remote.tokenFile });
-  return { options: remote, gate, tls: trackTlsFiles(remote.tls, remote.allowedHosts ?? []) };
-}
-
-function remoteGuardOptions(remote: RemoteListenerOptions): RequestGuardOptions {
-  const literal = isIPv6(remote.host) ? `[${remote.host}]` : remote.host;
-  return { allowedHosts: [literal, ...(remote.allowedHosts ?? [])], portOnly: true, httpsOnly: true };
 }
 
 interface RemoteBind<Ctx extends BaseContext> {
@@ -297,26 +249,8 @@ function listenLoopback(
  */
 async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
   const server = await bind(app, remote.options.host, port, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
-  const timer = setInterval(() => reloadTls(server as HttpsServer, remote.tls, log), remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS);
-  timer.unref();
-  server.once("close", () => clearInterval(timer));
+  reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
   return server;
-}
-
-function tlsServerOptions(material: TlsMaterial): HttpsServerOptions {
-  return { cert: material.cert, key: material.key, minVersion: "TLSv1.2" };
-}
-
-/** A renewal that leaves a bad pair keeps the last good one serving: never plain HTTP, never no TLS. */
-function reloadTls(server: HttpsServer, tls: TlsFileTracker, log: Logger): void {
-  try {
-    const material = tls.reload();
-    if (!material) return;
-    server.setSecureContext(tlsServerOptions(material));
-    log.info({}, "remote listener reloaded its TLS certificate");
-  } catch (err) {
-    log.error({ err }, "remote listener TLS files changed but cannot be served; keeping the last good pair");
-  }
 }
 
 type ServerFactory = Pick<Parameters<typeof serve>[0], "createServer" | "serverOptions">;

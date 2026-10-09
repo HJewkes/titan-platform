@@ -6,6 +6,8 @@
  */
 import { X509Certificate, createPrivateKey } from "node:crypto";
 import fs from "node:fs";
+import type { Server as HttpsServer, ServerOptions as HttpsServerOptions } from "node:https";
+import type { Logger } from "./logger.js";
 
 export interface RemoteTlsOptions {
   /** PEM certificate chain. Every name the listener answers to must be on it. */
@@ -48,6 +50,30 @@ export function trackTlsFiles(files: RemoteTlsOptions, names: readonly string[])
       return snapshot.material;
     },
   };
+}
+
+export function tlsServerOptions(material: TlsMaterial): HttpsServerOptions {
+  return { cert: material.cert, key: material.key, minVersion: "TLSv1.2" };
+}
+
+/**
+ * Check the pair every `intervalMs` and hand a changed one to new connections. A renewal that
+ * leaves a bad pair is logged and the last good one keeps serving: never plain HTTP, never no
+ * TLS. The timer is unref'd and stops when the server closes.
+ */
+export function reloadTlsOnChange(server: HttpsServer, tls: TlsFileTracker, { intervalMs, log }: { intervalMs: number; log: Logger }): void {
+  const timer = setInterval(() => {
+    try {
+      const material = tls.reload();
+      if (!material) return;
+      server.setSecureContext(tlsServerOptions(material));
+      log.info({}, "remote listener reloaded its TLS certificate");
+    } catch (err) {
+      log.error({ err }, "remote listener TLS files changed but cannot be served; keeping the last good pair");
+    }
+  }, intervalMs);
+  timer.unref();
+  server.once("close", () => clearInterval(timer));
 }
 
 interface PairSnapshot {
