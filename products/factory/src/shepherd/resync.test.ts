@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
@@ -545,6 +545,7 @@ function evidenceAt(head: string, unmet: object): object {
 async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[]): Promise<FactoryHost> {
   const server = await startFactoryServer({
     dbPath: ":memory:",
+    stateDir: dirname(dbFile()),
     workflows,
     routes,
     gatePollMs: 5,
