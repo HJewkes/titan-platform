@@ -1,8 +1,8 @@
-import type { GateRecord } from "@titan-design/hitl";
 import { defineCommand } from "@titan-design/registry";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import type { FactoryContext } from "../registry.js";
+import { headGateAsks } from "./stale-gates.js";
 import type { WatchRow } from "./view.js";
 
 /** Gates a seat can answer; TP-2033 routes these to the seat that owns the PR. Any other gate, a new kind included, is the owner's. */
@@ -46,14 +46,6 @@ function headIsCurrent(row: WatchRow, gateId: string, gateHead: GateHead): boole
   return named === undefined || row.headSha === null ? null : named === row.headSha;
 }
 
-const HEAD = /\b[0-9a-f]{40}\b/;
-
-/** The head a gate asks about: the one its answer schema pins, else the first full SHA in its summary or prompt. */
-function gateHeadOf(gate: Pick<GateRecord, "schema" | "summary" | "prompt">): string | undefined {
-  const pinned = (gate.schema?.properties as Record<string, { const?: unknown }> | undefined)?.headSha?.const;
-  return typeof pinned === "string" ? pinned : HEAD.exec(gate.summary ?? gate.prompt)?.[0];
-}
-
 const oldestFirst = (a: WaitingGate, b: WaitingGate): number => Date.parse(a.since) - Date.parse(b.since) || a.gateId.localeCompare(b.gateId);
 
 /** Every pending gate in the watch rows, oldest first, split into the owner's and the seats'. */
@@ -75,7 +67,7 @@ export function waitingCommand(rowsOf: (ctx: FactoryContext) => WatchRow[]) {
     run: async (_args, ctx) => {
       const heads = (gateId: string): string | undefined => {
         const gate = ctx.host.gates.get(gateId);
-        return gate && gateHeadOf(gate);
+        return gate && headGateAsks(gate);
       };
       return waitingGates(rowsOf(ctx), new Date(), heads);
     },

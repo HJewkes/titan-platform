@@ -10,6 +10,7 @@ import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
+import type { Waiting } from "./waiting.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -48,6 +49,17 @@ describe("shepherd.waiting", () => {
     const w = world({ frozen: true });
 
     expect(await w.call("shepherd.waiting", {})).toEqual({ ok: true, data: { owner: [], seat: [] } });
+  });
+
+  it("marks an approve-merge gate current when the head its prompt names is the run's head", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const envelope = await w.call<Waiting>("shepherd.waiting", {});
+
+    expect(envelope).toMatchObject({ ok: true, data: { owner: [{ gateId: gateId(runId, "approve-merge"), head: H1, headIsCurrent: true }], seat: [] } });
   });
 });
 
