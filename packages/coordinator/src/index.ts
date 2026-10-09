@@ -38,3 +38,19 @@ export {
   seatStateSchema,
 } from "./seat-state.js";
 export type { SeatFoldError, SeatFoldOptions, SeatState } from "./seat-state.js";
+export {
+  checkCoordinatorConfig,
+  coordinatorConfigErrorSchema,
+  coordinatorConfigSchema,
+  coordinatorOwnerSchema,
+  coordinatorPolicySchema,
+  coordinatorSeatSchema,
+} from "./coordinator-config.js";
+export type {
+  CoordinatorConfig,
+  CoordinatorConfigError,
+  CoordinatorConfigResult,
+  CoordinatorOwner,
+  CoordinatorPolicy,
+  CoordinatorSeat,
+} from "./coordinator-config.js";
