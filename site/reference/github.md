@@ -72,7 +72,7 @@ Reading a PR's changes and leaving one evidence comment, on the fake wire:
 
 ```ts
 fake.prFiles.set(pr.number, [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]);
-await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]
+await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed", additions: 3, deletions: 1 }]
 await port.compareFiles("o/r", "main", "feat/x"); // { mergeBaseSha, files: [], truncated: false }
 
 const marker = "<!-- shepherd:evidence -->";
