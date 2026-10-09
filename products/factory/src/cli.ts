@@ -13,6 +13,7 @@ import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
 import { registerQueueCounts } from "./needs/counts.js";
+import { remoteFactoryRefusal } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
@@ -70,6 +71,8 @@ export interface Verbs {
   dbPath: () => string;
   withHost: (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number) => Promise<void>;
   setExit: (code: number) => void;
+  /** True, with the refusal printed and exit 2 set, when the config names a remoteFactory; call it before any database opens. */
+  refuseFrozenHost: (verb: string) => boolean;
 }
 
 /** Parse argv and run one verb. Returns the exit code instead of exiting, so tests can call it. */
@@ -89,28 +92,40 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
       host.close();
     }
   };
-  const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
+  const refuseFrozenHost = (verb: string): boolean => {
+    const refusal = remoteFactoryRefusal(io.env, verb);
+    if (!refusal) return false;
+    io.stderr(refusal);
+    setExit(EXIT.USAGE);
+    return true;
+  };
+  const verbs: Verbs = { io, deps, dbPath, withHost, setExit, refuseFrozenHost };
   for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerService]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
-function registerResume(program: Command, { io, withHost }: Verbs): void {
+function registerResume(program: Command, { io, withHost, refuseFrozenHost }: Verbs): void {
   program
     .command("resume")
     .description("drive every unfinished run until it ends or waits on a human, then list open gates")
-    .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
+    .action(async () => {
+      if (refuseFrozenHost("resume")) return;
+      await withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK));
+    });
 }
 
-function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
+/** A future `gate resolve-batch` writes gates too, so it calls refuseFrozenHost first like `gate resolve`. */
+function registerGate(program: Command, { io, deps, withHost, refuseFrozenHost }: Verbs): void {
   program
     .command("gate")
     .description("human gates")
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
-    .action((runId: string, stepId: string, opts: { json: string }) =>
-      withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
-    );
+    .action(async (runId: string, stepId: string, opts: { json: string }) => {
+      if (refuseFrozenHost("gate resolve")) return;
+      await withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd)));
+    });
 }
 
 function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
@@ -216,6 +231,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: no titan-factory serve answered on port ${opts.port}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
+  if (name === "shepherd.resync" && verbs.refuseFrozenHost("shepherd resync")) return;
   await verbs.withHost(async (host, routes) => {
     const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
     if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
@@ -243,6 +259,7 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
     return verbs.setExit(EXIT.USAGE);
   }
   if (await probeHealth(opts.port)) return verbs.setExit(await landOnServer(verbs.io, opts.port, args));
+  if (verbs.refuseFrozenHost("land")) return;
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 

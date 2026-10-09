@@ -90,9 +90,19 @@ export const ReviewCheckConfigSchema = z.strictObject({
 
 export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
 
+function isRemoteFactoryUrl(value: string): boolean {
+  if (!URL.canParse(value)) return false;
+  const url = new URL(value);
+  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+}
+
+/** The factory that owns the live database; with it set, this host's database is frozen and no verb writes a gate here. */
+const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http or https URL with no credentials");
+
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
   dbPath: z.string().min(1).optional(),
+  remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
   shepherd: z

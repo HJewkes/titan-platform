@@ -8,9 +8,10 @@ import type { StepRoute } from "@titan-design/workflow";
 import { EXIT, runCli, type CliDeps } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost } from "./host.js";
+import type * as Host from "./host.js";
 
 vi.mock("./host.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./host.js")>();
+  const actual = await importOriginal<typeof Host>();
   return { ...actual, openFactoryHost: vi.fn(actual.openFactoryHost) };
 });
 

@@ -42,6 +42,23 @@ titan-factory queue-counts                                    # open owner-queue
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
 Owner-specific bindings live in that config file, never in this repo.
 
+### A host whose database is frozen: `remoteFactory`
+
+When the live factory moves to another host, set `remoteFactory` in the old host's config file to
+the live factory's URL, for example `"remoteFactory": "http://127.0.0.1:7410"` over a port forward.
+It must be an `http` or `https` URL with no user or password. While it is set, every verb that can
+resolve, signal or cancel a gate in the local database exits 2 before it opens any database, and
+stderr names the remote and says this host's database is frozen:
+
+- `gate resolve` (and `gate resolve-batch`, once it lands);
+- `resume`, which drives runs whose steps cancel or supersede gates;
+- `land` and `shepherd resync` when no serve answers on `--port`; with one answering they go over
+  RPC as before.
+
+The refusal ignores `--db` and `TITAN_FACTORY_DB`. Read verbs (`shepherd status`, `digest run`,
+`queue-counts`, `shepherd stats`) still read the local copy. With `remoteFactory` unset nothing
+changes.
+
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
 an agent-chat session, so there the command asks for owner presence first: the macOS Touch ID or
