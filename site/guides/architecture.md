@@ -137,12 +137,14 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  factory --> agent
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
   factory --> daemon
   factory --> fixProof
   factory --> github
+  factory --> health
   factory --> hitl
   factory --> ownerQueue
   factory --> registry
