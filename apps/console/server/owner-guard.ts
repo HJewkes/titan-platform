@@ -41,6 +41,23 @@ interface OwnerWriteContext extends ConsoleContext {
   ownerPresence: OwnerPresence;
 }
 
+/**
+ * An owner-write handler carries `ownerWrite: true` from its definition, so a runtime check can
+ * tell it apart from a read or a deposit; `run`'s parameter types are gone by then.
+ */
+type OwnerWriteHandler<Args, Result> = Command<Args, Result, OwnerWriteContext> & { readonly ownerWrite: true };
+
+/**
+ * `run` is a method on `Command`, so its context parameter is bivariant and a handler that needs
+ * `OwnerWriteContext` would typecheck as a read or a deposit. This is `never` for any context a
+ * plain console context cannot satisfy, and refuses the owner-write mark, so passing such a
+ * handler with its own type fails to compile. It only sees the type the caller holds: once a
+ * handler is widened to `Command<…, ConsoleContext>` or `AnyCommand` (an annotation, a factory's
+ * return type, an array) or cast, the check passes, and the `ownerWrite` mark is the runtime
+ * backstop. Making `run` a property in the registry (TP-2115) closes that.
+ */
+type ServedWithoutOwner<Ctx> = ConsoleContext extends Ctx ? { readonly ownerWrite?: never } : never;
+
 export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
 
 /** Thrown with `EXIT.NOPERM`, which `POST /rpc/:name` answers with 403. */
@@ -71,33 +88,46 @@ function assertUnclassed(command: { readonly name: string }, commandClass: Comma
   }
 }
 
+/** The runtime half of `ServedWithoutOwner`, for a caller that cast its way past the types. */
+function assertNotOwnerWrite(command: { readonly name: string }, commandClass: CommandClass): void {
+  if ("ownerWrite" in command) {
+    throw new Error(`Console command ${command.name} is an owner-write handler; it cannot be served as ${commandClass}, only through ownerWriteCommand`);
+  }
+}
+
 /** Fails startup on a command with no class, or one outside the known classes, rather than serving it as a read. */
 export function assertClassed(command: AnyCommand<ConsoleContext>): asserts command is ClassedCommand {
   const commandClass: unknown = (command as Partial<ClassedCommand>).commandClass;
   if (!COMMAND_CLASSES.includes(commandClass as CommandClass)) {
     throw new Error(`Console command ${command.name} has no class; define it with readCommand, depositCommand or ownerWriteCommand`);
   }
+  if (commandClass !== "owner-write") assertNotOwnerWrite(command, commandClass as CommandClass);
 }
 
 /** Keeps the command's own args and result types, so `CommandMapOf` still types the browser's hooks. */
-export function readCommand<Args, Result, Ctx extends BaseContext>(command: Command<Args, Result, Ctx>): Command<Args, Result, Ctx> & { readonly commandClass: "read" } {
+export function readCommand<Args, Result, Ctx extends BaseContext>(
+  command: Command<Args, Result, Ctx> & ServedWithoutOwner<Ctx>,
+): Command<Args, Result, Ctx> & { readonly commandClass: "read" } {
   assertUnclassed(command, "read");
+  assertNotOwnerWrite(command, "read");
   return { ...command, commandClass: "read" };
 }
 
-export function depositCommand(command: AnyCommand<ConsoleContext>): ClassedCommand {
+/** `Ctx` is the handler's own context, inferred only so `ServedWithoutOwner` can check it. */
+export function depositCommand<Ctx extends BaseContext>(command: AnyCommand<ConsoleContext> & AnyCommand<Ctx> & ServedWithoutOwner<Ctx>): ClassedCommand {
   assertUnclassed(command, "deposit");
+  assertNotOwnerWrite(command, "deposit");
   return {
     ...command,
     commandClass: "deposit",
-    run: (args, ctx) => {
+    run: (args, ctx: ConsoleContext) => {
       if (ctx.surface !== "http") throw new CommandRefusedError("deposit", REFUSALS.notHttp);
       return command.run(args, ctx);
     },
   };
 }
 
-export function ownerWriteCommand<Args, Result>(command: Command<Args, Result, OwnerWriteContext>): ClassedCommand {
+export function ownerWriteCommand<Args, Result>(command: OwnerWriteHandler<Args, Result>): ClassedCommand {
   assertUnclassed(command, "owner-write");
   return {
     ...command,
