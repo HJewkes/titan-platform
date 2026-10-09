@@ -5,7 +5,7 @@ import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, parseAssignment, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
@@ -13,7 +13,7 @@ import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
 import { arithmeticTexts } from "./writers.js";
-import { valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
+import { ValueWalkError, valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
@@ -156,9 +156,29 @@ function walk(tokens: Token[], w: Walk): void {
  */
 function walkValues(op: Token | null, words: WordToken[], w: Walk): void {
   const { sure, maybe } = arithmeticTexts(op, words);
+  const scope = withPrefixAssignments(w.scope, words);
   const into = (text: Token[]) => walk(text, child(w, [...w.scope.wrapping, "subshell"]));
-  for (const text of valueSubstitutions(sure, w.scope, w.out, true)) into(text);
-  for (const text of valueSubstitutions(maybe, w.scope, w.out, false)) walkOrDrop(() => into(text));
+  for (const text of valueSubstitutions(sure, scope, w.out, true)) walkSure(() => into(text));
+  for (const text of valueSubstitutions(maybe, scope, w.out, false)) walkOrDrop(() => into(text));
+}
+
+/** `X='...' let X` hands the builtin the value before the line records it, so the walk reads it from a copy. */
+function withPrefixAssignments(scope: Scope, words: WordToken[]): Scope {
+  const head = words.findIndex((w) => parseAssignment(w) === null);
+  const prefix = head < 0 ? [] : words.slice(0, head).map(parseAssignment).filter((a) => a !== null);
+  if (prefix.length === 0) return scope;
+  const vars = childVars(scope.vars);
+  for (const assignment of prefix) assign(vars, assignment);
+  return { ...scope, vars };
+}
+
+/** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
+function walkSure(walkText: () => void): void {
+  try {
+    walkText();
+  } catch (error) {
+    throw error instanceof ParseError ? new ValueWalkError() : error;
+  }
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */

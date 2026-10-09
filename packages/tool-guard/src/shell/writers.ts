@@ -1,4 +1,5 @@
 import type { Token, WordToken } from "./lexer.js";
+import { parseAssignment } from "./vars.js";
 import type { Assignment, Vars } from "./vars.js";
 import { arithmeticWordTexts } from "./value-subscripts.js";
 
@@ -100,6 +101,7 @@ function integerValues(words: string[]): string[] {
 }
 
 const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
+const TEST_COMMANDS = new Set(["[", "test"]);
 
 /** Arithmetic text split by how sure it is: `sure` is always evaluated, `maybe` only if the name turns out numeric. */
 interface ArithmeticTexts {
@@ -109,15 +111,18 @@ interface ArithmeticTexts {
 
 /**
  * The text bash evaluates as arithmetic around an operator: its `$(( ))`, its `(( ))`, and the operands of `let` or
- * `[[`. The operands of a `[[` are only sure when it compares numbers; `[[ -n $msg ]]` does not evaluate `msg`.
+ * `[[`. A `[[` may reach the lexer in pieces (`&&` and `(` split it), so a numeric comparison makes its words sure
+ * wherever they sit; `[[ -n $msg ]]` does not evaluate `msg`, and `[` and `test` never do.
  */
 export function arithmeticTexts(op: Token | null, words: WordToken[]): ArithmeticTexts {
   const span = (op ? (compounds.get(op) ?? []) : []).flatMap((t) => (t.type === "word" ? [t.value] : []));
   const values = words.map((w) => w.value);
-  const operands = words[0]?.value === "let" || words[0]?.value === "[[" ? values.slice(1) : [];
-  const numeric = words[0]?.value === "let" || operands.some((v) => COMPARISON_RE.test(v));
+  const head = words.findIndex((w) => parseAssignment(w) === null);
+  const command = head < 0 ? [] : values.slice(head);
+  const operands = command[0] === "let" || command[0] === "[[" ? command.slice(1) : head < 0 ? [] : command;
+  const numeric = command[0] === "let" || (!TEST_COMMANDS.has(command[0] ?? "") && operands.some((v) => COMPARISON_RE.test(v)));
   const sure = [...(op ? (expansions.get(op) ?? []) : []), ...values.flatMap(expansionBodies), ...arithmeticWordTexts(values), span.join(" ")];
-  return numeric ? { sure: [...sure, ...operands], maybe: [] } : { sure, maybe: operands };
+  return numeric ? { sure: [...sure, ...operands], maybe: [] } : { sure, maybe: command[0] === "[[" ? operands : [] };
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */

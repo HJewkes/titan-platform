@@ -1,6 +1,16 @@
 import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
 import type { Token } from "./lexer.js";
+import { ReadingLimitError } from "./unsure-readings.js";
 import type { Vars } from "./vars.js";
+
+/** A value arithmetic surely reads that the walk cannot finish; the hook denies the line unchecked, as past the reading budget. */
+export class ValueWalkError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a value read as arithmetic cannot be walked to its end";
+    this.name = "ValueWalkError";
+  }
+}
 
 /** A value that names another value is followed this many times; past it the chain ends with no verdict. */
 const MAX_HOPS = 16;
@@ -31,10 +41,10 @@ const MAX_LISTS = 1500;
 /**
  * Bash evaluates the value of a name in arithmetic as an expression, and runs a `$( )` or backquote in it. Returns
  * the token lists of each such substitution in the values the expressions reach through known names, read with
- * the shell's own lexer; an unknown value, a cycle and a chain past the cap yield nothing more. A value read
+ * the shell's own lexer; an unknown value, a cycle and a chain past the cap yields nothing more, or throws when the read is sure. A value read
  * again under the same scope in one classification (`run`) yields nothing the second time, so the cost stays
  * linear. When `sure` is set, expressions arithmetic surely evaluates: a value whose substitutions cannot all be
- * had, because the lexer rejects it or the budget is spent, throws a ParseError rather than yielding fewer.
+ * had, because the lexer rejects it or the budget is spent, throws a ValueWalkError rather than yielding fewer.
  */
 export function valueSubstitutions(expressions: string[], scope: ValueScope, run: object, sure: boolean): Token[][] {
   const state = walked.get(run) ?? { reads: new Map<string, boolean>(), lists: 0 };
@@ -42,13 +52,17 @@ export function valueSubstitutions(expressions: string[], scope: ValueScope, run
   const found: Token[][] = [];
   const seen = new Set<string>();
   const pending = [...expressions];
-  for (let text = pending.pop(); text !== undefined && seen.size <= MAX_HOPS; text = pending.pop()) {
+  for (let text = pending.pop(); text !== undefined; text = pending.pop()) {
     for (const [name] of text.matchAll(NAME_RE)) {
       const value = seen.has(name) ? null : scope.vars.get(name);
       if (typeof value !== "string") continue;
+      if (seen.size >= MAX_HOPS) {
+        if (sure) throw new ValueWalkError();
+        continue;
+      }
       seen.add(name);
       const complete = read(state, scope, value, sure, found);
-      if (sure && !complete) throw new ParseError("a value read as arithmetic holds substitutions that cannot be walked");
+      if (sure && !complete) throw new ValueWalkError();
       pending.push(value);
     }
   }
@@ -107,6 +121,7 @@ const SUBSCRIPT_WRITE_RE = /^[A-Za-z_]\w*\[(.*)\]\+?=/s;
 const ELEMENT_READ_RE = /\$\{[!#]?[A-Za-z_]\w*\[/g;
 const OFFSET_RE = /\$\{[A-Za-z_]\w*(?:\[[^\]]*\])?:(?![-=+?])([^}]*)\}/g;
 const IDENTIFIER_RE = /^[A-Za-z_]\w*$/;
+const ASSIGNED_VALUE_RE = /^[A-Za-z_]\w*\+?=(.*)$/s;
 const DECLARER_RE = /^(?:declare|typeset|local)$/;
 
 /**
@@ -136,7 +151,13 @@ function bracketBodies(text: string, open: string): string[] {
 function integerNames(values: string[]): string[] {
   const at = values.findIndex((v) => DECLARER_RE.test(v));
   const rest = at < 0 ? [] : values.slice(at + 1);
-  return rest.some((v) => /^-[a-zA-Z]*i/.test(v)) ? rest.filter((v) => IDENTIFIER_RE.test(v)) : [];
+  return rest.some((v) => /^-[a-zA-Z]*i/.test(v)) ? rest.flatMap(integerOperand) : [];
+}
+
+/** The name a `declare -i` evaluates, or the value it assigns, which it evaluates as an expression. */
+function integerOperand(word: string): string[] {
+  const assigned = ASSIGNED_VALUE_RE.exec(word)?.[1];
+  return assigned !== undefined ? [assigned] : IDENTIFIER_RE.test(word) ? [word] : [];
 }
 
 /** The index of the bracket closing the one at `from`, or the end of the text. */
