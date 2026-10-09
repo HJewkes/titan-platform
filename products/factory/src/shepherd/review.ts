@@ -1,7 +1,7 @@
-import type { OwnerOverride } from "./override-stats.js";
 import type { AgentIdentity } from "@titan-design/authority";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";

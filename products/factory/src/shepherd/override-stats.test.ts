@@ -23,6 +23,19 @@ describe("overrideStats", () => {
     expect(overrideStats(runs)).toEqual([{ repo: REPO, week: "2026-W38", overrides: 2, mergeRuns: 4, rate: 0.5 }]);
   });
 
+  it("counts a run once however many overrides it recorded", () => {
+    const twice = run("a", { "sh-await-verdict:x": g10, [`sh-override:${HEAD}`]: owner });
+
+    expect(overrideStats([twice])).toEqual([{ repo: REPO, week: "2026-W38", overrides: 1, mergeRuns: 1, rate: 1 }]);
+  });
+
+  it("ignores a reverse disagreement, where no MERGE was overturned", () => {
+    const reverse = { kind: "verdict", verdict: "FIX_FIRST", ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "FIX_FIRST", other: "MERGE", at: T0 } };
+
+    expect(overrideStats([run("a", { "sh-await-verdict:x": reverse }), run("b", { "sh-await-verdict:y": merge })])).toEqual([{ repo: REPO, week: "2026-W38", overrides: 0, mergeRuns: 1, rate: 0 }]);
+    expect(overrideStats([run("a", { "sh-await-verdict:x": reverse })])).toEqual([]);
+  });
+
   it("reports no overrides for a week where every MERGE stood", () => {
     expect(overrideStats([run("a", { "sh-await-verdict:x": merge })])).toEqual([{ repo: REPO, week: "2026-W38", overrides: 0, mergeRuns: 1, rate: 0 }]);
   });

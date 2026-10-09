@@ -20,6 +20,7 @@ export interface OverrideRow {
   repo: string;
   /** ISO week of the run's first MERGE verdict, e.g. `2026-W40`. */
   week: string;
+  /** Runs whose MERGE verdict was overridden. */
   overrides: number;
   mergeRuns: number;
   /** Overrides per run with a MERGE verdict; null when no run in the week had one. */
@@ -48,23 +49,23 @@ function mergeVerdictAt(step: [string, StepResult]): number | undefined {
   return VERDICT_STEPS.includes(stepName(key)) && (said || vetoed) ? Date.parse(result.completedAt) : undefined;
 }
 
-/** The overrides a run recorded, from any of its steps. */
-const runOverrides = (run: WorkflowRun): OwnerOverride[] => Object.values(run.stepResults).flatMap((result) => overrideOf(result) ?? []);
+/** True when the run recorded an override of its own MERGE; the reverse G10 case overturned no MERGE. */
+const overturnedMerge = (run: WorkflowRun): boolean => Object.values(run.stepResults).some((result) => overrideOf(result)?.shepherd === "MERGE");
 
-/** Per repo and ISO week of a run's first MERGE verdict: the overrides its runs recorded over the runs that had a MERGE verdict. */
+/** Per repo and ISO week of a run's first MERGE verdict: runs whose MERGE was overridden over runs that had a MERGE verdict. */
 export function overrideStats(runs: readonly WorkflowRun[], range: { from?: string; to?: string } = {}): OverrideRow[] {
   const rows = new Map<string, OverrideRow>();
   for (const run of runs) {
     const repo = run.params.repo?.toLowerCase();
-    const overrides = runOverrides(run);
     const merges = Object.entries(run.stepResults).flatMap((step) => mergeVerdictAt(step) ?? []);
-    const at = merges.length > 0 ? Math.min(...merges) : overrides.length > 0 ? Math.min(...overrides.map((o) => o.at)) : undefined;
-    if (!repo || at === undefined || !inRange(at, range)) continue;
+    if (!repo || merges.length === 0) continue;
+    const at = Math.min(...merges);
+    if (!inRange(at, range)) continue;
     const week = isoWeek(at);
     const row = rows.get(`${repo} ${week}`) ?? { repo, week, overrides: 0, mergeRuns: 0, rate: null };
     rows.set(`${repo} ${week}`, row);
-    row.overrides += overrides.length;
-    if (merges.length > 0) row.mergeRuns++;
+    row.mergeRuns++;
+    if (overturnedMerge(run)) row.overrides++;
   }
   return [...rows.values()]
     .map((row) => ({ ...row, rate: row.mergeRuns === 0 ? null : Math.round((row.overrides / row.mergeRuns) * 1000) / 1000 }))
