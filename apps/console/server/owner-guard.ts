@@ -18,7 +18,7 @@
 import type { RequestAuth, Surface } from "@titan-design/daemon";
 import { EXIT, type AnyCommand, type BaseContext, type Command } from "@titan-design/registry";
 
-export type CommandClass = "read" | "deposit" | "owner-write";
+type CommandClass = "read" | "deposit" | "owner-write";
 
 /** `in-process` is a call made inside the daemon, such as the first-paint snapshot. */
 export type ConsoleSurface = Surface | "in-process";
@@ -32,18 +32,18 @@ export interface ConsoleContext extends BaseContext {
 }
 
 /** The owner-console presence proof: when the owner's verified session cookie was issued. */
-export interface OwnerPresence {
+interface OwnerPresence {
   issuedAt: number;
 }
 
-export interface OwnerWriteContext extends ConsoleContext {
+interface OwnerWriteContext extends ConsoleContext {
   ownerPresence: OwnerPresence;
 }
 
 export type ClassedCommand = AnyCommand<ConsoleContext> & { readonly commandClass: CommandClass };
 
 /** Thrown with `EXIT.NOPERM`, which `POST /rpc/:name` answers with 403. */
-export class CommandRefusedError extends Error {
+class CommandRefusedError extends Error {
   readonly code = EXIT.NOPERM;
 
   constructor(commandClass: CommandClass, reason: string) {
@@ -84,7 +84,7 @@ export function ownerWriteCommand<Args, Result>(command: Command<Args, Result, O
 }
 
 /** Returns the presence proof, or throws naming the first rule the request breaks. */
-export function admitOwner(ctx: ConsoleContext): OwnerPresence {
+function admitOwner(ctx: ConsoleContext): OwnerPresence {
   const refuse = (reason: string): never => {
     throw new CommandRefusedError("owner-write", reason);
   };
