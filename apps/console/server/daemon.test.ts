@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, request } from "node:http";
+import { createServer } from "node:http";
 import type * as NetModule from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,7 +15,7 @@ import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { closedPort, startFakeBroker, startFakeDaemon, type FakeDaemon } from "./test-support.js";
+import { closedPort, send, sessionCookie, startFakeBroker, startFakeDaemon, type FakeDaemon, type Reply } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The one seam for the LAN suite: the daemon refuses all of 127/8 as a remote host through a
@@ -59,6 +59,7 @@ beforeEach(async () => {
     lanHost: null,
     lanNames: [],
     lanTokenPath: path.join(dir, "state", "lan.token"),
+    ownerWrites: false,
   };
   await writeFile(config.sessionGraphPath, "synthetic");
 });
@@ -230,29 +231,6 @@ describe("login-link and token rotate", () => {
     expect(statSync(config.lanTokenPath).mode & 0o777).toBe(0o600);
   });
 });
-
-interface Reply {
-  status: number;
-  headers: Record<string, string | string[] | undefined>;
-  body: string;
-}
-
-function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
-  return new Promise((resolve, reject) => {
-    const req = request({ host: address, port, path: route, method, headers }, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
-    });
-    req.on("error", reject);
-    req.end(body);
-  });
-}
-
-function sessionCookie(reply: Reply): string | undefined {
-  const cookies = [reply.headers["set-cookie"] ?? []].flat();
-  return cookies.find((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`));
-}
 
 // Linux routes all of 127/8 to lo; macOS answers only 127.0.0.1 unless an alias is added.
 describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.2 stands in for the LAN)", () => {

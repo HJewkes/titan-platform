@@ -99,6 +99,15 @@ describe("POST /rpc/:name", () => {
     expect(await res.json()).toEqual({ ok: false, error: "kaboom", code: 78 });
   });
 
+  it("answers 403 when a command refuses its caller with NOPERM", async () => {
+    const app = buildApp({ formatError: () => ({ message: "not for you", code: 77 }) });
+
+    const res = await postRpc(app, "boom", "{}");
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "not for you", code: 77 });
+  });
+
   it("treats a missing body as no arguments", async () => {
     const res = await postRpc(buildApp(), "boom");
 

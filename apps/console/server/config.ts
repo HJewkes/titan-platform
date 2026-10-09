@@ -36,6 +36,8 @@ export interface ConsoleConfig {
   lanNames: string[];
   /** The LAN secret; `login-link` and `token rotate` use it even when `lanHost` is null. */
   lanTokenPath: string;
+  /** `TITAN_CONSOLE_OWNER_WRITES=1` lets owner-write commands run on the LAN; off until the LAN carries TLS. */
+  ownerWrites: boolean;
 }
 
 /** What `resolveConfig` asks of the machine it runs on; a seam for tests. */
@@ -75,6 +77,7 @@ export function resolveConfig(
     lanHost: lanHostFrom(env.TITAN_CONSOLE_HOST, machine),
     lanNames: lanNamesFrom(env.TITAN_CONSOLE_LAN_NAMES, machine),
     lanTokenPath: expandHome(env.TITAN_CONSOLE_TOKEN || path.join(stateDir, "lan.token"), home),
+    ownerWrites: ownerWritesFrom(env.TITAN_CONSOLE_OWNER_WRITES),
   };
   if (config.port === config.activeWorkPort || config.port === config.agentChatPort) {
     throw new Error(`TITAN_CONSOLE_PORT ${config.port} belongs to an upstream daemon; the console needs a port of its own`);
@@ -98,6 +101,13 @@ function urlFrom(env: NodeJS.ProcessEnv, name: string, fallback: string): string
   const url = URL.canParse(raw) ? new URL(raw) : null;
   if (!url || !["http:", "https:"].includes(url.protocol) || url.hash !== "") throw new Error(`${name} must be an http(s) address with no #fragment, got "${raw}"`);
   return raw;
+}
+
+/** Only `1` turns owner writes on; any other value is refused rather than read as off, so a typo is never silent. */
+function ownerWritesFrom(raw: string | undefined): boolean {
+  if (raw === undefined || raw === "" || raw === "0") return false;
+  if (raw === "1") return true;
+  throw new Error(`TITAN_CONSOLE_OWNER_WRITES must be 1 or 0, got "${raw}"`);
 }
 
 const WILDCARDS = new BlockList();

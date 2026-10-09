@@ -139,4 +139,13 @@ describe("console LAN config", () => {
     expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).lanTokenPath).toBe("/var/console/lan.token");
     expect(lan({ TITAN_CONSOLE_TOKEN: "~/secrets/lan.token" }).lanTokenPath).toBe(path.join(HOME, "secrets", "lan.token"));
   });
+
+  it("keeps owner writes off unless TITAN_CONSOLE_OWNER_WRITES is 1", () => {
+    expect([lan({}), lan({ TITAN_CONSOLE_OWNER_WRITES: "" }), lan({ TITAN_CONSOLE_OWNER_WRITES: "0" })].map((c) => c.ownerWrites)).toEqual([false, false, false]);
+    expect(lan({ TITAN_CONSOLE_OWNER_WRITES: "1" }).ownerWrites).toBe(true);
+  });
+
+  it.each(["true", "yes", "on", " 1"])("refuses TITAN_CONSOLE_OWNER_WRITES=%j rather than guess", (value) => {
+    expect(() => lan({ TITAN_CONSOLE_OWNER_WRITES: value })).toThrow(/TITAN_CONSOLE_OWNER_WRITES/);
+  });
 });
