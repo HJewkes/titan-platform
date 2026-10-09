@@ -779,14 +779,14 @@ Tier 2, `@titan-design/review-panel@0.0.0`. Review-panel types and the reviewer 
 
 Key exports:
 
-- `classify`: `classifyPr`
+- `classify`: `changedLineCount`, `classifyPr`
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
 - `accept-verdict`: `acceptVerdict`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`, `findingsText`, `fixFirstFindings`
-- `verdict-schemas`: `MalformedSchema`, `OwnerBriefSchema`
-- +56 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- `verdict-schemas`: `MalformedSchema`
+- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

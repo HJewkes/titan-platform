@@ -1324,3 +1324,42 @@ describe("the round after a wake's await-new-head", () => {
     expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
   });
 });
+
+describe("owner override of a MERGE verdict", () => {
+  const mergeAt = (headSha: string) => ({ review: () => ({ kind: "MERGE" as const, headSha, evidence: {} }) });
+  const recordedOverride = (w: World, runId: string) => stepResult(w.host, runId, `sh-override:${H1}`);
+
+  it("records an owner-answer override when the owner abandons at a head the reviewer said MERGE at", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(recordedOverride(w, runId)).toMatchObject({ result: { ownerOverride: { trigger: "owner-answer", head: H1, shepherd: "MERGE", other: "abandon", at: expect.any(Number) } } });
+  });
+
+  it("records nothing when the owner merges after the reviewer's MERGE", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+
+  it("records nothing when the owner abandons without a reviewer MERGE at the head", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+});

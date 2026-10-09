@@ -24,6 +24,13 @@ every caller plans, briefs and aggregates the same way:
   files with line counts). Classification reads nothing else.
 - `PrClass`: the class (`g10` or `standard`) and the touch flags that choose the panel's
   shapes.
+- `changedLineCount(files, rules?)`: additions plus deletions with the `generated` globs
+  (CAPABILITIES.md, site reference pages, the reference sidebar, the capabilities guide,
+  `.codewatch/check.json`) left out; undefined when any file has no line counts. A rename
+  counts as generated only when it came from a generated path too, and generated lines that
+  alone pass `largeLines` (400) count in full, since that is a hand edit. A PR is large past
+  `largeLines` of it. Shepherd sizes its reviewer the same way, and an unread size there
+  takes the g10 class.
 - `PanelPlan`: the members (one per `ReviewShape`), each with its profile, brief id, and
   whether it blocks or was degraded to sonnet, plus a spend estimate.
 - `planPanel(cls, policy, headroom)`: the pure planner. The correctness member always
