@@ -150,6 +150,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
   });
 
+  it("reads a g10 changed-line limit and rejects one that is not a positive integer", () => {
+    const review = { profile: "rv", g10ChangedLines: 250 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", g10ChangedLines: 0 } } })))).toThrow(/g10ChangedLines/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 

@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@titan-design/locator": "workspace:^",
-    "@titan-design/agent-protocol": "workspace:^"
+    "@titan-design/agent-protocol": "workspace:^",
+    "@titan-design/anthropic-account": "workspace:^"
   }
 }

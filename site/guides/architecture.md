@@ -126,6 +126,7 @@ graph TD
   sessionGraph --> sessionRead
   sessionGraph --> storeSqlite
   sessionRead --> agentProtocol
+  sessionRead --> anthropicAccount
   sessionRead --> locator
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
@@ -176,6 +177,7 @@ graph TD
   console --> chatProtocol
   console --> daemon
   console --> github
+  console --> ownerQueue
   console --> reactApp
   console --> registry
   console --> rpcClient
