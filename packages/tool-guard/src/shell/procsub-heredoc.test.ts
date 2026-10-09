@@ -81,8 +81,8 @@ describe("a heredoc opened inside a process substitution", () => {
     expect(await hookDenies("cat <(cat <<EOF)\nbody\nEOF\ngh pr merge 1 --squash")).toBe(true);
   });
 
-  it("the hook lets a pending heredoc with no push pass", async () => {
-    expect(await hookDenies("cat <(cat <<EOF)\nbody\nEOF\nls")).toBe(false);
+  it("the hook refuses a pending heredoc even with no push after it", async () => {
+    expect(await hookDenies("cat <(cat <<EOF)\nbody\nEOF\nls")).toBe(true);
   });
 
   it("lexes three hundred pending heredocs without running away", async () => {
@@ -128,7 +128,7 @@ describe("a heredoc opened inside a process substitution", () => {
   });
 });
 
-describe("every heredoc pending on the line, in the order bash 5 reads the bodies", () => {
+describe("a line bash 5 reads differently because a substitution left a heredoc open", () => {
   const SWALLOW = `${PUSH}\n\\"'\n#"`;
 
   it.each([
@@ -144,19 +144,32 @@ describe("every heredoc pending on the line, in the order bash 5 reads the bodie
     expect(await hookDenies(command)).toBe(true);
   });
 
-  it("the hook names the open heredoc when it refuses a line bash 3.2 cannot parse", async () => {
+  it.each([
+    ["a heredoc of the line fed to bash", `: <(cat <<EOF); bash <<A\nA\necho x"\nEOF\n${PUSH}\nA\nx #"`],
+    ["a heredoc of the line fed to bash after a command substitution", `: $(cat <<EOF); bash <<A\nA\necho x"\nEOF\n${PUSH}\nA\nx #"`],
+    ["a heredoc of the line piped to bash", `: <(cat <<EOF); cat <<A | bash\nA\necho x"\nEOF\n${PUSH}\nA\nx #"`],
+    ["a substitution's heredoc whose body comes second", `: $(cat <<A) <(bash <<EOF)\necho x"\nA\n${PUSH}\nEOF\nx #"`],
+  ])("the hook denies a push bash 5 runs as the body of %s", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it("the hook names the open heredoc when it refuses the line", async () => {
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
-    const command = "cat <(cat <<EOF)\nit\"s\nEOF\nls";
+    const command = "cat <(cat <<EOF)\nbody\nEOF\nls";
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
     expect((await handle(input, { PATH: "/usr/bin" }, port)).stdout).toContain("close the heredoc inside the substitution");
   });
 
-  it("the hook lets the same shape pass when nothing after the bodies pushes", async () => {
-    expect(await hookDenies(`cat <(cat <<EOF) <<A\nA\nbody\nEOF\nbody\nA\nls`)).toBe(false);
+  it.each([
+    ["a commit message", `git commit -m "$(cat <<'EOF'\nmsg\nEOF\n)"\nls`],
+    ["a process substitution", "cat <(cat <<EOF\nbody\nEOF\n)\nls"],
+    ["a substitution at the end of the text", "cat <(cat <<EOF)"],
+  ])("the hook lets a heredoc closed inside %s pass", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(false);
   });
 });
 
-describe("a pending heredoc whose tails cannot all be read", () => {
+describe("a pending heredoc in a backtick substitution or a heredoc body", () => {
   const ATTACK = `cat <(cat <<EOF)\nit's\nEOF\n${PUSH}\necho \\'`;
   const padding = (n: number) => Array.from({ length: n }, () => "$(cat <(cat <<D))").map((line, k) => line.replace("D)", `D${k})`));
   const heredocs = (n: number) => Array.from({ length: n }, (_, k) => `D${k}`).join("\n");
@@ -171,13 +184,13 @@ describe("a pending heredoc whose tails cannot all be read", () => {
     expect(await hookDenies(command)).toBe(true);
   });
 
-  it("refuses to classify a line whose tails were left unread", () => {
+  it("refuses to classify a pending heredoc inside a backtick substitution", () => {
     const command = `echo \`${padding(300).join("\n")}\n${heredocs(300)}\`\n${ATTACK}`;
     expect(() => classifyCommand(command)).toThrow();
   });
 });
 
-describe("a pending heredoc whose tail does not lex", () => {
+describe("a pending heredoc before a quote that never closes", () => {
   const openers = [
     ["<(", "cat <(cat <<EOF)"],
     [">(", "cat >(cat <<EOF)"],
@@ -217,7 +230,7 @@ describe("a pending heredoc in a followed script", () => {
     expect(await verdict(command, scriptWith(PUSH))).toBe(true);
   });
 
-  it.each(["bash ./s.sh", "./s.sh"])("the hook lets `%s` pass when the body line only reads status", async (command) => {
-    expect(await verdict(command, scriptWith("git status"))).toBe(false);
+  it.each(["bash ./s.sh", "./s.sh"])("the hook refuses `%s` even when the body line only reads status", async (command) => {
+    expect(await verdict(command, scriptWith("git status"))).toBe(true);
   });
 });

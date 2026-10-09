@@ -1,5 +1,5 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
-import type { OpToken, RedirectToken, Token, WordToken } from "./lexer.js";
+import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
@@ -121,7 +121,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   return out;
 }
 
-/** Bash 5 runs a line whose bash 3.2 reading does not parse, so that ParseError is a refusal, not a pass. */
+/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
 function tokenizeLine(src: string): Token[] {
   try {
     return tokenize(src);
@@ -146,7 +146,6 @@ function walk(tokens: Token[], w: Walk): void {
       if (token.value !== "&&") w.chain = { start: token.value };
       trackCompound(token, w.scope.vars);
       scope(token.value, w);
-      walkTails(token, w);
       continue;
     }
     if (token.type === "word") words.push(token);
@@ -154,13 +153,6 @@ function walk(tokens: Token[], w: Walk): void {
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
   emit(words, redirects, w, null);
-}
-
-/** Tails get their own unsure budget, so the bash 5 reading never spends what main's reading of the body would have had. */
-function walkTails({ tails = [], tailsUnread }: OpToken, w: Walk): void {
-  if (tailsUnread) throw new SplitReadingError();
-  const unsure = { ...w.unsure, left: MAX_UNSURE_WORDS };
-  for (const tail of tails) walk(tail, { ...child(w, [...w.scope.wrapping, "subshell"]), depth: w.depth, unsure });
 }
 
 /** Text piped into the next command: printed by this one, passed on by `tee` or `cat`, or kept across a bare `(`. */
