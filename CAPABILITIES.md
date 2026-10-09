@@ -470,7 +470,7 @@ Key exports:
 - `guards`: `createRequestGuard`
 - `file-watch`: `watchTree`
 - `lifecycle`: `daemonPaths`, `getProcessCommand`, `getProcessStartTime`, `isProcessAlive`, `probeHealth`, `readPidFile`, `removePidFile`
-- +65 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
+- +67 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/daemon)
 
 <a id="cap-github"></a>
 
@@ -682,7 +682,7 @@ Key exports:
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
 - `seat-state`: `emptySeatState`, `foldSeatEvents`
-- +39 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
+- +41 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/coordinator)
 
 <a id="cap-decider"></a>
 

@@ -147,7 +147,7 @@ const auth = createDaemonAuth({ tokenFile });  // throws TokenFileError on an un
 const app = buildHttpApp({ ...options, gate: auth });
 
 // In a separate CLI process, on the daemon's host:
-console.log(`http://host:7500/auth/login?code=${mintLoginCode(ensureTokenFile(tokenFile))}`);
+console.log(`https://host.example.ts.net:7500/auth/login?code=${mintLoginCode(ensureTokenFile(tokenFile))}`);
 rotateTokenFile(tokenFile);                    // ends every session and voids every code
 ```
 
@@ -174,10 +174,12 @@ rotateTokenFile(tokenFile);                    // ends every session and voids e
   chat app's link preview cannot burn it. Its button sends a same-origin JSON
   `POST /auth/login { code }`, which spends the code, sets the cookie, and then the script
   navigates to `/`.
-- **Session cookie.** `titan_session=v1.<issuedAt>.<mac>`, `HttpOnly; SameSite=Strict; Path=/`,
-  `Max-Age` 30 days. It is stateless and survives restarts. The server refuses one from the
-  future or 30 days old regardless of the browser. There is no `Secure` flag, because the
-  listener this was built for is plain HTTP.
+- **Session cookie.** `titan_session=v1.<issuedAt>.<mac>`, `HttpOnly; Secure; SameSite=Strict;
+  Path=/`, `Max-Age` 30 days. It is stateless and survives restarts. The server refuses one from
+  the future or 30 days old regardless of the browser. It is always `Secure`: the remote listener
+  speaks only TLS, and a browser never sends a `Secure` cookie over plain HTTP, even to another
+  port on the same host. A `gate` on an app you serve over plain HTTP yourself gets a cookie
+  browsers drop beyond `localhost`.
 - **Bearer.** Non-browser clients send `Authorization: Bearer <secret>`.
 - **Logout.** `POST /auth/logout` clears this browser's cookie only. A copied cookie stays valid
   until it expires or the secret rotates; rotation is the revocation.
@@ -189,7 +191,8 @@ rotateTokenFile(tokenFile);                    // ends every session and voids e
   app answers 401 rather than call `createContext` without it.
 - **`peerLocal`.** True when the peer address is loopback or one of this machine's own interface
   addresses, read from `os.networkInterfaces()` per request, or when no peer address is known
-  (`app.request()` in tests). Any local process can read the token file and mint a link, so a
+  (`app.request()` in tests). The remote listener terminates TLS itself, with no proxy in front,
+  so the peer address is the client's own. Any local process can read the token file and mint a link, so a
   command that must come from another device refuses when it is true.
 
 ## A remote listener
@@ -198,9 +201,28 @@ rotateTokenFile(tokenFile);                    // ends every session and voids e
 const handle = await startDaemon({
   ...options,                                   // host stays loopback, the default
   port: 7500,
-  remote: { host: "192.168.1.20", tokenFile, allowedHosts: ["lan-box", "lan-box.local"] },
+  remote: {
+    host: "100.64.0.20",                          // the tailscale address, say
+    tokenFile,
+    allowedHosts: ["lan-box.example.ts.net"],
+    tls: { certFile: "lan-box.example.ts.net.crt", keyFile: "lan-box.example.ts.net.key" },
+  },
 });
 ```
+
+- **TLS only.** `remote.tls` is required, and a `remote` without it throws `RemoteBindError`
+  before anything binds: there is no way to serve plain HTTP beyond loopback. The remote server
+  is `node:https` alone, so a plain-HTTP request fails the handshake and gets no HTTP reply
+  (curl reports an empty reply). Loopback stays plain HTTP.
+- **The pair.** `certFile` and `keyFile` are PEM, such as the files `tailscale cert` writes.
+  Before anything binds, `TlsFileError` refuses a missing or unreadable file, a key that is
+  not this user's or is readable by group or others, a key that is not the certificate's, a
+  certificate outside its validity window, and a certificate that does not cover every name in
+  `allowedHosts`. Nothing binds and no pid file is written.
+- **Renewal.** Both files are stat'd every `remote.tlsReloadMs` (60000 by default). A change
+  that passes every check above is served to new connections with no restart. One that fails
+  is logged as an error and the last good pair keeps serving; the check repeats on the next
+  tick. The listener never drops to plain HTTP.
 
 - **Two listeners, one port.** Loopback is exactly as without `remote`: no auth, the loopback
   allowlist. The second listener binds `remote.host` on the same port with its own hono app,
@@ -211,13 +233,15 @@ const handle = await startDaemon({
   403 there, and the loopback allowlist never gains these names. Host and the derived origins
   match only with the bound port (`portOnly`), because cookies ignore port: a page from another
   service on port 80 of the same host would otherwise pass the Origin check with the cookie.
+  Origins are the `https://` forms alone (`httpsOnly`): an `http://` origin is another site.
   `guards.allowedOrigins` applies to loopback only.
 - **No `/mcp`.** It is spliced ahead of hono, where the gate would never see it, so the remote
   bind takes no MCP handler at all; `/mcp` there is 401, then 404 with a credential.
 - **Refusals.** `RemoteBindError` for a loopback or wildcard address (`0.0.0.0`, `::`, their
   long and IPv4-mapped forms, all of 127/8), for anything that is not a bare IP literal (a name
   could resolve to either), and for a `remote` beside an unauthenticated non-loopback `host`.
-  The token file is read before anything binds, so a bad one never half-starts the daemon.
+  The token and TLS files are read before anything binds, so a bad one never half-starts the
+  daemon.
 - **Both or neither.** If the remote bind fails (`EADDRNOTAVAIL` while the interface is down,
   or `DaemonPortInUseError` naming the remote host), loopback is closed and no pid file is
   written. `close()` shuts both.
