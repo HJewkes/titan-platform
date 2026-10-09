@@ -1,111 +1,107 @@
 import { randomUUID } from "node:crypto";
-import { userInfo } from "node:os";
 import type { GitHubPort } from "@titan-design/github";
+import type { GateResolver } from "@titan-design/hitl";
 import { landGate } from "./coordinator-evidence.js";
-import { EXIT } from "./exit-codes.js";
 import type { BatchOutcome } from "./gate-batch-store.js";
-import { digestOf, formatPlan, planBatch, type BatchItem } from "./gate-batch-plan.js";
-import { pendingGateId, resolveGate, type OwnerPresence } from "./gate-resolve.js";
+import { itemsRefusal } from "./gate-batch-plan.js";
+import { pendingGateId } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
-import { confirmOwner } from "./owner-presence.js";
+import { verifyProof, type keyRing, type ProofItem, type Statement } from "./presence-proof.js";
 
-interface BatchIo {
-  stdout: (text: string) => void;
-  stderr: (text: string) => void;
-  env: NodeJS.ProcessEnv;
-}
-
-export interface BatchDeps {
-  presence: OwnerPresence;
-  /** Fresh PR reads; without one, only the gate store says whether an item moved or closed. */
+export interface ApplyDeps {
+  /** Unix milliseconds. */
+  now: () => number;
+  /** This factory's hostname; a statement signed for another host is refused. */
+  aud: string;
+  /** Fresh PR reads; without one, only the gate store says whether a merge gate's PR moved or closed. */
   port?: Pick<GitHubPort, "getPr">;
 }
+
+type KeyRing = ReturnType<typeof keyRing>;
+type ProofInput = Parameters<typeof verifyProof>[0];
+type VerifyRefusal = Extract<ReturnType<typeof verifyProof>, { ok: false }>["refusal"];
+
+interface ItemOutcome {
+  gate: string;
+  outcome: BatchOutcome;
+  detail?: string;
+}
+
+type ApplyResult = { ok: true; batchId: string; items: ItemOutcome[] } | { ok: false; refusal: VerifyRefusal | "replayed-nonce" | "item-refused"; detail?: string };
 
 interface Skip {
   outcome: Extract<BatchOutcome, `skipped-${string}`>;
   detail: string;
 }
 
-/**
- * `titan-factory gate resolve-batch`: shows an itemized list of merge gates, asks for owner presence once, records the
- * signed batch, then answers `merge` to each gate through `gate resolve` only while it is still pending at the listed
- * head. A bad list or a denied presence check resolves nothing; a failed resolve stops the batch with the record kept.
- */
-export async function resolveBatch(host: FactoryHost, io: BatchIo, source: string, deps: Partial<BatchDeps> = {}): Promise<number> {
-  const items = planBatch(host, source);
-  if (typeof items === "string") {
-    io.stderr(`error: ${items}; nothing was resolved\n`);
-    return EXIT.USAGE;
-  }
-  const digest = digestOf(items);
-  io.stdout(formatPlan(items, digest));
-  const proof = await (deps.presence ?? confirmOwner)(`resolve ${items.length} merge gates as batch ${digest.slice(0, 16)}`);
-  if (proof === undefined) {
-    io.stderr("error: owner presence was not confirmed; nothing was resolved\n");
-    return EXIT.FAILURE;
-  }
-  const batchId = randomUUID();
-  host.batches.open({ id: batchId, digest, proof, signedBy: userInfo().username }, items);
-  io.stdout(`signed batch ${batchId}\n`);
-  return fireAll(host, io, { batchId, proof, port: deps.port }, items);
-}
-
 interface Signed {
   batchId: string;
-  proof: string;
+  resolver: GateResolver;
   port?: Pick<GitHubPort, "getPr">;
 }
 
-async function fireAll(host: FactoryHost, io: BatchIo, signed: Signed, items: readonly BatchItem[]): Promise<number> {
-  const counts = { resolved: 0, skipped: 0 };
+/**
+ * Applies an owner-signed proof: verifies it, refuses a nonce already used, checks every item against its live gate,
+ * records the proof with every item `signed`, then fires each item that is still pending at its exact head. Nothing
+ * fires unless all of that passed. The first failed resolve stops the batch; the record shows which items fired.
+ */
+export async function applyProof(host: FactoryHost, proof: ProofInput, keys: KeyRing, deps: ApplyDeps): Promise<ApplyResult> {
+  const verified = verifyProof(proof, keys, Math.floor(deps.now() / 1000), deps.aud);
+  if (!verified.ok) return verified;
+  const { statement, keyId } = verified;
+  if (host.batches.hasNonce(statement.nonce)) return { ok: false, refusal: "replayed-nonce" };
+  const refusal = itemsRefusal(host, statement.items);
+  if (refusal !== undefined) return { ok: false, refusal: "item-refused", detail: refusal };
+  const batchId = randomUUID();
+  if (!host.batches.open(recordOf(batchId, keyId, statement, proof), statement.items)) return { ok: false, refusal: "replayed-nonce" };
+  const resolver: GateResolver = { class: "owner-terminal", id: `key:${keyId}`, channel: "factory-proof", confirmEvent: `proof:${batchId}` };
+  return { ok: true, batchId, items: await fireAll(host, { batchId, resolver, port: deps.port }, statement.items) };
+}
+
+function recordOf(id: string, keyId: string, statement: Statement, proof: ProofInput) {
+  const text = Buffer.from(proof.statementB64, "base64url").toString("utf8");
+  return { id, keyId, nonce: statement.nonce, digest: statement.digest, statement: text, signature: proof.signatureB64, aud: statement.aud, iat: statement.iat, exp: statement.exp };
+}
+
+async function fireAll(host: FactoryHost, signed: Signed, items: readonly ProofItem[]): Promise<ItemOutcome[]> {
+  const outcomes: ItemOutcome[] = items.map(({ gate }) => ({ gate, outcome: "signed" }));
   for (const [seq, item] of items.entries()) {
     const skip = await staleness(host, item, signed.port);
-    if (skip) {
-      host.batches.mark(signed.batchId, seq, skip.outcome, skip.detail);
-      io.stdout(`skipped ${item.gate}: ${skip.outcome.slice("skipped-".length)} (${skip.detail})\n`);
-      counts.skipped += 1;
-      continue;
-    }
-    if (!(await fireOne(host, io, signed, seq, item))) {
-      io.stderr(`error: batch ${signed.batchId} stopped at item ${seq + 1}; the items after it were not resolved\n`);
-      return EXIT.FAILURE;
-    }
-    counts.resolved += 1;
+    const done = skip ?? fireOne(host, signed, seq, item);
+    if (skip) host.batches.mark(signed.batchId, seq, skip.outcome, skip.detail);
+    outcomes[seq] = { gate: item.gate, ...done };
+    if (done.outcome === "failed") break;
   }
-  io.stdout(`batch ${signed.batchId}: ${counts.resolved} resolved, ${counts.skipped} skipped\n`);
-  return EXIT.OK;
+  return outcomes;
 }
 
 /** Marks the item `firing` first, so a process that dies inside the resolve leaves that item named in the record. */
-async function fireOne(host: FactoryHost, io: BatchIo, signed: Signed, seq: number, item: BatchItem): Promise<boolean> {
+function fireOne(host: FactoryHost, signed: Signed, seq: number, item: ProofItem): { outcome: BatchOutcome; detail?: string } {
   host.batches.mark(signed.batchId, seq, "firing");
-  let said = "";
-  const quiet = { stdout: () => undefined, stderr: (text: string) => void (said += text), env: io.env };
-  const payload = JSON.stringify({ decision: "merge", headSha: item.headSha });
-  const code = await resolveGate(host, quiet, item.runId, item.stepId, payload, async () => signed.proof).catch((error: unknown) => ((said += String(error instanceof Error ? error.message : error)), EXIT.FAILURE));
-  if (code !== EXIT.OK) {
-    const detail = said.trim() || `gate resolve exited ${code}`;
+  try {
+    host.runtime.signal(item.runId, item.stepId, item.payload, signed.resolver);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     host.batches.mark(signed.batchId, seq, "failed", detail);
-    io.stderr(`failed ${item.gate}: ${detail}\n`);
-    return false;
+    return { outcome: "failed", detail };
   }
   host.batches.mark(signed.batchId, seq, "resolved");
-  io.stdout(`resolved ${item.gate} at ${item.headSha}\n`);
-  return true;
+  return { outcome: "resolved" };
 }
 
-/** Why the item must not fire now, read just before it would: its gate closed or moved, or its PR did on GitHub. */
-async function staleness(host: FactoryHost, item: BatchItem, port: Signed["port"]): Promise<Skip | undefined> {
+/** Why the item must not fire now, read just before it would: its gate closed or moved, or a merge gate's PR did on GitHub. */
+async function staleness(host: FactoryHost, item: ProofItem, port: Signed["port"]): Promise<Skip | undefined> {
   const gate = host.gates.get(item.gate);
   if (gate?.status !== "pending") return { outcome: "skipped-closed", detail: `the gate is ${gate?.status ?? "gone"}` };
   const waiting = pendingGateId(host, item.runId, item.stepId);
   if (waiting !== item.gate) return { outcome: "skipped-moved", detail: `the run waits on ${waiting ?? "no gate"} now` };
-  const head = landGate(gate)?.head;
-  if (head !== item.headSha) return { outcome: "skipped-moved", detail: `the gate asks about head ${head ?? "unknown"}` };
+  const land = landGate(gate);
+  if (land === undefined) return undefined;
+  if (land.head !== item.headSha) return { outcome: "skipped-moved", detail: `the gate asks about head ${land.head}` };
   return port ? pullStaleness(port, item) : undefined;
 }
 
-async function pullStaleness(port: NonNullable<Signed["port"]>, item: BatchItem): Promise<Skip | undefined> {
+async function pullStaleness(port: NonNullable<Signed["port"]>, item: ProofItem): Promise<Skip | undefined> {
   const ref = `${item.repo}#${item.pr}`;
   try {
     const pull = await port.getPr(item.repo, item.pr);

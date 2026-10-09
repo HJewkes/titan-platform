@@ -1,100 +1,46 @@
-import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { GateRecord } from "@titan-design/hitl";
-import { z } from "zod";
 import { landGate, stepOf } from "./coordinator-evidence.js";
-import { GATE_ID, HEAD_SHA } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
-import { parsePrRef } from "./registry.js";
+import type { ProofItem } from "./presence-proof.js";
 
-/** One merge-gate resolve in a batch: answer `merge` at exactly `headSha`, or not at all. */
-export interface BatchItem {
-  gate: string;
-  runId: string;
-  /** Without a repeat suffix, so the resolve finds the run's pending gate the way `gate resolve` does. */
-  stepId: string;
-  repo: string;
-  pr: number;
-  headSha: string;
-}
-
-/** Enough for every Shepherd run waiting at once, and small enough to read before signing. */
-const MAX_BATCH_ITEMS = 200;
-
-const ItemLine = z.strictObject({ gate: z.string().regex(GATE_ID), pr: z.string(), headSha: z.string().regex(HEAD_SHA) });
-
-/** After-stage gates follow a merge into deploy, release or activation; those stay one at a time at the Mac. */
+/** After-stage gates follow a merge into deploy, release or activation; those stay one per proof. */
 const RELEASE_STEPS: ReadonlySet<string> = new Set(["after-stages"]);
 const HARDWARE_STEP = /device|hardware/;
 const RELEASE_TABLE = "shepherd-release/";
 
 /**
- * Parses and checks the whole list before anything is shown or signed: any malformed line, unknown or duplicate gate,
- * gate that is not a merge gate at a pinned head, or item naming another PR makes the batch an error message.
+ * Checks every item of a verified statement against its live gate record before anything is recorded or fired; the
+ * first refusal names its item. A gate must exist, and a merge gate must ask about the item's PR. In a batch every
+ * gate must be a merge gate pinned to one head, outside the `shepherd-release` table, answered `merge` at the item's
+ * head: the statement's own rules see only step ids, and the release table is on the gate record.
  */
-export function planBatch(host: FactoryHost, source: string): BatchItem[] | string {
-  const lines = parseLines(source);
-  if (typeof lines === "string") return lines;
-  if (lines.length === 0) return "the batch lists no items";
-  if (lines.length > MAX_BATCH_ITEMS) return `the batch lists ${lines.length} items, over the limit of ${MAX_BATCH_ITEMS}`;
-  const items: BatchItem[] = [];
-  for (const [index, raw] of lines.entries()) {
-    const item = planItem(host, raw);
-    if (typeof item === "string") return `item ${index + 1}: ${item}`;
-    if (items.some(({ gate }) => gate === item.gate)) return `item ${index + 1}: ${item.gate} is listed twice`;
-    items.push(item);
+export function itemsRefusal(host: FactoryHost, items: readonly ProofItem[]): string | undefined {
+  for (const [index, item] of items.entries()) {
+    const refusal = itemRefusal(host, item, items.length > 1);
+    if (refusal !== undefined) return `item ${index + 1}: ${refusal}`;
   }
-  return items;
+  return undefined;
 }
 
-/** A JSON array, or JSON lines with blank lines ignored. */
-function parseLines(source: string): unknown[] | string {
-  const text = source.trim();
-  try {
-    if (text.startsWith("[")) {
-      const parsed: unknown = JSON.parse(text);
-      return Array.isArray(parsed) ? parsed : "the batch is not a JSON array";
-    }
-    return text === "" ? [] : text.split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line) as unknown);
-  } catch {
-    return "the batch is not JSON lines or a JSON array";
-  }
+function itemRefusal(host: FactoryHost, item: ProofItem, inBatch: boolean): string | undefined {
+  const gate = host.gates.get(item.gate);
+  if (gate === undefined) return `no gate ${item.gate}`;
+  const land = landGate(gate);
+  if (land && (land.repo.toLowerCase() !== item.repo.toLowerCase() || land.pr !== item.pr)) return `${item.gate} asks about ${land.repo}#${land.pr}, not ${item.repo}#${item.pr}`;
+  if (!inBatch) return undefined;
+  const kind = batchRefusal(gate);
+  if (kind !== undefined) return `${item.gate} is ${kind}; it stays one per proof`;
+  if (!isDeepStrictEqual(item.payload, { decision: "merge", headSha: item.headSha })) return `${item.gate} is answered other than merge at ${item.headSha}; a batch only merges`;
+  return undefined;
 }
 
-function planItem(host: FactoryHost, raw: unknown): BatchItem | string {
-  const parsed = ItemLine.safeParse(raw);
-  if (!parsed.success) return "expected exactly {gate, pr: owner/repo#N, headSha: 40 hex}";
-  const { gate: gateId, pr: ref, headSha } = parsed.data;
-  let target: { repo: string; pr: number };
-  try {
-    target = parsePrRef(ref);
-  } catch (error) {
-    return (error as Error).message;
-  }
-  const gate = host.gates.get(gateId);
-  if (gate === undefined) return `no gate ${gateId}`;
-  const asks = mergeTarget(gate);
-  if (typeof asks === "string") return `${gateId} is ${asks}; it stays one at a time`;
-  if (asks.repo.toLowerCase() !== target.repo.toLowerCase() || asks.pr !== target.pr) return `${gateId} asks about ${asks.repo}#${asks.pr}, not ${ref}`;
-  return { gate: gateId, runId: gateId.slice(0, gateId.indexOf("/")), stepId: stepOf(gateId), repo: asks.repo, pr: asks.pr, headSha };
-}
-
-/** The PR a batchable gate asks about, or what kind of gate it is instead. */
-function mergeTarget(gate: GateRecord): { repo: string; pr: number } | string {
+/** What kind of gate this is when it may not ride in a batch; undefined for a plain merge gate. */
+function batchRefusal(gate: GateRecord): string | undefined {
   const step = stepOf(gate.id);
   if (HARDWARE_STEP.test(step)) return "a hardware gate";
   if (RELEASE_STEPS.has(step)) return "a release gate";
   const land = landGate(gate);
   if (land === undefined) return "not a merge gate at a pinned head";
-  return land.rule.startsWith(RELEASE_TABLE) ? "a release gate" : land;
-}
-
-/** What the owner signs: every item in order, so the record proves which list the one presence check covered. */
-export function digestOf(items: readonly BatchItem[]): string {
-  const canonical = JSON.stringify(items.map(({ gate, repo, pr, headSha }) => [gate, repo, pr, headSha]));
-  return createHash("sha256").update(canonical).digest("hex");
-}
-
-export function formatPlan(items: readonly BatchItem[], digest: string): string {
-  const lines = items.map((item, index) => `  ${index + 1}. ${item.gate}  ${item.repo}#${item.pr}  ${item.headSha}`);
-  return [`batch ${digest.slice(0, 16)}: answer merge to ${items.length} merge gates, each only at the head listed`, ...lines, ""].join("\n");
+  return land.rule.startsWith(RELEASE_TABLE) ? "a release gate" : undefined;
 }

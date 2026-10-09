@@ -1,20 +1,25 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync, randomBytes, sign, type KeyObject } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { runCli } from "./cli.js";
 import { defineWorkflow } from "./definition.js";
-import { resolveBatch, type BatchDeps } from "./gate-batch.js";
-import type { OwnerPresence } from "./gate-resolve.js";
+import { applyProof, type ApplyDeps } from "./gate-batch.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
+import { itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
 
-const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
-const AGENT_SHELL = { AGENT_CHAT_AGENT_ID: "agent-1", AGENT_CHAT_NAME: "tc-synthetic" };
 const REPO = "example-org/example-repo";
+const AUD = "factory.test";
+const NOW_MS = 1_791_500_000_000;
 const sha = (char: string): string => char.repeat(40);
+
+const owner = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const stranger = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const KEYS = keyRing([owner.publicKey]);
+const KEY_ID = keyIdOf(owner.publicKey);
 
 const mergeGate = defineWorkflow({
   name: "merge-gate",
@@ -26,11 +31,11 @@ const mergeGate = defineWorkflow({
   },
 });
 
-const deviceGate = defineWorkflow({
-  name: "device-gate",
-  steps: [{ id: "actuate-device", kind: "assisted" }],
+const ackGate = defineWorkflow({
+  name: "ack-gate",
+  steps: [{ id: "main-red", kind: "assisted" }],
   run: async (ctx) => {
-    await ctx.assisted("actuate-device", "Actuate?", { schema: z.object({ decision: z.enum(["merge"]), headSha: z.string() }), brief: TEST_BRIEF });
+    await ctx.assisted("main-red", "Main is red. Acknowledge.", { schema: z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() }), brief: TEST_BRIEF });
   },
 });
 
@@ -41,189 +46,193 @@ afterEach(() => {
   dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
 });
 
-function openHost(dbPath = join(scratch(), "factory.sqlite3")): FactoryHost {
-  const host = openFactoryHost({ dbPath, workflows: [mergeGate, deviceGate], routes: [], gatePollMs: 10 });
+function openHost(): FactoryHost {
+  const dir = mkdtempSync(join(tmpdir(), "factory-gate-batch-"));
+  dirs.push(dir);
+  const host = openFactoryHost({ dbPath: join(dir, "factory.sqlite3"), workflows: [mergeGate, ackGate], routes: [], gatePollMs: 10 });
   hosts.push(host);
   return host;
 }
 
-function scratch(): string {
-  const dir = mkdtempSync(join(tmpdir(), "factory-gate-batch-"));
-  dirs.push(dir);
-  return dir;
-}
-
-interface Gated {
-  gate: string;
-  pr: string;
-  headSha: string;
-}
-
-async function gated(host: FactoryHost, pr: number, head: string, rule = "authority/MRG-AU"): Promise<Gated> {
+async function gated(host: FactoryHost, pr: number, head: string, rule = "authority/MRG-AU"): Promise<ProofItem> {
   const runId = host.runtime.start("merge-gate", { pr: String(pr), head, rule });
   await vi.waitFor(() => expect(host.gates.get(`${runId}/approve-merge`)?.status).toBe("pending"));
-  return { gate: `${runId}/approve-merge`, pr: `${REPO}#${pr}`, headSha: head };
+  return { gate: `${runId}/approve-merge`, runId, stepId: "approve-merge", repo: REPO, pr, headSha: head, payload: { decision: "merge", headSha: head } };
 }
 
-async function deviceGated(host: FactoryHost): Promise<Gated> {
-  const runId = host.runtime.start("device-gate");
-  await vi.waitFor(() => expect(host.gates.get(`${runId}/actuate-device`)?.status).toBe("pending"));
-  return { gate: `${runId}/actuate-device`, pr: `${REPO}#99`, headSha: sha("d") };
+const atHead = (item: ProofItem, head: string): ProofItem => ({ ...item, headSha: head, payload: { decision: "merge", headSha: head } });
+
+interface ProofOptions {
+  key?: KeyObject;
+  nonce?: string;
 }
 
-function presenceStub(proof: string | undefined, out: () => string = () => ""): { presence: OwnerPresence; reasons: string[]; seen: string[] } {
-  const reasons: string[] = [];
-  const seen: string[] = [];
-  return { reasons, seen, presence: async (reason) => (reasons.push(reason), seen.push(out()), proof) };
+function proofOf(items: readonly ProofItem[], { key = owner.privateKey, nonce = randomBytes(16).toString("hex") }: ProofOptions = {}) {
+  const iat = NOW_MS / 1000;
+  const statement = { v: 1, type: "titan-factory.gate-resolve", aud: AUD, keyId: KEY_ID, nonce, iat, exp: iat + 120, digest: itemsDigest(items), items };
+  const bytes = Buffer.from(JSON.stringify(statement));
+  return { statementB64: bytes.toString("base64url"), signatureB64: sign("sha256", bytes, { key, dsaEncoding: "der" }).toString("base64url") };
 }
 
 function fakePort(prs: Record<number, Partial<PullRequest>>): Pick<GitHubPort, "getPr"> {
   return { getPr: async (_repo, pr) => ({ state: "open", headSha: "", ...prs[pr] }) as PullRequest };
 }
 
-async function run(host: FactoryHost, items: readonly unknown[], deps: Partial<BatchDeps> & { proof?: string | undefined } = {}) {
-  let out = "";
-  let err = "";
-  const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: AGENT_SHELL };
-  const stub = presenceStub("proof" in deps ? deps.proof : PROOF, () => out);
-  const source = items.map((item) => JSON.stringify(item)).join("\n");
-  const code = await resolveBatch(host, io, source, { presence: stub.presence, ...deps });
-  return { code, out, err, prompts: stub.reasons, seenAtPrompt: stub.seen };
-}
+const deps = (extra: Partial<ApplyDeps> = {}): ApplyDeps => ({ now: () => NOW_MS, aud: AUD, ...extra });
 
-const batchIdOf = (out: string): string => /signed batch ([0-9a-f-]{36})/.exec(out)![1]!;
-
-describe("gate resolve-batch", () => {
-  it("asks for owner presence once for N merge gates, after printing the itemized list, and resolves each", async () => {
+describe("applyProof", () => {
+  it("resolves N gates from one proof, each as the owner's key with the batch as its confirm event", async () => {
     const host = openHost();
     const items = [await gated(host, 1, sha("a")), await gated(host, 2, sha("b")), await gated(host, 3, sha("c"))];
 
-    const { code, prompts, seenAtPrompt } = await run(host, items);
+    const result = await applyProof(host, proofOf(items), KEYS, deps());
 
-    expect(code).toBe(0);
-    expect(prompts).toHaveLength(1);
-    expect(prompts[0]).toMatch(/^resolve 3 merge gates as batch [0-9a-f]{16}$/);
-    for (const item of items) expect(seenAtPrompt[0]).toContain(`${item.gate}  ${item.pr}  ${item.headSha}`);
-    for (const item of items) expect(host.gates.get(item.gate)).toMatchObject({ status: "resolved", payload: { decision: "merge", headSha: item.headSha }, resolvedBy: { confirmEvent: PROOF } });
+    expect(result).toMatchObject({ ok: true, items: items.map(({ gate }) => ({ gate, outcome: "resolved" })) });
+    const batchId = result.ok ? result.batchId : "";
+    for (const item of items) {
+      expect(host.gates.get(item.gate)).toMatchObject({
+        status: "resolved",
+        payload: item.payload,
+        resolvedBy: { class: "owner-terminal", id: `key:${KEY_ID}`, channel: "factory-proof", confirmEvent: `proof:${batchId}` },
+      });
+    }
+  });
+
+  it("refuses a replayed nonce and resolves nothing from the replay", async () => {
+    const host = openHost();
+    const first = await gated(host, 1, sha("a"));
+    const second = await gated(host, 2, sha("b"));
+    const nonce = randomBytes(16).toString("hex");
+    await applyProof(host, proofOf([first], { nonce }), KEYS, deps());
+
+    const replay = await applyProof(host, proofOf([second], { nonce }), KEYS, deps());
+
+    expect(replay).toMatchObject({ ok: false, refusal: "replayed-nonce" });
+    expect(host.gates.get(second.gate)?.status).toBe("pending");
   });
 
   it("skips and names a gate whose head moved, and resolves the rest", async () => {
     const host = openHost();
     const kept = await gated(host, 1, sha("a"));
-    const moved = { ...(await gated(host, 2, sha("b"))), headSha: sha("e") };
+    const moved = atHead(await gated(host, 2, sha("b")), sha("e"));
 
-    const { code, out } = await run(host, [kept, moved]);
+    const result = await applyProof(host, proofOf([kept, moved]), KEYS, deps());
 
-    expect(code).toBe(0);
-    expect(out).toContain(`skipped ${moved.gate}: moved`);
+    expect(result).toMatchObject({ ok: true, items: [{ gate: kept.gate, outcome: "resolved" }, { gate: moved.gate, outcome: "skipped-moved", detail: expect.stringContaining(sha("b")) }] });
     expect(host.gates.get(moved.gate)?.status).toBe("pending");
-    expect(host.gates.get(kept.gate)?.status).toBe("resolved");
   });
 
   it("skips a gate whose PR head moved on GitHub since the gate was asked", async () => {
     const host = openHost();
     const item = await gated(host, 1, sha("a"));
 
-    const { out } = await run(host, [item], { port: fakePort({ 1: { headSha: sha("f") } }) });
+    const result = await applyProof(host, proofOf([item]), KEYS, deps({ port: fakePort({ 1: { headSha: sha("f") } }) }));
 
-    expect(out).toContain(`skipped ${item.gate}: moved`);
+    expect(result).toMatchObject({ ok: true, items: [{ outcome: "skipped-moved" }] });
     expect(host.gates.get(item.gate)?.status).toBe("pending");
   });
 
-  it("skips a gate whose PR was closed, whether GitHub says so or the gate was cancelled", async () => {
+  it("skips a gate whose PR closed, whether GitHub says so or the gate was cancelled", async () => {
     const host = openHost();
     const closedOnGitHub = await gated(host, 1, sha("a"));
     const cancelled = await gated(host, 2, sha("b"));
     host.gates.cancel(cancelled.gate, "the pull request was closed");
 
-    const { code, out } = await run(host, [closedOnGitHub, cancelled], { port: fakePort({ 1: { state: "closed", headSha: sha("a") }, 2: { headSha: sha("b") } }) });
+    const result = await applyProof(host, proofOf([closedOnGitHub, cancelled]), KEYS, deps({ port: fakePort({ 1: { state: "closed", headSha: sha("a") }, 2: { headSha: sha("b") } }) }));
 
-    expect(code).toBe(0);
-    expect(out).toContain(`skipped ${closedOnGitHub.gate}: closed`);
-    expect(out).toContain(`skipped ${cancelled.gate}: closed`);
+    expect(result).toMatchObject({ ok: true, items: [{ outcome: "skipped-closed" }, { outcome: "skipped-closed" }] });
     expect(host.gates.get(closedOnGitHub.gate)?.status).toBe("pending");
   });
 
-  it("refuses a batch holding a release gate, with no prompt and nothing resolved", async () => {
+  it("refuses an item whose run or step does not match its gate id, and resolves nothing", async () => {
+    const host = openHost();
+    const good = await gated(host, 1, sha("a"));
+    const other = await gated(host, 2, sha("b"));
+    const crossed = { ...other, runId: good.runId };
+
+    const result = await applyProof(host, proofOf([good, crossed]), KEYS, deps());
+
+    expect(result).toMatchObject({ ok: false, refusal: "malformed" });
+    expect(host.gates.get(good.gate)?.status).toBe("pending");
+  });
+
+  it("refuses a batch holding a shepherd-release merge gate, which only the gate record shows", async () => {
     const host = openHost();
     const merge = await gated(host, 1, sha("a"));
     const release = await gated(host, 2, sha("b"), "shepherd-release/owner-gate");
 
-    const { code, err, prompts } = await run(host, [merge, release]);
+    const result = await applyProof(host, proofOf([merge, release]), KEYS, deps());
 
-    expect(code).toBe(2);
-    expect(err).toContain(`${release.gate} is a release gate`);
-    expect(prompts).toEqual([]);
+    expect(result).toMatchObject({ ok: false, refusal: "item-refused", detail: expect.stringContaining(`${release.gate} is a release gate`) });
     expect(host.gates.get(merge.gate)?.status).toBe("pending");
   });
 
-  it("refuses a batch holding a hardware gate", async () => {
+  it("applies a single-item proof for a release gate", async () => {
     const host = openHost();
-    const device = await deviceGated(host);
+    const release = await gated(host, 2, sha("b"), "shepherd-release/owner-gate");
 
-    const { code, err, prompts } = await run(host, [await gated(host, 1, sha("a")), device]);
+    const result = await applyProof(host, proofOf([release]), KEYS, deps());
 
-    expect(code).toBe(2);
-    expect(err).toContain(`${device.gate} is a hardware gate`);
-    expect(prompts).toEqual([]);
+    expect(result).toMatchObject({ ok: true, items: [{ outcome: "resolved" }] });
   });
 
-  it("resolves nothing and records no batch when presence is denied", async () => {
+  it("applies a single-item proof's payload to a gate that is not a merge gate", async () => {
     const host = openHost();
-    const items = [await gated(host, 1, sha("a")), await gated(host, 2, sha("b"))];
+    const runId = host.runtime.start("ack-gate");
+    await vi.waitFor(() => expect(host.gates.get(`${runId}/main-red`)?.status).toBe("pending"));
+    const payload = { decision: "acknowledged", mergeSha: sha("9") };
+    const item: ProofItem = { gate: `${runId}/main-red`, runId, stepId: "main-red", repo: REPO, pr: 4, headSha: sha("9"), payload };
 
-    const { code, err, prompts } = await run(host, items, { proof: undefined });
+    const result = await applyProof(host, proofOf([item]), KEYS, deps());
 
-    expect(code).toBe(1);
-    expect(prompts).toHaveLength(1);
-    expect(err).toContain("owner presence was not confirmed");
-    for (const item of items) expect(host.gates.get(item.gate)?.status).toBe("pending");
+    expect(result).toMatchObject({ ok: true, items: [{ outcome: "resolved" }] });
+    expect(host.gates.get(item.gate)).toMatchObject({ status: "resolved", payload, resolvedBy: { id: `key:${KEY_ID}` } });
+  });
+
+  it("refuses a batch item that is not a merge answer at its own head", async () => {
+    const host = openHost();
+    const merge = await gated(host, 1, sha("a"));
+    const abandon = { ...(await gated(host, 2, sha("b"))), payload: { decision: "abandon", headSha: sha("b") } };
+
+    const result = await applyProof(host, proofOf([merge, abandon]), KEYS, deps());
+
+    expect(result).toMatchObject({ ok: false, refusal: "item-refused" });
+    expect(host.gates.get(merge.gate)?.status).toBe("pending");
   });
 
   it.each([
-    ["an unknown gate id", [{ gate: "no-such-run/approve-merge", pr: `${REPO}#1`, headSha: sha("a") }]],
-    ["a malformed head sha", [{ gate: "x/approve-merge", pr: `${REPO}#1`, headSha: "abc" }]],
-    ["an extra field", [{ gate: "x/approve-merge", pr: `${REPO}#1`, headSha: sha("a"), decision: "abandon" }]],
-  ])("resolves nothing and asks nothing for %s", async (_label, bad) => {
+    ["an unknown gate", (item: ProofItem) => ({ ...item, gate: "no-such-run/approve-merge", runId: "no-such-run" }), "no gate"],
+    ["another PR than the gate's", (item: ProofItem) => ({ ...item, pr: 7 }), "asks about"],
+  ])("refuses a proof naming %s and records nothing", async (_label, bend, detail) => {
     const host = openHost();
-    const good = await gated(host, 1, sha("a"));
+    const item = await gated(host, 1, sha("a"));
 
-    const { code, prompts } = await run(host, [good, ...bad]);
+    const result = await applyProof(host, proofOf([bend(item)]), KEYS, deps());
 
-    expect(code).toBe(2);
-    expect(prompts).toEqual([]);
-    expect(host.gates.get(good.gate)?.status).toBe("pending");
+    expect(result).toMatchObject({ ok: false, refusal: "item-refused", detail: expect.stringContaining(detail) });
+    expect(host.gates.get(item.gate)?.status).toBe("pending");
   });
 
-  it("resolves nothing and asks nothing for an empty list or a line that is not an object", async () => {
+  it("resolves nothing from a forged signature", async () => {
     const host = openHost();
+    const item = await gated(host, 1, sha("a"));
 
-    const empty = await run(host, []);
-    const garbled = await run(host, ["{"]);
+    const result = await applyProof(host, proofOf([item], { key: stranger.privateKey }), KEYS, deps());
 
-    expect([empty.code, garbled.code]).toEqual([2, 2]);
-    expect([...empty.prompts, ...garbled.prompts]).toEqual([]);
+    expect(result).toMatchObject({ ok: false, refusal: "bad-signature" });
+    expect(host.gates.get(item.gate)?.status).toBe("pending");
   });
 
-  it("refuses an item whose PR is not the PR its gate asks about", async () => {
-    const host = openHost();
-    const item = { ...(await gated(host, 1, sha("a"))), pr: `${REPO}#7` };
-
-    const { code, err } = await run(host, [item]);
-
-    expect(code).toBe(2);
-    expect(err).toContain(`${item.gate} asks about ${REPO}#1, not ${REPO}#7`);
-  });
-
-  it("records the signed batch with every item and its outcome", async () => {
+  it("records the batch with its statement, signature and every item's outcome", async () => {
     const host = openHost();
     const kept = await gated(host, 1, sha("a"));
-    const moved = { ...(await gated(host, 2, sha("b"))), headSha: sha("e") };
+    const moved = atHead(await gated(host, 2, sha("b")), sha("e"));
+    const proof = proofOf([kept, moved]);
 
-    const { out } = await run(host, [kept, moved]);
+    const result = await applyProof(host, proof, KEYS, deps());
 
-    const record = host.batches.get(batchIdOf(out));
-    expect(record).toMatchObject({ proof: PROOF, digest: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    const record = host.batches.get(result.ok ? result.batchId : "");
+    expect(record).toMatchObject({ keyId: KEY_ID, aud: AUD, statement: Buffer.from(proof.statementB64, "base64url").toString("utf8"), signature: proof.signatureB64 });
     expect(record?.items).toEqual([
       { gate: kept.gate, repo: REPO, pr: 1, headSha: sha("a"), outcome: "resolved" },
       { gate: moved.gate, repo: REPO, pr: 2, headSha: sha("e"), outcome: "skipped-moved", detail: expect.stringContaining(sha("b")) },
@@ -240,47 +249,10 @@ describe("gate resolve-batch", () => {
       signal(...args);
     });
 
-    const { code, out } = await run(host, items);
+    const result = await applyProof(host, proofOf(items), KEYS, deps());
 
-    expect(code).toBe(1);
-    expect(host.batches.get(batchIdOf(out))?.items.map((item) => item.outcome)).toEqual(["resolved", "failed", "signed"]);
+    expect(result).toMatchObject({ ok: true, items: [{ outcome: "resolved" }, { outcome: "failed", detail: "database is locked" }, { outcome: "signed" }] });
+    expect(host.batches.get(result.ok ? result.batchId : "")?.items.map((item) => item.outcome)).toEqual(["resolved", "failed", "signed"]);
     expect(host.gates.get(items[2]!.gate)?.status).toBe("pending");
-  });
-
-  describe("the CLI verb", () => {
-    async function cli(dbPath: string, args: string[], presence: OwnerPresence) {
-      let out = "";
-      let err = "";
-      const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: AGENT_SHELL };
-      const code = await runCli(["--db", dbPath, "gate", "resolve-batch", ...args], io, { workflows: [mergeGate, deviceGate], routes: [], host: { gatePollMs: 10 }, presence });
-      return { code, out, err };
-    }
-
-    it("reads the items from a JSON lines file and resolves them after one presence check", async () => {
-      const dir = scratch();
-      const dbPath = join(dir, "factory.sqlite3");
-      const setup = openHost(dbPath);
-      const items = [await gated(setup, 1, sha("a")), await gated(setup, 2, sha("b"))];
-      setup.runtime.shutdown();
-      const file = join(dir, "batch.jsonl");
-      writeFileSync(file, items.map((item) => JSON.stringify(item)).join("\n"));
-      const stub = presenceStub(PROOF);
-
-      const { code } = await cli(dbPath, ["--file", file], stub.presence);
-
-      expect(code).toBe(0);
-      expect(stub.reasons).toHaveLength(1);
-      for (const item of items) expect(setup.gates.get(item.gate)?.status).toBe("resolved");
-    });
-
-    it.each([[[]], [["--file", "x.jsonl", "--json", "[]"]]])("refuses %j: exactly one of --file or --json", async (args) => {
-      const stub = presenceStub(PROOF);
-
-      const { code, err } = await cli(join(scratch(), "factory.sqlite3"), args, stub.presence);
-
-      expect(code).toBe(2);
-      expect(err).toContain("exactly one of --file or --json");
-      expect(stub.reasons).toEqual([]);
-    });
   });
 });

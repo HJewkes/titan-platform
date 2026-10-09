@@ -1,6 +1,5 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
-import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
@@ -10,7 +9,6 @@ import type { DeployWatch } from "./deploy-watch.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
 import { EXIT } from "./exit-codes.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
-import { resolveBatch } from "./gate-batch.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
 import type { WorkflowDefinition } from "./definition.js";
 import { registerDigest } from "./digest/cli.js";
@@ -55,7 +53,7 @@ export interface CliDeps {
   check?: CheckPorts;
   /** What `service deploy` runs git, pnpm and launchctl or systemctl through; defaults to the real machine in this bin's own checkout. */
   deploy?: DeployPorts;
-  /** How `gate resolve` and `gate resolve-batch` ask for owner presence; defaults to the macOS helper. Code only, never argv or env. */
+  /** How `gate resolve` asks for owner presence; defaults to the macOS helper. Code only, never argv or env. */
   presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
@@ -117,31 +115,16 @@ function registerResume(program: Command, { io, withHost }: Verbs): void {
     .action(() => withHost(async (host) => (io.stdout(formatResume(await host.resume())), EXIT.OK)));
 }
 
-function registerGate(program: Command, verbs: Verbs): void {
-  const { io, deps, withHost } = verbs;
-  const gate = program.command("gate").description("human gates");
-  gate
+function registerGate(program: Command, { io, deps, withHost }: Verbs): void {
+  program
+    .command("gate")
+    .description("human gates")
     .command("resolve <runId> <stepId>")
     .description("answer the gate a run is waiting on; the payload must match the gate's stored schema")
     .requiredOption("--json <payload>", "resolution payload, a JSON object")
     .action((runId: string, stepId: string, opts: { json: string }) =>
       withHost((host, routes) => resolveGate(host, io, runId, stepId, opts.json, deps.presence, routes.shepherd && evidenceSources(routes.shepherd))),
     );
-  gate
-    .command("resolve-batch")
-    .description("answer merge to an itemized list of merge gates after one owner presence check; each fires only while pending at its listed head")
-    .option("--file <path>", "the items as JSON lines or a JSON array: {gate, pr: owner/repo#N, headSha}")
-    .option("--json <items>", "the items as a JSON array, instead of --file")
-    .action((opts: { file?: string; json?: string }) => batchVerb(verbs, opts));
-}
-
-async function batchVerb({ io, deps, withHost, setExit }: Verbs, opts: { file?: string; json?: string }): Promise<void> {
-  if ((opts.file === undefined) === (opts.json === undefined)) {
-    io.stderr("error: give exactly one of --file or --json; nothing was resolved\n");
-    return setExit(EXIT.USAGE);
-  }
-  const source = opts.json ?? readFileSync(opts.file!, "utf8");
-  await withHost((host, routes) => resolveBatch(host, io, source, { presence: deps.presence, port: routes.shepherd?.port }));
 }
 
 function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {

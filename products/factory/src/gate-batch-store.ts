@@ -2,11 +2,16 @@ import type { Db, Migration } from "@titan-design/store-sqlite";
 
 const GATE_BATCH_DDL = `
   CREATE TABLE gate_batch (
-    id        TEXT PRIMARY KEY,
-    digest    TEXT NOT NULL,
-    proof     TEXT NOT NULL,
-    signed_by TEXT NOT NULL,
-    signed_at TEXT NOT NULL
+    id         TEXT PRIMARY KEY,
+    key_id     TEXT NOT NULL,
+    nonce      TEXT NOT NULL UNIQUE,
+    digest     TEXT NOT NULL,
+    statement  TEXT NOT NULL,
+    signature  TEXT NOT NULL,
+    aud        TEXT NOT NULL,
+    iat        INTEGER NOT NULL,
+    exp        INTEGER NOT NULL,
+    applied_at TEXT NOT NULL
   );
   CREATE TABLE gate_batch_item (
     batch_id  TEXT NOT NULL REFERENCES gate_batch (id),
@@ -21,7 +26,7 @@ const GATE_BATCH_DDL = `
     PRIMARY KEY (batch_id, seq)
   );`;
 
-/** A signed batch of merge-gate resolves and each item's outcome; 15 follows the host's gate evidence migration, 14. */
+/** An owner-signed proof applied to gates, and each item's outcome; 15 follows the host's gate evidence migration, 14. */
 export function gateBatchMigration(version = 15): Migration {
   return { version, name: "factory:gate_batch", up: (db) => db.exec(GATE_BATCH_DDL) };
 }
@@ -38,12 +43,21 @@ interface BatchItemRecord {
   detail?: string;
 }
 
-interface BatchRecord {
+/** The proof as received: `statement` is the exact signed text, so anyone can re-verify the record offline with the public key. */
+interface BatchProof {
   id: string;
+  keyId: string;
+  nonce: string;
   digest: string;
-  proof: string;
-  signedBy: string;
-  signedAt: string;
+  statement: string;
+  signature: string;
+  aud: string;
+  iat: number;
+  exp: number;
+}
+
+interface BatchRecord extends BatchProof {
+  appliedAt: string;
   items: BatchItemRecord[];
 }
 
@@ -58,27 +72,45 @@ interface ItemRow {
 
 interface BatchRow {
   id: string;
+  key_id: string;
+  nonce: string;
   digest: string;
-  proof: string;
-  signed_by: string;
-  signed_at: string;
+  statement: string;
+  signature: string;
+  aud: string;
+  iat: number;
+  exp: number;
+  applied_at: string;
 }
 
-/** Signed batches in the factory database; the tables come from `gateBatchMigration`. */
+const isNonceConflict = (error: unknown): boolean => /UNIQUE constraint failed: gate_batch\.nonce/.test(String((error as Error | undefined)?.message));
+
+/** Applied proofs in the factory database; the tables come from `gateBatchMigration`. */
 export class GateBatchStore {
   constructor(
     private readonly db: Db,
     private readonly now: () => number = Date.now,
   ) {}
 
-  /** Writes the batch and every item as `signed` in one transaction, before any item fires. */
-  open(batch: Omit<BatchRecord, "signedAt" | "items">, items: readonly Omit<BatchItemRecord, "outcome" | "detail">[]): void {
+  hasNonce(nonce: string): boolean {
+    return this.db.prepare("SELECT 1 FROM gate_batch WHERE nonce = ?").get(nonce) !== undefined;
+  }
+
+  /** Writes the proof and every item as `signed` in one transaction, before any item fires; false when the nonce was already used. */
+  open(proof: BatchProof, items: readonly Omit<BatchItemRecord, "outcome" | "detail">[]): boolean {
     const at = this.at();
     const insertItem = this.db.prepare("INSERT INTO gate_batch_item (batch_id, seq, gate_id, repo, pr, head_sha, outcome, at) VALUES (?, ?, ?, ?, ?, ?, 'signed', ?)");
-    this.db.transaction(() => {
-      this.db.prepare("INSERT INTO gate_batch (id, digest, proof, signed_by, signed_at) VALUES (?, ?, ?, ?, ?)").run(batch.id, batch.digest, batch.proof, batch.signedBy, at);
-      items.forEach((item, seq) => insertItem.run(batch.id, seq, item.gate, item.repo, item.pr, item.headSha, at));
-    })();
+    const insertBatch = this.db.prepare("INSERT INTO gate_batch (id, key_id, nonce, digest, statement, signature, aud, iat, exp, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    try {
+      this.db.transaction(() => {
+        insertBatch.run(proof.id, proof.keyId, proof.nonce, proof.digest, proof.statement, proof.signature, proof.aud, proof.iat, proof.exp, at);
+        items.forEach((item, seq) => insertItem.run(proof.id, seq, item.gate, item.repo, item.pr, item.headSha, at));
+      })();
+      return true;
+    } catch (error) {
+      if (isNonceConflict(error)) return false;
+      throw error;
+    }
   }
 
   mark(batchId: string, seq: number, outcome: BatchOutcome, detail?: string): void {
@@ -89,12 +121,16 @@ export class GateBatchStore {
     const row = this.db.prepare("SELECT * FROM gate_batch WHERE id = ?").get(batchId) as BatchRow | undefined;
     if (!row) return undefined;
     const items = this.db.prepare("SELECT * FROM gate_batch_item WHERE batch_id = ? ORDER BY seq").all(batchId) as ItemRow[];
-    return { id: row.id, digest: row.digest, proof: row.proof, signedBy: row.signed_by, signedAt: row.signed_at, items: items.map(itemOf) };
+    return { ...proofOf(row), appliedAt: row.applied_at, items: items.map(itemOf) };
   }
 
   private at(): string {
     return new Date(this.now()).toISOString();
   }
+}
+
+function proofOf(row: BatchRow): BatchProof {
+  return { id: row.id, keyId: row.key_id, nonce: row.nonce, digest: row.digest, statement: row.statement, signature: row.signature, aud: row.aud, iat: row.iat, exp: row.exp };
 }
 
 function itemOf(row: ItemRow): BatchItemRecord {
