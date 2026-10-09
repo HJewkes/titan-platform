@@ -6,8 +6,9 @@
 npm install @titan-design/anthropic-account zod
 ```
 
-Status: 0.1, pure code. The root entry has no fs, process or network access, and a test
-fails if it gains any. File and network access arrive later on a separate `./node` subpath.
+Status: 0.2. The root entry is pure code with no fs, process or network access, and a test
+fails if it gains any. File access lives on the `./node` subpath; network access arrives
+there later.
 
 ## The problem it solves
 
@@ -92,7 +93,7 @@ type LoginState =
   | { status: "present"; expiresAt: number; canRefresh: boolean; subscriptionType?: string; rateLimitTier?: string }
   | { status: "expired"; expiresAt: number; canRefresh: boolean }
   | { status: "missing" }
-  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" };
+  | { status: "refused"; reason: "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" };
 ```
 
 `loginStateFromCredentials(credentials, now)` takes the parsed `.credentials.json` object and
@@ -107,8 +108,8 @@ expiry. It returns:
 | `missing` | the input, or its `claudeAiOauth` block, is absent or null |
 | `refused` | `malformed`: the block has no access token, or an expiry outside epoch milliseconds from 1e12 to 1e14, so a seconds or microseconds value is refused |
 
-`mode-too-wide` and `foreign-owner` are reserved for the `./node` reader, which refuses a
-credentials file before reading it.
+`mode-too-wide`, `foreign-owner` and `not-a-regular-file` come only from the `./node`
+reader, which refuses a credentials file before reading it.
 
 `needsRefresh(state, now, marginMs)` is true when the access token expires within `marginMs`
 of `now`, and always true for an `expired` state, whatever `now` is passed. It is false for `missing` and `refused`, which need a login, not a
@@ -147,11 +148,69 @@ too. It does not catch an unlabelled opaque value that `+`, `/` or `.` breaks in
 shorter than 32 characters, so redaction backs up the rule that a token is never put in a
 message; it does not replace it.
 
+## The `./node` subpath
+
+```ts
+import { discoverProfiles, readLoginState, readUsage, writeReading } from "@titan-design/anthropic-account/node";
+
+for (const { label, configDir } of discoverProfiles()) {
+  const login = readLoginState(configDir);
+  const usage = readUsage(configDir);
+  console.log(label, login.status, usage?.ageSeconds);
+}
+```
+
+`discoverProfiles({ home?, env? })` returns `AccountProfile`s: `<home>/.claude` first, then
+each directory under `<home>/.claude-profiles` in name order, each labelled by
+`accountLabel`. A directory that does not exist is left out, and so is a symlink, at either
+level. A non-empty `CLAUDE_CONFIG_DIRS` in `env` replaces the scan: its entries, split on
+the path delimiter, are taken as given. `home` defaults to `os.homedir()` and `env` to
+`process.env`.
+
+`readLoginState(configDir, { now?, uid? })` reads `<configDir>/.credentials.json` and returns
+`loginStateFromCredentials`'s `LoginState`. It never writes, chmods or refreshes. Before it
+reads a byte it:
+
+1. `lstat`s the path: absent gives `missing`, and a symlink or anything but a regular file
+   gives `refused` with `not-a-regular-file`.
+2. Opens it read-only with `O_NOFOLLOW` and `O_NONBLOCK`, so a symlink swapped in after the
+   `lstat` fails the open (`not-a-regular-file`) and a FIFO cannot hang it.
+3. `fstat`s the open descriptor and refuses unless it is a regular file with the `lstat`'s
+   device and inode (`not-a-regular-file`), owned by `uid` (`foreign-owner`), with no group
+   or other permission bits (`mode-too-wide`), and at most 64 KiB (`malformed`).
+
+The read and the checks use the same descriptor, so the file checked is the file read. The
+read stops at 64 KiB plus one byte, and the buffer is zeroed after parsing. Invalid JSON is
+`malformed`, and the parser's message, which quotes the input, is dropped. `uid` defaults to
+the process's uid; on a platform without one every file is refused as `foreign-owner`. An
+unexpected filesystem error is thrown through `redactSecrets`, with no `cause`.
+
+`writeReading(configDir, reading)` writes `<configDir>/status-cache/sessions/usage-poll.json`
+and returns its path. It throws a `TypeError` with a fixed message, and writes nothing,
+unless the reading passes `parseUsageReading` with `session_id` `usage-poll` and its JSON
+is unchanged by `redactSecrets`. Only the fields `parseUsageReading` keeps are written. The
+write is atomic:
+
+1. Creates the sessions dir, mode 0700, if needed.
+2. Creates `.usage-poll.json.<pid>.<random>.tmp` in the same dir, exclusively, mode 0600.
+3. Writes the JSON, `fsync`s, and closes.
+4. Renames it over `usage-poll.json`, then `fsync`s the dir, best effort.
+
+A reader sees the old reading or the new one, never part of one. The temp name does not
+end in `.json`, so a reader that globs the dir never takes it. On a failure the temp file is
+removed and the error is thrown through `redactSecrets`. agent-chat's status-line budget
+reader accepts the file as written; a test restates its rules.
+
+`readUsage(configDir, { now? })` returns `{ reading, file, ageSeconds }` for the reading with
+the newest `written_at` across every `.json` file in the sessions dir, the poller's and each
+status-line session's, or `null`. It skips a file that is a symlink, larger than 256 KiB,
+invalid, or has no rate-limit window. `ageSeconds` is never negative.
+
 ## What it deliberately does not do
 
-It reads no files, makes no request and writes nothing. It does not discover config dirs,
-check a credentials file's mode, call the usage endpoint or refresh a token; those belong to
-the `./node` subpath. It never returns, logs or stores a token.
+The root reads no files, makes no request and writes nothing. The `./node` subpath writes
+only the usage file. Neither calls the usage endpoint yet, and neither refreshes a token.
+Neither returns, logs or stores a token.
 
 ## Gotchas
 
