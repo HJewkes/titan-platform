@@ -11,6 +11,8 @@ const MAX_STATEMENT_BYTES = 256 * 1024;
 const MAX_WINDOW_S = 300;
 const EXPIRY_SKEW_S = 30;
 const ISSUE_SKEW_S = 60;
+/** Real payloads are a few levels deep; the bound keeps a hostile one from overflowing the stack. */
+const MAX_PAYLOAD_DEPTH = 32;
 
 /** After-stage gates follow a merge into deploy, release or activation; they stay one per proof. */
 const RELEASE_STEPS: ReadonlySet<string> = new Set(["after-stages"]);
@@ -63,17 +65,39 @@ interface ProofInput {
 /** Installed owner public keys by key id. */
 type KeyRing = ReadonlyMap<string, KeyObject>;
 
-/** Sorted-key JSON, so the digest does not depend on the order a payload's keys were written in. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+/** Sorted-key JSON, so the digest does not depend on the order a payload's keys were written in. Throws past the depth bound. */
+function canonical(value: unknown, depth = 0): string {
+  if (depth > MAX_PAYLOAD_DEPTH) throw new RangeError("payload nested too deeply");
+  if (Array.isArray(value)) return `[${value.map((inner) => canonical(inner, depth + 1)).join(",")}]`;
   if (value !== null && typeof value === "object") {
     const entries = Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner)}`).join(",")}}`;
+    return `{${entries.map(([key, inner]) => `${JSON.stringify(key)}:${canonical(inner, depth + 1)}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
 
-/** What the owner approves: every item in order, covering the run, step and answer as well as the PR and head. */
+/** The step id of a gate id: the text after the last `/`, without a repeat suffix `:<n>`; the same rule as coordinator-evidence's `stepOf`. */
+function stepOf(gateId: string): string {
+  return gateId.slice(gateId.lastIndexOf("/") + 1).replace(/:\d+$/, "");
+}
+
+/** The run a gate id belongs to: the text before its first `/`; undefined when there is none. */
+function runOf(gateId: string): string | undefined {
+  const slash = gateId.indexOf("/");
+  return slash > 0 ? gateId.slice(0, slash) : undefined;
+}
+
+/** Items name their own run and step, so each must agree with its gate id; the batch rules read the gate id, never the claim. */
+function itemsConsistent(items: readonly ProofItem[]): boolean {
+  const gates = new Set<string>();
+  for (const { gate, runId, stepId } of items) {
+    if (runOf(gate) !== runId || stepOf(gate) !== stepId || gates.has(gate)) return false;
+    gates.add(gate);
+  }
+  return true;
+}
+
+/** What the owner approves: every item in order, covering the run, step and answer as well as the PR and head. Throws on a payload nested past 32 levels. */
 export function itemsDigest(items: readonly ProofItem[]): string {
   const rows = items.map(({ gate, runId, stepId, repo, pr, headSha, payload }) => [gate, runId, stepId, repo, pr, headSha, payload]);
   return createHash("sha256").update(canonical(rows)).digest("hex");
@@ -126,13 +150,15 @@ function parseStatement(bytes: Buffer): Statement | undefined {
   }
 }
 
-function isSingleOnly({ stepId }: ProofItem): boolean {
-  return RELEASE_STEPS.has(stepId) || HARDWARE_STEP.test(stepId);
+function isSingleOnly({ gate }: ProofItem): boolean {
+  const step = stepOf(gate);
+  return RELEASE_STEPS.has(step) || HARDWARE_STEP.test(step);
 }
 
 /** Checks that need the statement's content, in the order a reader would ask them; undefined means all pass. */
 function contentRefusal(statement: Statement, signer: string, now: number, aud: string): Refusal | undefined {
   if (statement.keyId !== signer) return "unknown-key";
+  if (!itemsConsistent(statement.items)) return "malformed";
   if (statement.exp <= statement.iat) return "malformed";
   if (statement.exp - statement.iat > MAX_WINDOW_S) return "window-too-long";
   if (now > statement.exp + EXPIRY_SKEW_S) return "expired";
@@ -146,9 +172,24 @@ function contentRefusal(statement: Statement, signer: string, now: number, aud: 
 /**
  * Verifies an owner presence proof: ECDSA P-256 SHA-256 DER over the received statement bytes first, then the parse,
  * then the window, audience, digest and batch rules. `now` is unix seconds. It never throws; every doubt is a refusal.
- * Nonce replay needs stored state, so it is the caller's check: record `statement.nonce` and refuse a repeat.
+ *
+ * What the caller still owns:
+ * - Nonce replay needs stored state: record `statement.nonce` and refuse a repeat. Dedupe on the nonce, never on the
+ *   signature bytes, because a DER signature can be re-encoded (high-S) into different bytes that still verify.
+ * - Release and hardware gates are told apart here by step id alone. The `shepherd-release/` rule needs the gate
+ *   record, so apply #837's `mergeTarget` to each item before firing it.
  */
 export function verifyProof(input: ProofInput, keys: KeyRing, now: number, aud: string): ProofResult {
+  try {
+    return verifyChecked(input, keys, now, aud);
+  } catch {
+    return { ok: false, refusal: "malformed" };
+  }
+}
+
+function verifyChecked(input: ProofInput, keys: KeyRing, now: number, aud: string): ProofResult {
+  if (typeof input?.statementB64 !== "string" || typeof input.signatureB64 !== "string") return { ok: false, refusal: "malformed" };
+  if (!Number.isFinite(now) || typeof aud !== "string") return { ok: false, refusal: "malformed" };
   const bytes = decodeBase64url(input.statementB64);
   const signature = decodeBase64url(input.signatureB64);
   if (bytes === undefined || signature === undefined || bytes.length > MAX_STATEMENT_BYTES) return { ok: false, refusal: "malformed" };

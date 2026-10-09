@@ -202,6 +202,56 @@ describe("verifyProof", () => {
     expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, [])), keys, NOW, AUD))).toBe("malformed");
   });
 
+  it("refuses the probe where a release gate claims a plain step id", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const items = [item({ gate: "run/approve-merge:1", stepId: "approve-merge" }), item({ gate: "run2/after-stages", runId: "run2", stepId: "approve-merge" })];
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, items)), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("refuses an item whose run id is not the gate's run", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const items = [item({ runId: "other" })];
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, items)), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("refuses an item whose gate id has no run part", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const items = [item({ gate: "merge", runId: "merge", stepId: "merge" })];
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, items)), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("refuses the same gate listed twice", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const items = [item(), item()];
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, items)), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("classifies a release gate by its gate id when the repeat suffix is present", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const items = [item(), item({ gate: "run2/after-stages:2", runId: "run2", stepId: "after-stages" })];
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey, {}, items)), keys, NOW, AUD))).toBe("mixed-release-batch");
+  });
+
+  it.each([NaN, Infinity, -Infinity])("refuses a non-finite clock of %s", (clock) => {
+    const { publicKey, privateKey, keys } = setup();
+    expect(refusal(verifyProof(proofFrom(privateKey, statementFor(publicKey)), keys, clock, AUD))).toBe("malformed");
+  });
+
+  it("refuses non-string input without throwing", () => {
+    const { keys } = setup();
+    const bad = { statementB64: 5, signatureB64: null } as unknown as Parameters<typeof verifyProof>[0];
+    expect(refusal(verifyProof(bad, keys, NOW, AUD))).toBe("malformed");
+    expect(refusal(verifyProof(undefined as unknown as Parameters<typeof verifyProof>[0], keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("refuses a deeply nested payload without throwing", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const deep = JSON.parse(`${'{"a":'.repeat(5000)}1${"}".repeat(5000)}`) as Record<string, unknown>;
+    const base = statementFor(publicKey);
+    const text = JSON.stringify({ ...base, items: [{ ...item(), payload: deep }] });
+    expect(refusal(verifyProof(proofFrom(privateKey, text), keys, NOW, AUD))).toBe("malformed");
+  });
+
   it("verifies the received bytes, not a re-serialization", () => {
     const { publicKey, privateKey, keys } = setup();
     const spaced = JSON.stringify(statementFor(publicKey), null, 2);
