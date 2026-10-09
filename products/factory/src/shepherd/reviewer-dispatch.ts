@@ -125,6 +125,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
+    ...(row.profile !== "" && { profile: row.profile }),
     ...lastWrittenAt(transcriptPath),
   };
 }
