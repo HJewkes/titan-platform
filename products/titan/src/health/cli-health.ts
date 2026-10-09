@@ -4,6 +4,7 @@ import type { Command } from "commander";
 import { daemonPaths, readPidFile } from "@titan-design/daemon";
 import { appendSamples, openHealthStore, probeHttp, type HealthSample } from "@titan-design/health";
 import { registerCost } from "./cli-cost.js";
+import { registerInstall } from "./cli-install.js";
 import { registerUptime } from "./cli-uptime.js";
 import { registerImport } from "./import-stopgap.js";
 import { sampleTick } from "./sample-tick.js";
@@ -13,6 +14,8 @@ interface HealthIo extends HostEnv {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   setExitCode: (code: number) => void;
+  platform: NodeJS.Platform;
+  titanBin: string;
 }
 
 /** Exit 2: the tick could not be stored, so this minute is missing from the record. */
@@ -24,6 +27,7 @@ export function registerHealth(program: Command, io: HealthIo): void {
   registerUptime(health, io, () => defaultDbPath(io));
   registerCost(health, io, () => defaultDbPath(io));
   registerImport(health, io, () => defaultDbPath(io));
+  registerInstall(health, io);
 }
 
 function defaultDbPath(host: HostEnv): string {
