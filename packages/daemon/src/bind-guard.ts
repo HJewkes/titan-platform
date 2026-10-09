@@ -1,11 +1,52 @@
-/** The daemon has no auth, so a bind beyond loopback is refused unless the caller opts in. */
-import { isIPv4, isIPv6 } from "node:net";
+/**
+ * The main listener has no auth, so a bind beyond loopback is refused unless the caller opts in.
+ * The authenticated remote listener is the opposite: it must name one concrete non-loopback
+ * address, never a wildcard, which would also expose every bridge and VPN interface.
+ */
+import { BlockList, isIP, isIPv4, isIPv6 } from "node:net";
+import { networkInterfaces } from "node:os";
 
 export class NonLoopbackBindError extends Error {
   constructor(readonly host: string) {
     super(`Refusing to bind unauthenticated daemon to non-loopback host "${host}"; pass allowUnauthenticatedNonLoopback to override`);
     this.name = "NonLoopbackBindError";
   }
+}
+
+export class RemoteBindError extends Error {
+  constructor(readonly host: string, reason: string) {
+    super(`Refusing remote listener on "${host}": ${reason}`);
+    this.name = "RemoteBindError";
+  }
+}
+
+// BlockList matches IPv4-mapped IPv6 forms against the IPv4 rules, so ::ffff:0.0.0.0 is caught too.
+const NOT_REMOTE = new BlockList();
+NOT_REMOTE.addSubnet("0.0.0.0", 8, "ipv4");
+NOT_REMOTE.addSubnet("127.0.0.0", 8, "ipv4");
+NOT_REMOTE.addAddress("::", "ipv6");
+NOT_REMOTE.addAddress("::1", "ipv6");
+
+/** Names are refused outright: one could resolve to loopback or to the wildcard at bind time. */
+export function assertRemoteHost(host: string): void {
+  const family = isIP(host);
+  if (family === 0) throw new RemoteBindError(host, "it is not a bare IP address literal");
+  if (NOT_REMOTE.check(host, family === 4 ? "ipv4" : "ipv6")) {
+    throw new RemoteBindError(host, "it is loopback or a wildcard; the remote listener needs one interface address");
+  }
+}
+
+/** Whether a peer address belongs to this machine: loopback, or any address on a local interface. */
+export function isOwnAddress(address: string): boolean {
+  const bare = normalizeAddress(address);
+  if (isLoopbackHost(bare)) return true;
+  return Object.values(networkInterfaces()).some((list) => list?.some((i) => normalizeAddress(i.address) === bare));
+}
+
+function normalizeAddress(address: string): string {
+  const unzoned = address.toLowerCase().split("%")[0]!;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(unzoned);
+  return mapped ? mapped[1]! : unzoned;
 }
 
 /** Pure syntax check: names other than `localhost` are never resolved. */
