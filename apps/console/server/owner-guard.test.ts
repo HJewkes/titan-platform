@@ -70,11 +70,38 @@ const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, Owne
   run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
 });
 
-/** Each way a handler reaches a helper typed as a console command; every one of them typechecks today. */
+type OptionalPresenceContext = ConsoleContext & { ownerPresence?: { issuedAt: number } };
+
+const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, OptionalPresenceContext>({
+  name: "test.optional-presence",
+  description: "Test-only handler that treats the presence proof as optional and carries no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
+});
+
+type EitherPresenceContext = ConsoleContext | OwnerAnswerContext;
+
+const eitherPresence = defineCommand<Record<string, never>, { present: boolean }, EitherPresenceContext>({
+  name: "test.either-presence",
+  description: "Test-only handler whose context may or may not carry the presence proof, with no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: "ownerPresence" in ctx }),
+});
+
+/**
+ * Each way a handler reaches a helper typed as a console command. None compiles, because `run` is a
+ * property; the runtime tests below stand in for a caller that casts past the types instead.
+ */
 function widenings<Args, Result>(handler: Command<Args, Result, OwnerAnswerContext>): Array<[string, AnyCommand<ConsoleContext>]> {
+  // @ts-expect-error a console-context annotation cannot hold a run that needs the presence proof
   const annotated: Command<Args, Result, ConsoleContext> = handler;
+  // @ts-expect-error nor can an AnyCommand annotation
   const asAny: AnyCommand<ConsoleContext> = handler;
+  // @ts-expect-error nor a factory's return type
   const fromFactory = (): Command<Args, Result, ConsoleContext> => handler;
+  // @ts-expect-error nor an AnyCommand array
   const list: AnyCommand<ConsoleContext>[] = [handler];
   return [
     ["a console-context annotation", annotated],
@@ -205,7 +232,31 @@ describe("classes fail closed", () => {
     expectTypeOf(() => depositCommand(needsPresence)).toBeFunction();
   });
 
-  // Widening passes the type check because `run` is a bivariant method in the registry (TP-2115).
+  it("fails to compile the owner-write handler itself widened to a console command", () => {
+    // @ts-expect-error the handler's run needs the presence proof a console context lacks
+    const annotated: Command<{ answer: string }, { answer: string; issuedAt: number }, ConsoleContext> = ownerAnswer;
+    // @ts-expect-error the same for an AnyCommand array
+    const list: AnyCommand<ConsoleContext>[] = [ownerAnswer];
+
+    expect([annotated, ...list]).toEqual([ownerAnswer, ownerAnswer]);
+  });
+
+  it("fails to compile a read or a deposit whose presence is optional, even without the mark", () => {
+    // Type-only, as above: unmarked, so the runtime guard has nothing to see.
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => readCommand(optionalPresence)).toBeFunction();
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => depositCommand(optionalPresence)).toBeFunction();
+  });
+
+  it("fails to compile a read or a deposit whose context is a union with one member carrying presence", () => {
+    // keyof a union sees only the shared keys, so the check must look at each member's keys.
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => readCommand(eitherPresence)).toBeFunction();
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => depositCommand(eitherPresence)).toBeFunction();
+  });
+
   it.each(widenings(ownerAnswer))("refuses at runtime a marked owner-write handler widened by %s", (_label, widened) => {
     expect(() => readCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read`);
     expect(() => depositCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit`);
@@ -220,18 +271,20 @@ describe("classes fail closed", () => {
     expect(replies.map(({ envelope }) => envelope.ok)).toEqual([false, false]);
   });
 
-  it("serves an unmarked handler whose presence is optional: the known open gap, tracked by TP-2115", async () => {
-    const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, ConsoleContext & { ownerPresence?: { issuedAt: number } }>({
-      name: "test.optional-presence",
-      description: "Test-only handler that treats the presence proof as optional and carries no mark",
-      args: z.object({}),
-      result: z.object({ present: z.boolean() }),
-      run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
-    });
+  it("never hands the presence proof to an optional-presence handler widened before it is classed", async () => {
+    // TypeScript has no exact types, so a console context still satisfies an optional key once the
+    // handler's own type is gone; what the console guarantees is that only ownerWriteCommand adds the proof.
+    const widened: Command<Record<string, never>, { present: boolean }, ConsoleContext> = optionalPresence;
 
-    const { envelope } = await invokeCommand(readCommand(optionalPresence), {}, context("http", SESSION_AUTH));
+    const replies = await Promise.all([
+      invokeCommand(readCommand(widened), {}, context("http", SESSION_AUTH)),
+      invokeCommand(depositCommand(widened), {}, context("http", SESSION_AUTH)),
+    ]);
 
-    expect(envelope).toEqual({ ok: true, data: { present: false } });
+    expect(replies.map(({ envelope }) => envelope)).toEqual([
+      { ok: true, data: { present: false } },
+      { ok: true, data: { present: false } },
+    ]);
   });
 
   it("fails startup on an owner-write handler hand-classed as a read", () => {

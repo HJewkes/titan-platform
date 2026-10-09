@@ -107,6 +107,14 @@ registry. `register` throws on a duplicate name.
 **`list()` is sorted by name**, so help output and tool lists do not depend on import order.
 If you are migrating from an insertion-ordered map, your golden files will move.
 
+**A command cannot be widened to a context it does not accept.** `run` is a function-typed
+property, not a method, so its context is checked contravariantly. A command whose `run` reads
+`ctx.root` cannot be assigned to `Command<…, BaseContext>`, `AnyCommand` or a base-context
+registry. The reverse works: a base-context command serves any product registry. Code that
+reads a command but never calls `run` takes `AnyCommand<never>`, which accepts every context.
+Up to 0.3.x `run` was a method, and its bivariant parameter let such a command typecheck
+anywhere.
+
 **Commander's `--no-*` negation stores `false` under the positive key** and never defines
 the `noX` key. `collectCliArgs` handles it. This is not hypothetical: a real product shipped
 a `--no-loops` flag that was inert for exactly this reason, and the regression test for it
