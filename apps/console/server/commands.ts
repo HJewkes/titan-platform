@@ -3,6 +3,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
 import type { ActiveWork } from "./active-work.js";
 import { graphCommands } from "./graph.js";
+import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { tasksCommands } from "./tasks.js";
@@ -23,11 +24,12 @@ export interface ConsoleSources {
   agents: AgentsSource;
   sessions: SessionsSource;
   activeWork: ActiveWork;
+  inbox: InboxSource;
   work?: WorkOptions;
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, work }: ConsoleSources) {
   return {
     "upstreams.health": readCommand({
       name: "upstreams.health",
@@ -40,6 +42,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, work 
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
+    ...inboxCommands(inbox),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
