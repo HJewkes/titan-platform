@@ -89,6 +89,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 | Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
+| Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -123,6 +124,19 @@ before `--until`, not counting `resolution` rows, however long before `--since`;
 A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
+
+Q9 reads each Bash call in the window back from its transcript, since the graph keeps no command
+text; a call whose `command_heads` signal names none of our CLIs is never read. It keeps every
+pipeline whose head is `active-work`, `agent-chat`, `titan-factory`, `basement-suite`, `gh`, or
+`sqlite3` on one of our databases (also behind `ssh <host>`), and groups them by head and by the pipe
+tail normalised to programs and flag names, such as `| grep -E | head` or `| python3 -c json`.
+Each pattern's `patternId` is `pf-` plus 12 hex characters of the tail's SHA-256, so it is stable
+across runs; `postFilters` and `patternId` are exported for later questions. A pattern is
+EXISTS-UNUSED when `<head> --help` names a flag that does a stage's job (`--limit` for `head`,
+`--jq` or `--fields` for `jq`, `--prefix` or `--state` for `grep`, and so on) that not every call
+already passes, NEW when it names none, and UNKNOWN when the help cannot be run. Output is the tool
+result characters of the calls. It refuses `--role`. Q9 is registered from `TRANSCRIPT_QUESTIONS`,
+and its tests inject the transcript reader and the help runner.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a

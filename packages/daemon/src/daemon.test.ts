@@ -369,12 +369,26 @@ async function holdPort(address: string, port = 0): Promise<{ port: number; rele
   return { port: (server.address() as AddressInfo).port, release: () => new Promise((resolve) => server.close(() => resolve())) };
 }
 
-/** Released means this process can bind the address and port again right now. */
-async function canBind(address: string, port: number): Promise<boolean> {
+async function bindOnce(address: string, port: number): Promise<boolean> {
   return holdPort(address, port).then(
     ({ release }) => release().then(() => true),
     () => false,
   );
+}
+
+/**
+ * Released means this process can bind the address and port again. close() has already resolved
+ * on the server's own close event, so a refusal right after it is another test file's worker
+ * taking the freed ephemeral port for a moment; that clears, a listener that leaked does not,
+ * so the wait is bounded and a leak still fails.
+ */
+async function canBind(address: string, port: number, waitMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + waitMs;
+  while (!(await bindOnce(address, port))) {
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return true;
 }
 
 const LOOPBACK_RACE_ATTEMPTS = 5;
@@ -600,6 +614,16 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     expect(await canBind("127.0.0.1", port)).toBe(true);
     expect(await canBind(REMOTE, port)).toBe(true);
     expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+  });
+
+  it("still reports a port as unbindable while a listener on it never closes", async () => {
+    const leaked = await holdPort("127.0.0.1");
+
+    try {
+      expect(await canBind("127.0.0.1", leaked.port, 150)).toBe(false);
+    } finally {
+      await leaked.release();
+    }
   });
 
   it("binds neither when the remote port is taken, and names the remote host", async () => {
