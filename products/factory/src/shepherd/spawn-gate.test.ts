@@ -43,9 +43,37 @@ describe("admitSpawn", () => {
     expect(admitSpawn({ load5: 20, pressureLevel: 1, freeMemoryPct: 20 }, limits, [], 1_000).admit).toBe(true);
   });
 
-  it("refuses a second start inside the window and admits it after", () => {
-    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.windowMs - 1).admit).toBe(false);
-    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.windowMs).admit).toBe(true);
+  it("refuses a second start inside the window and admits it after when load5 is at half of buildLoad5", () => {
+    const busy = { ...idle, load5: limits.buildLoad5 / 2 };
+    expect(admitSpawn(busy, limits, [10_000], 10_000 + limits.windowMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 59999 ms ago, inside the 60000 ms window" });
+    expect(admitSpawn(busy, limits, [10_000], 10_000 + limits.windowMs).admit).toBe(true);
+  });
+
+  it("admits a second start after the shorter headroom interval on a machine with headroom", () => {
+    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.headroomIntervalMs - 1)).toEqual({ admit: false, reason: "another spawn was admitted 14999 ms ago, inside the 15000 ms headroom interval" });
+    expect(admitSpawn(idle, limits, [10_000], 10_000 + limits.headroomIntervalMs)).toEqual({ admit: true });
+  });
+
+  it.each([
+    ["load5 at half of buildLoad5", { ...idle, load5: 10 }, []],
+    ["memory pressure unread", { load5: 2, freeMemoryPct: 85 }, []],
+    ["unabsorbed reviews at their headroom cap", idle, [1_000, 2_000, 3_000, 4_000]],
+  ])("keeps the 60 s window with %s", (_name, readings, running) => {
+    const now = 100_000;
+    expect(admitSpawn(readings, limits, [now - limits.headroomIntervalMs], now, running).admit).toBe(false);
+    expect(admitSpawn(readings, limits, [now - limits.windowMs], now, running).admit).toBe(true);
+  });
+
+  it("refuses past the burst cap of admits inside any window, even with headroom", () => {
+    const fast = { ...limits, headroomIntervalMs: 5_000 };
+    const starts = [10_000, 15_000, 20_000, 25_000];
+    expect(admitSpawn(idle, fast, starts, 10_000 + limits.windowMs - 1)).toEqual({ admit: false, reason: "4 spawns were admitted inside the last 60000 ms, the burst cap 4" });
+    expect(admitSpawn(idle, fast, starts, 10_000 + limits.windowMs)).toEqual({ admit: true });
+  });
+
+  it("still refuses on the unabsorbed-review accounting with headroom on load5", () => {
+    const running = [1_000, 2_000, 3_000, 4_000, 5_000];
+    expect(admitSpawn(idle, limits, [], 10_000, running)).toEqual({ admit: false, reason: "load5 with 5 unabsorbed reviews 22 is past the limit 20" });
   });
 });
 
@@ -82,6 +110,17 @@ describe("spawnGate", () => {
     state.now += limits.windowMs;
     tryAll();
     expect(admitted).toEqual(["rv-a-1", "rv-b-2"]);
+  });
+
+  it("admits a review every headroom interval on an idle machine, up to the configured burst cap per window", () => {
+    const state = { now: 1_000 };
+    const gate = spawnGate({ limits: { headroomIntervalMs: 10_000, burstMax: 3 }, read: () => idle, now: () => state.now, log: () => undefined });
+    const admittedAt: number[] = [];
+    for (; state.now <= 61_000; state.now += 10_000) {
+      try { gate.admit(`rv-${state.now}`); admittedAt.push(state.now); } catch { /* deferred */ }
+    }
+
+    expect(admittedAt).toEqual([1_000, 11_000, 21_000, 61_000]);
   });
 
   it("admits a burst of ordinary reviews first come per poll, as with no review facts", () => {

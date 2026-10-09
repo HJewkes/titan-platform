@@ -76,6 +76,9 @@ export const SpawnGateConfigSchema = z.strictObject({
   pressureLevel: z.number().int().positive().optional(),
   freeMemoryPct: z.number().min(0).max(100).optional(),
   windowMs: z.number().int().min(0).optional(),
+  headroomIntervalMs: z.number().int().min(0).optional(),
+  burstMax: z.number().int().positive().optional(),
+  headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
 });
 
