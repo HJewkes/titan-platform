@@ -476,8 +476,10 @@ titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--jso
 transcript every `sh-await-verdict` locator names, across all the PR's runs and rounds, and prices
 each request with session-analytics `priceRequest`. It reports list-price dollars and tokens
 (input, cache read, cache write, output) per PR, then per repo and ISO week of the merge, then in
-total, with the p50 and p90 dollars per merged PR. A session read twice, or a request a resumed
-session repeats, counts once. A session that cannot be read (a missing transcript, a model with
+total, with the p50 and p90 dollars per merged PR. A round counts only the requests from its
+review intent to its verdict, so a standing or `hold --reviewer` session that serves several PRs is
+split between them, and requests after the last verdict count nowhere. A request counts once in
+the whole report, even when a resumed session repeats it. A session that cannot be read (a missing transcript, a model with
 no price row, a parse error, or an external review with no transcript) is listed under
 `unreadable` with its reason and adds nothing to the dollars. A PR with one is left out of p50
 and p90, so they never treat a gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.

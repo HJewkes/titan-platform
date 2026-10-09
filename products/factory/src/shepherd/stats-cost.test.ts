@@ -21,10 +21,10 @@ function runOf(id: string, pr: string, steps: [string, number, Record<string, un
   return { id, workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr }, status: "completed", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: iso(0), completedAt: null, error: null };
 }
 
-const request = (responseId: string, model: string, tokens: { input?: number; cacheRead?: number; cacheWrite5m?: number; output?: number }) => ({
+const request = (responseId: string, model: string, tokens: { input?: number; cacheRead?: number; cacheWrite5m?: number; output?: number }, minutes = 1) => ({
   responseId,
   model,
-  at: iso(1),
+  at: iso(minutes),
   tokens: { input: tokens.input ?? 0, cacheRead: tokens.cacheRead ?? 0, cacheWrite5m: tokens.cacheWrite5m ?? 0, cacheWrite1h: 0, output: tokens.output ?? 0 },
 });
 
@@ -105,10 +105,36 @@ describe("reviewCost", () => {
     expect(report.prs[0]).toMatchObject({ rounds: 2, sessions: 1, usd: 5 });
   });
 
-  it("rolls PRs up per repo and ISO week with p50 and p90 over the PRs read in full", async () => {
-    const runs = [1, 2, 3].map((n) => runOf(`r${n}`, String(n), [["sh-await-verdict:h", 10, verdict(SESSION.a)], ["merge:0", 20, { done: true }]]));
-    runs.push(runOf("open", "4", [["sh-await-verdict:h", 10, verdict(SESSION.a)]]));
+  it("splits a reviewer session shared by two PRs by round, so the total is one session's cost", async () => {
+    const intent = (minutes: number) => ({ kind: "intent", head: "h", reviewer: "rv-standing", mode: "resume", at: T0 + minutes * 60_000 });
+    const runs = [
+      runOf("r1", "21", [["sh-review-intent:h", 5, intent(5)], ["sh-await-verdict:h", 10, verdict(SESSION.a)], ["merge:0", 40, { done: true }]]),
+      runOf("r2", "22", [["sh-review-intent:h", 20, intent(20)], ["sh-await-verdict:h", 30, verdict(SESSION.a)], ["merge:0", 40, { done: true }]]),
+    ];
+    const requests = [request("m1", "claude-haiku-4-5", { output: MTOK }, 6), request("m2", "claude-haiku-4-5", { output: 2 * MTOK }, 25), request("m3", "claude-haiku-4-5", { output: 4 * MTOK }, 35)];
+    const port = portOf({ [`/transcripts/${SESSION.a}.jsonl`]: { ok: true, requests } });
+
+    const report = await reviewCost(runs, port);
+
+    expect(report.prs.map((pr) => [pr.pr, pr.usd])).toEqual([[21, 5], [22, 10]]);
+    expect(report.totals.usd).toBe(15);
+    expect(port.paths).toHaveLength(1);
+  });
+
+  it("prices a request once when two PRs' rounds overlap in one session", async () => {
+    const runs = ["31", "32"].map((pr) => runOf(`r${pr}`, pr, [["sh-await-verdict:h", 10, verdict(SESSION.a)], ["merge:0", 20, { done: true }]]));
     const port = portOf({ [`/transcripts/${SESSION.a}.jsonl`]: { ok: true, requests: [request("m1", "claude-haiku-4-5", { output: MTOK })] } });
+
+    const report = await reviewCost(runs, port);
+
+    expect(report.totals.usd).toBe(5);
+  });
+
+  it("rolls PRs up per repo and ISO week with p50 and p90 over the PRs read in full", async () => {
+    const sessions = [SESSION.a, SESSION.b, SESSION.c];
+    const runs = sessions.map((session, n) => runOf(`r${n}`, String(n + 1), [["sh-await-verdict:h", 10, verdict(session)], ["merge:0", 20, { done: true }]]));
+    runs.push(runOf("open", "4", [["sh-await-verdict:h", 10, verdict(SESSION.a)]]));
+    const port = portOf(Object.fromEntries(sessions.map((session) => [`/transcripts/${session}.jsonl`, { ok: true, requests: [request(`m-${session}`, "claude-haiku-4-5", { output: MTOK })] }])));
 
     const report = await reviewCost(runs, port, { from: "2026-10-05", to: "2026-10-05" });
 
