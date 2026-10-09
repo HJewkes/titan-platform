@@ -109,6 +109,17 @@ stays out of the repo.
   [After the merge](/guides/shepherd#after-the-merge)). Its one key, `configDir`, is optional
   and follows the same rules as `review.configDir`. A `fixer` block without `agentChatBin`
   fails the load with `fixer needs an agentChatBin`, and so does an unknown key in it.
+- `shepherd.spawnGate` overrides the load gate every factory spawn passes: reviewers, fixers
+  and successors share it. It refuses above `load5` (28), `buildLoad5` (20, with `reviewLoad`
+  4 added per review started in the last five minutes), at memory `pressureLevel` 2, and under
+  `freeMemoryPct` 20. Admits are spaced `windowMs` (60 s) apart. While the machine has headroom
+  (load5 under half of `buildLoad5`, memory pressure read as normal, and fewer than
+  `headroomReviews` (4) reviews started in the last five minutes) they are spaced
+  `headroomIntervalMs` (15 s) apart instead. At most `burstMax` (4) are admitted inside any
+  `windowMs`. Every deferral names the rule that refused. A deferred review asks again on its
+  busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
+  machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
+  of recording `none`.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
