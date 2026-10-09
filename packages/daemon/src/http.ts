@@ -4,7 +4,8 @@
  * Pure by construction — it builds and returns a `Hono` without binding a port, so routes
  * are testable through `app.request()`. `daemon.ts` owns the lifecycle.
  */
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { streamSSE } from "hono/streaming";
 import { EXIT, errorEnvelope, invokeCommand, type BaseContext } from "@titan-design/registry";
 import {
@@ -18,7 +19,7 @@ import {
   VERSION_PATH,
   rpcFailureStatus,
 } from "@titan-design/rpc-protocol";
-import { authGate, getRequestAuth, mountLogoutRoute, type DaemonAuth } from "./auth.js";
+import { authGate, carryRequestAuth, getRequestAuth, mountLogoutRoute, type DaemonAuth } from "./auth.js";
 import type { EventHub } from "./events.js";
 import { CLIENT_HEADER, createRequestGuard, type RequestGuardOptions } from "./guards.js";
 import { buildHealthPayload } from "./health.js";
@@ -50,7 +51,19 @@ export interface HttpAppOptions<Ctx extends BaseContext = BaseContext> extends S
    * `/auth/login`. It runs right after the Host/Origin guard and also adds `/auth/logout`.
    */
   gate?: DaemonAuth;
+  /** The byte cap on a `/rpc` body, enforced before the body is buffered. */
+  rpcBodyLimit?: RpcBodyLimit;
 }
+
+export interface RpcBodyLimit {
+  /** Applies to every command not named in `perCommand`. Defaults to {@link DEFAULT_RPC_BODY_LIMIT}. */
+  maxBytes?: number;
+  /** A tighter (or looser) cap for one command, keyed by its registry name. */
+  perCommand?: Readonly<Record<string, number>>;
+}
+
+/** Large enough for any argument object a command takes, small enough that a body cannot exhaust memory. */
+export const DEFAULT_RPC_BODY_LIMIT = 1024 * 1024;
 
 export function buildHttpApp<Ctx extends BaseContext>(options: HttpAppOptions<Ctx>): Hono {
   const app = new Hono();
@@ -116,8 +129,24 @@ function registerEvents<Ctx extends BaseContext>(app: Hono, options: HttpAppOpti
 
 const INVALID_JSON = Symbol("invalid-json");
 
+/** Refuses an oversized body with 413 from its Content-Length, or mid-stream once a chunked one passes the cap. */
+function rpcBodyLimitMiddleware(limit: RpcBodyLimit = {}): MiddlewareHandler {
+  const fallback = limit.maxBytes ?? DEFAULT_RPC_BODY_LIMIT;
+  const perCommand = limit.perCommand ?? {};
+  const onError = (c: Context) => c.json(errorEnvelope("Request body is too large", EXIT.USAGE), 413);
+  return (c, next) => {
+    const name = c.req.param("name") ?? "";
+    const maxSize = Object.hasOwn(perCommand, name) ? perCommand[name]! : fallback;
+    const original = c.req.raw;
+    return bodyLimit({ maxSize, onError })(c, () => {
+      carryRequestAuth(original, c.req.raw);
+      return next();
+    });
+  };
+}
+
 function registerRpc<Ctx extends BaseContext>(app: Hono, options: HttpAppOptions<Ctx>): void {
-  app.post(`${RPC_PREFIX}:name`, async (c) => {
+  app.post(`${RPC_PREFIX}:name`, rpcBodyLimitMiddleware(options.rpcBodyLimit), async (c) => {
     const name = c.req.param("name");
     const cmd = options.registry.get(name);
     if (!cmd) return c.json(errorEnvelope(`Unknown command: ${name}`, EXIT.USAGE), RPC_STATUS.NOT_FOUND);
