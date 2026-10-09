@@ -11,7 +11,8 @@ import type { RoutedStepInput } from "@titan-design/workflow";
 import { gateId, gateOpened } from "../test-support/land.js";
 import { LAND_STEPS, land, landRoutes } from "../workflows/land.js";
 import { shepherdEventMigration } from "./events.js";
-import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, evidenceComment, evidenceMarker, locatorReference, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
+import { evidenceComment, evidenceMarker, locatorReference } from "./evidence-comment.js";
+import { MERGE_EVIDENCE_STEP, collectMergeFacts, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type EvidenceRecord, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, mergeVerdict, reviewRoutes } from "./review.js";
@@ -91,6 +92,82 @@ describe("evidenceComment", () => {
 
   it("leaves the stored record's locator whole", async () => {
     expect((await record()).verdictLocator).toBe(hostLocator);
+  });
+});
+
+describe("evidenceComment layout", () => {
+  const H = "0123456789abcdef0123456789abcdef01234567";
+  const base: EvidenceRecord = {
+    runId: "run-1",
+    repo: "octo/demo",
+    pr: 7,
+    head: H,
+    baseRef: "main",
+    testMergeSha: null,
+    checkRuns: [{ name: "validate", id: 1, appId: 15368, conclusion: "success" }, { name: "dag-check", id: 2, appId: 15368, conclusion: null }],
+    verdictLocator: locator,
+    reviewer: REVIEWER,
+    decision: { outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RV", version: 1 }, reason: `MRG-AU-RV holds at ${H}` },
+    mergeableState: "clean",
+  };
+  const visualPaths = Array.from({ length: 25 }, (_, i) => `packages/ui/src/c${i}.tsx`);
+  const gated: EvidenceRecord = {
+    ...base,
+    decision: { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId: "visual-path", version: 1 }, reason: `the owner decides visual changes: ${visualPaths.slice(0, 10).join(", ")} and 15 more` },
+  };
+  const refused: EvidenceRecord = {
+    ...base,
+    decision: { outcome: "deny", rule: { table: "authority", rowId: "MRG-AU-X", version: 1 }, reason: "the reviewer did not merge" },
+  };
+  const jsonOf = (body: string) => JSON.parse(/```json\n([\s\S]*?)\n```/.exec(body)![1]!) as EvidenceRecord;
+
+  it("leads a merged comment with the marker, a one-line outcome and the check table, then the collapsed JSON", () => {
+    expect(evidenceComment(base).split("\n").slice(0, 10)).toEqual([
+      `<!-- shepherd-evidence:${H} -->`,
+      "",
+      `**Shepherd merged** at \`0123456\`: MRG-AU-RV holds at ${H}`,
+      "",
+      "| Check | Conclusion |",
+      "| --- | --- |",
+      "| validate | success |",
+      "| dag-check | pending |",
+      "| Reviewer verdict | MERGE at `0123456` |",
+      "",
+    ]);
+  });
+
+  it("states the gate rule in words and lists a long path set inside details, with the omitted count", () => {
+    const body = evidenceComment(gated);
+
+    expect(body).toContain("**Shepherd gated** at `0123456`: the pull request changes visual paths");
+    expect(body).toContain("Rule: the pull request changes visual paths (shepherd-merge-guard/visual-path).");
+    expect(body).toContain("<details><summary>25 paths</summary>");
+    expect(body).toContain("- `packages/ui/src/c9.tsx`");
+    expect(body).toContain("- and 15 more");
+  });
+
+  it("lists a short path set as plain bullets", () => {
+    const body = evidenceComment({ ...gated, decision: { ...gated.decision, reason: "the owner decides visual changes: a/b.ts, c/d.ts" } });
+
+    expect(body).toContain("- `a/b.ts`\n- `c/d.ts`");
+    expect(body).not.toContain("<summary>2 paths");
+  });
+
+  it("names a refusal as refused with its reason", () => {
+    const body = evidenceComment(refused);
+
+    expect(body).toContain("**Shepherd refused** at `0123456`: the reviewer did not merge");
+    expect(body).toContain("Rule: authority/MRG-AU-X (authority/MRG-AU-X).");
+  });
+
+  it.each([["merged", base], ["gated", gated], ["refused", refused]])("keeps the full %s record as JSON inside a collapsed Machine evidence block", (_name, record) => {
+    const body = evidenceComment(record);
+    const jsonStart = body.indexOf("<details><summary>Machine evidence</summary>");
+
+    expect(jsonStart).toBeGreaterThan(body.indexOf("| Check |"));
+    expect(body.split("\n")[0]).toBe(evidenceMarker(H));
+    expect(jsonOf(body)).toEqual({ ...record, verdictLocator: locatorReference(locator) });
+    expect(body.trimEnd().endsWith("</details>")).toBe(true);
   });
 });
 
@@ -458,7 +535,7 @@ describe("a verdict carried across a remerge", () => {
 
     expect(evidence.merge.carry).toEqual({ fromHead: CARRIED_FROM, head: HEAD, headTree: TREE, mergeTree: REMERGE_TREE, rule: "remerge-generated-only", remergePaths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"] });
     expect(evidence.record.decision).toMatchObject({ outcome: "allow", rule: { table: "authority", rowId: "MRG-AU-RM" } });
-    expect(evidenceComment(evidence.record).split("\n")[1]).toContain("by remerge-generated-only");
+    expect(evidenceComment(evidence.record)).toContain("by remerge-generated-only");
   });
 
   it.each([
@@ -519,7 +596,7 @@ describe("the evidence comment of a carried MERGE", () => {
     const evidence = await collect(world(), carried());
     const carry = { fromHead: CARRIED_FROM, head: input.head, headTree: "tree-on-the-head-side", mergeTree: "tree-on-the-merge-side" };
 
-    const [, summary = ""] = evidenceComment({ ...evidence.record, carry }).split("\n");
+    const summary = evidenceComment({ ...evidence.record, carry });
 
     for (const named of Object.values(carry)) expect(summary).toContain(named);
   });
