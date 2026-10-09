@@ -38,6 +38,9 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@titan-design/review-schema": "^0.1.0"
+  },
   "peerDependencies": {
     "zod": "^4.0.0"
   },

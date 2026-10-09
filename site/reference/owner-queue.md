@@ -1,6 +1,7 @@
 # owner-queue
 
-**Tier 2.** No titan dependencies; `zod` is a peer dependency.
+**Tier 2.** Depends on `@titan-design/review-schema` (the round schema, from npm); `zod` is a
+peer dependency.
 
 ```sh
 npm install @titan-design/owner-queue zod
@@ -158,6 +159,57 @@ const label = staleLabel(gate, {
   labels an item. An item that is not `open` is never relabelled.
 - PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
   ref as a merge key without its `@<sha>`.
+
+## Review rounds
+
+`buildOwnerRounds(items, options)` turns the open Decide items of a queue into
+`titan-review/round@2` manifests for the review harness. Every manifest passes `RoundSchema`
+from `@titan-design/review-schema`; the package imports that schema rather than copying it.
+
+```ts
+import { buildOwnerRounds, rank } from "@titan-design/owner-queue";
+
+const { rounds, skipped } = buildOwnerRounds(rank(open), {
+  unit: "owner-queue",
+  storybookUrl: "http://127.0.0.1:6006",
+  graduated: ["naming"],
+  principles: [{ id: "layout", rule: "The planner settles a cache layout when no reader sees it.", covers: ["chat:m-1", "chat:m-2"] }],
+});
+// rounds[i].manifest is round.json; rounds[i].bindings maps q1, q2, … back to item ids and option ids
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `unit` | the round's unit name | required |
+| `storybookUrl` | a loopback Storybook URL; round@2 needs one even with no frames | required |
+| `firstRound` | the first round's number; later rounds count up | `1` |
+| `widths` | frame widths | `[1280]` |
+| `graduated` | categories out of shadow mode | none |
+| `principles` | `{ id, rule, covers, recommended? }`: asks that share one reason | none |
+| `maxQuestions` | questions per round; a principle counts as one | `10` |
+
+- **Which items.** Open `decide` items not routed to the decider. Every other item comes
+  back in `skipped` as `not-open`, `not-decide` or `routed-to-decider`.
+- **Order.** One question and one section per ask, in input order, so rank first. A
+  principle stands where its first covered item stood.
+- **Batching (the question contract's rule 3).** Items a principle covers become one
+  pick-one starting `Principle:`, stating the rule and listing each item as `(1) …; (2) …`,
+  with options yes (the decider settles each by this rule) and no (ask each alone). A one-way
+  item never batches. Each item goes to the first principle that covers it, and a principle
+  left with fewer than two items is not asked.
+- **Shadow and graduated.** round@2 hides recommendations per round, not per question. An ask
+  whose items all have a category in `graduated` goes in a round with
+  `recommendations: "shown"`. Everything else, including an item with no category or a
+  `hidden` recommendation, goes in a separate `"after-answer"` round. A principle is shadow
+  if any item it covers is.
+- **Questions.** An item with options is a pick-one: each option reads `label: description`,
+  the item's summary is the prompt and the `signsOff`, and the decider's pick becomes the
+  recommendation when it has a confidence and a rationale (or a cite, shown as `Cite: …`).
+  An item without options is a text question. round@2 refuses an option label shared by two
+  questions and a blanket sign-off such as "Approve", so such a label gets ` (q<n>)` appended.
+- **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
+  `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
+  feedback can be routed back to each item.
 
 ## What it deliberately does not do
 
