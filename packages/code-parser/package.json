@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node-kinds": {
+      "types": "./dist/node-kinds.d.ts",
+      "import": "./dist/node-kinds.js"
     }
   },
   "files": [
