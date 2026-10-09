@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as daemonPackage from "@titan-design/daemon";
-import { SESSION_COOKIE, TokenFileError, daemonPaths, readPidFile, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
+import { SESSION_COOKIE, TlsFileError, TokenFileError, daemonPaths, readPidFile, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
 import { createRpcClient, liveSource, snapshotKey } from "@titan-design/rpc-client";
 import { openSessionGraph } from "@titan-design/session-graph";
 import type { ConsoleCommands } from "./commands.js";
@@ -15,7 +15,7 @@ import type { ConsoleConfig } from "./config.js";
 import { createLoginLink, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fixtureAnswer } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
-import { closedPort, send, sessionCookie, startFakeBroker, startFakeDaemon, type FakeDaemon, type Reply } from "./test-support.js";
+import { closedPort, send, sessionCookie, startFakeBroker, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The one seam for the LAN suite: the daemon refuses all of 127/8 as a remote host through a
@@ -42,9 +42,15 @@ let dir: string;
 let activeWork: FakeDaemon;
 let config: ConsoleConfig;
 let handle: DaemonHandle | undefined;
+let pair: SelfSignedPair;
+
+/** HTTPS to the LAN listener, trusting the test certificate for the LAN name. */
+const sendLan = (port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> =>
+  send(LAN, port, method, route, headers, body, { ca: pair.cert, servername: "lan-box" });
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(tmpdir(), "console-daemon-"));
+  pair = writeSelfSignedCert(dir, ["lan-box", LAN]);
   activeWork = await startFakeDaemon({ ok: true, version: "9.9.9", index: {} }, fixtureAnswer);
   config = {
     port: 0,
@@ -58,6 +64,7 @@ beforeEach(async () => {
     codewatchUrl: "http://codewatch.test:7433",
     lanHost: null,
     lanNames: [],
+    lanTls: { certFile: pair.certFile, keyFile: pair.keyFile },
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
@@ -185,6 +192,12 @@ describe("the console's remote listener options", () => {
     expect(options).not.toHaveProperty("allowUnauthenticatedNonLoopback");
   });
 
+  it("refuses to start in LAN mode without TLS, before the token file or any bind", async () => {
+    await expect(startConsoleDaemon({ config: { ...config, lanHost: "192.0.2.1", lanTls: null }, logger: silentLogger })).rejects.toThrow(/serves HTTPS only/);
+    expect(startDaemonSpy).not.toHaveBeenCalled();
+    expect(await readPidFile(daemonPaths(config.stateDir))).toBeNull();
+  });
+
   it("refuses to start in LAN mode on a group-readable token file, and binds nothing", async () => {
     await mkdir(config.stateDir, { recursive: true });
     await writeFile(config.lanTokenPath, "A".repeat(43));
@@ -199,10 +212,10 @@ describe("the console's remote listener options", () => {
 describe("login-link and token rotate", () => {
   const lanConfig = (): ConsoleConfig => ({ ...config, port: 7500, lanNames: ["lan-box", "lan-box.local"] });
 
-  it("prints a link to the first LAN name with a fresh code, creating the token file at 0600", () => {
+  it("prints an https link to the first LAN name with a fresh code, creating the token file at 0600", () => {
     const url = new URL(createLoginLink(lanConfig()));
 
-    expect(url.origin).toBe("http://lan-box:7500");
+    expect(url.origin).toBe("https://lan-box:7500");
     expect(url.pathname).toBe("/auth/login");
     expect(/^v1\.\d+\.[\w-]{22}\.[\w-]{43}$/.test(url.searchParams.get("code") ?? "")).toBe(true);
     expect(statSync(config.lanTokenPath).mode & 0o777).toBe(0o600);
@@ -213,8 +226,8 @@ describe("login-link and token rotate", () => {
   });
 
   it("falls back to the bound address when there is no LAN name, and refuses when there is neither", () => {
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1" })).origin).toBe("http://192.0.2.1:7500");
-    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a" })).origin).toBe("http://[2001:db8::a]:7500");
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "192.0.2.1" })).origin).toBe("https://192.0.2.1:7500");
+    expect(new URL(createLoginLink({ ...lanConfig(), lanNames: [], lanHost: "2001:db8::a" })).origin).toBe("https://[2001:db8::a]:7500");
     expect(() => createLoginLink({ ...lanConfig(), lanNames: [] })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
   });
 
@@ -254,9 +267,9 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
 
   /** What a browser that followed the link sends: the LAN name and the bound port. */
   const lanHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({ host: `${NAME}:${port}`, ...extra });
-  const sameOrigin = (): Record<string, string> => ({ origin: `http://${NAME}:${port}` });
+  const sameOrigin = (): Record<string, string> => ({ origin: `https://${NAME}:${port}` });
   const lan = (method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> =>
-    send(LAN, port, method, route, lanHeaders(headers), body);
+    sendLan(port, method, route, lanHeaders(headers), body);
   const rpc = (command: string, headers: Record<string, string> = {}, args: unknown = {}): Promise<Reply> =>
     lan("POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...headers }, JSON.stringify(args));
 
@@ -275,16 +288,33 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     return { cookie: sessionCookie(reply)!.split(";")[0]! };
   }
 
-  it("passes remote { host, tokenFile, allowedHosts } and never the unauthenticated opt-in", async () => {
+  it("passes remote { host, tokenFile, allowedHosts, tls } and never the unauthenticated opt-in", async () => {
     const startDaemonSpy = vi.mocked(daemonPackage.startDaemon);
     startDaemonSpy.mockClear();
 
     await startLan();
 
     const [options] = startDaemonSpy.mock.calls[0]!;
-    expect(options.remote).toEqual({ host: LAN, tokenFile: config.lanTokenPath, allowedHosts: [NAME] });
+    expect(options.remote).toEqual({ host: LAN, tokenFile: config.lanTokenPath, allowedHosts: [NAME], tls: { certFile: pair.certFile, keyFile: pair.keyFile } });
     expect(options).not.toHaveProperty("host");
     expect(options).not.toHaveProperty("allowUnauthenticatedNonLoopback");
+  });
+
+  it("gives a plain-HTTP request to the LAN address no reply at all", async () => {
+    await startLan();
+
+    await expect(send(LAN, port, "GET", "/", lanHeaders({ accept: "text/html" }))).rejects.toThrow(/socket hang up|ECONNRESET/);
+  });
+
+  it("fails start on a missing certificate, binding nothing and writing no pid file", async () => {
+    const missing = { certFile: path.join(dir, "absent.crt"), keyFile: pair.keyFile };
+
+    await expect(startLan({ lanTls: missing })).rejects.toBeInstanceOf(TlsFileError);
+    expect(await readPidFile(daemonPaths(config.stateDir))).toBeNull();
+  });
+
+  it("fails start when the certificate does not cover a LAN name, as the hostname defaults would not", async () => {
+    await expect(startLan({ lanNames: [NAME, "lan-box.local"] })).rejects.toThrow(/does not cover the name "lan-box.local"/);
   });
 
   it("answers 401 to an unauthenticated LAN /rpc/upstreams.health, the page and /health", async () => {
@@ -314,6 +344,7 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     expect(login.status).toBe(200);
     const cookie = sessionCookie(login) ?? "";
     expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/; Secure/);
     expect(cookie).toMatch(/SameSite=Strict/i);
 
     const credential = { cookie: cookie.split(";")[0]! };
@@ -340,10 +371,10 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     const code = codeOf(createLoginLink(lanConfig));
     const evil = { host: `evil.example:${port}` };
 
-    const landing = await send(LAN, port, "GET", `/auth/login?code=${encodeURIComponent(code)}`, { ...evil, accept: "text/html" });
-    const login = await send(LAN, port, "POST", "/auth/login", { ...evil, ...json, origin: `http://evil.example:${port}` }, JSON.stringify({ code }));
-    const health = await send(LAN, port, "POST", "/rpc/upstreams.health", { ...evil, ...json, origin: `http://evil.example:${port}` }, "{}");
-    const portless = await send(LAN, port, "GET", "/health", { host: "evil.example" });
+    const landing = await sendLan(port, "GET", `/auth/login?code=${encodeURIComponent(code)}`, { ...evil, accept: "text/html" });
+    const login = await sendLan(port, "POST", "/auth/login", { ...evil, ...json, origin: `http://evil.example:${port}` }, JSON.stringify({ code }));
+    const health = await sendLan(port, "POST", "/rpc/upstreams.health", { ...evil, ...json, origin: `http://evil.example:${port}` }, "{}");
+    const portless = await sendLan(port, "GET", "/health", { host: "evil.example" });
 
     expect([landing.status, login.status, health.status, portless.status]).toEqual([403, 403, 403, 403]);
     expect((await postCode(code)).status).toBe(200);
@@ -468,14 +499,14 @@ describe.skipIf(process.platform !== "linux")("the console's LAN listener under 
     lanConfig = { ...lan, port };
   }
 
-  const sameOrigin = (): Record<string, string> => ({ host: `${NAME}:${port}`, origin: `http://${NAME}:${port}` });
+  const sameOrigin = (): Record<string, string> => ({ host: `${NAME}:${port}`, origin: `https://${NAME}:${port}` });
   const health = (headers: Record<string, string>): Promise<Reply> =>
-    send(LAN, port, "POST", "/rpc/upstreams.health", { ...json, ...sameOrigin(), ...headers }, "{}");
+    sendLan(port, "POST", "/rpc/upstreams.health", { ...json, ...sameOrigin(), ...headers }, "{}");
   const bearer = (): Record<string, string> => ({ authorization: `Bearer ${readFileSync(config.lanTokenPath, "utf8").trim()}` });
 
   async function signIn(): Promise<Record<string, string>> {
     const code = new URL(createLoginLink(lanConfig)).searchParams.get("code") ?? "";
-    const reply = await send(LAN, port, "POST", "/auth/login", { ...json, ...sameOrigin() }, JSON.stringify({ code }));
+    const reply = await sendLan(port, "POST", "/auth/login", { ...json, ...sameOrigin() }, JSON.stringify({ code }));
     expect(reply.status).toBe(200);
     return { cookie: sessionCookie(reply)!.split(";")[0]! };
   }
@@ -484,9 +515,9 @@ describe.skipIf(process.platform !== "linux")("the console's LAN listener under 
     await startLan();
     const credential = await signIn();
 
-    const own = await send(LAN, port, "GET", "/", { host: `${NAME}:${port}`, accept: "text/html", ...credential });
-    const foreign = await send(LAN, port, "GET", "/", { host: `evil.example:${port}`, accept: "text/html", ...credential });
-    const portless = await send(LAN, port, "GET", "/", { host: NAME, accept: "text/html", ...credential });
+    const own = await sendLan(port, "GET", "/", { host: `${NAME}:${port}`, accept: "text/html", ...credential });
+    const foreign = await sendLan(port, "GET", "/", { host: `evil.example:${port}`, accept: "text/html", ...credential });
+    const portless = await sendLan(port, "GET", "/", { host: NAME, accept: "text/html", ...credential });
 
     expect([own.status, foreign.status, portless.status]).toEqual([200, 403, 403]);
     expect([foreign.body, portless.body].some((body) => body.includes("console shell"))).toBe(false);
@@ -535,7 +566,7 @@ describe.skipIf(process.platform !== "linux")("the console's LAN listener under 
         ["agents.queue", {}],
       ];
 
-      const replies = await Promise.all(calls.map(([command, args]) => send(LAN, port, "POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...credential }, JSON.stringify(args))));
+      const replies = await Promise.all(calls.map(([command, args]) => sendLan(port, "POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...credential }, JSON.stringify(args))));
 
       expect(replies.map((reply) => (JSON.parse(reply.body) as { ok: boolean }).ok)).toEqual(calls.map(() => false));
       expect([...replies.map((reply) => reply.body), ...lines].filter((text) => text.includes(uiToken))).toEqual([]);

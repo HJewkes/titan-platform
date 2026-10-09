@@ -1,5 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, readFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { request as httpsRequest } from "node:https";
+import { isIP, type AddressInfo } from "node:net";
+import path from "node:path";
 import { SESSION_COOKIE } from "@titan-design/daemon";
 import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
 
@@ -93,14 +97,22 @@ export interface Reply {
   body: string;
 }
 
-/** A raw request, so a test sets the Host and Origin headers that fetch would fill in itself. */
-export function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
+/** What an HTTPS request trusts: the test certificate, and the name to verify it against. */
+export interface ClientTls {
+  ca: string;
+  servername: string;
+}
+
+/** A raw request, so a test sets the Host and Origin headers that fetch would fill in itself. HTTPS when `tls` is given. */
+export function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string, tls?: ClientTls): Promise<Reply> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: address, port, path: route, method, headers }, (res) => {
+    const options = { host: address, port, path: route, method, headers };
+    const onResponse = (res: IncomingMessage): void => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
-    });
+    };
+    const req = tls ? httpsRequest({ ...options, ...tls }, onResponse) : request(options, onResponse);
     req.on("error", reject);
     req.end(body);
   });
@@ -109,4 +121,21 @@ export function send(address: string, port: number, method: string, route: strin
 export function sessionCookie(reply: Reply): string | undefined {
   const cookies = [reply.headers["set-cookie"] ?? []].flat();
   return cookies.find((cookie) => cookie.startsWith(`${SESSION_COOKIE}=`));
+}
+
+export interface SelfSignedPair {
+  certFile: string;
+  keyFile: string;
+  /** The PEM certificate, for a client's `ca` option. */
+  cert: string;
+}
+
+/** A one-day self-signed pair in `dir` covering each DNS name and IP, the key at 0600: what `tailscale cert` leaves, for a test. */
+export function writeSelfSignedCert(dir: string, names: readonly string[]): SelfSignedPair {
+  const certFile = path.join(dir, "lan.crt");
+  const keyFile = path.join(dir, "lan.key");
+  const san = names.map((name) => (isIP(name) ? `IP:${name}` : `DNS:${name}`)).join(",");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", keyFile, "-out", certFile, "-days", "1", "-subj", `/CN=${names[0]}`, "-addext", `subjectAltName=${san}`], { stdio: "ignore" });
+  chmodSync(keyFile, 0o600);
+  return { certFile, keyFile, cert: readFileSync(certFile, "utf8") };
 }

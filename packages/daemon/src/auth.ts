@@ -221,7 +221,9 @@ function unauthorized(c: Context): Response {
   return c.json(errorEnvelope("Authentication required", EXIT.USAGE), 401);
 }
 
-const COOKIE_OPTIONS = { httpOnly: true, sameSite: "Strict", path: "/" } as const;
+// Secure always: the gate runs only on the remote listener, which speaks only TLS, so a browser
+// never sends the session over plain HTTP, even to another port on the same host.
+const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: "Strict", path: "/" } as const;
 
 /** `GET` and `HEAD` render the page, `POST` spends the code, anything else is 405. */
 function answerLogin(c: Context, auth: DaemonAuth): Response | Promise<Response> {

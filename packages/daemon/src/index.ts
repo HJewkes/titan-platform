@@ -44,6 +44,8 @@ export {
   signSession,
   verifySession,
 } from "./auth.js";
+export type { RemoteTlsOptions } from "./tls-files.js";
+export { TlsFileError } from "./tls-files.js";
 export type { DaemonHandle, RemoteListenerOptions, StartDaemonOptions } from "./daemon.js";
 export { DaemonAlreadyRunningError, DaemonPortInUseError, runDaemonUntilSignal, startDaemon } from "./daemon.js";
 export type { StaticAppOptions } from "./static-app.js";

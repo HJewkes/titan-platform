@@ -13,7 +13,7 @@ import {
   type Logger,
   type RemoteListenerOptions,
 } from "@titan-design/daemon";
-import type { ConsoleConfig } from "./config.js";
+import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { APP_VERSION } from "./paths.js";
 import type { ClassedCommand } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
@@ -30,8 +30,8 @@ export interface ConsoleDaemonOptions {
 
 /**
  * The console's one daemon: its commands and, when asked, the built app, on loopback, plus the
- * LAN address behind auth when `lanHost` is set. The LAN is reached only through `remote`, which
- * gates every route, so no setting binds it without auth.
+ * LAN address behind TLS and auth when `lanHost` is set. The LAN is reached only through `remote`,
+ * which serves only HTTPS and gates every route, so no setting binds it in clear or without auth.
  */
 export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise<DaemonHandle> {
   const { config, staticRoot } = options;
@@ -55,8 +55,9 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
 /** Creates the token file on first run; an untrustworthy one throws here, before anything binds. */
 function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
   if (config.lanHost === null) return null;
+  if (config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
   ensureLanToken(config);
-  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames };
+  return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls };
 }
 
 /** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
@@ -68,11 +69,11 @@ export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void>
   process.once("SIGTERM", stop);
 }
 
-/** The LAN address a browser dials: the first LAN name, else the bound IP. */
+/** The HTTPS address a browser dials: the first LAN name, which the certificate covers, else the bound IP. */
 export function lanOrigin(config: ConsoleConfig, port: number): string {
   const name = config.lanNames[0] ?? (config.lanHost && isIPv6(config.lanHost) ? `[${config.lanHost}]` : config.lanHost);
   if (!name) throw new Error("No LAN name to put in a link: set TITAN_CONSOLE_LAN_NAMES or TITAN_CONSOLE_HOST");
-  return `http://${name}:${port}`;
+  return `https://${name}:${port}`;
 }
 
 /**
