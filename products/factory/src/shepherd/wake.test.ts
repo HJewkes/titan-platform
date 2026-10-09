@@ -709,10 +709,13 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(agents.asked[0]!.message).toContain(`\`\`\`review findings\n${withClass}\n\`\`\``);
   });
 
-  it("returns unhandled when a review wake carries no findings", async () => {
-    const { result } = await wakeStep({ warmth: warm }).run("review", { kind: "FIX_FIRST" });
+  it("tells the fixer a review wake carries no findings and where the verdict is recorded", async () => {
+    const { agents, run } = wakeStep({ warmth: warm });
 
-    expect(result?.kind).toBe("unhandled");
+    await run("review", { kind: "FIX_FIRST" });
+
+    expect(agents.asked[0]!.message).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
+    expect(agents.asked[0]!.message).toContain(`step sh-await-verdict:${H1} of run run-1`);
   });
 });
 
