@@ -105,15 +105,29 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const job = await readJob(ports);
   if (!job.loaded) return verdict("not loaded", `${jobName(job)} is not loaded; run titan-factory service install`, job, null);
-  const health = await settledHealth(ports, port);
+  const { health, failedProbes } = await probeHealth(ports, job, port);
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
   const stale = stalePid(ports, job, healthPid, port);
   if (stale) return verdict("stale pid", stale, job, health, { healthPid: healthPid ?? null });
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, health);
-  if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port), job, health, { healthPid: healthPid ?? null });
+  if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port, failedProbes), job, health, { healthPid: healthPid ?? null });
   const running = judgeRunning(job, health, ports.installedBuildSha());
   return running.ok ? withTick(running, ports) : running;
+}
+
+/** One failed read is not an outage: serve can miss a single probe while up, so a live job pid gets a few more polls before the answer counts. */
+const EXTRA_PROBES = 2;
+const PROBE_GAP_MS = 1_500;
+
+async function probeHealth(ports: CheckPorts, job: Job, port: number): Promise<{ health: Record<string, unknown> | null; failedProbes: number }> {
+  let health = await settledHealth(ports, port);
+  let failedProbes = 0;
+  while (health?.ok !== true && ++failedProbes <= EXTRA_PROBES && job.pid !== undefined && ports.isAlive(job.pid)) {
+    await ports.sleep(PROBE_GAP_MS);
+    health = await settledHealth(ports, port);
+  }
+  return { health, failedProbes: health?.ok === true ? 0 : failedProbes };
 }
 
 /** Last in order: a server fault is reported before the tick that depends on it. */
@@ -132,8 +146,10 @@ function stalePid(ports: CheckPorts, job: Job, healthPid: number | undefined, po
 }
 
 /** What is left once crash loop is ruled out: launchd or systemd has no process, or its process gives no usable /health answer. */
-const unansweredWhy = (job: Job, port: number): string =>
-  `${job.pid === undefined ? `${job.manager} holds no process` : `${job.manager} pid ${job.pid} does not answer /health on port ${port}`}; ${RESTART}`;
+const unansweredWhy = (job: Job, port: number, failedProbes: number): string => {
+  const probes = failedProbes > 1 ? ` (${failedProbes} probes failed)` : "";
+  return `${job.pid === undefined ? `${job.manager} holds no process` : `${job.manager} pid ${job.pid} does not answer /health on port ${port}${probes}`}; ${RESTART}`;
+};
 
 function crashLoop(job: Job, health: Record<string, unknown> | null): CheckResult {
   const message = `${jobName(job)} is crash-looping: last exit ${job.lastExit}, ${job.runs} ${job.manager === "systemd" ? "restarts" : "runs"}; read serve.err.log in the service log directory, fix it, then run titan-factory service restart`;

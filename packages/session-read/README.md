@@ -117,7 +117,9 @@ unreadable directory, rejects the discovery call rather than returning a short c
 
 Files and branches are attributed to the nearest `.git` ancestor of the path or the
 command's effective cwd (`cd …` and `git -C …` are honored), named from the origin remote.
-Anything outside a working tree stays unattributed rather than guessed.
+Anything outside a working tree stays unattributed rather than guessed. A path under a
+removed `.worktrees/<name>/` resolves as if the worktree still existed, and `parseFileRef`
+reads a `file:` ref back into `(repo, path)`.
 
 ## Multi-harness contracts
 

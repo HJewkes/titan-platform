@@ -1,3 +1,4 @@
+import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, PoolLine } from "./model.js";
 import type { RankedDigest } from "./rank.js";
 
@@ -47,6 +48,13 @@ function needsYou(d: RankedDigest): string[] {
   return section(`Needs you (${d.totals.needsYou})`, lines, "Nothing.");
 }
 
+function frictionLines(day: FrictionDay | undefined): string[] {
+  if (day === undefined) return [];
+  const waits = day.kinds.map((k) => `${k.kind} ${k.medianHours}/${k.maxHours}`);
+  const wait = waits.length > 0 ? `Owner wait (median/max hours): ${waits.join(", ")}` : "Owner wait: none";
+  return section("Owner friction", [`Owner touches ${day.day}: ${day.ownerTouches}`, wait], "");
+}
+
 function body(d: RankedDigest): string[] {
   const spend = d.spend.map((p) => `- ${p.pool}: week ${percent(p.sevenDay)}, 5h ${percent(p.fiveHour)}${p.stale ? " (stale)" : ""}`);
   return [
@@ -55,6 +63,7 @@ function body(d: RankedDigest): string[] {
     ...section(`Stuck (${d.totals.stuck})`, d.stuck.map((s) => `- ${s.ref}: ${clip(s.reason, REASON_WORDS)} (${age(s.since, d.generatedAt)})`), "Nothing stuck."),
     ...section("Seats", d.seats.map((s) => `- ${s.seat}: ${s.dispatches} dispatches, $${s.usd.toFixed(2)}`), "No seats in the seat book."),
     ...section("Spend", spend, "No pool readings."),
+    ...frictionLines(d.friction),
     ...(d.gaps.length > 0 ? section("Gaps", d.gaps.map((gap) => `- ${clip(gap, REASON_WORDS)}`), "") : []),
   ];
 }

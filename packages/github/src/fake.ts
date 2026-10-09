@@ -27,6 +27,8 @@ export interface FakeGitHub {
   /** Calls in `calls` that answered 304: each is still a request, but GitHub charges it no rate-limit point. */
   notModified: number;
   rules: RequiredChecks;
+  /** What classic branch protection requires; empty reads as a branch with none. */
+  classicRules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
@@ -42,6 +44,10 @@ export interface FakeGitHub {
   updateBranchFaults?: { error: Error; lands?: boolean }[];
   /** Faults the next comment posts throw, one per call; `lands` means the comment was posted before the answer was lost. */
   createCommentFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next merge PUTs throw, one per call; `lands` means the merge happened before the answer was lost. */
+  mergeFaults?: { error: Error; lands?: boolean }[];
+  /** Faults the next rerun-failed-jobs posts throw, one per call; `lands` means the rerun was queued before the answer was lost. */
+  rerunFaults?: { error: Error; lands?: boolean }[];
   /** Called at the start of every `getPr`, so a test can move the world between polls. */
   onGetPr?: (pr: PullRequest, reads: number) => void;
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
@@ -107,6 +113,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     calls: [],
     notModified: 0,
     rules: { contexts: ["validate", "dag-check"], strict: true },
+    classicRules: { contexts: [], strict: false },
     reviewBypass: false,
     createdCheckRuns: [],
     commits: new Map(),
@@ -170,6 +177,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getPr", { ...pr });
     },
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
+    getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
@@ -181,11 +189,17 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getJobLog", log);
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
-    merge: async (_repo, number, sha, method) => record("merge", mergePr(fake, mustPr(prs, number), sha, method, nextSha)),
+    merge: async (_repo, number, sha, method) => {
+      record("merge", undefined);
+      return mergePr(fake, mustPr(prs, number), sha, method, nextSha);
+    },
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
+      const fault = fake.rerunFaults?.shift();
+      if (fault && !fault.lands) throw fault.error;
       effects.rerunFailedJobs += 1;
       runStatus.set(runId, "queued");
+      if (fault) throw fault.error;
     },
     listPrFiles: async (_repo, number) => {
       const all = fake.prFiles.get(number) ?? [];
@@ -293,6 +307,14 @@ function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) =>
 }
 
 function mergePr(fake: FakeGitHub, pr: PullRequest, sha: string, _method: MergeMethod, nextSha: (tag: string) => string): { sha: string } {
+  const fault = fake.mergeFaults?.shift();
+  if (fault && !fault.lands) throw fault.error;
+  const merged = landMerge(fake, pr, sha, nextSha);
+  if (fault) throw fault.error;
+  return merged;
+}
+
+function landMerge(fake: FakeGitHub, pr: PullRequest, sha: string, nextSha: (tag: string) => string): { sha: string } {
   if (pr.merged || pr.state !== "open") throw new FakeHttpError(405, "Pull Request is not mergeable");
   if (pr.headSha !== sha) throw new FakeHttpError(409, "Head branch was modified");
   if (fake.rules.strict && pr.behind) throw new FakeHttpError(405, "Head branch is not up to date with the base branch");

@@ -1,0 +1,10 @@
+{
+  "$comment": "Products outside this repo that tasks can belong to. scripts/areas.mjs appends them to the areas derived from the $tiers map in .codewatch/check.json.",
+  "areas": [
+    { "id": "active-work", "tier": "product" },
+    { "id": "agent-chat", "tier": "product" },
+    { "id": "relay", "tier": "product" },
+    { "id": "shepherd", "tier": "product" },
+    { "id": "titan-design", "tier": "product" }
+  ]
+}

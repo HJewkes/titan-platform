@@ -6,7 +6,7 @@ import { appliedVersions, openDatabase, runMigrations } from "@titan-design/stor
 import { afterEach, describe, expect, it } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
-import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
+import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
@@ -146,7 +146,7 @@ describe("the frozen-merge guard", () => {
     const r = rig();
     r.freezes.freeze(A, RED, true);
     r.fake.refs.set("main", RED);
-    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled")]);
+    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("dag-check", 3)]);
 
     await expect(land(r, openPr(r, A))).resolves.toMatchObject({ done: true });
     expect(r.freezes.isFrozen(A)).toBe(false);
@@ -188,7 +188,7 @@ describe("the frozen-merge guard", () => {
     const pr = openPr(r, A);
     await expect(land(r, pr)).rejects.toThrow();
     r.fake.refs.set("main", GREEN);
-    r.fake.setRuns(GREEN, [successRun("validate", 1)]);
+    r.fake.setRuns(GREEN, [successRun("validate", 1), successRun("dag-check", 2)]);
 
     await expect(land(r, pr)).rejects.toThrow(/frozen/);
     r.clock.at += FREEZE_RECHECK_MS;
@@ -248,9 +248,14 @@ describe("the frozen-merge guard", () => {
         now: () => r.clock.at,
       }),
     );
-    const waiting = waitWhileHeld(route as never, held, {
-      sleep: async () => control.abort(),
-    });
+    const waiting = waitWhileHeld(
+      route as never,
+      held,
+      {
+        sleep: async () => control.abort(),
+      },
+      openHeadRead(r.port),
+    );
 
     const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SOURCE_SYSTEMS = ["agent-chat", "hitl", "morning", "active-work", "round", "plan"] as const;
+export const SOURCE_SYSTEMS = ["agent-chat", "hitl", "morning", "active-work", "round", "plan", "deposit"] as const;
 export const ITEM_KINDS = ["decide", "approve", "do", "review", "know"] as const;
 export const DOORS = ["one-way", "two-way"] as const;
 export const LENSES = ["blocking-agent", "blocking-merge", "stuck", "planning", "fyi"] as const;

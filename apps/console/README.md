@@ -8,7 +8,7 @@ command definitions. The app is private and publishes nothing.
 
 The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
-the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847),
+the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847), and `agents.messages` and `agents.queue` (TP-1059),
 which no view shows yet. Every other view except Home is a placeholder that names the task
 that builds it.
 
@@ -44,7 +44,8 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_STATE` | `~/.local/state/titan-console` | Holds the daemon's pid file; a second console over the same directory is refused |
 | `TITAN_CONSOLE_ACTIVE_WORK_PORT` | `7400` | Loopback port of the active-work daemon |
 | `TITAN_CONSOLE_AGENT_CHAT_PORT` | `7600` | Loopback port of the agent-chat broker |
-| `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call |
+| `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
+| `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
 
@@ -60,10 +61,19 @@ directory, under the name `active-work`.
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
-| `POST /rpc/work.portfolio` | Every initiative with its state, open-task rollup, note, source and session counts, newest activity and `personal` flag |
+| `POST /rpc/agents.messages` | `{ agent, peer?, before?, limit? }` in; that agent's messages, or the pair's, newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
+| `POST /rpc/agents.queue` | `{ include_system? }` in; open items waiting on the human from `/api/queue`, questions first, each with `asker` and `ageMs`. The broker's own notices are counted in `hidden` unless `include_system` is set |
+| `POST /rpc/work.portfolio` | Every initiative with its state, brief `taskPrefix`, open-task rollup, note, source and session counts, newest activity and `personal` flag |
+| `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, and `stageGuessed` when no evidence was found |
+| `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `GET /events` | The daemon package's SSE stream; nothing publishes to it yet |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
+
+`work.tasks` derives stages from the local clones that any `artifacts.yml` names. Per clone it
+reads local refs, worktrees and main-line subjects with `git` (it never fetches) and open pull
+requests with one `gh` call, cached for a minute. A failed GitHub read is listed under
+`evidence.degraded` and leaves the review stage unset rather than failing the command.
 
 Three rules hold for every later slice.
 

@@ -113,6 +113,66 @@ await startDaemon({
 });
 ```
 
+## Authentication beyond loopback
+
+The guards keep web pages out but authenticate no one, which is fine on loopback and not on a
+LAN. `auth.ts` is the mechanism for a listener that needs a real credential. The product owns
+the policy: the file path, the CLI verbs that mint links and rotate the secret, and which
+listener the gate sits on. Nothing here is wired into `startDaemon` yet.
+
+```ts
+import {
+  buildHttpApp, createDaemonAuth, ensureTokenFile, mintLoginCode, rotateTokenFile,
+} from "@titan-design/daemon";
+
+const tokenFile = path.join(stateDir, "lan.token");
+ensureTokenFile(tokenFile);                    // creates it once: 32 random bytes, 0600, O_EXCL
+const auth = createDaemonAuth({ tokenFile });  // throws TokenFileError on an untrustworthy file
+
+const app = buildHttpApp({ ...options, gate: auth });
+
+// In a separate CLI process, on the daemon's host:
+console.log(`http://host:7500/auth/login?code=${mintLoginCode(ensureTokenFile(tokenFile))}`);
+rotateTokenFile(tokenFile);                    // ends every session and voids every code
+```
+
+- **The `gate` option.** The gate runs right after the Host/Origin guard and before every
+  route, so `/health`, `/version`, `/events`, `/rpc` and anything `mountRoutes` adds all
+  answer 401 without a credential. A foreign Host still gets the guard's 403 first. Only
+  `/auth/login` is open, and the gate answers it itself: `GET` and `HEAD` render the page,
+  `POST` spends the code, and every other method gets 405 with `Allow: GET, HEAD, POST`.
+  The gate is not exported as middleware, because mounted any later than this it leaves
+  the routes ahead of it open. Without `gate` the app behaves exactly as before.
+- **Token file.** A 32-byte base64url secret. It is refused (`TokenFileError`, with a `problem`)
+  when it is a symlink, not a regular file, owned by another user, readable by group or others,
+  empty, shorter than 32 bytes, or not base64url. The gate re-reads it whenever its inode, size,
+  mtime, ctime, mode or owner change, and re-checks all of the above each time; a file that
+  fails the checks after start makes every request 503 until it is fixed. `rotateTokenFile`
+  writes a 0600 temp file and renames it into place.
+- **Keys.** The secret is never an HMAC key itself. HKDF derives separate cookie, login-code
+  and bearer keys, and every comparison is `timingSafeEqual` over equal-length HMAC digests.
+- **Login code.** `v1.<issuedAt>.<nonce>.<mac>`, minted offline by anything that can read the
+  file. It lives ten minutes and works once per daemon process, and a code minted before the
+  process started is refused, so a restart does not revive a spent one.
+- **Login is two steps.** `GET /auth/login?code=` returns an inert page (`no-store`,
+  `Referrer-Policy: no-referrer`, a nonce CSP) that neither reads nor spends the code, so a
+  chat app's link preview cannot burn it. Its button sends a same-origin JSON
+  `POST /auth/login { code }`, which spends the code, sets the cookie, and then the script
+  navigates to `/`.
+- **Session cookie.** `titan_session=v1.<issuedAt>.<mac>`, `HttpOnly; SameSite=Strict; Path=/`,
+  `Max-Age` 30 days. It is stateless and survives restarts. The server refuses one from the
+  future or 30 days old regardless of the browser. There is no `Secure` flag, because the
+  listener this was built for is plain HTTP.
+- **Bearer.** Non-browser clients send `Authorization: Bearer <secret>`.
+- **Logout.** `POST /auth/logout` clears this browser's cookie only. A copied cookie stays valid
+  until it expires or the secret rotates; rotation is the revocation.
+- **401s.** A browser `GET` asking for HTML gets a small page with a reload link; everything
+  else gets a JSON envelope. Neither names a product's login command.
+- **`createContext(surface, auth)`.** The gate records `{ credential: "session" | "bearer",
+  issuedAt }` and `/rpc` passes it as `createContext`'s second argument, so a command can refuse
+  a credential kind. It is `undefined` only on an ungated listener and on MCP; a gated app
+  answers 401 rather than call `createContext` without it.
+
 ## Serving a built front end
 
 `mountStaticApp(app, { root, base?, immutableDir? })` serves a built app through
@@ -142,8 +202,9 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 
 ## The seams
 
-- **`createContext(surface)`** builds the per-request context. `surface` is `"http"` or
-  `"mcp"`. The daemon never knows what your context contains.
+- **`createContext(surface, auth?)`** builds the per-request context. `surface` is `"http"` or
+  `"mcp"`; `auth` is what the `gate` recorded, if one ran. The daemon never knows what your
+  context contains.
 - **`health()`** extends `/health` with product state. Core fields win a collision.
 - **`mountRoutes(app)`** adds product routes to the same hono app.
 - **`formatError`** maps a thrown value to `{ message, code }` for every surface.

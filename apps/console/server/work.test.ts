@@ -9,7 +9,8 @@ import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js"
 import { readInitiative, readPortfolio, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
-const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), seatPrefixes: [] };
+const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
+const NO_SESSIONS = { graphPath: "/nonexistent/graph.sqlite3" };
 
 let daemon: FakeDaemon | undefined;
 let calls: string[] = [];
@@ -46,6 +47,26 @@ describe("the portfolio", () => {
       sessions: 2,
       newestActivity: "2031-03-04T16:20:00.000Z",
     });
+  });
+
+  it("carries each brief's task prefix, and none for a brief that names none", async () => {
+    const { initiatives } = await readPortfolio(await fakeActiveWork());
+    expect(Object.fromEntries(initiatives.map((row) => [row.slug, row.taskPrefix]))).toEqual({
+      "orbit-relay": "OR",
+      "lantern-docs": "LD",
+      "kiln-tools": "KT",
+      "garden-plan": "GP",
+      "atlas-archive": undefined,
+    });
+  });
+
+  it("leaves the prefix out when a brief cannot be read, and still lists the initiative", async () => {
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      if (command === "source.read" && args.slug === "kiln-tools") throw new Error("no brief");
+      return fixtureAnswer(command, args);
+    });
+    const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
+    expect(initiatives.find((row) => row.slug === "kiln-tools")).not.toHaveProperty("taskPrefix");
   });
 
   it("flags a personal initiative and still shows it", async () => {
@@ -108,7 +129,7 @@ describe("an initiative", () => {
 
 describe("an export", () => {
   const exported = async (options: FixtureOptions = {}) =>
-    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
+    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());

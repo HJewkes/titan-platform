@@ -1,6 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { SqliteGateStore } from "@titan-design/hitl/sqlite";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
 import { openFactoryHost } from "./host.js";
@@ -21,7 +23,25 @@ describe("shepherd stats verb", () => {
     const code = await runCli(["--db", db, "shepherd", "stats", "--json"], io);
 
     expect(code).toBe(0);
-    expect(JSON.parse(out.join(""))).toEqual([]);
+    expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [] });
+  });
+
+  it("reports owner touches and the wait per gate kind from the gate store", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    let clock = Date.parse("2026-10-07T08:00:00Z");
+    const gates = new SqliteGateStore(store, { migrate: false, now: () => clock });
+    gates.create({ id: "run-1/approve-merge:0", prompt: "p" });
+    clock += 3 * 3_600_000;
+    gates.resolve("run-1/approve-merge:0", {}, { class: "owner-terminal", id: "owner", channel: "terminal" });
+    store.close();
+    const { out, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--json", "--from", "2026-10-07", "--to", "2026-10-07"], io);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.join("")).ownerFriction).toEqual([{ day: "2026-10-07", ownerTouches: 1, kinds: [{ kind: "approve-merge", gates: 1, medianHours: 3, maxHours: 3 }] }]);
   });
 
   it("refuses a malformed date", async () => {

@@ -35,11 +35,31 @@ titan-factory service plist                                   # print the Launch
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
+titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
 `$XDG_CONFIG_HOME/titan-factory/config.json`, then `$XDG_STATE_HOME/titan-factory/factory.sqlite3`.
 Owner-specific bindings live in that config file, never in this repo.
+
+### A host whose database is frozen: `remoteFactory`
+
+When the live factory moves to another host, set `remoteFactory` in the old host's config file to
+the live factory's URL, for example `"remoteFactory": "http://127.0.0.1:7410"` over a port forward.
+It must be an `http` or `https` URL with no user or password, and a key that only looks like it
+(`remotefactory`, `remote_factory`) fails the load instead of being ignored. While it is set, stderr
+names the remote, says this host's database is frozen, and the verb exits 2:
+
+- `serve`, `resume`, `land`, `gate resolve` (and `gate resolve-batch`, once it lands), and
+  `shepherd register|hold|release|resync` are refused before they probe `--port` or open anything.
+  A serve answering that port on this host may be the frozen one, and nothing yet proves it is the
+  remote, so these never go over RPC either.
+- Every other verb still reads from a serve that answers, but refuses rather than open the local
+  database when none does. `shepherd stats` reads the file read-only and still works.
+
+The refusal ignores `--db` and `TITAN_FACTORY_DB`. With `remoteFactory` unset nothing changes. A
+LaunchAgent or systemd unit for `serve` on the frozen host restarts the refused serve forever, so
+run `titan-factory service uninstall` there first.
 
 `gate resolve` records who answered: the owner at a terminal (`owner-terminal`, your OS user, channel
 `factory-cli`). A shell with `AGENT_CHAT_AGENT_ID` set may be an agent or the owner's `!` command in
@@ -61,7 +81,7 @@ gate classes, each only on evidence the command reads fresh through the GitHub p
 | Gate and answer | Evidence the command reads |
 |---|---|
 | `approve-merge`: `merge` at the gate's own head | the run's recorded merge decision at that head is `authority/MRG-AU`, and its reason lists only mechanical unmet MRG-AU-RV conditions (`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`), so a protected path (CODEOWNERS, docs/CODEOWNERS, .github/CODEOWNERS, .gitmodules, a non-canonical path), a missing seat grant, a frozen repo, a tainted request or a reason it cannot read stays the owner's; the seat policy is `auto`, the registration is not held and the repo is not frozen; the reviewer's `sh-await-verdict:<head>` result is MERGE at exactly that head; every required check of the base has a successful run at the head; the PR is open at the head and its `mergeable_state` reads as MERGEABLE |
-| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every Actions run on it passing |
+| `main-red`: `acknowledged`, `main-frozen`: `unfreeze` | the PR merged as the gate's merge sha, and the base branch's tip contains that sha with every judged check passing (the base branch's required contexts when it has them, else every Actions run) |
 | `abandon` on `approve-merge`, `stuck-behind`, `sh-sent-back` or `ci-failed` | the PR the gate names is merged or closed; an `approve-merge` abandon also needs the same non-visual merge decision as a merge |
 
 The evidence (verdict step, check run ids, mergeable read, green main sha and merge base, or PR state)
@@ -123,6 +143,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   branch: a repeat, or a PR registered after its branch, updates the task, implementer,
   reviewer and policy on the existing registration and returns its run. The run's policy only
   ever narrows toward the stored one.
+- Once a run merges, `sh-cleanup` closes the registration's `--task` through active-work's loopback rpc unless
+  the registration names a `--slice`. It appends `closed by Shepherd: <owner/repo>#<n> at <merge sha> merged` to the
+  task's notes first, skips a task already done (so a replay adds no second note), and records an unreachable
+  active-work as a caveat on the step's result instead of failing the run.
 - `list` and `timeline` return the `WatchRow` and `PrTimeline` shapes in
   `src/shepherd/view.ts`, which the factory UI reads.
 - `hold` and `release` write the registration's hold, which every merge route checks.
@@ -191,6 +215,22 @@ The owner's `sh-sent-back` gate still opens in these cases: the message fails to
 single seat owns the repo, the agent exits a second time at a head the seat was already told
 about, or the wake was a conflict or fix-proof wake.
 
+### A fixer that cannot start
+
+A wake never resumes a retired implementer. When agent-chat refuses to resume an ended
+implementer, as for one on a model its pool no longer runs, the same wake spawns a successor
+instead, under the same spawn load gate. Other failures are not refusals and still reach the
+owner. If agent-chat refuses the successor too, a FIX_FIRST or NO_REPRO send-back is held:
+`sh-wake-implementer` records the refusal and `held`. A held FIX_FIRST then takes the route of a
+fixer that exits with no push: `sh-exit-notice` tells the repo's seat why no fixer started, and
+the run waits for a new head with no owner gate open. When that notice is not sent, and for a
+held NO_REPRO, `sh-sent-back` opens and names the refusal. While the run waits, the watch row's
+next action and the wake's timeline entry name the refusal; the row says the seat was told only when
+`sh-exit-notice` recorded a sent notice after that wake. A ci-red or conflict wake records no `held`
+and keeps its own route, the `ci-failed` gate or the `not-mergeable` stop. The wake has already spent its one repair, so the `repair-budget` cap
+still bounds how many such wakes a run makes. A refused message to a live implementer still
+opens `sh-sent-back`, since a successor beside a live agent would race it on the branch.
+
 ## Owner digest
 
 `titan-factory digest run` writes one markdown digest across every seat in the seat book:
@@ -225,6 +265,30 @@ about the same PR.
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
 `icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
 `shepherd.seatsDir`. Paths must be absolute.
+
+## Owner-queue sources
+
+`src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
+maps one store of record to `OwnerItem`s and owns its own I/O.
+
+- `agentChatSource` reads agent-chat's `GET /api/queue` on loopback. The port comes from
+  `broker.meta.json`, and the token from the 0600 `ui.token`, both under `AGENT_CHAT_HOME`
+  (default `~/.agent-chat`). The token is only ever sent in the request header. A question
+  becomes a two-way Decide item. A permission prompt or an endorsement becomes a one-way
+  Approve item. A notice or message is a Know item, unless its item shape names an ask.
+  `resolve` posts `/api/answer` (or `/api/dismiss` for a blank answer) on the `factory`
+  channel, and the broker arbitrates.
+- `hitlGateSource` lists the factory's own pending hitl gates as one-way Approve items keyed
+  `gate:<id>` and `run:<runId>`. Its `resolve` refuses. Gates are answered with `gate
+  resolve`, because that verb checks owner presence.
+
+A broker that is not running, is unreachable, refuses the token or returns a malformed body
+throws a `QueueReadError` that names the failure. It is never read as an empty list. Neither
+store has an event stream that the adapters can use, so `tail` polls `open()` every 30 s and
+emits the difference.
+
+`titan-factory queue-counts` prints each source's open count, split by kind. It prints no item
+text. It exits 69 when a source cannot be read and still prints the others.
 
 ## Install as a LaunchAgent
 
@@ -419,7 +483,8 @@ a minute, with a 10 s timeout, so a health request never waits on gh.
 | `src/deploy.ts`, `src/deploy-closure.ts`, `src/deploy-ports.ts` | `service deploy` over a `DeployPorts` value, the closure walk and touched-path filter, and the real ports (git, pnpm under `setupEnv`, `dist` copies, the lock). Tests pass fake ports, so none reaches git, pnpm or launchd |
 | `src/config.ts` | zod-validated local config and database path resolution |
 | `src/shepherd/seats.ts`, `src/shepherd/policy.ts` | Shepherd seat book (autonomy-seat/v1 files plus charter hard stops) and the per-PR effective policy (see below) |
-| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest` and `service` |
+| `src/cli.ts`, `src/bin.ts` | commander wiring for `resume`, `gate resolve`, `serve`, `land`, `shepherd`, `digest`, `queue-counts` and `service` |
+| `src/needs/` | The owner-queue `QueueSource` adapters (agent-chat `/api/queue`, factory hitl gates) and the `queue-counts` verb |
 | `src/digest/` | The owner digest: `collect` (sources to model), `rank` (de-dupe, order, caps), `render-md`, `slots`, and `command` (the `digest run` verb) |
 | `src/shepherd/commands.ts`, `src/shepherd/view.ts` | The `shepherd.*` registry commands, and the watch-row and timeline read model they return |
 | `src/workflows/land.ts` | The land core (see below) |
@@ -499,9 +564,13 @@ validation.
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:
 
-- `land-rules`: required checks and the strict flag for the PR's base, read at run start.
+- `land-rules`: required checks and the strict flag for the PR's base, read at run start. A base that requires no
+  status check does not refuse: `ci-wait` then waits on every check-run at the head from the GitHub Actions app and
+  lands only when there is at least one and all are complete and green (success, neutral or skipped). The first green read is held until a
+  second poll sees the same runs, because a job behind `needs:` has no run yet. Zero runs wait
+  and time out; another app's runs neither count nor block. A rules read that errors still fails the run.
 - `ci-wait:<n>`: one blocking step that polls every 30 s (45 min timeout) until every required
-  check's latest run completed. An empty rollup is pending. `mergeable_state` `unknown` or
+  check's latest run completed (every Actions run, for a base that requires none). An empty rollup is pending. `mergeable_state` `unknown` or
   `blocked` keeps it waiting; it is never treated as clean.
 - `update-branch:<n>`: only when the PR is behind, under `expected_head_sha`. After
   `MAX_UPDATE_CYCLES` (3) updates the run opens gate `stuck-behind` (retry or abandon).

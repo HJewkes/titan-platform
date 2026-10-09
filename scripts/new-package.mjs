@@ -107,6 +107,11 @@ function main() {
   execFileSync(process.execPath, [join(ROOT, "scripts", "gen-docs-reference.mjs")], { stdio: "inherit" });
   execFileSync(process.execPath, [join(ROOT, "scripts", "gen-capabilities.mjs")], { stdio: "inherit" });
   console.log(`created ${dir}/${opts.name} (tier ${opts.tier})${page ? ` and site/reference/${opts.name}.md` : ""}; fill in its CAPABILITY.md`);
+  console.log(areasReminder(opts.name));
 }
+
+/** Each package is a task area, and the registry lives outside this repo, so new:package can only remind. */
+export const areasReminder = (name) =>
+  `new area \`${name}\`: run \`pnpm areas --write <categories.yml>\` to add it to the task category registry`;
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

@@ -30,3 +30,21 @@ export async function requireRequiredChecks(port: GitHubPort, repo: RepoSlug, ba
   if (!read.readable) throw new Error(`${read.reason}; land refuses`);
   return read.checks;
 }
+
+/** Classic branch protection's required status checks; a 404 reads as none, and any other failure is unreadable. */
+export async function readClassicRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecksRead> {
+  try {
+    const checks = await port.classicRequiredChecks(repo, base);
+    if (wellFormed(checks)) return { readable: true, checks };
+    return { readable: false, reason: `classic protection of ${repo}@${base} is unreadable: the answer is malformed` };
+  } catch (error) {
+    return { readable: false, reason: `classic protection of ${repo}@${base} is unreadable: ${statusOf(error)}` };
+  }
+}
+
+/** Rulesets first, then classic protection only when the rulesets require nothing, as premerge reads them. */
+export async function readBaseRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecksRead> {
+  const rulesets = await readRequiredChecks(port, repo, base);
+  if (!rulesets.readable || rulesets.checks.contexts.length > 0) return rulesets;
+  return readClassicRequiredChecks(port, repo, base);
+}
