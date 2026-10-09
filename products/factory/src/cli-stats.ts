@@ -32,6 +32,20 @@ function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[]
   return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages), ...overrideLines(overrides)].join("\n")}\n`;
 }
 
+interface Report {
+  rows: StatsRow[];
+  friction: FrictionDay[];
+  stages: StageWeek[];
+  red: ReturnType<typeof redAfterMerge>;
+  failures: ReturnType<typeof failureStats> | undefined;
+  overrides: OverrideRow[];
+}
+
+function render(opts: StatsOpts, { rows, friction, stages, red, failures, overrides }: Report): string {
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, ...(failures && { failures }) }, null, 2)}\n`;
+  return [formatStats(rows, friction, stages, overrides), ...formatRedAfterMerge(red).map((line) => `${line}\n`), ...(failures ? formatFailures(failures).map((line) => `${line}\n`) : [])].join("");
+}
+
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
@@ -57,8 +71,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
         const stages = stageStats(runs, { from: opts.from, to: opts.to });
         const failures = opts.failures ? failureStats(runs, { from: opts.from, to: opts.to }) : undefined;
         const red = redAfterMerge(runs, { from: opts.from, to: opts.to });
-        const overrides = overrideStats(runs, { from: opts.from, to: opts.to });
-        io.stdout(opts.json ? `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, ...(failures && { failures }) }, null, 2)}\n` : [formatStats(rows, friction, stages, overrides), ...formatRedAfterMerge(red).map((line) => `${line}\n`), ...(failures ? formatFailures(failures).map((line) => `${line}\n`) : [])].join(""));
+        io.stdout(render(opts, { rows, friction, stages, red, failures, overrides: overrideStats(runs, { from: opts.from, to: opts.to }) }));
       } finally {
         db.close();
       }
