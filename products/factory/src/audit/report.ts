@@ -4,7 +4,7 @@ import type { Baseline, Loaded, QuestionCheck, StoreInventory } from "./schemas.
 
 export type AuditedMetric = MeasurementAudit["metrics"][number];
 
-export interface AuditFindings {
+interface AuditFindings {
   loaded: Loaded;
   data: { stores: StoreInventory[] };
   emitters: unknown;

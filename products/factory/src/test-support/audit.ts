@@ -84,7 +84,7 @@ function gapSlices(metrics: readonly MetricSpec[]) {
 const REPORTS = Array.from({ length: 9 }, (_, i) => ({ id: `r${i + 1}`, title: `Report ${i + 1}`, metrics: [`shepherd.flow.m${i}`] }));
 
 /** Recorded agent answers per step, keyed by the step name in the manifest. */
-export function recordedAgent(): (request: AuditAgentRequest) => Promise<unknown> {
+function recordedAgent(): (request: AuditAgentRequest) => Promise<unknown> {
   const metrics = proposedMetrics();
   const answers: Record<string, unknown> = {
     "inventory-code": { emitters: [{ kind: "step", name: "sh-review", at: "products/factory/src/shepherd/review.ts:10", persisted: true }] },

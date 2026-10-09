@@ -2,7 +2,7 @@ import type { GateBrief } from "@titan-design/hitl";
 import type { MeasurementAudit } from "@titan-design/health/metrics";
 
 /** The counts line the owner reads at the gate and the CLI prints. */
-export function countsLine({ counts }: MeasurementAudit): string {
+function countsLine({ counts }: MeasurementAudit): string {
   return `${counts.proposed} metrics: ${counts.Y} Y, ${counts.P} P, ${counts.N} N; ${counts.slices} slices`;
 }
 
