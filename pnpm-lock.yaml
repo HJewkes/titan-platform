@@ -153,6 +153,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app

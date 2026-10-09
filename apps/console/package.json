@@ -22,6 +22,7 @@
     "@titan-design/daemon": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/owner-queue": "workspace:^",
+    "@titan-design/pm": "workspace:^",
     "@titan-design/react-app": "workspace:*",
     "@titan-design/react-ui": "^0.20.0",
     "@titan-design/registry": "workspace:^",
