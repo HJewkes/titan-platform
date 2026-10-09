@@ -22,7 +22,7 @@ export interface SessionsSource {
 
 type DegradedReason ="graph-missing" | "graph-not-migrated" | "graph-unreadable" | "transcript-missing";
 
-interface Degraded {
+export interface Degraded {
   reason: DegradedReason;
   detail: string;
 }
@@ -101,7 +101,7 @@ export function sessionsCommands(source: SessionsSource) {
 type GraphRead<T> = { ok: true; value: T } | { ok: false; degraded: Degraded };
 
 /** `read` is synchronous so no statement outlives it: a reader held across an await would stall the writer's checkpoints. */
-async function readGraph<T>(graphPath: string, read: (graph: SessionGraph) => T): Promise<GraphRead<T>> {
+export async function readGraph<T>(graphPath: string, read: (graph: SessionGraph) => T): Promise<GraphRead<T>> {
   const info = await stat(graphPath).catch(() => null);
   if (!info?.isFile()) return { ok: false, degraded: { reason: "graph-missing", detail: `No session graph at ${graphPath}` } };
   let graph: SessionGraph;

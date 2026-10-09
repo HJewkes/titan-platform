@@ -16,10 +16,20 @@ const isoDate = z
 
 const isoDateOrNull = z.union([isoDate, z.null()]);
 
+export const TASK_ID_REGEX = /^[A-Z][A-Z0-9]*-\d+$/;
+
+const taskId = z.string().regex(TASK_ID_REGEX, {
+  message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
+});
+
+const uniqueTaskIds = z
+  .array(taskId)
+  .refine((ids) => new Set(ids).size === ids.length, { message: "dep ids must be unique" });
+
 export const TaskSchema = z.object({
-  id: z.string().regex(/^[A-Z][A-Z0-9]*-\d+$/, {
-    message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
-  }),
+  id: taskId,
+  parent: taskId.optional(),
+  dep: uniqueTaskIds.optional(),
   title: z.string().min(1),
   priority: z.number().int().positive(),
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),

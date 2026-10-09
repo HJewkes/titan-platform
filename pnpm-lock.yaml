@@ -752,6 +752,9 @@ importers:
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
+      '@titan-design/app-paths':
+        specifier: workspace:^
+        version: link:../../packages/app-paths
       '@titan-design/authority':
         specifier: workspace:^
         version: link:../../packages/authority
