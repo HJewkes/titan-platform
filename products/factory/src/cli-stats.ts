@@ -7,6 +7,7 @@ import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
+import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
@@ -27,10 +28,10 @@ function formatStages(weeks: readonly StageWeek[]): string[] {
   return lines.length === 0 ? [] : ["", "time per stage:", ...lines];
 }
 
-function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[]): string {
+function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[], overrides: readonly OverrideRow[]): string {
   const merges = rows.length === 0 ? ["no merges in range"] : rows.map((r) => `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  outside Shepherd ${r.outsideMerges}`);
   const days = friction.flatMap((d) => [`${d.day}  owner touches ${d.ownerTouches}`, ...d.kinds.map((k) => `  ${k.kind}  gates ${k.gates}  median ${k.medianHours}h  max ${k.maxHours}h`)]);
-  return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages)].join("\n")}\n`;
+  return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages), ...overrideLines(overrides)].join("\n")}\n`;
 }
 
 function formatCauses(rows: readonly ReviewCauseRow[]): string[] {
@@ -53,9 +54,10 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   const stages = stageStats(runs, range);
   const red = redAfterMerge(runs, range);
   const failures = opts.failures ? failureStats(runs, range) : undefined;
-  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
+  const overrides = overrideStats(runs, range);
+  if (opts.json) return `${JSON.stringify({ merges: rows, ownerFriction: friction, stageTimes: stages, redAfterMerge: red, ownerOverrides: overrides, ...(failures && { failures }), reviewCauses: causes }, null, 2)}\n`;
   const lines = [...formatRedAfterMerge(red), ...(failures ? formatFailures(failures) : [])].map((line) => `${line}\n`).join("");
-  return `${formatStats(rows, friction, stages)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
+  return `${formatStats(rows, friction, stages, overrides)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
