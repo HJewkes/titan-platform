@@ -16,7 +16,7 @@ const oauthSchema = z.object({
   rateLimitTier: z.string().nullable().optional(),
 });
 
-export type RefusedReason = "malformed" | "mode-too-wide" | "foreign-owner";
+export type RefusedReason = "malformed" | "mode-too-wide" | "foreign-owner" | "not-a-regular-file" | "hard-linked";
 
 export type LoginState =
   | {

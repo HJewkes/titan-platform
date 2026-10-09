@@ -125,6 +125,15 @@ describe("console LAN config", () => {
     expect(() => lan({ TITAN_CONSOLE_LAN_NAMES: names })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
   });
 
+  // A localhost label anywhere can resolve to loopback, and a numeric last label is read as an IPv4 address by a WHATWG URL.
+  it.each(["localhost.localdomain", "box.localhost.lan", "127.1", "box.0x7f", "lan.2130706433"])("refuses the loopback-shaped LAN name %j", (names) => {
+    expect(() => lan({ TITAN_CONSOLE_LAN_NAMES: names })).toThrow(/TITAN_CONSOLE_LAN_NAMES/);
+  });
+
+  it("keeps a name whose labels only contain digits before the last", () => {
+    expect(lan({ TITAN_CONSOLE_LAN_NAMES: "10.box,rack-7.lan" }).lanNames).toEqual(["10.box", "rack-7.lan"]);
+  });
+
   it("keeps the LAN token in the state directory unless TITAN_CONSOLE_TOKEN is given", () => {
     expect(lan({}).lanTokenPath).toBe(path.join(HOME, ".local/state/titan-console", "lan.token"));
     expect(lan({ TITAN_CONSOLE_STATE: "/var/console" }).lanTokenPath).toBe("/var/console/lan.token");

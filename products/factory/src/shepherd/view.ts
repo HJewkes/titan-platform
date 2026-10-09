@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { OWNER_GATE_REASONS } from "./policy.js";
 import { reviewWait } from "./review-wait.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -40,6 +41,8 @@ export const WatchRowSchema = z.object({
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
   /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
   stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
+  /** Why an owner-gate run asks the owner; absent for other policies and for runs registered before the field. */
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
 });
@@ -284,6 +287,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     branch: registration.branch ?? run.params.branch ?? "",
     runId: run.id,
     task: registration.task,
+    ...(registration.policy.ownerGateReason !== undefined && { ownerGateReason: registration.policy.ownerGateReason }),
     phase,
     headSha,
     phaseSince: since,

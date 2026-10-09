@@ -11,7 +11,7 @@ import {
   EffectivePolicySchema,
   OWNER_GATE_POLICY,
   RegistrationRefused,
-  RequestedPolicySchema,
+  RequestedPolicyFields,
   resolveEffectivePolicy,
   shepherdGatePolicy,
   stricterPolicy,
@@ -86,7 +86,7 @@ const RegisterArgs = z
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
-    policy: RequestedPolicySchema.optional(),
+    policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
   .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
