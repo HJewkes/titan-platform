@@ -542,8 +542,9 @@ function evidenceAt(head: string, unmet: object): object {
   return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
 }
 
-async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[]): Promise<FactoryHost> {
+async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number): Promise<FactoryHost> {
   const server = await startFactoryServer({
+    goneSweepMs,
     dbPath: ":memory:",
     stateDir: dirname(dbFile()),
     workflows,
@@ -566,8 +567,17 @@ interface AuthorityRun {
   reviewed: string[];
 }
 
+interface AuthorityOptions {
+  serve?: boolean;
+  unmetReviews?: number;
+  wokenAgent?: boolean;
+  goneSweepMs?: number;
+  /** getPr rejects while `value` is set. */
+  unreadable?: { value: boolean };
+}
+
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false } = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
@@ -576,8 +586,11 @@ async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, 
     review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
   };
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
-  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)]) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  const port = githubPort(fake.wire);
+  const getPr = port.getPr.bind(port);
+  const flaky = { ...port, getPr: async (repo: string, pr: number) => (unreadable?.value ? Promise.reject(new Error("rate limited")) : getPr(repo, pr)) };
+  const routes = factoryRoutesFor({ port: flaky, store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)], goneSweepMs) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   if (!serve) cleanups.push(() => host.close());
   fake.addPr({ headSha: REVIEWED });
   const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
@@ -793,6 +806,22 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("a thaw whose PR head read fails while serving keeps the repo queued, and a later sweep tick supersedes its gate", async () => {
+    const unreadable = { value: false };
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true, goneSweepMs: 20, unreadable });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    unreadable.value = true;
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(60, new AbortController().signal);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    unreadable.value = false;
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
   });
 
   it("a thaw of another repo while serving leaves the gate with the owner", async () => {

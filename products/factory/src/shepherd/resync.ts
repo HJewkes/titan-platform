@@ -67,6 +67,8 @@ interface TransientSweep {
   dryRun?: boolean;
   /** Only gates of runs on this repo, as a thaw sweeps; absent sweeps every repo. */
   repo?: RepoSlug;
+  /** Called with the run whose PR head could not be read, so a thaw sweep can try that repo again. */
+  onUnreadable?: (runId: string) => void;
 }
 
 /**
@@ -106,12 +108,12 @@ const onlyUnmet = (conditions: string[]): string =>
  * its repo is frozen now for that PR, so the run asks the policy again at the same head. A freeze's own fix PR is not
  * frozen for itself, so its gate is superseded while the freeze it fixes still stands.
  */
-export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo }: TransientSweep = {}): Promise<SupersededGate[]> {
+export async function supersedeTransientGates(host: FactoryHost, services: ShepherdServices, { dryRun = false, repo, onUnreadable }: TransientSweep = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
   for (const pending of host.pendingGates()) {
     const gate = await transientGate(host, services, pending, { dryRun, repo });
     if (!gate) continue;
-    if ((await openHead(services, pending.runId)) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
+    if ((await openHead(services, pending.runId, () => onUnreadable?.(pending.runId))) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
     if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`);
     const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
     superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });

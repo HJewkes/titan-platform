@@ -236,7 +236,15 @@ reason starts `superseded: review again: ` and names the conditions, and the run
 policy again at the same head. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
-the same sweep at once for that repo's gates.
+the same sweep at once for that repo's gates. If a pull request's head cannot be read during
+that sweep, the repo stays queued and the next sweep tick tries it again. A thaw listener that
+throws is logged and does not stop the others.
+
+One gap is left to resync. A run that read `repo-not-frozen` as unmet, then saw the repo thaw
+before its gate opened, opens a gate the thaw sweep has already passed. That gate waits for the
+next `titan-factory shepherd resync` or server start. Shepherd does not sweep every
+transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
+again on every tick while the merge tree stays dirty.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
