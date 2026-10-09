@@ -153,6 +153,16 @@ describe("a line bash 5 reads differently because a substitution left a heredoc 
     expect(await hookDenies(command)).toBe(true);
   });
 
+  it.each([
+    ["${x:-$( )}", ": ${x:-$(cat <<EOF)}"],
+    ["a quoted ${x:-$( )}", ': "${x:-$(cat <<EOF)}"'],
+    ["${x:-<( )}", ": ${x:-<(cat <<EOF)}"],
+    ["${x:-${y:-$( )}}", ": ${x:-${y:-$(cat <<EOF)}}"],
+    ["$(( $( ) ))", ": $((1 + $(cat <<EOF)))"],
+  ])("the hook denies a push after a heredoc left open by a substitution inside %s", async (_name, opener) => {
+    expect(await hookDenies(`${opener}\nit's\nEOF\n${PUSH}\necho '`)).toBe(true);
+  });
+
   it("the hook names the open heredoc when it refuses the line", async () => {
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const command = "cat <(cat <<EOF)\nbody\nEOF\nls";
@@ -163,6 +173,7 @@ describe("a line bash 5 reads differently because a substitution left a heredoc 
   it.each([
     ["a commit message", `git commit -m "$(cat <<'EOF'\nmsg\nEOF\n)"\nls`],
     ["a process substitution", "cat <(cat <<EOF\nbody\nEOF\n)\nls"],
+    ["a parameter default", "echo ${x:-$(cat <<EOF\nbody\nEOF\n)}\nls"],
     ["a substitution at the end of the text", "cat <(cat <<EOF)"],
   ])("the hook lets a heredoc closed inside %s pass", async (_name, command) => {
     expect(await hookDenies(command)).toBe(false);

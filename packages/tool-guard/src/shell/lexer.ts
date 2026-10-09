@@ -211,7 +211,6 @@ function readOperator(s: LexState, op: string): void {
   if (op === "\n") readLineEnd(s);
 }
 
-
 function readEscape(s: LexState): void {
   const next = s.src[s.i + 1];
   s.i += 2;
@@ -286,11 +285,17 @@ function pushRef(w: WordToken, name: string, text: string): void {
   w.value += text;
 }
 
-function readSubstitution(s: LexState, start: number): Token[] {
-  const inner = newState(s.src, start, true, s.trials);
+/** Every substitution on a line is lexed here, so a heredoc it leaves open stays pending on `line`, where bash 5 reads its body. */
+function lexNested(src: string, start: number, trials: ArithTrials, line: LexState | null): LexState {
+  const inner = newState(src, start, true, trials);
   lex(inner);
+  if (line && (inner.leftOpen || inner.heredocs.length > 0)) line.leftOpen = true;
+  return inner;
+}
+
+function readSubstitution(s: LexState, start: number): Token[] {
+  const inner = lexNested(s.src, start, s.trials, s);
   s.i = inner.i + 1;
-  if (inner.leftOpen || inner.heredocs.length > 0) s.leftOpen = true;
   return inner.tokens;
 }
 
@@ -312,25 +317,31 @@ function readBalanced(s: LexState, w: WordToken, open: string, close: string): v
   if (name) pushRef(w, name, text);
   else {
     markComputed(w).value += text;
-    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials));
+    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials, { line: s, procsubs: open === "{" }));
   }
   s.i = i + 1;
 }
 
-/** Token lists of every `$(...)` and backtick substitution in `src` between `from` and `to`. */
-export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
+/** Token lists of every substitution in `src` between `from` and `to`; `at` is the line they sit on, null in a heredoc body. */
+export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src), at: { line: LexState; procsubs: boolean } | null = null): Token[][] {
   const found: Token[][] = [];
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
-    else if (c === "$" && src[j + 1] === "(" && src[j + 2] !== "(") {
-      const inner = newState(src, j + 2, true, trials);
-      lex(inner);
+    else if (opensSubstitution(src, j, at?.procsubs === true)) {
+      const inner = lexNested(src, j + 2, trials, at?.line ?? null);
       found.push(inner.tokens);
       j = inner.i;
     } else if (c === "`") j = scanBacktick(src, j, found, trials);
   }
   return found;
+}
+
+/** `<(` and `>(` substitute only where `procsubs` says so, as in `${...}`; in `$((...))` they compare. */
+function opensSubstitution(src: string, j: number, procsubs: boolean): boolean {
+  if (src[j + 1] !== "(") return false;
+  if (src[j] === "$") return src[j + 2] !== "(";
+  return procsubs && (src[j] === "<" || src[j] === ">");
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {
