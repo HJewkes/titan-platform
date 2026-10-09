@@ -109,7 +109,6 @@ export function sliceMigration(version = 8): Migration {
   return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
 }
 
-export { shepherdEventMigration } from "./events.js";
 export { holdReviewerMigration, holdSatisfiedMigration, lineageMigration } from "./store-migrations.js";
 
 export const AUTHOR_ROLES = ["implementer", "successor"] as const;
