@@ -153,6 +153,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -907,6 +910,21 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  products/titan:
+    dependencies:
+      '@titan-design/daemon':
+        specifier: workspace:^
+        version: link:../../packages/daemon
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       commander:
         specifier: ^14.0.3
         version: 14.0.3

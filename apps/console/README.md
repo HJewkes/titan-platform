@@ -108,8 +108,8 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/agents.messages` | `{ agent, peer?, before?, limit? }` in; that agent's messages, or the pair's, newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
 | `POST /rpc/agents.queue` | `{ include_system? }` in; open items waiting on the human from `/api/queue`, questions first, each with `asker` and `ageMs`. The broker's own notices are counted in `hidden` unless `include_system` is set |
 | `POST /rpc/work.portfolio` | Every initiative with its state, brief `taskPrefix`, open-task rollup, note, source and session counts, newest activity and `personal` flag |
-| `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, and `stageGuessed` when no evidence was found |
-| `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, and the sessions whose `session_origin.task_ids` name it. An unknown id is not found (66) |
+| `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, `stageGuessed` when no evidence was found, and `parent`, `dep` and `deliverables` read with `@titan-design/pm`'s `readEdges` (the field, else the edge tags) |
+| `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, the sessions whose `session_origin.task_ids` name it, its `children`, and each deliverable id joined to its `deliverable.list` record (`null` when unknown; `deliverablesDegraded` when the registry is unread). An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
@@ -230,7 +230,8 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 `server/active-work.ts` is the only code that calls the active-work daemon. It posts to
 `/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
 `READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
-view never makes active-work call GitHub), `note.list`, `source.list` and `source.read`. Each
+view never makes active-work call GitHub), `note.list`, `source.list`, `source.read`, `artifact.list`, `artifact.status`, `context.graph` and
+`deliverable.list` (active-work 0.23 on, read only for a task that names a deliverable). Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 

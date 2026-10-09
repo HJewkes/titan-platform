@@ -16,4 +16,43 @@ lock, replaces the credentials file atomically, and yields to any other writer. 
 each failure once a day per profile through an injected owner-queue deposit callback. See
 `site/reference/anthropic-account.md`.
 
+## The `anthropic-account` bin
+
+```sh
+anthropic-account poll [--write [--refresh]]
+anthropic-account status [--json | --statusline]
+```
+
+- `poll` sends one usage request per profile and prints its windows. `--write` stores each
+  reading as `<config dir>/status-cache/sessions/usage-poll.json`.
+- `--refresh` first renews every access token due within 10 minutes. **It writes
+  `<config dir>/.credentials.json`** and rotates the refresh token, under Claude Code's own
+  refresh lock. Leave it off to keep the poller read-only on credentials. A failed refresh
+  is printed to stderr; it does not file an owner-queue deposit.
+- `status` reads local files only: each profile's login state and newest reading.
+  `--json` prints them as one document, and `--statusline` prints the format
+  `~/.claude/scripts/rate-limits.sh` prints.
+
+Exit codes: 0 ok, 1 a poll, refresh or read failed, 2 a login is missing, expired or
+refused, 64 a usage error. Each account whose login is not present gets one stderr line,
+`anthropic-account: <label>: login <state>`. Output never holds a token or file contents.
+`--statusline` always exits 0 and writes no stderr, so the status line shows `unknown`.
+
+## Installing the poll timer
+
+The bin installs and enables nothing. The templates in `systemd/` run
+`poll --write --refresh` every 150 s. On the host, its operator runs:
+
+```sh
+npm install -g --prefix ~/.local @titan-design/anthropic-account
+mkdir -p ~/.config/systemd/user
+cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now anthropic-account-poll.timer
+journalctl --user -u anthropic-account-poll.service -n 20
+```
+
+Remove `--refresh` from the service's `ExecStart` before enabling to keep the timer from
+writing credentials files.
+
 The first npm publish is pending and owner-only; trusted publishing is set up after it.

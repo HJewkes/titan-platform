@@ -1,0 +1,12 @@
+[Unit]
+Description=Run anthropic-account-poll.service every 150 seconds
+
+[Timer]
+OnActiveSec=10s
+OnBootSec=60s
+OnUnitActiveSec=150s
+AccuracySec=10s
+Unit=anthropic-account-poll.service
+
+[Install]
+WantedBy=timers.target
