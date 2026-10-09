@@ -92,9 +92,12 @@ async function answerUntilSettled(host: FactoryHost, runId: string, world: World
   );
 }
 
-/** Every effect happened once, each gate opened once, and the approved H2 merged. */
+/** Every effect happened once, each gate opened once, and the run itself saw the approved H2 merge. */
 function expectLandedOnce(survivor: FactoryHost, runId: string, world: World): void {
-  expect(survivor.runtime.status(runId)?.status).toBe("completed");
+  const run = survivor.runtime.status(runId);
+  expect(run?.status).toBe("completed");
+  // Only a merged outcome reaches post-merge; a replayed merge that reads the merged PR as closed stops short of it.
+  expect(Object.values(run!.stepResults).map((result) => result.stepId)).toContain("post-merge");
   expect(world.fake.effects).toEqual({ createRef: 0, deleteRef: 0, putContent: 0, createPr: 0, updateBranch: 0, updateRef: 0, merge: 1, rerunFailedJobs: 1 });
   expect(world.fake.pr(1)).toMatchObject({ merged: true, headSha: H2 });
   expect(survivor.gates.get(gateId(runId, "ci-failed"))?.status).toBe("resolved");
