@@ -45,7 +45,13 @@ export function prKey(repo: string, pr: number, headSha: string): string {
 
 /** The relation kind of a key, or null for a merge key or anything else. */
 export function relationKind(key: string): RelationKeyKind | null {
+  const parts = splitKey(key);
+  if (parts === null) return null;
+  const kind = RELATION_KEY_KINDS.find((each) => each === parts.prefix);
+  return kind !== undefined && parts.rest.trim() !== "" ? kind : null;
+}
+
+function splitKey(key: string): { prefix: string; rest: string } | null {
   const colon = key.indexOf(":");
-  const kind = RELATION_KEY_KINDS.find((each) => each === key.slice(0, colon));
-  return kind !== undefined && key.slice(colon + 1).trim() !== "" ? kind : null;
+  return colon < 0 ? null : { prefix: key.slice(0, colon), rest: key.slice(colon + 1) };
 }

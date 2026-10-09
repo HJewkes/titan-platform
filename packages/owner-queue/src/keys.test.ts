@@ -29,6 +29,10 @@ describe("relation keys", () => {
     expect([askKey("x"), componentKey("x"), tokenKey("x"), topicKey("x")].map(relationKind)).toEqual(["ask", "component", "token", "topic"]);
     expect(["task:TP-1", "pr:o/r#1", "topic:", "topic: ", "asks:x", "ask"].map(relationKind)).toEqual([null, null, null, null, null, null]);
   });
+
+  it("are never read from a key with no colon, even one that starts with a kind", () => {
+    expect(["topics", "askx", "tokenX", "components"].map(relationKind)).toEqual([null, null, null, null]);
+  });
 });
 
 describe("prKey", () => {
