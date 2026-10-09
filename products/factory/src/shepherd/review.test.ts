@@ -5,7 +5,7 @@ import { DispatchError, DispatchTimeoutError } from "@titan-design/agent-dispatc
 import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -379,6 +379,53 @@ describe("reviewRoutes", () => {
 
     expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, locator });
   });
+
+  describe("review checkout removal", () => {
+    const removals: string[] = [];
+    const withFakeFs = { ...deps, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void removals.push(path) } } as unknown as ShepherdDeps;
+    const runWith = async (wiring: ReviewWiring) => {
+      const route = reviewRoutes(withFakeFs, wiring).find((candidate) => candidate.match === "sh-await-verdict")!;
+      return route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+    };
+    const runDir = `/data/reviews/review-7-${HEAD.slice(0, 12)}`;
+
+    beforeEach(() => void (removals.length = 0));
+
+    it("removes the run's checkout dir once the run reaches a verdict", async () => {
+      await runWith({ reader: { read: async () => [message()] } });
+
+      expect(removals).toEqual([runDir]);
+    });
+
+    it("keeps it when the on-time wait ends with no verdict, because the reviewer may still be writing one", async () => {
+      let clock = 5_000;
+      const ticking = { ...withFakeFs, now: () => (clock += 1_000) } as unknown as ShepherdDeps;
+      const route = reviewRoutes(ticking, { reader: { read: async () => [] }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
+
+      const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+
+      expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "none" });
+      expect(removals).toEqual([]);
+    });
+
+    it("keeps it when the verdict step is aborted, so a replay still finds the reviewer's checkout", async () => {
+      const abort = new AbortController();
+      const route = reviewRoutes(withFakeFs, { reader: { read: async () => { abort.abort(); throw new Error("aborted"); } }, timeoutMs: 2_000 }).find((candidate) => candidate.match === "sh-await-verdict")!;
+
+      await route.runner.run({ prompt: JSON.stringify(input), signal: abort.signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never).catch(() => undefined);
+
+      expect(removals).toEqual([]);
+    });
+
+    it("still returns the verdict when the removal itself fails", async () => {
+      const failing = { ...deps, reviewCheckouts: { root: "/data/reviews", remove: async () => Promise.reject(new Error("EBUSY")) } } as unknown as ShepherdDeps;
+      const route = reviewRoutes(failing, { reader: { read: async () => [message()] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
+
+      const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "sh-await-verdict" } as never);
+
+      expect(outcome.ok && JSON.parse(outcome.output).result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
+  });
 });
 
 function portListing(files: PrFile[], changedFiles = files.length) {
@@ -464,6 +511,8 @@ describe("sh-review", () => {
     files?: PrFile[];
     /** PR 7's own changed-file count; above the length of `files` the list reads as truncated. */
     changedFiles?: number;
+    /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
+    removals?: string[];
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -475,7 +524,7 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -1109,6 +1158,15 @@ describe("sh-review", () => {
       expect(clock.now - START).toBe(DEFAULT_HOLD_WAIT_MS);
       expect(dispatch.spawns).toEqual([]);
     });
+
+    it("removes the run's checkout dir when the reviewer was never started", async () => {
+      const clock = { now: START, sleeps: 0 };
+      const removals: string[] = [];
+
+      await reviewSteps(heldFor(clock, Infinity), { clock, removals }).review(spawnIntent);
+
+      expect(removals).toEqual([`/data/reviews/review-7-${HEAD.slice(0, 12)}`]);
+    });
   });
 
   it("answers none when the spawned reviewer starts no session before the deadline", async () => {
@@ -1138,7 +1196,7 @@ describe("sh-review", () => {
 });
 
 describe("reviewerBrief", () => {
-  const brief = (questions?: string[]) => reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, questions });
+  const brief = (questions?: string[]) => reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, checkoutRoot: "/data/reviews", questions });
 
   it("is not itself a verdict, so an echo of the brief is never accepted", () => {
     expect(parseVerdictBlock(brief()).ok).toBe(false);
@@ -1151,7 +1209,7 @@ describe("reviewerBrief", () => {
   it("asks a re-review for a section naming the recurring defect class, and a first review for none", () => {
     const ask = "your review must include a section that starts with a line `Defect class:`";
 
-    const rereview = reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, fixFirsts: 2 });
+    const rereview = reviewerBrief({ repo: "octo/demo", pr: 7, head: HEAD, checkoutRoot: "/data/reviews", fixFirsts: 2 });
 
     expect(rereview).toContain("This PR already had 2 FIX_FIRST reviews");
     expect(rereview).toContain(ask);
@@ -1165,7 +1223,7 @@ describe("reviewerBrief", () => {
   });
 
   it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you send your verdict, remove your checkout.*literal path.*not `\$dir`.*rm -rf <that path>.*exactly that directory/);
+    expect(brief()).toMatch(/After you send your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
@@ -1212,6 +1270,8 @@ describe("reviewPhase", () => {
     cause?: ReviewCause;
     /** The profile each class of PR is spawned with; absent means the dispatch records none. */
     roles?: ReviewerRoles;
+    /** Collects the checkout dirs removed; no scene touches the real filesystem. */
+    removals?: string[];
   }
 
   async function review(scene: Scene) {
@@ -1221,7 +1281,7 @@ describe("reviewPhase", () => {
     fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
-    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat" };
+    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
     const own = (input: AwaitVerdictInput) => scene.dispatch.agents.filter((candidate) => candidate.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), clock + 1));
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
@@ -1564,6 +1624,26 @@ describe("reviewPhase", () => {
       const blocked = said(who, "Sending the verdict to the coordinator.", input.dispatchedAt + 1);
       return now < verdictFrom ? [blocked] : [blocked, said(who, verdictAt(input.head), now)];
     };
+    it("removes the run's checkout dir when the reviewer exits and the round records no verdict", async () => {
+      const removals: string[] = [];
+
+      const { verdicts } = await review({ dispatch: fakeDispatch(crew()), read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO, removals });
+
+      expect(verdicts).toMatchObject([{ kind: "none" }]);
+      expect(new Set(removals)).toEqual(new Set([`/data/reviews/review-1-${H1.slice(0, 12)}`]));
+    });
+
+    it("removes the run's checkout dir again for a new reviewer on a retried round", async () => {
+      const removals: string[] = [];
+
+      await review({ dispatch: fakeDispatch(crew()), read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO, removals, fresh: true });
+      const afterFirst = removals.length;
+      await review({ dispatch: fakeDispatch(crew()), read: lateReader(Number.POSITIVE_INFINITY, true), policy: AUTO, removals, fresh: true });
+
+      expect(afterFirst).toBeGreaterThan(0);
+      expect(removals.length).toBeGreaterThan(afterFirst);
+    });
+
     it("reads the MERGE written after the deadline as MERGE and takes it through the evidence step", async () => {
       const dispatch = fakeDispatch(crew());
 
