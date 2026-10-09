@@ -195,10 +195,23 @@ describe("linear time and two false positives (TP-1684)", () => {
     }
   });
 
-  it("lints 7k distinct ids in bounded time", () => {
-    const ids = Array.from({ length: 7000 }, (_, i) => `VW-${i}`).join(" ");
+  it("lints distinct ids in linear time, not quadratic", () => {
+    const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
+    const timeFor = (count: number) => {
+      const ids = Array.from({ length: count }, (_, i) => `VW-${i}`).join(" ");
+      const question = "Recommend yes. " + ids + NOW;
+      lintAsk({ question });
+      return median(Array.from({ length: 5 }, () => {
+        const start = performance.now();
+        lintAsk({ question });
+        return performance.now() - start;
+      }));
+    };
 
-    expect(lintTime("Recommend yes. " + ids + NOW)).toBeLessThan(Math.max(4 * baseline() + 50, 200));
+    const ratio = timeFor(14_000) / Math.max(timeFor(7000), 1);
+
+    // Linear growth doubles the time; quadratic quadruples it. A load spike shifts both sizes alike.
+    expect(ratio).toBeLessThan(3);
   });
 
   it("does not read Node.js or a slash-separated list as a path", () => {
