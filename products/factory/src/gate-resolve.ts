@@ -99,9 +99,9 @@ async function cliResolver(
   return { resolver: proof === undefined ? coordinator : { ...owner, confirmEvent: proof } };
 }
 
-export const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
+const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$/;
 const DECISION = /^[a-z][a-z0-9-]{0,31}$/;
-export const HEAD_SHA = /^[0-9a-f]{40}$/;
+const HEAD_SHA = /^[0-9a-f]{40}$/;
 const MAX_REASON = 256;
 
 /** The dialog text, built only from fields that pass a strict shape, so nothing in it can break a line or hide text. */
