@@ -1,5 +1,19 @@
 # @titan-design/daemon
 
+## 0.6.0
+
+### Minor Changes
+
+- 948d6de: `/events` is bounded. A new `eventLimits` option on `startDaemon` and `buildHttpApp` sets `maxSubscribers` (default 64, counted across both listeners; one more stream answers 503) and `maxQueued` (default 256 unwritten broadcasts per stream; one more disconnects that stream, so a slow client reconnects instead of silently missing a frame). `EventLimits` and `DEFAULT_EVENT_LIMITS` are exported.
+- 875eee0: The remote listener now speaks only HTTPS. `RemoteListenerOptions.tls: { certFile, keyFile }` is required; a `remote` without it throws `RemoteBindError` before anything binds, so no setting serves plain HTTP beyond loopback. The pair is checked before binding (`TlsFileError` for a missing or unreadable file, a key that is not private to this user or not the certificate's, an expired certificate, or one that does not cover every `allowedHosts` name), and re-read every `tlsReloadMs` (60s) so a renewed certificate is served with no restart; a renewal that fails the checks keeps the last good pair. Remote origins are `https://` only (new `RequestGuardOptions.httpsOnly`), and the session cookie is always `Secure`.
+- 718eda8: Cap every `POST /rpc/:name` body before it is buffered. The cap is 1 MiB by default (`DEFAULT_RPC_BODY_LIMIT`). Set `rpcBodyLimit: { maxBytes, perCommand }` on `startDaemon` or `buildHttpApp` to change it for all commands or for one. A body over the cap gets 413, whether the client sent a `Content-Length` or streamed it chunked. The auth gate's record survives the request swap the limit makes, so a gated `/rpc` call still reaches `createContext` with its credential.
+
+### Patch Changes
+
+- 84bd62f: A `/rpc` `Content-Length` that is not a number now gets 413 from the body cap instead of passing it. The daemon README names the remaining loopback residual: the cap bounds one body, not how many are in flight. The console's `inbox.deposit` body cap is now three times the stored 64 KB cap, so a valid deposit whose non-ASCII characters arrive as `\uXXXX` escapes is no longer refused with 413.
+- Updated dependencies [1893149]
+  - @titan-design/registry@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes

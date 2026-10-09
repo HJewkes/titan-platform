@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
 import type * as AuthModule from "./auth.js";
 import { createDaemonAuth, ensureTokenFile, getRequestAuth, type DaemonAuth } from "./auth.js";
+import { EventHub } from "./events.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
 
@@ -155,6 +156,14 @@ describe("POST /rpc/:name body limit", () => {
     const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
 
     const res = await postRpc(app, "greet", JSON.stringify({ name: "x".repeat(64) }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it.each(["abc", "NaN", "12abc"])("answers 413 to a Content-Length of %j, which is no number to compare", async (length) => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "x" }), { headers: { "content-length": length } });
 
     expect(res.status).toBe(413);
   });
@@ -382,5 +391,41 @@ describe("gate", () => {
 
   it("leaves an ungated app's /health open", async () => {
     expect((await buildApp().request("/health")).status).toBe(200);
+  });
+});
+
+describe("/events bounds", () => {
+  async function readToEnd(res: Response): Promise<string> {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) text += decoder.decode(chunk.value, { stream: true });
+    return text;
+  }
+
+  it("answers 503 to one subscriber past the cap, and admits one again after a stream closes", async () => {
+    const hub = new EventHub();
+    const app = buildApp({ hub, eventLimits: { maxSubscribers: 1 } });
+
+    const first = await app.request("/events");
+    const refused = await app.request("/events");
+    await first.body!.cancel();
+    const after = await app.request("/events");
+
+    expect([first.status, refused.status, after.status]).toEqual([200, 503, 200]);
+    expect(hub.size).toBe(1);
+    await after.body!.cancel();
+  });
+
+  it("disconnects a subscriber whose unread backlog passes maxQueued, and drops it from the hub", async () => {
+    const hub = new EventHub();
+    const app = buildApp({ hub, eventLimits: { maxQueued: 2 } });
+    const res = await app.request("/events");
+
+    for (let i = 0; i < 10; i++) hub.broadcast({ event: "change", data: String(i) });
+    const text = await readToEnd(res);
+
+    expect(hub.size).toBe(0);
+    expect(text.match(/event: change/g)?.length ?? 0).toBeLessThan(10);
   });
 });

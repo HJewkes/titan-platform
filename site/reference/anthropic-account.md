@@ -226,7 +226,7 @@ for (const { label, result, writeError } of await pollAll({ fetch })) {
 }
 ```
 
-`pollUsage(profile, { fetch, now?, uid?, timeoutMs? })` reads the access token from
+`pollUsage(profile, { fetch?, now?, uid?, timeoutMs? })` reads the access token from
 `<configDir>/.credentials.json` through the same gate as `readLoginState`, sends one
 request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
 
@@ -238,7 +238,7 @@ request, and resolves to `{ ok: true, reading }` or `{ ok: false, failure }`:
 | `io` | an unexpected filesystem error | no |
 | `http-<status>` | any status outside 2xx, a 3xx included | yes |
 | `network` | the fetch rejected or timed out, the body stalled past the timeout, or the response came from a followed redirect | yes |
-| `malformed` | a 2xx body over 64 KiB, not JSON, or with no known window | yes |
+| `malformed` | a 2xx body over 64 KiB, not JSON, with a known window in the wrong shape, or with no known window | yes |
 
 The request is `GET https://api.anthropic.com/api/oauth/usage` with three headers:
 `authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20` (Claude Code's own
@@ -246,29 +246,194 @@ value) and `accept: application/json`. It sets `redirect: "error"` and an
 `AbortSignal.timeout` of `timeoutMs` (default 10 s) that also bounds the body read. It is never retried. The token must be an
 RFC 6750 `b64token` of at most 4096 characters, so it cannot split a header; anything
 else is refused as `malformed` before a request. `now` defaults to `Date.now()`, sets
-`written_at`, and decides expiry; `uid` is as for `readLoginState`.
+`written_at`, and decides expiry; `uid` is as for `readLoginState`. `fetch` defaults to
+`globalThis.fetch`. Whatever `fetch` is passed receives the raw access token in the
+`authorization` header, so pass only one that does not log, forward or persist request headers.
 
 A 2xx body is parsed against an allowlist of window keys, `five_hour`, `seven_day`,
 `seven_day_opus`, `seven_day_sonnet` and `seven_day_oauth_apps`, each
 `{ utilization: number, resets_at: string | null }` with `resets_at` at most 64 characters. Every other key
-is dropped unread, a known window in another shape is dropped, and the rest goes through
+is dropped unread, a known window in another shape makes the whole reading `malformed`, and the rest goes through
 `usageFromOAuthResponse`. The reading's `account` is the profile's label, left out when
 `redactSecrets` would change it. A non-2xx body is cancelled without being read. It throws
 only a `RangeError`, with a fixed message, for a non-finite `now` or a `timeoutMs` that is
 not a positive number.
 
-`pollAll({ fetch, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
+`pollAll({ fetch?, now?, uid?, timeoutMs?, profiles?, discover? })` polls every profile at
 once, `profiles` or else `discoverProfiles(discover)`, and writes each reading with
 `writeReading`. It resolves to one `{ label, result, file?, writeError? }` per profile, in
 order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
 One profile's failure never stops another.
 
+## Refreshing an access token
+
+```ts
+import { refreshIfNeeded } from "@titan-design/anthropic-account/node";
+import { writeDeposit } from "@titan-design/owner-queue/spool";
+
+const result = await refreshIfNeeded(
+  { label: "agents", configDir },
+  { fetch, marginMs: 10 * 60_000, onFailure: (deposit) => writeDeposit(spoolDir, deposit) },
+);
+```
+
+`refreshIfNeeded(profile, { fetch, marginMs, now?, uid?, timeoutMs?, onFailure? })` renews
+the profile's OAuth access token when `needsRefresh(state, now, marginMs)` says it is due,
+and writes the new credentials back. It is the one place in the package that writes a
+credentials file, and running Claude Code sessions read that file, so it follows Claude
+Code's own refresh closely:
+
+1. Reads `.credentials.json` through the `readLoginState` gate. Nothing happens unless the
+   token is due and the login has a usable refresh token. It also checks that
+   `JSON.stringify` reproduces the file's exact bytes, compact or indented by 2, 4 or a
+   tab. A layout it cannot reproduce fails as `unrecognized-format` before any request,
+   because a rotated refresh token that cannot be stored logs the profile out.
+2. Takes Claude Code's two refresh locks, `<configDir>/.oauth_refresh.lock` and
+   `<realpath(configDir)>.lock`. Each is a directory made with `mkdir`, the scheme
+   `proper-lockfile` uses. A lock that is already held is never stolen; the result is
+   `locked`, and the next poll tries again. Claude Code treats a lock older than 60 s as
+   stale, so `timeoutMs` is capped at 30 s (`MAX_REFRESH_TIMEOUT_MS`, default 10 s).
+3. Re-reads the file through the gate. If it changed, another session refreshed it, and the
+   result is `refreshed-elsewhere`.
+4. Sends `POST https://platform.claude.com/v1/oauth/token`, `content-type: application/json`,
+   with body `{ grant_type: "refresh_token", refresh_token, client_id, scope }`. The values
+   are Claude Code 2.1.x's own. `client_id` is the stored `clientId`, or else Claude Code's
+   (`OAUTH_CLIENT_ID`). `scope` is space-separated: the stored scopes when a `clientId` is
+   stored (the defaults if it stores none), and otherwise `DEFAULT_REFRESH_SCOPES` plus any `user:projects:*` scope already
+   held. It sets `redirect: "error"` and is never retried. Only a 200 counts. Its body must
+   hold an `access_token` and an integer `expires_in`, and may hold a `refresh_token` and
+   `refresh_token_expires_in`; each token must be an RFC 6750 `b64token`.
+5. Writes the new JSON to `.credentials.json.<pid>.<random>.tmp` in the config dir,
+   exclusively, mode 0600, then `fsync`s it.
+6. Re-reads the credentials file through the gate once more. If its bytes changed while the
+   request was in flight, the temp file is removed and the login is compared, not the
+   bytes. The old refresh token is spent by now, and a rotated one in the response may be
+   the only live one, so the new tokens are not dropped for an unrelated change:
+   - The file still holds the refresh token just spent, for example because a session
+     wrote another key. The new tokens are applied to that writer's file, and steps 5 to
+     7 run again.
+   - The file is unreadable or half-written. The refresher waits 100 ms and reads it
+     again.
+   - The file holds a different refresh token (a re-login, or a refresh elsewhere), or
+     it is gone (a logout). That writer's file stands, and the result is
+     `refreshed-elsewhere`.
+   - After four attempts the result is `failed` with `write-conflict`, which files a
+     deposit, and the file is left as the other writer left it.
+7. Renames the temp file over `.credentials.json`, then `fsync`s the dir, best effort. If
+   the write or the rename throws, the result is `failed` with `write-failed` when the
+   response rotated the refresh token, since the stored one no longer works, and with `io`
+   when it did not.
+
+The file is never truncated in place, so a session reading it sees the old file or the new
+one. Only `accessToken` and `expiresAt` (`now` plus `expires_in`) change. So do
+`refreshToken` and `refreshTokenExpiresAt` when the response rotates them. Every other key
+keeps its bytes and its position. Locks are released on every path, and only a lock
+directory this call made is removed.
+
+While it holds the locks, the refresher keeps a holder record,
+`.oauth_refresh.lock.anthropic-account`, beside them in the config dir: its pid and the
+inode and ctime of each lock dir it made. The record sits outside the lock dir because
+Claude Code removes a stale lock with `rmdir`. If a crash leaves the locks behind, the next
+call finds them held, sees the recorded pid has exited, removes only the dirs whose inode
+and ctime still match, and takes the locks again. A lock with no record, or one whose
+identity differs, is Claude Code's and is left alone.
+
+| result | when | deposit |
+|---|---|---|
+| `fresh` | the token is not due | no |
+| `refreshed`, with `expiresAt` | the new credentials were written | no |
+| `refreshed-elsewhere` | the file changed before the request, or another login or a logout replaced it after | no |
+| `locked` | a refresh lock is held | no |
+| `skipped`, with `reason` | the file is missing or refused by the gate, or the login is one Claude Code would not refresh: neither the `user:inference` scope nor a `subscriptionType` | no |
+| `failed`, with `failure` and `deposited` | `login-required` (no usable refresh token), `unrecognized-format`, `write-conflict`, `write-failed`, `http-<status>`, `network`, `malformed` or `io` | yes |
+
+Each failure calls `onFailure` once with a `RefreshFailureDeposit`. That is an owner-queue
+`OwnerItemDeposit`: asker `anthropic-account`, kind `do`, a one-line summary naming the
+profile label and the failure kind, and a fixed context line. A failure that needs a new
+login (`login-required`, `http-400`, `http-401`, `http-403`, `unrecognized-format`,
+`write-conflict`, `write-failed`) has the `depositId`
+`token-refresh-<label>-relogin-<UTC day>`. Any other failure, which a later poll may clear,
+has `token-refresh-<label>-<UTC day>`. The spool keeps the first deposit for each id, so a
+retry deposit filed earlier in the day never hides a log-in-again one, and a poller that
+retries files at most two items per profile per day. A label that is not a short plain name, or that `redactSecrets`
+would change, is written `unlabelled`. The package is tier 0 and owner-queue is tier 2, so
+the caller wires `writeDeposit`. A deposit that throws leaves `deposited: false`, and the
+result is otherwise unchanged.
+
+Like `pollUsage`, it never logs, and never throws for anything the file, the lock or the
+server does. An error body is cancelled unread, a fetch rejection or filesystem error is
+dropped with its message, and only a bad `now`, `marginMs` or `timeoutMs` throws a
+`RangeError` with a fixed message.
+
+## The `anthropic-account` bin
+
+```sh
+anthropic-account poll [--write [--refresh]]
+anthropic-account status [--json | --statusline]
+```
+
+Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
+`~/.claude-profiles`, or `CLAUDE_CONFIG_DIRS` when it is set.
+
+- `poll` runs `pollUsage` for every profile and prints one line each, such as
+  `agents: five_hour 23%, seven_day 41.5%`. With `--write` it runs `pollAll`, which stores
+  each reading as `usage-poll.json`.
+- `--refresh`, which needs `--write`, first runs `refreshIfNeeded` for every profile with a
+  10-minute margin, then polls with the renewed token. **It writes
+  `<config dir>/.credentials.json`** whenever a token is due, and the server may rotate
+  the refresh token, so leave it off for a poller that only reads credentials. A refreshed
+  profile prints `<label>: token refreshed`, and a failed refresh prints
+  `anthropic-account: <label>: token refresh failed: <failure>` to stderr. The bin passes
+  no `onFailure`, so no owner-queue deposit is filed: this package is tier 0 and
+  owner-queue is tier 2. A tier-2 or product caller wires `writeDeposit`.
+- `status` reads local files only, with no request. It prints each profile's login state
+  and newest reading with its age. `--json` prints `{ profiles: [{ label, configDir, login,
+  usage }] }`, where `login` is the token-free `LoginState` (or `{ status: "unreadable" }`)
+  and `usage` is `{ written_at, age_seconds, rate_limits }` or `null`.
+- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints: first
+  `5h|weekly|5h_reset|weekly_reset|||||age_s` for the account in `CLAUDE_CONFIG_DIR` (or
+  `~/.claude`), or `unknown|unknown|||||||`, then `other|<label>|5h|weekly|age_s|` for each
+  other profile whose reading has both windows. Percentages are floored. It always exits
+  0 and writes no stderr.
+
+| exit | when |
+|---|---|
+| 0 | every profile succeeded |
+| 1 | a poll, a refresh, a usage-file write or a credentials read failed |
+| 2 | a login is `missing`, `expired` or `refused`; this wins over 1 |
+| 64 | an unknown command or flag, a repeated flag, or `--refresh` without `--write` |
+
+Each account whose login is not present gets one stderr line,
+`anthropic-account: <label>: login <missing|expired|refused (<reason>)>`. Every stderr line
+is a fixed template of the label, a state and a failure kind. A label that is not a short
+plain name, or that `redactSecrets` would change, prints as `unlabelled`. Arguments, file
+contents, response bodies and error messages are never printed.
+
+### Installing the poll timer
+
+`systemd/` ships `anthropic-account-poll.service`, a oneshot running
+`%h/.local/bin/anthropic-account poll --write --refresh`, and `anthropic-account-poll.timer`,
+which starts it 10 s after the timer starts and every 150 s after that. The package
+installs and enables nothing. The host operator runs:
+
+```sh
+npm install -g --prefix ~/.local @titan-design/anthropic-account
+mkdir -p ~/.config/systemd/user
+cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now anthropic-account-poll.timer
+```
+
+Because the service passes `--refresh`, the timer writes credentials files. Remove the flag
+from `ExecStart` before enabling to keep it read-only. Failures land in
+`journalctl --user -u anthropic-account-poll.service`.
+
 ## What it deliberately does not do
 
-The root reads no files, makes no request and writes nothing. The `./node` subpath writes
-only the usage file and sends only the usage request, through the caller's `fetch`. Neither
-refreshes a token or touches the refresh token: an expired token is reported, not renewed.
-Neither returns, logs or stores a token, and no failure carries a message. The tests use
+The root reads no files, makes no request and writes nothing. Outside `refreshIfNeeded`, the
+`./node` subpath writes only the usage file and sends only the usage request, through the
+caller's `fetch`; `pollUsage` reports an expired token and never renews it. Nothing returns,
+logs or stores a token anywhere but the credentials file, and no failure carries a message. The tests use
 canary tokens, a fake `fetch` and a temp home, and assert the canary is absent from every
 result, error, captured console or stream line and written file, including when the server
 echoes the token in its body, a header, a redirect `Location` or an error body.

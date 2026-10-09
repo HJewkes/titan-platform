@@ -37,11 +37,13 @@ import { shepherdEventMigration } from "./shepherd/events.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
+import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
@@ -79,6 +81,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   redeploy?: Deployer;
   /** Tells a repo's seat that a woken fixer exited with no push; absent means the owner gate takes every such exit. */
   exitNotice?: ExitNoticePorts;
+  /** The test rules Shepherd's briefs carry; `configuredRoutes` resolves them once from the host serve starts on. */
+  suiteRules?: SuiteRules;
   /** What measurement-audit reads and asks; defaults to this checkout's machine and `claude -p`. */
   audit?: AuditPorts;
 }
@@ -105,7 +109,7 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
     route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot)) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train) };
@@ -200,7 +204,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const port = overrides.port ?? githubPort(ghCliWire());
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
-  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

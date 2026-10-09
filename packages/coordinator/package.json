@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/coordinator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "examples",
     "README.md"
   ],
   "author": "Henry Jewkes",

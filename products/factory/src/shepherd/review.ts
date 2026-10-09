@@ -219,7 +219,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
   const facts = await spawnFacts(deps, runId, intent, target, roles);
-  const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
+  const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief, testRule: deps.suiteRules?.reviewer }, codewatch, questions);
   if (asking) {
     const refused = await startReviewer(dispatch, intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
     if (refused) return refused;

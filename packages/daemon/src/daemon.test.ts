@@ -1,20 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { once } from "node:events";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, request } from "node:http";
+import { chmod, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { createServer, request, type ClientRequest, type IncomingMessage, type RequestOptions } from "node:http";
+import { request as httpsRequest } from "node:https";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
+import { connect as tlsConnect } from "node:tls";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { SESSION_COOKIE, TokenFileError, ensureTokenFile, signSession } from "./auth.js";
-import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type StartDaemonOptions } from "./daemon.js";
+import { SESSION_COOKIE, TokenFileError, ensureTokenFile, mintLoginCode, signSession } from "./auth.js";
+import { DaemonAlreadyRunningError, DaemonPortInUseError, startDaemon, type DaemonHandle, type RemoteListenerOptions, type StartDaemonOptions } from "./daemon.js";
 import type * as BindGuardModule from "./bind-guard.js";
 import { NonLoopbackBindError, RemoteBindError, assertRemoteHost } from "./bind-guard.js";
 import { daemonPaths, readPidFile, writePidFile } from "./lifecycle.js";
 import { silentLogger } from "./logger.js";
-import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
+import { createTestContext, createTestRegistry, writeSelfSignedCert, type SelfSignedPair, type TestContext } from "./test-fixtures.js";
+import { TlsFileError } from "./tls-files.js";
 
 // The one test seam for the remote listener: 127.0.0.2 is loopback, so the remote suite lets
 // exactly that address past the refusal. Every other host still meets the real check.
@@ -338,9 +341,19 @@ interface Reply {
   body: string;
 }
 
-function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string): Promise<Reply> {
+/** How to reach a TLS listener: the self-signed certificate to trust, and the name to verify it against. */
+interface Tls {
+  ca: string;
+  servername?: string;
+}
+
+function open(options: RequestOptions, tls: Tls | undefined, onResponse: (res: IncomingMessage) => void): ClientRequest {
+  return tls ? httpsRequest({ ...options, ...tls }, onResponse) : request(options, onResponse);
+}
+
+function send(address: string, port: number, method: string, route: string, headers: Record<string, string> = {}, body?: string, tls?: Tls): Promise<Reply> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: address, port, path: route, method, headers }, (res) => {
+    const req = open({ host: address, port, path: route, method, headers }, tls, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") }));
@@ -351,14 +364,25 @@ function send(address: string, port: number, method: string, route: string, head
 }
 
 /** The first bytes of a response; for a stream that never ends, such as `/events`. */
-function sendHead(address: string, port: number, route: string, headers: Record<string, string>): Promise<number> {
+function sendHead(address: string, port: number, route: string, headers: Record<string, string>, tls?: Tls): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: address, port, path: route, headers }, (res) => {
+    const req = open({ host: address, port, path: route, headers }, tls, (res) => {
       resolve(res.statusCode ?? 0);
       req.destroy();
     });
     req.on("error", reject);
     req.end();
+  });
+}
+
+/** The SHA-256 fingerprint of the certificate the listener presents to a new connection. */
+function servedFingerprint(address: string, port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = tlsConnect({ host: address, port, rejectUnauthorized: false }, () => {
+      resolve(socket.getPeerCertificate().fingerprint256);
+      socket.destroy();
+    });
+    socket.on("error", reject);
   });
 }
 
@@ -416,15 +440,17 @@ async function failOnProbedPort(start: (port: number) => Promise<DaemonHandle>):
 
 describe("startDaemon remote host refusal", () => {
   let tokenFile: string;
+  let tls: SelfSignedPair;
   beforeEach(() => {
     tokenFile = path.join(stateDir, "lan.token");
     ensureTokenFile(tokenFile);
+    tls = writeSelfSignedCert(stateDir, ["lan-box"]);
   });
 
   it.each(["0.0.0.0", "::", "0:0:0:0:0:0:0:0", "::ffff:0.0.0.0", "127.0.0.1", REMOTE, "::1", "::ffff:127.0.0.1", "localhost", "lan-box", "", "[192.168.1.20]"])(
     "refuses remote.host %j before binding or writing the pid file",
     async (host) => {
-      const attempt = startDaemon(options({ remote: { host, tokenFile } }));
+      const attempt = startDaemon(options({ remote: { host, tokenFile, tls } }));
 
       await expect(attempt).rejects.toBeInstanceOf(RemoteBindError);
       await expect(attempt).rejects.toMatchObject({ host });
@@ -433,7 +459,7 @@ describe("startDaemon remote host refusal", () => {
   );
 
   it("refuses a remote listener beside an unauthenticated non-loopback one", async () => {
-    const attempt = startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: true, remote: { host: "192.0.2.1", tokenFile } }));
+    const attempt = startDaemon(options({ host: "0.0.0.0", allowUnauthenticatedNonLoopback: true, remote: { host: "192.0.2.1", tokenFile, tls } }));
 
     await expect(attempt).rejects.toBeInstanceOf(RemoteBindError);
   });
@@ -443,7 +469,7 @@ describe("startDaemon remote host refusal", () => {
   it("refuses a missing token file before binding", async () => {
     const held = await holdPort("127.0.0.1");
     try {
-      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile: path.join(stateDir, "absent.token") } }));
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile: path.join(stateDir, "absent.token"), tls } }));
 
       await expect(attempt).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
@@ -455,7 +481,7 @@ describe("startDaemon remote host refusal", () => {
     const held = await holdPort("127.0.0.1");
     await chmod(tokenFile, 0o640);
     try {
-      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile } }));
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile, tls } }));
 
       await expect(attempt).rejects.toBeInstanceOf(TokenFileError);
     } finally {
@@ -463,8 +489,66 @@ describe("startDaemon remote host refusal", () => {
     }
   });
 
+  it.each([
+    ["no tls at all", undefined],
+    ["an empty certFile", { certFile: "", keyFile: "k" }],
+    ["an empty keyFile", { certFile: "c", keyFile: "" }],
+  ])("refuses a remote listener with %s, which would serve plain HTTP, before binding", async (_label, noTls) => {
+    const held = await holdPort("127.0.0.1");
+    try {
+      const remote = { host: "192.0.2.1", tokenFile, tls: noTls } as unknown as RemoteListenerOptions;
+      const attempt = startDaemon(options({ port: held.port, remote }));
+
+      await expect(attempt).rejects.toThrow(/it has no TLS/);
+      expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+    } finally {
+      await held.release();
+    }
+  });
+
+  it.each([
+    ["a missing certificate", () => ({ ...tls, certFile: path.join(stateDir, "absent.crt") }), /absent\.crt refused: it cannot be opened \(ENOENT\)/],
+    ["a missing key", () => ({ ...tls, keyFile: path.join(stateDir, "absent.key") }), /absent\.key refused: it cannot be opened \(ENOENT\)/],
+    ["a key that is not the certificate's", () => ({ ...tls, keyFile: writeSelfSignedCert(stateDir, ["lan-box"], { prefix: "other" }).keyFile }), /not the key of the certificate/],
+    ["a certificate that does not cover an allowed name", () => writeSelfSignedCert(stateDir, ["elsewhere"], { prefix: "elsewhere" }), /does not cover the name "lan-box"/],
+    ["a certificate that is not PEM", () => ({ ...tls, certFile: tokenFile }), /not valid PEM/],
+  ])("fails start on %s, binding nothing and writing no pid file", async (_label, files, message) => {
+    const held = await holdPort("127.0.0.1");
+    try {
+      const attempt = startDaemon(options({ port: held.port, remote: { host: "192.0.2.1", tokenFile, tls: files(), allowedHosts: ["lan-box"] } }));
+
+      await expect(attempt).rejects.toBeInstanceOf(TlsFileError);
+      await expect(attempt).rejects.toThrow(message);
+      expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+    } finally {
+      await held.release();
+    }
+  });
+
+  it("fails start on an expired certificate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    try {
+      const attempt = startDaemon(options({ remote: { host: "192.0.2.1", tokenFile, tls } }));
+
+      await expect(attempt).rejects.toThrow(/it is valid only from/);
+      expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails start on a group-readable key", async () => {
+    await chmod(tls.keyFile, 0o640);
+
+    const attempt = startDaemon(options({ remote: { host: "192.0.2.1", tokenFile, tls } }));
+
+    await expect(attempt).rejects.toThrow(/readable by group or others/);
+    expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
+  });
+
   it("binds both listeners or neither: a remote bind failure closes loopback and writes no pid file", async () => {
-    const { port, failure } = await failOnProbedPort((probed) => startDaemon(options({ port: probed, remote: { host: "192.0.2.1", tokenFile } })));
+    const { port, failure } = await failOnProbedPort((probed) => startDaemon(options({ port: probed, remote: { host: "192.0.2.1", tokenFile, tls } })));
 
     expect(failure).toMatchObject({ code: "EADDRNOTAVAIL" });
     expect(await canBind("127.0.0.1", port)).toBe(true);
@@ -474,8 +558,11 @@ describe("startDaemon remote host refusal", () => {
 
 // Linux routes all of 127/8 to lo; macOS answers only 127.0.0.1 unless an alias is added.
 describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.0.0.2 stands in for the LAN)", () => {
+  const FQDN = "lan-box.example.ts.net";
   let tokenFile: string;
   let secret: string;
+  let pair: SelfSignedPair;
+  let port: number;
   const json = { "content-type": "application/json" };
 
   beforeEach(() => {
@@ -484,129 +571,206 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     });
     tokenFile = path.join(stateDir, "lan.token");
     secret = ensureTokenFile(tokenFile);
+    pair = writeSelfSignedCert(stateDir, [FQDN, "lan-box", REMOTE]);
   });
 
   afterEach(() => {
     vi.mocked(assertRemoteHost).mockReset();
   });
 
+  const remoteOptions = (extra: Partial<RemoteListenerOptions> = {}): RemoteListenerOptions => ({
+    host: REMOTE,
+    tokenFile,
+    tls: { certFile: pair.certFile, keyFile: pair.keyFile },
+    allowedHosts: ["lan-box", FQDN],
+    ...extra,
+  });
+
   async function startRemote(overrides: Partial<StartDaemonOptions<TestContext>> = {}): Promise<number> {
-    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile, allowedHosts: ["lan-box"] }, ...overrides }));
-    return handle.port;
+    handle = await startDaemon(options({ remote: remoteOptions(), ...overrides }));
+    port = handle.port;
+    return port;
   }
 
+  /** An HTTPS request to the remote listener that trusts the test certificate. */
+  const sendRemote = (method: string, route: string, headers: Record<string, string> = {}, body?: string, servername = FQDN): Promise<Reply> =>
+    send(REMOTE, port, method, route, headers, body, { ca: pair.cert, servername });
   const bearer = (): Record<string, string> => ({ authorization: `Bearer ${secret}` });
   const cookie = (): Record<string, string> => ({ cookie: `${SESSION_COOKIE}=${signSession(secret)}` });
-  const remoteOrigin = (port: number): Record<string, string> => ({ origin: `http://${REMOTE}:${port}` });
+  const remoteOrigin = (): Record<string, string> => ({ origin: `https://${REMOTE}:${port}` });
 
   it("answers 401 on /health and /rpc without credentials", async () => {
-    const port = await startRemote();
+    await startRemote();
 
-    const health = await send(REMOTE, port, "GET", "/health");
-    const rpc = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...remoteOrigin(port) }, '{"name":"lan"}');
+    const health = await sendRemote("GET", "/health");
+    const rpc = await sendRemote("POST", "/rpc/greet", { ...json, ...remoteOrigin() }, '{"name":"lan"}');
 
     expect(health.status).toBe(401);
     expect(rpc.status).toBe(401);
   });
 
   it("answers 401 on /events without credentials", async () => {
-    const port = await startRemote();
+    await startRemote();
 
-    expect(await sendHead(REMOTE, port, "/events", {})).toBe(401);
+    expect(await sendHead(REMOTE, port, "/events", {}, { ca: pair.cert, servername: FQDN })).toBe(401);
   });
 
   it.each([
     ["bearer", bearer],
     ["session cookie", cookie],
-  ])("serves /health and /rpc with a %s", async (_kind, credential) => {
-    const port = await startRemote();
+  ])("serves /health and /rpc over HTTPS with a %s", async (_kind, credential) => {
+    await startRemote();
 
-    const health = await send(REMOTE, port, "GET", "/health", credential());
-    const rpc = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...remoteOrigin(port), ...credential() }, '{"name":"lan"}');
+    const health = await sendRemote("GET", "/health", credential());
+    const rpc = await sendRemote("POST", "/rpc/greet", { ...json, ...remoteOrigin(), ...credential() }, '{"name":"lan"}');
 
     expect(health.status).toBe(200);
     expect(rpc.status).toBe(200);
     expect(JSON.parse(rpc.body)).toMatchObject({ ok: true, data: { greeting: "hello lan" } });
   });
 
-  it("answers the configured LAN name with the bound port", async () => {
-    const port = await startRemote();
+  it("refuses plain HTTP on the remote listener with no HTTP reply, while loopback still answers it", async () => {
+    await startRemote();
 
-    expect((await send(REMOTE, port, "GET", "/health", { host: `lan-box:${port}`, ...bearer() })).status).toBe(200);
+    await expect(send(REMOTE, port, "GET", "/health", { host: `${FQDN}:${port}`, ...bearer() })).rejects.toThrow(/socket hang up|ECONNRESET/);
+    expect((await send("127.0.0.1", port, "GET", "/health")).status).toBe(200);
+  });
+
+  it("sets the session cookie Secure, HttpOnly and SameSite=Strict, and clears it the same way", async () => {
+    await startRemote();
+    const sameSite = { host: `${FQDN}:${port}`, origin: `https://${FQDN}:${port}` };
+
+    const login = await sendRemote("POST", "/auth/login", { ...json, ...sameSite }, JSON.stringify({ code: mintLoginCode(secret) }), FQDN);
+    const set = [login.headers["set-cookie"] ?? []].flat().join("\n");
+    const logout = await sendRemote("POST", "/auth/logout", { ...json, ...sameSite, ...cookie() }, "{}", FQDN);
+    const cleared = [logout.headers["set-cookie"] ?? []].flat().join("\n");
+
+    expect(login.status).toBe(200);
+    expect(set).toMatch(new RegExp(`^${SESSION_COOKIE}=v1\\.`));
+    expect(set).toMatch(/; Secure/);
+    expect(set).toMatch(/; HttpOnly/);
+    expect(set).toMatch(/; SameSite=Strict/);
+    expect(cleared).toMatch(/Max-Age=0/);
+    expect(cleared).toMatch(/; Secure/);
+  });
+
+  it("answers the tailnet name with its port, verifying the certificate against that name", async () => {
+    await startRemote();
+
+    const health = await sendRemote("GET", "/health", { host: `${FQDN}:${port}`, ...bearer() }, undefined, FQDN);
+    const rpc = await sendRemote("POST", "/rpc/greet", { ...json, host: `${FQDN}:${port}`, origin: `https://${FQDN}:${port}`, ...cookie() }, '{"name":"tailnet"}', FQDN);
+
+    expect([health.status, rpc.status]).toEqual([200, 200]);
+  });
+
+  it("refuses the tailnet name without its port, or with another port", async () => {
+    await startRemote();
+
+    const portless = await sendRemote("GET", "/health", { host: FQDN, ...bearer() }, undefined, FQDN);
+    const otherPort = await sendRemote("GET", "/health", { host: `${FQDN}:${port + 1}`, ...bearer() }, undefined, FQDN);
+
+    expect([portless.status, otherPort.status]).toEqual([403, 403]);
+  });
+
+  it("refuses an http:// Origin for its own name and port: on a TLS listener that is another site", async () => {
+    await startRemote();
+
+    const statuses = await Promise.all(
+      [`http://${FQDN}:${port}`, `http://${REMOTE}:${port}`, `https://${FQDN}`, `https://${FQDN}:${port + 1}`].map(
+        async (origin) => (await sendRemote("POST", "/rpc/greet", { ...json, host: `${FQDN}:${port}`, origin, ...cookie() }, "{}", FQDN)).status,
+      ),
+    );
+
+    expect(statuses).toEqual([403, 403, 403, 403]);
   });
 
   it("refuses a cross-site Origin on a cookie POST", async () => {
-    const port = await startRemote();
+    await startRemote();
 
-    const res = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...cookie(), origin: "http://evil.example" }, "{}");
-
-    expect(res.status).toBe(403);
-  });
-
-  it.each([`http://${REMOTE}`, "http://lan-box", `https://${REMOTE}`])("refuses the portless Origin %s on a cookie POST", async (origin) => {
-    const port = await startRemote();
-
-    const res = await send(REMOTE, port, "POST", "/rpc/greet", { ...json, ...cookie(), origin }, "{}");
+    const res = await sendRemote("POST", "/rpc/greet", { ...json, ...cookie(), origin: "https://evil.example" }, "{}");
 
     expect(res.status).toBe(403);
   });
 
   it.each(["localhost", "127.0.0.1", "[::1]"])("refuses the loopback Host %s even with a credential", async (name) => {
-    const port = await startRemote();
+    await startRemote();
 
-    expect((await send(REMOTE, port, "GET", "/health", { host: `${name}:${port}`, ...bearer() })).status).toBe(403);
-  });
-
-  it("refuses a portless Host", async () => {
-    const port = await startRemote();
-
-    expect((await send(REMOTE, port, "GET", "/health", { host: REMOTE, ...bearer() })).status).toBe(403);
+    expect((await sendRemote("GET", "/health", { host: `${name}:${port}`, ...bearer() })).status).toBe(403);
   });
 
   it("runs the Host guard before the auth gate, /auth/login included", async () => {
-    const port = await startRemote();
+    await startRemote();
     const foreign = { host: `evil.example:${port}` };
 
-    const page = await send(REMOTE, port, "GET", "/auth/login?code=x", foreign);
-    const login = await send(REMOTE, port, "POST", "/auth/login", { ...foreign, ...json, origin: `http://evil.example:${port}` }, '{"code":"x"}');
-    const health = await send(REMOTE, port, "GET", "/health", foreign);
+    const page = await sendRemote("GET", "/auth/login?code=x", foreign);
+    const login = await sendRemote("POST", "/auth/login", { ...foreign, ...json, origin: `https://evil.example:${port}` }, '{"code":"x"}');
+    const health = await sendRemote("GET", "/health", foreign);
 
     expect([page.status, login.status, health.status]).toEqual([403, 403, 403]);
   });
 
   it("never serves /mcp remotely, while loopback still does", async () => {
-    const port = await startRemote({ toolPrefix: "test__" });
+    await startRemote({ toolPrefix: "test__" });
     const listTools = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}';
     const mcpHeaders = { ...json, accept: "application/json, text/event-stream", "x-titan-client": "test" };
 
-    const anonymous = await send(REMOTE, port, "POST", "/mcp", mcpHeaders, listTools);
-    const authed = await send(REMOTE, port, "POST", "/mcp", { ...mcpHeaders, ...bearer() }, listTools);
+    const anonymous = await sendRemote("POST", "/mcp", mcpHeaders, listTools);
+    const authed = await sendRemote("POST", "/mcp", { ...mcpHeaders, ...bearer() }, listTools);
     const local = await send("127.0.0.1", port, "POST", "/mcp", mcpHeaders, listTools);
 
     expect([anonymous.status, authed.status, local.status]).toEqual([401, 404, 200]);
   });
 
   it("serves loopback without credentials and keeps LAN names off its allowlist", async () => {
-    const port = await startRemote();
+    await startRemote();
 
     const health = await send("127.0.0.1", port, "GET", "/health");
     const rpc = await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, "x-titan-client": "test" }, '{"name":"local"}');
-    const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `lan-box:${port}` });
+    const lanName = await send("127.0.0.1", port, "GET", "/health", { host: `${FQDN}:${port}` });
 
     expect([health.status, rpc.status, lanName.status]).toEqual([200, 200, 403]);
   });
 
-  it("tells createContext the peer is this machine", async () => {
+  it("tells createContext the peer is this machine over TLS, as it did over plain HTTP", async () => {
     const createContext = vi.fn(createTestContext);
-    const port = await startRemote({ createContext });
+    await startRemote({ createContext });
 
-    await send(REMOTE, port, "POST", "/rpc/greet", { ...json, "x-titan-client": "test", ...bearer() }, "{}");
+    await sendRemote("POST", "/rpc/greet", { ...json, "x-titan-client": "test", ...bearer() }, "{}");
 
     expect(createContext).toHaveBeenCalledWith("http", { credential: "bearer", issuedAt: null, peerLocal: true });
   });
 
+  it("serves a renewed pair to new connections without a restart", async () => {
+    handle = await startDaemon(options({ remote: remoteOptions({ tlsReloadMs: 20 }) }));
+    port = handle.port;
+    const before = await servedFingerprint(REMOTE, port);
+
+    const renewed = writeSelfSignedCert(stateDir, [FQDN, "lan-box", REMOTE], { prefix: "renewed" });
+    await rename(renewed.keyFile, pair.keyFile);
+    await rename(renewed.certFile, pair.certFile);
+    const after = await waitFor(() => servedFingerprint(REMOTE, port), (fingerprint) => fingerprint !== before);
+
+    expect(after).not.toBe(before);
+    expect((await send(REMOTE, port, "GET", "/health", bearer(), undefined, { ca: renewed.cert })).status).toBe(200);
+  });
+
+  it("keeps serving the last good pair, never plain HTTP, when a renewal leaves the files unusable", async () => {
+    const errors: string[] = [];
+    const logger = { ...silentLogger, error: (_fields: Record<string, unknown>, message: string) => void errors.push(message) };
+    handle = await startDaemon(options({ remote: remoteOptions({ tlsReloadMs: 20 }), logger }));
+    port = handle.port;
+    const before = await servedFingerprint(REMOTE, port);
+
+    await rm(pair.keyFile);
+    await waitFor(async () => errors.length, (count) => count > 0);
+
+    expect(await servedFingerprint(REMOTE, port)).toBe(before);
+    expect((await sendRemote("GET", "/health", bearer())).status).toBe(200);
+    await expect(send(REMOTE, port, "GET", "/health", bearer())).rejects.toThrow(/socket hang up|ECONNRESET/);
+  });
+
   it("closes both listeners and releases the pid file", async () => {
-    const port = await startRemote();
+    await startRemote();
 
     await handle!.close();
     handle = null;
@@ -629,14 +793,14 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
   it("binds neither when the remote port is taken, and names the remote host", async () => {
     const squatters: Array<() => Promise<void>> = [];
     try {
-      const { port, failure } = await failOnProbedPort(async (probed) => {
+      const { port: taken, failure } = await failOnProbedPort(async (probed) => {
         squatters.push((await holdPort(REMOTE, probed)).release);
-        return startDaemon(options({ port: probed, remote: { host: REMOTE, tokenFile } }));
+        return startDaemon(options({ port: probed, remote: remoteOptions() }));
       });
 
       expect(failure).toBeInstanceOf(DaemonPortInUseError);
-      expect(failure).toMatchObject({ port, host: REMOTE });
-      expect(await canBind("127.0.0.1", port)).toBe(true);
+      expect(failure).toMatchObject({ port: taken, host: REMOTE });
+      expect(await canBind("127.0.0.1", taken)).toBe(true);
       expect(await readPidFile(daemonPaths(stateDir))).toBeNull();
     } finally {
       await Promise.all(squatters.map((release) => release()));
@@ -644,16 +808,16 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
   });
 
   it("answers loopback byte for byte as a daemon without a remote listener does", async () => {
-    const probes = async (port: number): Promise<string[]> => {
+    const probes = async (loopbackPort: number): Promise<string[]> => {
       const replies = [
-        await send("127.0.0.1", port, "GET", "/version"),
-        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, "x-titan-client": "t" }, '{"name":"same"}'),
-        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, origin: "http://127.0.0.1" }, '{"name":"same"}'),
-        await send("127.0.0.1", port, "POST", "/rpc/greet", { ...json, origin: "http://evil.example" }, "{}"),
-        await send("127.0.0.1", port, "GET", "/health", { host: "evil.example" }),
-        await send("127.0.0.1", port, "GET", "/auth/login"),
+        await send("127.0.0.1", loopbackPort, "GET", "/version"),
+        await send("127.0.0.1", loopbackPort, "POST", "/rpc/greet", { ...json, "x-titan-client": "t" }, '{"name":"same"}'),
+        await send("127.0.0.1", loopbackPort, "POST", "/rpc/greet", { ...json, origin: "http://127.0.0.1" }, '{"name":"same"}'),
+        await send("127.0.0.1", loopbackPort, "POST", "/rpc/greet", { ...json, origin: "http://evil.example" }, "{}"),
+        await send("127.0.0.1", loopbackPort, "GET", "/health", { host: "evil.example" }),
+        await send("127.0.0.1", loopbackPort, "GET", "/auth/login"),
         // Uptime changes the length, so /health compares its status and field names only.
-        await send("127.0.0.1", port, "GET", "/health", { host: "localhost" }).then((r) => ({ status: r.status, headers: {}, body: Object.keys(JSON.parse(r.body)).sort().join() })),
+        await send("127.0.0.1", loopbackPort, "GET", "/health", { host: "localhost" }).then((r) => ({ status: r.status, headers: {}, body: Object.keys(JSON.parse(r.body)).sort().join() })),
       ];
       return replies.map(({ status, headers, body }) => JSON.stringify({ status, body, headers: { ...headers, date: undefined } }));
     };
@@ -661,9 +825,19 @@ describe.skipIf(process.platform !== "linux")("startDaemon remote listener (127.
     handle = await startDaemon(options());
     const plain = await probes(handle.port);
     await handle.close();
-    handle = await startDaemon(options({ remote: { host: REMOTE, tokenFile } }));
+    handle = await startDaemon(options({ remote: remoteOptions() }));
     const withRemote = await probes(handle.port);
 
     expect(withRemote).toEqual(plain);
   });
 });
+
+/** Poll until `done` holds; the reload timer runs on its own clock, so a fixed sleep would be a guess. */
+async function waitFor<T>(read: () => Promise<T>, done: (value: T) => boolean, timeoutMs = 5000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await read();
+    if (done(value) || Date.now() >= deadline) return value;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
