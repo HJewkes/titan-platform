@@ -102,7 +102,7 @@ function integerValues(words: string[]): string[] {
 const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
 
 /** Arithmetic text split by how sure it is: `sure` is always evaluated, `maybe` only if the name turns out numeric. */
-export interface ArithmeticTexts {
+interface ArithmeticTexts {
   sure: string[];
   maybe: string[];
 }
