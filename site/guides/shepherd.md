@@ -347,7 +347,10 @@ PR, head, task, age in hours and held reason. It builds on the same rows as `sta
 nothing. Gates the owner answers (`approve-merge`, `release`, `one-way`, `failed-rounds`, main-red
 and any kind not listed as seat work) come first; seat work (`ci-failed`, `sh-sent-back`, `stuck-behind`)
 is listed apart, because those are routed to the seat that owns the PR. `--json` prints
-`{ owner, seat }`, each an array of gates.
+`{ owner, seat }`, each an array of gates. Each gate carries `headIsCurrent`: true when the head
+the gate names is the run's current head, false when the run has moved on, null when the gate names
+none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
+The factory digest lists the five oldest owner gates under "Waiting on you".
 
 ## Stats {#stats}
 

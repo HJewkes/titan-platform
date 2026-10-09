@@ -2,7 +2,7 @@ import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
 import type { ResyncReport } from "./resync.js";
-import type { Waiting, WaitingGate } from "./waiting.js";
+import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
 type ShepherdResults = { [Name in ShepherdCommandName]: CommandMapOf<typeof SHEPHERD_COMMAND_MAP>[Name]["result"] };
@@ -32,12 +32,14 @@ export function formatShepherd<Name extends ShepherdCommandName>(name: Name, dat
 function waitingLine(gate: WaitingGate): string {
   const target = gate.pr === null ? gate.repo : `${gate.repo}#${gate.pr}`;
   const head = gate.head === null ? "-" : gate.head.slice(0, 7);
-  return `  ${gate.ageHours}h  ${gate.gateId}  ${target} ${head}  ${gate.task}${gate.held === null ? "" : `  [held: ${gate.held}]`}`;
+  return `  ${gate.ageHours}h  ${gate.gateId}  ${target} ${head}  ${gate.task}${gate.headIsCurrent === false ? "  [head moved]" : ""}${gate.held === null ? "" : `  [held: ${gate.held}]`}`;
 }
 
-function formatWaiting({ owner, seat }: Waiting): string {
+function formatWaiting(waiting: Waiting): string {
+  const { owner, seat } = waiting;
+  const overdue = overdueOwnerGates(waiting).length;
   const section = (title: string, gates: readonly WaitingGate[]): string[] => [`${title} (${gates.length}), oldest first:`, ...(gates.length === 0 ? ["  none"] : gates.map(waitingLine))];
-  return `${[...section("waiting on the owner", owner), ...section("seat work", seat)].join("\n")}\n`;
+  return `${[...section("waiting on the owner", owner), ...section("seat work", seat), ...(overdue > 0 ? [`${overdue} owner gate(s) over ${OVERDUE_HOURS} h`] : [])].join("\n")}\n`;
 }
 
 function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {

@@ -1,4 +1,5 @@
 import type { FrictionDay } from "../shepherd/owner-friction.js";
+import { waitingGates } from "../shepherd/waiting.js";
 import type { WatchRow } from "../shepherd/view.js";
 import { keysIn, prKey, refOfUrl, runKey } from "./keys.js";
 import type { AgentChatDigest, Ask, DigestModel, DigestSlot, Merged, SeatLine, Stuck } from "./model.js";
@@ -34,6 +35,7 @@ export interface CollectOptions {
   slot: DigestSlot;
 }
 
+const WAITING_SHOWN = 5;
 const FINISHED = new Set(["done", "cancelled", "failed"]);
 const refOf = (row: WatchRow): string => (row.pr === null ? `${row.repo}@${row.branch}` : `${row.repo}#${row.pr}`);
 
@@ -56,6 +58,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
   const queue = await guarded(gaps, "seat queues", [], () => sources.queueAsks());
   const seats = await guarded(gaps, "seat dispatch logs", [], () => sources.seatCosts(since));
   const friction = await guarded(gaps, "owner friction", undefined, () => sources.friction?.(now));
+  const waiting = waitingGates(rows, now).owner.slice(0, WAITING_SHOWN);
   return {
     slot,
     generatedAt: now.toISOString(),
@@ -65,6 +68,7 @@ export async function collectDigest({ sources, now, windowMinutes, slot }: Colle
     stuck: [...shepherdStuck(rows, since), ...(chat ? chatStuck(chat) : [])],
     seats,
     spend: (chat?.spend ?? []).map((a) => ({ pool: a.account, sevenDay: a.now?.sevenDay, fiveHour: a.now?.fiveHour, stale: a.stale })),
+    ...(waiting.length > 0 && { waiting }),
     ...(friction && { friction }),
     gaps: [...gaps, ...(chat?.gaps ?? []).map((gap) => `agent-chat: ${gap}`)],
   };

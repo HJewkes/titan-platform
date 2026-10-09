@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatShepherd } from "./format.js";
-import { WaitingSchema, waitingGates } from "./waiting.js";
+import { OVERDUE_HOURS, WaitingSchema, overdueOwnerGates, waitingGates } from "./waiting.js";
 import type { WatchRow } from "./view.js";
 
 const NOW = new Date("2026-01-10T12:00:00.000Z");
@@ -49,7 +49,7 @@ describe("waitingGates", () => {
   it("names the PR, head, task, age in hours and held reason of each gate", () => {
     const [first, , third] = waitingGates(FIXTURE, NOW).owner;
 
-    expect(first).toEqual({ gateId: "run-3/approve-merge:2", stepId: "approve-merge", repo: "acme/widgets", pr: 3, head: "3".repeat(40), task: "demo/T-3", since: ago(45), ageHours: 45, held: null });
+    expect(first).toEqual({ gateId: "run-3/approve-merge:2", stepId: "approve-merge", repo: "acme/widgets", pr: 3, head: "3".repeat(40), task: "demo/T-3", since: ago(45), ageHours: 45, held: null, headIsCurrent: null });
     expect(third).toMatchObject({ stepId: "release", ageHours: 12, held: "wait for the owner" });
   });
 
@@ -74,5 +74,26 @@ describe("waitingGates", () => {
     ]);
     expect(text).toContain("[held: wait for the owner]");
     expect(text).toContain("seat work (3), oldest first:");
+  });
+
+  it("marks a gate current when the head it names is the run's head, stale when the run has moved on, and unknown when it names none", () => {
+    const gateHead = (gateId: string): string | undefined => ({ "run-3/approve-merge:2": "3".repeat(40), "run-8/failed-rounds": "f".repeat(40) })[gateId];
+
+    const { owner } = waitingGates(FIXTURE, NOW, gateHead);
+
+    expect(owner.map((g) => [g.pr, g.headIsCurrent])).toEqual([[3, true], [8, false], [6, null], [2, null], [7, null]]);
+  });
+
+  it("counts only owner gates older than the limit as overdue, never seat work", () => {
+    const waiting = waitingGates(FIXTURE, NOW);
+
+    expect(OVERDUE_HOURS).toBe(24);
+    expect(overdueOwnerGates(waiting).map((g) => g.gateId)).toEqual(["run-3/approve-merge:2"]);
+    expect(overdueOwnerGates(waitingGates([row(1, "ci-failed", 99), row(2, "approve-merge", 24)], NOW))).toEqual([]);
+  });
+
+  it("says in the text how many owner gates are over the limit, and nothing when none is", () => {
+    expect(formatShepherd("shepherd.waiting", waitingGates(FIXTURE, NOW))).toContain("1 owner gate(s) over 24 h");
+    expect(formatShepherd("shepherd.waiting", waitingGates([row(2, "approve-merge", 5)], NOW))).not.toContain("over 24 h");
   });
 });

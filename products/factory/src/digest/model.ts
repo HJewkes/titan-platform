@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { WaitingGate } from "../shepherd/waiting.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 
 /** One owner action; `keys` are the PR refs and run ids it names, so the same ask from two sources merges into one. */
@@ -57,6 +58,8 @@ export interface DigestModel {
   stuck: Stuck[];
   seats: SeatLine[];
   spend: PoolLine[];
+  /** The five oldest gates waiting on the owner, oldest first; absent when none is. */
+  waiting?: WaitingGate[];
   /** The latest day of owner friction; absent when the gate store could not be read. */
   friction?: FrictionDay;
   /** Sources that could not be read, one line each, so a gap is never silent. */

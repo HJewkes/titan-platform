@@ -43,6 +43,14 @@ async function failedRegistration(w: World, slice?: string, kind?: "correctness"
   return runId;
 }
 
+describe("shepherd.waiting", () => {
+  it("lists nothing when no run waits", async () => {
+    const w = world({ frozen: true });
+
+    expect(await w.call("shepherd.waiting", {})).toEqual({ ok: true, data: { owner: [], seat: [] } });
+  });
+});
+
 describe("shepherd.register", () => {
   it("a second register for the same repo#pr returns the first run, starts no other, and updates the metadata", async () => {
     const w = world({ frozen: true });
