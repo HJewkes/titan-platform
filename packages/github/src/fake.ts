@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMessage, MergeMethod, PullRequest, PutFileRequest, RequiredChecks, SquashSource } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -31,6 +31,8 @@ export interface FakeGitHub {
   classicRules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
+  /** What the branch endpoint's `protected` flag answers. */
+  branchProtected: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
   /** The live record, so a test can move the world (behind, mergeable_state) between steps. */
   pr(number: number): PullRequest;
@@ -65,6 +67,10 @@ export interface FakeGitHub {
   prChangedFiles: Map<number, number>;
   /** PR number to its commit shas, oldest first; unset means the PR's head alone. `listPrCommits` returns at most 250, like GitHub. */
   prCommits: Map<number, string[]>;
+  /** PR number to what `getSquashSource` reads; unset reads as an empty title, body and commit list. */
+  squashSources: Map<number, SquashSource>;
+  /** Every `merge` PUT's pull number and message, in order; `message` is undefined when none was sent. */
+  merges: { number: number; message: MergeMessage | undefined }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
   /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply. */
@@ -117,6 +123,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     rules: { contexts: ["validate", "dag-check"], strict: true },
     classicRules: { contexts: [], strict: false },
     reviewBypass: false,
+    branchProtected: false,
     createdCheckRuns: [],
     commits: new Map(),
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
@@ -126,6 +133,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prFiles: new Map(),
     prChangedFiles: new Map(),
     prCommits: new Map(),
+    squashSources: new Map(),
+    merges: [],
     history: [],
     compares: new Map(),
     comments: new Map(),
@@ -182,6 +191,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
     getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
+    getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
@@ -192,10 +202,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       return record("getJobLog", log);
     },
     updateBranch: async (_repo, number, expected) => record("updateBranch", updateBranch(fake, mustPr(prs, number), expected, nextSha)),
-    merge: async (_repo, number, sha, method) => {
+    merge: async (_repo, number, sha, method, message) => {
       record("merge", undefined);
+      fake.merges.push({ number, message });
       return mergePr(fake, mustPr(prs, number), sha, method, nextSha);
     },
+    getSquashSource: async (_repo, number) => record("getSquashSource", fake.squashSources.get(number) ?? { title: "", body: "", commits: [] }),
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
       const fault = fake.rerunFaults?.shift();
