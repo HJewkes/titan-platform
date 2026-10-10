@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { HealthSampleInput } from "@titan-design/health";
 
-const SELF_TARGET = "titan-health-sampler";
+export const SELF_TARGET = "titan-health-sampler";
 
 interface SelfCostDeps {
   now: () => number;
