@@ -11,6 +11,8 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   it under a per-repo policy. It has its own guide: [Shepherd](/guides/shepherd).
   `shepherd stats --cost` reports what its review costs, in dollars and tokens per merged
   PR: see [Review cost](/guides/shepherd#review-cost).
+  `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
+  [SLOs](/guides/shepherd#slo).
 
 The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
 when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the

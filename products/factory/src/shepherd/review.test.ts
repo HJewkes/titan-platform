@@ -555,7 +555,7 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch, { registered: { ...registration, kind: "security" } }).review(spawnIntent, 0, "run-1");
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ kind: "security", sizeUnread: true });
+    expect(dispatch.spawns[0]?.facts).toEqual({ intentAt: 5000, kind: "security", sizeUnread: true });
   });
 
   describe("sizes the spawn by the PR's changed lines", () => {
@@ -570,13 +570,13 @@ describe("sh-review", () => {
     it("gives a 450-line correctness PR the g10 profile", async () => {
       const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 400, deletions: 50 }]);
 
-      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 450 }, profile: "bd-reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 450 }, profile: "bd-reviewer" });
     });
 
     it("gives a 30-line correctness PR the standard profile", async () => {
       const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 }]);
 
-      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
     });
 
     it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
@@ -585,25 +585,25 @@ describe("sh-review", () => {
         { path: "CAPABILITIES.md", status: "modified", additions: 300, deletions: 61 },
       ]);
 
-      expect(sized).toEqual({ facts: { kind: "correctness", changedLines: 40 }, profile: "reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 40 }, profile: "reviewer" });
     });
 
     it("gives the g10 profile when GitHub truncates the file list", async () => {
       const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified", additions: 1, deletions: 0 }], 3_001);
 
-      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
     });
 
     it("gives the g10 profile when a file carries no line counts", async () => {
       const sized = await spawnSized([{ path: "products/factory/src/a.ts", status: "modified" }]);
 
-      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
     });
 
     it("gives the g10 profile when the file list cannot be read", async () => {
       const sized = await spawnSized();
 
-      expect(sized).toEqual({ facts: { kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
     });
   });
 
@@ -612,7 +612,7 @@ describe("sh-review", () => {
 
     await reviewSteps(dispatch).review(spawnIntent);
 
-    expect(dispatch.spawns[0]?.facts).toEqual({ unread: true, sizeUnread: true });
+    expect(dispatch.spawns[0]?.facts).toEqual({ intentAt: 5000, unread: true, sizeUnread: true });
   });
 
   it("sh-review-intent names a fresh reviewer and stamps the time, and asks the broker to start nobody", async () => {
