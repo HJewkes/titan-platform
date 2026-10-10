@@ -9,6 +9,7 @@ import { askAtHead } from "../shepherd/stale-gates.js";
 import { localMergeTree } from "../shepherd/tree-carry.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
 import { deadline } from "./deadline.js";
+import { taskIdOf } from "./land-merge-message.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
 
@@ -54,7 +55,7 @@ export async function landPr(ctx: WorkflowContext, params: LandPrParams, options
   await step(ctx, "snapshot", params, SnapshotResult);
   const state: LandPrState = { round: 0, reruns: 0, waits: 0 };
   for (;;) {
-    const outcome = await land(ctx, { repo: params.repo, pr: params.pr, round: state.round }, options);
+    const outcome = await land(ctx, { repo: params.repo, pr: params.pr, taskIds: taskIdOf(params.task), round: state.round }, options);
     if (outcome.kind === "merged") await postMerge(ctx, { repo: params.repo, pr: params.pr, mergeSha: outcome.mergeSha });
     if (outcome.kind !== "ci-failed") return outcome;
     const stop = await onCiFailed(ctx, params, outcome, state);

@@ -1,12 +1,13 @@
 import { writeWithReadBack, type Sleep } from "./write-read-back.js";
+import type { MergeMessage } from "./port-types.js";
 import type { GitHubWire, MergeMethod, RepoSlug, WriteResult } from "./port.js";
 
-export async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep): Promise<WriteResult<{ mergeSha: string }>> {
+export async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>> {
   const pr = await wire.getPr(repo, number);
   if (pr.merged) return { mergeSha: pr.mergeSha ?? "", done: false, skipped: "merged" };
   if (pr.state === "closed") return { mergeSha: "", done: false, skipped: "closed" };
   if (pr.headSha !== sha) return { mergeSha: "", done: false, skipped: "head-moved" };
-  const put = async () => ({ mergeSha: (await wire.merge(repo, number, sha, method)).sha, done: true as const });
+  const put = async () => ({ mergeSha: (await wire.merge(repo, number, sha, method, message)).sha, done: true as const });
   return writeWithReadBack(`merge PUT ${repo}#${number} at ${sha}`, put, () => mergedAt(wire, repo, number, sha), sleep);
 }
 

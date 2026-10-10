@@ -82,6 +82,15 @@ describe("a hold that names a reviewer", () => {
     expect(r.store.byRun("run-1")).toMatchObject({ holdSatisfied: { head: H1 } });
   });
 
+  it("forwards the squash message to the wrapped port's merge", async () => {
+    const r = rig();
+    say(r, verdictAt(H1));
+
+    await guarded(r).merge(REPO, r.pr, H1, "squash", { subject: "Add it (#1)", body: "Refs: #1" });
+
+    expect(r.fake.merges).toEqual([{ number: r.pr, message: { subject: "Add it (#1)", body: "Refs: #1" } }]);
+  });
+
   it("keeps waiting when the MERGE names an older head", async () => {
     const r = rig();
     say(r, verdictAt(H1));
