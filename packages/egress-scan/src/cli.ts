@@ -7,6 +7,7 @@ import {
   formatBytes,
   isRemoteName,
   isRevision,
+  listRemoteTips,
   MAX_PATCH_BYTES,
   parsePrePush,
   readCommit,
@@ -43,14 +44,23 @@ const USAGE = [
 
 const PREFIX = "titan-egress-scan: ";
 
-function readCommits(root: string, shas: readonly string[], maxPatchBytes?: number): ScanSource[] {
-  return [...new Set(shas)].map((sha) => readCommit(root, sha, maxPatchBytes));
+function readCommits(
+  root: string,
+  shas: readonly string[],
+  maxPatchBytes?: number,
+  tips?: readonly string[],
+): ScanSource[] {
+  const scanned = new Set(shas);
+  return [...scanned].map((sha) => readCommit(root, sha, maxPatchBytes, tips, scanned));
 }
 
 function prePushSources(root: string, remote: string, pushUrl: string | undefined, io: CliIo): ScanSource[] {
   const pushLines = parsePrePush(io.readStdin());
-  const shas = pushLines.flatMap((line) => commitsForUpdate(root, remote, line, { pushUrl }));
-  return [refSource(pushLines), ...readCommits(root, shas, io.maxPatchBytes)];
+  const tips = pushUrl === undefined ? undefined : listRemoteTips(root, { pushUrl });
+  // A failed listing leaves the push URL out, so the fallback range does not list the remote again.
+  const list = { pushUrl: tips === undefined ? undefined : pushUrl, tips };
+  const shas = pushLines.flatMap((line) => commitsForUpdate(root, remote, line, list));
+  return [refSource(pushLines), ...readCommits(root, shas, io.maxPatchBytes, tips)];
 }
 
 function runScan(io: CliIo, collect: (root: string) => ScanSource[]): number {
