@@ -803,7 +803,7 @@ Key exports:
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`, `findingsText`, `fixFirstFindings`
 - `verdict-schemas`: `MalformedSchema`
-- +57 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- +63 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
