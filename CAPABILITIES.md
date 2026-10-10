@@ -747,7 +747,7 @@ Key exports:
 - `schema`: `ownerItemSchema`, `sourceRefSchema`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `keys`: `askKey`, `componentKey`, `prKey`, `relationKind`, `roundAskKey`, `tokenKey`, `topicKey`
-- +41 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
+- +46 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
