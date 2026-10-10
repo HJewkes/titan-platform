@@ -19,6 +19,14 @@ const registryFiles = (root) => (existsSync(join(root, REGISTRY)) ? readdirSync(
 const entryFiles = (root) => registryFiles(root).filter((name) => ENTRY_FILE.test(name));
 const strayFiles = (root) => registryFiles(root).filter((name) => !ENTRY_FILE.test(name) && name !== "README.md");
 
+// A metric no query can measure yet must say which slice closes that gap, so the registry never reads as complete.
+const unqueriedErrors = (metrics) =>
+  metrics.flatMap((metric, index) =>
+    metric.query || metric.source?.gapSlice
+      ? []
+      : [`metrics.${index} (${metric.id}): no query; set source.gapSlice to the slice that adds one, or to \`unfiled\``],
+  );
+
 function entryErrors(text, name, areaIds, { METRICS_SCHEMA_ID, validateEntry }) {
   let entry;
   try {
@@ -28,7 +36,7 @@ function entryErrors(text, name, areaIds, { METRICS_SCHEMA_ID, validateEntry }) 
   }
   if (entry?.schema !== METRICS_SCHEMA_ID) return [`schema: expected ${METRICS_SCHEMA_ID}`];
   const result = validateEntry(entry, "write");
-  const errors = result.ok ? [] : [...result.errors];
+  const errors = result.ok ? unqueriedErrors(entry.metrics) : [...result.errors];
   if (typeof entry.area !== "string") return errors;
   if (!areaIds.has(entry.area)) errors.push(`area: \`${entry.area}\` is not an area in scripts/areas.mjs`);
   else if (name.replace(ENTRY_FILE, "") !== entry.area) errors.push(`area: \`${entry.area}\` must match the file name`);
