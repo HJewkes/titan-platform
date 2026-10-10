@@ -16,7 +16,8 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "eslint --concurrency=auto --cache --cache-strategy content --cache-location .eslintcache --suppressions-location eslint-suppressions.json scripts eslint.config.js vitest.config.ts \"packages/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" \"products/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" deploy/hub/src apps/codewatch/src apps/codewatch/server apps/codewatch/scripts apps/codewatch/vite.config.ts apps/console/src apps/console/server apps/console/vite.config.ts apps/console/tsup.config.ts",
+    "lint": "eslint --concurrency=auto --cache --cache-strategy content --cache-location .eslintcache --suppressions-location eslint-suppressions.json scripts eslint.config.js eslint.typed.config.js vitest.config.ts \"packages/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" \"products/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" deploy/hub/src apps/codewatch/src apps/codewatch/server apps/codewatch/scripts apps/codewatch/vite.config.ts apps/console/src apps/console/server apps/console/vite.config.ts apps/console/tsup.config.ts",
+    "lint:types": "eslint --config eslint.typed.config.js --suppressions-location eslint-suppressions.typed.json \"packages/*/src/**/*.{ts,mts,cts,tsx}\" \"products/*/src/**/*.{ts,mts,cts,tsx}\" \"apps/codewatch/{src,server,scripts}/**/*.{ts,tsx}\" \"apps/console/{src,server}/**/*.{ts,tsx}\"",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
     "env:doctor": "node scripts/env-doctor.mjs",
