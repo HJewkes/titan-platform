@@ -113,13 +113,12 @@ describe("handle: failure policy", () => {
     expect(await handle(JSON.stringify({ tool_name: "WebFetch", tool_input: { url: "x" } }), {}, port())).toEqual({ stdout: "", log: [] });
   });
 
-  it("denies an unparseable command that names a guarded path, and passes one that does not", async () => {
+  it("denies an unparseable command whether or not it names a guarded path", async () => {
     const guarded = await handle(bash("cat ~/.npmrc 'x"), {}, port());
     const plain = await handle(bash("echo 'x"), {}, port());
 
-    expect(decisionOf(guarded.stdout)).toBe("deny");
-    expect(guarded.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
-    expect(plain).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
+    expect([guarded, plain].map((r) => decisionOf(r.stdout))).toEqual(["deny", "deny"]);
+    expect(plain.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
   });
 
   it("denies a protected push that a chain of dynamic wrapper words follows", async () => {
@@ -283,10 +282,11 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
   });
 
-  it("passes an unparseable quoted command that names nothing guarded, with an error line", async () => {
+  it("denies an unparseable quoted command that names nothing guarded, and says to simplify it", async () => {
     const result = await handle(bash("echo 'he''llo' \"wor  ld\"; echo 'x"), {}, port());
 
-    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\tsess-1"] });
+    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result.stdout).toContain("split it into simpler commands");
   });
 
   it("still classifies a command just under the size cap", async () => {
@@ -297,15 +297,13 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "SEC-CO", "secret-read", "bash.secret.cat"]);
   });
 
-  it("applies the same split to an exception inside the classifier", async () => {
+  it("denies every command when the classifier throws", async () => {
     const context = { get home(): string { throw new Error("boom"); } } as unknown as ClassifyContext;
 
     const guarded = await handle(bash("gh pr merge 3"), {}, port({ context }));
     const plain = await handle(bash("ls"), {}, port({ context }));
 
-    expect(decisionOf(guarded.stdout)).toBe("deny");
-    expect(plain.stdout).toBe("");
-    expect(plain.log[0]).toContain("\terror\texception\tBash\t");
+    expect([guarded, plain].map((r) => decisionOf(r.stdout))).toEqual(["deny", "deny"]);
   });
 
   it("fails closed for a classified event when the authority table cannot load", async () => {

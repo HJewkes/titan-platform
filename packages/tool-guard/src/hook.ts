@@ -37,6 +37,8 @@ type Logged = Omit<Matched, "action" | "spelling"> & { action: string; spelling:
 type Classified = { ok: true; actions: ClassifiedAction[] } | { ok: false; cls: ErrorClass; limit?: string };
 
 const PASS: HookResult = { stdout: "", log: [] };
+const UNREADABLE_REASON =
+  "authority-guard could not parse this Bash command, so it refuses it: text it cannot read can hide a push or merge from the check. Close every quote, `$(` and backtick, flatten nested substitutions into variables, or split it into simpler commands.";
 const UNPARSED_REASON =
   "authority-guard could not parse this command and it names a guarded action or path; split it into simpler commands.";
 const OVERSIZE_REASON =
@@ -69,8 +71,8 @@ export const MAX_COMMAND_BYTES = 8 * 1024;
 
 /**
  * Answers one PreToolUse event. Never throws and never asks or allows: it either denies through
- * the returned stdout or stays silent. Failures fail open unless the raw text names something
- * guarded (plan section 7, owner decision D6) or a command's text holds a push-class word.
+ * the returned stdout or stays silent. A Bash command it cannot classify denies; any other failure
+ * fails open unless the raw text names something guarded (plan section 7, owner decision D6).
  */
 export async function handle(input: string, env: Env, port: HookPort): Promise<HookResult> {
   try {
@@ -135,13 +137,15 @@ function scriptsReason(o: ScriptOverrun): string {
 }
 
 /**
- * A command or path that could not be classified denies only when its text names something guarded (D6), or,
- * for a command, a push-class word: a parse failure must never let `git push` on a later line through (TP-2174).
+ * A Bash command that could not be classified always denies: quoting, ANSI-C strings and expansions spell
+ * `git push` in ways no check of the raw text can find (TP-2174). A path denies only when it names
+ * something guarded (D6).
  */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
-  const raw = event.kind === "bash" ? event.command : event.path;
-  const refused = namesGuarded(raw) || (event.kind === "bash" && namesPushClass(raw));
-  if (actor.bypass || !refused) return logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
+  const error = () => logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
+  if (actor.bypass) return error();
+  if (event.kind === "bash") return unclassified(event, actor, "unparsed", UNREADABLE_REASON, port);
+  if (!namesGuarded(event.path)) return error();
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
 }
 
@@ -221,16 +225,6 @@ function literalStem(pattern: string): string {
 export function namesGuarded(raw: string): boolean {
   const texts = [raw, unquoted(raw)].map((t) => t.toLowerCase());
   return GUARDED_NEEDLES.some((needle) => needle !== "" && texts.some((t) => t.includes(needle)));
-}
-
-/**
- * Every push and merge spelling holds one of these words, while the words around it (`git -C . push`,
- * `"$G" push`) cannot be read from text that failed to parse, so the word alone decides.
- */
-const PUSH_CLASS = /\b(push|merge)\b/;
-
-function namesPushClass(command: string): boolean {
-  return [command, unquoted(command)].some((t) => PUSH_CLASS.test(t.toLowerCase()));
 }
 
 function unquoted(raw: string): string {
