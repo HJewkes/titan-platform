@@ -45,6 +45,10 @@ export const WatchRowSchema = z.object({
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
+  /** The registration's implementer; null when it names none. Absent in rows older than the field. */
+  implementer: z.string().nullable().optional(),
+  /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
+  reviewer: z.string().nullable().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -281,6 +285,17 @@ function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["
   return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
 }
 
+const DispatchedReviewData = z.object({ result: z.object({ kind: z.literal("dispatched"), reviewer: z.string().min(1) }) });
+
+/** The reviewer the newest started review dispatched, so consumers need not guess it from the branch. */
+function reviewerName(steps: readonly StepResult[]): string | null {
+  const names = steps.flatMap((result) => {
+    const parsed = stepIdMatches("sh-review", result.stepId) ? DispatchedReviewData.safeParse(result.data) : undefined;
+    return parsed?.success ? [parsed.data.result.reviewer] : [];
+  });
+  return names.at(-1) ?? null;
+}
+
 /** One watch-list row; a failed run, a review the broker keeps refusing, or a phase past its limit reads as stalled. */
 export function watchRow({ registration, run, pending, train, now = new Date() }: RowInput): WatchRow {
   const steps = completedSteps(run);
@@ -307,6 +322,8 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    implementer: registration.implementer || null,
+    reviewer: reviewerName(steps),
   };
 }
 
