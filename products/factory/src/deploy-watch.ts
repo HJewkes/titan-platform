@@ -5,14 +5,14 @@ import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 export const DEPLOY_WATCH_MS = 5 * 60_000;
 
 /** How loudly a standing alarm repeats itself; the defaults are the shepherd.deployAlarm config's. */
-export interface DeployAlarmPolicy {
+interface DeployAlarmPolicy {
   /** Ticks a sent notice holds before the hub seat is told again. */
   renotifyTicks: number;
   /** Minutes the alarm stands before it files an owner-queue item. */
   escalateAfterMinutes: number;
 }
 
-export const DEFAULT_DEPLOY_ALARM_POLICY: DeployAlarmPolicy = { renotifyTicks: 6, escalateAfterMinutes: 30 };
+const DEFAULT_DEPLOY_ALARM_POLICY: DeployAlarmPolicy = { renotifyTicks: 6, escalateAfterMinutes: 30 };
 
 /** What the watch reads and who it tells; tests pass fakes, so none reaches git, gh, agent-chat or the owner inbox. */
 export interface DeployWatchPorts {
@@ -84,7 +84,7 @@ const hubSeatNote = (told: AlarmNotice): string =>
   "sent" in told ? `The hub seat was told at ${told.sent}.` : "skipped" in told ? `The hub seat was not told: ${told.skipped}.` : `Telling the hub seat failed: ${told.failed}.`;
 
 /** One item per running build: its depositId repeats across serve restarts, so writeDeposit files it once. */
-export function alarmDeposit(health: DeployHealth, minutes: number, told: AlarmNotice): OwnerItemDeposit {
+function alarmDeposit(health: DeployHealth, minutes: number, told: AlarmNotice): OwnerItemDeposit {
   const summary = `titan-factory deploys stalled for ${minutes} min: ${health.causes.join("; ")}`.replace(/\s+/g, " ");
   return {
     depositId: `deploy-alarm-${health.runningSha}`,
