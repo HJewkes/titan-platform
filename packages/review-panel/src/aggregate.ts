@@ -90,11 +90,14 @@ function outcomeOf(blocking: readonly Seat[]): PanelOutcome {
 
 /** A finding starts at a blank line or a list item, so one reviewer's separate points are checked separately. */
 function splitFindings(text: string): string[] {
-  const findings: string[][] = [[]];
+  let current: string[] = [];
+  const findings: string[][] = [current];
   for (const line of text.split("\n")) {
-    const current = findings[findings.length - 1] as string[];
-    if (line.trim() === "" || (FINDING_START.test(line) && current.length > 0)) findings.push([]);
-    if (line.trim() !== "") (findings[findings.length - 1] as string[]).push(line);
+    if (line.trim() === "" || (FINDING_START.test(line) && current.length > 0)) {
+      current = [];
+      findings.push(current);
+    }
+    if (line.trim() !== "") current.push(line);
   }
   return findings.filter((lines) => lines.length > 0).map((lines) => lines.join("\n"));
 }
