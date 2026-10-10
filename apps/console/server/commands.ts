@@ -5,6 +5,7 @@ import type { ActiveWork } from "./active-work.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
 import { readCommand } from "./owner-guard.js";
+import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
@@ -25,11 +26,11 @@ export interface ConsoleSources {
   sessions: SessionsSource;
   activeWork: ActiveWork;
   inbox: InboxSource;
+  rounds: RoundsSource;
   work?: WorkOptions;
 }
 
-/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, work }: ConsoleSources) {
+function upstreamsCommands(upstreams: readonly Upstream[]) {
   return {
     "upstreams.health": readCommand({
       name: "upstreams.health",
@@ -38,11 +39,19 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
       result: z.object({ checkedAt: z.string(), upstreams: z.array(upstreamHealth) }),
       run: async () => ({ checkedAt: new Date().toISOString(), upstreams: await probeUpstreams(upstreams) }),
     }),
+  };
+}
+
+/** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, work }: ConsoleSources) {
+  return {
+    ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
     ...inboxCommands(inbox),
+    ...roundsCommands(rounds),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
