@@ -145,7 +145,7 @@ describe("a seat's ask at a head a MERGE was carried to", () => {
     await vi.waitFor(() => expect(w.spawned).toHaveLength(2), { timeout: 5_000 });
 
     expect(asked).toMatchObject({ ok: true, data: { head: h2(w), requested: true } });
-    expect(resultOf(w, `sh-review-intent:${h2(w)}`)).toMatchObject({ mode: "spawn", requested: true, cause: { cause: "seat-request" } });
+    expect(resultOf(w, `sh-review-intent:${h2(w)}`)).toMatchObject({ mode: "spawn", cause: { cause: "seat-request" } });
   });
 });
 

@@ -24,6 +24,7 @@ import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes
 import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
+import { LeaveLand } from "./leave-land.js";
 import { observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
@@ -101,13 +102,6 @@ interface ShepherdRun extends WakeRun {
   escalations: Map<string, Escalated>;
   /** What names the next review's cause. */
   trail: CauseTrail;
-}
-
-/** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
-class LeaveLand extends Error {
-  constructor(readonly outcome?: LandOutcome) {
-    super(outcome ? `left land: ${outcome.kind}` : "left land for the next round");
-  }
 }
 
 /**
@@ -232,7 +226,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
-  if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
+  if (!run.reviews.has(headSha) && !run.release && !run.trail.seatAsked.has(headSha)) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = (await standingVerdict(run, headSha)) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);

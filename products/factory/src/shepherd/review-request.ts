@@ -7,6 +7,7 @@ import type { FactoryContext } from "../registry.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdServices } from "./commands.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
+import { LeaveLand } from "./leave-land.js";
 import type { CauseTrail } from "./review-cause.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -42,19 +43,34 @@ interface ReviewedRun {
 }
 
 /**
- * The verdict the run already took at `headSha`, unless a seat's untaken ask stands there: then the verdict is set aside and
- * the trail marks the head, so its next review is Shepherd's own and never a carry.
+ * The verdict the run already took at `headSha`, unless a seat's untaken ask stands there: then the verdict is set aside, the
+ * trail marks the head so its next review is Shepherd's own and never a carry, and the land round ends. `land` trusts a head
+ * for the rest of its round once the old verdict let it through, so only a new round asks the policy or the owner again.
  */
 export async function standingVerdict(run: ReviewedRun, headSha: string): Promise<Verdict | undefined> {
   const verdict = run.reviews.get(headSha);
   if (verdict === undefined || run.release || !(await reviewRequested(run.ctx, headSha))) return verdict;
   run.reviews.delete(headSha);
   run.trail.seatAsked.add(headSha);
-  return undefined;
+  throw new LeaveLand();
 }
 
-export const reviewRequestRoute = (deps: Pick<ShepherdDeps, "store" | "now">): StepRoute =>
-  codeRoute(REVIEW_REQUEST_STEP, deps.now, async (input: { runId: string; head: string }) => ({ requested: reviewPendingAt(deps.store.get().byRun(input.runId), input.head) }));
+/**
+ * Takes the ask it finds, so one ask ends one merge wait even when the review that follows never reaches an intent. A repeat
+ * after a crash may have taken the ask already, so it counts a taken ask at the head too: at worst one review more, never one lost.
+ */
+function takeAsk(deps: Pick<ShepherdDeps, "store">, input: { runId: string; head: string }, repeat: boolean): { requested: boolean } {
+  const store = deps.store.get();
+  const registration = store.byRun(input.runId);
+  const requested = repeat ? registration?.reviewRequest?.head === input.head : reviewPendingAt(registration, input.head);
+  if (requested) store.takeReviewRequest(input.runId, input.head);
+  return { requested };
+}
+
+export function reviewRequestRoute(deps: Pick<ShepherdDeps, "store" | "now">): StepRoute {
+  const routeFor = (repeat: boolean) => codeRoute(REVIEW_REQUEST_STEP, deps.now, async (input: { runId: string; head: string }) => takeAsk(deps, input, repeat));
+  return { ...routeFor(false), runner: { run: (step) => routeFor(step.attempt > 0).runner.run(step) } };
+}
 
 export interface ReviewAsk {
   runId: string;

@@ -718,13 +718,17 @@ run ab0f9228-…: asked for Shepherd's own review at 0123abcd…
 read now. The ask is stored on the registration (migration 18), so it survives a serve
 restart. The next review intent at that head spawns a reviewer under a name nobody has held,
 never the standing reviewer or the named reviewer of a `hold --reviewer`, records
-`requested: true`, and takes the ask. A retry at that head, after a silent or timed-out
+`requested: true` when it takes the ask. A retry at that head, after a silent or timed-out
 reviewer, spawns again too.
 
-A held run waiting in `merging` at that head stops waiting without merging and reads CI
-again. The `sh-review-request` step then sets aside the verdict the run already had there,
-whether a seat reviewer's, a carried `MERGE` or Shepherd's own. The review that follows is
-named `seat-request`, and neither it nor a retry at that head carries an earlier `MERGE`. A
+A run waiting in `merging` at that head stops waiting without merging and reads CI again,
+held or not: an ask also stops an unheld pull request's merge at that head, which fails safe.
+The `sh-review-request` step then takes the ask and sets aside the verdict the run already
+had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It also ends the
+land round, because `land` trusts a head for the rest of a round once its old verdict let it
+through. The next round asks the policy, or the owner, again, so an asked review that
+escalates opens `approve-merge` instead of merging. That review is named `seat-request`,
+and neither it nor a retry at that head carries an earlier `MERGE`. A
 verdict from a hold's named reviewer still counts toward the hold.
 
 The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and

@@ -41,15 +41,27 @@ interface Reviewers {
   resumed: string[];
 }
 
-/** Every reviewer says MERGE at the head it reads, except the seat reviewer when `seatSilent` and Shepherd's first `silentSpawns` spawns. */
-function mergingReviewers(seatSilent: boolean, silentSpawns: number): Reviewers {
+/** What Shepherd's spawn number `spawn` writes at `head`; undefined is a reviewer that never answers. */
+type Say = (spawn: number, head: string) => string | undefined;
+
+const block = (verdict: "MERGE" | "FIX_FIRST", head: string, closer = ""): string => `Read the diff.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n${closer}`;
+const merges: Say = (_spawn, head) => block("MERGE", head);
+
+/** The seat reviewer says MERGE unless `seatSilent`; Shepherd's spawns answer as `say` scripts them. */
+function scriptedReviewers(seatSilent: boolean, say: Say): Reviewers {
   const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), row(SEAT_REVIEWER), row(STANDING)];
   const spawned: string[] = [];
   const resumed: string[] = [];
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void (spawned.push(name), agents.push(row(name))), resume: async (name) => void resumed.push(name) };
-  const silent = (who: ReviewerAgent) => (seatSilent && who.name === SEAT_REVIEWER) || (spawned.includes(who.name) && spawned.indexOf(who.name) < silentSpawns);
-  const said = (who: ReviewerAgent, head: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: Date.now(), text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}\n`, locator: locatorIn(who.sessionId) });
-  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId && !silent(who)).map((who) => said(who, input.head)) };
+  const text = (who: ReviewerAgent, head: string): string | undefined => {
+    if (who.name === SEAT_REVIEWER) return seatSilent ? undefined : block("MERGE", head);
+    return spawned.includes(who.name) ? say(spawned.indexOf(who.name), head) : block("MERGE", head);
+  };
+  const said = (who: ReviewerAgent, head: string) => {
+    const written = text(who, head);
+    return written === undefined ? [] : [{ agentId: who.agentId, sessionId: who.sessionId, writtenAt: Date.now(), text: written, locator: locatorIn(who.sessionId) }];
+  };
+  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).flatMap((who) => said(who, input.head)) };
   return { dispatch, reader, spawned, resumed };
 }
 
@@ -65,24 +77,25 @@ interface World {
 
 interface Options {
   seatSilent?: boolean;
-  /** Shepherd's first spawns that never write a verdict; with any, the clock is real and the waits are short, so they time out. */
-  silentSpawns?: number;
+  /** Scripts Shepherd's spawns; with one, the clock is real and the waits are short, so a silent spawn times out. */
+  say?: Say;
   standing?: boolean;
   branch?: string;
 }
 
 /** One green, clean head H1 under `hold`, with the hold's named reviewer when one is given. */
-function heldRun(hold: string, reviewer?: string, { seatSilent = false, silentSpawns = 0, standing = false, branch }: Options = {}): World {
+function heldRun(hold: string, reviewer?: string, { seatSilent = false, say, standing = false, branch }: Options = {}): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge"), mergeableState: "clean" });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   fake.setRuns(H1, [successRun("validate", 1), successRun("dag-check", 2)]);
-  const reviewers = mergingReviewers(seatSilent, silentSpawns);
+  fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), (pr.mergeableState = "clean"));
+  const reviewers = scriptedReviewers(seatSilent, say ?? merges);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const waits = silentSpawns > 0 ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1 } : {};
+  const waits = say ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1 } : {};
   const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" }, ...waits };
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: silentSpawns > 0 ? Date.now : () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: say ? Date.now : () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   const store = ref.get();
@@ -120,6 +133,43 @@ describe("a hold that names a seat reviewer", () => {
   });
 });
 
+const gatePrompt = (w: World): string | undefined => w.host.pendingGates().find((gate) => gate.runId === w.runId)?.gate.prompt;
+
+/** Releases the hold once the run took the ask, then waits for the run to merge or open approve-merge. */
+async function releasedAfterAsk(w: World): Promise<void> {
+  await vi.waitFor(() => expect(w.store.byRun(w.runId)?.reviewRequest?.takenAt).not.toBeNull(), { timeout: 5_000 });
+  w.store.release(w.runId);
+  await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
+}
+
+describe("an ask whose review escalates", () => {
+  it("opens approve-merge, never merges, when the asked reviewers stay silent until the failed-rounds cap", async () => {
+    const w = heldRun(G10_ADVERSARY, undefined, { say: (spawn, head) => (spawn === 0 ? block("MERGE", head) : undefined) });
+    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 1).toBe(true), { timeout: 5_000 });
+
+    await ask(w);
+    await releasedAfterAsk(w);
+
+    expect(w.fake.pr(1).merged).toBe(false);
+    expect(gatePrompt(w)).toContain("failed-rounds");
+  });
+
+  it("opens approve-merge, never merges, when the asked FIX_FIRST is the run's sixth", async () => {
+    const w = heldRun(G10_ADVERSARY, undefined, { say: (spawn, head) => block(spawn === 5 ? "MERGE" : "FIX_FIRST", head) });
+    for (let fix = 1; fix <= 5; fix += 1) {
+      await vi.waitFor(() => expect(w.spawned.length === fix && /^sh-held-wait/.test(w.host.runtime.status(w.runId)?.currentStep ?? "")).toBe(true), { timeout: 5_000 });
+      w.fake.pushHead(1, fakeSha(`fix-${fix}`));
+    }
+    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 6).toBe(true), { timeout: 5_000 });
+
+    expect(await ask(w)).toMatchObject({ ok: true, data: { head: fakeSha("fix-5"), requested: true } });
+    await releasedAfterAsk(w);
+
+    expect(w.fake.pr(1).merged).toBe(false);
+    expect(gatePrompt(w)).toContain("fix-first-runaway");
+  });
+});
+
 describe("shepherd review", () => {
   it("spawns a fresh reviewer of Shepherd's own at the head a held run already reviewed, once per head", async () => {
     const w = heldRun(G10_ADVERSARY);
@@ -135,7 +185,7 @@ describe("shepherd review", () => {
     expect(repeat).toEqual({ ok: true, data: { runId: w.runId, head: H1, requested: false } });
     expect(w.spawned).toHaveLength(2);
     expect(new Set(w.spawned).size).toBe(2);
-    expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn" }), expect.objectContaining({ mode: "spawn", requested: true })]);
+    expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn" }), expect.objectContaining({ mode: "spawn", cause: { cause: "seat-request" } })]);
     expect(resultsOf(w, "sh-review-request")).toContainEqual({ requested: true });
   });
 
@@ -161,7 +211,7 @@ describe("shepherd review", () => {
   });
 
   it("keeps a timed-out asked review's retry Shepherd's own, never the hold's named reviewer", async () => {
-    const w = heldRun(G10_REVIEW, SEAT_REVIEWER, { seatSilent: true, silentSpawns: 1 });
+    const w = heldRun(G10_REVIEW, SEAT_REVIEWER, { seatSilent: true, say: (spawn, head) => (spawn < 1 ? undefined : block("MERGE", head)) });
     w.store.requestReview(w.runId, H1);
 
     await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 2).toBe(true), { timeout: 5_000 });
