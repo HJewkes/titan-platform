@@ -115,7 +115,7 @@ describe("acceptVerdict against the frozen Shepherd copy", () => {
     const after = acceptVerdict(recorded.input, recorded.messages);
 
     // Since TP-1955 a limit result also keeps the client's notice, which the frozen copy dropped.
-    expect(after).toStrictEqual(isUsageLimit(after) ? { ...before, notice: recorded.messages.at(-1)?.text.trim() } : before);
+    expect(after).toStrictEqual(isUsageLimit(after) && typeof before === "object" ? { ...before, notice: recorded.messages.at(-1)?.text.trim() } : before);
   });
 
   it("covers every outcome the acceptor can reach", () => {

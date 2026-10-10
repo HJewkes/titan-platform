@@ -20,7 +20,7 @@ const PRIMARY = "/accounts/review";
 const SPARE = "/accounts/spare";
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 
-const locatorIn = (nativeId: string) => ({ source: { conversation: { nativeId } } }) as unknown as SourceTextLocator;
+const locatorIn = (nativeId: string) => ({ source: { conversation: { nativeId } } }) as SourceTextLocator;
 
 interface Spawned {
   name: string;

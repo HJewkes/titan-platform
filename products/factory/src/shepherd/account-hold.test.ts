@@ -27,11 +27,11 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const db = migrated();
   const clock = { now: T0 };
   let store = new ShepherdStore(db, () => clock.now);
-  const ref = { get: () => store } as unknown as ShepherdStoreRef;
+  const ref = { get: () => store } as ShepherdStoreRef;
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: HEAD });
-  const limits = { get: () => new AccountLimitStore(db, () => clock.now) } as unknown as AccountLimitStoreRef;
-  const deps = { port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000 } as unknown as ShepherdDeps;
+  const limits = { get: () => new AccountLimitStore(db, () => clock.now) } as AccountLimitStoreRef;
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
   const alerts: string[] = [];
   const accounts: AccountsView = { dirs: options.dirs ?? [ACCOUNT], alert: options.alert ?? (async (_repo, text) => void alerts.push(text)) };
   const routes = accountRoutes(deps, accounts);
