@@ -7,7 +7,7 @@ import { type LexState, scanSubstitutions, SplitParseError } from "./lexer.js";
  * Every partial model of bash 5's reading has left some text it runs unchecked, so the line is refused.
  */
 export function readLineEnd(s: LexState): void {
-  if (s.leftOpen) throw new SplitParseError("a heredoc left open by a substitution is read differently by bash 5 and bash 3.2");
+  if (s.leftOpen) throw new SplitParseError("a heredoc left open by a substitution is read differently by bash 5 and bash 3.2", "heredoc");
   readHeredocBodies(s);
 }
 

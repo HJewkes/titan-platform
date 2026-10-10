@@ -37,3 +37,38 @@ export { scorecardKeysFor, startTrial } from "./trial.js";
 export type { ChampionOf, TrialStart, UnitRef } from "./trial.js";
 export { scoreMeasurementAudit } from "./measurement-audit.js";
 export type { AuditGold, AuditRun, AuditScore, GoldGap, GoldMetric } from "./measurement-audit.js";
+export {
+  LABEL_MATURITY_DAYS,
+  buildCorpus,
+  citedPaths,
+  citesPath,
+  deriveLabel,
+  extractCorpus,
+  gitClone,
+  labelHistogram,
+  openFactoryDb,
+  readFactoryFacts,
+  readOnlyUri,
+  transcriptCost,
+} from "./corpus/index.js";
+export type {
+  CorpusLabel,
+  CorpusOptions,
+  CorpusRow,
+  CostOf,
+  ExtractDeps,
+  FactoryFacts,
+  FactoryReader,
+  FactoryRegistration,
+  FactoryRun,
+  GitPort,
+  HeadVerdict,
+  LabelInput,
+  Landing,
+  MainCommit,
+  OwnerDecision,
+  OwnerGateRow,
+  RawLabels,
+  ReviewCost,
+  TranscriptRef,
+} from "./corpus/index.js";

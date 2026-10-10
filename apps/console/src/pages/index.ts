@@ -1,11 +1,11 @@
 import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
+import { HomePage } from "./HomePage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
-import { StatusPage } from "./StatusPage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
@@ -14,7 +14,7 @@ const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(Round
 
 /** One entry per built view; a rail entry with none here renders its placeholder. */
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
-  home: StatusPage,
+  home: HomePage,
   initiatives: WorkPage,
   sessions: SessionsRoute,
   rounds: RoundsView,
