@@ -1,5 +1,30 @@
 # titan-console
 
+## 0.2.1
+
+### Patch Changes
+
+- 46028ea: Replace the Status view with the Home page at `#/`: upstream health, status counts (open tasks, initiatives, live agents, sessions today), a read-only needs-you list of open queue items, blocked tasks and unreachable upstreams with deep links, and the last 24 hours of activity. A queue row links out to agent-chat's `/ui#queue`; the page issues no write.
+- 68011ca: Add the Sessions pages. `#/sessions` lists `sessions.list` in a table (agent, tasks, PR, started, duration, tokens, cost) with an `?agent=` filter, "Load more" on the `before` cursor and an "Indexed to" caption. `#/sessions/<id>` renders `sessions.timeline` as a header of facts, a Conversation tab of collapsible turns and a Files tab whose touched files link to their codewatch node when the server mapped one. Loading, empty, not-found and degraded states are keyed on the degraded reason.
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [4a42590]
+- Updated dependencies [b7c53ee]
+- Updated dependencies [9c173c9]
+- Updated dependencies [c174b71]
+- Updated dependencies [c0701a9]
+- Updated dependencies [91eea82]
+- Updated dependencies [e4dd79b]
+- Updated dependencies [845a0cf]
+- Updated dependencies [8030b8e]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/owner-queue@0.3.0
+  - @titan-design/github@0.7.0
+  - @titan-design/pm@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
