@@ -19,7 +19,8 @@ const SNAPSHOT_FIXTURES = new Set([
   "snapshot", "data_regression", "file_regression", "num_regression", "dataframe_regression",
   "image_regression", "ndarrays_regression",
 ]);
-const EXIT_STATUS = /(?:^|\.)(?:exit_code|returncode|status_code|code)$/;
+/** `.code` only as an attribute (`excinfo.value.code`), so a bare local named `code` stays an ordinary value. */
+const EXIT_STATUS = /(?:^|\.)(?:exit_code|returncode|status_code)$|\.code$/;
 const GOLDEN_READ = /\.(?:read_text|read_bytes|read)\(/;
 const EXACT_UNITTEST = /^assert(?:Equals?|ListEqual|DictEqual|TupleEqual|SetEqual|MultiLineEqual|SequenceEqual|CountEqual)$/;
 const ERROR_CALLS = /^(?:pytest\.raises|.*\.assertRaises(?:Regex)?)$/;
@@ -55,12 +56,19 @@ function roundtripSubject(node: Node): string | null {
 
 function isSnapshotSide(side: Node): boolean {
   if (side.type === "identifier" && side.text === "snapshot") return true;
-  if (side.type === "call" && side.childForFieldName("function")?.text === "snapshot") return true;
-  return GOLDEN_READ.test(side.text);
+  return side.type === "call" && side.childForFieldName("function")?.text === "snapshot";
+}
+
+const LITERAL_TYPES = new Set(["string", "concatenated_string", "integer", "float", "true", "false", "none"]);
+
+/** A file read compared with something other than an inline literal: the expected value lives in a golden file. */
+function isGoldenComparison(read: Node, other: Node): boolean {
+  return GOLDEN_READ.test(read.text) && !LITERAL_TYPES.has(other.type);
 }
 
 function equalityKind(left: Node, right: Node): AssertionKind {
   if (isSnapshotSide(left) || isSnapshotSide(right)) return "snapshot";
+  if (isGoldenComparison(left, right) || isGoldenComparison(right, left)) return "snapshot";
   if (roundtripSubject(left) === right.text || roundtripSubject(right) === left.text) return "roundtrip";
   const sized = (n: Node) => /^len\(/.test(n.text) || /\.shape$/.test(n.text);
   return sized(left) || sized(right) ? "loose" : "exact";

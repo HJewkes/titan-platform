@@ -72,6 +72,20 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     }
   });
 
+  it("reads a pathlib method as I/O only on a path, so str.replace stays pure", () => {
+    expect(kinds("app/core.py#slugify")).toEqual({ outputBoundary: 0, parser: 0, io: 0, pure: 1 });
+    expect(kinds("app/core.py#touch_marker")).toMatchObject({ io: 1, pure: 0 });
+  });
+
+  it("does not count a mutation of a local that shadows a module-level name as a global write", () => {
+    expect(metric("app/core.py#collect", "symbol_global_writes")).toBe(0);
+    expect(kinds("app/core.py#collect")).toMatchObject({ pure: 1 });
+  });
+
+  it("flags a parser method by its own name", () => {
+    expect(kinds("app/core.py#Config.parse")).toMatchObject({ parser: 1 });
+  });
+
   it("does not call a function pure when it writes globals or calls one that does I/O", () => {
     expect(metric("app/core.py#remember", "symbol_global_writes")).toBe(1);
     expect(kinds("app/core.py#remember")).toMatchObject({ io: 0, pure: 0 });
@@ -125,6 +139,17 @@ describe("test-kind facts of one test function", () => {
     expect(failed.test_a).toEqual(only("error_path"));
     const http = await testFacts(lines("def test_a():", "    assert resp.status_code == 404"));
     expect(http.test_a).toEqual(only("error_path"));
+    const systemExit = await testFacts(lines("def test_a():", "    assert excinfo.value.code == 2"));
+    expect(systemExit.test_a).toEqual(only("error_path"));
+    const bareCode = await testFacts(lines("def test_a():", "    assert code == 3"));
+    expect(bareCode.test_a).toEqual(only("exact_output"));
+  });
+
+  it("reads a file compared with an inline literal as exact output, not a golden file", async () => {
+    const inline = await testFacts(lines("def test_a():", "    assert out.read_text() == 'hello\\n'"));
+    expect(inline.test_a).toEqual(only("exact_output"));
+    const golden = await testFacts(lines("def test_a():", "    assert out.read_text() == GOLDEN.read_text()"));
+    expect(golden.test_a).toEqual(only("snapshot"));
   });
 
   it("reads length and shape equalities as loose, and any exact one as exact", async () => {

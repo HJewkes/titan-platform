@@ -52,7 +52,11 @@ export function qualifiedCallee(call: Node, imports: ReadonlyMap<string, string>
 
 const IO_MODULES = ["subprocess", "socket", "requests", "httpx", "urllib.request", "shutil", "os"];
 const PURE_OS_PATH = /^os\.path\.(?:join|basename|dirname|split|splitext|normpath|normcase|relpath|isabs|commonpath)$/;
-const PATH_IO_METHODS = /\.(?:write_text|write_bytes|read_text|read_bytes|mkdir|unlink|rmdir|touch|rename|replace|iterdir|glob)$/;
+const PATH_IO_METHODS = new Set([
+  "write_text", "write_bytes", "read_text", "read_bytes", "mkdir", "unlink", "rmdir", "touch", "rename", "replace",
+  "iterdir", "glob",
+]);
+const PATH_CONSTRUCTORS = new Set(["pathlib.Path", "pathlib.PurePath", "Path"]);
 const PARSE_CALLS = new Set([
   "json.loads", "json.load", "yaml.safe_load", "yaml.load", "tomllib.loads", "tomllib.load", "toml.loads",
   "csv.reader", "csv.DictReader", "ast.literal_eval", "struct.unpack", "xml.etree.ElementTree.fromstring",
@@ -62,10 +66,58 @@ const OUTPUT_CALLS = /^(?:print|sys\.stdout\.write|sys\.stdout\.buffer\.write|cl
 const ARGPARSE_CALLS = /(?:^|\.)(?:ArgumentParser|add_argument|parse_args|parse_known_args)$/;
 const ENTRY_DECORATOR = /(?:^|\.)(?:command|group|callback|route|get|post|put|patch|delete|websocket)$/;
 
-function isIoCall(callee: string): boolean {
-  if (callee === "open" || callee === "io.open" || PATH_IO_METHODS.test(callee)) return true;
+/** What one function binds: names that hold a path, and names it binds locally (parameters included). */
+interface FunctionScope {
+  imports: ReadonlyMap<string, string>;
+  pathNames: Set<string>;
+  localNames: Set<string>;
+}
+
+/** True for a `Path(...)` call, `path / "x"` on one, or a name bound to one; a `str.replace` receiver is not. */
+function isPathValue(node: Node | null, scope: FunctionScope): boolean {
+  if (!node) return false;
+  if (node.type === "parenthesized_expression") return isPathValue(node.namedChildren[0] ?? null, scope);
+  if (node.type === "identifier") return scope.pathNames.has(node.text);
+  if (node.type === "binary_operator") return isPathValue(node.childForFieldName("left"), scope);
+  return node.type === "call" && PATH_CONSTRUCTORS.has(qualifiedCallee(node, scope.imports));
+}
+
+function isPathIoCall(call: Node, scope: FunctionScope): boolean {
+  const callee = call.childForFieldName("function");
+  if (callee?.type !== "attribute") return false;
+  const method = callee.childForFieldName("attribute")?.text ?? "";
+  return PATH_IO_METHODS.has(method) && isPathValue(callee.childForFieldName("object"), scope);
+}
+
+function isIoCall(call: Node, callee: string, scope: FunctionScope): boolean {
+  if (callee === "open" || callee === "io.open" || isPathIoCall(call, scope)) return true;
   if (PURE_OS_PATH.test(callee)) return false;
   return IO_MODULES.some((m) => callee.startsWith(`${m}.`));
+}
+
+/** Parameters, with those annotated `Path` also recorded as paths. */
+function bindParameters(def: Node, scope: FunctionScope): void {
+  for (const param of def.childForFieldName("parameters")?.namedChildren ?? []) {
+    const id = param?.type === "identifier" ? param : param?.descendantsOfType("identifier")[0];
+    if (!id) continue;
+    scope.localNames.add(id.text);
+    if (/\b(?:Path|PurePath)\b/.test(param?.childForFieldName("type")?.text ?? "")) scope.pathNames.add(id.text);
+  }
+}
+
+/** Plain `name = value` bindings in the body, minus names it declares `global` or `nonlocal`. */
+function bindLocals(body: Node, scope: FunctionScope): void {
+  const declaredOuter = new Set<string>();
+  forEachOwnNode(body, (node) => {
+    if (node.type === "global_statement" || node.type === "nonlocal_statement") {
+      for (const id of node.namedChildren) if (id?.type === "identifier") declaredOuter.add(id.text);
+    }
+    const left = node.type === "assignment" ? node.childForFieldName("left") : null;
+    if (left?.type !== "identifier") return;
+    scope.localNames.add(left.text);
+    if (isPathValue(node.childForFieldName("right"), scope)) scope.pathNames.add(left.text);
+  });
+  for (const name of declaredOuter) scope.localNames.delete(name);
 }
 
 /** Decorators that make a def a click or typer command, or a Flask or FastAPI route. */
@@ -79,37 +131,47 @@ function isEntryDecorated(def: Node): boolean {
   });
 }
 
-/** A module-level `global`/`nonlocal` rebinding, or a mutation of a name assigned at module level. */
-function isGlobalWrite(node: Node, moduleNames: ReadonlySet<string>): boolean {
+/** A module-level `global`/`nonlocal` rebinding, or a mutation of a module-level name the function does not shadow. */
+function isGlobalWrite(node: Node, isModuleName: (name: string) => boolean): boolean {
   if (node.type === "global_statement" || node.type === "nonlocal_statement") return true;
   if (node.type !== "assignment" && node.type !== "augmented_assignment") return false;
   const left = node.childForFieldName("left");
   if (left?.type !== "subscript" && left?.type !== "attribute") return false;
   const base = left.childForFieldName(left.type === "subscript" ? "value" : "object");
-  return base?.type === "identifier" && moduleNames.has(base.text);
+  return base?.type === "identifier" && isModuleName(base.text);
 }
 
 const MUTATORS = /^(\w+)\.(?:append|extend|insert|update|add|pop|popitem|clear|setdefault|remove|discard)$/;
 
-/** Classify one function body against the file's imports and module-level names. */
+function scopeOf(def: Node, body: Node, imports: ReadonlyMap<string, string>): FunctionScope {
+  const scope: FunctionScope = { imports, pathNames: new Set(), localNames: new Set() };
+  bindParameters(def, scope);
+  bindLocals(body, scope);
+  return scope;
+}
+
+/** Classify one function body against the file's imports and module-level names; `name` is its qualified name. */
 export function codeKindFacts(
   name: string,
   def: Node,
   imports: ReadonlyMap<string, string>,
   moduleNames: ReadonlySet<string>,
 ): CodeKindFacts {
-  const facts = { parser: PARSE_NAME.test(name), io: false, outputSignal: isEntryDecorated(def), globalWrites: false };
+  const ownName = name.slice(name.lastIndexOf(".") + 1);
+  const facts = { parser: PARSE_NAME.test(ownName), io: false, outputSignal: isEntryDecorated(def), globalWrites: false };
   const body = def.childForFieldName("body");
   if (!body) return facts;
+  const scope = scopeOf(def, body, imports);
+  const isModuleName = (n: string) => moduleNames.has(n) && !scope.localNames.has(n);
   forEachOwnNode(body, (node) => {
-    if (isGlobalWrite(node, moduleNames)) facts.globalWrites = true;
+    if (isGlobalWrite(node, isModuleName)) facts.globalWrites = true;
     if (node.type !== "call") return;
     const callee = qualifiedCallee(node, imports);
-    if (isIoCall(callee)) facts.io = true;
+    if (isIoCall(node, callee, scope)) facts.io = true;
     if (PARSE_CALLS.has(callee)) facts.parser = true;
     if (OUTPUT_CALLS.test(callee) || ARGPARSE_CALLS.test(callee)) facts.outputSignal = true;
     const mutated = MUTATORS.exec(callee)?.[1];
-    if (mutated && moduleNames.has(mutated)) facts.globalWrites = true;
+    if (mutated && isModuleName(mutated)) facts.globalWrites = true;
   });
   return facts;
 }
