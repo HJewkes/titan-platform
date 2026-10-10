@@ -10,7 +10,7 @@ export interface MergeOutcome {
 const UNKNOWN: MergeOutcome = { revert: null, laterFix: null };
 const FIX_SUBJECT = /\bfix(?:e[sd])?\b/i;
 
-export function isRevertOf(commit: MainCommit, merged: MainCommit): boolean {
+function isRevertOf(commit: MainCommit, merged: MainCommit): boolean {
   return commit.body.includes(`This reverts commit ${merged.sha}`) || commit.subject.startsWith(`Revert "${merged.subject}"`);
 }
 

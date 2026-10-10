@@ -18,7 +18,7 @@ function parseJsonText(value: unknown): unknown {
   }
 }
 
-export interface StepPayload {
+interface StepPayload {
   completedAt: string | undefined;
   /** `output.result` (or `data.result`) when the step wrapped its result, else the payload itself. */
   result: unknown;

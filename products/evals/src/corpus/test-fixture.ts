@@ -10,7 +10,7 @@ const SCHEMA = `
   create table hitl_gate (id text primary key, prompt text not null, status text not null, payload text, reason text, created_at text not null, resolved_by text);
 `;
 
-export type StepShape = "output-string" | "output-object" | "data-only";
+type StepShape = "output-string" | "output-object" | "data-only";
 
 export interface FixtureStep {
   key: string;
