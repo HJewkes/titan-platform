@@ -158,7 +158,7 @@ export interface GitHubWire {
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
 }
 
-export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
+export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "base-changed" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
 
 /** A write either happened now or was skipped because its effect is already in place (or can no longer apply). */
 export type WriteResult<T = object> = T & ({ done: true } | { done: false; skipped: SkipReason });
@@ -200,8 +200,11 @@ export interface GitHubPort {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
   pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
-  /** `message` is sent as the squash commit's title and body in place of GitHub's concatenation of the PR's commits. */
-  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>>;
+  /**
+   * `message` is sent as the squash commit's title and body in place of GitHub's concatenation of the PR's commits.
+   * With `expectedBase`, a PR whose base is another branch skips as `base-changed`, read before the write and before each retry.
+   */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage, expectedBase?: string): Promise<WriteResult<{ mergeSha: string }>>;
   getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
@@ -270,7 +273,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
-    merge: async (repo, number, sha, method, message) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep, message),
+    merge: async (repo, number, sha, method, message, expectedBase) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep, message, expectedBase),
     getSquashSource: async (repo, number) => wire.getSquashSource(repoOf(repo), pr(number)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),

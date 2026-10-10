@@ -60,15 +60,10 @@ function waitIsOver(pr: PullRequest, input: BaseWaitInput): boolean {
   return pr.baseRef !== input.base || pr.headSha !== input.headSha || pr.merged || pr.state !== "open";
 }
 
-/** The merge input plus the base `base-check` allowed; absent on a step recorded before the field, which allows only the default branch. */
-export interface BaseMergeInput extends MergeInput {
-  base?: string;
-}
-
-/** A base retargeted after `base-check` skips the merge, so land reads CI and checks the new base before any write. */
-export async function mergeOnAllowedBase(port: GitHubPort, input: BaseMergeInput) {
-  const pr = await port.getPr(input.repo, input.pr);
-  const allowed = input.base ?? (await port.defaultBranch(input.repo));
-  if (pr.state === "open" && !pr.merged && pr.baseRef !== allowed) return { done: false as const, skipped: "base-changed", mergeSha: "" };
-  return mergeWithMessage(port, input);
+/**
+ * A base retargeted after `base-check` skips the merge as `base-changed`, so land reads CI and checks the new base
+ * before any write. A merge step recorded before `base` existed allows only the default branch.
+ */
+export async function mergeOnAllowedBase(port: GitHubPort, input: MergeInput) {
+  return mergeWithMessage(port, { ...input, base: input.base ?? (await port.defaultBranch(input.repo)) });
 }

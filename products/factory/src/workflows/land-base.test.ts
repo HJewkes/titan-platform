@@ -59,7 +59,7 @@ async function waitingAt(host: FactoryHost, runId: string, stepId: string): Prom
 }
 
 describe("land on a base that is not the default branch", () => {
-  it("waits with the approved head on a feature base, then merges into main once the PR is retargeted", async () => {
+  it("waits with the approved head on a feature base, then asks again on main once the PR is retargeted, and merges into main", async () => {
     const world = baseWorld("feat/x", landOnce({ policy: gateEverything }));
     const runId = world.host.runtime.start("land-base");
     await gateOpened(world.host, gateId(runId, "approve-merge"));
@@ -68,10 +68,16 @@ describe("land on a base that is not the default branch", () => {
     await waitingAt(world.host, runId, "base-wait:0");
     const waitingStatus = world.host.runtime.status(runId)!.status;
     world.fake.pr(1).baseRef = "main";
+    await gateOpened(world.host, gateId(runId, "approve-merge", 1));
+    const mergesBeforeReask = world.fake.effects.merge;
+    world.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
     const run = await world.host.runtime.wait(runId);
 
     expect(waitingStatus).toBe("running");
     expect(stepResult(world.host, runId, "base-check:0")).toMatchObject({ base: "feat/x", defaultBranch: "main", allowed: false, reason: expect.stringContaining("the base is feat/x") });
+    expect(world.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H1} into feat/x?`);
+    expect(world.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${H1} into main?`);
+    expect(mergesBeforeReask).toBe(0);
     expect(run.status).toBe("completed");
     expect(world.mergedInto).toEqual(["main"]);
     expect(world.outcomes).toEqual([{ kind: "merged", headSha: H1, mergeSha: world.fake.pr(1).mergeSha }]);

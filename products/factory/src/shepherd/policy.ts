@@ -7,7 +7,7 @@ import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-fa
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import { MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
+import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -25,7 +25,6 @@ export const RequestedPolicyFields = z.strictObject({
   reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean().optional(),
-  featureBase: z.boolean().optional(),
 });
 
 /** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused, and owner-gate must say why. */
@@ -51,7 +50,7 @@ export interface EffectivePolicy {
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
-  /** The merge may land in a base other than the repo's default branch, as a stacked PR's does; absent, it waits for a retarget. */
+  /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
   featureBase?: true;
 }
 
@@ -80,7 +79,7 @@ export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }
 
-export { MERGE_ON_GREEN_GRANT };
+export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
@@ -89,7 +88,8 @@ function narrower(a: MergeMode, b: MergeMode): MergeMode {
 
 /**
  * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
- * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one.
+ * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one. Only a seat's
+ * grant allows a feature base; no request key does.
  */
 export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}): EffectivePolicy {
   if (lookup.kind === "denied") throw new RegistrationRefused(lookup.reason);
@@ -105,7 +105,7 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
-    ...(requested.featureBase === true && { featureBase: true as const }),
+    ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
   };
 }
 

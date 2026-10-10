@@ -92,7 +92,7 @@ export function mergeableOf(mergeableState: string): "MERGEABLE" | "CONFLICTING"
   return mergeableState === "dirty" ? "CONFLICTING" : "UNKNOWN";
 }
 
-const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is green\. Policy ([\w-]+)\/([\w-]+): (.*)$/;
+const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})(?: into \S+)?\? CI is green\. Policy ([\w-]+)\/([\w-]+): (.*)$/;
 
 export interface LandGate {
   repo: string;
