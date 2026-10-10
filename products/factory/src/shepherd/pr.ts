@@ -234,8 +234,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
   if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
-    // An account hold is no review: the round it ends reads the head again and reviews it once the hold lifts.
-    if (verdict.kind !== "none" || verdict.cause !== "account-exhausted") run.reviews.set(headSha, verdict);
+    if (verdict.kind !== "none" || verdict.cause !== "account-exhausted") run.reviews.set(headSha, verdict); // an account hold is no review; the head is reviewed once the hold lifts
     const observed = await observePr(run.ctx, run.target, headSha);
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
     run.trail.last = { headSha, outcome, verdict };
