@@ -70,7 +70,7 @@ export const MAX_COMMAND_BYTES = 8 * 1024;
 /**
  * Answers one PreToolUse event. Never throws and never asks or allows: it either denies through
  * the returned stdout or stays silent. Failures fail open unless the raw text names something
- * guarded (plan section 7, owner decision D6).
+ * guarded (plan section 7, owner decision D6) or a command's text holds a push-class word.
  */
 export async function handle(input: string, env: Env, port: HookPort): Promise<HookResult> {
   try {
@@ -134,10 +134,14 @@ function scriptsReason(o: ScriptOverrun): string {
   return `authority-guard checks at most ${kib(MAX_SCRIPT_BYTES)} of script text in one command, counting a script that only a variable in a wrapper position runs ${ADDED_SCRIPT_WEIGHT} times, and this command's scripts reach ${kib(o.total)} at ${o.script}, so it refuses it; run ${o.script} in its own command.`;
 }
 
-/** A command or path that could not be classified denies only when its text names something guarded (D6). */
+/**
+ * A command or path that could not be classified denies only when its text names something guarded (D6), or,
+ * for a command, a push-class word: a parse failure must never let `git push` on a later line through (TP-2174).
+ */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
   const raw = event.kind === "bash" ? event.command : event.path;
-  if (actor.bypass || !namesGuarded(raw)) return logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
+  const refused = namesGuarded(raw) || (event.kind === "bash" && namesPushClass(raw));
+  if (actor.bypass || !refused) return logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
 }
 
@@ -217,6 +221,16 @@ function literalStem(pattern: string): string {
 export function namesGuarded(raw: string): boolean {
   const texts = [raw, unquoted(raw)].map((t) => t.toLowerCase());
   return GUARDED_NEEDLES.some((needle) => needle !== "" && texts.some((t) => t.includes(needle)));
+}
+
+/**
+ * Every push and merge spelling holds one of these words, while the words around it (`git -C . push`,
+ * `"$G" push`) cannot be read from text that failed to parse, so the word alone decides.
+ */
+const PUSH_CLASS = /\b(push|merge)\b/;
+
+function namesPushClass(command: string): boolean {
+  return [command, unquoted(command)].some((t) => PUSH_CLASS.test(t.toLowerCase()));
 }
 
 function unquoted(raw: string): string {
