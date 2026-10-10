@@ -17,7 +17,16 @@ const LONG_CAP_MINUTES = 60;
 const MS_PER_HOUR = 3_600_000;
 const WEAK_SOURCES: ReadonlySet<string> = new Set(["brief-paragraph", "brief-anchor"]);
 
-export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced";
+export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "reopened" | "unpriced" | "unmapped-role";
+
+/**
+ * Profiles the plan counts toward a task that `PROFILE_ROLES` does not map. Kept here so the worker
+ * report's role table is unchanged; a profile in neither table surfaces as `unmapped-role`.
+ */
+const TASK_PROFILE_ROLES: Readonly<Record<string, WorkerRole>> = {
+  "fable-implementer": "implementer",
+  "fable-reviewer": "reviewer",
+};
 
 /** A done task as the caller read it from its task store. */
 export interface ActualsTask {
@@ -57,6 +66,8 @@ export interface TaskActuals {
   firstImplAt: string | null;
   lastImplAt: string | null;
   prs: TaskPr[];
+  /** Task-linked sessions whose profile maps to no role. Their hours are in no total, so the count says how much is missing. */
+  unmappedSessions: number;
   flags: TaskActualsFlag[];
 }
 
@@ -74,6 +85,7 @@ interface Contribution {
 
 /** One row per done task in the allowlist; a task no session links to still gets a row, flagged. */
 export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options: TaskActualsOptions): TaskActuals[] {
+  if (options.capMinutes !== undefined && !(options.capMinutes > 0)) throw new RangeError("capMinutes must be positive");
   const allowed = new Set(options.initiatives);
   const done = tasks.filter((t): t is ActualsTask & { doneAt: string } => t.doneAt !== null && allowed.has(t.initiative));
   const wanted = new Set(done.map((t) => t.id));
@@ -94,10 +106,15 @@ function buildRecords(db: Db, origins: readonly OriginLink[], caps: readonly num
     const s = stats.get(origin.sessionId);
     if (!s) continue;
     const lifetimeMs = Date.parse(s.lastTs) - Date.parse(s.firstTs);
-    const role = workerRole({ profile: origin.profile, lifetimeMs, assignments: assignments.get(origin.sessionId) ?? 0 });
+    const role = roleOf(origin.profile, lifetimeMs, assignments.get(origin.sessionId) ?? 0);
     records.set(origin.sessionId, { origin, role, stats: s });
   }
   return records;
+}
+
+function roleOf(profile: string | null, lifetimeMs: number, assignments: number): WorkerRole {
+  const role = workerRole({ profile, lifetimeMs, assignments });
+  return role === "unknown" ? (TASK_PROFILE_ROLES[(profile ?? "").toLowerCase()] ?? "unknown") : role;
 }
 
 type Attachments = Map<string, Map<string, SessionRecord>>;
@@ -150,6 +167,7 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
   const impl = all.filter((c) => c.record.role === "implementer");
   const review = all.filter((c) => c.record.role === "reviewer");
   const used = [...impl, ...review];
+  const unmapped = all.filter((c) => c.record.role === "unknown").length;
   const starts = impl.map((c) => c.record.stats.firstTs).sort();
   const prs = collectPrs(db, impl);
   return {
@@ -163,7 +181,8 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
     firstImplAt: starts[0] ?? null,
     lastImplAt: impl.map((c) => c.record.stats.lastTs).sort().at(-1) ?? null,
     prs,
-    flags: flagsFor(task.doneAt, impl, used),
+    unmappedSessions: unmapped,
+    flags: flagsFor(task.doneAt, impl, used, unmapped),
   };
 }
 
@@ -175,7 +194,7 @@ function collectPrs(db: Db, impl: readonly Contribution[]): TaskPr[] {
   return [...byRef.values()].sort((a, b) => a.prRef.localeCompare(b.prRef));
 }
 
-function flagsFor(doneAt: string, impl: readonly Contribution[], used: readonly Contribution[]): TaskActualsFlag[] {
+function flagsFor(doneAt: string, impl: readonly Contribution[], used: readonly Contribution[], unmapped: number): TaskActualsFlag[] {
   const flags: TaskActualsFlag[] = [];
   if (impl.length === 0) flags.push("no-impl-session");
   if (used.some((c) => WEAK_SOURCES.has(c.record.origin.taskSource ?? ""))) flags.push("weak-link");
@@ -183,6 +202,7 @@ function flagsFor(doneAt: string, impl: readonly Contribution[], used: readonly 
   const cutoff = doneCutoff(doneAt);
   if (impl.some((c) => Date.parse(c.record.stats.firstTs) > cutoff)) flags.push("reopened");
   if (used.some((c) => c.record.stats.unpriced > 0)) flags.push("unpriced");
+  if (unmapped > 0) flags.push("unmapped-role");
   return flags;
 }
 

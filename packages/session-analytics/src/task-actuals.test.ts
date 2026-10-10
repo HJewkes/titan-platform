@@ -142,6 +142,34 @@ describe("taskActuals", () => {
     expect(row!.prs).toEqual([{ prRef: "acme/widget#7", mergedAt: "2026-09-20T11:00:00Z" }]);
   });
 
+  it("counts fable-implementer and fable-reviewer sessions as implementer and reviewer work", () => {
+    addSession({ id: "impl", profile: "fable-implementer", tasks: ["T-1"], gaps: [8] });
+    addSession({ id: "rev", profile: "fable-reviewer", tasks: ["T-1"], gaps: [6] });
+
+    const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+    expect(row!.implAgentHours.capped).toBeCloseTo(8 / 60);
+    expect(row!.reviewAgentHours.capped).toBeCloseTo(6 / 60);
+    expect(row!.flags).toEqual([]);
+    expect(row!.unmappedSessions).toBe(0);
+  });
+
+  it("reports a task-linked session with an unmapped profile instead of dropping it silently", () => {
+    addSession({ id: "impl", tasks: ["T-1"], gaps: [4] });
+    addSession({ id: "odd", profile: "brand-new-profile", tasks: ["T-1"], gaps: [9] });
+    addSession({ id: "planner", profile: "planner", tasks: ["T-1"], gaps: [9] });
+
+    const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+    expect(row!.flags).toEqual(["unmapped-role"]);
+    expect(row!.unmappedSessions).toBe(1);
+    expect(row!.implAgentHours.capped).toBeCloseTo(4 / 60);
+  });
+
+  it("rejects a non-positive cap", () => {
+    expect(() => taskActuals(fixture.openReadOnly(), [], { ...OPTIONS, capMinutes: 0 })).toThrow(RangeError);
+  });
+
   it("gives no row to a task outside the allowlist or not done", () => {
     addSession({ id: "s1", tasks: ["P-1"], gaps: [1] });
 

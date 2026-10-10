@@ -187,7 +187,8 @@ It takes an open graph connection and never calls `gh`.
 
 `taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The
 caller reads the done tasks (`id`, `initiative`, `doneAt`) and passes them with an
-`initiatives` allowlist; a task outside it gets no row, and nothing else is read.
+`initiatives` allowlist; a task outside it gets no row. It reads the spawn record's task ids and
+profile, request timestamps and cost, never briefs or transcript text.
 `doneAt` may be an ISO datetime or a date alone.
 
 A row carries `implAgentHours` and `reviewAgentHours`, each as `capped` (the 15 minute idle
@@ -204,9 +205,13 @@ implementer sessions, and `prs` lists each linked PR with its `merged_at`.
 | `multi-task` | A session names k tasks, so its hours and cost split 1/k. |
 | `reopened` | An implementer session started after `doneAt`. All work still counts. |
 | `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
+| `unmapped-role` | A task-linked session's profile maps to no role; `unmappedSessions` counts them and their hours are in no total. |
 
 Roles come from `roleFromProfile` and `workerRole`, so a long-lived standing peer is not
-counted as an implementer.
+counted as an implementer. `fable-implementer` and `fable-reviewer` count as implementer and
+reviewer here, without changing the worker report's table. Planner, researcher, coordinator and
+standing-peer sessions are known roles that the totals leave out on purpose; only an unknown
+profile raises `unmapped-role`. `capMinutes` must be positive.
 
 ## What it deliberately does not do
 
