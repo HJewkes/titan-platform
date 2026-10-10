@@ -38,17 +38,29 @@ const BAD_FIX_PROOF = new Set(["vacuous", "no-tests"]);
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
 
+/** Results may come back from stored JSON, so a verdict counts only when it is exactly MERGE or FIX_FIRST at the head. */
+const verdictAt = (result: MemberResult["result"], head: string): unknown => (result.kind === "verdict" && result.head === head ? (result as { verdict?: unknown }).verdict : undefined);
+
 function statusOf(results: readonly MemberResult[], head: string): Status {
-  const atHead = results.map((r) => r.result).filter((r) => r.kind === "verdict" && r.head === head);
-  if (atHead.some((r) => "verdict" in r && r.verdict === "FIX_FIRST")) return "FIX_FIRST";
-  if (results.length > 0 && atHead.length === results.length) return "MERGE";
+  const verdicts = results.map((r) => verdictAt(r.result, head));
+  if (verdicts.includes("FIX_FIRST")) return "FIX_FIRST";
+  if (verdicts.length > 0 && verdicts.every((v) => v === "MERGE")) return "MERGE";
   return results.length > 0 && results.every((r) => r.result.kind === "timeout") ? "timeout" : "missing";
+}
+
+function fixFirstsOf(results: readonly MemberResult[], head: string): Seat["fixFirsts"] {
+  return results.flatMap(({ result }) => {
+    if (verdictAt(result, head) !== "FIX_FIRST" || !("text" in result)) return [];
+    const closer = result.closer === "yes" || result.closer === "no" ? result.closer : undefined;
+    return [{ text: typeof result.text === "string" ? result.text : "", ...(closer && { closer }) }];
+  });
 }
 
 function seatOf(member: PanelMember, results: readonly MemberResult[], input: AggregateInput): Seat {
   const own = results.filter((r) => r.shape === member.shape);
-  const fixFirsts = own.flatMap(({ result }) => ("verdict" in result && result.verdict === "FIX_FIRST" && result.head === input.head ? [result] : []));
-  const blocking = member.blocking || (member.shape === "tests" && input.fixProof !== undefined && BAD_FIX_PROOF.has(input.fixProof));
+  const fixFirsts = fixFirstsOf(own, input.head);
+  const fixProof = typeof input.fixProof === "string" ? input.fixProof.trim().toLowerCase() : undefined;
+  const blocking = member.blocking || (member.shape === "tests" && fixProof !== undefined && BAD_FIX_PROOF.has(fixProof));
   return { member, blocking, status: statusOf(own, input.head), fixFirsts };
 }
 
@@ -90,11 +102,20 @@ function memberText(seat: Seat, source: LineSource): string {
   return seat.blocking ? text : splitFindings(text).filter((finding) => verified(finding, source)).join("\n\n");
 }
 
+/** The bound keeps the newest text; when that cuts the first cited line, it leads the result so the fixer still has a location. */
+function boundMember(text: string, share: number): string {
+  if (text.length <= share) return text;
+  const lead = text.split("\n").find((line) => new RegExp(CITATION.source).test(line))?.slice(0, Math.floor(share / 4));
+  const tail = boundedFindings(text, share);
+  if (lead === undefined || tail.includes(lead)) return tail;
+  return `${lead}\n${boundedFindings(text, share - lead.length - 1)}`;
+}
+
 /** Each member gets an equal share of the bound, so one long member does not crowd out another. */
 function findingsOf(seats: readonly Seat[], source: LineSource): PanelFinding[] {
   const texts = seats.map((seat) => ({ seat, text: memberText(seat, source) })).filter(({ text }) => text !== "");
   const share = Math.floor(MAX_FIX_FIRST_TEXT_CHARS / Math.max(texts.length, 1));
-  return texts.map(({ seat, text }) => ({ shape: seat.member.shape, text: boundedFindings(text, share), blocking: seat.blocking }));
+  return texts.map(({ seat, text }) => ({ shape: seat.member.shape, text: boundMember(text, share), blocking: seat.blocking }));
 }
 
 function closerOf(dissent: readonly Seat[]): "yes" | "no" | undefined {

@@ -55,7 +55,8 @@ every caller plans, briefs and aggregates the same way:
   (`parseOwnerBrief`).
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
   (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
-  a verdict naming `input.head` counts. Any blocking FIX_FIRST makes it `FIX_FIRST` and
+  a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other
+  value is a missing member. Any blocking FIX_FIRST makes it `FIX_FIRST` and
   lists that member in `dissent`; `MERGE` needs every blocking member's MERGE. A blocking
   member with no verdict is `no-verdict` (`timeout` when every such member timed out), and
   a plan with no blocking member is `no-verdict`. Advisory members never block; their

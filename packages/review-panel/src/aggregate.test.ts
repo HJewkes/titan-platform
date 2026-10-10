@@ -53,6 +53,26 @@ describe("aggregate table", () => {
 });
 
 describe("aggregate fails closed", () => {
+  it.each([["fix_first"], ["FIX_FIRST "], ["WAIT"], ["Fix-First"], ["merge"], ["MERGE "], [undefined], [null]])(
+    "reads a verdict of %j at the head as missing, never MERGE",
+    (verdict) => {
+      const odd = { shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer, verdict } } as unknown as MemberResult;
+      const result = aggregate(G10, [merge("correctness"), odd], input);
+      expect(result.outcome).toBe("no-verdict");
+      expect(result.satisfiesG10).toBe(false);
+    },
+  );
+
+  it("reads a verdict result with no verdict field as missing", () => {
+    const bare = { shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer } } as unknown as MemberResult;
+    expect(aggregate(G10, [merge("correctness"), bare], input).outcome).toBe("no-verdict");
+  });
+
+  it("reads an unknown result kind as missing", () => {
+    const odd = { shape: "adversary", result: { kind: "VERDICT", head: HEAD, verdict: "MERGE" } } as unknown as MemberResult;
+    expect(aggregate(G10, [merge("correctness"), odd], input).outcome).toBe("no-verdict");
+  });
+
   it("never reads a MERGE at another head as a MERGE at this one", () => {
     expect(aggregate(G10, [merge("correctness"), merge("adversary", OLD_HEAD)], input).outcome).toBe("no-verdict");
   });
@@ -125,6 +145,10 @@ describe("aggregate advisory members", () => {
     expect(verdict.findings).toEqual([{ shape: "tests", text: "the test passes on base", blocking: true }]);
   });
 
+  it.each(["Vacuous", " NO-TESTS "])("reads fix-proof %j without regard to case or spaces", (fixProof) => {
+    expect(aggregate(untested, [merge("correctness")], { ...input, fixProof }).outcome).toBe("no-verdict");
+  });
+
   it("needs the tests member's MERGE when fix-proof made it blocking", () => {
     expect(aggregate(untested, [merge("correctness")], { ...input, fixProof: "vacuous" }).outcome).toBe("no-verdict");
     expect(aggregate(untested, [merge("correctness")], { ...input, fixProof: "reproduced" }).outcome).toBe("MERGE");
@@ -150,6 +174,14 @@ describe("aggregate findings", () => {
     for (const finding of verdict.findings) expect(finding.text.length).toBeLessThanOrEqual(MAX_FIX_FIRST_TEXT_CHARS / 2);
     expect(verdict.findings.map((f) => f.text.endsWith("tail"))).toEqual([true, true]);
     expect(verdict.findings.reduce((sum, f) => sum + f.text.length, 0)).toBeLessThanOrEqual(MAX_FIX_FIRST_TEXT_CHARS);
+  });
+
+  it("keeps a long blocking finding's first citation when the bound cuts its start", () => {
+    const text = `src/gate.ts:2 lets an empty list through\n${"x".repeat(MAX_FIX_FIRST_TEXT_CHARS)}\nlatest restatement`;
+    const [finding] = aggregate(plan("standard"), [fixFirst("correctness", text)], input).findings;
+    expect(finding?.text.startsWith("src/gate.ts:2 lets an empty list through\n")).toBe(true);
+    expect(finding?.text.endsWith("latest restatement")).toBe(true);
+    expect(finding?.text.length).toBeLessThanOrEqual(MAX_FIX_FIRST_TEXT_CHARS);
   });
 
   it("takes the closer and defect class from the dissenting members", () => {
