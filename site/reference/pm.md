@@ -227,7 +227,7 @@ is never an input to a forecast.
 `2026-10-08T14:03:22Z` (`Z` or a `+hh:mm` offset, optional fractional seconds), because
 active-work now writes datetimes while older task files keep a bare date. `started_at` is an
 optional write-once ISO datetime. `updated`, `due` and the deliverable dates stay date-only.
-`isoDate` is unchanged; `isoDatetime` and `isoDateOrDatetime` are the new validators.
+The date-only validator behind `updated`, `due` and the deliverable dates is unchanged.
 
 ## Gotchas
 
