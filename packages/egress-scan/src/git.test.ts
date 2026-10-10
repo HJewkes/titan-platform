@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   commitsForRange,
   commitsForUpdate,
+  listRemoteTips,
   MAX_PATCH_BYTES,
   parsePrePush,
   PatchTooLargeError,
@@ -246,6 +247,156 @@ describe("pre-push ranges", () => {
     const head = repo.commit("head");
 
     expect(commitsForRange(repo.dir, ZERO_SHA, head)).toEqual([head]);
+  });
+});
+
+describe("a merge commit against parents the remote already has", () => {
+  const flaggedLine = `see ${plantedHomePath()}\n`;
+
+  /** main holds a flagged commit the remote has; feature (also on the remote) is about to merge it for real. */
+  function setup() {
+    const repo = newRepo();
+    const bare = tempDir("egress-scan-remote-");
+    bares.push(bare);
+    spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    repo.git(["remote", "add", "origin", bare]);
+    repo.write("base.txt", "base\n");
+    repo.commit("base");
+    repo.git(["push", "-q", "origin", "main"]);
+    repo.git(["checkout", "-q", "-b", "feature"]);
+    repo.write("feature.txt", "feature\n");
+    const branchTip = repo.commit("branch work");
+    repo.git(["push", "-q", "origin", "feature"]);
+    repo.git(["checkout", "-q", "main"]);
+    repo.write("landed.md", flaggedLine);
+    repo.commit("flagged but already on the remote");
+    repo.git(["push", "-q", "origin", "main"]);
+    repo.git(["checkout", "-q", "feature"]);
+    return { repo, bare, branchTip };
+  }
+
+  function pushFindings(repo: TestRepo, bare: string, branchTip: string): string[] {
+    const localSha = repo.git(["rev-parse", "HEAD"]).trim();
+    const update = { localSha, remoteSha: branchTip };
+    const commits = commitsForUpdate(repo.dir, "origin", update, { pushUrl: bare });
+    const tips = listRemoteTips(repo.dir, { pushUrl: bare });
+    const result = scan(commits.map((sha) => readCommit(repo.dir, sha, undefined, tips, new Set(commits))));
+    return result.findings.map((f) => `${f.location} ${f.rule}`);
+  }
+
+  it("passes a non-fast-forward merge of a main whose flagged commit is already on the remote", () => {
+    const { repo, bare, branchTip } = setup();
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+
+    expect(pushFindings(repo, bare, branchTip)).toEqual([]);
+  });
+
+  it("refuses a flagged line the merge resolution itself adds", () => {
+    const { repo, bare, branchTip } = setup();
+    repo.git(["merge", "-q", "--no-commit", "--no-ff", "main"]);
+    repo.write("resolved.txt", flaggedLine);
+    const merge = repo.commit("merge main");
+
+    expect(pushFindings(repo, bare, branchTip)).toEqual([`commit ${merge.slice(0, 7)} resolved.txt:1 home-path`]);
+  });
+
+  it("refuses a flagged line a merge resolution adds to a file with a NUL byte", () => {
+    const { repo, bare, branchTip } = setup();
+    repo.git(["merge", "-q", "--no-commit", "--no-ff", "main"]);
+    repo.write("blob.bin", `a\0\n${plantedHomePath()}\n`);
+    const merge = repo.commit("merge main");
+
+    expect(pushFindings(repo, bare, branchTip)).toEqual([`commit ${merge.slice(0, 7)} blob.bin:2 home-path`]);
+  });
+
+  it("refuses a new flagged commit on the branch made before the merge", () => {
+    const { repo, bare, branchTip } = setup();
+    repo.write("fresh.txt", flaggedLine);
+    const fresh = repo.commit("new flagged work");
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+
+    expect(pushFindings(repo, bare, branchTip)).toEqual([`commit ${fresh.slice(0, 7)} fresh.txt:1 home-path`]);
+  });
+
+  /** origin (fetch) is private and holds a flagged commit S; the push URL is a public bare that has only base. */
+  function privateFetchSetup() {
+    const repo = newRepo();
+    const privateBare = tempDir("egress-scan-private-");
+    const publicBare = tempDir("egress-scan-public-");
+    bares.push(privateBare, publicBare);
+    for (const bare of [privateBare, publicBare]) spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    repo.git(["remote", "add", "origin", privateBare]);
+    repo.write("base.txt", "base\n");
+    const base = repo.commit("base");
+    repo.git(["push", "-q", publicBare, "main"]);
+    repo.write("landed.md", flaggedLine);
+    repo.commit("flagged, only on the private remote");
+    repo.git(["push", "-q", "origin", "main"]);
+    return { repo, publicBare, base };
+  }
+
+  function newBranchFindings(repo: TestRepo, publicBare: string): string[] {
+    const localSha = repo.git(["rev-parse", "HEAD"]).trim();
+    const commits = commitsForUpdate(repo.dir, "origin", { localSha, remoteSha: ZERO_SHA }, { pushUrl: publicBare });
+    const tips = listRemoteTips(repo.dir, { pushUrl: publicBare });
+    const result = scan(commits.map((sha) => readCommit(repo.dir, sha, undefined, tips, new Set(commits))));
+    return result.findings.map((f) => `${f.location} ${f.rule}`);
+  }
+
+  it("refuses a parent that only a local tracking ref holds, when fetch and push URLs name different repositories", () => {
+    const { repo, publicBare, base } = privateFetchSetup();
+    repo.git(["checkout", "-q", "-b", "fresh", base]);
+    repo.write("fresh.txt", "fresh\n");
+    repo.commit("branch work");
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "origin/main"]);
+    const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+    expect(newBranchFindings(repo, publicBare)).toEqual([`commit ${merge.slice(0, 7)} landed.md:1 home-path`]);
+  });
+
+  it("refuses a scanned parent whose own ancestry only a local tracking ref holds", () => {
+    const { repo, publicBare, base } = privateFetchSetup();
+    repo.git(["checkout", "-q", "-b", "p-side", "origin/main"]);
+    repo.write("p.txt", "p\n");
+    repo.commit("P on top of the private commit");
+    repo.git(["checkout", "-q", "-b", "feat", base]);
+    repo.write("f.txt", "f\n");
+    repo.commit("F");
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge P", "p-side"]);
+    const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+    expect(newBranchFindings(repo, publicBare)).toEqual([`commit ${merge.slice(0, 7)} landed.md:1 home-path`]);
+  });
+
+  it("refuses an octopus merge whose unpushed parent sits on a tracking-ref-only commit", () => {
+    const { repo, publicBare, base } = privateFetchSetup();
+    repo.git(["checkout", "-q", "-b", "o2", base]);
+    repo.write("o2.txt", "o2\n");
+    repo.commit("o2");
+    repo.git(["push", "-q", publicBare, "o2"]);
+    repo.git(["checkout", "-q", "-b", "p-side", "origin/main"]);
+    repo.write("p.txt", "p\n");
+    repo.commit("P on top of the private commit");
+    repo.git(["checkout", "-q", "-b", "oct", base]);
+    repo.git(["merge", "-q", "-m", "octopus", "o2", "p-side"]);
+    const merge = repo.git(["rev-parse", "HEAD"]).trim();
+
+    expect(newBranchFindings(repo, publicBare)).toEqual([`commit ${merge.slice(0, 7)} landed.md:1 home-path`]);
+  });
+
+  it("refuses the landed text when the push URL cannot be listed", () => {
+    const { repo, branchTip } = setup();
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+    const merge = repo.git(["rev-parse", "HEAD"]).trim();
+    const gone = path.join(tempDir("egress-scan-gone-"), "missing.git");
+    bares.push(path.dirname(gone));
+
+    const tips = listRemoteTips(repo.dir, { pushUrl: gone });
+    const result = scan([readCommit(repo.dir, merge, undefined, tips)]);
+
+    expect(tips).toBeUndefined();
+    expect(branchTip).not.toBe(merge);
+    expect(result.findings.map((f) => `${f.location} ${f.rule}`)).toEqual([`commit ${merge.slice(0, 7)} landed.md:1 home-path`]);
   });
 });
 
