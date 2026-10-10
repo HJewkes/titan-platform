@@ -3,6 +3,28 @@ import type { Db } from "@titan-design/store-sqlite";
 
 const IN_SESSIONS = "session_id IN (SELECT value FROM json_each(@ids))";
 
+type Row = Record<string, unknown>;
+
+function asRows(rows: unknown[]): Row[] {
+  return rows.filter((row): row is Row => typeof row === "object" && row !== null);
+}
+
+function text(row: Row, key: string): string {
+  const value = row[key];
+  return typeof value === "string" ? value : "";
+}
+
+function nullableText(row: Row, key: string): string | null {
+  const value = row[key];
+  return typeof value === "string" ? value : null;
+}
+
+/** SQLite hands back null for a SUM over no priced rows; that reads as zero. */
+function num(row: Row, key: string): number {
+  const value = row[key];
+  return typeof value === "number" ? value : 0;
+}
+
 /** A spawn record that names tasks, with the profile and how the link was inferred. */
 export interface OriginLink {
   sessionId: string;
@@ -11,32 +33,25 @@ export interface OriginLink {
   taskSource: string | null;
 }
 
-interface OriginRow {
-  sessionId: string;
-  profile: string | null;
-  taskIds: string;
-  taskSource: string | null;
-}
-
 const ORIGIN_COLUMNS = "session_id AS sessionId, profile, task_ids AS taskIds, task_source AS taskSource";
 
-function parseOrigin(row: OriginRow): OriginLink {
-  const parsed: unknown = JSON.parse(row.taskIds);
+function parseOrigin(row: Row): OriginLink {
+  const parsed: unknown = JSON.parse(text(row, "taskIds"));
   const taskIds = Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
-  return { sessionId: row.sessionId, profile: row.profile, taskIds, taskSource: row.taskSource };
+  return { sessionId: text(row, "sessionId"), profile: nullableText(row, "profile"), taskIds, taskSource: nullableText(row, "taskSource") };
 }
 
 export function readTaskOrigins(db: Db): OriginLink[] {
-  const rows = db.prepare(`SELECT ${ORIGIN_COLUMNS} FROM session_origin WHERE task_ids IS NOT NULL`).all() as OriginRow[];
-  return rows.map(parseOrigin);
+  const rows = db.prepare(`SELECT ${ORIGIN_COLUMNS} FROM session_origin WHERE task_ids IS NOT NULL`).all();
+  return asRows(rows).map(parseOrigin);
 }
 
 /** Origins for sessions found through a PR edge, whether or not they name a task. */
 export function readOriginsOf(db: Db, sessionIds: readonly string[]): OriginLink[] {
   const rows = db
     .prepare(`SELECT session_id AS sessionId, profile, COALESCE(task_ids, '[]') AS taskIds, task_source AS taskSource FROM session_origin WHERE ${IN_SESSIONS}`)
-    .all({ ids: JSON.stringify(sessionIds) }) as OriginRow[];
-  return rows.map(parseOrigin);
+    .all({ ids: JSON.stringify(sessionIds) });
+  return asRows(rows).map(parseOrigin);
 }
 
 export interface SessionStats {
@@ -61,15 +76,15 @@ export function readSessionStats(db: Db, sessionIds: readonly string[], capsMinu
          SUM(cost_usd) AS usd, SUM(CASE WHEN priced THEN 0 ELSE 1 END) AS unpriced, ${caps}
        FROM request_cost WHERE ${IN_SESSIONS} GROUP BY session_id`,
     )
-    .all(params) as Record<string, unknown>[];
-  return rows.map((row) => ({
-    sessionId: row.sessionId as string,
-    requests: row.requests as number,
-    firstTs: row.firstTs as string,
-    lastTs: row.lastTs as string,
-    usd: row.usd as number,
-    unpriced: row.unpriced as number,
-    activeMs: capsMinutes.map((_, i) => row[`active${i}`] as number),
+    .all(params);
+  return asRows(rows).map((row) => ({
+    sessionId: text(row, "sessionId"),
+    requests: num(row, "requests"),
+    firstTs: text(row, "firstTs"),
+    lastTs: text(row, "lastTs"),
+    usd: num(row, "usd"),
+    unpriced: num(row, "unpriced"),
+    activeMs: capsMinutes.map((_, i) => num(row, `active${i}`)),
   }));
 }
 
@@ -90,8 +105,12 @@ export function readSessionPrs(db: Db, sessionIds: readonly string[]): SessionPr
        FROM "${KIT.edge}" e JOIN pr p ON p.pr_ref = e.target_ref
        WHERE e.relation = 'linked' AND e.t_expired IS NULL AND e.source_ref IN (SELECT value FROM json_each(@ids))`,
     )
-    .all({ ids: JSON.stringify(refs) }) as { source: string; prRef: string; mergedAt: string | null }[];
-  return rows.map((r) => ({ sessionId: r.source.slice(SESSION_PREFIX.length), prRef: r.prRef, mergedAt: r.mergedAt }));
+    .all({ ids: JSON.stringify(refs) });
+  return asRows(rows).map((r) => ({
+    sessionId: text(r, "source").slice(SESSION_PREFIX.length),
+    prRef: text(r, "prRef"),
+    mergedAt: nullableText(r, "mergedAt"),
+  }));
 }
 
 /** Sessions linked to any of the given PRs. */
@@ -101,6 +120,6 @@ export function readPrSessions(db: Db, prRefs: readonly string[]): { prRef: stri
       `SELECT target_ref AS prRef, source_ref AS source FROM "${KIT.edge}"
        WHERE relation = 'linked' AND t_expired IS NULL AND source_ref LIKE '${SESSION_PREFIX}%' AND target_ref IN (SELECT value FROM json_each(@ids))`,
     )
-    .all({ ids: JSON.stringify(prRefs) }) as { prRef: string; source: string }[];
-  return rows.map((r) => ({ prRef: r.prRef, sessionId: r.source.slice(SESSION_PREFIX.length) }));
+    .all({ ids: JSON.stringify(prRefs) });
+  return asRows(rows).map((r) => ({ prRef: text(r, "prRef"), sessionId: text(r, "source").slice(SESSION_PREFIX.length) }));
 }
