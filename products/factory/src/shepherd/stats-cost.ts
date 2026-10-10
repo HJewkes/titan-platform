@@ -61,7 +61,7 @@ interface Rollup {
 
 type CostWeek = { repo: string; week: string } & Rollup;
 
-interface ReviewCostReport {
+export interface ReviewCostReport {
   prs: PrCost[];
   weeks: CostWeek[];
   totals: Rollup & { completePrs: number };

@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
-import { SERVICE_LABEL } from "./service.js";
+import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./service-control.js";
 
 const CHECKOUT = "/srv/repo";
@@ -50,6 +53,12 @@ interface MachineInit {
   misreports?: string;
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
+  /** The deploy checkout does not exist yet, so deploy must clone it. */
+  absent?: boolean;
+  /** The installed unit starts a bin outside the deploy checkout, as before `service install` re-rendered it. */
+  unitElsewhere?: boolean;
+  /** `git clone` fails with this output. */
+  cloneFails?: string;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -88,7 +97,8 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
 
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
 function fakeMachine(init: MachineInit = {}) {
-  const files = new Map(Object.entries({ ...WORKSPACE_FILES, ...init.files }));
+  const unit = `<string>${init.unitElsewhere || init.absent ? "/srv/dev-tree" : CHECKOUT}/products/factory/dist/bin.js</string>`;
+  const files = new Map(Object.entries({ ...WORKSPACE_FILES, [plistPath("/srv/tester")]: unit, ...init.files, ...(init.absent ? {} : { [`${CHECKOUT}/.git`]: "" }) }));
   const running = init.running === undefined ? BASE : init.running;
   const trees = new Map<string, string>([FACTORY_DIST, WORKFLOW_DIST, CHARTS_DIST].map((dist) => [dist, `build:${running ?? BASE}`]));
   const state = { head: init.head ?? BASE };
@@ -136,6 +146,13 @@ function fakeMachine(init: MachineInit = {}) {
       calls.push(`pnpm ${args.join(" ")}`);
       return pnpm(args);
     },
+    clone: async (remote, dest) => {
+      calls.push(`git clone ${remote} ${dest}`);
+      if (init.cloneFails) return failed(128, init.cloneFails);
+      files.set(`${dest}/.git`, "");
+      state.head = TIP;
+      return ok();
+    },
     claude: async () => undefined,
     isDirectory: () => false,
     which: (binary) => `/opt/tools/bin/${binary}`,
@@ -174,7 +191,8 @@ function fakeMachine(init: MachineInit = {}) {
   return { ports, calls, files, trees, state, record, mutations, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
 }
 
-const OPTIONS: DeployOptions = { checkout: CHECKOUT, stateDir: STATE, port: 7410, logDir: STATE, drain: { timeoutMs: 60_000, wait: true, force: false } };
+const REMOTE = "https://example.test/org/titan-platform.git";
+const OPTIONS: DeployOptions = { checkout: CHECKOUT, remote: REMOTE, stateDir: STATE, port: 7410, logDir: STATE, drain: { timeoutMs: 60_000, wait: true, force: false } };
 
 async function deploy(machine: ReturnType<typeof fakeMachine>, expect?: string): Promise<{ code: number; out: string; err: string }> {
   let out = "";
@@ -198,6 +216,93 @@ describe("titan-factory service deploy", () => {
     expect(machine.trees.get(`${STATE}/deploy-backup/${BASE}/products/factory/dist`)).toBe(`build:${BASE}`);
     expect(machine.trees.has(`${STATE}/deploy-backup/${BASE}/packages/charts/dist`)).toBe(false);
     expect(machine.files.has(`${STATE}/deploy.lock`)).toBe(false);
+  });
+
+  it("clones an absent deploy checkout from the remote, builds it and stops before restarting", async () => {
+    const machine = fakeMachine({ absent: true });
+
+    const { code, out, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(machine.calls[0]).toBe(`git clone ${REMOTE} ${CHECKOUT}`);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build"]);
+    expect(out).toContain(`prepared ${TIP}`);
+    expect(out).toContain("titan-factory service install");
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("builds a fresh clone even when the running build already contains the target", async () => {
+    const machine = fakeMachine({ absent: true, running: TIP });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toContain("pnpm install --frozen-lockfile");
+  });
+
+  it("builds an existing deploy checkout whose unit runs elsewhere even when the running build contains the target, and never restarts", async () => {
+    const machine = fakeMachine({ unitElsewhere: true, running: TIP });
+
+    const { code, out } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build"]);
+    expect(out).toContain("titan-factory service install");
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("never restarts or rolls back while the unit runs elsewhere, even when the range reaches the factory build", async () => {
+    const machine = fakeMachine({ unitElsewhere: true, running: BASE });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.calls.some((call) => call.startsWith("launchctl kickstart"))).toBe(false);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("does not hold on a rolled-back record while the unit runs elsewhere", async () => {
+    const rolledBack = { outcome: "rolled-back", target: TIP, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "build failed" };
+    const machine = fakeMachine({ unitElsewhere: true, files: { [RECORD]: JSON.stringify(rolledBack) } });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toContain("pnpm install --frozen-lockfile");
+  });
+
+  it("never clones when the checkout exists", async () => {
+    const machine = fakeMachine();
+
+    await deploy(machine);
+
+    expect(machine.calls.filter((call) => call.startsWith("git clone"))).toEqual([]);
+  });
+
+  it("refuses when the checkout is absent and no remote is known, touching nothing", async () => {
+    const machine = fakeMachine({ absent: true });
+    let err = "";
+    const io = { stdout: () => undefined, stderr: (t: string) => void (err += t) };
+
+    const code = await deployService(machine.ports, io, { ...OPTIONS, remote: undefined });
+
+    expect(code).toBe(1);
+    expect(err).toContain("deployCheckout");
+    expect(err).toContain("deployRemote");
+    expect(machine.calls).toEqual([]);
+  });
+
+  it("refuses with the clone's output when git clone fails, redacting credentials", async () => {
+    const token = ["ghp", "abcdefghijklmnopqrstuvwxyz0123456789"].join("_");
+    const machine = fakeMachine({ absent: true, cloneFails: `fatal: could not read from https://x-access-token:${token}@example.test/r.git` });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("git clone failed");
+    expect(err).not.toContain(token);
+    expect(machine.mutations()).toEqual([]);
   });
 
   it("fast-forwards an untouched range without building or restarting, and records skipped", async () => {
@@ -461,6 +566,41 @@ describe("titan-factory service deploy verb", () => {
     const code = await runCli(["service", "deploy", ...argv], io, { workflows: [], routes: [], deploy: machine.ports });
     return { code, err };
   }
+
+  const scratch: string[] = [];
+  afterEach(() => scratch.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+  function configured(service: unknown): NodeJS.ProcessEnv {
+    const dir = mkdtempSync(join(tmpdir(), "factory-deploy-cli-"));
+    scratch.push(dir);
+    mkdirSync(join(dir, "titan-factory"), { recursive: true });
+    writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ service }));
+    return { XDG_CONFIG_HOME: dir, XDG_STATE_HOME: "/xdg/state" };
+  }
+
+  async function cliIn(env: NodeJS.ProcessEnv, machine: ReturnType<typeof fakeMachine>): Promise<number> {
+    const io = { stdout: () => undefined, stderr: () => undefined, env };
+    return runCli(["service", "deploy"], io, { workflows: [], routes: [], deploy: machine.ports });
+  }
+
+  it("clones the app data dir's deploy checkout from the configured remote when it is absent", async () => {
+    const machine = fakeMachine();
+    const env = configured({ deployRemote: "https://example.test/org/titan-platform.git" });
+
+    const code = await cliIn(env, machine);
+
+    expect(code).toBe(0);
+    expect(machine.calls[0]).toBe("git clone https://example.test/org/titan-platform.git /srv/tester/Library/Application Support/titan-factory/deploy/titan-platform");
+  });
+
+  it("deploys from service.deployCheckout when it is configured", async () => {
+    const machine = fakeMachine();
+    const env = configured({ deployCheckout: "/srv/elsewhere/tree", deployRemote: "https://example.test/org/titan-platform.git" });
+
+    await cliIn(env, machine);
+
+    expect(machine.calls[0]).toBe("git clone https://example.test/org/titan-platform.git /srv/elsewhere/tree");
+  });
 
   it("rejects an --expect value that is not a hex sha", async () => {
     const machine = fakeMachine();
