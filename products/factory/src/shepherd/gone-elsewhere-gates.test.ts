@@ -1,4 +1,4 @@
-import type { WorkflowRun } from "@titan-design/workflow";
+import type { ActiveStep, StepResult, WorkflowRun } from "@titan-design/workflow";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -142,17 +142,29 @@ describe("the periodic sweep over runs waiting on a gate", () => {
 });
 
 describe("mergedItself", () => {
-  const runWith = (stepResults: object, activeSteps: object = {}) => ({ stepResults, activeSteps }) as Pick<WorkflowRun, "stepResults" | "activeSteps">;
-  const result = (data: object) => ({ data: { result: data } });
+  const runWith = (stepResults: Record<string, StepResult> = {}, activeKeys: string[] = []): Pick<WorkflowRun, "stepResults" | "activeSteps"> => ({
+    stepResults,
+    activeSteps: Object.fromEntries(
+      activeKeys.map((key): [string, ActiveStep] => [key, { kind: "legacy", stepId: key, iterKey: key, attempt: 1, startedAt: "2026-01-01T00:00:00.000Z" }]),
+    ),
+  });
+  const result = (data: Record<string, unknown>): StepResult => ({
+    stepId: "merge",
+    iteration: 0,
+    agentId: null,
+    signal: null,
+    completedAt: "2026-01-01T00:00:00.000Z",
+    data: { result: data },
+  });
 
   it("counts a merge that landed and one in flight", () => {
     expect(mergedItself(runWith({ "merge:0:0": result({ done: true, mergeSha: "abc" }) }))).toBe(true);
-    expect(mergedItself(runWith({}, { "merge:0:0": {} }))).toBe(true);
+    expect(mergedItself(runWith({}, ["merge:0:0"]))).toBe(true);
   });
 
   it("does not count a merge that did not land, a landing recorded without one, or a post-merge step", () => {
     expect(mergedItself(runWith({ "merge:0:0": result({ done: false, skipped: "base-moved", mergeSha: "" }) }))).toBe(false);
     expect(mergedItself(runWith({ "merge:0:0": result({ done: false, skipped: "merged", mergeSha: "" }) }))).toBe(false);
-    expect(mergedItself(runWith({ "sh-landed": result({}) }, { "main-frozen": {} }))).toBe(false);
+    expect(mergedItself(runWith({ "sh-landed": result({}) }, ["main-frozen"]))).toBe(false);
   });
 });
