@@ -210,6 +210,25 @@ registries included. It does not check that a task's `deliverables` ids exist. I
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
 
+## Actuals and claims
+
+A task may carry an optional `actual` block, the measured outcome written back when the task is
+done. Every field is optional and a non-negative number unless noted: `agentHours`,
+`reviewAgentHours`, `usd`, `serviceWallHours`, `peakContext`, `contextAtFirstDeliverable`,
+`at` (an ISO datetime) and `model` (the hash of the model that produced the figures).
+
+`claimedHours` is an optional list of `{ hours, by, at }`: a free-text estimate logged with the
+claiming agent and an ISO datetime, to be scored against `actual` when the work completes. It
+is never an input to a forecast.
+
+## Dates and datetimes
+
+`created` and `done_at` (nullable) accept `YYYY-MM-DD` or a full ISO-8601 datetime such as
+`2026-10-08T14:03:22Z` (`Z` or a `+hh:mm` offset, optional fractional seconds), because
+active-work now writes datetimes while older task files keep a bare date. `started_at` is an
+optional write-once ISO datetime. `updated`, `due` and the deliverable dates stay date-only.
+`isoDate` is unchanged; `isoDatetime` and `isoDateOrDatetime` are the new validators.
+
 ## Gotchas
 
 `done_at` is required and nullable: an open task carries `done_at: null`, not a missing key.
