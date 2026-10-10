@@ -241,4 +241,12 @@ describe("digest.queuesDir and service.labelPrefix", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { queuesDir: "queues" } })))).toThrow(/absolute/);
     expect(() => loadConfig(configPath(xdg({ service: { labelPrefix: "" } })))).toThrow(/labelPrefix/);
   });
+
+  it("loads service.deployCheckout and deployRemote, and refuses a relative deployCheckout", () => {
+    const set = loadConfig(configPath(xdg({ service: { deployCheckout: "/srv/deploy/tree", deployRemote: "https://example.test/org/repo.git" } })));
+
+    expect(set.service?.deployCheckout).toBe("/srv/deploy/tree");
+    expect(set.service?.deployRemote).toBe("https://example.test/org/repo.git");
+    expect(() => loadConfig(configPath(xdg({ service: { deployCheckout: "deploy/tree" } })))).toThrow(/absolute/);
+  });
 });

@@ -88,6 +88,10 @@ export const SpawnGateConfigSchema = z.strictObject({
 /** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
 export const ServiceConfigSchema = z.strictObject({
   labelPrefix: noNul.min(1).optional(),
+  /** The checkout the service runs from and deploys fast-forward; absent means `<data dir>/deploy/titan-platform`. */
+  deployCheckout: absolutePath.optional(),
+  /** What deploy clones the checkout from when it is absent; absent means the origin of the checkout the CLI runs from. */
+  deployRemote: noNul.min(1).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;

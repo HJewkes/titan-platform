@@ -196,6 +196,9 @@ async function runCommands(ports: ServicePorts, commands: readonly ServiceComman
 
 function preflight(ports: ServicePorts, options: InstallOptions): string | undefined {
   if (options.missing.includes("gh")) return "gh is not on PATH, and titan-factory serve cannot reach GitHub without it; install gh, then rerun";
+  if (!options.dryRun && !ports.exists(options.plist.binPath)) {
+    return `${options.plist.binPath} does not exist; run titan-factory service deploy to clone and build the deploy checkout, then rerun install`;
+  }
   const notDir = options.claudeConfigDirs.find((dir) => !ports.isDirectory(resolve(dir)));
   return notDir === undefined ? undefined : `--claude-config-dir ${notDir} is not a directory`;
 }
