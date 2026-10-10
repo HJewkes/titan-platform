@@ -1,0 +1,59 @@
+{
+  "schema": "titan.measurement-audit/v1",
+  "system": "shepherd",
+  "mode": "initial",
+  "at": "2026-10-09T12:00:00Z",
+  "codeRev": "0000000000000000000000000000000000000000",
+  "inputs": {
+    "system": "shepherd",
+    "codeRoots": [
+      "products/factory/src/shepherd"
+    ],
+    "stores": [
+      {
+        "id": "factory-db",
+        "kind": "sqlite",
+        "path": "factory.db",
+        "readonly": true
+      }
+    ],
+    "surfaces": [
+      {
+        "kind": "cli",
+        "ref": "titan-factory shepherd stats"
+      }
+    ],
+    "owner": "hjewkes",
+    "mode": "initial"
+  },
+  "inventory": {
+    "data": {
+      "stores": []
+    },
+    "emitters": {
+      "emitters": []
+    }
+  },
+  "purpose": "Merge pull requests without the owner",
+  "users": [
+    "owner"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "text": "What is waiting on me?",
+      "answerable": "partly"
+    }
+  ],
+  "metrics": [],
+  "counts": {
+    "proposed": 0,
+    "Y": 0,
+    "P": 0,
+    "N": 0,
+    "slices": 0
+  },
+  "gaps": [],
+  "reports": [],
+  "extra": {}
+}

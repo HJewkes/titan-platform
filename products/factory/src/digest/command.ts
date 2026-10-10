@@ -98,7 +98,7 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   };
 }
 
-/** Collect, render and, unless `--dry-run`, write `<date>-<HH>.md` to the out dir and the iCloud dir. */
+/** Collect, render and, unless `--dry-run`, write `<date>-<HH>.md` to the out dir and every copy dir, then push it when `digest.push` is set. */
 export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: DigestFlags, deps: DigestDeps = {}): Promise<number> {
   const config = loadConfig(configPath(io.env));
   const now = deps.now ?? new Date();
@@ -113,7 +113,7 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
   };
   const markdown = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true });
   if (flags.dryRun) return (io.stdout(markdown), 0);
-  const { written, warnings } = deliverDigest(markdown, slot, digestDirectories(config, io.env));
+  const { written, warnings } = await deliverDigest(markdown, slot, digestDirectories(config, io.env), config.digest?.push);
   for (const warning of warnings) io.stderr(`warning: ${warning}\n`);
   io.stdout(written.map((path) => `wrote ${path}\n`).join(""));
   return 0;
