@@ -2,7 +2,8 @@ const BUDGET_FLOOR = 4096;
 const BUDGET_PER_CHAR = 16;
 
 /**
- * Shared by every lexer state reading one source: each `((` position is tried once. The spend is
+ * Shared by every lexer state reading one source: each `((` position, and the `$` of each `$((`,
+ * is tried once. The spend is
  * shared further, with heredoc bodies and backticks lexed from that source, so all trials of one
  * command read at most a few times its length and crafted nesting cannot stall the guard.
  */

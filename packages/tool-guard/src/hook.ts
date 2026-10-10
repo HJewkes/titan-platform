@@ -46,7 +46,9 @@ const SPLIT_REASONS: Record<Split, string> = {
   heredoc:
     "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body, and the line's other heredoc bodies, from the next lines, while bash 3.2 runs those lines as commands; close the heredoc inside the substitution.",
   "procsub-brace":
-    "authority-guard does not check this Bash command: a `}` inside a `<( )` or `>( )` in `${ }` ends the parameter there in bash 3.2, while bash 5 reads on to the `)`; move the process substitution out of the parameter.",
+    "authority-guard does not check this Bash command: bash 3.2 reads the text of a `<( )` or `>( )` in `${ }` as part of the parameter, and here a `}` or a quote in it ends that reading somewhere bash 5 does not; move the process substitution out of the parameter.",
+  "nested-substitution":
+    "authority-guard does not check this Bash command: bash 3.2 ends a `$( )` inside `${ }` or `$(( ))` at the first `)` that balances its parens, blind to heredocs, comments and case patterns, and here that is not where bash 5 ends it; move the command substitution out of the expansion.",
 };
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];

@@ -114,7 +114,63 @@ describe("ordinary ${…} usage", () => {
     'echo "${x:-$(date)}"',
     "echo $(( ${x:-1} + 2 ))",
     'echo "${HOME}/${name:-app}.log"',
+    "echo ${x-<(echo ${y})}",
+    "echo $(( (1+2) )) ${x-$(( (1+2)*2 ))}",
   ])("passes %s", async (command) => {
     expect(await hookDenies(command)).toBe(false);
+  });
+});
+
+/** Bash reads `$((` as arithmetic only when the `)` matching its second `(` is followed by another `)`. */
+const SUBSHELLS: Array<[string, (guarded: string) => string]> = [
+  ["$((…); …)", (g) => `echo $((echo a); ${g})`],
+  ['"$((…); …)"', (g) => `echo "$((echo a); ${g})"`],
+  ["${x-$((…); …)}", (g) => `echo \${x-$((echo a); ${g})}`],
+  ["a heredoc body", (g) => `cat <<E\n$((echo a); ${g})\nE`],
+];
+const GUARDED: Array<[string, string]> = [
+  ["a push", PUSH],
+  ["a merge", MERGE],
+];
+const SUBSHELL_CASES = SUBSHELLS.flatMap(([form, line]) => GUARDED.map(([name, guarded]): [string, string, string] => [name, form, line(guarded)]));
+
+describe("a $(( that bash reads as a subshell in a command substitution", () => {
+  it.each(SUBSHELL_CASES)("the hook denies %s in %s", async (_name, _form, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it.each(SUBSHELL_CASES)("the built hook denies %s in %s", (_name, _form, command) => {
+    expect(builtHookStdout(command)).toContain('"permissionDecision":"deny"');
+  });
+
+  it("reads the subshell's commands as a substitution", () => {
+    const [, word] = tokenize("echo $((echo a); ls) END");
+    expect(word?.type === "word" && word.subs.length).toBe(1);
+  });
+});
+
+describe("a heredoc in a $( ) inside ${…}, which bash 3.2 ends at the first )", () => {
+  const command = (guarded: string) => `echo \${x-$(cat <<E\n)}\n${guarded}\nE\n)}`;
+
+  it.each(GUARDED)("the hook denies %s on the line after it", async (_name, guarded) => {
+    expect(await hookDenies(command(guarded))).toBe(true);
+  });
+
+  it.each(GUARDED)("the built hook denies %s on the line after it", (_name, guarded) => {
+    expect(builtHookStdout(command(guarded))).toContain('"permissionDecision":"deny"');
+  });
+
+  it("the hook names the substitution bash 3.2 ends elsewhere", async () => {
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const result = await handle(event(command("ls")), { PATH: "/usr/bin" }, port);
+    expect(result.stdout).toContain("move the command substitution out of the expansion");
+  });
+});
+
+describe("subshell-shaped $(( nested deep", () => {
+  it("lexes without running out of its reading budget", () => {
+    let nested = ": a";
+    for (let i = 0; i < 100; i++) nested = `echo $((${nested}) )`;
+    expect(tokenize(`${nested}\n${PUSH}`).length).toBeGreaterThan(0);
   });
 });

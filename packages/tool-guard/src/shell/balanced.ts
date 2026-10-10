@@ -8,6 +8,10 @@ export interface NestedReaders {
   backtick(start: number): number;
   /** Collects substitutions in a single-quoted span, which bash still runs when the `${ }` sits in double quotes. */
   quotedSpan(from: number, to: number): void;
+  /** Reads the `$((` at `dollar` as arithmetic or as `$( (…) … )`, as bash 5 does; returns its last index. */
+  dollarParens(dollar: number): number;
+  /** Set on bash 3.2's reading, which has no process substitutions here and checks nothing against itself. */
+  bash32?: true;
 }
 
 /**
@@ -35,14 +39,14 @@ function constructEnd(src: string, j: number, read: NestedReaders, braces: boole
   if (c === '"') return doubleQuoteEnd(src, j, read);
   if (c === "`") return read.backtick(j);
   if (c === "$") return dollarEnd(src, j, read);
-  if (braces && (c === "<" || c === ">") && src[j + 1] === "(") return processEnd(src, j, read);
+  if (braces && !read.bash32 && (c === "<" || c === ">") && src[j + 1] === "(") return processEnd(src, j, read);
   return j;
 }
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
   const next = src[j + 1];
-  if (next === "{" || (next === "(" && src[j + 2] === "(")) return balancedEnd(src, j + 1, read);
-  if (next === "(") return read.substitution(j + 2);
+  if (next === "{") return balancedEnd(src, j + 1, read);
+  if (next === "(") return sameIn32(src, j + 1, src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read);
   if (next === "'") return ansiCEnd(src, j + 1);
   return j;
 }
@@ -72,9 +76,57 @@ export function ansiCEnd(src: string, quote: number): number {
   return end;
 }
 
-/** Bash 5 reads a `<( )` inside `${ }` to its `)`, bash 3.2 to the first `}`, so a `}` inside one is refused. */
+export function backtickEnd(src: string, start: number): number {
+  let end = start + 1;
+  while (end < src.length && src[end] !== "`") end += src[end] === "\\" ? 2 : 1;
+  if (end >= src.length) throw new ParseError("unterminated `");
+  return end;
+}
+
+/**
+ * Bash 3.2 matches a `$( )` inside `${ }` or `$(( ))` by counting parens through quotes, blind to
+ * heredocs, comments and case patterns; where that ends it elsewhere than bash 5, the line is refused.
+ */
+function sameIn32(src: string, open: number, end: number, read: NestedReaders): number {
+  if (!read.bash32 && in32(() => balancedEnd(src, open, bash32Readers(src))) !== end) {
+    throw new SplitParseError("bash 3.2 ends a substitution inside an expansion elsewhere", "nested-substitution");
+  }
+  return end;
+}
+
+/** Bash 5 reads a `<( )` inside `${ }` to its `)`; bash 3.2 reads its text as part of the parameter, so a `}` or a construct crossing that `)` splits them. */
 function processEnd(src: string, j: number, read: NestedReaders): number {
   const end = read.substitution(j + 2);
-  if (src.slice(j, end).includes("}")) throw new SplitParseError("a } inside a process substitution in ${ } ends it early in bash 3.2", "procsub-brace");
+  if (in32(() => plainEnd(src, j + 2, end)) !== end) {
+    throw new SplitParseError("bash 3.2 ends ${ } inside a process substitution", "procsub-brace");
+  }
   return end;
+}
+
+/** Where bash 3.2, reading `src` from `from` inside `${ }`, first reaches `to` or a `}`. */
+function plainEnd(src: string, from: number, to: number): number {
+  const read = bash32Readers(src);
+  let j = from;
+  while (j < to && src[j] !== "}") j = constructEnd(src, j, read, true) + 1;
+  return j;
+}
+
+function in32(find: () => number): number {
+  try {
+    return find();
+  } catch (error) {
+    if (error instanceof ParseError) return -1;
+    throw error;
+  }
+}
+
+function bash32Readers(src: string): NestedReaders {
+  const read: NestedReaders = {
+    substitution: (start) => balancedEnd(src, start - 1, read),
+    backtick: (start) => backtickEnd(src, start),
+    quotedSpan: () => undefined,
+    dollarParens: (dollar) => balancedEnd(src, dollar + 1, read),
+    bash32: true,
+  };
+  return read;
 }
