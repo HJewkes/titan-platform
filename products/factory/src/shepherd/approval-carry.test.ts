@@ -66,6 +66,18 @@ describe("an approve-merge answer following the head", () => {
     expect(r.steps.find((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)!.input).toEqual({ decision: "merge", headSha: MERGED_UP, fromHead: APPROVED, rule: "remerge-empty" });
   });
 
+  it("asks the owner again when the later gate names another base, and follows on the same one", async () => {
+    const r = rig();
+    const into = (head: string, base: string) => landPrompt(head).replace("? CI is green", ` into ${base}? CI is green`);
+
+    await r.ask("approve-merge", into(APPROVED, "feat/x"));
+    await r.ask("approve-merge:1", into(MERGED_UP, "main"));
+    await r.ask("approve-merge:2", into(LATER, "main"));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.find((step) => step.stepId === `sh-remerge:${LATER}`)!.input).toMatchObject({ fromHead: MERGED_UP });
+  });
+
   it("follows a review round's ship pick, which resolves the same gate with a merge at its head", async () => {
     const r = rig({ remerge: { ...EMPTY, rule: "remerge-generated-only", paths: ["CAPABILITIES.md"], generatedPaths: ["CAPABILITIES.md"] } });
 

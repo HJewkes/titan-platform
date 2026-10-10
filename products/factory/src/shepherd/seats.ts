@@ -10,6 +10,9 @@ export { isRepo as isRepoKey } from "@titan-design/github";
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 
+/** Lets a run merge into a base other than the repo's default branch, as a stacked PR's is; only a seat can grant it. */
+export const FEATURE_BASE_GRANT = "merge-into-feature-base";
+
 /** Every repo reference is canonicalised here, so denies and lookups compare one form. */
 const RemoteSchema = z
   .string()

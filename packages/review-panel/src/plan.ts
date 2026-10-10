@@ -43,7 +43,7 @@ export const DEFAULT_SHAPE_ROLES: Record<ExtraShape, ClassRoles> = {
   perf: { g10: "reviewer", standard: "reviewer" },
 };
 
-/** The plan's class table. `tests` stays advisory here; a bad fix-proof result makes it block at aggregation. */
+/** The plan's class table. `tests` stays advisory here; a bad fix-proof result makes it block at aggregation, and missing when unplanned. */
 export const DEFAULT_PANEL_TABLE: readonly ShapeRule[] = [
   { shape: "adversary", classes: ["g10"], touches: ["authority", "policy", "security", "migration"], blocking: true },
   { shape: "tests", classes: ["g10", "standard"], touches: ["untested"], blocking: false },

@@ -100,7 +100,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `ci` | reading branch rules, waiting for required checks, updating a branch that is behind, or rerunning a cancelled run |
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
-| `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
+| `awaiting-approval` | recording the merge decision, waiting on a gate (`approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind`), or holding an approved head whose base is [not the default branch](#feature-base) |
 | `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
@@ -208,7 +208,12 @@ A head that moved during the review always starts a new round, and the new head 
 A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
 post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
 request of each run that is waiting on a gate. When that pull request was merged or closed
-elsewhere, the serve process cancels the run and its gate. The same check supersedes a gate
+elsewhere, the serve process cancels the run and its gate, whichever gate it waits on and
+whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
+after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
+release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
+whose pull request is merged or closed (and only abandon, only on a fresh read of that state).
+The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
 Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
@@ -521,11 +526,13 @@ Every registration resolves a policy before anything starts
 The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
-(see [Visual paths](#visual-paths)). `--policy`
+(see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
+`merge-into-feature-base` lets its runs merge into a base other than the default branch (see
+[Feature base](#feature-base)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
-`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown key
-is refused.
+`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown
+key is refused.
 
 A request with `"merge":"owner-gate"` must also name why the owner is asked, with
 `ownerGateReason` set to `gate-2-visual`, `g10-security`, `proof-fixture` or `owner-asked`.
@@ -601,6 +608,41 @@ rules are in the
 The run re-reads its registration's policy before every merge decision and keeps the
 stricter of the two. A later `register` can tighten a running pull request's policy. It
 cannot loosen it.
+
+### Feature base {#feature-base}
+
+A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's
+branch, and GitHub's merge lands in whatever base the pull request names when it merges.
+
+Before every merge the land core records a `base-check` step. It reads the pull request and
+the repo's default branch live from GitHub, never from the snapshot. When the base is not the
+default branch and the policy does not allow a feature base, the approved head waits in a
+`base-wait` step. A run that holds its repo's [merge train](#merge-train) gives it up before it
+waits, so other pull requests keep merging. `shepherd status` names the base as the next action:
+
+```text
+waiting for a retarget: the base is feat/x, not the default branch main, and the run's policy merges only into main
+```
+
+The wait has no timeout and neither fails nor cancels the run. It ends when the pull request
+is retargeted, gets a new head, or is merged or closed elsewhere. The run then reads CI again.
+A green read that names a new base reads the branch rules again for that base, and the next
+`base-check` decides. Every land round also reads the rules and the base afresh. GitHub's merge
+reads the base once more before it writes, and again before each retry. A pull request
+retargeted after its `base-check` is skipped as `base-changed`, so a refused base never
+reaches GitHub's merge.
+
+An approval covers one head on one base. The `approve-merge` prompt names the base
+(`Merge PR #12 in owner/repo at head <sha> into main?`). When `base-check` finds a base other
+than the one the head was approved or allowed on, the run drops that trust, re-reads the merge
+evidence (changed files and visual paths) against the new base, and decides again. An owner
+gate asks again, and an approval never follows to a later head on another base.
+
+A seat whose `grants_extra` includes `merge-into-feature-base` lets its runs merge into the
+pull request's own base, whatever it is. No `--policy` key sets it, so an implementer that
+registers cannot widen its seat this way. It changes only where the merge lands: the merge
+mode and every gate still apply. The standalone `land-pr` workflow has no such option and
+merges only into the default branch.
 
 ## Hold and release
 

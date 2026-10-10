@@ -1,4 +1,4 @@
-import { EPISODE_TABLE, replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
+import { EPISODE_TABLE, SIGNAL_COPY_RANK, replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import { classifySession, type SessionClass } from "./classify-session.js";
 import { FIRST_COPY, readSessionContexts } from "./cost-report-queries.js";
@@ -279,14 +279,19 @@ export const EPISODE_REQUESTS_SQL = `
   SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, context_tokens AS contextTokens, wake_cause AS wakeCause
   FROM (${SESSION_REQUEST_DEDUP}) WHERE is_sidechain = 0`;
 
+/** One row per signal: a copy in a second transcript of the session (a mirror, a resumed history) is the same signal. */
+const EPISODE_SIGNALS_SQL = `
+  SELECT offset, ts, transcriptId, signal FROM (
+    SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, signal, ${SIGNAL_COPY_RANK} AS copy_rank
+    FROM session_signal WHERE ${IN_SESSION})
+  WHERE copy_rank = 1`;
+
 export function readEpisodeInput(db: Db, sessionId: string, spawned: boolean): EpisodeInput {
   const requests = db.prepare(EPISODE_REQUESTS_SQL).all({ sessionId }) as EpisodeRequest[];
   const inbounds = db
     .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, cause FROM inbound WHERE ${IN_SESSION}`)
     .all(sessionId) as EpisodeInbound[];
-  const signals = db
-    .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, signal FROM session_signal WHERE ${IN_SESSION}`)
-    .all(sessionId) as EpisodeSignal[];
+  const signals = db.prepare(EPISODE_SIGNALS_SQL).all(sessionId) as EpisodeSignal[];
   return { requests, inbounds, signals, spawned };
 }
 

@@ -117,6 +117,15 @@ export const AUDIT_DDL = `
   ) WITHOUT ROWID;
 `;
 
+/**
+ * Ranks the copies of one `session_signal` row: 1 is the copy to count. One session can sit in
+ * several transcripts (a mirror from another host, a resume that copied its history), and the
+ * copies share every column but `transcript_id` and `byte_offset`. Use it as
+ * `SELECT ..., ${SIGNAL_COPY_RANK} AS copy_rank FROM session_signal` and keep `copy_rank = 1`.
+ */
+export const SIGNAL_COPY_RANK =
+  "ROW_NUMBER() OVER (PARTITION BY session_id, signal, ts, block_index, tool_use_id ORDER BY transcript_id, byte_offset)";
+
 /** `[table, column, type]`; `turn.wake_cause` is rollup-owned. */
 export const AUDIT_COLUMNS = [
   ["session", "account", "TEXT"],
