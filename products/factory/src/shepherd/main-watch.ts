@@ -31,7 +31,7 @@ export interface MainWatchDeps {
   now: () => number;
 }
 
-export interface MainWatchNote {
+interface MainWatchNote {
   repo: string;
   sha: string;
   outcome: "sent" | "unsent" | "expired" | "error";
@@ -53,7 +53,7 @@ export function openMainWatch(services: ShepherdServices, ports: MainWatchPorts,
 }
 
 /** Every seat's owned remotes, once each: the repos whose main a merge can land on outside a run. */
-export function watchedRepos(book: SeatBook): string[] {
+function watchedRepos(book: SeatBook): string[] {
   return [...new Set(book.seats.flatMap((seat) => seat.remotes))];
 }
 
@@ -91,7 +91,7 @@ async function watchRepo(deps: MainWatchDeps, repo: string): Promise<MainWatchNo
 type Verdict = { kind: "green" | "pending" | "cancelled" } | { kind: "red"; failing: string[] };
 
 /** As post-merge reads main: the required contexts judge, a cancel a newer run superseded is dropped, and an all-cancelled red is no red. */
-export function verdictAt(sha: string, runs: readonly CheckRun[], rules: MainRules | undefined): Verdict {
+function verdictAt(sha: string, runs: readonly CheckRun[], rules: MainRules | undefined): Verdict {
   const { findings, counted } = judgeMain(sha, runs, rules);
   if (counted === 0) return { kind: "pending" };
   const failed = findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run] : []));
@@ -130,7 +130,7 @@ async function deliver(deps: MainWatchDeps, repo: string, row: WatchedSha, now: 
   }
 }
 
-export function redEventText(repo: string, sha: string, pr: number | undefined, failing: readonly string[]): string {
+function redEventText(repo: string, sha: string, pr: number | undefined, failing: readonly string[]): string {
   const merged = pr === undefined ? "" : ` after PR #${pr}`;
   return [
     `Shepherd: main CI is red on ${repo} at ${sha}${merged}. Failing: ${failing.join(", ") || "no job named"}.`,
