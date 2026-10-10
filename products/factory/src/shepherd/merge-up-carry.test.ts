@@ -104,8 +104,8 @@ const results = (w: World) => Object.values(w.host.runtime.status(w.runId)!.step
 const stepIds = (w: World): string[] => results(w).map((result) => result.stepId);
 const resultOf = (w: World, stepId: string): unknown => results(w).find((result) => result.stepId === stepId)?.data?.["result"];
 const h2 = (w: World): string => w.fake.pr(1).headSha;
-/** The run reached the merge decision at H2, or a gate, and went no further. */
-const settledAtH2 = (w: World): boolean => h2(w) !== H1 && (/^merge(:|$)/.test(w.host.runtime.status(w.runId)?.currentStep ?? "") || w.host.pendingGates().length > 0);
+/** The run reached the merge decision at H2, a gate, or a held run's wait for its seat, and went no further. */
+const settledAtH2 = (w: World): boolean => h2(w) !== H1 && (/^(merge|sh-held-wait)(:|$)/.test(w.host.runtime.status(w.runId)?.currentStep ?? "") || w.host.pendingGates().length > 0);
 
 describe("a verdict carried across Shepherd's own clean merge-up of main", () => {
   it("carries the MERGE to H2 with no fresh review, records the rule, and releases the g10-review hold at H2", async () => {

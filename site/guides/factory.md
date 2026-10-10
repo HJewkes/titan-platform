@@ -11,6 +11,8 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   it under a per-repo policy. It has its own guide: [Shepherd](/guides/shepherd).
   `shepherd stats --cost` reports what its review costs, in dollars and tokens per merged
   PR: see [Review cost](/guides/shepherd#review-cost).
+  `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
+  [SLOs](/guides/shepherd#slo).
 
 The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
 when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
@@ -441,8 +443,16 @@ titan-factory service deploy                    # deploy origin/main
 titan-factory service deploy --expect <sha>     # deploy one commit already on origin/main
 ```
 
-`service deploy [--expect <sha>]` rebuilds and restarts the service from the checkout the bin
-was built in, which must be on `main` with no tracked changes. It takes the pid lock
+`service deploy [--expect <sha>]` rebuilds and restarts the service from the dedicated deploy
+checkout, which must be on `main` with no tracked changes. No agent or coordinator uses it as
+a cwd, so a reviewer's in-place checkout can no longer block a deploy. Its path is
+`service.deployCheckout` from the factory config, else `deploy/titan-platform` under the app
+data dir (`@titan-design/app-paths`, app `titan-factory`). When it is absent, deploy runs
+`git clone --branch main <remote>` into it, never a copy of a working tree; the remote is
+`service.deployRemote`, else the origin of the checkout the CLI runs from. While the installed
+unit or plist does not start the deploy checkout's bin, every run only fast-forwards and
+builds it, never restarts, and says to run `service install`; the automatic redeploy after a
+merge therefore cannot restart the service onto the old tree and roll back. It takes the pid lock
 `$XDG_STATE_HOME/titan-factory/deploy.lock`. A lock whose pid is dead is stale; a deployer
 takes it over by renaming it, so two deployers cannot both win, and on exit removes the lock
 only while it still holds its own pid. It runs `git fetch origin main` and targets `--expect`
@@ -561,8 +571,22 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factor
 curl -s http://127.0.0.1:7410/health
 ```
 
-The plist names the checkout it came from. After you move the checkout or change node, run
-`service install` again, or print and bootstrap the plist again.
+The plist names the deploy checkout's built bin and sets `WorkingDirectory` to that checkout.
+After you move the checkout or change node, run `service install` again, or print and
+bootstrap the plist again.
+
+#### Migrating to the dedicated deploy checkout
+
+One-time, from any checkout that has this change built (the old dev tree is fine):
+
+1. `titan-factory service deploy` clones and builds the deploy checkout. It does not restart
+   the service.
+2. `titan-factory service install` re-renders the plist or unit so serve runs from the deploy
+   checkout, and restarts it. Install refuses until step 1 has built the bin there.
+
+The old `~/projects/titan-platform` checkout is then no longer a deploy target and keeps working
+as a dev tree. Later `service deploy` runs fast-forward only the deploy checkout, from any
+checkout's bin.
 
 ## How it fails
 

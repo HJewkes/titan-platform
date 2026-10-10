@@ -35,12 +35,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/session-read": "workspace:^"
   },
   "peerDependencies": {
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@titan-design/test-kit": "workspace:*",
     "zod": "^4.4.3"
   }
 }
