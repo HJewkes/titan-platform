@@ -52,6 +52,14 @@ function isTimeZone(zone: string): boolean {
   }
 }
 
+/** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
+export const DigestPushConfigSchema = z.strictObject({
+  url: z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL"),
+  tokenFile: absolutePath.optional(),
+});
+
+export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
+
 /** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
 export const DigestConfigSchema = z.strictObject({
   outDir: absolutePath.optional(),
@@ -63,6 +71,7 @@ export const DigestConfigSchema = z.strictObject({
   /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
+  push: DigestPushConfigSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */

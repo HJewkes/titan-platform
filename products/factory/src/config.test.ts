@@ -78,6 +78,13 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
   });
 
+  it("reads digest.push and refuses an unknown key inside it", () => {
+    const push = { url: "https://ntfy.example/test-topic", tokenFile: "/run/secrets/ntfy" };
+    expect(loadConfig(configPath(xdg({ digest: { push } }))).digest?.push).toEqual(push);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { ...push, token: "x" } } })))).toThrow(/invalid config .*token/);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { url: "https://ntfy.example/t", tokenFile: "relative" } } })))).toThrow(/absolute/);
+  });
+
   it("refuses an unknown digest key", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
   });
