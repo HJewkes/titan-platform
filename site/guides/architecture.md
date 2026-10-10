@@ -154,6 +154,7 @@ graph TD
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient
+  factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
