@@ -297,7 +297,7 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
       return inner.i;
     },
     backtick: (start) => scanBacktick(at.src, start, found, at.trials),
-    quotedSpan: (from, to) => found.push(...scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials))),
+    quotedSpan: (from, to) => found.push(...quotedSpanSubstitutions(at, from, to)),
     nesting: at.trials.nesting,
     dollarParens: (dollar) => {
       const end = arithmeticExpansionEnd(at, dollar, found);
@@ -305,6 +305,21 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
     },
   };
   return read;
+}
+
+/**
+ * Bash runs a substitution in a single-quoted span only when its `${ }` sits in double quotes, and
+ * otherwise reads the text as literal, so one left unclosed there cannot be a pass: it is refused.
+ */
+function quotedSpanSubstitutions(at: Reading, from: number, to: number): Token[][] {
+  try {
+    return scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials));
+  } catch (error) {
+    if (error instanceof ParseError && !(error instanceof SplitParseError)) {
+      throw new SplitParseError("a single-quoted span in ${ } holds an unclosed substitution", "quoted-substitution");
+    }
+    throw error;
+  }
 }
 
 /** Token lists of every substitution in `src` between `from` and `to`, such as a heredoc body's. */

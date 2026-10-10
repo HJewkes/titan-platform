@@ -50,6 +50,8 @@ const SPLIT_REASONS: Record<Split, string> = {
     "authority-guard does not check this Bash command: bash 3.2 reads the text of a `<( )` or `>( )` in `${ }` as part of the parameter, and here a `}` or a quote in it ends that reading somewhere bash 5 does not; move the process substitution out of the parameter.",
   "nested-substitution":
     "authority-guard does not check this Bash command: bash 3.2 ends a `$( )` inside `${ }` or `$(( ))` at the first `)` that balances its parens, blind to heredocs, comments and case patterns, and here that is not where bash 5 ends it; move the command substitution out of the expansion.",
+  "quoted-substitution":
+    "authority-guard does not check this Bash command: a single-quoted span in `${ }` holds an unclosed `$(` or backtick, which bash reads as literal text unless the `${ }` sits in double quotes; close the substitution or move it out of the parameter.",
 };
 const NESTING_REASON = `authority-guard does not check a Bash command whose expansions or substitutions are nested more than ${MAX_NESTING} deep, so it refuses every one; flatten the nesting into variables or a script file.`;
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";

@@ -53,6 +53,10 @@ const OPENERS: Array<[string, string, string]> = [
   ["a quoted } inside a nested parameter", ': ${a:-${b:-"}}"}}', '#"'],
   ["an arithmetic expansion before a quoted }", ': ${x:-$((1+2))"}"}', '#"'],
   ["an unquoted { that bash does not nest", ": ${x:-{}", "#}"],
+  ["a '$(echo }' operand", ": ${x:-'$(echo }'}", "#'"],
+  ["a '$(' operand", ": ${x:-'$('}", "#'"],
+  ["a '`' operand", ": ${x:-'`'}", "#'"],
+  ["a '$(' operand inside double quotes", `: "\${x:-'$('}"`, `#'"`],
 ];
 
 describe("a } that bash reads as quoted inside ${…}", () => {
@@ -75,6 +79,12 @@ describe("a } that bash reads as quoted inside ${…}", () => {
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`: \${x:-<(echo })}\n${PUSH}\n#)`), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("move the process substitution out of the parameter");
+  });
+
+  it("the hook names an unclosed substitution in a single-quoted operand", async () => {
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const result = await handle(event(`: \${x:-'$('}\n${PUSH}`), { PATH: "/usr/bin" }, port);
+    expect(result.stdout).toContain("close the substitution or move it out of the parameter");
   });
 });
 
