@@ -3,28 +3,9 @@ import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
+import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
-export const TASK_KINDS = ["correctness", "security", "feature", "refactor", "unknown"] as const;
-
-export type TaskKind = (typeof TASK_KINDS)[number];
-
-const FIX_PROOF_KINDS: ReadonlySet<TaskKind> = new Set(["correctness", "security"]);
-
-/**
- * Why an explicit move from `from` to `to` is refused, or undefined when it applies. A security run never leaves security,
- * because only the other kinds may carry a reviewed MERGE across a tree-equal update (`CARRYING_KINDS`, MRG-AU-RC).
- * A correctness run may not move to a kind outside `FIX_PROOF_KINDS`. Nothing reads the kind to run or skip fix-proof today;
- * these refusals are a guard on the stored kind, not a gate.
- */
-export function kindMoveRefusal(from: TaskKind, to: TaskKind): string | undefined {
-  if (from === "security" && to !== "security") {
-    return `kind ${from} cannot move to ${to}: a security run keeps its fresh reviewer, and ${to} would let it carry a reviewed MERGE across an update`;
-  }
-  if (FIX_PROOF_KINDS.has(from) && !FIX_PROOF_KINDS.has(to)) {
-    return `kind ${from} cannot move to ${to}, which is outside the fix-proof kinds`;
-  }
-  return undefined;
-}
+export { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
 /** A PR, or a branch whose PR does not exist yet, handed to one shepherd-pr run. */
 export interface RegistrationInput {
@@ -63,6 +44,8 @@ export interface Registration {
   holdSatisfied: HoldSatisfaction | null;
   /** A Version Packages PR's head that passed the release preflight under an auto policy, and when; other merges in the repo wait on it. */
   releaseReady: { head: string; at: string } | null;
+  /** The head `shepherd review` asked Shepherd's own reviewer to review; `takenAt` is null until a run's review intent took it. */
+  reviewRequest: { head: string; at: string; takenAt: string | null } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,7 +92,7 @@ export function sliceMigration(version = 8): Migration {
   return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, lineageMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, reviewRequestMigration } from "./store-migrations.js";
 
 export const AUTHOR_ROLES = ["implementer", "successor"] as const;
 
@@ -159,6 +142,9 @@ interface Row {
   release_ready_at?: string | null;
   hold_satisfied_head?: string | null;
   hold_satisfied_by?: string | null;
+  review_request_head?: string | null;
+  review_request_at?: string | null;
+  review_request_taken_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -299,6 +285,18 @@ export class ShepherdStore implements HoldLookup {
     this.db.prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?").run(this.stamp(), runId);
   }
 
+  /** Asks for Shepherd's own review at `head`; false when an ask at that head already stands, taken or not, so a repeat asks nothing. */
+  requestReview(runId: string, head: string): boolean {
+    const ask = "UPDATE shepherd_registration SET review_request_head = ?, review_request_at = ?, review_request_taken_at = NULL, updated_at = ? WHERE run_id = ? AND review_request_head IS NOT ?";
+    return this.db.prepare(ask).run(head, this.stamp(), this.stamp(), runId, head).changes === 1;
+  }
+
+  /** Compare-and-swap: marks the ask at `head` taken; false when there is no untaken ask at that head. */
+  takeReviewRequest(runId: string, head: string): boolean {
+    const take = "UPDATE shepherd_registration SET review_request_taken_at = ?, updated_at = ? WHERE run_id = ? AND review_request_head = ? AND review_request_taken_at IS NULL";
+    return this.db.prepare(take).run(this.stamp(), this.stamp(), runId, head).changes === 1;
+  }
+
   /** Marks `head` as ready to land, or clears the mark with null. */
   setReleaseReady(runId: string, head: string | null): void {
     const changed = this.db
@@ -372,6 +370,7 @@ function fromRow(row: Row): Registration {
     holdReviewer: row.hold_reviewer ?? null,
     holdSatisfied: row.hold_satisfied_head && row.hold_satisfied_by ? { head: row.hold_satisfied_head, by: HoldSatisfiedBySchema.parse(JSON.parse(row.hold_satisfied_by)) } : null,
     releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
+    reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

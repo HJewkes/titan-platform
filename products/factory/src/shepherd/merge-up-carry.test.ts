@@ -29,8 +29,11 @@ const MERGED_TREE = fakeSha("merge-tree");
 const MERGE_UP_STEP = "sh-merge-up";
 const MERGE_UP_RULE = "clean-merge-up";
 
-/** How H2 came to be: a clean merge of main, a merge whose conflict someone resolved, or a merge on top of an extra commit. */
-type Shape = "clean" | "conflict-resolved" | "extra-commit";
+/**
+ * How H2 came to be: a clean merge of main, a merge whose conflict someone resolved, a merge on top of an extra commit, or
+ * code commits after the reviewed head and then a merge of a main the reviewed head conflicts with.
+ */
+type Shape = "clean" | "conflict-resolved" | "extra-commit" | "code-commits";
 
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
@@ -40,8 +43,8 @@ function scriptedGit(shape: Shape): Git {
   return async (_dir, args) => {
     const [command] = args;
     if (command === "fetch") fromHead = args[5] ?? "";
-    if (command === "rev-list") return ok(`${args.at(-1)} ${shape === "extra-commit" ? EXTRA : fromHead} ${MAIN}`);
-    if (command === "merge-tree" && shape === "conflict-resolved") return { code: 1, stdout: `${fakeSha("conflicted")}\0src/a.ts\0`, stderr: "" };
+    if (command === "rev-list") return ok(`${args.at(-1)} ${shape === "extra-commit" || shape === "code-commits" ? EXTRA : fromHead} ${MAIN}`);
+    if (command === "merge-tree" && (shape === "conflict-resolved" || shape === "code-commits")) return { code: 1, stdout: `${fakeSha("conflicted")}\0src/a.ts\0`, stderr: "" };
     if (command === "merge-tree") return ok(`${MERGED_TREE}\n`);
     if (command === "rev-parse") return ok(shape === "conflict-resolved" ? fakeSha("resolved-tree") : MERGED_TREE);
     if (command === "diff-tree") return ok("src/a.ts\0");
@@ -132,7 +135,7 @@ describe("a verdict carried across Shepherd's own clean merge-up of main", () =>
 });
 
 describe("a head move that is not a clean merge-up", () => {
-  it.each(["conflict-resolved", "extra-commit"] as const)("spends a fresh review at H2 after a %s merge", async (shape) => {
+  it.each(["conflict-resolved", "extra-commit", "code-commits"] as const)("spends a fresh review at H2 after a %s merge", async (shape) => {
     const w = heldBehindRun({ shape });
 
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });

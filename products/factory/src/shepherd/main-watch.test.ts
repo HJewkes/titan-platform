@@ -59,7 +59,7 @@ function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined
 }
 
 function registration(fields: Pick<Registration, "implementer" | "policy">): Registration {
-  return { repo: REPO, pr: 2, branch: null, runId: "run-2", task: "T/X-1", reviewer: null, kind: "feature", slice: null, held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, releaseReady: null, createdAt: iso(T0), updatedAt: iso(T0), ...fields };
+  return { repo: REPO, pr: 2, branch: null, runId: "run-2", task: "T/X-1", reviewer: null, kind: "feature", slice: null, held: false, holdReason: null, holdReviewer: null, holdSatisfied: null, releaseReady: null, reviewRequest: null, createdAt: iso(T0), updatedAt: iso(T0), ...fields };
 }
 
 const memoryLedger = (): MainWatchLedger => new MainWatchLedger(openDatabase(":memory:"));

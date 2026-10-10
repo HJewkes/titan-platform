@@ -269,7 +269,11 @@ goes through the evidence step like any other.
 A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
 resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own. It takes the
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
-implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
+implementer. Shepherd never reads a reviewer's name out of the hold's reason text. A
+`g10-adversary:` hold is the exception: it needs two independent `MERGE`s, so Shepherd
+still spawns its own reviewer, and the named reviewer's verdict only satisfies the hold
+(`adoptedReviewer` in `products/factory/src/shepherd/external-review.ts`). A seat can also
+ask for Shepherd's own review with [`shepherd review`](#own-review).
 
 `approve-merge` opens for five reasons only, and its prompt names the reason:
 
@@ -469,6 +473,7 @@ GitHub call:
 | `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
 | `hold` | The hold's reviewer is read again. |
 | `owner-request` | A resync asked for the review again. |
+| `seat-request` | A seat's `shepherd review` asked for Shepherd's own review at a head the run already had a verdict at. |
 | `unknown` | Recorded before causes existed, or nothing explains it. |
 
 `stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
@@ -698,6 +703,34 @@ with no fresh review and no seat release. A head reached by any other move, or c
 remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
 seat releases it.
 
+### Ask for Shepherd's own review {#own-review}
+
+```sh
+titan-factory shepherd review owner/repo#123
+```
+
+```
+run ab0f9228-…: asked for Shepherd's own review at 0123abcd…
+```
+
+`shepherd review` asks for a fresh reviewer of Shepherd's own at the pull request's head as
+read now. The ask is stored on the registration (migration 18), so it survives a serve
+restart. The next review intent at that head spawns a reviewer under a name nobody has held,
+never the named reviewer of a `hold --reviewer`, records `requested: true`, and takes the ask.
+
+A held run waiting in `merging` at that head stops waiting without merging and reads CI
+again. The `sh-review-request` step then sets aside the verdict the run already had there,
+whether a seat reviewer's, a carried `MERGE` or Shepherd's own. The review that follows is
+named `seat-request`, and neither it nor a retry at that head carries an earlier `MERGE`. A
+verdict from a hold's named reviewer still counts toward the hold.
+
+The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and
+prints `Shepherd's own review was already asked`. An ask names one head; after a push the new
+head gets its own review anyway. A pull request that is not registered, or whose run already
+ended, is refused before anything is recorded. The run reads the ask only at a merge wait and
+at a green head it already reviewed, so a run waiting at an owner gate takes it only after
+that gate is answered.
+
 ## Merge train {#merge-train}
 
 Per repo, one Shepherd run at a time is in the land sequence: update the branch if it is
@@ -891,7 +924,7 @@ These limits remain:
 | `error: Invalid arguments: pr: needs a pr or a branch` | `owner/repo` without `--branch` |
 | `error: Invalid arguments: policy: Unrecognized key: "…"` | an unknown `--policy` key |
 | `error: owner/repo#123 has head <a>, not <b>` | `--branch` is not the pull request's head |
-| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge` or `timeline` on an unknown pull request |
+| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge`, `review` or `timeline` on an unknown pull request |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference |
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
 | a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |
