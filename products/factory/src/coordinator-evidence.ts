@@ -8,7 +8,7 @@ import { escalationReason } from "./shepherd/route-table.js";
  * owner's presence dialog, each only on evidence read fresh at resolve time and stored on the gate row:
  * an approve-merge at a head a reviewer said MERGE at, with required checks green and the PR mergeable; a main-red
  * acknowledgement or main-frozen unfreeze once a green main commit contains the merge; and an abandon of a gate whose
- * PR is already merged or closed. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
+ * PR is already merged or closed, whoever held it or whichever rule gated it, because nothing is left to merge. Every other gate, a visual or seat owner-gate merge, and a round pick stay the owner's.
  */
 
 const SHA = z.string().regex(/^[0-9a-f]{40}$/);
@@ -64,7 +64,7 @@ const PrGoneEvidence = z.strictObject({
   repo: REPO,
   pr: PR,
   state: z.enum(["merged", "closed"]),
-  /** Set for an approve-merge gate, whose abandon is held to the same non-visual rule as its merge. */
+  /** Written by an earlier version for an approve-merge abandon; no longer read or required, since an abandon of a gone PR merges nothing. */
   run: RunFacts.optional(),
   readAt: z.string(),
 });
@@ -92,7 +92,7 @@ export function mergeableOf(mergeableState: string): "MERGEABLE" | "CONFLICTING"
   return mergeableState === "dirty" ? "CONFLICTING" : "UNKNOWN";
 }
 
-const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})\? CI is green\. Policy ([\w-]+)\/([\w-]+): (.*)$/;
+const LAND_PROMPT = /^Merge PR #(\d+) in (\S+) at head ([0-9a-f]{40})(?: into \S+)?\? CI is green\. Policy ([\w-]+)\/([\w-]+): (.*)$/;
 
 export interface LandGate {
   repo: string;
@@ -218,8 +218,5 @@ function abandonOf(gate: GateRecord): Record<string, unknown> {
 function prGoneAdmits(gate: GateRecord, payload: unknown, evidence: Of<"pr-gone">): boolean {
   const target = gatePr(gate);
   if (!PR_GATES.has(stepOf(gate.id)) || !offersAbandon(gate) || target?.repo !== evidence.repo || target.pr !== evidence.pr) return false;
-  if (stepOf(gate.id) !== MERGE_GATE) return isDeepStrictEqual(payload, abandonOf(gate));
-  const land = landGate(gate);
-  if (!land || land.repo !== target.repo || land.pr !== target.pr || !evidence.run || !runEligible(evidence.run, land)) return false;
-  return isDeepStrictEqual(payload, { decision: "abandon", headSha: land.head });
+  return isDeepStrictEqual(payload, abandonOf(gate));
 }

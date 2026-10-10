@@ -2,12 +2,21 @@ import { writeWithReadBack, type Sleep } from "./write-read-back.js";
 import type { MergeMessage } from "./port-types.js";
 import type { GitHubWire, MergeMethod, RepoSlug, WriteResult } from "./port.js";
 
-export async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>> {
+type MergeResult = WriteResult<{ mergeSha: string }>;
+
+const BASE_CHANGED: MergeResult = { mergeSha: "", done: false, skipped: "base-changed" };
+
+export async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep, message?: MergeMessage, expectedBase?: string): Promise<MergeResult> {
   const pr = await wire.getPr(repo, number);
   if (pr.merged) return { mergeSha: pr.mergeSha ?? "", done: false, skipped: "merged" };
   if (pr.state === "closed") return { mergeSha: "", done: false, skipped: "closed" };
   if (pr.headSha !== sha) return { mergeSha: "", done: false, skipped: "head-moved" };
-  const put = async () => ({ mergeSha: (await wire.merge(repo, number, sha, method, message)).sha, done: true as const });
+  if (expectedBase !== undefined && pr.baseRef !== expectedBase) return BASE_CHANGED;
+  let attempts = 0;
+  const put = async (): Promise<MergeResult> => {
+    if (attempts++ > 0 && expectedBase !== undefined && (await wire.getPr(repo, number)).baseRef !== expectedBase) return BASE_CHANGED;
+    return { mergeSha: (await wire.merge(repo, number, sha, method, message)).sha, done: true };
+  };
   return writeWithReadBack(`merge PUT ${repo}#${number} at ${sha}`, put, () => mergedAt(wire, repo, number, sha), sleep);
 }
 
