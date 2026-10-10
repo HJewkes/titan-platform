@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened, spaceUpdates } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions, spaceUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -70,7 +70,7 @@ const runOf = (host: FactoryHost): string => (host as FactoryHost & { runId: str
 const seatGates = (host: FactoryHost): string[] => host.pendingGates().flatMap((gate) => (SEAT_GATES.some((step) => gate.stepId.startsWith(step)) ? [gate.gate.id] : []));
 
 /** H1 is red, every later head green. */
-const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success"), successRun("dag-check", 2)]));
+const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success")), successRun("dag-check", 2)]));
 const green = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]));
 
 async function waitingForHead(host: FactoryHost): Promise<void> {
@@ -151,7 +151,7 @@ describe("the 2026-10-08 owner-queue replay: seat work goes to the registering s
 describe("a spent repair budget", () => {
   it("tells the seat and waits for a head it pushes, with no sent-back gate", async () => {
     const fake = fakeGitHub();
-    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)]);
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, "failure")), successRun("dag-check", 2)]);
     let pushed = 0;
     const wakeAt = async (): Promise<WakeOutcome> => (fake.pushHead(1, fakeSha(`red${++pushed}`)), { kind: "woken", agent: "impl-a" });
     const { sends, ports } = seat();

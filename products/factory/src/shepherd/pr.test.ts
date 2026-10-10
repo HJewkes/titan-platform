@@ -6,7 +6,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitH
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { sleep, step } from "../workflows/land.js";
@@ -56,7 +56,7 @@ interface World {
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
 function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)].map((run) => (run.conclusion === "failure" ? outsideActions(run) : run)));
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
@@ -1133,6 +1133,7 @@ describe("a fixer that exits without pushing a new head", () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => EXITED });
     const w = world(phases, () => (healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), fake);
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), successRun("dag-check", 2)]);
     fake.addPr({ headSha: H1 });
     fake.jobLogs.set(1, `RUN  v3\n FAIL  ${FLAKE_FILE} > lints 7k distinct ids in bounded time\nAssertionError: expected 202.30 to be less than 200`);
     fake.prFiles.set(1, changed.map((path) => ({ path, status: "modified" })));
@@ -1140,24 +1141,24 @@ describe("a fixer that exits without pushing a new head", () => {
     return { w, wakes };
   }
 
-  it("reruns the failed jobs once at the same head when the failing test file is outside the PR's diff, with no second wake", async () => {
+  it("reruns the failed jobs once at the same head before any wake, so a failure that heals wakes no one", async () => {
     const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
     const runId = shepherdPr1(w);
 
     await approve(w.host, runId, H1);
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(wakes).toEqual([]);
     expect(stepIds(w.host, runId)).not.toContain("sh-sent-back");
   });
 
-  it("opens the sent-back gate naming the fixer's exit, with no rerun, when the failing test file is in the PR's diff", async () => {
-    const { w } = redOnFlake([FLAKE_FILE], true);
+  it("opens the sent-back gate naming the fixer's exit, with no second rerun, when the failing test file is in the PR's diff", async () => {
+    const { w } = redOnFlake([FLAKE_FILE], false);
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
-    expect(w.fake.effects.rerunFailedJobs).toBe(0);
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("impl-a exited without pushing a new head");
   });
 
@@ -1168,7 +1169,7 @@ describe("a fixer that exits without pushing a new head", () => {
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes).toHaveLength(2);
+    expect(wakes).toHaveLength(1);
   });
 });
 
@@ -1361,5 +1362,57 @@ describe("owner override of a MERGE verdict", () => {
     await w.host.runtime.wait(runId);
 
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+});
+
+describe("a failed required check at a pull request head", () => {
+  /** `validate` fails on H1's first run; a rerun posts a new run that passes or fails again. */
+  function flaky(rerunPasses: boolean, dbPath = ":memory:") {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => ({ kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head" }) });
+    const w = world(phases, () => "success", fake, undefined, undefined, dbPath);
+    fake.onGetPr = (pr) => {
+      const attempt = fake.effects.rerunFailedJobs;
+      const conclusion = attempt > 0 && rerunPasses ? "success" : "failure";
+      fake.setRuns(pr.headSha, [successRun("validate", 1 + attempt * 10, undefined, conclusion), successRun("dag-check", 2)]);
+    };
+    fake.addPr({ headSha: H1 });
+    return { w, wakes, fake };
+  }
+
+  it("never wakes the implementer when the rerun passes", async () => {
+    const { w, wakes } = flaky(true);
+    const runId = shepherdPr1(w);
+
+    await approve(w.host, runId, H1);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toEqual([]);
+  });
+
+  it("wakes the implementer once, naming the second run, when the rerun fails too", async () => {
+    const { w, wakes } = flaky(false);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toHaveLength(1);
+    expect(JSON.stringify(wakes[0]!.payload)).toContain("/actions/runs/1011/");
+  });
+
+  it("reruns a head at most once, even when the run is replayed after a restart", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp2228-")), "factory.db");
+    const first = flaky(false, dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+
+    const second = flaky(false, dbPath);
+    second.fake.effects.rerunFailedJobs = 1;
+    await second.w.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(second.fake.effects.rerunFailedJobs).toBe(1);
   });
 });
