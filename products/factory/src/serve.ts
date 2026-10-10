@@ -334,6 +334,7 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
 
 /** The first tick is not awaited: its redeploy.log read and index.lock probe (lsof, pgrep) must not hold up the start. */
 function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | undefined {
+  if (watch?.startupWarning) log.warn({}, watch.startupWarning);
   const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
   void sweep?.tick();
   return sweep;

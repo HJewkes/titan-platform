@@ -4,6 +4,8 @@ import { UNIT_NAME, unitPath } from "./service.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 
 const HOME = "/srv/tester";
+const DEPLOY_CHECKOUT = `${HOME}/.local/share/titan-factory/deploy/titan-platform`;
+const DEPLOY_BIN = `${DEPLOY_CHECKOUT}/products/factory/dist/bin.js`;
 const UNIT = unitPath(HOME);
 const OLD_PID = 100;
 const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
@@ -71,7 +73,7 @@ function fakeSystemd(init: MachineInit = {}) {
     mkdir: () => undefined,
     writeFile: (path, text) => void files.set(path, text),
     readFile: (path) => files.get(path),
-    exists: (path) => files.has(path),
+    exists: (path) => files.has(path) || path === DEPLOY_BIN,
     remove: (path) => void files.delete(path),
     sleep: async () => undefined,
     now: () => 0,
@@ -96,6 +98,8 @@ describe("titan-factory service install on Linux", () => {
     expect(err).toBe("");
     expect(code).toBe(EXIT.OK);
     expect(machine.files.get(UNIT)).toContain("ExecStart=");
+    expect(machine.files.get(UNIT)).toContain(`${DEPLOY_BIN} serve`);
+    expect(machine.files.get(UNIT)).toContain(`WorkingDirectory=${DEPLOY_CHECKOUT}`);
     expect(machine.mutations()).toEqual(["systemctl --user daemon-reload", `systemctl --user enable --now ${UNIT_NAME}`]);
     expect(out).toBe(`installed ${UNIT_NAME} from ${UNIT}; /health answers on port 7410\n`);
   });

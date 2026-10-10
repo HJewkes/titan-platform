@@ -86,6 +86,23 @@ fake.forcePushes.set(pr.number, [{ before: "<replaced head sha>", after: pr.head
 await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest first; more than 100 throws ForcePushesTruncated
 ```
 
+Squash commit messages come from `formatSquashMessage`, or from the `titan-squash-message`
+bin with the same input as JSON on stdin:
+
+```ts
+import { formatSquashMessage } from "@titan-design/github";
+
+const { subject, body } = formatSquashMessage({
+  title: "Add the widget",
+  body: "Adds the widget.",
+  prNumber: 42,
+  taskIds: ["TP-1"],
+  commits: [{ subject: "Add the widget core", body: "Holds no I/O,\nso tests need no fakes." }],
+});
+// subject: "Add the widget (TP-1) (#42)"
+// body: "## Summary\n\nAdds the widget.\n\n## Changes\n\n- **Add the widget core.** Holds no I/O, so tests need no fakes.\n\nRefs: TP-1, #42"
+```
+
 ## What it deliberately does not do
 
 - No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every

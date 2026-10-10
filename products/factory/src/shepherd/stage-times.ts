@@ -68,13 +68,13 @@ export interface StageWeek {
   stages: StageRow[];
 }
 
-function median(sorted: readonly number[]): number {
+export function median(sorted: readonly number[]): number {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
 /** Nearest rank: the smallest value at or above 90 percent of the sample. */
-const p90 = (sorted: readonly number[]): number => sorted[Math.ceil(sorted.length * 0.9) - 1]!;
+export const p90 = (sorted: readonly number[]): number => sorted[Math.ceil(sorted.length * 0.9) - 1]!;
 
 function stageRows(perRun: readonly Map<Stage, number>[]): StageRow[] {
   return STAGES.flatMap((stage) => {
