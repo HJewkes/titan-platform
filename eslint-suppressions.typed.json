@@ -1820,6 +1820,11 @@
       "count": 3
     }
   },
+  "packages/session-analytics/src/task-actuals-queries.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 12
+    }
+  },
   "packages/session-analytics/src/timeline-buckets.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
