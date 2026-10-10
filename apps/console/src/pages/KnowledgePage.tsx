@@ -54,7 +54,7 @@ function matches(record: KnowledgeRow, params: URLSearchParams): boolean {
 function Browse({ params }: { params: URLSearchParams }): ReactNode {
   const notes = useQuery("work.notes");
   if (notes.status === "loading") return <Spinner size="sm" label="Loading notes and sources" />;
-  if (notes.data === undefined) return <Alert status="error" message={`Could not load notes: ${notes.error?.message ?? "no answer"}`} />;
+  if (notes.data === undefined) return <Alert status="error" message={`Could not load notes: ${notes.error.message}`} />;
   const { records } = notes.data;
   if (records.length === 0) return <EmptyState title="No notes or sources" description="No initiative has a note or source file." />;
   const shown = records.filter((record) => matches(record, params));

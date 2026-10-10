@@ -12,7 +12,7 @@ export function KnowledgeRecordPage({ recordRef }: { recordRef: string }): React
   const record = useQuery("work.record", { ref: recordRef });
   if (record.status === "loading") return <Spinner size="sm" label={`Loading ${recordRef}`} />;
   if (record.data === undefined) {
-    const message = record.error?.code === EXIT.NOINPUT ? `No record ${recordRef}` : `Could not load ${recordRef}: ${record.error?.message ?? "no answer"}`;
+    const message = record.error.code === EXIT.NOINPUT ? `No record ${recordRef}` : `Could not load ${recordRef}: ${record.error.message}`;
     return (
       <VStack gap={4}>
         <Trail recordRef={recordRef} />

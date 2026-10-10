@@ -27,7 +27,7 @@ export function KnowledgeSearch({ q }: { q: string }): ReactNode {
 function Results({ q }: { q: string }): ReactNode {
   const search = useQuery("work.search", { q });
   if (search.status === "loading") return <Spinner size="sm" label="Searching" />;
-  if (search.data === undefined) return <Alert status="error" message={`Could not load search results: ${search.error?.message ?? "no answer"}`} />;
+  if (search.data === undefined) return <Alert status="error" message={`Could not load search results: ${search.error.message}`} />;
   const { hits, degraded } = search.data;
   return (
     <VStack gap={2}>

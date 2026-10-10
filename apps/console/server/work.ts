@@ -292,9 +292,10 @@ export async function readNotes(activeWork: ActiveWork, options: WorkOptions = {
 
 /** A `..` segment would step out of the notes or sources directory into the rest of the initiative. */
 function parseRecordRef(ref: string): { kind: KnowledgeKind; slug: string; file: string } {
-  const [, kind, slug, file] = RECORD_REF.exec(ref) ?? [];
-  if (!kind || !slug || !file || file.split("/").includes("..")) throw failure(`Not a note or source ref: ${ref}`, EXIT.DATAERR);
-  return { kind: kind as KnowledgeKind, slug, file };
+  const [, rawKind, slug, file] = RECORD_REF.exec(ref) ?? [];
+  const kind = knowledgeKind.safeParse(rawKind);
+  if (!kind.success || !slug || !file || file.split("/").includes("..")) throw failure(`Not a note or source ref: ${ref}`, EXIT.DATAERR);
+  return { kind: kind.data, slug, file };
 }
 
 const firstHeading = (body: string): string | undefined => /^#\s+(.+?)\s*$/m.exec(body)?.[1];
