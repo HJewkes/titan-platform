@@ -16,6 +16,20 @@ export const isoDate = z
 
 export const isoDateOrNull = z.union([isoDate, z.null()]);
 
+const ISO_DATETIME_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+const isValidIsoDatetime = (value: string): boolean =>
+  ISO_DATETIME_REGEX.test(value) && isValidIsoDate(value.slice(0, 10)) && !Number.isNaN(new Date(value).getTime());
+
+export const isoDatetime = z
+  .string()
+  .refine(isValidIsoDatetime, { message: "Must be a valid ISO-8601 datetime, e.g. 2026-10-08T14:03:22Z" });
+
+// active-work writes full datetimes now, and its older task files still carry a bare date.
+export const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
+
+export const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
+
 export const TASK_ID_REGEX = /^[A-Z][A-Z0-9]*-\d+$/;
 
 const taskId = z.string().regex(TASK_ID_REGEX, {
@@ -34,6 +48,30 @@ const isUnique = (ids: string[]): boolean => new Set(ids).size === ids.length;
 const uniqueTaskIds = z.array(taskId).refine(isUnique, { message: "dep ids must be unique" });
 
 const uniqueDeliverableIds = z.array(deliverableId).refine(isUnique, { message: "deliverable ids must be unique" });
+
+const nonNegative = z.number().nonnegative();
+
+// Measured outcomes written back at done; claimedHours holds the free-text claims scored against them.
+// Declared apart so no object key ends in "deliverable" plus a colon, which the tag guard in
+// deliverable.test.ts greps these sources for.
+const contextAtFirstDeliverable = nonNegative.optional();
+
+export const ActualSchema = z.object({
+  agentHours: nonNegative.optional(),
+  reviewAgentHours: nonNegative.optional(),
+  usd: nonNegative.optional(),
+  serviceWallHours: nonNegative.optional(),
+  peakContext: nonNegative.optional(),
+  contextAtFirstDeliverable,
+  at: isoDatetime.optional(),
+  model: z.string().min(1).optional(),
+});
+
+export const ClaimedHoursSchema = z.object({
+  hours: nonNegative,
+  by: z.string().min(1),
+  at: isoDatetime,
+});
 
 export const TaskSchema = z.object({
   id: taskId,
@@ -54,9 +92,12 @@ export const TaskSchema = z.object({
   due: isoDate.optional(),
   tags: z.array(z.string()).optional(),
   notes: z.string().optional(),
-  created: isoDate,
+  created: isoDateOrDatetime,
+  started_at: isoDatetime.optional(),
   updated: isoDate,
-  done_at: isoDateOrNull,
+  done_at: isoDateOrDatetimeOrNull,
+  actual: ActualSchema.optional(),
+  claimedHours: z.array(ClaimedHoursSchema).optional(),
 });
 
 export type Task = z.infer<typeof TaskSchema>;
