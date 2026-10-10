@@ -13,7 +13,7 @@ type Metric = MetricsEntryRead["metrics"][number];
 const STATUSES = ["pass", "fail", "no-data", "no-slo", "no-query", "error"] as const;
 type SloStatus = (typeof STATUSES)[number];
 
-export interface SloResult {
+interface SloResult {
   id: string;
   family: string;
   title: string;
