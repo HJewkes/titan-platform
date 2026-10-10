@@ -85,7 +85,7 @@ function methodCall(call: Node): { method: string; receiver: Node | null } | nul
 }
 
 /** True when `call` touches the filesystem through a {@link FILE_METHODS} method on a receiver that qualifies. */
-export function isFileMethodCall(call: Node, isPathReceiver: (receiver: Node | null) => boolean): boolean {
+function isFileMethodCall(call: Node, isPathReceiver: (receiver: Node | null) => boolean): boolean {
   const m = methodCall(call);
   const entry = m ? FILE_METHODS.get(m.method) : undefined;
   if (!m || !entry) return false;
