@@ -38,6 +38,21 @@ describe("resolveDbPath", () => {
 });
 
 describe("loadConfig", () => {
+  it.each(["http://127.0.0.1:7410", "https://factory.example.test/"])("reads %s as the remote factory", (remoteFactory) => {
+    expect(loadConfig(configPath(xdg({ remoteFactory }))).remoteFactory).toBe(remoteFactory);
+  });
+
+  it.each(["remotefactory", "remote_factory", "remoteFactoryUrl"])("rejects %s as a misspelt remoteFactory key", (key) => {
+    expect(() => loadConfig(configPath(xdg({ [key]: "http://127.0.0.1:7410" })))).toThrow(/remoteFactory/);
+  });
+
+  it.each(["", "127.0.0.1:7410", "ftp://factory.example.test", "file:///tmp/factory.sqlite3", "http://owner:secret@factory.example.test", 7410])(
+    "rejects %j as the remote factory",
+    (remoteFactory) => {
+      expect(() => loadConfig(configPath(xdg({ remoteFactory })))).toThrow(/remoteFactory/);
+    },
+  );
+
   it("names the config path when the file is not valid JSON", () => {
     const env = xdg({});
     writeFileSync(configPath(env), "{ not json");
@@ -61,6 +76,13 @@ describe("loadConfig", () => {
     const env = xdg({ digest: { copyDirs: ["/a", "/b"], icloudDir: "/legacy" } });
 
     expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
+  });
+
+  it("reads digest.push and refuses an unknown key inside it", () => {
+    const push = { url: "https://ntfy.example/test-topic", tokenFile: "/run/secrets/ntfy" };
+    expect(loadConfig(configPath(xdg({ digest: { push } }))).digest?.push).toEqual(push);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { ...push, token: "x" } } })))).toThrow(/invalid config .*token/);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { url: "https://ntfy.example/t", tokenFile: "relative" } } })))).toThrow(/absolute/);
   });
 
   it("refuses an unknown digest key", () => {
@@ -135,6 +157,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", roles: { standard: "a/b" } } } })))).toThrow(/roles/);
   });
 
+  it("reads a g10 changed-line limit and rejects one that is not a positive integer", () => {
+    const review = { profile: "rv", g10ChangedLines: 250 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", g10ChangedLines: 0 } } })))).toThrow(/g10ChangedLines/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 
@@ -156,6 +185,13 @@ describe("loadConfig", () => {
 
   it("rejects a hub seat configured without an agent-chat binary", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { hubSeat: "hub" } })))).toThrow(/shepherd\.agentChatBin: hubSeat needs an agentChatBin/);
+  });
+
+  it("reads the deploy alarm's re-notify and escalation bounds, and refuses a misspelt one", () => {
+    const deployAlarm = { renotifyTicks: 3, escalateAfterMinutes: 45 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { deployAlarm } }))).shepherd?.deployAlarm).toEqual(deployAlarm);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { deployAlarm: { escalateAfterMins: 45 } } })))).toThrow(/shepherd\.deployAlarm: Unrecognized key/);
   });
 
   it("rejects a reviewer configured without an agent-chat binary", () => {
@@ -208,5 +244,30 @@ describe("loadConfig", () => {
 
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
+  });
+});
+
+describe("digest.queuesDir and service.labelPrefix", () => {
+  it("loads both keys when set and leaves them absent otherwise", () => {
+    const set = loadConfig(configPath(xdg({ digest: { queuesDir: "/srv/queues" }, service: { labelPrefix: "dev.ex." } })));
+    const unset = loadConfig(configPath(xdg({})));
+
+    expect(set.digest?.queuesDir).toBe("/srv/queues");
+    expect(set.service?.labelPrefix).toBe("dev.ex.");
+    expect(unset.digest?.queuesDir).toBeUndefined();
+    expect(unset.service).toBeUndefined();
+  });
+
+  it("refuses a relative queuesDir and an empty labelPrefix", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { queuesDir: "queues" } })))).toThrow(/absolute/);
+    expect(() => loadConfig(configPath(xdg({ service: { labelPrefix: "" } })))).toThrow(/labelPrefix/);
+  });
+
+  it("loads service.deployCheckout and deployRemote, and refuses a relative deployCheckout", () => {
+    const set = loadConfig(configPath(xdg({ service: { deployCheckout: "/srv/deploy/tree", deployRemote: "https://example.test/org/repo.git" } })));
+
+    expect(set.service?.deployCheckout).toBe("/srv/deploy/tree");
+    expect(set.service?.deployRemote).toBe("https://example.test/org/repo.git");
+    expect(() => loadConfig(configPath(xdg({ service: { deployCheckout: "deploy/tree" } })))).toThrow(/absolute/);
   });
 });

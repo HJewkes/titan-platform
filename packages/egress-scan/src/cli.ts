@@ -7,6 +7,7 @@ import {
   formatBytes,
   isRemoteName,
   isRevision,
+  listRemoteTips,
   MAX_PATCH_BYTES,
   parsePrePush,
   readCommit,
@@ -32,7 +33,7 @@ export interface CliIo {
 
 const USAGE = [
   "usage: titan-egress-scan <command>",
-  "  pre-push <remote>     scan the commits a push sends (reads git's pre-push stdin)",
+  "  pre-push <remote> [<url>]  scan the commits a push sends (reads git's pre-push stdin)",
   "  range <base> <head>   scan every commit in base..head (CI)",
   "  tree                  scan every tracked file at HEAD",
   "  text [--file <path>]  scan free text from stdin or a file, reporting line:col and rule id",
@@ -43,14 +44,23 @@ const USAGE = [
 
 const PREFIX = "titan-egress-scan: ";
 
-function readCommits(root: string, shas: readonly string[], maxPatchBytes?: number): ScanSource[] {
-  return [...new Set(shas)].map((sha) => readCommit(root, sha, maxPatchBytes));
+function readCommits(
+  root: string,
+  shas: readonly string[],
+  maxPatchBytes?: number,
+  tips?: readonly string[],
+): ScanSource[] {
+  const scanned = new Set(shas);
+  return [...scanned].map((sha) => readCommit(root, sha, maxPatchBytes, tips, scanned));
 }
 
-function prePushSources(root: string, remote: string, io: CliIo): ScanSource[] {
+function prePushSources(root: string, remote: string, pushUrl: string | undefined, io: CliIo): ScanSource[] {
   const pushLines = parsePrePush(io.readStdin());
-  const shas = pushLines.flatMap((line) => commitsForUpdate(root, remote, line));
-  return [refSource(pushLines), ...readCommits(root, shas, io.maxPatchBytes)];
+  const tips = pushUrl === undefined ? undefined : listRemoteTips(root, { pushUrl });
+  // A failed listing leaves the push URL out, so the fallback range does not list the remote again.
+  const list = { pushUrl: tips === undefined ? undefined : pushUrl, tips };
+  const shas = pushLines.flatMap((line) => commitsForUpdate(root, remote, line, list));
+  return [refSource(pushLines), ...readCommits(root, shas, io.maxPatchBytes, tips)];
 }
 
 function runScan(io: CliIo, collect: (root: string) => ScanSource[]): number {
@@ -121,10 +131,10 @@ function dispatch(command: string | undefined, args: readonly string[], file: st
   if (file !== undefined && command !== "text") throw new ConfigError("--file is only valid for text");
   switch (command) {
     case "pre-push":
-      // git passes the remote name and its URL; only the name is used.
+      // git passes the remote name and the URL it pushes to; the URL says what the remote already has.
       expectArgs(command, args, 1, 2);
       expectValid(command, args.slice(0, 1), isRemoteName, "a remote name");
-      return runScan(io, (root) => prePushSources(root, args[0] ?? "", io));
+      return runScan(io, (root) => prePushSources(root, args[0] ?? "", args[1], io));
     case "range":
       expectArgs(command, args, 2, 2);
       expectValid(command, args, isRevision, "a sha or ref name");

@@ -2,10 +2,13 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import type { RemoveDir } from "./review-checkout.js";
+import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
+import type { SuiteRules } from "./suite-host.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
@@ -38,6 +41,8 @@ export type WakeOutcome =
 export interface ReviewRequest extends PhaseTarget {
   /** Spawn a reviewer under a never-held name, so a reviewer that went silent at this head is not asked again. */
   fresh?: boolean;
+  /** Why this head is reviewed; the intent step records it. */
+  cause?: ReviewCause;
 }
 
 /**
@@ -47,7 +52,7 @@ export interface ReviewRequest extends PhaseTarget {
 export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted";
 
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string }
+  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };
@@ -82,4 +87,8 @@ export interface ShepherdDeps {
   accountLimits?: AccountLimitStoreRef;
   /** Tells the repo's seat that a woken fixer exited with no push; absent means every such exit opens the owner gate. */
   exitNotice?: ExitNoticePorts;
+  /** The test rules briefs carry, resolved once at serve start from its host; absent means the form for agents off basement. */
+  suiteRules?: SuiteRules;
+  /** Where reviewers extract checkouts and how a run's dir is removed; absent means the app data dir and `rm -rf`. */
+  reviewCheckouts?: { root?: string; remove?: RemoveDir };
 }

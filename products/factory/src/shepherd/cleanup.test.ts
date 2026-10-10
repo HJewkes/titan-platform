@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
@@ -17,7 +18,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -78,7 +79,7 @@ describe("sh-cleanup task", () => {
 
     expect(result.task).toBe("done");
     expect(w.tasks.closed).toEqual(["demo/TP-1"]);
-    expect(w.tasks.notes).toEqual([]);
+    expect(w.tasks.notes).toEqual([`demo/TP-1: closed by Shepherd: ${REPO}#1 at ${fakeSha("merge")} merged`]);
   });
 
   it("notes the landing and leaves the task open when the registration names a slice", async () => {
@@ -190,6 +191,32 @@ describe("sh-cleanup task", () => {
     expect(w.tasks.closed).toEqual(["demo/TP-1"]);
   });
 
+  it("records why a task stayed open when active-work is unreachable, and the run still completes", async () => {
+    const w = world({ task: "open" });
+    w.tasks.state = async () => {
+      throw new Error("connect ECONNREFUSED 127.0.0.1:7400");
+    };
+
+    const result = await w.run();
+
+    expect(result.task).toBe("unread");
+    expect(result.caveats).toEqual([expect.stringMatching(/^task demo\/TP-1 not closed: /)]);
+    expect(w.tasks.closed).toEqual([]);
+  });
+
+  it("neither closes nor notes a second time when the run replays after a restart", async () => {
+    const w = world({ task: "open" });
+    const stateful = w.tasks as unknown as { state: () => Promise<TaskState> };
+    stateful.state = async () => (w.tasks.closed.length > 0 ? "done" : "open");
+
+    await w.run();
+    const replay = await w.run();
+
+    expect(replay.task).toBe("already-done");
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+    expect(w.tasks.notes).toHaveLength(1);
+  });
+
   it("does not close a task that is already done", async () => {
     const w = world({ task: "done" });
 
@@ -274,7 +301,7 @@ describe("sh-cleanup retire", () => {
     const result = await w.run();
 
     expect(result).toMatchObject({ ref: "unread", task: "done", retired: [IMPLEMENTER] });
-    expect(result.caveats).toEqual(["head ref of #1: Error"]);
+    expect(result.caveats).toEqual(["head ref of #1: Error", "merge sha of #1: Error"]);
     expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
   });
 
@@ -299,7 +326,7 @@ describe("sh-cleanup retire", () => {
 
     const result = await w.run();
 
-    expect(result.caveats).toEqual(["head ref of #1: Error", `retire ${IMPLEMENTER}: Error`]);
+    expect(result.caveats).toEqual(["head ref of #1: Error", "merge sha of #1: Error", `retire ${IMPLEMENTER}: Error`]);
     expectNoLeak(result);
   });
 

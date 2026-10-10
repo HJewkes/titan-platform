@@ -1,5 +1,10 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, latestPerName, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { consoleTextOf } from "./error-class.js";
+import { appendEvent } from "./events.js";
+import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
+
+export { actionsRunsAt, withoutSupersededCancels } from "./main-verdict.js";
 
 export const FREEZE_RECHECK_MS = 5 * 60_000;
 
@@ -52,6 +57,15 @@ interface Row {
   cancel_only: number;
 }
 
+/** A listener runs after the thaw has committed, so its failure is only logged: the thaw stands and the next listener still runs. */
+function notifyThaw(listener: (repo: RepoSlug) => void, repo: RepoSlug): void {
+  try {
+    listener(repo);
+  } catch (error) {
+    console.warn(`shepherd: a thaw listener for ${repo} failed: ${consoleTextOf(error)}`);
+  }
+}
+
 /** GitHub treats repo names case-insensitively, so a freeze on one spelling must freeze every spelling. */
 const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
@@ -71,19 +85,26 @@ export class FreezeStore {
 
   /** A repeat of the same red sha changes nothing; a later red sha in a live freeze counts up; a thawed repo starts a new episode. */
   freeze(repo: RepoSlug, redSha: string, cancelOnly = false): Freeze {
+    // Immediate, because a deferred read-then-write fails with "database is locked" when the CLI's connection commits in between.
+    this.db.transaction(() => this.freezeRow(repo, redSha, cancelOnly)).immediate();
+    return this.active(repo)!;
+  }
+
+  private freezeRow(repo: RepoSlug, redSha: string, cancelOnly: boolean): void {
     const row = this.row(repo);
     const flag = cancelOnly ? 1 : 0;
     if (row && row.thawed_at === null) {
       if (row.red_sha !== redSha) this.db.prepare("UPDATE shepherd_freeze SET red_sha = ?, red_count = red_count + 1, cancel_only = ? WHERE repo = ?").run(redSha, flag, repoKey(repo));
-    } else {
-      this.db
-        .prepare(
-          `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode, cancel_only) VALUES (?, ?, 1, ?, ?, ?)
-           ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only`,
-        )
-        .run(repoKey(repo), redSha, new Date(this.now()).toISOString(), (row?.episode ?? 0) + 1, flag);
+      return;
     }
-    return this.active(repo)!;
+    const at = new Date(this.now()).toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode, cancel_only) VALUES (?, ?, 1, ?, ?, ?)
+         ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only`,
+      )
+      .run(repoKey(repo), redSha, at, (row?.episode ?? 0) + 1, flag);
+    appendEvent(this.db, { repo, kind: "freeze", at, headSha: redSha, reason: cancelOnly ? "main red from cancelled runs only" : "main red" });
   }
 
   /** False when `episode` is no longer the live one, so a late step never writes into a later episode. */
@@ -123,10 +144,13 @@ export class FreezeStore {
 
   /** The owner's override from a frozen gate: thaws without a green sha, and only the episode that gate opened for. Every thaw, `unfreeze` included, ends here. */
   release(repo: RepoSlug, episode: number): boolean {
-    const thawed = this.db
-      .prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL")
-      .run(new Date(this.now()).toISOString(), repoKey(repo), episode).changes > 0;
-    if (thawed) this.onThaw(repo);
+    const at = new Date(this.now()).toISOString();
+    const thawed = this.db.transaction(() => {
+      const changed = this.db.prepare("UPDATE shepherd_freeze SET thawed_at = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL").run(at, repoKey(repo), episode).changes > 0;
+      if (changed) appendEvent(this.db, { repo, kind: "thaw", at, headSha: this.row(repo)?.red_sha });
+      return changed;
+    })();
+    if (thawed) notifyThaw(this.onThaw, repo);
     return thawed;
   }
 
@@ -169,7 +193,7 @@ export interface FreezeStoreRef {
 export function freezeStoreRef(now: () => number = Date.now): FreezeStoreRef {
   let store: FreezeStore | undefined;
   const listeners = new Set<(repo: RepoSlug) => void>();
-  const thawed = (repo: RepoSlug) => listeners.forEach((listener) => listener(repo));
+  const thawed = (repo: RepoSlug) => listeners.forEach((listener) => notifyThaw(listener, repo));
   return {
     get() {
       if (!store) throw new Error("the freeze store is not bound to an open factory database");
@@ -195,17 +219,20 @@ export type Red = Pick<Freeze, "redSha" | "cancelOnly">;
 export async function greenHead(port: GitHubPort, repo: RepoSlug, baseRef: string, red: Red): Promise<string | undefined> {
   const head = await port.getHeadSha(repo, baseRef);
   if (head === null) return undefined;
-  return (await greenAfterRed(port, repo, head, red)) ? head : undefined;
+  return (await greenAfterRed(port, repo, head, red, baseRef)) ? head : undefined;
 }
 
 /**
- * Every Actions check at `sha` is complete and green by its newest run, and every check that was red at the red sha ran
- * green here, so a path-filtered head cannot clear it. The red sha itself qualifies only when its red was only cancels.
+ * Every check that judges main at `sha` is complete and green by its newest run: the base branch's required contexts when
+ * it has them (`baseRef` given and readable), else every Actions check, which must also have run green where it was red
+ * at the red sha, so a path-filtered head cannot clear it. The red sha itself qualifies only when its red was only cancels.
  */
-export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: string, red: Red): Promise<boolean> {
+export async function greenAfterRed(port: GitHubPort, repo: RepoSlug, sha: string, red: Red, baseRef?: string): Promise<boolean> {
   if (sha === red.redSha && !red.cancelOnly) return false;
   const runs = await actionsRuns(port, repo, sha);
   if (runs.length === 0) return false;
+  const rules = baseRef === undefined ? undefined : (await readMainRules(port, repo, baseRef)).rules;
+  if (rules !== undefined) return judgeMain(sha, await port.latestCheckRuns(repo, sha), rules).findings.length === 0;
   return headCheckFindings({ headSha: sha, contexts: await failingAt(port, repo, red.redSha), runs, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
 }
 
@@ -216,20 +243,6 @@ export async function failingAt(port: GitHubPort, repo: RepoSlug, sha: string): 
 
 async function actionsRuns(port: GitHubPort, repo: RepoSlug, sha: string): Promise<CheckRun[]> {
   return actionsRunsAt(await port.latestCheckRuns(repo, sha), sha);
-}
-
-/** Only GitHub Actions runs at `sha` judge main CI there. */
-export function actionsRunsAt(runs: readonly CheckRun[], sha: string): CheckRun[] {
-  return runs.filter((run) => run.headSha === sha && run.appId === GITHUB_ACTIONS_APP_ID);
-}
-
-/**
- * Drops each cancelled run that a newer run of its name superseded, as workflow concurrency does to a run when a later
- * push starts; "newer" is the latest start, then the higher id. Any other superseded run still counts.
- */
-export function withoutSupersededCancels(runs: readonly CheckRun[]): CheckRun[] {
-  const newest = new Set(latestPerName(runs).map((run) => run.id));
-  return runs.filter((run) => run.conclusion !== "cancelled" || newest.has(run.id));
 }
 
 /** True when every Actions run that completed red at `sha`, superseded ones included, was cancelled. */

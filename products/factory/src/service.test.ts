@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
-import { renderPlist, renderUnit, SERVICE_LABEL, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
+import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, serviceLabel, servicePath, stableNodePath, UNIT_NAME, unitPath, type NodeProbe } from "./service.js";
 import { systemServicePorts } from "./service-ports.js";
 
 const SYSTEM_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
@@ -22,6 +22,20 @@ function keyValue(plist: string, key: string): string {
   if (!match) throw new Error(`no ${key} in plist`);
   return match[2] ?? match[1]!;
 }
+
+describe("service label prefix", () => {
+  it("keeps the default label byte-identical when no prefix is given", () => {
+    expect(serviceLabel()).toBe("dev.hjewkes.titan-factory");
+    expect(keyValue(renderPlist(options), "Label")).toBe("dev.hjewkes.titan-factory");
+    expect(plistPath("/srv/h")).toBe("/srv/h/Library/LaunchAgents/dev.hjewkes.titan-factory.plist");
+  });
+
+  it("follows a configured prefix in the label, the plist and its path", () => {
+    expect(serviceLabel("dev.ex.")).toBe("dev.ex.titan-factory");
+    expect(keyValue(renderPlist({ ...options, labelPrefix: "dev.ex." }), "Label")).toBe("dev.ex.titan-factory");
+    expect(plistPath("/srv/h", "dev.ex.")).toBe("/srv/h/Library/LaunchAgents/dev.ex.titan-factory.plist");
+  });
+});
 
 describe("titan-factory service plist", () => {
   it("names the job and keeps it running from load", () => {
@@ -42,6 +56,11 @@ describe("titan-factory service plist", () => {
 
     expect(args(renderPlist(options))).toEqual([options.nodePath, options.binPath, "serve"]);
     expect(args(renderPlist({ ...options, port: 7411 }))).toEqual([options.nodePath, options.binPath, "serve", "--port", "7411"]);
+  });
+
+  it("sets WorkingDirectory only when one is given", () => {
+    expect(renderPlist(options)).not.toContain("WorkingDirectory");
+    expect(keyValue(renderPlist({ ...options, workingDirectory: "/srv/deploy/tree" }), "WorkingDirectory")).toBe("/srv/deploy/tree");
   });
 
   it("escapes XML in paths", () => {
@@ -154,6 +173,11 @@ describe("titan-factory service unit", () => {
   it("runs the plist's argv, with the port when given", () => {
     expect(directive(renderUnit(options), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve`]);
     expect(directive(renderUnit({ ...options, port: 7411 }), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve --port 7411`]);
+  });
+
+  it("starts serve from the working directory when one is given, and from none otherwise", () => {
+    expect(directive(renderUnit(options), "WorkingDirectory")).toEqual([]);
+    expect(directive(renderUnit({ ...options, workingDirectory: "/srv/deploy tree" }), "WorkingDirectory")).toEqual(["/srv/deploy tree"]);
   });
 
   it("sets the plist's PATH and no other variable", () => {

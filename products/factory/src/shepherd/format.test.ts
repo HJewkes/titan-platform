@@ -33,6 +33,12 @@ describe("the shepherd text view of a hold", () => {
     expect(timeline).toContain(expected);
   });
 
+  it("shows the live stage with its age and the minutes since registration", () => {
+    const live = { ...row(null), stage: { name: "review" as const, minutes: 12 }, totalMinutes: 45 };
+
+    expect(formatShepherd("shepherd.status", [live])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging (review 12m, 45m total)\n`);
+  });
+
   it("shows an unsatisfied hold by its reason alone", () => {
     expect(formatShepherd("shepherd.status", [row({ reason: "owner review" })])).toBe(`acme/widgets#1 merging ${HEAD.slice(0, 7)} merging [held: owner review]\n`);
   });
@@ -75,6 +81,15 @@ describe("the shepherd text view of each verb", () => {
     expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(
       "acme/widgets#1 merging - merging\n  step ci completed 2026-01-01T00:00:00.000Z\n  ci ci aaaaaaa success\n  gate run-1/merge resolved by owner\n  signal wake\n",
     );
+  });
+
+  it("prints a hold, release, freeze and thaw event with its reason and actor", () => {
+    const at = "2026-01-01T00:00:00.000Z";
+    const entries = [
+      { kind: "event", event: "hold", reason: "g10-review", actor: "coord", at, headSha: null },
+      { kind: "event", event: "release", reason: null, actor: null, at, headSha: null },
+    ];
+    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(`acme/widgets#1 merging - merging\n  hold ${at}: g10-review (by coord)\n  release ${at}\n`);
   });
 
   it("prints hold and release by the run's hold state", () => {

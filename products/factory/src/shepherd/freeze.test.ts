@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { factoryRoutesFor } from "../workflows.js";
+import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
-import { MergeHeldError, heldCheck, holdingPort, waitWhileHeld } from "./hold.js";
+import { MergeHeldError, heldCheck, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 
@@ -28,7 +29,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -146,7 +147,7 @@ describe("the frozen-merge guard", () => {
     const r = rig();
     r.freezes.freeze(A, RED, true);
     r.fake.refs.set("main", RED);
-    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled")]);
+    r.fake.setRuns(RED, [successRun("validate", 2, RERUN_AT), successRun("validate", 1, CANCELLED_AT, "cancelled"), successRun("dag-check", 3)]);
 
     await expect(land(r, openPr(r, A))).resolves.toMatchObject({ done: true });
     expect(r.freezes.isFrozen(A)).toBe(false);
@@ -188,7 +189,7 @@ describe("the frozen-merge guard", () => {
     const pr = openPr(r, A);
     await expect(land(r, pr)).rejects.toThrow();
     r.fake.refs.set("main", GREEN);
-    r.fake.setRuns(GREEN, [successRun("validate", 1)]);
+    r.fake.setRuns(GREEN, [successRun("validate", 1), successRun("dag-check", 2)]);
 
     await expect(land(r, pr)).rejects.toThrow(/frozen/);
     r.clock.at += FREEZE_RECHECK_MS;
@@ -248,9 +249,14 @@ describe("the frozen-merge guard", () => {
         now: () => r.clock.at,
       }),
     );
-    const waiting = waitWhileHeld(route as never, held, {
-      sleep: async () => control.abort(),
-    });
+    const waiting = waitWhileHeld(
+      route as never,
+      held,
+      {
+        sleep: async () => control.abort(),
+      },
+      openHeadRead(r.port),
+    );
 
     const result = await (waiting.runner.run as (i: unknown) => Promise<{ ok: boolean }>)({ prompt: JSON.stringify({ repo: A, pr }), signal: control.signal });
 
@@ -370,7 +376,7 @@ describe("redOnlyFromCancels", () => {
 describe("thaw notice from the freeze store ref", () => {
   function boundRef(): { ref: ReturnType<typeof freezeStoreRef>; thawed: string[]; unsubscribe: () => void } {
     const db = openDatabase(":memory:");
-    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12)]);
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
     const ref = freezeStoreRef(() => 0);
     ref.bind(db);
     const thawed: string[] = [];
@@ -398,6 +404,71 @@ describe("thaw notice from the freeze store ref", () => {
     ref.get().unfreeze(A, GREEN);
 
     expect(thawed).toEqual([]);
+  });
+
+  it("a throwing listener neither throws from the thaw nor stops the listener after it, and its failure is logged", () => {
+    const { ref, thawed, unsubscribe } = boundRef();
+    unsubscribe();
+    ref.onThaw(() => {
+      throw new Error("listener broke");
+    });
+    ref.onThaw((repo) => thawed.push(repo));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const episode = ref.get().freeze(A, RED).episode;
+
+    const released = ref.get().release(A, episode);
+
+    expect(released).toBe(true);
+    expect(ref.get().isFrozen(A)).toBe(false);
+    expect(thawed).toEqual([A]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("listener broke"));
+    warn.mockRestore();
+  });
+
+  it("a store whose own thaw callback throws still reports the thaw it committed", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    const freezes = new FreezeStore(db, () => 0, () => {
+      throw new Error("callback broke");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    freezes.freeze(A, RED);
+
+    expect(freezes.unfreeze(A, GREEN)).toBe(true);
+    expect(freezes.isFrozen(A)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("callback broke"));
+    warn.mockRestore();
+  });
+});
+
+describe("the freeze store on a database another connection writes", () => {
+  const dirs: string[] = [];
+  afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+  it("still freezes when another connection tries to commit between the freeze's read and its write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "freeze-race-"));
+    dirs.push(dir);
+    const path = join(dir, "factory.db");
+    const host = openDatabase(path);
+    runMigrations(host, [freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+    const cli = openDatabase(path);
+    cli.pragma("busy_timeout = 0");
+    const cliWrite = () => {
+      try {
+        cli.prepare("INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode) VALUES (?, ?, 1, ?, 1)").run(B, RED, "2026-10-09T00:00:00Z");
+      } catch {
+        return;
+      }
+    };
+    const freezes = new FreezeStore(host, () => {
+      cliWrite();
+      return 0;
+    });
+
+    expect(() => freezes.freeze(A, RED)).not.toThrow();
+    expect(freezes.get(A)).toMatchObject({ redSha: RED, episode: 1 });
+    cli.close();
+    host.close();
   });
 });
 
@@ -435,8 +506,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 15]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 15]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

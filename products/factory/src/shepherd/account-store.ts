@@ -18,7 +18,7 @@ const ACCOUNT_LIMIT_DDL = `
  * One row per reviewer account that hit its usage limit, and the exact reason of each run hold an exhausted account placed,
  * so only that hold is ever overwritten or lifted here.
  */
-export function accountLimitMigration(version = 15): Migration {
+export function accountLimitMigration(version = 17): Migration {
   return { version, name: "factory:shepherd_account_limit", up: (db) => db.exec(ACCOUNT_LIMIT_DDL) };
 }
 

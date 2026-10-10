@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, existsSync, symlinkSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { REVIEW_CHECKOUT_MAX_AGE_MS, sweepReviewCheckouts } from "./review-checkout-sweep.js";
+import { reviewCheckoutName } from "@titan-design/review-panel";
+import { REVIEW_CHECKOUT_MAX_AGE_MS, REVIEW_CHECKOUT_NAME, sweepReviewCheckouts } from "./review-checkout-sweep.js";
 
 const NOW = Date.parse("2026-10-03T12:00:00Z");
 const HOUR = 3_600_000;
@@ -121,5 +122,19 @@ describe("sweepReviewCheckouts", () => {
 
     expect(removed).toEqual([]);
     expect(existsSync(file)).toBe(true);
+  });
+});
+
+describe("sweepReviewCheckouts without a root yet", () => {
+  it("removes nothing and does not fail when the root does not exist", async () => {
+    const missing = join(tmpdir(), "review-sweep-missing-root-never-created");
+
+    await expect(sweepReviewCheckouts({ root: missing, now: () => NOW })).resolves.toEqual([]);
+  });
+});
+
+describe("REVIEW_CHECKOUT_NAME", () => {
+  it("matches the checkout name the reviewer brief tells reviewers to create", () => {
+    expect(REVIEW_CHECKOUT_NAME.test(reviewCheckoutName(900, "0081c0d493fad60a9412b68f571bc279d79c527c"))).toBe(true);
   });
 });

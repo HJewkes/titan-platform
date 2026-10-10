@@ -4,7 +4,9 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { buildSha } from "./build-info.js";
+import { configPath, loadConfig } from "./config.js";
 import type { CheckPorts } from "./service-check.js";
+import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
 import type { TickStatusRead } from "./tick-status.js";
 
@@ -53,8 +55,23 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
+/**
+ * The one place the label prefix is resolved, from the env the CLI runs under. A config that fails
+ * to load yields its error instead of a prefix: runServiceVerb refuses on it, so no verb acts on the
+ * default label's job when the configured one may differ. Only `service plist` prints without it.
+ */
+function configuredLabelPrefix(env: NodeJS.ProcessEnv): Pick<ServicePorts, "labelPrefix" | "configError"> {
+  try {
+    const labelPrefix = loadConfig(configPath(env)).service?.labelPrefix;
+    return labelPrefix === undefined ? {} : { labelPrefix };
+  } catch (err) {
+    return { configError: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export function systemServicePorts(): ServicePorts {
   return {
+    ...configuredLabelPrefix(process.env),
     platform: process.platform,
     uid: process.getuid?.() ?? -1,
     home: homedir(),
@@ -81,6 +98,24 @@ function tickStatusRead(): TickStatusRead {
   return { file, text: readIfPresent(file) };
 }
 
-export function systemCheckPorts(): CheckPorts {
-  return { ...systemServicePorts(), isAlive: isProcessAlive, processStartedAt: async (pid) => getProcessStartTime(pid), installedBuildSha: buildSha, tickStatus: tickStatusRead };
+/** A config that fails to load was already refused by runServiceVerb, so here it reads as no seat. */
+function configuredHubSeat(env: NodeJS.ProcessEnv): string | undefined {
+  try {
+    return loadConfig(configPath(env)).shepherd?.hubSeat;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `checkout` is the service checkout whose index.lock blocks deploys. */
+export function systemCheckPorts(checkout: string): CheckPorts {
+  return {
+    ...systemServicePorts(),
+    isAlive: isProcessAlive,
+    processStartedAt: async (pid) => getProcessStartTime(pid),
+    installedBuildSha: buildSha,
+    tickStatus: tickStatusRead,
+    indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+    hubSeat: () => configuredHubSeat(process.env),
+  };
 }

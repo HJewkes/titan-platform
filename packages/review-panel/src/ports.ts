@@ -22,8 +22,12 @@ export interface ReviewerFacts {
   kind?: string;
   /** The kind could not be read, so the PR takes the stricter class. */
   unread?: boolean;
-  /** Additions plus deletions; absent means unknown. Nothing populates it until the github port reports line counts (TP-1755). */
+  /** Additions plus deletions, generated files left out (`changedLineCount`); absent means unknown. */
   changedLines?: number;
+  /** The size could not be read, so the PR takes the stricter class. */
+  sizeUnread?: boolean;
+  /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
+  intentAt?: number;
 }
 
 /** One roster row, as the dispatch port reports it. */
@@ -40,6 +44,8 @@ export interface ReviewerAgent {
   fillTokens?: number;
   /** Epoch milliseconds of the latest write to the session's transcript, which a resume appends to; absent means unknown. */
   lastWrittenAt?: number;
+  /** The profile the agent was spawned with; absent means the port does not say. */
+  profile?: string;
 }
 
 /** How a caller starts a reviewer; a throw from `spawn` or `resume` that the caller does not classify as a broker outage is a refusal. */

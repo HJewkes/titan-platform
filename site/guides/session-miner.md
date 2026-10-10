@@ -48,6 +48,7 @@ titan-miner playbook status
 titan-miner insights cache-ttl --since 2026-09-01   # one of six questions; see Insights
 titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on loopback
 titan-miner mcp                              # MCP over stdio
+titan-miner --graph <file> graph-refresh -- active-work miner refresh   # one scheduled pass
 ```
 
 Six options go before the command and apply to all of them:
@@ -82,13 +83,17 @@ list-price caveat. Each question is also an MCP tool, `miner__insights__<questio
 | `wake-economics` | what wakes a coordinator, and the requests and cost of each wake episode | `--episode-role <role>` |
 | `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
 | `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
+| `tool-gaps` | post-filters piped after our CLIs, by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top` |
+| `tool-adoption` | per shipped flag or verb in the adoption registry, weekly uses of the new form against the old pipelines, flagged unadopted or unused two weeks after ship | none |
 
 The first four read the session graph and take the shared filters `--session`,
 `--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow` and `liveness` read
 agent-chat's files instead (`TITAN_MINER_EVENTS_DB`, default `~/.agent-chat/events.db`, and
 `TITAN_MINER_BROKER_LOG`, default `~/.agent-chat/broker.log`), so they take only `--since`
 and `--until` and narrow with `--seat`. Options that name a local file (`--broker-log`,
-`--transcript`, `--journal`, `--pulls`) are accepted only on the CLI.
+`--transcript`, `--journal`, `--pulls`) are accepted only on the CLI. `tool-gaps` reads each
+Bash command back from its transcript and runs `<cli> --help`; it takes every shared filter but `--role`.
+`tool-adoption` reads Bash commands back the same way and takes the same filters.
 
 ### Where state lives
 
@@ -112,6 +117,8 @@ the FTS orphan ratio.
 | `error: Daemon already running (pid N, port P)`, exit 70 | a second `serve` on the same state directory |
 | a hit with `"excerpt": null` and a locator | the source bytes changed or the file was pruned after indexing |
 | a name in `degraded` from `search` | one retriever failed; the others still answered |
+| `graph-refresh: another run holds …`, exit 75 | a second `graph-refresh` while one is running; nothing was done |
+| `graph-refresh: FAILED: …`, exit 70 | the owner's refresh failed, or the graph failed `quick_check` |
 
 ## A refresh, package by package
 
@@ -297,7 +304,9 @@ playbook is exercised.
 - **No vector search.** The `embed` dependency is wired but no vector index is built, so
   both `search` and `playbook recall` are keyword-only today.
 - **No dashboard.** That waits on the UI package split.
-- **No scheduler.** The daemon serves; a supervisor drives `refresh`.
+- **No built-in scheduler.** A systemd timer drives `graph-refresh`, which runs the
+  graph owner's refresh under a lock and then quick_checks the file
+  (`ops/systemd/session-miner-refresh.timer`; install steps in the product README).
 - **Per-tool Drain partitions** wait on the fact table carrying tool names for results.
 
 The value of naming these is that each is a gap in a *product*, not in a package. The

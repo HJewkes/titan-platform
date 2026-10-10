@@ -1,5 +1,41 @@
 # @titan-design/daemon
 
+## 0.6.0
+
+### Minor Changes
+
+- 948d6de: `/events` is bounded. A new `eventLimits` option on `startDaemon` and `buildHttpApp` sets `maxSubscribers` (default 64, counted across both listeners; one more stream answers 503) and `maxQueued` (default 256 unwritten broadcasts per stream; one more disconnects that stream, so a slow client reconnects instead of silently missing a frame). `EventLimits` and `DEFAULT_EVENT_LIMITS` are exported.
+- 875eee0: The remote listener now speaks only HTTPS. `RemoteListenerOptions.tls: { certFile, keyFile }` is required; a `remote` without it throws `RemoteBindError` before anything binds, so no setting serves plain HTTP beyond loopback. The pair is checked before binding (`TlsFileError` for a missing or unreadable file, a key that is not private to this user or not the certificate's, an expired certificate, or one that does not cover every `allowedHosts` name), and re-read every `tlsReloadMs` (60s) so a renewed certificate is served with no restart; a renewal that fails the checks keeps the last good pair. Remote origins are `https://` only (new `RequestGuardOptions.httpsOnly`), and the session cookie is always `Secure`.
+- 718eda8: Cap every `POST /rpc/:name` body before it is buffered. The cap is 1 MiB by default (`DEFAULT_RPC_BODY_LIMIT`). Set `rpcBodyLimit: { maxBytes, perCommand }` on `startDaemon` or `buildHttpApp` to change it for all commands or for one. A body over the cap gets 413, whether the client sent a `Content-Length` or streamed it chunked. The auth gate's record survives the request swap the limit makes, so a gated `/rpc` call still reaches `createContext` with its credential.
+
+### Patch Changes
+
+- 84bd62f: A `/rpc` `Content-Length` that is not a number now gets 413 from the body cap instead of passing it. The daemon README names the remaining loopback residual: the cap bounds one body, not how many are in flight. The console's `inbox.deposit` body cap is now three times the stored 64 KB cap, so a valid deposit whose non-ASCII characters arrive as `\uXXXX` escapes is no longer refused with 413.
+- Updated dependencies [1893149]
+  - @titan-design/registry@0.4.0
+
+## 0.5.0
+
+### Minor Changes
+
+- f8b7be1: Add session, login-code and bearer auth for a listener beyond loopback. New exports: `ensureTokenFile`, `rotateTokenFile`, `TokenFileError`, `mintLoginCode`, `consumeLoginCode`, `createLoginCodeLedger`, `signSession`, `verifySession`, `createDaemonAuth`, `authGate`, `mountAuthRoutes`, `getRequestAuth`, the constants `SESSION_COOKIE`, `LOGIN_PATH`, `LOGOUT_PATH`, `LOGIN_CODE_TTL_MS` and `SESSION_MAX_AGE_MS`, and the types `DaemonAuth`, `DaemonAuthOptions`, `LoginCodeLedger`, `RequestAuth` and `TokenFileProblem`. Login is two steps: `GET /auth/login?code=` renders an inert page, and its same-origin JSON `POST /auth/login` spends the code and sets the cookie. `createContext` now receives what the gate recorded as an optional second argument; nothing is gated by default, so loopback behaviour is unchanged.
+- bf5cd2a: Add an authenticated remote listener. `startDaemon` takes `remote: { host, tokenFile, allowedHosts? }` and opens a second listener on that address and the same port. The loopback listener is unchanged. On the remote listener the Host/Origin guard and then the auth gate run before every route, Host and Origin match only with the bound port, and `/mcp` is never served. Both listeners bind or neither does, and `close()` shuts both. A loopback, wildcard or non-IP `remote.host`, or a remote listener beside an unauthenticated non-loopback `host`, throws the new `RemoteBindError`. New guard option `portOnly`. `RequestAuth` gains `peerLocal`, true when the peer is one of this machine's own addresses. New exports: `RemoteBindError` and the type `RemoteListenerOptions`.
+
+### Patch Changes
+
+- f88ac00: Answer a throwing `/mcp` handler with a JSON `errorEnvelope` (status 500, code `EXIT.SOFTWARE`) instead of a bare `String(err)` body.
+- f320219: Fix a flaky port-conflict test: the first daemon now binds an ephemeral port instead of a probed one that a parallel test could take before the bind.
+- 490489b: Split `watchTree` into small module-level helpers over a shared state object. Behavior is unchanged.
+- ff6ff86: Pin in a test that closing a tree watcher clears its pending debounce timer. No runtime change.
+- 37c2689: Add `EXIT.NOPERM` (77) and `RPC_STATUS.FORBIDDEN`. `rpcFailureStatus` maps a command that refuses its caller with `NOPERM` to 403, so `POST /rpc/:name` answers 403 for it instead of 500.
+- 3c5b114: Add `EXIT.TEMPFAIL` (75) and `RPC_STATUS.TOO_MANY_REQUESTS`. `rpcFailureStatus` maps a command that refuses a caller over its limit with `TEMPFAIL` to 429, so `POST /rpc/:name` answers 429 for it instead of 500.
+- d4ef157: Gate the daemon's built-in routes. `buildHttpApp` takes a `gate: DaemonAuth` option that runs right after the Host/Origin guard, so `/health`, `/version`, `/events`, `/rpc` and every `mountRoutes` route answer 401 without a credential; it also adds `POST /auth/logout`. The gate answers `/auth/login` itself (`GET`, `HEAD`, `POST`) and 405s every other method there, so a product catch-all can no longer receive them. On a gated app `/rpc` answers 401 rather than call `createContext` with no auth. `authGate` and `mountAuthRoutes` are no longer exported: mounting the gate inside `mountRoutes` or ahead of the guard left routes open. Ungated apps are unchanged.
+- Updated dependencies [45f05b1]
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+  - @titan-design/registry@0.3.3
+  - @titan-design/rpc-protocol@0.3.0
+
 ## 0.4.1
 
 ### Patch Changes

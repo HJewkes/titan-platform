@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
-import { plistPath, renderPlist, renderUnit, SERVICE_LABEL, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
+import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
 
 export interface CommandResult {
   code: number;
@@ -16,6 +16,10 @@ export interface ServicePorts {
   uid: number;
   home: string;
   xdgConfigHome?: string;
+  /** `service.labelPrefix` from the factory config; the launchd label, plist and every launchctl target follow it. The systemd unit name has no prefix. */
+  labelPrefix?: string;
+  /** Why the factory config failed to load; the label prefix is then unknown, so every verb but `service plist` refuses. */
+  configError?: string;
   launchctl: (args: readonly string[]) => Promise<CommandResult>;
   systemctl: (args: readonly string[]) => Promise<CommandResult>;
   /** Resolves undefined when no `claude` binary is on PATH. */
@@ -61,12 +65,14 @@ const UNLOAD_POLLS = 40;
 const LOG_TAIL_LINES = 20;
 const FAILURE = 1;
 
-const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${SERVICE_LABEL}`;
+const labelOf = (ports: ServicePorts): string => serviceLabel(ports.labelPrefix);
+const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${labelOf(ports)}`;
 const detail = (result: CommandResult): string => (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`);
 const isSystemd = (ports: ServicePorts): boolean => ports.platform === "linux";
-const serviceName = (ports: ServicePorts): string => (isSystemd(ports) ? UNIT_NAME : SERVICE_LABEL);
-const serviceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home));
-export const renderServiceFile = (ports: ServicePorts, options: PlistOptions): string => (isSystemd(ports) ? renderUnit(options) : renderPlist(options));
+const serviceName = (ports: ServicePorts): string => (isSystemd(ports) ? UNIT_NAME : labelOf(ports));
+/** The plist or unit `service install` writes for this platform. */
+export const installedServiceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home, ports.labelPrefix));
+export const renderServiceFile = (ports: ServicePorts, options: PlistOptions): string => (isSystemd(ports) ? renderUnit(options) : renderPlist({ ...options, ...(ports.labelPrefix === undefined ? {} : { labelPrefix: ports.labelPrefix }) }));
 
 function fail(io: ServiceIo, message: string): number {
   io.stderr(`error: ${message}\n`);
@@ -84,7 +90,10 @@ export async function runServiceVerb(
   run: (ports: ServicePorts) => Promise<number>,
   platforms: readonly NodeJS.Platform[] = ["darwin"],
 ): Promise<number> {
-  if (platforms.includes(ports.platform)) return run(ports);
+  if (platforms.includes(ports.platform)) {
+    if (ports.configError !== undefined) return fail(io, `titan-factory service ${verb} cannot resolve the service label: ${ports.configError}`);
+    return run(ports);
+  }
   const needs = platforms.includes("linux") ? "launchd (macOS) or systemd (Linux)" : "launchd, which only macOS has";
   return fail(io, `titan-factory service ${verb} needs ${needs} (this is ${ports.platform})`);
 }
@@ -122,7 +131,7 @@ async function bootoutIfLoaded(ports: ServicePorts, io: ServiceIo, job: JobState
     if (!(await jobState(ports)).loaded) return true;
     await ports.sleep(POLL_MS);
   }
-  fail(io, `${SERVICE_LABEL} is still loaded after launchctl bootout: ${detail(bootout)}`);
+  fail(io, `${labelOf(ports)} is still loaded after launchctl bootout: ${detail(bootout)}`);
   return false;
 }
 
@@ -188,6 +197,9 @@ async function runCommands(ports: ServicePorts, commands: readonly ServiceComman
 
 function preflight(ports: ServicePorts, options: InstallOptions): string | undefined {
   if (options.missing.includes("gh")) return "gh is not on PATH, and titan-factory serve cannot reach GitHub without it; install gh, then rerun";
+  if (!options.dryRun && !ports.exists(options.plist.binPath)) {
+    return `${options.plist.binPath} does not exist; run titan-factory service deploy to clone and build the deploy checkout, then rerun install`;
+  }
   const notDir = options.claudeConfigDirs.find((dir) => !ports.isDirectory(resolve(dir)));
   return notDir === undefined ? undefined : `--claude-config-dir ${notDir} is not a directory`;
 }
@@ -200,7 +212,7 @@ function printInstallPlan(ports: ServicePorts, io: ServiceIo, file: string, job:
 }
 
 export async function installService(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<number> {
-  const file = serviceFile(ports);
+  const file = installedServiceFile(ports);
   const refused = preflight(ports, options);
   if (refused !== undefined) return fail(io, refused);
   const job = await jobState(ports);
@@ -237,18 +249,18 @@ async function registerMcp(ports: ServicePorts, io: ServiceIo, port: number, con
 
 export async function uninstallService(ports: ServicePorts, io: ServiceIo): Promise<number> {
   if (isSystemd(ports)) return uninstallUnit(ports, io);
-  const file = plistPath(ports.home);
+  const file = plistPath(ports.home, ports.labelPrefix);
   const job = await jobState(ports);
   if (!(await bootoutIfLoaded(ports, io, job))) return FAILURE;
   const written = ports.exists(file);
   ports.remove(file);
-  io.stdout(job.loaded || written ? `uninstalled ${SERVICE_LABEL}; removed ${file}\n` : `${SERVICE_LABEL} was not installed\n`);
+  io.stdout(job.loaded || written ? `uninstalled ${labelOf(ports)}; removed ${file}\n` : `${labelOf(ports)} was not installed\n`);
   return 0;
 }
 
 /** systemd still lists a unit whose file is gone until the next daemon-reload. */
 async function uninstallUnit(ports: ServicePorts, io: ServiceIo): Promise<number> {
-  const file = serviceFile(ports);
+  const file = installedServiceFile(ports);
   const known = (await unitState(ports)).state !== undefined || ports.exists(file);
   if (!known) {
     io.stdout(`${UNIT_NAME} was not installed\n`);

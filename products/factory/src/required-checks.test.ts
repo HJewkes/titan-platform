@@ -1,7 +1,8 @@
-import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "./host.js";
-import { landScenario } from "./test-support/land.js";
+import { requireRequiredChecks } from "./required-checks.js";
+import { H1, approveUntilSettled, landScenario } from "./test-support/land.js";
 import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./shepherd/merge-facts.js";
 
 const REPO = "octo/demo";
@@ -51,20 +52,6 @@ describe.each(UNREADABLE)("land when the required checks read fails with %s", (_
   });
 });
 
-describe("land when the repo has no rules", () => {
-  it("still refuses a successful empty read, as before", async () => {
-    const scenario = landScenario();
-    scenario.fake.rules.contexts = [];
-    const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
-    hosts.push(host);
-
-    const runId = host.runtime.start("land-test");
-    await host.runtime.wait(runId).catch(() => undefined);
-
-    expect(JSON.stringify(host.runtime.status(runId))).toContain("requires no status checks");
-  });
-});
-
 describe.each(UNREADABLE)("merge facts when the required checks read fails with %s", (_name, error, status) => {
   it("gates and records the required checks as unknown, naming the repo and the status", async () => {
     const fake = greenWorld();
@@ -87,5 +74,87 @@ describe("merge facts when the repo has no rules", () => {
 
     expect(evidence.requiredChecksUnknown).toBeUndefined();
     expect(evidence.merge.requiredContexts).toEqual([]);
+  });
+});
+
+const PRO_403 = new FakeHttpError(403, "Upgrade to GitHub Pro or make this repository public to enable this feature.");
+
+function freePlanRepo(protectedBranch: boolean, runs: CheckRun[], ciTimeoutMs?: number) {
+  const scenario = landScenario({ ciTimeoutMs });
+  failRulesWith(scenario.fake, PRO_403);
+  scenario.fake.branchProtected = protectedBranch;
+  scenario.fake.onGetPr = (pr) => scenario.fake.setRuns(pr.headSha, runs);
+  const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
+  hosts.push(host);
+  return { scenario, host, runId: host.runtime.start("land-test") };
+}
+
+describe("land on a free-plan repo whose rules read answers the Pro 403", () => {
+  it("lands when the branch reports protected:false and every check-run is green", async () => {
+    const { scenario, host, runId } = freePlanRepo(false, [successRun("lint", 1), successRun("test", 2)]);
+
+    await approveUntilSettled(host, runId, scenario.fake);
+
+    expect(host.runtime.status(runId)!.status).toBe("completed");
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: H1 });
+    expect(scenario.fake.effects.merge).toBe(1);
+  });
+
+  it("refuses to merge while a check-run is red", async () => {
+    const { scenario, host, runId } = freePlanRepo(false, [successRun("lint", 1), successRun("test", 2, undefined, "failure", undefined, H1)]);
+
+    await host.runtime.wait(runId).catch(() => undefined);
+
+    expect(scenario.fake.effects.merge).toBe(0);
+    expect(scenario.outcomes.at(-1)).toMatchObject({ kind: "ci-failed" });
+  });
+
+  it("refuses to merge while a check-run is pending", async () => {
+    const pending: CheckRun = { ...successRun("test", 2, undefined, "success", undefined, H1), status: "in_progress", conclusion: null };
+    const { scenario, host, runId } = freePlanRepo(false, [successRun("lint", 1), pending], 60);
+
+    await host.runtime.wait(runId).catch(() => undefined);
+
+    expect(scenario.fake.effects.merge).toBe(0);
+    expect(host.runtime.status(runId)!.status).toBe("failed");
+  });
+
+  it("refuses when the branch reports protected:true", async () => {
+    const { scenario, host, runId } = freePlanRepo(true, [successRun("lint", 1)]);
+
+    const run = await host.runtime.wait(runId).catch((failure: unknown) => failure);
+
+    expect(JSON.stringify([run, host.runtime.status(runId)])).toContain("required checks of octo/demo@main are unreadable: HTTP 403");
+    expect(scenario.fake.effects.merge).toBe(0);
+  });
+});
+
+describe("requireRequiredChecks on a 403", () => {
+  const port = (rulesError: Error, branch: boolean | Error) => {
+    const fake = fakeGitHub({ repo: REPO });
+    failRulesWith(fake, rulesError);
+    fake.wire.getBranchProtected = async () => {
+      if (branch instanceof Error) throw branch;
+      return branch;
+    };
+    return githubPort(fake.wire);
+  };
+
+  it("reads the Pro 403 with protected:false as a repo with no rules", async () => {
+    await expect(requireRequiredChecks(port(PRO_403, false), REPO, "main")).resolves.toEqual({ contexts: [], strict: false });
+  });
+
+  it("refuses the Pro 403 when the branch read fails, so protected is never inferred", async () => {
+    await expect(requireRequiredChecks(port(PRO_403, new FakeHttpError(500, "boom")), REPO, "main")).rejects.toThrow("unreadable: HTTP 403; land refuses");
+  });
+
+  it("refuses a generic 403 even when the branch reports protected:false", async () => {
+    const generic = new FakeHttpError(403, "Resource not accessible by integration");
+    await expect(requireRequiredChecks(port(generic, false), REPO, "main")).rejects.toThrow("unreadable: HTTP 403; land refuses");
+  });
+
+  it("refuses a Pro message that carries another status", async () => {
+    const wrongStatus = new FakeHttpError(404, "Upgrade to GitHub Pro");
+    await expect(requireRequiredChecks(port(wrongStatus, false), REPO, "main")).rejects.toThrow("unreadable: HTTP 404; land refuses");
   });
 });

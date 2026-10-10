@@ -1,9 +1,13 @@
+import { hostname } from "node:os";
+import type { Logger } from "@titan-design/daemon";
 import { isRepo } from "@titan-design/github";
 import type { GateQuestion } from "@titan-design/hitl";
 import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
+import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
+import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
 
 /** The workflow `factory.land` starts. */
@@ -13,6 +17,10 @@ export interface FactoryContext extends BaseContext {
   host: FactoryHost;
   /** Absent when the host runs routes without the shepherd store; the shepherd commands then refuse. */
   shepherd?: ShepherdServices;
+  /** The serving factory's name, which an owner proof must carry as its `aud`; defaults to this machine's hostname. */
+  aud?: string;
+  /** Replaces the live owner-queue adapters behind needs.list and needs.count; tests inject it. */
+  needsSources?: NeedsSources;
 }
 
 export interface PrRef {
@@ -122,12 +130,13 @@ const status = defineCommand<{ runId?: string }, { runs: RunSummary[] }, Factory
   },
 });
 
-const gates = defineCommand<Record<string, never>, { gates: GateSummary[] }, FactoryContext>({
+const gates = defineCommand<Record<string, never>, { gates: GateSummary[]; aud: string }, FactoryContext>({
   name: "factory.gates",
-  description: "Pending human gates, each with the CLI command that resolves it",
+  description: "Pending human gates, each with the CLI command that resolves it, and the audience an owner proof must name",
   args: z.object({}),
-  result: z.custom<{ gates: GateSummary[] }>(),
+  result: z.custom<{ gates: GateSummary[]; aud: string }>(),
   run: async (_args, ctx) => ({
+    aud: ctx.aud ?? hostname(),
     gates: ctx.host.pendingGates().map(({ runId, stepId, gate }) => ({
       runId,
       stepId,
@@ -144,13 +153,20 @@ const gates = defineCommand<Record<string, never>, { gates: GateSummary[] }, Fac
 });
 
 /** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
-export function factoryContext(host: FactoryHost, routes: FactoryRoutes): FactoryContext {
-  return { warnings: [], format: "json", host, ...(routes.shepherd && { shepherd: routes.shepherd }) };
+export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources): FactoryContext {
+  return {
+    warnings: [],
+    format: "json",
+    host,
+    ...(routes.shepherd && { shepherd: routes.shepherd }),
+    ...(aud !== undefined && { aud }),
+    ...(needsSources && { needsSources }),
+  };
 }
 
-/** Resolving a gate is deliberately absent: it stays a local `titan-factory gate resolve`, never a network call. */
-export function createFactoryRegistry(): CommandRegistry<FactoryContext> {
+/** Resolving a gate is deliberately absent: over the network only serve's signed-proof route resolves, never a command. */
+export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS]) registry.register(cmd);
+  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

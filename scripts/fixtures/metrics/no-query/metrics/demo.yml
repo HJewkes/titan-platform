@@ -1,0 +1,17 @@
+schema: titan.metrics/v1
+area: demo
+owner: demo-seat
+stores:
+  - { id: ledger, kind: sqlite, readonly: true }
+metrics:
+  - id: demo.flow.end_to_end
+    family: flow
+    title: End to end
+    definition: Minutes from a run's start to its finish
+    unit: minutes
+    source: { anchor: "products/demo/src/run.ts#finish", store: ledger, captured: N }
+    cadence: 1d
+    surfaces: [stats]
+    answers: [1]
+reports: []
+lastAudit: { at: "2026-01-01T00:00:00Z", codeRev: "0000000", report: "reports/demo.json" }

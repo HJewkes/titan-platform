@@ -6,7 +6,7 @@ export { EventFolder, foldEvents } from "./fold.js";
 export type { ExtractOptions, ExtractResult, ReadOptions, ReadResult } from "./read.js";
 export { TranscriptParseError, extractTranscript, readTranscriptEvents } from "./read.js";
 export type { Relation, RepoRelativePath } from "./refs.js";
-export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, prRef, repoForCwd, sessionRef, taskRef, toRepoRelative } from "./refs.js";
+export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, parseFileRef, prRef, repoForCwd, sessionRef, taskRef, toRepoRelative } from "./refs.js";
 export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
 export type { VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
@@ -16,6 +16,9 @@ export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } fr
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
 export { IGNORED_PATH, TASK_ID, commandCwd, commandHeads, parseGitIntent, parsePrCreateTitle, parseTaskId, parseTaskIntent, parseTaskIntents, realCommand } from "./bash-parse.js";
 export { expandHome } from "./expand-home.js";
+export { simpleCommandHead } from "./command-heads.js";
+export type { ShellWord } from "./shell-split.js";
+export { splitCommands, splitPipelines } from "./shell-split.js";
 export type { DiscoveredTranscript, TranscriptRoot } from "./discover.js";
 export { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
 export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";

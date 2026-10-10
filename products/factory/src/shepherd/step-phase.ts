@@ -36,6 +36,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-carry-scope": "review",
   "sh-carry-seat": "review",
   "sh-remerge": "review",
+  "sh-merge-up": "review",
   "sh-approval-carry": "awaiting-approval",
   "sh-await-verdict": "review",
   "sh-account-hold": "review",
@@ -48,6 +49,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-sent-back": "awaiting-approval",
   "sh-conflict-check": "awaiting-approval",
   "stuck-behind": "awaiting-approval",
+  "sh-seat-notice": "awaiting-approval",
   "merge-settle": "merging",
   merge: "merging",
   "sh-train-leave": "merging",
@@ -61,11 +63,13 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-unfreeze": "post-merge",
   "sh-thaw": "post-merge",
   "sh-stopped": "post-merge",
+  "sh-override": "post-merge",
   "after-stages": "post-merge",
   "sh-freeze": "post-merge",
   "sh-file-fix-task": "post-merge",
   "sh-spawn-fixer": "post-merge",
   "sh-cleanup": "post-merge",
+  "sh-reverted": "post-merge",
 };
 
 export function stepPhase(stepId: string): Phase {

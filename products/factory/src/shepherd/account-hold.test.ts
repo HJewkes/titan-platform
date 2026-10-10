@@ -17,7 +17,7 @@ const HELD = `account-exhausted: ${ACCOUNT} until 2026-10-11T00:00:00.000Z; TP-1
 
 function migrated(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), accountLimitMigration(15)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), accountLimitMigration(17)]);
   return db;
 }
 

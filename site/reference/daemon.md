@@ -72,11 +72,25 @@ takes the same options, starts, waits for SIGTERM/SIGINT, then closes. Neither c
 | `GET /health` | 503 `{ ok: false, starting: true }` until the pid file exists, then version, pid, uptime, port, and your `health()` fields |
 | `GET /version` | `{ version }` |
 | `GET /events` | SSE; `ready` on connect, `change` on every watch-tree change, `ping` every 25s |
-| `POST /rpc/:name` | 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 404 unknown, 400 bad JSON or bad args (code 65), 500 on a thrown error |
+| `POST /rpc/:name` | 403 bad Host/Origin or no Origin and no `X-Titan-Client`, 415 non-JSON Content-Type, 413 a body over its cap (code 64), 404 unknown, 400 bad JSON or bad args (code 65), 403 a command refusing its caller (code 77), 429 a command refusing a caller over its limit (code 75), 500 on any other thrown error |
 | `POST /mcp` | Stateless MCP; one server and transport per request |
 
 `/rpc` and MCP `CallTool` both go through the registry's `invokeCommand`, so the envelope and
 exit codes are identical across surfaces.
+
+A `/rpc` body is capped before it is buffered: 1 MiB (`DEFAULT_RPC_BODY_LIMIT`) unless
+`rpcBodyLimit: { maxBytes, perCommand }` says otherwise, with `perCommand` keyed by command
+name. A `Content-Length` over the cap, or one that is not a number, gets 413 at once. A
+chunked body is counted as it arrives and gets 413 as soon as it passes the cap; the server
+then discards the rest of it for at most 500 ms before it closes the socket, and never holds
+it in memory.
+
+The cap bounds one body, not how many are in flight. N slow bodies on loopback can hold N
+times the cap until Node's request timeout (300 s by default) drops them. This is left
+unbounded on purpose: a loopback caller already runs as the owner's account and can spend
+memory in plainer ways, while a bound would refuse honest callers, such as several agents
+posting at once, with a status no client retries. The remote listener checks credentials
+before it reads a body, so this residual is loopback's alone.
 
 ## Request guards
 
@@ -113,6 +127,127 @@ await startDaemon({
 });
 ```
 
+## Authentication beyond loopback
+
+The guards keep web pages out but authenticate no one, which is fine on loopback and not on a
+LAN. `auth.ts` is the mechanism for a listener that needs a real credential. The product owns
+the policy: the file path, the CLI verbs that mint links and rotate the secret, and which
+listener the gate sits on. `startDaemon` wires it through the `remote` option (below);
+`buildHttpApp`'s `gate` option is the same gate for an app you bind yourself.
+
+```ts
+import {
+  buildHttpApp, createDaemonAuth, ensureTokenFile, mintLoginCode, rotateTokenFile,
+} from "@titan-design/daemon";
+
+const tokenFile = path.join(stateDir, "lan.token");
+ensureTokenFile(tokenFile);                    // creates it once: 32 random bytes, 0600, O_EXCL
+const auth = createDaemonAuth({ tokenFile });  // throws TokenFileError on an untrustworthy file
+
+const app = buildHttpApp({ ...options, gate: auth });
+
+// In a separate CLI process, on the daemon's host:
+console.log(`https://host.example.ts.net:7500/auth/login?code=${mintLoginCode(ensureTokenFile(tokenFile))}`);
+rotateTokenFile(tokenFile);                    // ends every session and voids every code
+```
+
+- **The `gate` option.** The gate runs right after the Host/Origin guard and before every
+  route, so `/health`, `/version`, `/events`, `/rpc` and anything `mountRoutes` adds all
+  answer 401 without a credential. A foreign Host still gets the guard's 403 first. Only
+  `/auth/login` is open, and the gate answers it itself: `GET` and `HEAD` render the page,
+  `POST` spends the code, and every other method gets 405 with `Allow: GET, HEAD, POST`.
+  The gate is not exported as middleware, because mounted any later than this it leaves
+  the routes ahead of it open. Without `gate` the app behaves exactly as before.
+- **Token file.** A 32-byte base64url secret. It is refused (`TokenFileError`, with a `problem`)
+  when it is a symlink, not a regular file, owned by another user, readable by group or others,
+  empty, shorter than 32 bytes, or not base64url. The gate re-reads it whenever its inode, size,
+  mtime, ctime, mode or owner change, and re-checks all of the above each time; a file that
+  fails the checks after start makes every request 503 until it is fixed. `rotateTokenFile`
+  writes a 0600 temp file and renames it into place.
+- **Keys.** The secret is never an HMAC key itself. HKDF derives separate cookie, login-code
+  and bearer keys, and every comparison is `timingSafeEqual` over equal-length HMAC digests.
+- **Login code.** `v1.<issuedAt>.<nonce>.<mac>`, minted offline by anything that can read the
+  file. It lives ten minutes and works once per daemon process, and a code minted before the
+  process started is refused, so a restart does not revive a spent one.
+- **Login is two steps.** `GET /auth/login?code=` returns an inert page (`no-store`,
+  `Referrer-Policy: no-referrer`, a nonce CSP) that neither reads nor spends the code, so a
+  chat app's link preview cannot burn it. Its button sends a same-origin JSON
+  `POST /auth/login { code }`, which spends the code, sets the cookie, and then the script
+  navigates to `/`.
+- **Session cookie.** `titan_session=v1.<issuedAt>.<mac>`, `HttpOnly; Secure; SameSite=Strict;
+  Path=/`, `Max-Age` 30 days. It is stateless and survives restarts. The server refuses one from
+  the future or 30 days old regardless of the browser. It is always `Secure`: the remote listener
+  speaks only TLS, and a browser never sends a `Secure` cookie over plain HTTP, even to another
+  port on the same host. A `gate` on an app you serve over plain HTTP yourself gets a cookie
+  browsers drop beyond `localhost`.
+- **Bearer.** Non-browser clients send `Authorization: Bearer <secret>`.
+- **Logout.** `POST /auth/logout` clears this browser's cookie only. A copied cookie stays valid
+  until it expires or the secret rotates; rotation is the revocation.
+- **401s.** A browser `GET` asking for HTML gets a small page with a reload link; everything
+  else gets a JSON envelope. Neither names a product's login command.
+- **`createContext(surface, auth)`.** The gate records `{ credential: "session" | "bearer",
+  issuedAt, peerLocal }` and `/rpc` passes it as `createContext`'s second argument, so a command
+  can refuse a credential kind. It is `undefined` only on an ungated listener and on MCP; a gated
+  app answers 401 rather than call `createContext` without it.
+- **`peerLocal`.** True when the peer address is loopback or one of this machine's own interface
+  addresses, read from `os.networkInterfaces()` per request, or when no peer address is known
+  (`app.request()` in tests). The remote listener terminates TLS itself, with no proxy in front,
+  so the peer address is the client's own. Any local process can read the token file and mint a link, so a
+  command that must come from another device refuses when it is true.
+
+## A remote listener
+
+```ts
+const handle = await startDaemon({
+  ...options,                                   // host stays loopback, the default
+  port: 7500,
+  remote: {
+    host: "100.64.0.20",                          // the tailscale address, say
+    tokenFile,
+    allowedHosts: ["lan-box.example.ts.net"],
+    tls: { certFile: "lan-box.example.ts.net.crt", keyFile: "lan-box.example.ts.net.key" },
+  },
+});
+```
+
+- **TLS only.** `remote.tls` is required, and a `remote` without it throws `RemoteBindError`
+  before anything binds: there is no way to serve plain HTTP beyond loopback. The remote server
+  is `node:https` alone, so a plain-HTTP request fails the handshake and gets no HTTP reply
+  (curl reports an empty reply). Loopback stays plain HTTP.
+- **The pair.** `certFile` and `keyFile` are PEM, such as the files `tailscale cert` writes.
+  Before anything binds, `TlsFileError` refuses a missing or unreadable file, a key that is
+  not this user's or is readable by group or others, a key that is not the certificate's, a
+  certificate outside its validity window, and a certificate that does not cover every name in
+  `allowedHosts`. Nothing binds and no pid file is written.
+- **Renewal.** Both files are stat'd every `remote.tlsReloadMs` (60000 by default). A change
+  that passes every check above is served to new connections with no restart. One that fails
+  is logged as an error and the last good pair keeps serving; the check repeats on the next
+  tick. The listener never drops to plain HTTP.
+
+- **Two listeners, one port.** Loopback is exactly as without `remote`: no auth, the loopback
+  allowlist. The second listener binds `remote.host` on the same port with its own hono app,
+  which shares the registry, hub, `health()` and `mountRoutes` (called once per app).
+- **Order.** The Host/Origin guard runs first, then the gate, then every route. A foreign Host
+  gets 403 before the gate, `/auth/login` included.
+- **Allowlist.** `remote.host` plus `remote.allowedHosts`, nothing else: `Host: localhost` gets
+  403 there, and the loopback allowlist never gains these names. Host and the derived origins
+  match only with the bound port (`portOnly`), because cookies ignore port: a page from another
+  service on port 80 of the same host would otherwise pass the Origin check with the cookie.
+  Origins are the `https://` forms alone (`httpsOnly`): an `http://` origin is another site.
+  `guards.allowedOrigins` applies to loopback only.
+- **No `/mcp`.** It is spliced ahead of hono, where the gate would never see it, so the remote
+  bind takes no MCP handler at all; `/mcp` there is 401, then 404 with a credential.
+- **Refusals.** `RemoteBindError` for a loopback or wildcard address (`0.0.0.0`, `::`, their
+  long and IPv4-mapped forms, all of 127/8), for anything that is not a bare IP literal (a name
+  could resolve to either), and for a `remote` beside an unauthenticated non-loopback `host`.
+  The token and TLS files are read before anything binds, so a bad one never half-starts the
+  daemon.
+- **Both or neither.** If the remote bind fails (`EADDRNOTAVAIL` while the interface is down,
+  or `DaemonPortInUseError` naming the remote host), loopback is closed and no pid file is
+  written. `close()` shuts both.
+- **Not covered.** An open `/events` stream outlives a token rotation, and the daemon does not
+  notice its address leaving the interface; both are known gaps.
+
 ## Serving a built front end
 
 `mountStaticApp(app, { root, base?, immutableDir? })` serves a built app through
@@ -142,8 +277,9 @@ mountRoutes: (app) => mountStaticApp(app, { root: path.resolve(here, "dashboard"
 
 ## The seams
 
-- **`createContext(surface)`** builds the per-request context. `surface` is `"http"` or
-  `"mcp"`. The daemon never knows what your context contains.
+- **`createContext(surface, auth?)`** builds the per-request context. `surface` is `"http"` or
+  `"mcp"`; `auth` is what the `gate` recorded, if one ran. The daemon never knows what your
+  context contains.
 - **`health()`** extends `/health` with product state. Core fields win a collision.
 - **`mountRoutes(app)`** adds product routes to the same hono app.
 - **`formatError`** maps a thrown value to `{ message, code }` for every surface.

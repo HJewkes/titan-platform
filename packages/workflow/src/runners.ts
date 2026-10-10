@@ -71,7 +71,7 @@ export function idempotentRunner(live: LegacyStepRunner): RecoverableStepRunner 
   };
 }
 
-function toDurableOutcome(outcome: StepRunOutcome): DurableStepOutcome {
+export function toDurableOutcome(outcome: StepRunOutcome): DurableStepOutcome {
   if (outcome.ok) return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
   return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
 }

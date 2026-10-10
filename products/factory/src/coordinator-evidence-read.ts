@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
@@ -22,8 +22,9 @@ import type { FactoryHost } from "./host.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
+import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -87,8 +88,7 @@ function runFacts(sources: EvidenceSources, run: WorkflowRun, gate: GateRecord, 
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 const VerdictRecord = z.looseObject({ kind: z.literal("verdict"), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
@@ -115,7 +115,7 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
 }
 
-/** The base branch's tip, when it contains the merge sha and every Actions run on it passed. */
+/** The base branch's tip, when it contains the merge sha and every check that judges main passed (the required contexts when the base has them, else every Actions run). */
 async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> {
   const main = mainGate(gate);
   if (!main) return undefined;
@@ -124,8 +124,11 @@ async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promis
   const tip = pull.merged && pull.mergeSha === main.mergeSha ? await port.getHeadSha(main.repo, pull.baseRef) : null;
   if (!tip) return undefined;
   const mergeBaseSha = tip === main.mergeSha ? tip : (await port.compareFiles(main.repo, main.mergeSha, tip)).mergeBaseSha;
-  const runs = withoutSupersededCancels(actionsRunsAt(await port.checkRuns(main.repo, tip), tip));
-  if (mergeBaseSha !== main.mergeSha || runs.length === 0 || !runs.every(isPassing)) return undefined;
+  const all = await port.checkRuns(main.repo, tip);
+  const { rules } = await readMainRules(port, main.repo, pull.baseRef);
+  const judged = judgeMain(tip, all, rules);
+  if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;
+  const runs = withoutSupersededCancels(actionsRunsAt(all, tip)).filter((run) => rules === undefined || rules.contexts.includes(run.name));
   return { kind: "main-green", gateId: gate.id, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
 }
 

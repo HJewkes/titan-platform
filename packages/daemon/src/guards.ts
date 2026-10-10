@@ -35,6 +35,14 @@ export interface RequestGuardOptions {
   allowedHosts?: string[];
   /** Origins accepted beyond the http/https forms of `allowedHosts`. */
   allowedOrigins?: string[];
+  /**
+   * Match `allowedHosts`, and derive origins, only with the bound port. A listener reached
+   * beyond loopback needs this: cookies ignore port, so a portless origin would admit a page
+   * from any other service on the same host, and that page's requests carry the cookie.
+   */
+  portOnly?: boolean;
+  /** Derive only `https://` origins from `allowedHosts`: on a TLS listener an `http://` origin is another site. */
+  httpsOnly?: boolean;
 }
 
 export interface GuardRefusal {
@@ -73,18 +81,24 @@ interface Policy {
 export function createRequestGuard(options: RequestGuardOptions = {}, port: () => number = () => 0): RequestGuard {
   const hosts = (options.allowedHosts ?? DEFAULT_ALLOWED_HOSTS).map((host) => host.toLowerCase());
   const extraOrigins = (options.allowedOrigins ?? []).map((origin) => origin.toLowerCase());
+  const shape: PolicyShape = { portOnly: options.portOnly === true, schemes: options.httpsOnly === true ? ["https"] : ["http", "https"] };
   let cached: Policy | null = null;
 
   return (request) => {
     const bound = port();
-    if (!cached || cached.port !== bound) cached = buildPolicy(hosts, extraOrigins, bound);
+    if (!cached || cached.port !== bound) cached = buildPolicy(hosts, extraOrigins, bound, shape);
     return refuse(request, cached);
   };
 }
 
-function buildPolicy(hosts: string[], extraOrigins: string[], port: number): Policy {
-  const withPort = hosts.flatMap((host) => [host, `${host}:${port}`]);
-  const derivedOrigins = withPort.flatMap((host) => [`http://${host}`, `https://${host}`]);
+interface PolicyShape {
+  portOnly: boolean;
+  schemes: string[];
+}
+
+function buildPolicy(hosts: string[], extraOrigins: string[], port: number, { portOnly, schemes }: PolicyShape): Policy {
+  const withPort = hosts.flatMap((host) => (portOnly ? [`${host}:${port}`] : [host, `${host}:${port}`]));
+  const derivedOrigins = withPort.flatMap((host) => schemes.map((scheme) => `${scheme}://${host}`));
   return { port, hosts: new Set(withPort), origins: new Set([...derivedOrigins, ...extraOrigins]) };
 }
 

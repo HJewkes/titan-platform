@@ -1,6 +1,11 @@
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
 import { fileURLToPath } from "node:url";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import type { AuditPorts } from "./audit/ports.js";
+import { systemAuditPorts } from "./audit/production.js";
+import { auditRoutes } from "./audit/routes.js";
+import { measurementAuditWorkflow } from "./audit/workflow.js";
+import { ownCheckout } from "./cli-service.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
@@ -10,7 +15,7 @@ import { activeWorkFixTasks, activeWorkOrigin, activeWorkTasks, agentChatCleanup
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, isFixersPr, recheckedFrozen, type FreezeStoreRef } from "./shepherd/freeze.js";
 import { carry } from "./shepherd/tree-carry.js";
-import { firstReason, heldCheck, holdSatisfier, holdingPort, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
+import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
 import { spawnGate, type SpawnGate } from "./shepherd/spawn-gate.js";
@@ -30,14 +35,17 @@ import { loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
+import { shepherdEventMigration } from "./shepherd/events.js";
 import { mergeTrainRef, rideTrain, trainLeaveRoute, trainMigration, type MergeTrainRef } from "./shepherd/train.js";
 import { sleep } from "./workflows/land.js";
 import { landPrRoutes, landPrWorkflow, type LandPrDeps } from "./workflows/land-pr.js";
+import { devicePrWorkflow } from "./workflows/device-pr.js";
 import { tickPacing, type TickPacing } from "./tick-pacing.js";
 import { prSnapshot } from "./workflows/pr-snapshot.js";
+import { localBasementSuite, suiteRules, type SuiteRules } from "./shepherd/suite-host.js";
 
 /** Every workflow the CLI hosts. Pilots register here as their slices land (doc-change in S3). */
-export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow()];
+export const factoryWorkflows: readonly WorkflowDefinition[] = [landPrWorkflow(), shepherdPrWorkflow(), measurementAuditWorkflow(), devicePrWorkflow()];
 
 export interface FactoryRouteDeps extends LandPrDeps {
   port: GitHubPort;
@@ -77,12 +85,16 @@ export interface FactoryRouteDeps extends LandPrDeps {
   accountLimits?: AccountLimitStoreRef;
   /** Tells a repo's seat that a woken fixer exited with no push; absent means the owner gate takes every such exit. */
   exitNotice?: ExitNoticePorts;
+  /** The test rules Shepherd's briefs carry; `configuredRoutes` resolves them once from the host serve starts on. */
+  suiteRules?: SuiteRules;
+  /** What measurement-audit reads and asks; defaults to this checkout's machine and `claude -p`. */
+  audit?: AuditPorts;
 }
 
 const NO_SEATS: SeatBook = { seats: [], denied: [] };
 
-/** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these, and 13-14 are the host's. */
-export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), accountLimitMigration(15)];
+/** The shepherd tenant's versions follow the host's 1-3; the host's own later migrations take numbers above these. */
+export const SHEPHERD_MIGRATIONS: readonly Migration[] = [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), trainMigration(10), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), accountLimitMigration(17)];
 
 /**
  * Routes for every dispatch step of `factoryWorkflows`, each match once. Every merge goes through the hold, so a held
@@ -100,14 +112,14 @@ export function factoryRoutesFor(deps: FactoryRouteDeps): FactoryRoutes {
   const accountLimits = deps.accountLimits ?? accountLimitStoreRef(deps.now);
   const timing = { sleep: pause, pollMs: deps.holdPollMs, now: deps.now };
   const land = landPrRoutes({ ...deps, port: holdingPort(deps.port, holds, guard, satisfy) }).map((route) =>
-    route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing) : route,
+    route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot)) : route,
   );
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, accountLimits };
+  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing };
-  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy)], { database, shepherd: services });
+  return Object.assign([...land, ...shepherd, trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });
 }
 
 /** A hold's named reviewer is read through the review wiring's roster and reader; with no dispatch wired no hold is ever satisfied. */
@@ -219,7 +231,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const port = overrides.port ?? githubPort(ghCliWire());
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
-  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), ...overrides, seats });
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

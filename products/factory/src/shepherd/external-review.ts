@@ -1,10 +1,13 @@
+import type { AgentIdentity } from "@titan-design/authority";
 import { parseVerdictBlock } from "@titan-design/session-read";
+import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
-import { namesTarget } from "./verdict-target.js";
+import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
@@ -37,7 +40,7 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   const { message, block } = newest;
   if (!block.ok) return { kind: "none", reason: "wait" };
   const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId } };
-  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: message.text, ...(block.closer && { closer: block.closer }) };
+  return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE" } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
 }
 
 /** A name can span sessions; the last row the roster lists with a session holds it. */
@@ -119,7 +122,7 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
 }
 
 /** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear" };
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear"; merged?: string };
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -155,8 +158,8 @@ function failedRead(name: string, target: ReviewTarget, read: NameRead, warn: (l
   return { kind: "none", reason: `seat check: the transcript of ${name} could not be read: ${failureOf(failure)}` };
 }
 
-function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage): SeatCheck {
-  const text = `Seat reviewer ${name} said FIX_FIRST at this head.\n\n${message.text}`;
+function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, messages: readonly ReviewerMessage[]): SeatCheck {
+  const text = fixFirstFindings(target, messages, message.text, `Seat reviewer ${name} said FIX_FIRST at this head.\n\n`);
   return { kind: "verdict", verdict: "FIX_FIRST", head: target.head, locator: message.locator, reviewer: { agentId: message.agentId, sessionId: message.sessionId }, text };
 }
 
@@ -173,32 +176,63 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   }
   const rows = listed.filter((row) => SEAT_REVIEWER.test(row.name) && row.sessionId !== "");
   let failed: SeatCheck | undefined;
+  let merged: string | undefined;
   for (const name of new Set(rows.map((row) => row.name))) {
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
     const newest = newestAtHead(target, read.messages);
-    if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message);
+    if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
     if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished` };
+    if (newest?.verdict === "MERGE") merged ??= name;
     failed ??= failedRead(name, target, read, warn);
   }
-  return failed ?? { kind: "clear" };
+  return failed ?? { kind: "clear", ...(merged !== undefined && { merged }) };
 }
 
-/** A MERGE stands only while the seat check is clear at the same head. */
-export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void): Promise<AwaitVerdictResult> {
+/** A MERGE stands only while the seat check is clear at the same head. A seat's FIX_FIRST over it is a G10 disagreement, recorded on the result. */
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
   const check = await seatFixFirst(roster, reader, target, warn);
-  return check.kind === "clear" ? result : check;
+  if (check.kind === "clear") return result;
+  return check.kind === "verdict" ? { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) } : check;
 }
+
+const disagreement = (head: string, shepherd: "MERGE" | "FIX_FIRST", other: string, now: () => number): Omit<OwnerOverride, "trigger"> & { trigger: "g10-disagree" } => ({ trigger: "g10-disagree", head, shepherd, other, at: now() });
 
 type VerdictStep = (raw: unknown, signal: AbortSignal) => Promise<AwaitVerdictResult>;
 
+const SpawnedProfile = z.looseObject({ reviewerAgentId: z.string(), reviewerProfile: z.string().min(1) });
+
+/** The profile Shepherd spawned its own reviewer with, else the roster's for whoever wrote the verdict; an unreadable roster leaves it unknown. */
+async function authorProfile(raw: unknown, author: AgentIdentity, roster: () => Promise<readonly ReviewerAgent[]>): Promise<string | undefined> {
+  const spawned = SpawnedProfile.safeParse(raw);
+  if (spawned.success && spawned.data.reviewerAgentId === author.agentId) return spawned.data.reviewerProfile;
+  const rows = await roster().catch((): readonly ReviewerAgent[] => []);
+  return rows.find((row) => row.agentId === author.agentId && row.sessionId === author.sessionId)?.profile;
+}
+
+/** Every acceptor's verdict passes here, so the recorded step names the profile of the reviewer whose message it took. */
+async function withAuthorProfile(raw: unknown, result: AwaitVerdictResult, roster: () => Promise<readonly ReviewerAgent[]>): Promise<AwaitVerdictResult> {
+  if (result.kind !== "verdict") return result;
+  const profile = await authorProfile(raw, result.reviewer, roster);
+  return profile === undefined ? result : { ...result, reviewerProfile: profile };
+}
+
 /** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. */
-export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep): VerdictStep {
+export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now): VerdictStep {
   return async (raw, signal) => {
     const result = await body(raw, signal);
     const dispatch = wiring?.dispatch;
     if (!dispatch) return result;
     const { repo, pr, head } = raw as ReviewTarget;
-    return bounded(await unlessSeatFixFirst(() => dispatch.roster(), wiring.reader, { repo, pr, head }, result));
+    const roster = () => dispatch.roster();
+    const vetoed = await unlessSeatFixFirst(roster, wiring.reader, { repo, pr, head }, result, undefined, now);
+    return withAuthorProfile(raw, bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, { repo, pr, head }, result, now) : vetoed), roster);
   };
+}
+
+/** The reverse G10 disagreement: Shepherd's own review sent the head back while a seat reviewer said MERGE at it. The verdict stands. */
+async function seatMergeOverFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, now: () => number): Promise<AwaitVerdictResult> {
+  if (result.kind !== "verdict" || result.verdict !== "FIX_FIRST") return result;
+  const check = await seatFixFirst(roster, reader, target);
+  return check.kind === "clear" && check.merged !== undefined ? { ...result, ownerOverride: disagreement(target.head, "FIX_FIRST", "MERGE", now) } : result;
 }

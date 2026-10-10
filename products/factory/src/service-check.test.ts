@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
 import { CRASH_LOOP_WINDOW_MS, type CheckPorts } from "./service-check.js";
+import { deployHealth, parseRedeployLog } from "./deploy-health.js";
+import type { IndexLock } from "./stale-lock.js";
 
 const UID = 501;
 const PID = 4242;
@@ -12,18 +14,28 @@ const tickFixture = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({ version: 1, loop: "burndown-tick", heartbeatAt: new Date(NOW - 60_000).toISOString(), outcome: "failed", consecutiveFailures: 1, lastErrorClass: "LedgerMalformedError", intervalSeconds: 600, ...over });
 
 interface Machine {
+  labelPrefix?: string;
+  configError?: string;
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
   /** launchctl print output; undefined means the job is not loaded. */
   print?: string;
   health?: Record<string, unknown> | null;
+  /** Successive /health answers, the last repeating; overrides `health`. */
+  healthSequence?: (Record<string, unknown> | null)[];
   dead?: number[];
   startedAgoMs?: number;
   installed?: string;
   /** The status file's text; undefined means the file is absent. */
   tick?: string;
+  /** The deploy checkout's index.lock; absent by default. */
+  lock?: IndexLock;
+  /** True when the config sets no shepherd.hubSeat; one is set by default. */
+  noHubSeat?: boolean;
 }
+
+const LOCK = "/srv/checkout/.git/index.lock";
 
 const printed = (fields: string[]): string => `gui/${UID}/${SERVICE_LABEL} = {\n${fields.map((f) => `\t${f}\n`).join("")}}\n`;
 const running = printed(["state = running", `pid = ${PID}`, "runs = 1", "last exit code = (never exited)"]);
@@ -31,10 +43,13 @@ const healthy = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 
 function fakePorts(init: Machine) {
   const calls: string[] = [];
+  let probes = 0;
   const ports: CheckPorts = {
     platform: init.platform ?? "darwin",
     uid: UID,
     home: "/srv/tester",
+    ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
+    ...(init.configError === undefined ? {} : { configError: init.configError }),
     launchctl: async (args) => {
       calls.push(args.join(" "));
       return init.print === undefined ? { code: 113, stdout: "", stderr: "Could not find service" } : { code: 0, stdout: init.print, stderr: "" };
@@ -46,7 +61,7 @@ function fakePorts(init: Machine) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: () => undefined,
-    health: async () => init.health ?? null,
+    health: async () => (init.healthSequence ? (init.healthSequence[Math.min(probes++, init.healthSequence.length - 1)] ?? null) : (init.health ?? null)),
     mkdir: () => undefined,
     writeFile: () => undefined,
     readFile: () => undefined,
@@ -58,6 +73,8 @@ function fakePorts(init: Machine) {
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
     installedBuildSha: () => init.installed ?? BUILD,
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
+    indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
+    hubSeat: () => (init.noHubSeat ? undefined : "hub"),
   };
   return { ports, calls };
 }
@@ -74,6 +91,15 @@ async function check(init: Machine, ...flags: string[]) {
 describe("titan-factory service check", () => {
   it("exits 0 when /health answers from the launchd pid with github ok", async () => {
     const { code, out } = await check({ print: running, health: healthy() });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
+  it("exits 0 when /health also carries serve's start time and start counts", async () => {
+    const starts = { startedAt: "2026-10-08T21:00:00.000Z", uptimeSeconds: 90, restartCount: 3, uncleanStartsTotal: 1, restartsToday: 2 };
+
+    const { code, out } = await check({ print: running, health: healthy(starts) });
 
     expect(code).toBe(EXIT.OK);
     expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
@@ -104,6 +130,20 @@ describe("titan-factory service check", () => {
     const { out } = await check({ print: running, health: null });
 
     expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health`);
+  });
+
+  it("exits 0 when one failed probe is followed by an ok probe from the job pid", async () => {
+    const { code, out } = await check({ print: running, healthSequence: [null, healthy()] });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`ok: /health answers from pid ${PID} with github ok\n`);
+  });
+
+  it("reports stale pid naming the probe count when three probes all fail", async () => {
+    const { code, out } = await check({ print: running, healthSequence: [null, null, null, healthy()] });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(out).toContain(`stale pid: launchd pid ${PID} does not answer /health on port 7410 (3 probes failed)`);
   });
 
   it("reports a crash loop when the job exited non-zero several times and holds no process", async () => {
@@ -226,6 +266,22 @@ describe("titan-factory service check", () => {
     );
   });
 
+  it("reads and names the job under the configured label prefix", async () => {
+    const { out, calls } = await check({ labelPrefix: "dev.ex.", print: undefined, health: null });
+
+    expect(calls).toEqual([`print gui/${UID}/dev.ex.titan-factory`]);
+    expect(out).toBe("not loaded: dev.ex.titan-factory is not loaded; run titan-factory service install\n");
+  });
+
+  it("refuses to report on the default label when the config fails to load", async () => {
+    const { code, out, err, calls } = await check({ configError: "invalid config: $: bad json", print: running, health: healthy() });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toBe("error: titan-factory service check cannot resolve the service label: invalid config: $: bad json\n");
+    expect(out).toBe("");
+    expect(calls).toEqual([]);
+  });
+
   describe("on Linux", () => {
     const unit = (fields: Record<string, string | number>): string =>
       Object.entries({ LoadState: "loaded", ActiveState: "active", MainPID: PID, NRestarts: 0, ExecMainStatus: 0, ...fields })
@@ -336,6 +392,75 @@ describe("titan-factory service check", () => {
       const { out } = await check({ print: running, health: healthy(), dead: [PID], tick: tickFixture() });
 
       expect(out).toMatch(/^stale pid: /);
+    });
+  });
+
+  describe("the deploy alarm and the deploy checkout's index.lock", () => {
+    const TARGET = "b".repeat(40);
+    const refusal = (at: string): string =>
+      `${at} service deploy --expect ${TARGET}\nerror: deploy refused: git merge --ff-only ${TARGET} failed: Unable to create '${LOCK}': File exists.\n`;
+    const deployBlock = (log: string): Record<string, unknown> => ({ ...deployHealth({ entries: parseRedeployLog(log), runningSha: BUILD, now: NOW }) });
+    const TWO_REFUSALS = refusal("2026-01-01T11:50:00Z") + refusal("2026-01-01T11:55:00Z");
+    const STALE: IndexLock = { state: "stale", path: LOCK, ageMs: 42 * 60_000 };
+
+    it("exits 1 naming deploy stalled and the last refusal after two refusals in a row", async () => {
+      const { code, out } = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }) });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^deploy stalled: service deploy refused 2 times in a row; last: deploy refused: git merge --ff-only b+ failed: Unable to create/);
+      expect(out.split("\n").filter(Boolean)).toHaveLength(1);
+    });
+
+    it("exits 0 once a deploy lands after the refusals", async () => {
+      const landed = `${TWO_REFUSALS}2026-01-01T11:58:00Z service deploy --expect ${TARGET}\ndeployed ${TARGET}\n`;
+
+      const { code } = await check({ print: running, health: healthy({ deploy: deployBlock(landed) }) });
+
+      expect(code).toBe(EXIT.OK);
+    });
+
+    it("carries the running sha, behind count and last refusal in --json", async () => {
+      const { out } = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }) }, "--json");
+
+      expect(JSON.parse(out)).toMatchObject({ ok: false, cause: "deploy stalled", detail: { runningSha: BUILD, behind: 0, consecutiveRefusals: 2, lastRefusal: expect.stringContaining("index.lock") } });
+    });
+
+    it("names a stale index.lock by path and age, and never removes it", async () => {
+      const { code, out, calls } = await check({ print: running, health: healthy(), lock: STALE });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toBe(`stale index.lock: stale ${LOCK}, 42 min old with no process holding it; remove it to unblock the deploy\n`);
+      expect(calls.every((call) => call.startsWith("print "))).toBe(true);
+    });
+
+    it("reports the stale lock before the deploy alarm it causes, and both after a server fault", async () => {
+      const both = await check({ print: running, health: healthy({ deploy: deployBlock(TWO_REFUSALS) }), lock: STALE }, "--json");
+      const github = await check({ print: running, health: healthy({ github: "down", deploy: deployBlock(TWO_REFUSALS) }), lock: STALE });
+
+      expect(JSON.parse(both.out)).toMatchObject({ cause: "stale index.lock", detail: { lockPath: LOCK, lockAgeMinutes: 42 } });
+      expect(github.out).toMatch(/^GitHub down: /);
+    });
+
+    it("exits 0 for a lock a git process holds or one 10 minutes old or less", async () => {
+      const held = await check({ print: running, health: healthy(), lock: { state: "held", path: LOCK, ageMs: 60 * 60_000, holder: "a running git, pid 7" } });
+      const fresh = await check({ print: running, health: healthy(), lock: { state: "fresh", path: LOCK, ageMs: 5 * 60_000 } });
+
+      expect([held.code, fresh.code]).toEqual([EXIT.OK, EXIT.OK]);
+    });
+  });
+
+  describe("the hub seat the deploy alarm reaches", () => {
+    it("exits 1 naming no hub seat when the config sets none", async () => {
+      const { code, out } = await check({ print: running, health: healthy(), noHubSeat: true });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^no hub seat: shepherd\.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat/);
+    });
+
+    it("reports a stalled deploy or a failing tick before the missing hub seat", async () => {
+      const tick = await check({ print: running, health: healthy(), tick: tickFixture(), noHubSeat: true });
+
+      expect(tick.out).toMatch(/^tick failing: /);
     });
   });
 });

@@ -1,9 +1,9 @@
+import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { acceptVerdict, awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, USAGE_LIMIT_REASON, type AwaitVerdictTiming } from "./await-verdict.js";
+import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
-import { MALFORMED_REFUSALS, readMalformed } from "./review-schemas.js";
 
 const MINUTE = 60_000;
 const HEAD = "c".repeat(40);
@@ -201,93 +201,5 @@ describe("parseAwaitVerdictInput", () => {
   it("reports the field the old checks reached first when several are bad", () => {
     expect(() => parseAwaitVerdictInput({ ...input, repo: "", head: "x", dispatchedAt: "now" })).toThrow("sh-await-verdict: dispatchedAt must be epoch milliseconds");
     expect(() => parseAwaitVerdictInput({ ...input, repo: "", head: "x" })).toThrow("sh-await-verdict: head must be 40 lowercase hex characters");
-  });
-});
-
-describe("acceptVerdict malformed record", () => {
-  const WRITTEN_AT = DISPATCHED_AT + 5_000;
-  const said = (text: string, overrides: Partial<ReviewerMessage> = {}): ReviewerMessage => ({ ...verdictMessage(WRITTEN_AT), text, ...overrides });
-  const block = (verdict: string, pr: string, head: string) => `Verdict: ${verdict}\n${pr}\n${head}\n`;
-  const goodPr = "PR: octo/demo#7";
-  const goodHead = `Head: ${HEAD}`;
-
-  it.each([
-    ["no_block", "I reviewed it and it looks fine."],
-    ["multiple_blocks", `${block("MERGE", goodPr, goodHead)}\n${block("MERGE", goodPr, goodHead)}`],
-    ["bad_verdict", block("APPROVE", goodPr, goodHead)],
-    ["missing_pr_line", `Verdict: MERGE\n${goodHead}\n`],
-    ["bad_pr", block("MERGE", "PR: demo#7", goodHead)],
-    ["missing_head_line", `Verdict: MERGE\n${goodPr}\n`],
-    ["bad_head", block("MERGE", goodPr, "Head: abc123")],
-    ["wrong_target", block("MERGE", "PR: octo/other#7", goodHead)],
-    ["wrong_target", block("MERGE", "PR: octo/demo#8", goodHead)],
-    ["wrong_target", block("MERGE", goodPr, `Head: ${"d".repeat(40)}`)],
-  ])("records %s when the final message is malformed", (refusal, text) => {
-    const result = acceptVerdict(input, [said(text)]);
-
-    expect(result).toEqual({ kind: "none", malformed: { refusal, writtenAt: WRITTEN_AT } });
-    expect(readMalformed(result)).toEqual({ refusal, writtenAt: WRITTEN_AT });
-  });
-
-  it("reads Claude Code's own weekly-limit record as a usage limit with its recorded reset, not a missing Verdict line", () => {
-    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
-    const resetsAt = Date.parse("2026-10-11T00:00:00Z");
-
-    const result = acceptVerdict(input, [said(notice, { synthetic: { apiError: "rate_limit", resetsAt } })]);
-
-    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON, notice, resetsAt });
-    expect(readMalformed(result)).toBeNull();
-  });
-
-  it("reads the same words written by the reviewer itself as a malformed verdict, never a limit", () => {
-    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
-
-    expect(acceptVerdict(input, [said(notice)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
-  });
-
-  it("reads a client-written record that names another API error as a malformed verdict", () => {
-    const notice = "You've hit your weekly limit";
-
-    expect(acceptVerdict(input, [said(notice, { synthetic: { apiError: "overloaded_error", resetsAt: null } })])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
-  });
-
-  it("still records a review that merely quotes a limit as malformed", () => {
-    const review = `I looked at it. The reviewer note says: You've hit your weekly limit. ${"x".repeat(400)}`;
-
-    expect(acceptVerdict(input, [said(review)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
-  });
-
-  it("covers every refusal the schema lists", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"]);
-
-    expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
-  });
-
-  it("records nothing for silence", () => {
-    expect(acceptVerdict(input, [])).toEqual({ kind: "none" });
-  });
-
-  it("records nothing for another session's message", () => {
-    const foreign = said("no verdict here", { sessionId: "session-2", agentId: "reviewer-2" });
-
-    expect(acceptVerdict(input, [foreign])).toEqual({ kind: "none" });
-  });
-
-  it("records nothing for a message written before dispatch", () => {
-    const early = said("no verdict here", { writtenAt: DISPATCHED_AT - 1 });
-
-    expect(acceptVerdict(input, [early])).toEqual({ kind: "none" });
-  });
-
-  it("records nothing when only an earlier message was malformed", () => {
-    const earlier = said("rambling", { writtenAt: WRITTEN_AT - 1 });
-
-    expect(acceptVerdict(input, [earlier, verdictMessage(WRITTEN_AT)]).kind).toBe("verdict");
-  });
-
-  it("records nothing for WAIT", () => {
-    const result = acceptVerdict(input, [said(block("WAIT", goodPr, goodHead))]);
-
-    expect(result).toEqual({ kind: "none", reason: "wait" });
   });
 });

@@ -16,13 +16,19 @@ interface SpawnLimits {
   pressureLevel: number;
   /** No new dispatch with less than this percent of memory free. */
   freeMemoryPct: number;
-  /** At most one factory spawn is admitted per window, so a burst of ready reviews does not start at once. */
+  /** Without headroom, at most one factory spawn is admitted per window, so a burst of ready reviews does not start at once; with it, at most `burstMax` per window. */
   windowMs: number;
+  /** The shorter interval between admits while the machine has headroom (see `hasHeadroom`). */
+  headroomIntervalMs: number;
+  /** The most admits inside any `windowMs`, whatever the interval. */
+  burstMax: number;
+  /** Headroom needs fewer unabsorbed reviews than this. */
+  headroomReviews: number;
   /** What one running review adds to the load5 reading it is compared with. */
   reviewLoad: number;
 }
 
-export const DEFAULT_SPAWN_LIMITS: SpawnLimits = { load5: 28, buildLoad5: 20, pressureLevel: 2, freeMemoryPct: 20, windowMs: 60_000, reviewLoad: 4 };
+export const DEFAULT_SPAWN_LIMITS: SpawnLimits = { load5: 28, buildLoad5: 20, pressureLevel: 2, freeMemoryPct: 20, windowMs: 60_000, headroomIntervalMs: 15_000, burstMax: 4, headroomReviews: 4, reviewLoad: 4 };
 
 /** A reading the machine would not give is absent, and the limit it feeds is not applied. */
 export interface MachineReadings {
@@ -36,6 +42,24 @@ type Admission = { admit: true } | { admit: false; reason: string };
 /** load5 is a five-minute average, so a review older than this is already in the reading. */
 const LOAD5_WINDOW_MS = 5 * 60_000;
 
+/** darwin's memory pressure level for normal, which the Linux PSI reading maps onto. */
+const PRESSURE_NORMAL = 1;
+
+/** Load5 under half of buildLoad5, pressure read as normal and few unabsorbed reviews: the shorter interval is safe. */
+function hasHeadroom(readings: MachineReadings, limits: SpawnLimits, unabsorbed: number): boolean {
+  return readings.load5 < limits.buildLoad5 / 2 && readings.pressureLevel !== undefined && readings.pressureLevel <= PRESSURE_NORMAL && unabsorbed < limits.headroomReviews;
+}
+
+/** Pure: the burst cap over the admits inside the window, then the interval since the last admit. */
+function admitPace(limits: SpawnLimits, recentStarts: readonly number[], now: number, headroom: boolean): Admission {
+  const inWindow = recentStarts.filter((startedAt) => now - startedAt < limits.windowMs).length;
+  if (inWindow >= limits.burstMax) return { admit: false, reason: `${inWindow} spawns were admitted inside the last ${limits.windowMs} ms, the burst cap ${limits.burstMax}` };
+  if (recentStarts.length === 0) return { admit: true };
+  const sinceLast = now - Math.max(...recentStarts);
+  const [interval, rule] = headroom ? [limits.headroomIntervalMs, "headroom interval"] : [limits.windowMs, "window"];
+  return sinceLast < interval ? { admit: false, reason: `another spawn was admitted ${sinceLast} ms ago, inside the ${interval} ms ${rule}` } : { admit: true };
+}
+
 /** Pure: the verdict for one spawn from the readings, the limits, the epoch-ms of earlier admissions and the start of each review already running. */
 export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews: readonly number[] = []): Admission {
   const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
@@ -45,15 +69,15 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
   if (build > limits.buildLoad5) return refuse(`load5 with ${unabsorbed} unabsorbed reviews`, build, limits.buildLoad5);
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
-  const last = Math.max(0, ...recentStarts);
-  if (recentStarts.length > 0 && now - last < limits.windowMs) return { admit: false, reason: `another spawn was admitted ${now - last} ms ago, inside the ${limits.windowMs} ms window` };
-  return { admit: true };
+  return admitPace(limits, recentStarts, now, hasHeadroom(readings, limits, unabsorbed));
 }
 
 /** What a review spawn tells the gate: whether its PR is the fix for its repo's red main, and which PR it is, so status can name its place. */
 export interface ReviewAsk {
   fixer: boolean;
   target?: { repo: string; pr: number };
+  /** When the run's sh-review-intent step recorded the review, from the store; it orders the queue across a serve restart, which forgets `firstAsk`. */
+  intentAt?: number;
 }
 
 /** A review spawn the gate has refused and that is still asking. */
@@ -66,16 +90,30 @@ interface WaitingReview extends ReviewAsk {
 /** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for two of those has stopped asking. */
 export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
 
-/** Pure: the reviews that asked within `staleMs`, fixers first, then by first ask. */
+const waitingSince = (review: WaitingReview) => review.intentAt ?? review.firstAsk;
+
+/**
+ * Pure: the reviews that asked within `staleMs`, fixers first, then by the time their intent was recorded. A run that stopped asking
+ * (its run left the review phase, or died) falls out after `staleMs`, so it cannot hold the line.
+ */
 function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
-  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || a.firstAsk - b.firstAsk);
+  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || waitingSince(a) - waitingSince(b) || a.firstAsk - b.firstAsk);
 }
 
-/** Pure: a review that is no fixer waits while a fixer's review is queued, so a red main's fix takes the next slot; any other spawn is untouched. */
+/** Pure: a review waits while another is queued ahead of it, a red main's fix first and then the oldest intent; any other spawn is untouched. */
 function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
-  if (!verdict.admit || review === undefined || review.fixer) return verdict;
-  const fixer = queue.find((waiting) => waiting.fixer && waiting.name !== name);
-  return fixer ? { admit: false, reason: `the review ${fixer.name} of a red main's fix waits ahead` } : verdict;
+  if (!verdict.admit || review === undefined) return verdict;
+  const ahead = queue[0];
+  if (!ahead || ahead.name === name) return verdict;
+  return { admit: false, reason: ahead.fixer && !review.fixer ? `the review ${ahead.name} of a red main's fix waits ahead` : `the review ${ahead.name} with an older intent waits ahead` };
+}
+
+/** The position and the oldest waiting intent, for the deferral log; empty for a spawn that is no review. */
+function queueNote(queue: readonly WaitingReview[], name: string): string {
+  const oldest = queue[0];
+  const index = queue.findIndex((waiting) => waiting.name === name);
+  if (!oldest || index < 0) return "";
+  return `; deferred: queue position ${index + 1} of ${queue.length} (oldest intent ${oldest.name} since ${new Date(waitingSince(oldest)).toISOString()})`;
 }
 
 /** Each waiting review's place by `repo#pr`; in memory, because only the live host's steps can be waiting. */
@@ -174,10 +212,10 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
       const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review);
       const seen = `load5 ${readings.load5}, pressure ${readings.pressureLevel ?? "unread"}, free ${readings.freeMemoryPct ?? "unread"}%`;
       if (!verdict.admit) {
-        log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})`);
+        log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})${queueNote(queue, name)}`);
         throw new SpawnDeferred(verdict.reason);
       }
-      starts.splice(0, starts.length, at);
+      starts.splice(0, starts.length, ...starts.filter((startedAt) => at - startedAt < limits.windowMs), at);
       reviews.admitted(name, at);
       log(`shepherd: spawn_gate admitted ${name} (${seen})`);
     },

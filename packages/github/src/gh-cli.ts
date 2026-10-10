@@ -7,6 +7,7 @@ import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
@@ -46,7 +47,9 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
+    getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
+    getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
@@ -58,10 +61,15 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
-    merge: async (repo, number, sha, method) => ({ sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, { sha, merge_method: method })).sha }),
+    merge: async (repo, number, sha, method, message) => {
+      const fields = { sha, merge_method: method, ...(message ? { commit_title: message.subject, commit_message: message.body } : {}) };
+      return { sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, fields)).sha };
+    },
+    getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
+    listCommits: (repo, since) => api.pages(`repos/${repo}/commits`, { since, per_page: "100" }, (page: { sha: string; commit: { message: string } }[]) => page.map((commit) => ({ sha: commit.sha, message: commit.commit.message }))),
     compareFiles: (repo, base, head) => compareFiles(api, repo, base, head),
     getAuthenticatedLogin: async () => (await api.get<{ login: string }>("user")).login,
     listIssueComments: (repo, number) => listIssueComments(api, repo, number),
@@ -131,6 +139,19 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
   };
 }
 
+async function getSquashSource(api: Rest, repo: string, number: number): Promise<SquashSource> {
+  const [pr, commits] = await Promise.all([
+    api.get<{ title: string; body: string | null }>(`repos/${repo}/pulls/${number}`),
+    api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { commit: { message: string } }[]) => page.map((commit) => splitMessage(commit.commit.message))),
+  ]);
+  return { title: pr.title, body: pr.body ?? "", commits };
+}
+
+function splitMessage(message: string): SquashSource["commits"][number] {
+  const [subject = "", ...rest] = message.split("\n");
+  return { subject, body: rest.join("\n").trim() };
+}
+
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {
   const prs = await api.pages(`repos/${repo}/pulls`, { ...fields, per_page: "100" }, (page: GhPull[]) => page);
   return prs.map((pr) => toPullRequest(pr, false));
@@ -152,7 +173,7 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
 interface GhRule {
   type: string;
   ruleset_id?: number;
-  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string }[] };
+  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string; integration_id?: number | null }[] };
 }
 
 function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
@@ -161,7 +182,43 @@ function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
     throw new Error("a required_status_checks rule has no required_status_checks list, so the required contexts are unknown");
   }
   const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
-  return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true) };
+  const pins = pinsOf(statusRules.flatMap((rule) => (rule.parameters?.required_status_checks ?? []).map((check) => [check.context, check.integration_id] as const)));
+  return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true), ...pins };
+}
+
+/** Only a positive app id pins; classic protection spells "any app" as -1. */
+function pinsOf(entries: readonly (readonly [string, number | null | undefined])[]): { pins?: Record<string, number[]> } {
+  const pins: Record<string, number[]> = {};
+  for (const [context, app] of entries) {
+    if (typeof app === "number" && app > 0 && !pins[context]?.includes(app)) (pins[context] ??= []).push(app);
+  }
+  return Object.keys(pins).length > 0 ? { pins } : {};
+}
+
+interface GhClassicChecks {
+  strict?: boolean;
+  contexts?: string[];
+  checks?: { context: string; app_id?: number | null }[];
+}
+
+/** A 404 means the branch has no classic protection; any other failure propagates, so it never reads as "none". */
+async function classicRequiredChecks(api: Rest, repo: string, branch: string): Promise<RequiredChecks> {
+  let body: GhClassicChecks;
+  try {
+    body = await api.get<GhClassicChecks>(`repos/${repo}/branches/${branch}/protection/required_status_checks`);
+  } catch (error) {
+    if ((error as { status?: unknown } | null)?.status === 404) return { contexts: [], strict: false };
+    throw error;
+  }
+  if (body === null || typeof body !== "object") throw new Error("classic protection answered an unexpected shape, so the required contexts are unknown");
+  const contexts = [...new Set([...(body.contexts ?? []), ...(body.checks ?? []).map((check) => check.context)])].sort();
+  return { contexts, strict: body.strict === true, ...pinsOf((body.checks ?? []).map((check) => [check.context, check.app_id] as const)) };
+}
+
+async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
+  const body = await api.get<{ protected?: unknown }>(`repos/${repo}/branches/${branch}`);
+  if (typeof body?.protected !== "boolean") throw new Error("the branch answered no boolean protected flag, so whether it is protected is unknown");
+  return body.protected;
 }
 
 function requiresReview(rule: GhRule): boolean {
@@ -218,6 +275,8 @@ interface GhPrFile {
   filename: string;
   previous_filename?: string;
   status: string;
+  additions?: number;
+  deletions?: number;
 }
 
 /** The count comes from the PR itself; a missing one throws, because the port cannot then tell a capped list. */
@@ -225,7 +284,12 @@ async function listPrFiles(api: Rest, repo: string, number: number): Promise<{ f
   const { changed_files: changedFiles } = await api.get<{ changed_files?: number }>(`repos/${repo}/pulls/${number}`);
   if (typeof changedFiles !== "number") throw new Error(`pull ${number} on ${repo} reported no changed_files count`);
   const listed = await api.pages(`repos/${repo}/pulls/${number}/files`, { per_page: "100" }, (page: GhPrFile[]) => page);
-  return { changedFiles, files: listed.map((file) => ({ path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status })) };
+  return { changedFiles, files: listed.map(prFileOf) };
+}
+
+function prFileOf(file: GhPrFile): PrFile {
+  const counted = typeof file.additions === "number" && typeof file.deletions === "number";
+  return { path: file.filename, ...(file.previous_filename ? { previousPath: file.previous_filename } : {}), status: file.status, ...(counted && { additions: file.additions, deletions: file.deletions }) };
 }
 
 async function listIssueComments(api: Rest, repo: string, number: number): Promise<IssueComment[]> {

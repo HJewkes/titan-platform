@@ -9,7 +9,8 @@ import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { startFactoryServer, type FactoryServer } from "./serve.js";
-import { H1, REPO } from "./test-support/land.js";
+import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
+import { BRANCH, callCommand, shepherdFixture } from "./test-support/shepherd.js";
 import { landPrRoutes, landPrWorkflow } from "./workflows/land-pr.js";
 
 const dirs: string[] = [];
@@ -163,6 +164,66 @@ describe("gates in the resume report", () => {
     expect(withBrief).toContain("- abandon: Abandon the PR\n");
     expect(before).toContain("gate run-1/approve-merge: Merge PR #1 in octo/demo at head abc?");
     expect(before).not.toContain("evidence:");
+  });
+});
+
+describe("shepherd waiting", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("exits 0 while every owner gate is younger than 24 h and 1 once one is older", async () => {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture();
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const registered = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    await gateOpened(host, gateId(registered.data.runId, "approve-merge"));
+    host.close();
+    const argv = ["--db", dbPath, "shepherd", "waiting", "--port", String(await deadPort())];
+
+    const fresh = await cli(argv, deps);
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 25 * 3_600_000 });
+    const overdue = await cli(argv, deps);
+
+    expect(fresh.code).toBe(EXIT.OK);
+    expect(overdue.code).toBe(EXIT.FAILURE);
+    expect(overdue.out).toContain("1 owner gate(s) over 24 h");
+  });
+});
+
+describe("shepherd hold", () => {
+  async function servedRegistration(): Promise<{ deps: CliDeps; server: FactoryServer; runId: string; heldReason: () => string | null | undefined }> {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const server = await startFactoryServer({ dbPath, workflows: fixture.workflows, routes: fixture.routes, port: 0, runtimeId: "serve-host", logger: silentLogger, gatePollMs: 5 });
+    cleanups.push(() => server.close());
+    const registered = await callCommand<{ runId: string }>(server.host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    const runId = registered.data.runId;
+    return { deps, server, runId, heldReason: () => fixture.routes.shepherd!.store.get().byRun(runId)?.holdReason };
+  }
+
+  it("exits 65 on an untyped reason, prints no hold, and leaves the run unheld on serve", async () => {
+    const { deps, server, heldReason } = await servedRegistration();
+
+    const refused = await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "seat merges by the interim procedure", "--port", String(server.port)], deps);
+
+    expect(refused.code).toBe(65);
+    expect(refused.err).toContain("is not a hold class");
+    expect(refused.out).not.toContain("held");
+    expect(heldReason()).toBeNull();
+  });
+
+  it("exits 0 and prints the hold for a typed reason", async () => {
+    const { deps, server, runId } = await servedRegistration();
+
+    const held = await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "stalled: no step progress for 70 minutes; TP-3", "--port", String(server.port)], deps);
+
+    expect(held.code).toBe(EXIT.OK);
+    expect(held.out).toBe(`run ${runId}: held (stalled: no step progress for 70 minutes; TP-3)\n`);
   });
 });
 

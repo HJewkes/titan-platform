@@ -28,7 +28,7 @@ const envelope = (await res.json()) as JsonEnvelope<Task[]>;
 | `EXIT` | BSD sysexits codes carried in `code` |
 | `RPC_PREFIX`, `EVENTS_PATH`, `HEALTH_PATH`, `VERSION_PATH` | `/rpc/`, `/events`, `/health`, `/version` |
 | `CLIENT_HEADER` | `x-titan-client`: a non-browser caller sends it, any non-empty value, on a POST with no `Origin` |
-| `RPC_STATUS`, `rpcFailureStatus(code)` | 404 unknown command; 400 invalid JSON or a `DATAERR` failure; 500 any other failure |
+| `RPC_STATUS`, `rpcFailureStatus(code)` | 404 unknown command; 400 invalid JSON or a `DATAERR` failure; 403 a `NOPERM` refusal; 429 a `TEMPFAIL` limit; 500 any other failure |
 | `SseMessage`, `SSE_EVENTS`, `SSE_READY_DATA`, `SSE_HEARTBEAT_MS` | `ready` with data `connected` on connect, `ping` every 25 s, anything else is a product broadcast |
 | `CommandMap` | `Record<string, { args: unknown; result: unknown }>` |
 

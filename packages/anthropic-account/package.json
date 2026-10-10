@@ -1,0 +1,51 @@
+{
+  "name": "@titan-design/anthropic-account",
+  "version": "0.2.0",
+  "description": "Anthropic account state: usage readings, token-free login state, account labels and secret redaction, with a ./node subpath for profiles, the 0600-gated credentials read, the usage file, the usage poller and the locked, atomic token refresh",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "anthropic-account": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "systemd",
+    "README.md"
+  ],
+  "author": "Henry Jewkes",
+  "license": "MIT",
+  "homepage": "https://github.com/HJewkes/titan-platform#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HJewkes/titan-platform.git",
+    "directory": "packages/anthropic-account"
+  },
+  "bugs": "https://github.com/HJewkes/titan-platform/issues",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "zod": "^4.4.3"
+  }
+}

@@ -3,19 +3,20 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type ReviewComment } from 
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
-import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
+import { suiteRules } from "./suite-host.js";
+import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
 const FINDINGS = "1. The parser drops the last token.";
 
-function scene(comments: ReviewComment[]) {
+function scene(comments: ReviewComment[], testRule?: string) {
   const fake = fakeGitHub({ repo: REPO });
   const pr = fake.addPr({ headSha: H1 });
   fake.reviewComments.set(pr.number, comments);
   const wake = (fixFirst?: number) => {
     const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, payload: { text: FINDINGS }, ...(fixFirst !== undefined && { fixFirst }) };
-    return describeWake(githubPort(fake.wire), input, pr);
+    return describeWake(githubPort(fake.wire), input, pr, testRule);
   };
   return { fake, wake };
 }
@@ -38,6 +39,16 @@ describe("fix-round brief: where tests run", () => {
 
     expect(reason).toContain("ssh basement basement-suite");
     expect(reason).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+
+  it("tells a fixer on basement to call basement-suite directly when serve runs there", async () => {
+    const { wake } = scene([], suiteRules(true).fixer);
+
+    const { reason } = await wake();
+
+    expect(reason).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
+    expect(reason).not.toContain("ssh basement");
+    expect(reason).not.toContain("on the Mac");
   });
 });
 
@@ -163,5 +174,33 @@ describe("review wake brief: the PR's review comments", () => {
     const { wake } = scene([]);
 
     expect((await wake()).payload).not.toContain("could not be read");
+  });
+});
+
+describe("review wake brief: a verdict with no findings", () => {
+  const RUN = "run-1";
+  const blockOnly = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;
+
+  it.each([
+    ["a block with no findings", { text: blockOnly }],
+    ["no verdict text at all", {}],
+  ])("says so and points at the verdict step for %s", async (_label, payload) => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, runId: RUN, payload };
+
+    const { reason } = await describeWake(githubPort(fake.wire), input, pr);
+
+    expect(reason).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
+    expect(reason).toContain(`step sh-await-verdict:${H1} of run ${RUN}`);
+  });
+});
+
+describe("defectClassSection", () => {
+  it("reads the newest defect class when the findings hold more than one FIX_FIRST", () => {
+    const verdict = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;
+    const text = `Defect class: the old guess.\n\n${verdict}\n\n---\n\nDefect class: the shared guard.\n\n${verdict}`;
+
+    expect(defectClassSection(text)).toBe("Defect class: the shared guard.");
   });
 });

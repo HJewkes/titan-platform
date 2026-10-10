@@ -11,7 +11,7 @@
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24 <25"
   },
   "scripts": {
     "build": "turbo run build",
@@ -19,9 +19,12 @@
     "lint": "eslint --concurrency=auto --cache --cache-strategy content --cache-location .eslintcache --suppressions-location eslint-suppressions.json scripts eslint.config.js vitest.config.ts \"packages/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" \"products/*/src/**/*.{js,mjs,cjs,ts,mts,cts,tsx}\" deploy/hub/src apps/codewatch/src apps/codewatch/server apps/codewatch/scripts apps/codewatch/vite.config.ts apps/console/src apps/console/server apps/console/vite.config.ts apps/console/tsup.config.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --exclude '**/*.repo.test.ts'",
+    "env:doctor": "node scripts/env-doctor.mjs",
     "dag:check": "node scripts/dag-check-self.mjs",
     "dead:check": "node scripts/dead-code-check.mjs",
     "new:package": "node scripts/new-package.mjs",
+    "areas": "node scripts/areas.mjs",
+    "metrics:check": "node scripts/metrics-check.mjs",
     "docs:reference": "node scripts/gen-docs-reference.mjs",
     "capabilities": "node scripts/gen-capabilities.mjs",
     "capabilities:check": "node scripts/gen-capabilities.mjs --check",
@@ -52,6 +55,7 @@
     "typescript-eslint": "^8.46.0",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "yaml": "^2.9.1"
   }
 }

@@ -2,7 +2,9 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { checkAreas, loadAreas } from "./areas.mjs";
+import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
   checkLayersMatchTiers,
@@ -185,6 +187,59 @@ describe.each(cases)("$rule", ({ check, root, message }) => {
 
   it("reports a violating tree with its remediation", async () => {
     const violations = await check(root());
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain(message);
+  });
+});
+
+function areasRoot(prefix, tiers, externalIds) {
+  const root = tempRoot(prefix);
+  mkdirSync(join(root, ".codewatch"));
+  mkdirSync(join(root, "scripts"));
+  const rule = { id: "package-layers", type: "layered-deps", $tiers: tiers };
+  writeFileSync(join(root, ".codewatch", "check.json"), JSON.stringify({ rules: [rule] }));
+  const areas = externalIds.map((id) => ({ id, tier: "product" }));
+  writeFileSync(join(root, "scripts", "areas-external.json"), JSON.stringify({ areas }));
+  return root;
+}
+
+const areaCases = [
+  {
+    rule: "R56 area ids are unique",
+    root: () => areasRoot("structure-areas-dup-", { 0: ["packages/relay"] }, ["relay"]),
+    message: "Area id `relay` is used twice.",
+  },
+  {
+    rule: "R56 every $tiers path has an area",
+    root: () => areasRoot("structure-areas-missing-", { 0: ["packages/Bad_Name"] }, []),
+    message: "`packages/Bad_Name` has no area",
+  },
+];
+
+// Warns, not fails, until W8 (TP-2101) seeds the first entries; then this becomes a failing rule.
+describe("R57 every product area has a metrics entry", () => {
+  it("warns for each product area in this repo with no entry, without failing", () => {
+    const warn = vi.spyOn(console, "warn");
+    const gaps = metricsCoverageGaps(REPO, loadAreas(REPO));
+    gaps.forEach((gap) => console.warn(`warning: ${gap}`));
+    expect(warn).toHaveBeenCalledTimes(gaps.length);
+    warn.mockRestore();
+  });
+
+  it("reports a product area with no entry as a warning", () => {
+    const root = tempRoot("structure-metrics-");
+    const gaps = metricsCoverageGaps(root, [{ id: "relay", tier: "product" }]);
+    expect(gaps).toEqual([expect.stringContaining("Product area `relay` has no `metrics/relay.yml`.")]);
+  });
+});
+
+describe.each(areaCases)("$rule", ({ root, message }) => {
+  it("holds in this repo", () => {
+    expect(checkAreas(REPO)).toEqual([]);
+  });
+
+  it("reports a violating tree with its remediation", () => {
+    const violations = checkAreas(root());
     expect(violations).toHaveLength(1);
     expect(violations[0]).toContain(message);
   });

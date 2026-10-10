@@ -6,7 +6,7 @@ import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
-const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false } as unknown as Registration;
+const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
 function pausedAt(currentStep: string): WorkflowRun {
   return {
@@ -300,6 +300,33 @@ describe("shepherd timeline verdict and wake entries", () => {
       { kind: "wake", stepId: "sh-wake-implementer:0", request: null, outcome: "woken", agent: "impl-1", mode: "resume", sessionId: "s-9" },
       { kind: "wake", stepId: "sh-wake-implementer:1", request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null },
     ]);
+  });
+
+  it("names the refusal on a held wake's entry, and as the next action while the run waits for a new head", () => {
+    const refusal = "agent-chat refused to start the successor impl-1-s1: DispatchError";
+    const run = withResults([
+      { stepId: "sh-wake-implementer:0", at: "2026-01-01T00:02:00.000Z", result: { kind: "unhandled", reason: refusal, held: { agent: "impl-1-s1" } } },
+      { stepId: "sh-exit-notice", at: "2026-01-01T00:02:01.000Z", result: { sent: true, cause: "held", detail: refusal, seat: "demo-coord" } },
+    ]);
+    run.currentStep = "await-new-head:0";
+
+    const [entry] = timelineEntries(run, []);
+
+    expect(entry).toEqual({ kind: "wake", stepId: "sh-wake-implementer:0", request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null, held: refusal });
+    expect(TimelineEntrySchema.parse(entry)).toEqual(entry);
+    expect(watchRow({ registration, run }).nextAction).toBe(`no fixer could start (${refusal}); the seat was told, waiting for a new head`);
+  });
+
+  it("does not count a notice sent before the held wake as telling the seat about it", () => {
+    const refusal = "agent-chat refused to start the successor impl-1-s2: DispatchError";
+    const run = withResults([
+      { stepId: "sh-exit-notice", at: "2026-01-01T00:01:00.000Z", result: { sent: true, cause: "unread", detail: "earlier exit", seat: "demo-coord" } },
+      { stepId: "sh-wake-implementer:1", at: "2026-01-01T00:02:00.000Z", result: { kind: "unhandled", reason: refusal, held: { agent: "impl-1-s2" } } },
+      { stepId: "sh-exit-notice", iteration: 1, at: "2026-01-01T00:02:01.000Z", result: { sent: false, cause: "held", detail: "the seat notice failed: Error" } },
+    ]);
+    run.currentStep = "await-new-head:1";
+
+    expect(watchRow({ registration, run }).nextAction).toBe(`no fixer could start (${refusal}), waiting for a new head`);
   });
 
   it("emits entries that the timeline schema accepts", () => {

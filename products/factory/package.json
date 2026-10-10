@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/factory",
-  "version": "0.8.0",
+  "version": "0.11.0",
   "description": "Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams",
   "type": "module",
   "main": "./dist/index.js",
@@ -32,15 +32,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
     "@titan-design/agent-dispatch": "workspace:^",
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/fix-proof": "workspace:^",
     "@titan-design/github": "workspace:^",
+    "@titan-design/health": "workspace:^",
     "@titan-design/hitl": "workspace:^",
+    "@titan-design/owner-queue": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
+    "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",

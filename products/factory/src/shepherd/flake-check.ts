@@ -7,6 +7,7 @@ import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { seatOrGate } from "./gate-route.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
 /** The steps `afterFixerExit` records: the flake check, then the seat notice. */
@@ -77,9 +78,21 @@ export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], he
       return true;
     }
   }
-  const notice = await noticeSeat(run, kind, headSha, exit.wake);
-  if (notice?.sent === true) throw leave(await awaitNewHead(run, headSha));
-  const why = notice === undefined ? "" : ` (${notice.cause}: ${notice.detail})`;
-  const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${why}. Await a new head or abandon?`;
-  throw leave(await sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`));
+  throw await noticeOrGate(run, kind, headSha, exit, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`, leave);
+}
+
+/** A send-back whose successor agent-chat refused takes the same route as an exit with no push: the seat, else the owner. */
+export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, held: { reason: string; held: { agent: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
+  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: held.reason };
+  throw await noticeOrGate(run, kind, headSha, exit, `a human abandoned the PR after no fixer could start at a ${kind} wake`, leave);
+}
+
+/** The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. */
+async function noticeOrGate(run: ExitRun, kind: WakeRequest["kind"], headSha: string, exit: { reason: string; wake?: WakeEvidence; held?: string }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
+  const tell = async () => {
+    const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
+    return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
+  };
+  const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
+  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha)), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
 }

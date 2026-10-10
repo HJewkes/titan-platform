@@ -7,12 +7,12 @@ import { agentChatRoster, type RosterReader } from "./roster.js";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewerAgent, type ReviewerDispatch, type ReviewTarget } from "./review.js";
 import { reviewerRoleFor, type ReviewerRoles } from "./reviewer-roles.js";
 import { toPresence } from "./presence.js";
-import { ReviewerMachineHold } from "./review-wait.js";
+import { HOME_PREFIXES } from "./seats.js";
+import { ReviewerMachineHold, ReviewerSpawnQueued } from "./review-wait.js";
 import { SpawnDeferred, type ReviewAsk, type SpawnGate } from "./spawn-gate.js";
 
 export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 export const DEFAULT_SPAWN_TIMEOUT_MS = 30_000;
-const HOME_PREFIXES = ["~/", "$HOME/", "${HOME}/"];
 
 /** A roster row plus its transcript fields; `predecessor` and `fillTokens` stay absent, so no such agent is resumed, and `lastWrittenAt` comes from the transcript file. */
 export interface ReviewerRosterRow extends ReviewerAgent {
@@ -96,7 +96,7 @@ async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
-    if (error instanceof SpawnDeferred) throw new ReviewerBrokerBusy(`spawn gate: ${error.message}`, { cause: error });
+    if (error instanceof SpawnDeferred) throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
     if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
     if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });
@@ -125,6 +125,7 @@ function rosterRow(row: AgentRow): ReviewerRosterRow {
     spawnedBy: typeof row.spawnedBy === "string" ? row.spawnedBy : null,
     transcriptPath,
     transcriptExists: row.transcriptExists === true,
+    ...(row.profile !== "" && { profile: row.profile }),
     ...lastWrittenAt(transcriptPath),
   };
 }
@@ -152,8 +153,8 @@ export function runningReviewStarts(rows: readonly ReviewerRosterRow[], firstSee
 }
 
 /** A resume names only the reviewer, so its PR is known only when this process spawned it. */
-function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"]): ReviewAsk {
-  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr } };
+function reviewAsk(target: ReviewTarget | undefined, isFixer: AgentChatReviewerDispatchOptions["isFixer"], intentAt?: number): ReviewAsk {
+  return target === undefined ? { fixer: false } : { fixer: isFixer?.(target) ?? false, target: { repo: target.repo, pr: target.pr }, ...(intentAt !== undefined && { intentAt }) };
 }
 
 /** Shepherd's reviewer port over the `agent-chat` CLI: the brief of a spawn travels on stdin and the reviewer starts in the repo's checkout. */
@@ -165,13 +166,13 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   const spawnTimeoutMs = options.spawnTimeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const agents = agentChatAgents(agentChatBin, { configDir, timeoutMs: spawnTimeoutMs, roster, gate: options.gate });
   const targets = new Map<string, ReviewTarget>();
-  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string) => {
+  const spawn = async (name: string, brief: string, target: ReviewTarget, profile: string, intentAt?: number) => {
     targets.set(name, target);
-    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer), ...(options.gate && { runningReviews: await runningReviews() }) });
+    await agents.spawn({ name, profile, brief, cwd: checkoutDir(target.repo, cwdFor), review: reviewAsk(target, options.isFixer, intentAt), ...(options.gate && { runningReviews: await runningReviews() }) });
   };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles))),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt)),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer))),
   };
 }
