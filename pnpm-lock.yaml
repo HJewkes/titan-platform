@@ -784,6 +784,9 @@ importers:
 
   products/evals:
     dependencies:
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -832,6 +835,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
