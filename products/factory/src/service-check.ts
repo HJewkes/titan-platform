@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { parsePort } from "./cli-options.js";
+import { DIRTY_SUFFIX } from "./build-info.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
 import { FACTORY_PORT } from "./serve.js";
 import { serviceLabel, UNIT_NAME } from "./service.js";
@@ -15,7 +16,7 @@ export interface CheckPorts extends ServicePorts {
   isAlive: (pid: number) => boolean;
   /** When the process at `pid` started, or null when it has none. */
   processStartedAt: (pid: number) => Promise<Date | null>;
-  /** The commit a restart would load: the deploy checkout's HEAD, which the unit's ExecStart builds from; undefined when it cannot be read. */
+  /** The build sha baked into the deploy checkout's dist, which is what a restart runs (it rebuilds nothing, so HEAD may be ahead); undefined when it cannot be read. */
   restartTargetSha: () => Promise<string | undefined>;
   /** True when `ancestor` is an ancestor of `descendant` in the deploy checkout; false when either is unknown to it. */
   isAncestor: (ancestor: string, descendant: string) => Promise<boolean>;
@@ -99,12 +100,17 @@ function runningSha(health: Record<string, unknown> | null): string | undefined 
   return typeof sha === "string" ? sha : undefined;
 }
 
+/** git cannot resolve a `-dirty` build, but its base commit still orders against others. */
+const withoutDirty = (sha: string): string => (sha.endsWith(DIRTY_SUFFIX) ? sha.slice(0, -DIRTY_SUFFIX.length) : sha);
+
 /** Stale only when a restart would move forward: a target that equals, precedes or diverges from the running build must never be advised, because that restart would roll serve back. */
 async function newerRestartTarget(ports: CheckPorts, running: string | undefined): Promise<string | undefined> {
   if (running === undefined || running === UNKNOWN) return undefined;
   const target = await ports.restartTargetSha();
-  if (target === undefined || target === running) return undefined;
-  return (await ports.isAncestor(running, target)) ? target : undefined;
+  if (target === undefined || target === UNKNOWN) return undefined;
+  const [from, to] = [running, target].map(withoutDirty) as [string, string];
+  if (from === to) return undefined;
+  return (await ports.isAncestor(from, to)) ? target : undefined;
 }
 
 function verdict(cause: Cause | null, message: string, job: Job, health: Record<string, unknown> | null, detail: CheckResult["detail"] = {}): CheckResult {
@@ -197,7 +203,7 @@ async function judgeRunning(ports: CheckPorts, job: Job, health: Record<string, 
   const running = runningSha(health);
   const target = await newerRestartTarget(ports, running);
   if (target !== undefined) {
-    const message = `the server runs build ${running} but the deploy checkout a restart loads is at newer commit ${target}; run titan-factory service restart`;
+    const message = `the server runs build ${running} but the dist a restart loads is build ${target}, which is newer; run titan-factory service restart`;
     return verdict("stale build", message, job, health, { runningBuild: running ?? null, restartTarget: target });
   }
   if (health.github !== "ok") return verdict("GitHub down", `/health answers from pid ${job.pid} but its GitHub check is not ok: ${String(health.github)}; run gh auth status`, job, health, { github: String(health.github) });

@@ -217,7 +217,7 @@ describe("titan-factory service check", () => {
     const { code, out } = await check({ print: running, health: healthy(), target, ancestry: [[BUILD, target]] });
 
     expect(code).not.toBe(EXIT.OK);
-    expect(out).toContain(`stale build: the server runs build ${BUILD} but the deploy checkout a restart loads is at newer commit ${target}`);
+    expect(out).toContain(`stale build: the server runs build ${BUILD} but the dist a restart loads is build ${target}, which is newer`);
   });
 
   it("gives no stale build advice when the restart target is an ancestor of the running build", async () => {
@@ -230,6 +230,19 @@ describe("titan-factory service check", () => {
 
   it("gives no stale build advice when the restart target diverges from the running build", async () => {
     const { code } = await check({ print: running, health: healthy(), target: "d".repeat(40) });
+
+    expect(code).toBe(EXIT.OK);
+  });
+
+  it("orders a dirty running build by its base commit", async () => {
+    const target = "b".repeat(40);
+    const { out } = await check({ print: running, health: healthy({ build: { sha: `${BUILD}-dirty`, behindMain: 0 } }), target, ancestry: [[BUILD, target]] });
+
+    expect(out).toContain("stale build: ");
+  });
+
+  it("gives no stale build advice when the dist carries no readable build", async () => {
+    const { code } = await check({ print: running, health: healthy(), target: "unknown" });
 
     expect(code).toBe(EXIT.OK);
   });
