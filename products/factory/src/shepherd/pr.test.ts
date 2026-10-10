@@ -616,7 +616,7 @@ describe("the route table in a run", () => {
     w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), movedBehind && pr.headSha !== moved && (pr.mergeableState = "clean"));
     const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
     await gateOpened(w.host, gateId(runId, "approve-merge"));
-    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2}? CI is green. Policy shepherd-route/no-progress`);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2} into main? CI is green. Policy shepherd-route/no-progress`);
     w.fake.pushHead(1, moved);
     if (movedBehind) Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
     await supersedeMovedGates(w.host, w.services);
@@ -629,7 +629,7 @@ describe("the route table in a run", () => {
     await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
 
     const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
-    expect(prompt).toContain(`at head ${final}? CI is green. Policy shepherd-route/no-progress`);
+    expect(prompt).toContain(`at head ${final} into main? CI is green. Policy shepherd-route/no-progress`);
     expect(prompt).toContain("review at this head: MERGE");
     expect(w.fake.effects.merge).toBe(0);
   });
@@ -640,7 +640,7 @@ describe("the route table in a run", () => {
     await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
 
     const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
-    expect(prompt).toContain(`at head ${w.fake.pr(1).headSha}? CI is green. Policy shepherd-route/no-progress`);
+    expect(prompt).toContain(`at head ${w.fake.pr(1).headSha} into main? CI is green. Policy shepherd-route/no-progress`);
     expect(w.fake.effects.updateBranch).toBe(1);
     expect(w.fake.effects.merge).toBe(0);
   });

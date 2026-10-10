@@ -7,7 +7,7 @@ import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-fa
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import { MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
+import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -50,6 +50,8 @@ export interface EffectivePolicy {
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
+  /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
+  featureBase?: true;
 }
 
 /** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
@@ -62,6 +64,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
+  featureBase: z.literal(true).optional(),
 });
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
@@ -76,7 +79,7 @@ export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }
 
-export { MERGE_ON_GREEN_GRANT };
+export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
@@ -85,7 +88,8 @@ function narrower(a: MergeMode, b: MergeMode): MergeMode {
 
 /**
  * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
- * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one.
+ * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one. Only a seat's
+ * grant allows a feature base; no request key does.
  */
 export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}): EffectivePolicy {
   if (lookup.kind === "denied") throw new RegistrationRefused(lookup.reason);
@@ -101,15 +105,18 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
+    ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode or add visual paths, never loosen either. */
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base, never loosen any. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
-  return { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  if (!other.featureBase) delete stricter.featureBase;
+  return stricter;
 }
 
 /** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
@@ -170,7 +177,7 @@ export function shepherdLandOptions(
     if (decision.outcome !== "gate") return decision;
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh } };
+  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
 }
 
 function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
