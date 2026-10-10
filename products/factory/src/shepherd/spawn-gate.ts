@@ -76,6 +76,8 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
 export interface ReviewAsk {
   fixer: boolean;
   target?: { repo: string; pr: number };
+  /** When the run's sh-review-intent step recorded the review, from the store; it orders the queue across a serve restart, which forgets `firstAsk`. */
+  intentAt?: number;
 }
 
 /** A review spawn the gate has refused and that is still asking. */
@@ -88,16 +90,30 @@ interface WaitingReview extends ReviewAsk {
 /** A refused review asks again after its busy wait, which grows to BUSY_LONGEST_WAIT_MS; one silent for two of those has stopped asking. */
 export const REVIEW_STALE_MS = 2 * BUSY_LONGEST_WAIT_MS;
 
-/** Pure: the reviews that asked within `staleMs`, fixers first, then by first ask. */
+const waitingSince = (review: WaitingReview) => review.intentAt ?? review.firstAsk;
+
+/**
+ * Pure: the reviews that asked within `staleMs`, fixers first, then by the time their intent was recorded. A run that stopped asking
+ * (its run left the review phase, or died) falls out after `staleMs`, so it cannot hold the line.
+ */
 function reviewQueue(waiting: readonly WaitingReview[], now: number, staleMs: number): WaitingReview[] {
-  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || a.firstAsk - b.firstAsk);
+  return waiting.filter((review) => now - review.lastAsk <= staleMs).sort((a, b) => Number(b.fixer) - Number(a.fixer) || waitingSince(a) - waitingSince(b) || a.firstAsk - b.firstAsk);
 }
 
-/** Pure: a review that is no fixer waits while a fixer's review is queued, so a red main's fix takes the next slot; any other spawn is untouched. */
+/** Pure: a review waits while another is queued ahead of it, a red main's fix first and then the oldest intent; any other spawn is untouched. */
 function admitQueued(verdict: Admission, queue: readonly WaitingReview[], name: string, review: ReviewAsk | undefined): Admission {
-  if (!verdict.admit || review === undefined || review.fixer) return verdict;
-  const fixer = queue.find((waiting) => waiting.fixer && waiting.name !== name);
-  return fixer ? { admit: false, reason: `the review ${fixer.name} of a red main's fix waits ahead` } : verdict;
+  if (!verdict.admit || review === undefined) return verdict;
+  const ahead = queue[0];
+  if (!ahead || ahead.name === name) return verdict;
+  return { admit: false, reason: ahead.fixer && !review.fixer ? `the review ${ahead.name} of a red main's fix waits ahead` : `the review ${ahead.name} with an older intent waits ahead` };
+}
+
+/** The position and the oldest waiting intent, for the deferral log; empty for a spawn that is no review. */
+function queueNote(queue: readonly WaitingReview[], name: string): string {
+  const oldest = queue[0];
+  const index = queue.findIndex((waiting) => waiting.name === name);
+  if (!oldest || index < 0) return "";
+  return `; deferred: queue position ${index + 1} of ${queue.length} (oldest intent ${oldest.name} since ${new Date(waitingSince(oldest)).toISOString()})`;
 }
 
 /** Each waiting review's place by `repo#pr`; in memory, because only the live host's steps can be waiting. */
@@ -196,7 +212,7 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
       const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review);
       const seen = `load5 ${readings.load5}, pressure ${readings.pressureLevel ?? "unread"}, free ${readings.freeMemoryPct ?? "unread"}%`;
       if (!verdict.admit) {
-        log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})`);
+        log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})${queueNote(queue, name)}`);
         throw new SpawnDeferred(verdict.reason);
       }
       starts.splice(0, starts.length, ...starts.filter((startedAt) => at - startedAt < limits.windowMs), at);
