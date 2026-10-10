@@ -1,6 +1,7 @@
 import { ParseError, scanSubstitutions, tokenize } from "./lexer.js";
 import type { RedirectToken, Token } from "./lexer.js";
-import { ValueWalkError } from "./unsure-readings.js";
+import { NestingLimitError } from "./nesting.js";
+import { NestingReadingError, ValueWalkError } from "./unsure-readings.js";
 
 /** A bracket before a substitution: code that runs only when the text is evaluated as a subscript. */
 const SUBSCRIPT_CODE_RE = /\[[\s\S]*(?:\$\((?!\()|`)/;
@@ -80,8 +81,17 @@ export function settle(marks: ValueMarks): void {
   if (marks.unwalkable || (marks.opaque && marks.typed)) throw new ValueWalkError();
 }
 
-/** The token lists of each substitution in a value, read with the shell's own lexer; null when they cannot all be had. */
+/** A value nested past the lexer's limit is refused as the line itself would be, not left to fail open. */
 function substitutionsOf(value: string): Token[][] | null {
+  try {
+    return readSubstitutions(value);
+  } catch (error) {
+    throw error instanceof NestingLimitError ? new NestingReadingError() : error;
+  }
+}
+
+/** The token lists of each substitution in a value, read with the shell's own lexer; null when they cannot all be had. */
+function readSubstitutions(value: string): Token[][] | null {
   try {
     return tokenize(value).flatMap(nested);
   } catch (error) {

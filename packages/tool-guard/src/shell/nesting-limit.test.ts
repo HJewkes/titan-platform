@@ -62,3 +62,18 @@ describe("expansions nested past the reading limit", () => {
     expect(() => tokenize(line(MAX_NESTING + 1))).toThrow(/nested more than/);
   });
 });
+
+/** Single quotes hide the nesting from the line's reading; arithmetic then reads the stored value, and bash 5.3 runs the line after it. */
+const storedDeep = (depth: number) => `a='x[${nest("$(", "true", ")", depth)}]'; (( a ))`;
+
+describe("a stored value nested past the reading limit", () => {
+  it.each([
+    ["101 deep, push on the next line", `${storedDeep(MAX_NESTING + 1)}\n${PUSH}`],
+    ["150 deep, push on the next line", `${storedDeep(150)}\n${PUSH}`],
+    ["101 deep, push after a semicolon", `${storedDeep(MAX_NESTING + 1)}; ${PUSH}`],
+  ])("the hook denies %s", async (_name, command) => {
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const result = await handle(event(command), { PATH: "/usr/bin" }, port);
+    expect(result.stdout).toContain("nested more than");
+  });
+});
