@@ -35,6 +35,13 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
+- `recheck(open, answered)` re-checks open items against answers already given and returns
+  `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
+  `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its
+  `ask:` key is newer than its `openedAt` and is not pinned to another head of a PR the item
+  names; a PR key with no `@<sha>` on either side pins nothing. An older or other-head answer on the same `ask:` key flags `conflict` when it is not
+  the item's recommendation (free text and change requests included) and `reasked` otherwise.
+  Sharing only a `component:`, `token:` or `topic:` key flags `related-answer` and never drops.
 - `staleLabel(item, evidence)` returns `{ status: "gone-elsewhere", rule, reason }` or null for
   an open item, from a snapshot of source facts the caller read: `prs[<owner>/<repo>#<n>]`
   (state and head), `tasks[id].status`, `askers[name].retired` and `onNoAnswer[itemId]`. Rules,
@@ -58,6 +65,19 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `context` is the base chain of the item's stacked PRs, nearest first, shown as context and
   not under review. An item orders after every item on its bases; other items keep input
   order, and a cycle in `stacks` falls back to input order.
+- `consolidate(open, { answered, heads, stacks, deps })` returns the Flow the approvals page
+  reads: `{ groups, order, held, withdrawn, dropped, flags, context, edges }`. It supersedes
+  old heads, re-checks against answers, dedupes with `mergeByKeys` within one class (item
+  kind, round questions apart from other sources, so a review answer never resolves a gate),
+  and adds stacked `context`. Groups are fixed per PR (`pr:<owner>/<repo>#<n>`); an item naming
+  no PR or several joins a `topic` group by shared task, component, token or topic keys, and
+  topic groups come first. `edges` (`INFLUENCE_RULES`: `base`, `pr-decision`, `shared-unit`,
+  `unblocks`, `topic`, `overlap`) order groups by transitive dependents, then rank, and order
+  each group topologically; `held` lists earlier items each one waits on. Each PR group's
+  `shipBlockedBy` lists open change requests at the live head on any tab: `change-requested`,
+  `free-text` or `other-choice` (not the recommended pick). Unanswered questions never block.
+  The Flow is the same for any input order. `influenceEdges(items, { context, deps })` gives
+  the edges alone.
 - `buildOwnerRounds(items, options)` turns open Decide items into `titan-review/round@2`
   manifests that pass `RoundSchema` from `@titan-design/review-schema`. It returns
   `{ rounds: [{ manifest, bindings }], skipped }`. Each ask is one question in its own section,

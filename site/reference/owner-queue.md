@@ -329,6 +329,91 @@ const answered = answeredFromFeedback(feedbackJson, manifest, context);
   round, so the default `ask:` key only matches within a unit and question id. Builders that
   keep an id per ask make it match across rounds.
 
+## Re-checking against answers
+
+An open question may already have its answer: the owner settled the same ask in a later
+round, or answered a neighbour about the same component. `recheck(open, answered)` reads the
+answered items (anything carrying an `answer`, such as `answeredFromFeedback` returns) and
+says which open items are settled and which deserve a note.
+
+```ts
+import { recheck } from "@titan-design/owner-queue";
+
+const { open, dropped, flags } = recheck(asked, answered);
+// dropped[i] = { item: { ...item, status: "gone-elsewhere" }, cite: { answerId, key, at } }
+// flags[i]   = { itemId, kind: "conflict" | "reasked" | "related-answer", answerId, keys }
+```
+
+| Shared key | Answer | Result |
+|---|---|---|
+| `ask:` | newer than the item's `openedAt`, not pinned to another head of the item's PR | dropped as `gone-elsewhere`, citing the newest such answer |
+| `ask:` | older, or pinned to another head of the item's PR | `conflict` if it is not the recommended pick, else `reasked` |
+| only `component:`, `token:` or `topic:` | any | `related-answer`; never drops |
+
+- **Heads.** An answer given on one head of a PR never settles an item pinned to another
+  head of it, so a new commit always gets its own look. It still shows as a flag. A PR key
+  with no `@<sha>` pins nothing, so on either side it never blocks a settle. Heads compare as
+  written, case-insensitively: a short sha is a different head from its full form.
+- **Conflict.** Free text, a change request or a different pick against an item's
+  recommendation is a conflict. An item with no recommendation reads as reasked.
+- **Order.** `open` is sorted by id and `flags` by item, answer and kind, so the result is the
+  same for any input order.
+
+## Consolidating the queue
+
+`consolidate(open, { answered, heads, stacks, deps })` runs the whole pass the approvals
+page reads, recomputed on every read and every answer. It composes `supersede`, `recheck`,
+`mergeByKeys`, `stackContext` and `rank`, then adds groups, influence order and holds.
+
+```ts
+import { consolidate } from "@titan-design/owner-queue";
+
+const flow = consolidate(openItems, {
+  answered,                                   // answered items, feedback answers included
+  heads: { "org-a/repo-1#12": liveHeadSha },
+  stacks: { "org-a/repo-1#13": "org-a/repo-1#12" },
+  deps: { "T-2": ["T-1"] },                   // task id to the task ids it depends on
+});
+// flow.groups[i] = { id: "pr:org-a/repo-1#12", kind: "pr", itemIds, shipBlockedBy }
+// flow.order, flow.held, flow.withdrawn, flow.dropped, flow.flags, flow.context, flow.edges
+```
+
+1. **Supersede.** Items on an old head of a PR are `withdrawn` as `new-head:<sha>`. The live
+   head counts answered items too, so a newer answered round moves it.
+2. **Re-check.** `recheck` against every answered item gives `dropped` and `flags`.
+3. **Dedupe.** `mergeByKeys` runs within one class: the item kind, with round questions kept
+   apart from every other source. A shared merge key across classes becomes an `overlap`
+   edge instead, so answering a review round never resolves a gate.
+4. **Context.** An item on a stacked PR lists its base PRs in `context[itemId]`.
+5. **Group.** Groups are fixed per PR: an item naming exactly one PR joins `pr:<owner>/<repo>#<n>`.
+   An item naming none or several, such as a cross-PR decision, joins a `topic` group, built
+   by union-find over shared `task:`, `component:`, `token:` and `topic:` keys.
+6. **Influence.** `edges` say A likely changes B:
+
+   | Rule | When |
+   |---|---|
+   | `base` | A is on B's base PR |
+   | `pr-decision` | they share a PR, A decides, B reviews or approves |
+   | `shared-unit` | they share a component or token, A decides or is one-way, B reviews or approves |
+   | `unblocks` | `A.unblocks` holds B's `task:` key, or B's task depends on A's in `deps` |
+   | `topic` | they share a topic, A decides, B does not |
+   | `overlap` | step 3 kept them apart; decisions, then reviews, then approvals; a round before a gate |
+
+   Topic groups come first. Groups then sort by the most transitive dependents of any member,
+   then by best `rank`. Inside a group the order is topological, with `rank` breaking ties
+   and cycles.
+7. **Hold.** `held[i] = { itemId, waitsOn }` lists the earlier items that likely change it.
+   Only edges from earlier in the order hold, so a cycle never holds all of its members.
+
+**Ship gate.** Each PR group carries `shipBlockedBy`, the open change requests on that PR at
+its live head, on any tab: `change-requested`, `free-text` (text or variant comments), or
+`other-choice` (a pick that is not the recommended, implemented one). An unanswered question
+never blocks. A newer answer to the same `ask:` replaces an older one, and an answer on an
+old head is withdrawn, so neither blocks. An empty list means Ship may go.
+
+**Order.** The Flow is the same for any order of `open` and `answered`. Flags keep the id of
+the item `recheck` saw, which may be a non-primary item that step 3 merged away.
+
 ## What it deliberately does not do
 
 - No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
