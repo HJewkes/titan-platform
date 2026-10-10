@@ -219,7 +219,7 @@ export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void
 }
 
 /** Hears each value a scope's variables take, null when the walk cannot know it. */
-export type StoreObserver = (value: string | null) => void;
+type StoreObserver = (value: string | null) => void;
 const observers = new WeakMap<Vars, StoreObserver>();
 
 /** Every write to `vars` goes through `write`, so the observer hears each value the scope stores. */
