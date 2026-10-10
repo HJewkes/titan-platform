@@ -8,7 +8,7 @@ import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale";
+type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -21,6 +21,8 @@ export interface CheckPorts extends ServicePorts {
   tickStatus: () => TickStatusRead;
   /** The service checkout's .git/index.lock, read only: a stale one blocks every later deploy, and only a person removes it. */
   indexLock: () => Promise<IndexLock>;
+  /** The config's shepherd.hubSeat, the seat a deploy alarm reaches; undefined when none is set. */
+  hubSeat: () => string | undefined;
 }
 
 interface CheckResult {
@@ -117,7 +119,8 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port, failedProbes), job, health, { healthPid: healthPid ?? null });
   const running = judgeRunning(job, health, ports.installedBuildSha());
   if (!running.ok) return running;
-  return (await withDeploy(running, ports)) ?? withTick(running, ports);
+  const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
+  return judged.ok ? withHubSeat(judged, ports) : judged;
 }
 
 /** One failed read is not an outage: serve can miss a single probe while up, so a live job pid gets a few more polls before the answer counts. */
@@ -152,7 +155,14 @@ function deployDetail(deploy: DeployHealth): CheckResult["detail"] {
   return { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal: lastRefusal?.reason ?? null };
 }
 
-/** Last in order: a server fault is reported before the tick that depends on it. */
+const NO_HUB_SEAT = "shepherd.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat, so set it to the coordinating seat and run titan-factory service restart";
+
+/** Last in order: a config gap only matters once the server and its tick are sound. */
+function withHubSeat(running: CheckResult, ports: CheckPorts): CheckResult {
+  return ports.hubSeat() === undefined ? { ...running, ok: false, cause: "no hub seat", message: NO_HUB_SEAT, detail: {} } : running;
+}
+
+/** A server fault is reported before the tick that depends on it. */
 function withTick(running: CheckResult, ports: CheckPorts): CheckResult {
   const problem = judgeTick(ports.tickStatus(), ports.now());
   return problem === undefined ? running : { ...running, ok: false, cause: problem.cause, message: problem.message, detail: problem.detail };
