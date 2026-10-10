@@ -5,7 +5,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { landPrRoutes, landPrWorkflow } from "../workflows/land-pr.js";
 import { failureClassOf } from "./failure-class.js";
-import { GH_RETRY_BACKOFF_MS, retryingGhServerErrors } from "./gh-retry.js";
+import { retryingGhServerErrors } from "./gh-retry.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -49,7 +49,7 @@ describe("retryingGhServerErrors", () => {
 
     expect(host.runtime.status(runId)?.status).toBe("completed");
     expect(fake.effects).toMatchObject({ merge: 1 });
-    expect(waits).toEqual([GH_RETRY_BACKOFF_MS[0]]);
+    expect(waits).toEqual([5_000]);
     const merged = Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId.startsWith("merge:"));
     expect(JSON.stringify(merged?.data)).toContain("ghRetries");
   });
@@ -61,7 +61,7 @@ describe("retryingGhServerErrors", () => {
 
     const status = host.runtime.status(runId);
     expect(status?.status).toBe("failed");
-    expect(waits).toEqual([...GH_RETRY_BACKOFF_MS]);
+    expect(waits).toEqual([5_000, 20_000, 60_000]);
     expect(failureClassOf(status?.error ?? "")).toBe("gh-api-5xx");
     expect(status?.error).toContain("after 3 gh-api-5xx retries");
   });

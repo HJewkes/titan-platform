@@ -2,9 +2,9 @@ import type { RoutedStepInput, StepRoute, StepRunOutcome } from "@titan-design/w
 import { failureClassOf } from "./failure-class.js";
 
 /** Waits before each retry, so a step is tried once and then up to this many more times. */
-export const GH_RETRY_BACKOFF_MS: readonly number[] = [5_000, 20_000, 60_000];
+const GH_RETRY_BACKOFF_MS: readonly number[] = [5_000, 20_000, 60_000];
 
-export interface GhRetryTiming {
+interface GhRetryTiming {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   backoffMs?: readonly number[];
 }
