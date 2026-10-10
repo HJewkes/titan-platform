@@ -236,6 +236,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/git\/refs/, undefined],
   [/contents\//, { path: "docs/a.md", sha: "blob1", content: Buffer.from("x").toString("base64"), encoding: "base64" }],
   [/rules\/branches\//, []],
+  [/branches\/main$/, { name: "main", protected: false }],
   [/check-runs$/, { check_runs: [] }],
   [/git\/commits\//, { sha: H1, parents: [], tree: { sha: "t1" } }],
   [/git\/commits$/, { sha: H2 }],
