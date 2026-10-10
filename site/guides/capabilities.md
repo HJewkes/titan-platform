@@ -63,6 +63,7 @@ Before adding code:
 | [`style-analyzer`](#cap-style-analyzer) | 2 | You measure how a codebase is actually written and build a style profile from real code. |
 | [`style-checker`](#cap-style-checker) | 2 | You run ESLint, ruff and the Python audit tools against a profile and want every finding in one normalized diagnostic shape. |
 | [`style-profile`](#cap-style-profile) | 2 | You hold a code-style profile and need the ESLint, ruff, EditorConfig or agent-rule output that enforces it. |
+| [`throughput`](#cap-throughput) | 2 | You have per-task actuals (agent-hours, USD) and need deterministic per-class p10/p50/p80/p90 for planning, keyed kind x size band with recency weighting and a named back-off level. Producing the actuals from sessions belongs to session-analytics. |
 | [`workflow`](#cap-workflow) | 2 | Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths. |
 | [`react-app`](#cap-react-app) | ui | A React front end is served by a daemon or shipped as an offline report and needs hooks over rpc-client and a Vite preset. Components come from react-ui. |
 | [`react-ui`](#cap-react-ui) | ui | You are building a screen and need a component, a token or a theme. It is the design system; library packages here must not import it, so only apps and products take it. |
@@ -921,6 +922,20 @@ Key exports:
 - `io`: `readProfile`, `writeProfile`, `validateProfile`
 - `migrations/migrate-profile`: `migrateProfile`, `registerMigration`
 - +40 more in the [reference page](/reference/style-profile)
+
+<a id="cap-throughput"></a>
+
+### [`throughput`](/reference/throughput)
+
+Tier 2, `@titan-design/throughput@0.0.0`. Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals
+
+**Use this when:** You have per-task actuals (agent-hours, USD) and need deterministic per-class p10/p50/p80/p90 for planning, keyed kind x size band with recency weighting and a named back-off level. Producing the actuals from sessions belongs to session-analytics.
+
+Key exports:
+
+- `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`, `BackoffLevel`, `ClassEntry`, `ClassTable`, `LevelStats`, `ThroughputConfig`, `Watermark`
+- `rows`: `sizeBand`, `CappedHoursLike`
+- +4 more in the [reference page](/reference/throughput)
 
 <a id="cap-workflow"></a>
 

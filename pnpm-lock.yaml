@@ -753,6 +753,8 @@ importers:
 
   packages/test-kit: {}
 
+  packages/throughput: {}
+
   packages/tool-guard:
     dependencies:
       '@titan-design/authority':
