@@ -16,7 +16,13 @@ next, so an agent that hits the rule can fix the code without asking.
   `@titan-design/test-kit`. It reads syntax only, so it cannot see a double cast split across two
   statements (`const u: unknown = x; u as T`); type-aware `@typescript-eslint/no-unsafe-type-assertion`
   covers that.
-- `recommended`: a flat config enabling all four rules at `error` under the `titan` namespace.
+- `no-internal-module-mock`: `vi.mock`, `vi.doMock`, `jest.mock`, `jest.doMock` and
+  `jest.unstable_mockModule` may not target this repo's own code: a relative, absolute or `#`
+  specifier, or one under an internal prefix (option `internalPrefixes`, default
+  `["@titan-design/"]`). `node:` builtins and third-party packages stay mockable. It matches the
+  `vi` and `jest` names only, so a renamed import (`import { vi as t }`) is not seen, and it skips
+  a specifier built at run time.
+- `recommended`: a flat config enabling all five rules at `error` under the `titan` namespace.
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.

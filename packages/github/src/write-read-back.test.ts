@@ -29,6 +29,32 @@ describe("merge retry", () => {
     expect(waits).toEqual([1000]);
   });
 
+  it("skips as base-changed when the PR's base is not the expected one, with no PUT", async () => {
+    const { fake, port, pr } = setup();
+    fake.pr(pr.number).baseRef = "feat/x";
+
+    const result = await port.merge("o/r", pr.number, HEAD, "squash", undefined, "main");
+
+    expect(result).toEqual({ mergeSha: "", done: false, skipped: "base-changed" });
+    expect(calls(fake, "merge")).toBe(0);
+  });
+
+  it("re-reads the base before a retry, and skips the retry when the PR was retargeted after a 502", async () => {
+    const { fake, port, pr } = setup();
+    fake.mergeFaults = [badGateway()];
+    const merge = fake.wire.merge;
+    fake.wire.merge = async (...args) => {
+      fake.pr(pr.number).baseRef = "feat/x";
+      return merge(...args);
+    };
+
+    const result = await port.merge("o/r", pr.number, HEAD, "squash", undefined, "main");
+
+    expect(result).toEqual({ mergeSha: "", done: false, skipped: "base-changed" });
+    expect(fake.effects.merge).toBe(0);
+    expect(calls(fake, "merge")).toBe(1);
+  });
+
   it("treats a merge that landed before the answer was lost as done, without a second PUT", async () => {
     const { fake, port, pr } = setup();
     fake.mergeFaults = [{ error: new SyntaxError("unexpected end of JSON input"), lands: true }];

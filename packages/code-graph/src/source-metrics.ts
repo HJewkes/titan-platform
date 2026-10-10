@@ -3,6 +3,7 @@ import type { Node } from "web-tree-sitter";
 import { EXCEPTION_METRIC_NAMES, exceptionMetrics } from "./analysis/exception-handling.js";
 import { jsxDepthOf } from "./analysis/jsx-metrics.js";
 import { collectTypeDecls, propStatsOf } from "./analysis/prop-metrics.js";
+import { TEST_KIND_SOURCE_METRIC_NAMES, testKindSourceMetrics } from "./analysis/test-kinds.js";
 import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
 import { PY_FUNCTION_TYPES, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } from "./node-kinds.js";
@@ -72,6 +73,8 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   // unchanged file carries them forward — but their nodeId is `<fileId>#<name>`,
   // so the reuse basis buckets them under the symbol's parent file (incremental.ts).
   ...SYMBOL_METRIC_NAMES,
+  // Python code-kind and test-kind facts of each function by itself (TP-2170), same keying.
+  ...TEST_KIND_SOURCE_METRIC_NAMES,
 ]);
 
 const EMPTY_NAMES: ReadonlySet<string> = new Set();
@@ -151,6 +154,7 @@ function metricsForFile(
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
   out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
+  out.push(...testKindSourceMetrics(nodeId, file, symbolNames));
   return out;
 }
 

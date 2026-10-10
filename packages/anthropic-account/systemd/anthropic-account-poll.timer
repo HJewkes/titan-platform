@@ -6,6 +6,8 @@ OnActiveSec=10s
 OnBootSec=60s
 OnUnitActiveSec=150s
 AccuracySec=10s
+# Spreads hosts that booted together so they do not all hit the usage endpoint at once.
+RandomizedDelaySec=30s
 Unit=anthropic-account-poll.service
 
 [Install]

@@ -170,6 +170,38 @@ const label = staleLabel(gate, {
 - PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
   ref as a merge key without its `@<sha>`.
 
+## Supersede and stacked context
+
+GitHub and GitLab reset an approval when a new commit is pushed, so an answer pinned to an
+old head of a PR must not approve the new one. `supersede(items, heads?)` applies that rule
+across the queue, and `stackContext(items, stacks)` labels the base of a stacked PR as context.
+
+```ts
+import { stackContext, supersede } from "@titan-design/owner-queue";
+
+const { kept, withdrawn, heads } = supersede(items, { "org-a/repo-1#12": liveHeadSha });
+// withdrawn[i] is { item, was, pr, reason: "new-head:<sha>" }
+
+const ordered = stackContext(kept, { "org-a/repo-1#13": "org-a/repo-1#12" });
+// each item on #13 has context ["org-a/repo-1#12"] and comes after the items on #12
+```
+
+- **Live head.** `heads[<owner>/<repo>#<n>]` when it is a full 40-hex sha, else the head of
+  the PR's newest pinned item by `openedAt`; on a tie the later item in input order wins. PR
+  refs and shas compare case-insensitively.
+- **Withdrawn.** An `open`, `answered` or `decided` item with a `pr:…@<sha>` key on another
+  head comes back in `withdrawn` with status `withdrawn`, its earlier status in `was`, and
+  `reason` `new-head:<live sha>`. Every other item stays in `kept`, in input order. An item
+  that is already closed, or whose PR key has no sha or a short one, is never withdrawn.
+- **Change requests.** A withdrawn item keeps its `answer`. A `changeRequested` on an old head
+  therefore stays readable as context, but it is not open and does not block a ship at the new
+  head. It blocks again only when re-asserted: answered with `changeRequested` at the live
+  head, which keeps the item in `kept`. An approval at an old head never counts at the new one.
+- **Stacks.** `stacks` maps each stacked PR to its base. An item's `context` is the base chain
+  of its own PRs, nearest first (`#c` on `#b` on `#a` gives `[#b, #a]`); a PR the item itself
+  names is never its context. Items on a base come before the items stacked on it; unrelated
+  items keep input order, and a cycle in `stacks` falls back to input order.
+
 ## Review rounds
 
 `buildOwnerRounds(items, options)` turns the open Decide items of a queue into
@@ -233,6 +265,154 @@ const { rounds, skipped } = buildOwnerRounds(rank(open), {
 - **Bindings.** `bindings[i]` is `{ questionId, itemIds, principleId?, options }`, where
   `options` maps each shown label to the item's option id (`yes` or `no` for a principle), so
   feedback can be routed back to each item.
+
+## Relation keys
+
+Some items are about the same thing without being the same item: one question asked again in
+a later round, or two asks about one shared component. Relation keys record that. None of them
+is a merge key, so `mergeByKeys` never joins items on one; the approval flow reads them to
+re-check, group and order items instead.
+
+| Helper | Key | Meaning |
+|---|---|---|
+| `askKey(id)` | `ask:<id>` | the same question across rounds |
+| `roundAskKey(unit, questionId)` | `ask:<unit>/<questionId>` | a round question's default ask key |
+| `componentKey(name)` | `component:<name>` | a shared component |
+| `tokenKey(name)` | `token:<name>` | a shared design token |
+| `topicKey(name)` | `topic:<name>` | a shared topic |
+
+Component, token and topic names are lower-cased with runs of spaces turned to `-`, so
+`Date Picker` and `date picker` give one key. A blank name throws. `relationKind(key)` returns
+the kind of a relation key, or null for a merge key or anything else. `prKey(repo, pr, headSha)`
+builds a PR merge key in the canonical lower-case form.
+
+## Round questions as items
+
+The approval flow treats review-round questions as OwnerItems alongside every other ask.
+
+```ts
+import { answeredFromFeedback, buildOwnerRounds, fromRoundQuestions } from "@titan-design/owner-queue";
+
+const { manifest, bindings } = buildOwnerRounds(open, options).rounds[0]!;
+const context = { roundId: "decisions-r1", openedAt: "2026-01-01T00:00:00Z", bindings };
+
+const asked = fromRoundQuestions(manifest, context.roundId, context);
+const answered = answeredFromFeedback(feedbackJson, manifest, context);
+// a single-item question comes back as that item, with the owner's pick as its option id
+```
+
+- **Ids and keys.** An item is `round:<roundId>/<questionId>` with source
+  `{ system: "round", ref: "<roundId>#<questionId>" }` and the question's `ask:` key. With
+  the bindings `buildOwnerRounds` returned, a question that asked one item takes that item's
+  id and option ids, so a round built and then answered round-trips. A `Principle:` question
+  settles several items, so it stays a round item with options `yes` and `no`.
+- **Kinds.** A merge-bound pick-one is `approve` with lens `blocking-merge` and carries the
+  `pr:` key pinned to its head. A bound question is `decide` and any other is `review`, both
+  with lens `planning`.
+- **Text.** The prompt becomes a one-line summary of at most 280 characters. The context is
+  the question's section `deciding` and `context`, or the round's `context`. A pick question
+  with two to eight options keeps them; any other is asked as free text. A pick-one
+  recommendation on an offered option becomes `recommended`, hidden in an `after-answer` round.
+- **Answers.** `answeredFromFeedback` returns only the questions the feedback answered and
+  did not list in `unansweredQuestionIds`, with status `answered`, `at` its `submittedAt` and
+  `by` `ROUND_ANSWERER`. An offered pick becomes `optionId` and offered pick-many picks become
+  `optionIds`, both through the bindings; free text, a scale value, a pick the question does
+  not offer and the comment become `text`. A feedback `revisionRequested` becomes
+  `changeRequested: true`, kept even with no comment or when a partial submit lists the
+  question unanswered, so a change request on a merge-bound question still blocks the ship.
+  Non-empty `variantComments` are carried as they are.
+- **Validation.** Both functions parse with `ManifestSchema` and `FeedbackSchema` from
+  `@titan-design/review-schema` and throw on an invalid file, an invalid `openedAt`, or a
+  feedback whose unit or round differs from the manifest. round@2 carries no time, so
+  `openedAt` is the caller's.
+- **Until question ids are stable.** `buildOwnerRounds` numbers questions `q1`, `q2`, … per
+  round, so the default `ask:` key only matches within a unit and question id. Builders that
+  keep an id per ask make it match across rounds.
+
+## Re-checking against answers
+
+An open question may already have its answer: the owner settled the same ask in a later
+round, or answered a neighbour about the same component. `recheck(open, answered)` reads the
+answered items (anything carrying an `answer`, such as `answeredFromFeedback` returns) and
+says which open items are settled and which deserve a note.
+
+```ts
+import { recheck } from "@titan-design/owner-queue";
+
+const { open, dropped, flags } = recheck(asked, answered);
+// dropped[i] = { item: { ...item, status: "gone-elsewhere" }, cite: { answerId, key, at } }
+// flags[i]   = { itemId, kind: "conflict" | "reasked" | "related-answer", answerId, keys }
+```
+
+| Shared key | Answer | Result |
+|---|---|---|
+| `ask:` | newer than the item's `openedAt`, not pinned to another head of the item's PR | dropped as `gone-elsewhere`, citing the newest such answer |
+| `ask:` | older, or pinned to another head of the item's PR | `conflict` if it is not the recommended pick, else `reasked` |
+| only `component:`, `token:` or `topic:` | any | `related-answer`; never drops |
+
+- **Heads.** An answer given on one head of a PR never settles an item pinned to another
+  head of it, so a new commit always gets its own look. It still shows as a flag. A PR key
+  with no `@<sha>` pins nothing, so on either side it never blocks a settle. Heads compare as
+  written, case-insensitively: a short sha is a different head from its full form.
+- **Conflict.** Free text, a change request or a different pick against an item's
+  recommendation is a conflict. An item with no recommendation reads as reasked.
+- **Order.** `open` is sorted by id and `flags` by item, answer and kind, so the result is the
+  same for any input order.
+
+## Consolidating the queue
+
+`consolidate(open, { answered, heads, stacks, deps })` runs the whole pass the approvals
+page reads, recomputed on every read and every answer. It composes `supersede`, `recheck`,
+`mergeByKeys`, `stackContext` and `rank`, then adds groups, influence order and holds.
+
+```ts
+import { consolidate } from "@titan-design/owner-queue";
+
+const flow = consolidate(openItems, {
+  answered,                                   // answered items, feedback answers included
+  heads: { "org-a/repo-1#12": liveHeadSha },
+  stacks: { "org-a/repo-1#13": "org-a/repo-1#12" },
+  deps: { "T-2": ["T-1"] },                   // task id to the task ids it depends on
+});
+// flow.groups[i] = { id: "pr:org-a/repo-1#12", kind: "pr", itemIds, shipBlockedBy }
+// flow.order, flow.held, flow.withdrawn, flow.dropped, flow.flags, flow.context, flow.edges
+```
+
+1. **Supersede.** Items on an old head of a PR are `withdrawn` as `new-head:<sha>`. The live
+   head counts answered items too, so a newer answered round moves it.
+2. **Re-check.** `recheck` against every answered item gives `dropped` and `flags`.
+3. **Dedupe.** `mergeByKeys` runs within one class: the item kind, with round questions kept
+   apart from every other source. A shared merge key across classes becomes an `overlap`
+   edge instead, so answering a review round never resolves a gate.
+4. **Context.** An item on a stacked PR lists its base PRs in `context[itemId]`.
+5. **Group.** Groups are fixed per PR: an item naming exactly one PR joins `pr:<owner>/<repo>#<n>`.
+   An item naming none or several, such as a cross-PR decision, joins a `topic` group, built
+   by union-find over shared `task:`, `component:`, `token:` and `topic:` keys.
+6. **Influence.** `edges` say A likely changes B:
+
+   | Rule | When |
+   |---|---|
+   | `base` | A is on B's base PR |
+   | `pr-decision` | they share a PR, A decides, B reviews or approves |
+   | `shared-unit` | they share a component or token, A decides or is one-way, B reviews or approves |
+   | `unblocks` | `A.unblocks` holds B's `task:` key, or B's task depends on A's in `deps` |
+   | `topic` | they share a topic, A decides, B does not |
+   | `overlap` | step 3 kept them apart; decisions, then reviews, then approvals; a round before a gate |
+
+   Topic groups come first. Groups then sort by the most transitive dependents of any member,
+   then by best `rank`. Inside a group the order is topological, with `rank` breaking ties
+   and cycles.
+7. **Hold.** `held[i] = { itemId, waitsOn }` lists the earlier items that likely change it.
+   Only edges from earlier in the order hold, so a cycle never holds all of its members.
+
+**Ship gate.** Each PR group carries `shipBlockedBy`, the open change requests on that PR at
+its live head, on any tab: `change-requested`, `free-text` (text or variant comments), or
+`other-choice` (a pick that is not the recommended, implemented one). An unanswered question
+never blocks. A newer answer to the same `ask:` replaces an older one, and an answer on an
+old head is withdrawn, so neither blocks. An empty list means Ship may go.
+
+**Order.** The Flow is the same for any order of `open` and `answered`. Flags keep the id of
+the item `recheck` saw, which may be a non-primary item that step 3 merged away.
 
 ## What it deliberately does not do
 

@@ -171,6 +171,15 @@ function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | 
   return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
 
+const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
+
+/** While an approved head waits for its PR to be retargeted, the refused base is the next action. */
+function baseWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.currentStep === null || !stepIdMatches("base-wait", run.currentStep)) return undefined;
+  const check = BaseCheckData.safeParse(steps.filter((result) => stepIdMatches("base-check", result.stepId)).at(-1)?.data);
+  return check.success ? check.data.result.reason : undefined;
+}
+
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
 function lastIndexWhere<T>(items: readonly T[], match: (item: T) => boolean): number {
@@ -291,7 +300,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
