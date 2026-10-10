@@ -26,7 +26,10 @@ interface Machine {
   healthSequence?: (Record<string, unknown> | null)[];
   dead?: number[];
   startedAgoMs?: number;
-  installed?: string;
+  /** The commit a restart loads; absent means the running build. */
+  target?: string;
+  /** Pairs [ancestor, descendant] the deploy checkout's history holds. */
+  ancestry?: [string, string][];
   /** The status file's text; undefined means the file is absent. */
   tick?: string;
   /** The deploy checkout's index.lock; absent by default. */
@@ -71,7 +74,8 @@ function fakePorts(init: Machine) {
     now: () => NOW,
     isAlive: (pid) => !(init.dead ?? []).includes(pid),
     processStartedAt: async () => new Date(NOW - (init.startedAgoMs ?? 3_600_000)),
-    installedBuildSha: () => init.installed ?? BUILD,
+    restartTargetSha: async () => init.target ?? BUILD,
+    isAncestor: async (a, d) => (init.ancestry ?? []).some(([x, y]) => x === a && y === d),
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
     hubSeat: () => (init.noHubSeat ? undefined : "hub"),
@@ -208,15 +212,31 @@ describe("titan-factory service check", () => {
     expect(code).toBe(EXIT.OK);
   });
 
-  it("reports stale build when the server runs another build than the installed dist", async () => {
-    const { code, out } = await check({ print: running, health: healthy(), installed: "b".repeat(40) });
+  it("reports stale build when a restart would load a newer commit than the server runs", async () => {
+    const target = "b".repeat(40);
+    const { code, out } = await check({ print: running, health: healthy(), target, ancestry: [[BUILD, target]] });
 
     expect(code).not.toBe(EXIT.OK);
-    expect(out).toContain(`stale build: the server runs build ${BUILD} but the installed dist is build ${"b".repeat(40)}`);
+    expect(out).toContain(`stale build: the server runs build ${BUILD} but the deploy checkout a restart loads is at newer commit ${target}`);
+  });
+
+  it("gives no stale build advice when the restart target is an ancestor of the running build", async () => {
+    const target = "c".repeat(40);
+    const { code, out } = await check({ print: running, health: healthy(), target, ancestry: [[target, BUILD]] });
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).not.toContain("stale build");
+  });
+
+  it("gives no stale build advice when the restart target diverges from the running build", async () => {
+    const { code } = await check({ print: running, health: healthy(), target: "d".repeat(40) });
+
+    expect(code).toBe(EXIT.OK);
   });
 
   it("does not call an unknown build stale", async () => {
-    const { code } = await check({ print: running, health: healthy(), installed: "unknown" });
+    const target = "b".repeat(40);
+    const { code } = await check({ print: running, health: healthy({ build: { sha: "unknown", behindMain: 0 } }), target, ancestry: [["unknown", target]] });
 
     expect(code).toBe(EXIT.OK);
   });
@@ -229,7 +249,7 @@ describe("titan-factory service check", () => {
   });
 
   it("prints the first cause in order when several hold", async () => {
-    const { out } = await check({ print: running, health: healthy({ pid: 999, github: "down" }), installed: "b".repeat(40) });
+    const { out } = await check({ print: running, health: healthy({ pid: 999, github: "down" }), target: "b".repeat(40), ancestry: [[BUILD, "b".repeat(40)]] });
 
     expect(out).toContain("stale pid: ");
   });

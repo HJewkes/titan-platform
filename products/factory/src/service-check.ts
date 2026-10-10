@@ -15,8 +15,10 @@ export interface CheckPorts extends ServicePorts {
   isAlive: (pid: number) => boolean;
   /** When the process at `pid` started, or null when it has none. */
   processStartedAt: (pid: number) => Promise<Date | null>;
-  /** The build sha of the dist this CLI runs from, which is the installed build; `unknown` when it carries none. */
-  installedBuildSha: () => string;
+  /** The commit a restart would load: the deploy checkout's HEAD, which the unit's ExecStart builds from; undefined when it cannot be read. */
+  restartTargetSha: () => Promise<string | undefined>;
+  /** True when `ancestor` is an ancestor of `descendant` in the deploy checkout; false when either is unknown to it. */
+  isAncestor: (ancestor: string, descendant: string) => Promise<boolean>;
   /** The burndown tick's status file path and its text, undefined when the file is absent. */
   tickStatus: () => TickStatusRead;
   /** The service checkout's .git/index.lock, read only: a stale one blocks every later deploy, and only a person removes it. */
@@ -97,16 +99,19 @@ function runningSha(health: Record<string, unknown> | null): string | undefined 
   return typeof sha === "string" ? sha : undefined;
 }
 
-/** Only a clean, known pair can differ meaningfully: an `unknown` build has no sha to compare. */
-function isStaleBuild(running: string | undefined, installed: string): boolean {
-  return running !== undefined && running !== UNKNOWN && installed !== UNKNOWN && running !== installed;
+/** Stale only when a restart would move forward: a target that equals, precedes or diverges from the running build must never be advised, because that restart would roll serve back. */
+async function newerRestartTarget(ports: CheckPorts, running: string | undefined): Promise<string | undefined> {
+  if (running === undefined || running === UNKNOWN) return undefined;
+  const target = await ports.restartTargetSha();
+  if (target === undefined || target === running) return undefined;
+  return (await ports.isAncestor(running, target)) ? target : undefined;
 }
 
 function verdict(cause: Cause | null, message: string, job: Job, health: Record<string, unknown> | null, detail: CheckResult["detail"] = {}): CheckResult {
   return { ok: cause === null, cause, message, ...(job.pid === undefined ? {} : { pid: job.pid }), health, detail };
 }
 
-/** Never starts, stops or restarts the job: it reads launchctl or systemctl, ps, /health and the installed build only. */
+/** Never starts, stops or restarts the job: it reads launchctl or systemctl, ps, /health and the deploy checkout's commits only. */
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const job = await readJob(ports);
   if (!job.loaded) return verdict("not loaded", `${jobName(job, ports)} is not loaded; run titan-factory service install`, job, null);
@@ -117,7 +122,7 @@ async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckRe
   const answersFromJob = health?.ok === true && healthPid === job.pid;
   if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, jobName(job, ports), health);
   if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port, failedProbes), job, health, { healthPid: healthPid ?? null });
-  const running = judgeRunning(job, health, ports.installedBuildSha());
+  const running = await judgeRunning(ports, job, health);
   if (!running.ok) return running;
   const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
   return judged.ok ? withHubSeat(judged, ports) : judged;
@@ -188,11 +193,12 @@ function crashLoop(job: Job, name: string, health: Record<string, unknown> | nul
   return verdict("crash loop", message, job, health, { lastExitCode: job.lastExit ?? null, runs: job.runs ?? null });
 }
 
-function judgeRunning(job: Job, health: Record<string, unknown>, installed: string): CheckResult {
+async function judgeRunning(ports: CheckPorts, job: Job, health: Record<string, unknown>): Promise<CheckResult> {
   const running = runningSha(health);
-  if (isStaleBuild(running, installed)) {
-    const message = `the server runs build ${running} but the installed dist is build ${installed}; run titan-factory service restart`;
-    return verdict("stale build", message, job, health, { runningBuild: running ?? null, installedBuild: installed });
+  const target = await newerRestartTarget(ports, running);
+  if (target !== undefined) {
+    const message = `the server runs build ${running} but the deploy checkout a restart loads is at newer commit ${target}; run titan-factory service restart`;
+    return verdict("stale build", message, job, health, { runningBuild: running ?? null, restartTarget: target });
   }
   if (health.github !== "ok") return verdict("GitHub down", `/health answers from pid ${job.pid} but its GitHub check is not ok: ${String(health.github)}; run gh auth status`, job, health, { github: String(health.github) });
   return verdict(null, `ok: /health answers from pid ${job.pid} with github ok`, job, health);

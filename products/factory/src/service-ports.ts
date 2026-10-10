@@ -3,7 +3,6 @@ import { accessSync, constants, existsSync, mkdirSync, readFileSync, rmSync, sta
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
-import { buildSha } from "./build-info.js";
 import { configPath, loadConfig } from "./config.js";
 import type { CheckPorts } from "./service-check.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
@@ -107,13 +106,27 @@ function configuredHubSeat(env: NodeJS.ProcessEnv): string | undefined {
   }
 }
 
-/** `checkout` is the service checkout whose index.lock blocks deploys. */
+async function gitIn(checkout: string, args: readonly string[]): Promise<CommandResult | undefined> {
+  return runCommand("git", ["-C", checkout, ...args]);
+}
+
+async function checkoutHead(checkout: string): Promise<string | undefined> {
+  const head = await gitIn(checkout, ["rev-parse", "--verify", "--quiet", "HEAD"]);
+  return head?.code === 0 ? head.stdout.trim() || undefined : undefined;
+}
+
+async function checkoutHasAncestor(checkout: string, ancestor: string, descendant: string): Promise<boolean> {
+  return (await gitIn(checkout, ["merge-base", "--is-ancestor", ancestor, descendant]))?.code === 0;
+}
+
+/** `checkout` is the service checkout whose index.lock blocks deploys and whose HEAD a restart loads. */
 export function systemCheckPorts(checkout: string): CheckPorts {
   return {
     ...systemServicePorts(),
     isAlive: isProcessAlive,
     processStartedAt: async (pid) => getProcessStartTime(pid),
-    installedBuildSha: buildSha,
+    restartTargetSha: () => checkoutHead(checkout),
+    isAncestor: (ancestor, descendant) => checkoutHasAncestor(checkout, ancestor, descendant),
     tickStatus: tickStatusRead,
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
     hubSeat: () => configuredHubSeat(process.env),
