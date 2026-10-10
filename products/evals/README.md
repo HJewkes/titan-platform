@@ -17,6 +17,10 @@ its content hash. It exits 1 when a stored prompt digest no longer matches its f
 split), a suite and a scorecard. Its hashes are checked by the tests, so editing a fixture
 means re-running `validate` and updating the digests it reports.
 
+`titan-evals corpus --db <factory.sqlite3> --repos-root <dir>` writes the review outcome corpus:
+one JSONL row per reviewed head, labelled from git history and the factory database, which it
+opens read-only. The label rules are in the reference page.
+
 Full reference: `site/reference/evals.md`.
 
 `fixtures/measurement-audit/` is the second unit. It scores the `titan.measurement-audit/v1`
