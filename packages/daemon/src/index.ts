@@ -1,6 +1,6 @@
 export type { Surface, SurfaceOptions } from "./surface.js";
-export type { HttpAppOptions } from "./http.js";
-export { buildHttpApp } from "./http.js";
+export type { EventLimits, HttpAppOptions, RpcBodyLimit } from "./http.js";
+export { DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, buildHttpApp } from "./http.js";
 export type { HealthPayload, HealthPayloadInput } from "./health.js";
 export { buildHealthPayload } from "./health.js";
 export type { SseMessage, Subscriber } from "./events.js";
@@ -44,6 +44,8 @@ export {
   signSession,
   verifySession,
 } from "./auth.js";
+export type { RemoteTlsOptions } from "./tls-files.js";
+export { TlsFileError } from "./tls-files.js";
 export type { DaemonHandle, RemoteListenerOptions, StartDaemonOptions } from "./daemon.js";
 export { DaemonAlreadyRunningError, DaemonPortInUseError, runDaemonUntilSignal, startDaemon } from "./daemon.js";
 export type { StaticAppOptions } from "./static-app.js";

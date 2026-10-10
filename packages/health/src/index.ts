@@ -37,3 +37,4 @@ export {
   type HealthSampleInput,
   type SampleStatus,
 } from "./sample.js";
+export { probeHttp, type ProbeHttpDeps, type ProbeHttpTarget } from "./probe-http.js";

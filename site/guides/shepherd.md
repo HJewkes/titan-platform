@@ -466,6 +466,47 @@ GitHub call:
 by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
 `--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
 
+### Review cost {#review-cost}
+
+```
+titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--cost` prints this report instead of the sections above. For each merged PR it takes every review
+round across all the PR's runs: a round opens at its `sh-review` dispatch (or an external review
+intent) and ends at the last step that resolved it, the on-time `sh-await-verdict`, its
+`:corrected` reply, or `sh-late-verdict`, whether that step held a verdict or a timeout. It reads
+the reviewer transcript the round's verdict locator names, or for a round with no verdict the one
+another verdict named for the same session, and prices each request with session-analytics
+`priceRequest`. It reports list-price dollars and tokens (input, cache read, cache write, output)
+per PR, then per repo and ISO week of the merge, then in total, with the p50 and p90 dollars per
+merged PR. A round counts only the requests from its review intent to the step that resolved it,
+so a standing or `hold --reviewer` session that serves several PRs is split between them, and
+requests after that step count nowhere. A request counts once in the whole report, even when a
+resumed session repeats it. A round that cannot be priced (a missing transcript, a model with no
+price row, a parse error, an external review or a timed-out round with no transcript, a round no
+step resolved, or one with no requests in its window) is listed under `unreadable` with its reason
+and adds nothing to the dollars. A PR with one is left out of p50 and p90, so they never treat a
+gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
+
+### SLOs {#slo}
+
+```
+titan-factory shepherd stats --slo [--registry FILE] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--slo` prints this report instead of the sections above. It reads the `titan.metrics/v1` entry
+`metrics/shepherd.yml` from the factory's own checkout, or `--registry`, and evaluates every metric
+in file order. A metric whose query has `kind: cli`, `store: shepherd-stats` and a query id in
+`text` (such as `flow.merge-verdict-to-merged-p90`) is measured over its SLO's window, whole UTC
+days ending today (`1d`, `7d` or `28d`; seven days for a metric with no SLO), or over `--from` and
+`--to` for every metric. Each line gives the status, the value and unit, the SLO, the window and
+`n`, the count the value rests on. The statuses are `pass`, `fail`, `no-data` (nothing in the
+window to measure, never reported as a zero), `no-slo`, `no-query` (the metric names the slice
+that would add a query, its `gapSlice`) and `error` (a query id stats does not know, a query for
+another store, or a query that threw, such as unreadable transcripts). It exits 0 whatever the
+statuses; a missing or invalid registry exits 2. `--json` returns `{ "slo": [...] }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts
@@ -746,7 +787,7 @@ gates: only `MRG-AU-RV` merges without the owner.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
-a replay finds it instead of posting again. It carries a one-line summary and a JSON record:
+a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:
 the run id, repo, pull request, head, base, GitHub's test-merge sha, each check run with its
 app id and conclusion, a reference to the reviewer's verdict (session id, record offsets and a hash of the full locator, with no path, host or source id), the reviewer's identity, and
 the decision with its rule and reason. On an allow, the same record is stored with the

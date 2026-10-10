@@ -8,6 +8,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
+import { mergeWithMessage, type MergeInput } from "./land-merge-message.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
@@ -44,6 +45,8 @@ export interface LandInput {
   repo: RepoSlug;
   pr: number;
   method?: MergeMethod;
+  /** Task ids the squash subject names when the PR title lacks them. */
+  taskIds?: string[];
   /** Which entry into `land` this is within one run; a pilot that re-enters after a rerun or a new head passes the next round. */
   round?: number;
   /** Updates since the last human gate, counted across every round of the run; a caller that re-enters `land` passes the same bound each time. */
@@ -219,7 +222,7 @@ async function onSettled(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot,
   if (ci.verdict === "closed") return stopped("closed", ci.headSha, "the pull request was closed without merging");
   if (ci.verdict !== "green") return stopped("not-mergeable", ci.headSha, `mergeable_state is ${ci.mergeableState}`);
   if (!state.trusted.has(ci.headSha)) return approve(ctx, input, ci, state, options);
-  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash" }, MergeResultResult);
+  const merge = await step(ctx, roundId("merge", state.round, state.merges++), { repo: input.repo, pr: input.pr, sha: ci.headSha, method: input.method ?? "squash", taskIds: input.taskIds ?? [] }, MergeResultResult);
   // The port answers "" for a PR merged elsewhere with no merge commit named.
   if (merge.done || merge.skipped === "merged") return { kind: "merged", headSha: ci.headSha, mergeSha: merge.mergeSha || null };
   if (merge.skipped === "closed") return stopped("closed", ci.headSha, "the pull request was closed before the merge");
@@ -275,7 +278,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
     codeRoute("ci-wait", now, (input: CiInput, signal) => waitForCi(deps, input, { ...timing, timeoutMs: deps.ciTimeoutMs ?? 45 * 60_000 }, signal, flaky, firstReads)),
     codeRoute("update-branch", now, updateRun(deps, timing, now)),
     codeRoute("update-backoff", now, async (input: { waitMs: number; retry: number }, signal) => (await timing.sleep(input.waitMs, signal), input)),
-    codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, deps.port.merge(input.repo, input.pr, input.sha, input.method).catch(baseMovedOrThrow))),
+    codeRoute("merge", now, async (input: MergeInput) => afterWrite(deps, input, mergeWithMessage(deps.port, input).catch(baseMovedOrThrow))),
     recordRoute("merge-policy", now, async (input: MergePolicyInput, step) => mergePolicyRecord(input, step)),
     codeRoute("merge-settle", now, (input: SettleInput, signal) => settleRun(input, timing, deps.mergeTree, signal)),
   ];
@@ -365,13 +368,6 @@ function mergePolicyRecord(input: MergePolicyInput, step: RoutedStepInput): obje
   const { outcome, rule, reason } = input.decision;
   const trace = { [TRACE_DATA_KEYS.gates]: [policyTraceGate(input.decision, traceRef(step))] };
   return { result: { outcome, headSha: input.headSha, rule, reason }, ...(input.evidence ? { allowEvidence: input.evidence } : {}), ...trace };
-}
-
-interface MergeInput {
-  repo: string;
-  pr: number;
-  sha: string;
-  method: MergeMethod;
 }
 
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {

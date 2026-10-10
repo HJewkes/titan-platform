@@ -21,7 +21,7 @@ import {
   type ConsoleSurface,
 } from "./owner-guard.js";
 import { createConsoleRegistry } from "./registry.js";
-import { closedPort, send, sessionCookie, startFakeDaemon, type FakeDaemon, type Reply } from "./test-support.js";
+import { closedPort, send, sessionCookie, startFakeDaemon, writeSelfSignedCert, type FakeDaemon, type Reply, type SelfSignedPair } from "./test-support.js";
 import { createSources } from "./upstreams.js";
 
 // The LAN seam daemon.test.ts uses: 127.0.0.2 alone is let past the daemon's refusal of 127/8
@@ -70,11 +70,38 @@ const needsPresence = defineCommand<Record<string, never>, { ok: boolean }, Owne
   run: async (_args, ctx) => ({ ok: ctx.ownerPresence.issuedAt > 0 }),
 });
 
-/** Each way a handler reaches a helper typed as a console command; every one of them typechecks today. */
+type OptionalPresenceContext = ConsoleContext & { ownerPresence?: { issuedAt: number } };
+
+const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, OptionalPresenceContext>({
+  name: "test.optional-presence",
+  description: "Test-only handler that treats the presence proof as optional and carries no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
+});
+
+type EitherPresenceContext = ConsoleContext | OwnerAnswerContext;
+
+const eitherPresence = defineCommand<Record<string, never>, { present: boolean }, EitherPresenceContext>({
+  name: "test.either-presence",
+  description: "Test-only handler whose context may or may not carry the presence proof, with no mark",
+  args: z.object({}),
+  result: z.object({ present: z.boolean() }),
+  run: async (_args, ctx) => ({ present: "ownerPresence" in ctx }),
+});
+
+/**
+ * Each way a handler reaches a helper typed as a console command. None compiles, because `run` is a
+ * property; the runtime tests below stand in for a caller that casts past the types instead.
+ */
 function widenings<Args, Result>(handler: Command<Args, Result, OwnerAnswerContext>): Array<[string, AnyCommand<ConsoleContext>]> {
+  // @ts-expect-error a console-context annotation cannot hold a run that needs the presence proof
   const annotated: Command<Args, Result, ConsoleContext> = handler;
+  // @ts-expect-error nor can an AnyCommand annotation
   const asAny: AnyCommand<ConsoleContext> = handler;
+  // @ts-expect-error nor a factory's return type
   const fromFactory = (): Command<Args, Result, ConsoleContext> => handler;
+  // @ts-expect-error nor an AnyCommand array
   const list: AnyCommand<ConsoleContext>[] = [handler];
   return [
     ["a console-context annotation", annotated],
@@ -118,6 +145,7 @@ function syntheticConfig(): ConsoleConfig {
     codewatchUrl: "http://codewatch.test:7433",
     lanHost: null,
     lanNames: [],
+    lanTls: null,
     lanTokenPath: "/nonexistent/lan.token",
     ownerWrites: false,
     inboxDir: "/nonexistent/inbox",
@@ -206,7 +234,31 @@ describe("classes fail closed", () => {
     expectTypeOf(() => depositCommand(needsPresence)).toBeFunction();
   });
 
-  // Widening passes the type check because `run` is a bivariant method in the registry (TP-2115).
+  it("fails to compile the owner-write handler itself widened to a console command", () => {
+    // @ts-expect-error the handler's run needs the presence proof a console context lacks
+    const annotated: Command<{ answer: string }, { answer: string; issuedAt: number }, ConsoleContext> = ownerAnswer;
+    // @ts-expect-error the same for an AnyCommand array
+    const list: AnyCommand<ConsoleContext>[] = [ownerAnswer];
+
+    expect([annotated, ...list]).toEqual([ownerAnswer, ownerAnswer]);
+  });
+
+  it("fails to compile a read or a deposit whose presence is optional, even without the mark", () => {
+    // Type-only, as above: unmarked, so the runtime guard has nothing to see.
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => readCommand(optionalPresence)).toBeFunction();
+    // @ts-expect-error the console context has no ownerPresence key, so a run that reads one is refused
+    expectTypeOf(() => depositCommand(optionalPresence)).toBeFunction();
+  });
+
+  it("fails to compile a read or a deposit whose context is a union with one member carrying presence", () => {
+    // keyof a union sees only the shared keys, so the check must look at each member's keys.
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => readCommand(eitherPresence)).toBeFunction();
+    // @ts-expect-error one member of the context union has an ownerPresence key the console lacks
+    expectTypeOf(() => depositCommand(eitherPresence)).toBeFunction();
+  });
+
   it.each(widenings(ownerAnswer))("refuses at runtime a marked owner-write handler widened by %s", (_label, widened) => {
     expect(() => readCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as read`);
     expect(() => depositCommand(widened)).toThrow(`Console command ${OWNER_WRITE} is an owner-write handler; it cannot be served as deposit`);
@@ -221,18 +273,20 @@ describe("classes fail closed", () => {
     expect(replies.map(({ envelope }) => envelope.ok)).toEqual([false, false]);
   });
 
-  it("serves an unmarked handler whose presence is optional: the known open gap, tracked by TP-2115", async () => {
-    const optionalPresence = defineCommand<Record<string, never>, { present: boolean }, ConsoleContext & { ownerPresence?: { issuedAt: number } }>({
-      name: "test.optional-presence",
-      description: "Test-only handler that treats the presence proof as optional and carries no mark",
-      args: z.object({}),
-      result: z.object({ present: z.boolean() }),
-      run: async (_args, ctx) => ({ present: ctx.ownerPresence !== undefined }),
-    });
+  it("never hands the presence proof to an optional-presence handler widened before it is classed", async () => {
+    // TypeScript has no exact types, so a console context still satisfies an optional key once the
+    // handler's own type is gone; what the console guarantees is that only ownerWriteCommand adds the proof.
+    const widened: Command<Record<string, never>, { present: boolean }, ConsoleContext> = optionalPresence;
 
-    const { envelope } = await invokeCommand(readCommand(optionalPresence), {}, context("http", SESSION_AUTH));
+    const replies = await Promise.all([
+      invokeCommand(readCommand(widened), {}, context("http", SESSION_AUTH)),
+      invokeCommand(depositCommand(widened), {}, context("http", SESSION_AUTH)),
+    ]);
 
-    expect(envelope).toEqual({ ok: true, data: { present: false } });
+    expect(replies.map(({ envelope }) => envelope)).toEqual([
+      { ok: true, data: { present: false } },
+      { ok: true, data: { present: false } },
+    ]);
   });
 
   it("fails startup on an owner-write handler hand-classed as a read", () => {
@@ -274,9 +328,11 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
   let replies: Reply[];
   let secrets: string[];
   let token: string;
+  let pair: SelfSignedPair;
 
   beforeEach(async () => {
     dir = await mkdtemp(path.join(tmpdir(), "console-owner-guard-"));
+    pair = writeSelfSignedCert(dir, [NAME, LAN]);
     activeWork = await startFakeDaemon({ ok: true, version: "9.9.9", index: {} }, fixtureAnswer);
     config = {
       port: 0,
@@ -290,6 +346,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
       codewatchUrl: "http://codewatch.test:7433",
       lanHost: LAN,
       lanNames: [NAME],
+      lanTls: { certFile: pair.certFile, keyFile: pair.keyFile },
       lanTokenPath: path.join(dir, "state", "lan.token"),
       ownerWrites: true,
       inboxDir: path.join(dir, "state", "inbox", "deposits"),
@@ -332,9 +389,9 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     return settled;
   }
 
-  const sameOrigin = (): Record<string, string> => ({ origin: `http://${NAME}:${port}` });
+  const sameOrigin = (): Record<string, string> => ({ origin: `https://${NAME}:${port}` });
   const lan = (method: string, route: string, headers: Record<string, string>, body?: string): Promise<Reply> =>
-    record(send(LAN, port, method, route, { host: `${NAME}:${port}`, ...headers }, body));
+    record(send(LAN, port, method, route, { host: `${NAME}:${port}`, ...headers }, body, { ca: pair.cert, servername: NAME }));
   const lanRpc = (command: string, headers: Record<string, string>, args: unknown = {}): Promise<Reply> =>
     lan("POST", `/rpc/${command}`, { ...json, ...sameOrigin(), ...headers }, JSON.stringify(args));
   const loopbackRpc = (command: string, headers: Record<string, string> = { "x-titan-client": "test" }): Promise<Reply> =>
@@ -345,7 +402,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
   async function signIn(): Promise<{ cookie: string }> {
     const code = new URL(createLoginLink(config)).searchParams.get("code") ?? "";
     secrets.push(code);
-    const login = await send(LAN, port, "POST", "/auth/login", { host: `${NAME}:${port}`, ...json, ...sameOrigin() }, JSON.stringify({ code }));
+    const login = await send(LAN, port, "POST", "/auth/login", { host: `${NAME}:${port}`, ...json, ...sameOrigin() }, JSON.stringify({ code }), { ca: pair.cert, servername: NAME });
     const cookie = sessionCookie(login)!.split(";")[0]!;
     secrets.push(cookie.slice(cookie.indexOf("=") + 1));
     return { cookie };
@@ -382,7 +439,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     const cookie = await signIn();
 
     const crossSite = await lanRpc(OWNER_WRITE, { ...cookie, origin: "http://evil.example" }, { answer: "yes" });
-    const otherPort = await lanRpc(OWNER_WRITE, { ...cookie, origin: `http://${NAME}:${port + 1}` }, { answer: "yes" });
+    const otherPort = await lanRpc(OWNER_WRITE, { ...cookie, origin: `https://${NAME}:${port + 1}` }, { answer: "yes" });
 
     expect([crossSite.status, otherPort.status]).toEqual([403, 403]);
     expect(ran).toEqual([]);
@@ -397,7 +454,7 @@ describe.skipIf(process.platform !== "linux")("owner-write over the console's li
     const withCookie = await lanRpc(OWNER_WRITE, cookie, { answer: "yes" });
 
     expect(withCookie.status).toBe(403);
-    expect(errorOf(withCookie)).toBe("owner-write command refused: owner writes disabled until TLS");
+    expect(errorOf(withCookie)).toBe("owner-write command refused: owner writes are off");
     expect(ran).toEqual([]);
     expectNoSecretInAnyReply();
   });

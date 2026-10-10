@@ -18,8 +18,8 @@ their `dist`, and a stale `dist` behaves like a different release (the `agent` b
 lacked the `claude-print` harness its source had).
 
 Slice S0 (TP-410) added the host, the step router and the two seams. Slices S1 and S2 (TP-411)
-added the GitHub port and the land core. Two workflows are registered in `src/workflows.ts`:
-`land-pr` and `shepherd-pr`.
+added the GitHub port and the land core. Three workflows are registered in `src/workflows.ts`:
+`land-pr`, `shepherd-pr` and `measurement-audit`.
 
 ## Commands
 
@@ -30,13 +30,14 @@ titan-factory resume                                          # drive every unfi
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist (systemd unit on Linux), load it, wait for /health
 titan-factory service status|check|restart|uninstall               # macOS only, like install
-titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
+titan-factory service deploy [--expect <sha>]                 # fast-forward the dedicated deploy checkout's main (cloned when absent), rebuild the factory closure, restart drained
 titan-factory service plist                                   # print the LaunchAgent plist (systemd unit on Linux) for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON
 titan-factory digest run [--since 6h] [--dry-run] [--full]   # write the owner digest for the current slot
 titan-factory queue-counts                                    # open owner-queue items per source, split by kind; counts only
 titan-factory needs [--json]                                  # everything waiting on the owner, merged across the four sources
+titan-factory audit <area> --input <file> --out <file>        # run measurement-audit here up to the owner's review gate
 ```
 
 `--db <path>` picks the database. Otherwise `TITAN_FACTORY_DB`, then `dbPath` in
@@ -313,20 +314,31 @@ A source that fails becomes one Gaps line and the rest still render. An ask that
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
 
+With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
+written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
+markdown attached (`PUT` with a `Filename:` header). If the server refuses the attachment, the push
+retries as a `POST` with the markdown truncated to 4 KB. `tokenFile` names a file holding a bearer
+token, sent as `Authorization: Bearer <token>`. A push failure is a warning on stderr; the digest
+file in the out dir always stays and the run still exits 0. The topic URL is the only credential
+on an anonymous topic, so keep it in the owner's config and out of logs.
+
 ```json
 {
   "digest": {
     "outDir": "<state>/titan-factory/digests",
     "icloudDir": "<home>/Library/Mobile Documents/com~apple~CloudDocs/Digests",
     "timezone": "America/Denver",
-    "slots": [6, 12, 18]
+    "slots": [6, 12, 18],
+    "push": { "url": "<ntfy topic URL>", "tokenFile": "<home>/.config/titan-factory/ntfy-token" }
   }
 }
 ```
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
-`icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
-`shepherd.seatsDir`. Paths must be absolute.
+`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
+`shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
+unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
+absolute.
 
 ## Owner-queue sources
 
@@ -364,6 +376,20 @@ stderr and the command exits 69 after printing the rest.
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
 
+## Measurement audit
+
+`measurement-audit` (`src/audit/`) audits what one system records and what it should. Its input is the
+`inputs` block of `titan.measurement-audit/v1` (system, code roots, stores, surfaces, owner, mode), as YAML or JSON.
+Its output is the `titan.measurement-audit/v1` report from `@titan-design/health/metrics`.
+
+The eleven steps follow the manifest in `src/audit/manifest.ts`. Each step is code, agent, or both, and each agent
+step names its model. The code steps open every store read-only and run only the commands of declared surfaces.
+Agent steps run `claude -p` once each through `@titan-design/agent`, with the inventory passed as data. A claimed
+Y metric whose baseline query fails or returns nothing is reported as P, and the failure is recorded as an error,
+never as a zero. The run stops at the `audit-review` gate for the area owner. After `gate resolve` with
+`{"decision":"publish"}`, `titan-factory resume` writes the report to `--out`. Only `mode: initial` runs for now;
+a reaudit needs the drift check. Tests inject `AuditPorts`, so no test calls a model.
+
 ## Install as a LaunchAgent
 
 ```sh
@@ -376,6 +402,13 @@ this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
 script says so when the directory is not on `PATH`.
+
+The launchd label is `dev.hjewkes.titan-factory` unless the config sets `service.labelPrefix`
+(`{ "service": { "labelPrefix": "dev.ex." } }` gives `dev.ex.titan-factory`). The plist file
+and every `launchctl` target follow it; the systemd unit name does not. Run `service uninstall`
+before changing the prefix, or the old job stays loaded under its old label. When the config
+fails to load, every service verb but `service plist` exits non-zero with the config error
+rather than act on the default label; `service plist` prints the default label with a warning.
 
 `service install [--port <n>] [--node <path>] [--mcp] [--dry-run]` does these in order on macOS:
 
@@ -405,7 +438,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and the burndown tick is not failing or stale |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -507,8 +540,15 @@ refusal names `index.lock`, its reason ends with a report on the service checkou
 is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
 `shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
 row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
-gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
-clears. A failed message is retried on the next check.
+gets an agent-chat message when the alarm goes up, and again every
+`shepherd.deployAlarm.renotifyTicks` checks (default 6, so 30 minutes) while it stays up. A
+failed message is retried on the next check. Once the alarm has stood for
+`shepherd.deployAlarm.escalateAfterMinutes` (default 30), serve files one `do` item for the owner
+into the titan console's deposit spool (`$TITAN_CONSOLE_INBOX_DIR`, else
+`$TITAN_CONSOLE_STATE/inbox/deposits`, default `~/.local/state/titan-console/inbox/deposits`),
+keyed on the running build so a restart files no second one. That item is filed with or without
+a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `service check` fails
+with `no hub seat`.
 
 Shepherd starts the deployer itself. After `sh-main-ci` reads green on a merge into the
 factory's own repo (its `package.json` `repository`), step `sh-redeploy:<merge sha>` spawns

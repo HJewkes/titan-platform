@@ -4,6 +4,7 @@ import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
+import { SessionsRoute } from "./SessionsPage.js";
 import { StatusPage } from "./StatusPage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
@@ -15,5 +16,6 @@ const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(Round
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   home: StatusPage,
   initiatives: WorkPage,
+  sessions: SessionsRoute,
   rounds: RoundsView,
 };

@@ -78,6 +78,7 @@ describe("console LAN config", () => {
   const LAN_IP = "192.0.2.10";
   const machine: Machine = { hostname: () => "Lan-Box", addresses: () => [LAN_IP, "2001:db8::a"] };
   const lan = (env: NodeJS.ProcessEnv) => resolveConfig(env, HOME, "linux", machine);
+  const TLS = { TITAN_CONSOLE_TLS_CERT: "~/tls/box.example.ts.net.crt", TITAN_CONSOLE_TLS_KEY: "~/tls/box.example.ts.net.key" };
 
   it("stays on loopback alone when TITAN_CONSOLE_HOST is unset or empty", () => {
     expect(lan({}).lanHost).toBeNull();
@@ -85,8 +86,27 @@ describe("console LAN config", () => {
   });
 
   it("takes an address on one of this machine's interfaces", () => {
-    expect(lan({ TITAN_CONSOLE_HOST: LAN_IP }).lanHost).toBe(LAN_IP);
-    expect(lan({ TITAN_CONSOLE_HOST: "2001:DB8::A" }).lanHost).toBe("2001:db8::a");
+    expect(lan({ TITAN_CONSOLE_HOST: LAN_IP, ...TLS }).lanHost).toBe(LAN_IP);
+    expect(lan({ TITAN_CONSOLE_HOST: "2001:DB8::A", ...TLS }).lanHost).toBe("2001:db8::a");
+  });
+
+  it("refuses LAN mode without a certificate and key: the LAN is never plain HTTP", () => {
+    expect(() => lan({ TITAN_CONSOLE_HOST: LAN_IP })).toThrow(/TITAN_CONSOLE_TLS_CERT and TITAN_CONSOLE_TLS_KEY: the LAN listener serves HTTPS only/);
+    expect(() => lan({ TITAN_CONSOLE_HOST: LAN_IP, TITAN_CONSOLE_TLS_CERT: "", TITAN_CONSOLE_TLS_KEY: "" })).toThrow(/serves HTTPS only/);
+  });
+
+  it("takes the certificate and key paths, expanding ~, and refuses half a pair", () => {
+    expect(lan({ TITAN_CONSOLE_HOST: LAN_IP, ...TLS }).lanTls).toEqual({
+      certFile: path.join(HOME, "tls", "box.example.ts.net.crt"),
+      keyFile: path.join(HOME, "tls", "box.example.ts.net.key"),
+    });
+    expect(lan({}).lanTls).toBeNull();
+    expect(() => lan({ TITAN_CONSOLE_TLS_CERT: TLS.TITAN_CONSOLE_TLS_CERT })).toThrow(/must be set together/);
+    expect(() => lan({ TITAN_CONSOLE_HOST: LAN_IP, TITAN_CONSOLE_TLS_KEY: TLS.TITAN_CONSOLE_TLS_KEY })).toThrow(/must be set together/);
+  });
+
+  it("takes a tailnet name as a LAN name", () => {
+    expect(lan({ TITAN_CONSOLE_LAN_NAMES: "Box.Example.ts.net" }).lanNames).toEqual(["box.example.ts.net"]);
   });
 
   it.each([

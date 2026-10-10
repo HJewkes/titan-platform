@@ -83,6 +83,37 @@ defaults to `probe`. `unknown` means the probe could not decide, such as an erro
 probe; it never counts as up. Only imports set `dedupKey`, so a re-import adds nothing while
 two identical probe results are both kept.
 
+## The HTTP probe
+
+```ts
+const sample = await probeHttp(
+  { name: "factory", url: "http://127.0.0.1:7410/health", timeoutMs: 5000, expectPort: 7410, observe: ["build.sha"] },
+  { expectedPid: () => readPid() },
+);
+```
+
+`probeHttp` returns one sample and never throws for a target that is down.
+
+| Answer | `status` | `output` |
+|---|---|---|
+| Connection refused or reset | `fail` | `unreachable: <code>` |
+| No full answer within `timeoutMs` (headers and body) | `fail` | `timeout after <ms> ms` |
+| Non-2xx, redirects included (they are not followed) | `fail` | `HTTP <code>` |
+| 2xx body that is not JSON, or not a health payload | `fail` | `body is not JSON`, `payload: ...` |
+| Payload `port` is not `expectPort`, or `pid` is not `expectedPid()` | `fail` | `identity: ...` |
+| `expectedPid()` is null (no pid file) while the port answers | `fail` | `identity: ...` |
+| Bad URL, a URL with `user:pass@`, or `expectedPid()` throws | `unknown` | `probe error: ...` |
+| Otherwise | the payload's status via `parseHealthReport` | none |
+
+Identity is the TP-1056 risk: a stranger answering 200 on the port must not read as up, so
+a payload that reports no pid or port fails a check it was asked for. `latencyMs` runs on
+the injected clock from before the request to after the body; the `expectedPid()` lookup is
+not counted. `observed.code` holds the HTTP
+code when there was one, and each `observe` dot path is copied under its own name; a missing
+path is left out, never defaulted. The package never reads a pid file itself; the caller
+passes `expectedPid`. A URL that carries credentials (`user:pass@`) is refused before any
+request with fixed text, so no piece of them reaches a stored sample.
+
 ## The sample store
 
 `openHealthStore(path)` opens a store-sqlite database (WAL) and applies `HEALTH_MIGRATIONS`;
@@ -171,5 +202,5 @@ depth; read mode keeps them, so an older reader survives a newer writer. The exp
 
 ## Where it came from
 
-New in TP-1651, the first unit of the in-host observability work. The append-only
-sample store and uptime came in its third slice; the HTTP probe follows.
+New in TP-1651, the first unit of the in-host observability work. The HTTP probe came
+in its second slice, and the append-only sample store and uptime in its third.

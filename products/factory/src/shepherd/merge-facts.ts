@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
@@ -6,6 +5,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
+import { VISUAL_REASON_PREFIX, evidenceComment, evidenceMarker } from "./evidence-comment.js";
 import { REVIEW_CHECK_NAME } from "./publish-review.js";
 import type { ShepherdStoreRef } from "./store.js";
 import { remergeFact, type CarryRule, type RemergeResult } from "./remerge-carry.js";
@@ -178,7 +178,7 @@ function changedFilesGate(evidence: DecidableEvidence, visualPaths: readonly str
   const visual = visualMatches(evidence.merge.changedPaths, visualPaths);
   if (visual.length === 0) return undefined;
   const shown = visual.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (visual.length > SHOWN_VISUAL_PATHS ? ` and ${visual.length - SHOWN_VISUAL_PATHS} more` : "");
-  return { outcome: "gate", rule: guardRule("visual-path"), reason: `the owner decides visual changes: ${shown}` };
+  return { outcome: "gate", rule: guardRule("visual-path"), reason: `${VISUAL_REASON_PREFIX}${shown}` };
 }
 
 /**
@@ -323,49 +323,6 @@ export async function collectMergeFacts(port: GitHubPort, input: MergeEvidenceIn
   const unreadFacts = [bypassable.unread, unread].filter((fact) => fact !== undefined);
   const unknown = { ...(!required.readable && { requiredChecksUnknown: required.reason }), ...(paths.unread !== undefined && { changedFilesUnread: paths.unread }) };
   return { pr, merge, runs, ...unknown, ...(unreadFacts.length > 0 && { unreadFacts }) };
-}
-
-/** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
-export function evidenceMarker(head: string): string {
-  return `<!-- shepherd-evidence:${head} -->`;
-}
-
-/** What a public PR comment may say about a verdict locator: no namespace, path or source id. */
-export interface LocatorReference {
-  sessionId: string;
-  byteOffset?: number;
-  subrecordIndex?: number;
-  textIndex?: number;
-  locatorSha256: string;
-}
-
-const SESSION_ID = /^(?!\.\.$)[^/@\\%]{1,64}$/;
-
-function integer(value: unknown): number | undefined {
-  return Number.isInteger(value) ? (value as number) : undefined;
-}
-
-type PartialLocator = { source?: { conversation?: { nativeId?: string } }; evidence?: { line?: { byteOffset?: number }; subrecord?: { index?: number } }; selector?: { textIndex?: number } };
-
-/** Enough to find the message in the local store: the session, the record offset, the part, and a hash that checks the full locator. */
-export function locatorReference(locator: SourceTextLocator): LocatorReference {
-  const { source, evidence, selector }: PartialLocator = locator;
-  const position = { byteOffset: integer(evidence?.line?.byteOffset), subrecordIndex: integer(evidence?.subrecord?.index), textIndex: integer(selector?.textIndex) };
-  const nativeId: unknown = source?.conversation?.nativeId;
-  return {
-    sessionId: typeof nativeId === "string" && SESSION_ID.test(nativeId) ? nativeId : "unknown",
-    ...Object.fromEntries(Object.entries(position).filter(([, value]) => value !== undefined)),
-    // The hash covers JSON.stringify in the locator's own key order, so only the reader that produced it can recompute it.
-    locatorSha256: createHash("sha256").update(JSON.stringify(locator)).digest("hex"),
-  };
-}
-
-export function evidenceComment(record: EvidenceRecord): string {
-  const { decision } = record;
-  const carried = record.carry ? ` Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.` : "";
-  const summary = `Shepherd merge evidence at \`${record.head}\`: **${decision.outcome}** by ${decision.rule.table}/${decision.rule.rowId}. ${decision.reason}${carried}`;
-  const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };
-  return [evidenceMarker(record.head), summary, "", "```json", JSON.stringify(posted, null, 2), "```", ""].join("\n");
 }
 
 /** The body of the sh-merge-evidence step: observe, decide, and post one comment per head. */

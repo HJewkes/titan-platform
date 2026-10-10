@@ -14,6 +14,8 @@ const tickFixture = (over: Record<string, unknown> = {}): string =>
   JSON.stringify({ version: 1, loop: "burndown-tick", heartbeatAt: new Date(NOW - 60_000).toISOString(), outcome: "failed", consecutiveFailures: 1, lastErrorClass: "LedgerMalformedError", intervalSeconds: 600, ...over });
 
 interface Machine {
+  labelPrefix?: string;
+  configError?: string;
   platform?: NodeJS.Platform;
   /** `systemctl --user show` output on Linux. */
   unit?: string;
@@ -29,6 +31,8 @@ interface Machine {
   tick?: string;
   /** The deploy checkout's index.lock; absent by default. */
   lock?: IndexLock;
+  /** True when the config sets no shepherd.hubSeat; one is set by default. */
+  noHubSeat?: boolean;
 }
 
 const LOCK = "/srv/checkout/.git/index.lock";
@@ -44,6 +48,8 @@ function fakePorts(init: Machine) {
     platform: init.platform ?? "darwin",
     uid: UID,
     home: "/srv/tester",
+    ...(init.labelPrefix === undefined ? {} : { labelPrefix: init.labelPrefix }),
+    ...(init.configError === undefined ? {} : { configError: init.configError }),
     launchctl: async (args) => {
       calls.push(args.join(" "));
       return init.print === undefined ? { code: 113, stdout: "", stderr: "Could not find service" } : { code: 0, stdout: init.print, stderr: "" };
@@ -68,6 +74,7 @@ function fakePorts(init: Machine) {
     installedBuildSha: () => init.installed ?? BUILD,
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
+    hubSeat: () => (init.noHubSeat ? undefined : "hub"),
   };
   return { ports, calls };
 }
@@ -259,6 +266,22 @@ describe("titan-factory service check", () => {
     );
   });
 
+  it("reads and names the job under the configured label prefix", async () => {
+    const { out, calls } = await check({ labelPrefix: "dev.ex.", print: undefined, health: null });
+
+    expect(calls).toEqual([`print gui/${UID}/dev.ex.titan-factory`]);
+    expect(out).toBe("not loaded: dev.ex.titan-factory is not loaded; run titan-factory service install\n");
+  });
+
+  it("refuses to report on the default label when the config fails to load", async () => {
+    const { code, out, err, calls } = await check({ configError: "invalid config: $: bad json", print: running, health: healthy() });
+
+    expect(code).not.toBe(EXIT.OK);
+    expect(err).toBe("error: titan-factory service check cannot resolve the service label: invalid config: $: bad json\n");
+    expect(out).toBe("");
+    expect(calls).toEqual([]);
+  });
+
   describe("on Linux", () => {
     const unit = (fields: Record<string, string | number>): string =>
       Object.entries({ LoadState: "loaded", ActiveState: "active", MainPID: PID, NRestarts: 0, ExecMainStatus: 0, ...fields })
@@ -423,6 +446,21 @@ describe("titan-factory service check", () => {
       const fresh = await check({ print: running, health: healthy(), lock: { state: "fresh", path: LOCK, ageMs: 5 * 60_000 } });
 
       expect([held.code, fresh.code]).toEqual([EXIT.OK, EXIT.OK]);
+    });
+  });
+
+  describe("the hub seat the deploy alarm reaches", () => {
+    it("exits 1 naming no hub seat when the config sets none", async () => {
+      const { code, out } = await check({ print: running, health: healthy(), noHubSeat: true });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^no hub seat: shepherd\.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat/);
+    });
+
+    it("reports a stalled deploy or a failing tick before the missing hub seat", async () => {
+      const tick = await check({ print: running, health: healthy(), tick: tickFixture(), noHubSeat: true });
+
+      expect(tick.out).toMatch(/^tick failing: /);
     });
   });
 });

@@ -1,5 +1,12 @@
 # @titan-design/react-app
 
+## 0.1.3
+
+### Patch Changes
+
+- Updated dependencies [948d6de]
+  - @titan-design/rpc-client@0.4.0
+
 ## 0.1.2
 
 ### Patch Changes

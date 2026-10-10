@@ -153,6 +153,9 @@ importers:
       '@titan-design/owner-queue':
         specifier: workspace:^
         version: link:../../packages/owner-queue
+      '@titan-design/pm':
+        specifier: workspace:^
+        version: link:../../packages/pm
       '@titan-design/react-app':
         specifier: workspace:*
         version: link:../../packages/react-app
@@ -500,6 +503,10 @@ importers:
         version: 4.5.4
 
   packages/owner-queue:
+    dependencies:
+      '@titan-design/review-schema':
+        specifier: ^0.1.0
+        version: 0.1.0(zod@4.5.4)
     devDependencies:
       zod:
         specifier: ^4.4.3
@@ -600,6 +607,9 @@ importers:
         specifier: workspace:^
         version: link:../session-read
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -741,6 +751,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/test-kit: {}
+
   packages/tool-guard:
     dependencies:
       '@titan-design/authority':
@@ -780,6 +792,9 @@ importers:
 
   products/evals:
     dependencies:
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -789,6 +804,9 @@ importers:
 
   products/factory:
     dependencies:
+      '@titan-design/agent':
+        specifier: workspace:^
+        version: link:../../packages/agent
       '@titan-design/agent-dispatch':
         specifier: workspace:^
         version: link:../../packages/agent-dispatch
@@ -807,6 +825,9 @@ importers:
       '@titan-design/github':
         specifier: workspace:^
         version: link:../../packages/github
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       '@titan-design/hitl':
         specifier: workspace:^
         version: link:../../packages/hitl
@@ -822,6 +843,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read
@@ -900,6 +924,21 @@ importers:
       '@titan-design/store-sqlite':
         specifier: workspace:^
         version: link:../../packages/store-sqlite
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
+
+  products/titan:
+    dependencies:
+      '@titan-design/daemon':
+        specifier: workspace:^
+        version: link:../../packages/daemon
+      '@titan-design/health':
+        specifier: workspace:^
+        version: link:../../packages/health
       commander:
         specifier: ^14.0.3
         version: 14.0.3

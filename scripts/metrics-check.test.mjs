@@ -27,6 +27,13 @@ describe("pnpm metrics:check", () => {
     expect(errors[0]).toMatch(/^`metrics\/demo\.yml` owner: /);
   });
 
+  it("fails a metric with neither a query nor a gap slice, naming the metric", async () => {
+    const errors = await checkMetrics(fixture("no-query"), areas);
+    expect(errors).toEqual([
+      "`metrics/demo.yml` metrics.0 (demo.flow.end_to_end): no query; set source.gapSlice to the slice that adds one, or to `unfiled`",
+    ]);
+  });
+
   it("passes this repo's registry", async () => {
     const { loadAreas } = await import("./areas.mjs");
     expect(await checkMetrics(REPO, loadAreas(REPO))).toEqual([]);

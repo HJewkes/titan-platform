@@ -1,5 +1,13 @@
 # @titan-design/session-read
 
+## 0.11.1
+
+### Patch Changes
+
+- Updated dependencies [d4895bf]
+- Updated dependencies [2fc4fd9]
+  - @titan-design/anthropic-account@0.2.0
+
 ## 0.11.0
 
 ### Minor Changes

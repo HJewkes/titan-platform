@@ -8,6 +8,8 @@ import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkTimestamp } from "./validate.js";
+import type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
+export type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -61,30 +63,6 @@ export interface CheckRun {
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
   workflowRunId: number | null;
   url: string;
-}
-
-export interface Commit {
-  sha: string;
-  parents: string[];
-  /** The tree the commit records; absent when the wire does not report it. */
-  tree?: string;
-  /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
-  committedAt?: string;
-}
-
-/** A commit on the default branch with its full message, subject line first. */
-export interface LoggedCommit {
-  sha: string;
-  message: string;
-}
-
-export interface PutFileRequest {
-  path: string;
-  branch: string;
-  content: string;
-  message: string;
-  /** The blob this write replaces; null when the file must not exist yet. */
-  expectedBlobSha: string | null;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
@@ -158,7 +136,9 @@ export interface GitHubWire {
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
-  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<{ sha: string }>;
+  /** `message` becomes the squash commit's `commit_title` and `commit_message`; absent, GitHub writes its default. */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<{ sha: string }>;
+  getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailedJobs(repo: RepoSlug, runId: number): Promise<void>;
   /** `changedFiles` is the PR's own count, so the port can tell a capped list from a complete one. */
   listPrFiles(repo: RepoSlug, number: number): Promise<{ files: PrFile[]; changedFiles: number }>;
@@ -213,7 +193,9 @@ export interface GitHubPort {
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
   /** Pushes a commit with the head's own tree onto `branch`, so CI runs again; skips as `head-moved` when the branch is not at `expectedHeadSha`. */
   pushEmptyCommit(repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>>;
-  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod): Promise<WriteResult<{ mergeSha: string }>>;
+  /** `message` is sent as the squash commit's title and body in place of GitHub's concatenation of the PR's commits. */
+  merge(repo: RepoSlug, number: number, sha: string, method: MergeMethod, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>>;
+  getSquashSource(repo: RepoSlug, number: number): Promise<SquashSource>;
   rerunFailed(repo: RepoSlug, runId: number): Promise<WriteResult>;
   /** Every changed file of the PR, all pages; `previousPath` is set on a rename. Throws `FileListTruncatedError` rather than return a short list. */
   listPrFiles(repo: RepoSlug, number: number): Promise<PrFile[]>;
@@ -279,7 +261,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
-    merge: async (repo, number, sha, method) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep),
+    merge: async (repo, number, sha, method, message) => merge(wire, repoOf(repo), pr(number), checkSha("sha", sha), checkMergeMethod(method), sleep, message),
+    getSquashSource: async (repo, number) => wire.getSquashSource(repoOf(repo), pr(number)),
     rerunFailed: async (repo, runId) => rerunFailed(wire, repoOf(repo), checkPositiveInt("runId", runId), sleep),
     listPrFiles: async (repo, number) => listPrFiles(wire, repoOf(repo), pr(number)),
     listPrCommits: async (repo, number) => wire.listPrCommits(repoOf(repo), pr(number)),
