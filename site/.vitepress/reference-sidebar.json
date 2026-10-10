@@ -196,6 +196,10 @@
         "link": "/reference/style-profile"
       },
       {
+        "text": "throughput",
+        "link": "/reference/throughput"
+      },
+      {
         "text": "workflow",
         "link": "/reference/workflow"
       }
