@@ -117,6 +117,7 @@ graph TD
   registry --> rpcProtocol
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewPanel --> evidence
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
