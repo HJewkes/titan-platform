@@ -231,7 +231,7 @@ function trackBackoff(configDir: string, result: PollResult, previous: PollBacko
 async function pollAndWrite(profile: AccountProfile, options: PollOptions): Promise<PollAllEntry> {
   const now = options.now ?? Date.now();
   const nowSeconds = Math.floor(now / 1000);
-  const backoff = readBackoff(profile.configDir, nowSeconds);
+  const backoff = readBackoff(profile.configDir, nowSeconds, options.uid ?? currentUid());
   if (backoff !== null && nowSeconds < backoff.until) {
     return { label: profile.label, result: fail("backoff"), backoffUntil: backoff.until };
   }

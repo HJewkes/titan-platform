@@ -10,4 +10,6 @@ ExecStart=touch %S/anthropic-account/%i.failed
 StateDirectory=anthropic-account
 NoNewPrivileges=yes
 UMask=0077
+# Best effort, as in anthropic-account-poll.service: a no-op where the user manager cannot
+# use unprivileged user namespaces.
 ProtectSystem=strict

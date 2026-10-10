@@ -24,10 +24,12 @@ const backoffSchema = z.object({ until: z.number().int().nonnegative(), strikes:
 const statusCacheDir = (configDir: string): string => path.join(configDir, "status-cache");
 
 // Anything unreadable counts as no backoff, and so does a wait longer than any this module
-// sets: a broken or planted file must not stop polling for good.
-export function readBackoff(configDir: string, nowSeconds: number): PollBackoff | null {
+// sets: a broken or planted file must not stop polling for good. Like the credentials file,
+// only this uid's own owner-only, singly linked file is trusted.
+export function readBackoff(configDir: string, nowSeconds: number, uid: number): PollBackoff | null {
   try {
-    const read = readGatedFile(path.join(statusCacheDir(configDir), BACKOFF_FILE), { maxBytes: MAX_BACKOFF_BYTES });
+    const file = path.join(statusCacheDir(configDir), BACKOFF_FILE);
+    const read = readGatedFile(file, { maxBytes: MAX_BACKOFF_BYTES, ownerUid: uid });
     if (read.status !== "read") return null;
     const parsed = backoffSchema.safeParse(JSON.parse(read.bytes.toString("utf8")));
     if (!parsed.success || parsed.data.until > nowSeconds + BACKOFF_MAX_SECONDS) return null;

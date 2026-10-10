@@ -514,11 +514,12 @@ describe("pollAll backs off after a 429", () => {
   });
 
   it.each([
-    ["is not JSON", "{not json"],
-    ["waits longer than an hour", JSON.stringify({ until: nowSeconds(NOW) + 3601, strikes: 1 })],
-  ])("polls as normal when the backoff file %s", async (_case, text) => {
+    ["is not JSON", "{not json", 0o600],
+    ["waits longer than an hour", JSON.stringify({ until: nowSeconds(NOW) + 3601, strikes: 1 }), 0o600],
+    ["is wider than 0600", JSON.stringify({ until: nowSeconds(NOW) + 300, strikes: 1 }), 0o644],
+  ])("polls as normal when the backoff file %s", async (_case, text, mode) => {
     writeCredentials(fakeCredentials());
-    writeFileWithMode(path.join(profile.configDir, "status-cache", "usage-poll.backoff"), text, 0o600);
+    writeFileWithMode(path.join(profile.configDir, "status-cache", "usage-poll.backoff"), text, mode);
     const { fetch, calls } = fakeFetch(() => json(oauthUsage));
 
     const [entry] = await pollAt(fetch, NOW);

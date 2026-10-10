@@ -273,7 +273,7 @@ A `http-429` makes `pollAll` back off that profile: it writes
 so no reading glob takes it) and sets `backoffUntil`, in epoch seconds, on the entry. The
 first wait is 5 minutes, and each further 429 doubles it, up to an hour. Until it runs out
 the profile's entry is `{ ok: false, failure: "backoff" }` with `backoffUntil`, and no
-request is sent. A success removes the file. A backoff file that cannot be read, or that
+request is sent. A success removes the file. The file is read through the same gate as the credentials file. A backoff file that cannot be read, or that
 waits longer than an hour from `now`, counts as none, and one that cannot be written is
 skipped, so a broken or planted file never stops polling.
 `pollUsage` itself keeps no state and never backs off.
@@ -439,14 +439,27 @@ contents, response bodies and error messages are never printed.
 `systemd/` ships three units. The package installs and enables nothing.
 
 - `anthropic-account-poll.service`, a oneshot running
-  `%h/.local/bin/anthropic-account poll --write --refresh`. It runs with
-  `ProtectSystem=strict`, `NoNewPrivileges` and `UMask=0077`, and only `~/.claude` and
-  `~/.claude-profiles` are writable (`ReadWritePaths`): the credentials file, the refresh
-  lock and the status cache all live there. The legacy lock beside `~/.claude`
-  (`~/.claude.lock`) stays read-only and is skipped as unusable, as Claude Code skips it;
-  the primary lock inside the config dir still serializes every refresh. Setting
-  `CLAUDE_PROFILE_ROOT` or `CLAUDE_CONFIG_DIRS` for the unit means adding those dirs to
-  `ReadWritePaths`.
+  `%h/.local/bin/anthropic-account poll --write --refresh`, with `NoNewPrivileges` and
+  `UMask=0077`. It also sets `ProtectSystem=strict` with only `~/.claude` and
+  `~/.claude-profiles` in `ReadWritePaths`. Those dirs hold the credentials file, the
+  refresh lock and the status cache.
+
+  **The sandbox is best effort.** A systemd user manager can apply `ProtectSystem=` only
+  where unprivileged user namespaces are allowed. On a host that restricts them (Ubuntu
+  with `kernel.apparmor_restrict_unprivileged_userns=1`, for one), the directive does
+  nothing. The run then shares the caller's mount namespace, `/` stays read-write, and so
+  does the home dir; `PrivateUsers=yes` does not change that. An `ExecStartPre` check sees
+  the home dir writable and logs `ProtectSystem is not in effect on this host` at warning
+  priority on each such run. The protection that holds on every host is the CLI's own:
+  - Every credentials and lock-record read goes through the gate above: `O_NOFOLLOW`, the
+    caller's uid, 0600 or narrower, one link.
+  - Every write is an exclusive 0600 temp file renamed into place.
+  - Refreshes run only under Claude Code's refresh lock.
+
+  Where the sandbox does apply, the legacy lock beside `~/.claude` (`~/.claude.lock`) is
+  read-only and is skipped as unusable, as Claude Code skips it. The primary lock inside
+  the config dir still serializes every refresh. Setting `CLAUDE_PROFILE_ROOT` or
+  `CLAUDE_CONFIG_DIRS` for the unit means adding those dirs to `ReadWritePaths`.
 - `anthropic-account-poll.timer`, which starts the service 10 s after the timer starts and
   every 150 s after that, with up to 30 s of `RandomizedDelaySec`.
 - `anthropic-account-poll-failed@.service`, the service's `OnFailure=` target. It logs an

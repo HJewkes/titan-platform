@@ -61,9 +61,15 @@ journalctl --user -u anthropic-account-poll.service -n 20
 Remove `--refresh` from the service's `ExecStart` before enabling to keep the timer from
 writing credentials files.
 
-The service runs with `ProtectSystem=strict`: only `~/.claude` and `~/.claude-profiles`
-are writable. Add any `CLAUDE_PROFILE_ROOT` or `CLAUDE_CONFIG_DIRS` dirs you set for it to
-`ReadWritePaths`. A failed run starts `anthropic-account-poll-failed@.service`, which logs
+The service sets `ProtectSystem=strict` with only `~/.claude` and `~/.claude-profiles` in
+`ReadWritePaths`. Treat that as best effort. A systemd user manager can apply it only where
+unprivileged user namespaces are allowed. On a host that restricts them, such as Ubuntu with
+`kernel.apparmor_restrict_unprivileged_userns=1`, it does nothing and the run can write the
+whole home dir. Each such run logs a warning (`ProtectSystem is not in effect on this
+host`). The protection that holds everywhere is the CLI's own: it reads credentials only
+from this uid's own 0600, singly linked regular file, opened with `O_NOFOLLOW`; it writes
+them atomically at 0600; and it refreshes only under Claude Code's refresh lock. Add any
+`CLAUDE_PROFILE_ROOT` or `CLAUDE_CONFIG_DIRS` dirs you set for the unit to `ReadWritePaths`. A failed run starts `anthropic-account-poll-failed@.service`, which logs
 an error-priority journal line and leaves
 `~/.local/state/anthropic-account/anthropic-account-poll.service.failed`; the next
 successful run removes it.
