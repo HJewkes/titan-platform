@@ -1,5 +1,15 @@
 # @titan-design/eslint-plugin
 
+## 0.2.0
+
+### Minor Changes
+
+- c1fad33: `@titan-design/eslint-plugin` adds `no-chained-type-assertions`, which reports a type assertion
+  applied to another one (`x as unknown as T`), and enables it in `recommended`.
+  The new `@titan-design/test-kit` package exports `partialFake<T>()`, which builds a typed test fake
+  from only the fields a test reads, so test files need no double cast.
+- c990f0c: Add `no-internal-module-mock`, enabled in `recommended`. Tests may mock only external dependencies. A `vi.mock` or `jest.mock` of a relative, absolute or `#` specifier, or of a package under `internalPrefixes` (default `@titan-design/`), is reported. `node:` builtins and third-party packages stay mockable.
+
 ## 0.1.0
 
 ### Minor Changes

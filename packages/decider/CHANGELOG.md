@@ -1,5 +1,12 @@
 # @titan-design/decider
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes

@@ -1,5 +1,26 @@
 # @titan-design/anthropic-account
 
+## 0.3.0
+
+### Minor Changes
+
+- 0fb5cf6: Add the `anthropic-account` bin: `poll [--write [--refresh]]` and `status [--json | --statusline]`. A login that is not present exits 2 with one fixed stderr line per account. `poll --write --refresh` renews due access tokens with `refreshIfNeeded` before polling, so it writes `.credentials.json`. The package now ships systemd user templates in `systemd/` that run it every 150 s; nothing is installed or enabled.
+
+### Patch Changes
+
+- 37550f4: Harden the poll timer and tidy the CLI.
+
+  - The service sets `ProtectSystem=strict` with only the config dirs writable. This is best effort: it takes effect only where the user manager can use unprivileged user namespaces, and a warning is logged on each run where it does not.
+  - A failed run starts the new `anthropic-account-poll-failed@.service`, which logs an error line and leaves a marker file.
+  - The timer gains `RandomizedDelaySec`.
+  - `pollAll` backs a profile off after a 429 (5 minutes, doubling to an hour). The backoff file is read through the same owner-only gate as the credentials file.
+  - `poll` skips a profile dir with no login instead of exiting 2.
+  - `status --statusline` falls back past a newer reading that lacks `seven_day`, through a new `windows` option on `readUsage`.
+  - `discoverProfiles` honours `CLAUDE_PROFILE_ROOT`.
+
+- 6eea59d: A refresh that reclaims an abandoned lock no longer removes the holder record afterwards, so an acquirer that takes the freed lock in between keeps its fresh record.
+- 167611d: `refreshIfNeeded`'s lock holder record is now created with `O_EXCL | O_NOFOLLOW`, so a symlink at its path is never written through. It is read through the credentials gate (owner, mode, link count, no blocking on a FIFO). A release that throws still frees the lock dirs and no longer turns a `write-failed` result into `io`.
+
 ## 0.2.0
 
 ### Minor Changes
