@@ -9,8 +9,8 @@ command definitions. The app is private and publishes nothing.
 The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
 the active-work daemon. Home (TP-1061) reads upstream health, the portfolio, `work.tasks`, `agents.roster`,
-`agents.queue` and `sessions.list`, and links each queue item out to agent-chat. The daemon
-also answers `agents.graph` (TP-847) and `agents.messages` (TP-1059), which no view shows yet.
+`agents.queue` and `sessions.list`, and links each queue item out to agent-chat. Agents
+(TP-864a, TP-865a) shows the roster, `agents.graph` (TP-847) and `agents.messages` (TP-1059).
 Every other view is a placeholder that names the task that builds it.
 
 ## Run it
@@ -107,7 +107,7 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
-| `POST /rpc/agents.messages` | `{ agent, peer?, before?, limit? }` in; that agent's messages, or the pair's, newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
+| `POST /rpc/agents.messages` | `{ agent?, peer?, before?, limit? }` in; every agent's messages, that agent's, or the pair's (`peer` needs `agent`), newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
 | `POST /rpc/agents.queue` | `{ include_system? }` in; open items waiting on the human from `/api/queue`, questions first, each with `asker` and `ageMs`. The broker's own notices are counted in `hidden` unless `include_system` is set |
 | `POST /rpc/work.portfolio` | Every initiative with its state, brief `taskPrefix`, open-task rollup, note, source and session counts, newest activity and `personal` flag |
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, `stageGuessed` when no evidence was found, and `parent`, `dep` and `deliverables` read with `@titan-design/pm`'s `readEdges` (the field, else the edge tags) |
