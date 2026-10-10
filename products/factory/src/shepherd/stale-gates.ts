@@ -83,11 +83,11 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
 
 /**
  * A superseded gate is only ever cancelled, never answered: the escalation it carried gates the next reviewable head, so
- * that head's merge decision asks the owner again however its review comes out. Returns the escalation to set at `headSha`.
+ * that head's merge decision asks the owner again however its review comes out.
  */
-export function takeCarried(run: Pick<SupersededRun, "carried">, headSha: string): Escalated | undefined {
+export function carryEscalation(run: Pick<SupersededRun, "carried" | "escalations">, headSha: string): void {
   const { carried } = run;
-  if (!carried || carried.carriedFrom === headSha) return undefined;
+  if (!carried || carried.carriedFrom === headSha) return;
   run.carried = undefined;
-  return carried;
+  run.escalations.set(headSha, carried);
 }
