@@ -17,10 +17,12 @@ export interface NestedReaders {
   bash32?: true;
 }
 
+const CLOSERS: Record<string, string> = { "{": "}", "(": ")", "[": "]" };
+
 /**
- * Index of the `}` or `)` closing the `${` or `$((` whose brace or first paren is at `open`. As in
- * bash, quotes, escapes, `$'…'` and nested expansions hide a closer; an unquoted `(` nests and an
- * unquoted `{` does not, so `${x:-{}` ends at its first `}`.
+ * Index of the `}`, `)` or `]` closing the `${`, `$((` or `$[` whose brace, first paren or bracket is
+ * at `open`. As in bash, quotes, escapes, `$'…'` and nested expansions hide a closer; an unquoted `(`
+ * or `[` nests its own kind and an unquoted `{` does not, so `${x:-{}` ends at its first `}`.
  */
 export function balancedEnd(src: string, open: number, read: NestedReaders): number {
   return nested(read.nesting, () => closerEnd(src, open, read));
@@ -28,12 +30,12 @@ export function balancedEnd(src: string, open: number, read: NestedReaders): num
 
 function closerEnd(src: string, open: number, read: NestedReaders): number {
   const braces = src[open] === "{";
-  const close = braces ? "}" : ")";
+  const close = CLOSERS[src[open] ?? ""];
   let depth = 1;
   for (let j = open + 1; j < src.length; j++) {
     const c = src[j];
     if (c === close && --depth === 0) return j;
-    if (c === "(" && !braces) depth++;
+    if (c === src[open] && !braces) depth++;
     else j = constructEnd(src, j, read, braces);
   }
   throw new ParseError(`unterminated $${src[open]}`);
@@ -52,7 +54,7 @@ function constructEnd(src: string, j: number, read: NestedReaders, braces: boole
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
   const next = src[j + 1];
-  if (next === "{") return balancedEnd(src, j + 1, read);
+  if (next === "{" || next === "[") return balancedEnd(src, j + 1, read);
   if (next === "(") return sameIn32(src, j + 1, src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read);
   if (next === "'") return ansiCEnd(src, j + 1);
   return j;

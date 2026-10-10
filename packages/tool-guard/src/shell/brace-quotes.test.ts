@@ -59,6 +59,11 @@ const OPENERS: Array<[string, string, string]> = [
   ["a '$(' operand inside double quotes", `: "\${x:-'$('}"`, `#'"`],
 ];
 
+const GUARDED: Array<[string, string]> = [
+  ["a push", PUSH],
+  ["a merge", MERGE],
+];
+
 describe("a } that bash reads as quoted inside ${…}", () => {
   it.each(OPENERS)("the hook denies a push after %s", async (_name, opener, tail) => {
     expect(await hookDenies(`${opener}\n${PUSH}\n${tail}`)).toBe(true);
@@ -81,6 +86,14 @@ describe("a } that bash reads as quoted inside ${…}", () => {
     expect(result.stdout).toContain("move the process substitution out of the parameter");
   });
 
+  it.each(GUARDED)("the hook denies %s after a } inside $[ ] on the same line", async (_name, guarded) => {
+    expect(await hookDenies(`: \${x+$[ } #]}; ${guarded}`)).toBe(true);
+  });
+
+  it.each(GUARDED)("the built hook denies %s after a } inside $[ ] on the same line", (_name, guarded) => {
+    expect(builtHookStdout(`: \${x+$[ } #]}; ${guarded}`)).toContain('"permissionDecision":"deny"');
+  });
+
   it("the hook names an unclosed substitution in a single-quoted operand", async () => {
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`: \${x:-'$('}\n${PUSH}`), { PATH: "/usr/bin" }, port);
@@ -97,6 +110,8 @@ describe("where the lexer ends ${…}", () => {
     ["a nested parameter", 'echo ${a:-${b:-"}"}} END', '${a:-${b:-"}"}}'],
     ["an arithmetic expansion", "echo ${x:-$((1+${y:-2}))} END", "${x:-$((1+${y:-2}))}"],
     ["an unquoted {", "echo ${x:-{a} END", "${x:-{a}"],
+    ["a } inside $[ ]", "echo ${x+$[ } #]} END", "${x+$[ } #]}"],
+    ["a quoted ] and a nested [ inside $[ ]", 'echo ${x+$[ a[1] + "]}" ]} END', '${x+$[ a[1] + "]}" ]}'],
   ])("reads %s inside the parameter", (_name, command, parameter) => {
     const words = tokenize(command).map((t) => (t.type === "word" ? t.value : t.type));
     expect(words).toEqual(["echo", parameter, "END"]);
@@ -137,10 +152,6 @@ const SUBSHELLS: Array<[string, (guarded: string) => string]> = [
   ['"$((…); …)"', (g) => `echo "$((echo a); ${g})"`],
   ["${x-$((…); …)}", (g) => `echo \${x-$((echo a); ${g})}`],
   ["a heredoc body", (g) => `cat <<E\n$((echo a); ${g})\nE`],
-];
-const GUARDED: Array<[string, string]> = [
-  ["a push", PUSH],
-  ["a merge", MERGE],
 ];
 const SUBSHELL_CASES = SUBSHELLS.flatMap(([form, line]) => GUARDED.map(([name, guarded]): [string, string, string] => [name, form, line(guarded)]));
 
