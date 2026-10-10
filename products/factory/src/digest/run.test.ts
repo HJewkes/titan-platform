@@ -23,22 +23,22 @@ function root(): string {
 }
 
 describe("deliverDigest", () => {
-  it("copies the digest to every copy dir", () => {
+  it("copies the digest to every copy dir", async () => {
     const dir = root();
 
-    const { written, warnings } = deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [join(dir, "a"), join(dir, "b")] });
+    const { written, warnings } = await deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [join(dir, "a"), join(dir, "b")] });
 
     expect(warnings).toEqual([]);
     expect(written).toHaveLength(3);
     for (const sub of ["out", "a", "b"]) expect(readFileSync(join(dir, sub, "2026-03-10-12.md"), "utf8")).toBe("body");
   });
 
-  it("warns naming an unwritable dir, keeps the outDir file and still copies to the others", () => {
+  it("warns naming an unwritable dir, keeps the outDir file and still copies to the others", async () => {
     const dir = root();
     chmodSync(join(dir, "locked"), 0o555);
     const bad = join(dir, "locked", "sub");
 
-    const { written, warnings } = deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [bad, join(dir, "ok")] });
+    const { written, warnings } = await deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [bad, join(dir, "ok")] });
 
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(bad);
@@ -46,11 +46,11 @@ describe("deliverDigest", () => {
     expect(written).toEqual([join(dir, "out", "2026-03-10-12.md"), join(dir, "ok", "2026-03-10-12.md")]);
   });
 
-  it("warns for a copy dir that cannot be created under a plain file", () => {
+  it("warns for a copy dir that cannot be created under a plain file", async () => {
     const dir = root();
     writeFileSync(join(dir, "file"), "x");
 
-    const { warnings } = deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [join(dir, "file", "sub")] });
+    const { warnings } = await deliverDigest("body", SLOT, { outDir: join(dir, "out"), copyDirs: [join(dir, "file", "sub")] });
 
     expect(warnings).toHaveLength(1);
   });

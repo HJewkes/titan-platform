@@ -15,7 +15,7 @@ const REFUSAL_SET: Record<MalformedRefusal, true> = {
 };
 const REFUSALS = Object.keys(REFUSAL_SET) as MalformedRefusal[];
 
-const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40) };
+const target = { repo: "octo/demo" as const, pr: 7, head: "a".repeat(40), checkoutRoot: "/data/titan-factory/checkouts/reviews" };
 
 describe("reviewerBrief", () => {
   it("asks for an OWNER-BRIEF block after the verdict lines when the run will reach the owner", () => {
@@ -32,10 +32,26 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
-  it("names the checkout to remove with the same name it extracts into", () => {
+  it("extracts head and base under one run dir and removes that whole dir", () => {
     const brief = reviewerBrief(target);
+    const runDir = `/data/titan-factory/checkouts/reviews/${reviewCheckoutName(target.pr, target.head)}`;
 
-    expect(brief).toContain(`$TMPDIR/${reviewCheckoutName(target.pr, target.head)}\``);
+    expect(brief).toContain(`dir="${runDir}" && mkdir -p "$dir/head"`);
+    expect(brief).toContain(`\`"${runDir}/base"\``);
+    expect(brief).toContain(`\`rm -rf "${runDir}"\``);
+  });
+
+  it("quotes the run dir in the removal command when the root has a space, as it does on macOS", () => {
+    const root = "/Volumes/x/Library/Application Support/titan-factory/checkouts/reviews";
+
+    const brief = reviewerBrief({ ...target, checkoutRoot: root });
+
+    expect(brief).toContain(`\`rm -rf "${root}/${reviewCheckoutName(target.pr, target.head)}"\``);
+    expect(brief).not.toMatch(/rm -rf \/Volumes/);
+  });
+
+  it("never points the reviewer at TMPDIR as a place to extract", () => {
+    expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
 
   it("keeps the full suite off the Mac", () => {
@@ -57,7 +73,7 @@ describe("reviewerBrief", () => {
 });
 
 describe("reviewerBrief Closer line", () => {
-  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567" };
+  const input = { repo: "octo/demo", pr: 3, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/data/reviews" };
 
   it("asks a re-review for Closer: yes|no after Head on FIX_FIRST only", () => {
     const brief = reviewerBrief({ ...input, fixFirsts: 1 });
