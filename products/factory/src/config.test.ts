@@ -78,6 +78,13 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
   });
 
+  it("reads digest.push and refuses an unknown key inside it", () => {
+    const push = { url: "https://ntfy.example/test-topic", tokenFile: "/run/secrets/ntfy" };
+    expect(loadConfig(configPath(xdg({ digest: { push } }))).digest?.push).toEqual(push);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { ...push, token: "x" } } })))).toThrow(/invalid config .*token/);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { url: "https://ntfy.example/t", tokenFile: "relative" } } })))).toThrow(/absolute/);
+  });
+
   it("refuses an unknown digest key", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
   });
@@ -178,6 +185,13 @@ describe("loadConfig", () => {
 
   it("rejects a hub seat configured without an agent-chat binary", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { hubSeat: "hub" } })))).toThrow(/shepherd\.agentChatBin: hubSeat needs an agentChatBin/);
+  });
+
+  it("reads the deploy alarm's re-notify and escalation bounds, and refuses a misspelt one", () => {
+    const deployAlarm = { renotifyTicks: 3, escalateAfterMinutes: 45 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { deployAlarm } }))).shepherd?.deployAlarm).toEqual(deployAlarm);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { deployAlarm: { escalateAfterMins: 45 } } })))).toThrow(/shepherd\.deployAlarm: Unrecognized key/);
   });
 
   it("rejects a reviewer configured without an agent-chat binary", () => {

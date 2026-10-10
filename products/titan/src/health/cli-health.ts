@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import type { Command } from "commander";
 import { daemonPaths, readPidFile } from "@titan-design/daemon";
 import { appendSamples, openHealthStore, probeHttp, type HealthSample } from "@titan-design/health";
+import { registerInstall } from "./cli-install.js";
 import { sampleTick } from "./sample-tick.js";
 import { loadTargets, stateHome, type HealthTarget, type HostEnv } from "./targets.js";
 
@@ -10,6 +11,8 @@ interface HealthIo extends HostEnv {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   setExitCode: (code: number) => void;
+  platform: NodeJS.Platform;
+  titanBin: string;
 }
 
 /** Exit 2: the tick could not be stored, so this minute is missing from the record. */
@@ -18,6 +21,7 @@ const EXIT_STORE = 2;
 export function registerHealth(program: Command, io: HealthIo): void {
   const health = program.command("health").description("Sample and report the health of this host's services");
   registerSample(health, io);
+  registerInstall(health, io);
 }
 
 function defaultDbPath(host: HostEnv): string {
