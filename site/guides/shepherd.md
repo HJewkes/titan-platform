@@ -466,6 +466,29 @@ GitHub call:
 by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
 `--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
 
+### Review cost {#review-cost}
+
+```
+titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--cost` prints this report instead of the sections above. For each merged PR it takes every review
+round across all the PR's runs: a round opens at its `sh-review` dispatch (or an external review
+intent) and ends at the last step that resolved it, the on-time `sh-await-verdict`, its
+`:corrected` reply, or `sh-late-verdict`, whether that step held a verdict or a timeout. It reads
+the reviewer transcript the round's verdict locator names, or for a round with no verdict the one
+another verdict named for the same session, and prices each request with session-analytics
+`priceRequest`. It reports list-price dollars and tokens (input, cache read, cache write, output)
+per PR, then per repo and ISO week of the merge, then in total, with the p50 and p90 dollars per
+merged PR. A round counts only the requests from its review intent to the step that resolved it,
+so a standing or `hold --reviewer` session that serves several PRs is split between them, and
+requests after that step count nowhere. A request counts once in the whole report, even when a
+resumed session repeats it. A round that cannot be priced (a missing transcript, a model with no
+price row, a parse error, an external review or a timed-out round with no transcript, a round no
+step resolved, or one with no requests in its window) is listed under `unreadable` with its reason
+and adds nothing to the dollars. A PR with one is left out of p50 and p90, so they never treat a
+gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts

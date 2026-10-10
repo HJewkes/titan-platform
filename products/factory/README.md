@@ -314,19 +314,28 @@ A source that fails becomes one Gaps line and the rest still render. An ask that
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
 
+With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
+written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
+markdown attached (`PUT` with a `Filename:` header). If the server refuses the attachment, the push
+retries as a `POST` with the markdown truncated to 4 KB. `tokenFile` names a file holding a bearer
+token, sent as `Authorization: Bearer <token>`. A push failure is a warning on stderr; the digest
+file in the out dir always stays and the run still exits 0. The topic URL is the only credential
+on an anonymous topic, so keep it in the owner's config and out of logs.
+
 ```json
 {
   "digest": {
     "outDir": "<state>/titan-factory/digests",
     "icloudDir": "<home>/Library/Mobile Documents/com~apple~CloudDocs/Digests",
     "timezone": "America/Denver",
-    "slots": [6, 12, 18]
+    "slots": [6, 12, 18],
+    "push": { "url": "<ntfy topic URL>", "tokenFile": "<home>/.config/titan-factory/ntfy-token" }
   }
 }
 ```
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
-`icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
+`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
 `shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
 unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
 absolute.
