@@ -1,11 +1,14 @@
 import { measurementAuditReadSchema } from "@titan-design/health/metrics";
 import type { MeasurementAuditRead } from "@titan-design/health/metrics";
 
-/** A gold metric is known by its name and aliases; its id is the source audit's own label and never matched. */
+/** A gold metric is known by its name, aliases, definition and key words; its id is the source audit's own label and never matched. */
 export interface GoldMetric {
   id: string;
   name: string;
   aliases?: string[];
+  definition: string;
+  /** Words that set this metric apart from its neighbours; a title must use one. */
+  keyWords: string[];
 }
 
 /** A gold gap is closed by a slice that names its key metrics (gold metric ids). */
@@ -36,31 +39,34 @@ export interface AuditScore {
   costUsd: number;
 }
 
-const NAME_SIMILARITY = 0.5;
 const SLICE_FOCUS = 1 / 3;
 const SUFFIXES = ["ing", "ion", "ed", "es", "s", "e"];
-const STOPWORDS = new Set(["a", "an", "the", "of", "per", "by", "to", "on", "in", "for", "and", "or", "vs", "versus", "with", "from", "at", "is", "not", "no"]);
+const STOPWORDS = new Set([
+  "a", "an", "the", "of", "per", "by", "to", "on", "in", "for", "and", "or", "vs", "versus", "with", "from", "at", "is", "not", "no",
+  "each", "every", "how", "far", "much", "many", "when", "it", "its", "this", "that", "as", "be", "are", "was", "has", "have", "spend", "needed", "done", "between", "against",
+]);
+/** Words that say how a metric is measured, not what it measures: allowed in a title, never enough to match one. */
+const MEASURES = new Set(["count", "rate", "share", "number", "total", "median", "average", "ratio", "percent", "p50", "p90", "time", "length"].map(stem));
 
 const share = (found: number, total: number): number => (total === 0 ? 0 : found / total);
 const f1 = (precision: number, recall: number): number => (precision + recall === 0 ? 0 : (2 * precision * recall) / (precision + recall));
 
 /** Strips one inflection so "merged", "merges" and "merge" meet; it only needs to agree with itself, not with a dictionary. */
 function stem(word: string): string {
-  const suffix = SUFFIXES.find((ending) => word.endsWith(ending) && !word.endsWith("ss") && word.length - ending.length >= 3);
+  const suffix = SUFFIXES.find((ending) => word.endsWith(ending) && !word.endsWith("ss") && word.length - ending.length >= 2);
   return suffix ? word.slice(0, -suffix.length) : word;
 }
 
 function words(text: string): Set<string> {
-  return new Set(text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word && !STOPWORDS.has(word)).map(stem));
+  return new Set(text.toLowerCase().split(/[^a-z0-9_]+/).filter((word) => word && !STOPWORDS.has(word)).map(stem));
 }
 
-/**
- * Dice overlap of content words, so a title stuffed with every name stays far from each of them.
- * Two shared words are required unless the name has only one, so "Service down" never passes for "Service up".
- */
+const normalized = (text: string): string => [...words(text)].join(" ");
+
+/** Dice overlap of content words; it only orders a title's candidates, the match itself is decided by `names`. */
 function similarity(title: Set<string>, name: Set<string>): number {
   const shared = [...title].filter((word) => name.has(word)).length;
-  return shared < Math.min(2, name.size) ? 0 : share(2 * shared, title.size + name.size);
+  return share(2 * shared, title.size + name.size);
 }
 
 function nameSimilarity(title: string, gold: GoldMetric): number {
@@ -68,11 +74,25 @@ function nameSimilarity(title: string, gold: GoldMetric): number {
   return Math.max(...[gold.name, ...(gold.aliases ?? [])].map((name) => similarity(titleWords, words(name))));
 }
 
-/** The gold metrics a title is close enough to, closest first, so the matching gives each title its best free name. */
+/**
+ * A title names a gold metric when it repeats the name or an alias, or when it has two content words, every word is in
+ * that metric's own vocabulary, and one is a key word that sets the metric apart. Shared domain words ("merged PR",
+ * "per day", "review") are never enough alone, and a word the metric cannot explain ("conflicts", "commits") rules it out.
+ */
+function names(title: string, gold: GoldMetric): boolean {
+  const labels = [gold.name, ...(gold.aliases ?? [])];
+  if (labels.some((label) => normalized(label) === normalized(title))) return true;
+  const vocabulary = words([...labels, gold.definition, ...gold.keyWords].join(" "));
+  const content = [...words(title)].filter((word) => !MEASURES.has(word));
+  const keyWords = words(gold.keyWords.join(" "));
+  return content.length >= 2 && content.every((word) => vocabulary.has(word)) && content.some((word) => keyWords.has(word));
+}
+
+/** The gold metrics a title names, closest first, so the matching gives each title its best free metric. */
 function namedBy(title: string, gold: AuditGold): number[] {
   return gold.metrics
-    .map((goldMetric, index) => ({ index, score: nameSimilarity(title, goldMetric) }))
-    .filter(({ score }) => score >= NAME_SIMILARITY)
+    .map((goldMetric, index) => ({ index, named: names(title, goldMetric), score: nameSimilarity(title, goldMetric) }))
+    .filter(({ named }) => named)
     .sort((a, b) => b.score - a.score)
     .map(({ index }) => index);
 }

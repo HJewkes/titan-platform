@@ -29,9 +29,9 @@ const goldNamed = (ids: string[]): Report["metrics"] =>
   gold.metrics.filter((metric) => ids.includes(metric.id)).map((metric) => ({ id: `m-${metric.id}`, title: metric.name }));
 
 describe("the measurement-audit gold case", () => {
-  it("holds the 44 named metrics and 11 capture gaps of the Shepherd audit", () => {
+  it("holds the 44 named, keyed metrics and 11 capture gaps of the Shepherd audit", () => {
     expect(gold.metrics).toHaveLength(44);
-    expect(gold.metrics.every((metric) => metric.name.length > 0)).toBe(true);
+    expect(gold.metrics.every((metric) => metric.name.length > 0 && metric.keyWords.length > 0)).toBe(true);
     expect(gold.gaps).toHaveLength(11);
   });
 
@@ -106,10 +106,29 @@ describe("scoreMeasurementAudit", () => {
     expect(scoreMeasurementAudit(gold, report, run).metricRecall).toBeCloseTo(1 / 44);
   });
 
-  it.each(["Service down", "Stuck doors", "Cost"])("does not match the short wrong title %s to a gold metric on one shared word", (title) => {
+  // Each shares domain words ("merged PR", "per day", "review") or a one-word gold name with a gold metric, but measures something else.
+  const DISTRACTORS = [
+    "Commits per merged PR", "Lines changed per merged PR", "Comments per merged PR", "Cost per merged PR", "Merge conflicts per day",
+    "Review count", "Queued tasks", "Reverts by author", "Service down", "Stuck doors", "Cost",
+  ];
+
+  it.each(DISTRACTORS)("does not credit the look-alike title %s to any gold metric", (title) => {
     const report = withMetricsAndSlices([{ id: "x", title }], []);
 
     expect(scoreMeasurementAudit(gold, report, run).metricRecall).toBe(0);
+  });
+
+  it("scores a report of domain-word look-alikes, one slice each, at zero precision and zero gap F1", () => {
+    const metrics = DISTRACTORS.map((title, index) => ({ id: `d${index}`, title }));
+    const score = scoreMeasurementAudit(gold, withMetricsAndSlices(metrics, metrics.map((metric) => [metric.id])), run);
+
+    expect(score).toMatchObject({ metricPrecision: 0, gapRecall: 0, gapF1: 0 });
+  });
+
+  it("credits a title that repeats a one-word gold name exactly", () => {
+    const report = withMetricsAndSlices([{ id: "x", title: "Reverts" }], []);
+
+    expect(scoreMeasurementAudit(gold, report, run).metricRecall).toBeCloseTo(1 / 44);
   });
 
   it("finds both gaps that share a key metric whichever order their slices come in", () => {

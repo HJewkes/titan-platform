@@ -542,8 +542,8 @@
     {
       "id": "shepherd.m30",
       "family": "owner-load",
-      "title": "Gates superseded by a new head",
-      "definition": "Gates superseded by a new head",
+      "title": "Gates superseded by a head move",
+      "definition": "Gates superseded by a head move",
       "unit": "count",
       "source": {
         "anchor": "store.ts:1",
@@ -746,8 +746,8 @@
     {
       "id": "shepherd.m42",
       "family": "business",
-      "title": "Tasks closed when a PR lands",
-      "definition": "Tasks closed when a PR lands",
+      "title": "Tasks closed on landing",
+      "definition": "Tasks closed on landing",
       "unit": "count",
       "source": {
         "anchor": "store.ts:1",
@@ -780,8 +780,8 @@
     {
       "id": "shepherd.m44",
       "family": "business",
-      "title": "Merges with no owner involvement",
-      "definition": "Merges with no owner involvement",
+      "title": "Runs merged with no owner touch",
+      "definition": "Runs merged with no owner touch",
       "unit": "count",
       "source": {
         "anchor": "store.ts:1",

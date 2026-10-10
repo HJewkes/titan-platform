@@ -16,6 +16,13 @@
         "aliases": [
           "uptime",
           "service availability"
+        ],
+        "definition": "share of 60 s probes where health answers ok with identity",
+        "keyWords": [
+          "up",
+          "uptime",
+          "availability",
+          "probe"
         ]
       },
       {
@@ -23,6 +30,11 @@
         "name": "Build lag vs main",
         "aliases": [
           "deploy lag behind main"
+        ],
+        "definition": "build commits behind main and deploy minutes behind",
+        "keyWords": [
+          "lag",
+          "behind"
         ]
       },
       {
@@ -31,6 +43,12 @@
         "aliases": [
           "daemon restarts",
           "unclean starts"
+        ],
+        "definition": "daemon starts per day; stale pid recoveries",
+        "keyWords": [
+          "restart",
+          "unclean",
+          "exit"
         ]
       },
       {
@@ -39,6 +57,12 @@
         "aliases": [
           "stalled runs",
           "orphan paused runs"
+        ],
+        "definition": "recovery required count; paused runs with no pending gate; running runs with no step completed for over 6 h",
+        "keyWords": [
+          "stuck",
+          "stalled",
+          "orphan"
         ]
       },
       {
@@ -47,6 +71,12 @@
         "aliases": [
           "failed runs by error class",
           "failure class"
+        ],
+        "definition": "failed runs per week by error class, step plus class",
+        "keyWords": [
+          "failure",
+          "failed",
+          "error"
         ]
       },
       {
@@ -54,6 +84,10 @@
         "name": "GitHub API health",
         "aliases": [
           "GitHub rate-limit headroom"
+        ],
+        "definition": "github field; rate-limit headroom",
+        "keyWords": [
+          "github"
         ]
       },
       {
@@ -61,6 +95,11 @@
         "name": "Spawn-gate deferrals",
         "aliases": [
           "reviewer spawn deferrals"
+        ],
+        "definition": "reviewer spawns deferred by load or window",
+        "keyWords": [
+          "deferral",
+          "deferred"
         ]
       },
       {
@@ -69,6 +108,11 @@
         "aliases": [
           "main freeze duration",
           "freeze episodes"
+        ],
+        "definition": "freeze episodes per repo, time frozen",
+        "keyWords": [
+          "freeze",
+          "frozen"
         ]
       },
       {
@@ -77,6 +121,12 @@
         "aliases": [
           "queue wait before review",
           "time to first review"
+        ],
+        "definition": "register to first review dispatched",
+        "keyWords": [
+          "queue",
+          "queued",
+          "first"
         ]
       },
       {
@@ -85,6 +135,11 @@
         "aliases": [
           "review duration",
           "review latency"
+        ],
+        "definition": "review dispatch to verdict, per PR",
+        "keyWords": [
+          "duration",
+          "latency"
         ]
       },
       {
@@ -93,6 +148,10 @@
         "aliases": [
           "CI duration per head",
           "CI wait time"
+        ],
+        "definition": "CI start to green, per head",
+        "keyWords": [
+          "ci"
         ]
       },
       {
@@ -101,6 +160,11 @@
         "aliases": [
           "re-review cause",
           "re-reviews per PR"
+        ],
+        "definition": "extra reviews after the first: fix round, merge-up not carried, superseded, conflict",
+        "keyWords": [
+          "re-review",
+          "cause"
         ]
       },
       {
@@ -108,6 +172,11 @@
         "name": "Hold time",
         "aliases": [
           "hold duration"
+        ],
+        "definition": "PR held to released, per hold",
+        "keyWords": [
+          "hold",
+          "held"
         ]
       },
       {
@@ -115,6 +184,11 @@
         "name": "Owner merge-gate wait",
         "aliases": [
           "approve-merge gate wait"
+        ],
+        "definition": "approve-merge gate opened to resolved",
+        "keyWords": [
+          "owner",
+          "approve"
         ]
       },
       {
@@ -122,6 +196,10 @@
         "name": "MERGE to merged",
         "aliases": [
           "merge verdict to merged latency"
+        ],
+        "definition": "MERGE verdict to merged",
+        "keyWords": [
+          "verdict"
         ]
       },
       {
@@ -130,6 +208,13 @@
         "aliases": [
           "end-to-end cycle time",
           "registration to merge"
+        ],
+        "definition": "register to merged, end to end",
+        "keyWords": [
+          "register",
+          "registered",
+          "registration",
+          "end-to-end"
         ]
       },
       {
@@ -137,6 +222,11 @@
         "name": "Merged outside Shepherd",
         "aliases": [
           "merged by someone else"
+        ],
+        "definition": "registered PRs merged by someone else",
+        "keyWords": [
+          "outside",
+          "someone"
         ]
       },
       {
@@ -145,6 +235,11 @@
         "aliases": [
           "flaky CI rate",
           "CI flake share"
+        ],
+        "definition": "share of red CI judged outside the PR diff; reruns",
+        "keyWords": [
+          "flake",
+          "flaky"
         ]
       },
       {
@@ -152,6 +247,11 @@
         "name": "Merge-ups per run",
         "aliases": [
           "update-branch count per run"
+        ],
+        "definition": "update-branch results per run",
+        "keyWords": [
+          "merge-up",
+          "update-branch"
         ]
       },
       {
@@ -159,6 +259,11 @@
         "name": "Carry hit rate",
         "aliases": [
           "review carry rate"
+        ],
+        "definition": "carried reviews divided by carry-eligible head moves",
+        "keyWords": [
+          "carry",
+          "carried"
         ]
       },
       {
@@ -166,6 +271,11 @@
         "name": "FIX_FIRST rate",
         "aliases": [
           "fix-first verdict share"
+        ],
+        "definition": "FIX_FIRST verdicts divided by all verdicts; first-review FIX_FIRST per run",
+        "keyWords": [
+          "fix_first",
+          "fix-first"
         ]
       },
       {
@@ -174,6 +284,12 @@
         "aliases": [
           "red main after merge",
           "post-merge main CI red"
+        ],
+        "definition": "merges whose post-merge main CI is red",
+        "keyWords": [
+          "escaped",
+          "escaping",
+          "red"
         ]
       },
       {
@@ -181,6 +297,11 @@
         "name": "Reverts",
         "aliases": [
           "reverted merges"
+        ],
+        "definition": "Shepherd merges later reverted",
+        "keyWords": [
+          "revert",
+          "reverted"
         ]
       },
       {
@@ -189,6 +310,12 @@
         "aliases": [
           "owner override rate",
           "reviewer disagreement"
+        ],
+        "definition": "owner or second reviewer disagrees with a MERGE",
+        "keyWords": [
+          "agreement",
+          "disagreement",
+          "override"
         ]
       },
       {
@@ -196,6 +323,11 @@
         "name": "No-verdict rate",
         "aliases": [
           "reviews ending without verdict"
+        ],
+        "definition": "reviews ending none: silence, refusal, usage limit",
+        "keyWords": [
+          "no-verdict",
+          "without"
         ]
       },
       {
@@ -203,6 +335,10 @@
         "name": "Fix rounds to MERGE",
         "aliases": [
           "fix rounds before merge"
+        ],
+        "definition": "FIX_FIRST rounds before the final MERGE",
+        "keyWords": [
+          "round"
         ]
       },
       {
@@ -210,6 +346,11 @@
         "name": "Waiting on the owner now",
         "aliases": [
           "pending owner gates"
+        ],
+        "definition": "pending gates by kind, with PR, head, age, and whether the head is still current",
+        "keyWords": [
+          "waiting",
+          "pending"
         ]
       },
       {
@@ -217,6 +358,12 @@
         "name": "Owner touches per day",
         "aliases": [
           "owner gate resolutions per day"
+        ],
+        "definition": "gates resolved by an owner class",
+        "keyWords": [
+          "touch",
+          "touches",
+          "resolution"
         ]
       },
       {
@@ -224,6 +371,10 @@
         "name": "Wait by kind (p50, p90)",
         "aliases": [
           "gate wait by kind"
+        ],
+        "definition": "gate wait per gate kind",
+        "keyWords": [
+          "kind"
         ]
       },
       {
@@ -231,6 +382,11 @@
         "name": "Superseded gates",
         "aliases": [
           "cancelled gates after head moved"
+        ],
+        "definition": "gates cancelled because the head moved",
+        "keyWords": [
+          "superseded",
+          "cancelled"
         ]
       },
       {
@@ -238,6 +394,12 @@
         "name": "Delegation share",
         "aliases": [
           "gates resolved by delegate"
+        ],
+        "definition": "share of gates resolved by a coordinator, decider or Ship versus the owner",
+        "keyWords": [
+          "delegation",
+          "delegated",
+          "delegate"
         ]
       },
       {
@@ -245,6 +407,12 @@
         "name": "Reviewer dollars per merged PR",
         "aliases": [
           "reviewer cost per merged PR"
+        ],
+        "definition": "list-price cost of the reviewer sessions on a run divided by its merges",
+        "keyWords": [
+          "dollar",
+          "dollars",
+          "price"
         ]
       },
       {
@@ -252,6 +420,11 @@
         "name": "Reviewer tokens per merged PR, per repo",
         "aliases": [
           "reviewer token usage"
+        ],
+        "definition": "reviewer input, output and cache tokens per merged PR, per repo",
+        "keyWords": [
+          "token",
+          "tokens"
         ]
       },
       {
@@ -259,6 +432,10 @@
         "name": "Reviews per merged PR",
         "aliases": [
           "review count per merge"
+        ],
+        "definition": "review dispatches divided by merges",
+        "keyWords": [
+          "reviews"
         ]
       },
       {
@@ -266,6 +443,10 @@
         "name": "Wasted reviews",
         "aliases": [
           "reviews on superseded heads"
+        ],
+        "definition": "reviews on heads that were superseded, or on runs later cancelled",
+        "keyWords": [
+          "wasted"
         ]
       },
       {
@@ -273,6 +454,10 @@
         "name": "Fixer spawn cost",
         "aliases": [
           "fixer session cost"
+        ],
+        "definition": "fixer and wake session cost",
+        "keyWords": [
+          "fixer"
         ]
       },
       {
@@ -280,6 +465,11 @@
         "name": "Merges per day",
         "aliases": [
           "daily merge count"
+        ],
+        "definition": "Shepherd merges per day per repo",
+        "keyWords": [
+          "daily",
+          "day"
         ]
       },
       {
@@ -287,6 +477,11 @@
         "name": "Shepherd share of all merges",
         "aliases": [
           "share of merges through Shepherd"
+        ],
+        "definition": "Shepherd merges divided by all seat-repo merges on GitHub",
+        "keyWords": [
+          "shepherd",
+          "seat-repo"
         ]
       },
       {
@@ -294,6 +489,10 @@
         "name": "Task-to-merge cycle time",
         "aliases": [
           "task created to merged"
+        ],
+        "definition": "active-work task created to Shepherd merge",
+        "keyWords": [
+          "task"
         ]
       },
       {
@@ -301,6 +500,12 @@
         "name": "Throughput versus capacity",
         "aliases": [
           "merges per implementer slot-hour"
+        ],
+        "definition": "merges per implementer slot-hour",
+        "keyWords": [
+          "throughput",
+          "capacity",
+          "slot"
         ]
       },
       {
@@ -308,6 +513,11 @@
         "name": "Review queue depth",
         "aliases": [
           "runs waiting on review"
+        ],
+        "definition": "runs waiting on review or spawn",
+        "keyWords": [
+          "depth",
+          "queue"
         ]
       },
       {
@@ -315,6 +525,13 @@
         "name": "Task closes on land",
         "aliases": [
           "task closed on merge"
+        ],
+        "definition": "landed closes or notes the task",
+        "keyWords": [
+          "close",
+          "closed",
+          "closes",
+          "land"
         ]
       },
       {
@@ -322,6 +539,12 @@
         "name": "Version Packages latency",
         "aliases": [
           "release PR to publish latency"
+        ],
+        "definition": "release PR open to publish",
+        "keyWords": [
+          "release",
+          "publish",
+          "version"
         ]
       },
       {
@@ -329,6 +552,11 @@
         "name": "Unattended merges",
         "aliases": [
           "merges with no owner touch"
+        ],
+        "definition": "merges with no owner touch on the run",
+        "keyWords": [
+          "unattended",
+          "touch"
         ]
       }
     ],
@@ -429,7 +657,7 @@
   "provenance": {
     "source": "history",
     "ref": "shepherd-measurement-audit-2026-10-08",
-    "labelVersion": 2
+    "labelVersion": 3
   },
   "visibility": "public"
 }
