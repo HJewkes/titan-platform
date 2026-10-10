@@ -16,7 +16,7 @@ export interface GateRun {
   ctx: WorkflowContext;
   target: PrTarget;
   state: { waits: number };
-  /** Where a superseded conflict gate leaves its escalation for the next reviewable head to take. */
+  /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
   carried?: Escalated;
 }
 
@@ -60,6 +60,7 @@ export async function conflictGate(run: GateRun, headSha: string): Promise<LandO
     run.carried = { escalation: "conflict", detail: `mergeable_state was dirty at ${headSha} after a fixer's attempt`, carriedFrom: headSha };
     return undefined;
   }
+  run.carried = undefined;
   const answer = schema.parse(answered.data);
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human abandoned the PR at a conflict" };
   return awaitNewHead(run, headSha);

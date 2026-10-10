@@ -15,6 +15,7 @@ import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
+import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -52,6 +53,7 @@ interface World {
   fake: FakeGitHub;
   ref: ShepherdStoreRef;
   store: ShepherdStore;
+  services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
@@ -65,7 +67,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, ref, store: ref.get() };
+  return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
 }
 
 const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
@@ -593,6 +595,49 @@ describe("the route table in a run", () => {
     expect(heads).toHaveLength(6);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  /** A no-progress gate at H2 under an auto policy, superseded by a head the run then sends back `sendBacks` times before a fixer's push gets a MERGE. */
+  async function noProgressSuperseded(sendBacks: number) {
+    const late: { w?: World } = {};
+    const moved = fakeSha("moved");
+    const final = fakeSha(`fix-${sendBacks + 1}`);
+    let wakes = 0;
+    const w = autoWorld(
+      async (ctx, request) => {
+        if (request.headSha === final) return merges(ctx, request);
+        const preMove = request.headSha === H1 || request.headSha === H2;
+        return { kind: "FIX_FIRST", headSha: request.headSha, text: "again", ...(preMove && { closer: "no" as const }) };
+      },
+      async () => (late.w!.fake.pushHead(1, ++wakes === 1 ? H2 : fakeSha(`fix-${wakes}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2}? CI is green. Policy shepherd-route/no-progress`);
+    w.fake.pushHead(1, moved);
+    await supersedeMovedGates(w.host, w.services);
+    return { w, runId, final };
+  }
+
+  it.each([1, 2])("asks the owner again at the head a fixer pushes after %i send-back(s) of a superseded no-progress head, and never merges it", async (sendBacks) => {
+    const { w, runId, final } = await noProgressSuperseded(sendBacks);
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${final}? CI is green. Policy shepherd-route/no-progress`);
+    expect(prompt).toContain("review at this head: MERGE");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("merges that head once the owner answers the carried gate, which consumes the escalation", async () => {
+    const { w, runId, final } = await noProgressSuperseded(1);
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: final }, OWNER);
+
+    await vi.waitFor(() => expect(w.fake.effects.merge).toBe(1));
   });
 
   it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {

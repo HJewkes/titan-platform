@@ -46,12 +46,12 @@ export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: st
 /** Land's own gates the head sweep may cancel; a cancelled one leaves land, so the run reads the head again. */
 const LAND_HEAD_GATES = ["approve-merge", "stuck-behind"];
 
-/** An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error): WorkflowContext["assisted"] {
+/** An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. `answered` runs when the owner answers an approve-merge gate. */
+export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error, answered: () => void = () => undefined): WorkflowContext["assisted"] {
   return async (stepId, prompt, options = {}) => {
     if (!LAND_HEAD_GATES.some((gate) => stepIdMatches(gate, stepId))) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
-    if (!("superseded" in answer)) return answer;
+    if (!("superseded" in answer)) return stepIdMatches("approve-merge", stepId) ? (answered(), answer) : answer;
     const gated = gateHead(prompt);
     throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated, stepId);
   };
@@ -61,7 +61,7 @@ export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string 
 interface SupersededRun {
   reviews: Map<string, unknown>;
   escalations: Map<string, Escalated>;
-  /** An owner-gated escalation the head moved past, waiting for the next reviewable head to take it. */
+  /** An owner-gated escalation the head moved past: it gates every head until an owner answer to an approve-merge gate consumes it. */
   carried?: Escalated;
   failedRounds: number;
   updateBound: UpdateBound;
@@ -75,19 +75,8 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
   if (stepIdMatches("stuck-behind", stepId)) resetBound(run.updateBound);
   else if (rereview !== undefined) run.reviews.delete(rereview);
   else if (gated !== undefined) {
-    const escalated = run.escalations.get(gated);
+    const escalated = run.escalations.get(gated) ?? run.carried;
     if (escalated?.escalation === "failed-rounds") run.failedRounds = 0;
     else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
   }
-}
-
-/**
- * A superseded gate is only ever cancelled, never answered: the escalation it carried gates the next reviewable head, so
- * that head's merge decision asks the owner again however its review comes out.
- */
-export function carryEscalation(run: Pick<SupersededRun, "carried" | "escalations">, headSha: string): void {
-  const { carried } = run;
-  if (!carried || carried.carriedFrom === headSha) return;
-  run.carried = undefined;
-  run.escalations.set(headSha, carried);
 }
