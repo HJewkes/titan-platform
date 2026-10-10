@@ -1251,6 +1251,11 @@
       "count": 3
     }
   },
+  "packages/eslint-plugin/src/no-internal-module-mock.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "packages/evidence/src/controls.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
@@ -1323,7 +1328,7 @@
   },
   "packages/github/src/gh-cli.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
+      "count": 2
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -1551,6 +1556,11 @@
       "count": 1
     }
   },
+  "packages/owner-queue/src/round-items.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "packages/owner-queue/src/rounds.property.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
@@ -1687,7 +1697,7 @@
   },
   "packages/review-panel/src/classify.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 4
+      "count": 1
     }
   },
   "packages/review-panel/src/depth-floor.ts": {
@@ -2304,6 +2314,11 @@
       "count": 1
     }
   },
+  "packages/throughput/src/model-hash.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "packages/tool-guard/src/cli.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -2689,6 +2704,11 @@
     }
   },
   "products/factory/src/build-info.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli-stats.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
@@ -3277,6 +3297,16 @@
       "count": 2
     }
   },
+  "products/factory/src/shepherd/slo-queries.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 2
+    }
+  },
+  "products/factory/src/shepherd/slo.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/spawn-gate.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -3392,6 +3422,11 @@
   },
   "products/factory/src/workflows.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/factory/src/workflows.ts": {
+    "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
     }
   },
@@ -3613,9 +3648,19 @@
       "count": 1
     }
   },
+  "products/titan/src/health/cli-cost.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
   "products/titan/src/health/cli-health.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
+    }
+  },
+  "products/titan/src/health/cli-uptime.test.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
     }
   },
   "products/titan/src/health/sample-tick.test.ts": {
