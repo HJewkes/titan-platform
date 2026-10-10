@@ -13,7 +13,10 @@ const USAGE = [
   "--refresh  first renew each access token due within 10 minutes; this rewrites .credentials.json",
   "status     print each profile's login state and newest usage reading, with no network",
   "",
-  "exit 0 ok, 1 a poll, refresh or read failed, 2 a login is missing, expired or refused, 64 usage",
+  "poll skips a profile with no login, and one backing off after a 429",
+  "",
+  "exit 0 ok, 1 a poll, refresh or read failed, 2 a login is expired or refused (or, for status,",
+  "missing), 64 usage",
 ].join("\n");
 
 type Command = { run: (context: CliContext) => Promise<number> | number } | { usage: string };

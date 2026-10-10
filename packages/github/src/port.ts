@@ -1,5 +1,6 @@
 import { latestPerName } from "./checks.js";
 import { sendUpdateBranch } from "./update-branch-retry.js";
+import { pushEmptyCommit } from "./push-empty-commit.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { wholeForcePushes, type ForcePush, type ForcePushPage } from "./force-pushes.js";
 import { memoizedLogin, upsertComment } from "./upsert-comment.js";
@@ -129,6 +130,8 @@ export interface GitHubWire {
   /** Classic branch protection's required status checks; a branch with none (HTTP 404) reads as an empty list. */
   getClassicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** The branch endpoint's own `protected` flag; a missing or non-boolean answer throws, so it is never inferred. */
+  getBranchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
   listCheckRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
@@ -181,6 +184,8 @@ export interface GitHubPort {
   classicRequiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   /** True when the caller can bypass every pull_request rule on the branch that requires review, or none does; a read that fails throws. A rule that requires no review cannot be the block, so it is skipped. */
   reviewRulesBypassable(repo: RepoSlug, branch: string): Promise<boolean>;
+  /** The branch's `protected` flag as GitHub reports it; a failed read throws. */
+  branchProtected(repo: RepoSlug, branch: string): Promise<boolean>;
   /** Every run on `sha` from every app, superseded ones included; `mergeReadiness` needs this list. */
   checkRuns(repo: RepoSlug, sha: string): Promise<CheckRun[]>;
   /** The latest run for each check name on `sha`. */
@@ -254,6 +259,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
     classicRequiredChecks: async (repo, branch) => wire.getClassicRequiredChecks(repoOf(repo), checkRef("branch", branch)),
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
+    branchProtected: async (repo, branch) => wire.getBranchProtected(repoOf(repo), checkRef("branch", branch)),
     checkRuns: async (repo, sha) => wire.listCheckRuns(repoOf(repo), checkSha("sha", sha)),
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
@@ -331,16 +337,6 @@ async function updateBranch(wire: GitHubWire, repo: RepoSlug, number: number, ex
   const skipped = closedSkip(pr) ?? (pr.headSha !== expectedHeadSha ? "head-moved" : !pr.behind ? "up-to-date" : undefined);
   if (skipped) return { done: false, skipped };
   return sendUpdateBranch(wire, repo, number, expectedHeadSha);
-}
-
-async function pushEmptyCommit(wire: GitHubWire, repo: RepoSlug, branch: string, expectedHeadSha: string, message: string): Promise<WriteResult<{ sha: string }>> {
-  const head = await wire.getRef(repo, branch);
-  if (head !== expectedHeadSha) return { sha: head ?? "", done: false, skipped: head === null ? "absent" : "head-moved" };
-  const { tree } = await wire.getCommit(repo, expectedHeadSha);
-  if (tree === undefined) throw new Error(`commit ${expectedHeadSha} in ${repo} reports no tree`);
-  const created = await wire.createCommit(repo, { message, tree, parents: [expectedHeadSha] });
-  await wire.updateRef(repo, branch, created.sha);
-  return { sha: created.sha, done: true };
 }
 
 /** The list came back shorter than the PR's own count, so a path may be missing. */
