@@ -25,6 +25,7 @@ export const RequestedPolicyFields = z.strictObject({
   reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean().optional(),
+  featureBase: z.boolean().optional(),
 });
 
 /** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused, and owner-gate must say why. */
@@ -50,6 +51,8 @@ export interface EffectivePolicy {
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
+  /** The merge may land in a base other than the repo's default branch, as a stacked PR's does; absent, it waits for a retarget. */
+  featureBase?: true;
 }
 
 /** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
@@ -62,6 +65,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
+  featureBase: z.literal(true).optional(),
 });
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
@@ -101,15 +105,18 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
+    ...(requested.featureBase === true && { featureBase: true as const }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode or add visual paths, never loosen either. */
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base, never loosen any. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
-  return { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  if (!other.featureBase) delete stricter.featureBase;
+  return stricter;
 }
 
 /** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
@@ -168,7 +175,7 @@ export function shepherdLandOptions(
     if (escalated !== undefined) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalationReason(escalated.escalation, escalated.detail) };
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh } };
+  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
 }
 
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });

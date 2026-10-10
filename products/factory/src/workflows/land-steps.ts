@@ -18,6 +18,7 @@ export const CiSnapshotResult = z.looseObject({
   verdict: z.enum(["pending", "green", "red", "behind", "merged", "closed", "not-mergeable"]),
   headSha: z.string(),
   mergeableState: z.string(),
+  baseRef: z.string().optional(),
   mergeSha: z.string().nullish(),
   failing: z.array(FailingCheck).optional(),
   backlog: z.boolean().optional(),

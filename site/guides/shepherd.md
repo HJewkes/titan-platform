@@ -100,7 +100,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `ci` | reading branch rules, waiting for required checks, updating a branch that is behind, or rerunning a cancelled run |
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
-| `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
+| `awaiting-approval` | recording the merge decision, waiting on a gate (`approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind`), or holding an approved head whose base is [not the default branch](#feature-base) |
 | `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
@@ -524,8 +524,8 @@ lists `visual_paths` also gets `auto`, but only for pull requests that change no
 (see [Visual paths](#visual-paths)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
-`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown key
-is refused.
+`rebase`; default `squash`), `reviewer`, `priority`, `fixer`, `ownerGateReason` and
+`featureBase` (see [Feature base](#feature-base)). An unknown key is refused.
 
 A request with `"merge":"owner-gate"` must also name why the owner is asked, with
 `ownerGateReason` set to `gate-2-visual`, `g10-security`, `proof-fixture` or `owner-asked`.
@@ -601,6 +601,33 @@ rules are in the
 The run re-reads its registration's policy before every merge decision and keeps the
 stricter of the two. A later `register` can tighten a running pull request's policy. It
 cannot loosen it.
+
+### Feature base {#feature-base}
+
+A pull request merges only into its repo's default branch unless its registration says
+otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's
+branch, and GitHub's merge lands in whatever base the pull request names when it merges.
+
+Before every merge the land core records a `base-check` step. It reads the pull request and
+the repo's default branch live from GitHub, never from the snapshot. When the base is not the
+default branch and the policy does not allow a feature base, the approved head waits in a
+`base-wait` step. `shepherd status` names the base as the next action:
+
+```text
+waiting for a retarget: the base is feat/x, not the default branch main, and the run's policy merges only into main
+```
+
+The wait has no timeout and neither fails nor cancels the run. It ends when the pull request
+is retargeted, gets a new head, or is merged or closed elsewhere. The run then reads CI again.
+A green read that names a new base reads the branch rules again for that base, and the next
+`base-check` decides. Every land round also reads the rules and the base afresh. The merge
+step reads the base once more just before it writes. A pull request retargeted after its
+`base-check` is skipped as `base-changed`, so a refused base never reaches GitHub's merge.
+
+`--policy '{"featureBase":true}'` lets the merge land in the pull request's base, whatever it
+is. It changes only where the merge lands: the merge mode and every gate still apply. Like `fixer`, it holds only while every policy the run reads allows it, so a repeat
+`register` without the key turns it off. The standalone `land-pr` workflow has no such
+option and merges only into the default branch.
 
 ## Hold and release
 

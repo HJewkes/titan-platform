@@ -69,6 +69,18 @@ describe("resolveEffectivePolicy", () => {
   });
 });
 
+describe("a feature base", () => {
+  it("is off unless the registration asks for it, and the land options read it from the policy", () => {
+    const asked = effective("acme/gizmos", { featureBase: true });
+
+    expect(effective("acme/gizmos")).not.toHaveProperty("featureBase");
+    expect(asked.featureBase).toBe(true);
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(asked)))).toEqual(asked);
+    expect(shepherdLandOptions(() => effective("acme/gizmos")).featureBase?.()).toBe(false);
+    expect(shepherdLandOptions(() => asked).featureBase?.()).toBe(true);
+  });
+});
+
 describe("shepherdGatePolicy", () => {
   it("denies a merge under never, gates it under owner-gate, and gates auto with no merge facts", () => {
     const decide = (repo: string, merge?: "never") => shepherdGatePolicy(effective(repo, merge && { merge })).decide("merge", { headSha: "a".repeat(40) });
@@ -140,6 +152,14 @@ describe("stricterPolicy", () => {
     ["auto", "never", "never"],
   ] as const)("narrows %s by %s to %s", (trusted, other, merge) => {
     expect(stricterPolicy(policy(trusted, "t"), policy(other, "o")).merge).toBe(merge);
+  });
+
+  it("keeps a feature base only when both policies allow one", () => {
+    const featureBase = { ...policy("auto", "t"), featureBase: true as const };
+
+    expect(stricterPolicy(featureBase, featureBase).featureBase).toBe(true);
+    expect(stricterPolicy(featureBase, policy("auto", "o"))).not.toHaveProperty("featureBase");
+    expect(stricterPolicy(policy("auto", "t"), featureBase)).not.toHaveProperty("featureBase");
   });
 
   it("names the seat whose mode won, and keeps a fixer only when both allow one", () => {

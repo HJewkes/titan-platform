@@ -178,6 +178,8 @@ export interface GitHubPort {
   revalidateOpenPrs(repo: RepoSlug, etag: string | null): Promise<OpenPrList>;
   openPr(repo: RepoSlug, request: OpenPrRequest): Promise<WriteResult<{ pr: PullRequest }>>;
   getPr(repo: RepoSlug, number: number): Promise<PullRequest>;
+  /** The repo's default branch as GitHub reports it now; a failed read throws. */
+  defaultBranch(repo: RepoSlug): Promise<string>;
   /** Read from the branch's active rulesets, never hardcoded. */
   requiredChecks(repo: RepoSlug, branch: string): Promise<RequiredChecks>;
   /** The classic-protection counterpart of `requiredChecks`, for a branch whose rulesets require nothing. */
@@ -256,6 +258,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     revalidateOpenPrs: async (repo, etag) => wire.revalidateOpenPrs(repoOf(repo), etag),
     openPr: async (repo, request) => openPr(wire, repoOf(repo), { ...request, head: checkRef("head", request.head), base: checkRef("base", request.base) }),
     getPr: async (repo, number) => wire.getPr(repoOf(repo), pr(number)),
+    defaultBranch: async (repo) => wire.getDefaultBranch(repoOf(repo)),
     requiredChecks: async (repo, branch) => wire.getBranchRules(repoOf(repo), checkRef("branch", branch)),
     classicRequiredChecks: async (repo, branch) => wire.getClassicRequiredChecks(repoOf(repo), checkRef("branch", branch)),
     reviewRulesBypassable: async (repo, branch) => wire.reviewRulesBypassable(repoOf(repo), checkRef("branch", branch)),
