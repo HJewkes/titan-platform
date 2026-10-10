@@ -799,11 +799,10 @@ Key exports:
 - `classify`: `changedLineCount`, `classifyPr`
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
-- `accept-verdict`: `acceptVerdict`
+- `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`, `findingsText`, `fixFirstFindings`
-- `verdict-schemas`: `MalformedSchema`
-- +63 more in the [reference page](/reference/review-panel)
+- +64 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

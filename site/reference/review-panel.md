@@ -52,7 +52,9 @@ every caller plans, briefs and aggregates the same way:
   FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
-  (`parseOwnerBrief`).
+  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
+  message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
+  `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
 
 ## When to reach for it
 
