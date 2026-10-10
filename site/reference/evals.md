@@ -47,6 +47,28 @@ into the scorecard key, so two different champions never share a key. A trial wi
 champion steps omits `champions`, and its key hash is the same as before the field existed.
 Old trial records and scorecards without `champions` still load and keep their old key.
 
+## Review outcome corpus
+
+`titan-evals corpus --db <factory.sqlite3> --repos-root <dir>` writes one JSONL row per
+`(repo, pr, head)` that Shepherd recorded a review verdict for, and prints the row count and
+label histogram to stderr. `buildCorpus` is the same thing as a function, for the replay
+runner. It opens the database through a `mode=ro` URI and never writes. Git is read with
+`log`, `diff`, `merge-base` and `cat-file` only; nothing fetches.
+
+A row carries the verdict, reviewer, findings and cited paths, `Closer`, the class and
+touches `classifyPr` gives the head's diff, the reviewer session's list-price cost,
+dispatch-to-verdict latency, and five raw labels: `revert`, `main-red`, `later-fix`,
+`owner-override` and `fixer-changed-cited-paths`. From those comes one `label`:
+
+| Label | Rule |
+|---|---|
+| `pending` | the verdict is under 14 days old, or the owner overrode it with no recorded reason |
+| `escaped` | MERGE, and the merge was reverted, read red on main, or had a fix over its lines within 14 days, or the owner abandoned it |
+| `clean` | MERGE, merged, and none of those |
+| `caught` | FIX_FIRST, and the next head changed a path the review cited |
+| `false-block` | FIX_FIRST, and the next head changed no cited path, or the owner merged over it |
+| `unresolved` | old enough, but the evidence cannot decide: the PR never merged, the head is missing from the clone, or there is no next head or cited path |
+
 ## When to reach for it
 
 You need a stable identity for "this workflow configuration on this suite", or you want to

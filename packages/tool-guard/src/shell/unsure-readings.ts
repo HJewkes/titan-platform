@@ -1,4 +1,5 @@
 import { caseNamed } from "./case-script.js";
+import type { Split } from "./parse-error.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Words of `unsure` readings one line may walk; classifying costs about 50 ms per KiB, ten times that for a dynamic command word. */
@@ -55,12 +56,21 @@ export class ScriptBudgetError extends ReadingLimitError {
   }
 }
 
-/** A line bash 5 and bash 3.2 read differently because a substitution left a heredoc open; the hook denies it unchecked. */
+/** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
+  constructor(readonly split: Split) {
+    super();
+    this.message = "a line bash 5 and bash 3.2 read differently";
+    this.name = "SplitReadingError";
+  }
+}
+
+/** A line whose expansions nest past `MAX_NESTING`; the hook denies it unchecked rather than recurse past its stack. */
+export class NestingReadingError extends ReadingLimitError {
   constructor() {
     super();
-    this.message = "a heredoc left open by a substitution is read differently by bash 5 and bash 3.2";
-    this.name = "SplitReadingError";
+    this.message = "expansions nested too deep to check";
+    this.name = "NestingReadingError";
   }
 }
 

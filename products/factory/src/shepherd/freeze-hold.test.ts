@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened, swallowUpdates } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions, swallowUpdates } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { freezeStoreRef, type FreezeStoreRef } from "./freeze.js";
@@ -23,7 +23,8 @@ interface World {
   wakes: WakeRequest[];
 }
 
-const runs = (failing: readonly string[]) => ["validate", "dag-check"].map((name, i) => successRun(name, i + 1, undefined, failing.includes(name) ? "failure" : "success"));
+const actionsRuns = (failing: readonly string[]) => ["validate", "dag-check"].map((name, i) => successRun(name, i + 1, undefined, failing.includes(name) ? "failure" : "success"));
+const runs = (failing: readonly string[]) => actionsRuns(failing).map(outsideActions);
 
 /** PR 1 at H1 fails `prFailing`; main's red sha fails `mainFailing`; every wake is unhandled, so a wake ends at the ci-failed gate. */
 function world(prFailing: readonly string[], mainFailing: readonly string[]): World {
@@ -111,6 +112,7 @@ describe("a ci-red wake under a frozen main", () => {
 
   it("reruns the same red head after a thaw that left main's base unmoved, then decides afresh", async () => {
     const w = world(["validate"], ["validate"]);
+    w.fake.onGetPr = (pr) => w.fake.setRuns(pr.headSha, actionsRuns(["validate"]));
     const { episode } = w.freeze.get().freeze(REPO, RED);
     const runId = start(w);
     await waitingOnThaw(w, runId);
@@ -122,7 +124,7 @@ describe("a ci-red wake under a frozen main", () => {
     expect(ids).toEqual(expect.arrayContaining(["sh-freeze-wait:0", "rerun:sh-freeze-hold:0", "land-rules:r1", "sh-freeze-hold:1", "sh-repair"]));
     expect(ids.indexOf("rerun:sh-freeze-hold:0")).toBeLessThan(ids.indexOf("land-rules:r1"));
     expect(w.fake.effects).toMatchObject({ updateBranch: 0, rerunFailedJobs: 1 });
-    expect(w.wakes.map((wake) => [wake.kind, wake.round])).toEqual([["ci-red", 1]]);
+    expect(w.wakes.map((wake) => [wake.kind, wake.round])).toEqual([["ci-red", 2]]);
   });
 
   it("holds a fixer's own PR as before: the fixer for the freeze is woken to repair it", async () => {

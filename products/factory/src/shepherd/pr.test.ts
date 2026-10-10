@@ -6,7 +6,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitH
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { sleep, step } from "../workflows/land.js";
@@ -15,6 +15,7 @@ import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
+import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -52,11 +53,12 @@ interface World {
   fake: FakeGitHub;
   ref: ShepherdStoreRef;
   store: ShepherdStore;
+  services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
 function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)].map((run) => (run.conclusion === "failure" ? outsideActions(run) : run)));
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
@@ -65,7 +67,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, ref, store: ref.get() };
+  return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
 }
 
 const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
@@ -593,6 +595,63 @@ describe("the route table in a run", () => {
     expect(heads).toHaveLength(6);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  /** A no-progress gate at H2 under an auto policy, superseded by a head the run then sends back `sendBacks` times before a fixer's push gets a MERGE. */
+  async function noProgressSuperseded(sendBacks: number, movedBehind = false) {
+    const late: { w?: World } = {};
+    const moved = fakeSha("moved");
+    const final = fakeSha(`fix-${sendBacks + 1}`);
+    let wakes = 0;
+    const w = autoWorld(
+      async (ctx, request) => {
+        if (movedBehind ? ![H1, H2, moved].includes(request.headSha) : request.headSha === final) return merges(ctx, request);
+        const closerNo = request.headSha === H1 || request.headSha === H2 || (movedBehind && request.headSha === moved);
+        return { kind: "FIX_FIRST", headSha: request.headSha, text: "again", ...(closerNo && { closer: "no" as const }) };
+      },
+      async () => (late.w!.fake.pushHead(1, ++wakes === 1 ? H2 : fakeSha(`fix-${wakes}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const greenRuns = w.fake.onGetPr!;
+    w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), movedBehind && pr.headSha !== moved && (pr.mergeableState = "clean"));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2} into main? CI is green. Policy shepherd-route/no-progress`);
+    w.fake.pushHead(1, moved);
+    if (movedBehind) Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
+    await supersedeMovedGates(w.host, w.services);
+    return { w, runId, final };
+  }
+
+  it.each([1, 2])("asks the owner again at the head a fixer pushes after %i send-back(s) of a superseded no-progress head, and never merges it", async (sendBacks) => {
+    const { w, runId, final } = await noProgressSuperseded(sendBacks);
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${final} into main? CI is green. Policy shepherd-route/no-progress`);
+    expect(prompt).toContain("review at this head: MERGE");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("asks the owner again at the updated head when the moved head is behind and itself escalated no-progress", async () => {
+    const { w, runId } = await noProgressSuperseded(1, true);
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${w.fake.pr(1).headSha} into main? CI is green. Policy shepherd-route/no-progress`);
+    expect(w.fake.effects.updateBranch).toBe(1);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("merges that head once the owner answers the carried gate, which consumes the escalation", async () => {
+    const { w, runId, final } = await noProgressSuperseded(1);
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: final }, OWNER);
+
+    await vi.waitFor(() => expect(w.fake.effects.merge).toBe(1));
   });
 
   it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {
@@ -1133,6 +1192,7 @@ describe("a fixer that exits without pushing a new head", () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => EXITED });
     const w = world(phases, () => (healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), fake);
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), successRun("dag-check", 2)]);
     fake.addPr({ headSha: H1 });
     fake.jobLogs.set(1, `RUN  v3\n FAIL  ${FLAKE_FILE} > lints 7k distinct ids in bounded time\nAssertionError: expected 202.30 to be less than 200`);
     fake.prFiles.set(1, changed.map((path) => ({ path, status: "modified" })));
@@ -1140,24 +1200,24 @@ describe("a fixer that exits without pushing a new head", () => {
     return { w, wakes };
   }
 
-  it("reruns the failed jobs once at the same head when the failing test file is outside the PR's diff, with no second wake", async () => {
+  it("reruns the failed jobs once at the same head before any wake, so a failure that heals wakes no one", async () => {
     const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
     const runId = shepherdPr1(w);
 
     await approve(w.host, runId, H1);
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(wakes).toEqual([]);
     expect(stepIds(w.host, runId)).not.toContain("sh-sent-back");
   });
 
-  it("opens the sent-back gate naming the fixer's exit, with no rerun, when the failing test file is in the PR's diff", async () => {
-    const { w } = redOnFlake([FLAKE_FILE], true);
+  it("opens the sent-back gate naming the fixer's exit, with no second rerun, when the failing test file is in the PR's diff", async () => {
+    const { w } = redOnFlake([FLAKE_FILE], false);
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
-    expect(w.fake.effects.rerunFailedJobs).toBe(0);
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("impl-a exited without pushing a new head");
   });
 
@@ -1168,7 +1228,7 @@ describe("a fixer that exits without pushing a new head", () => {
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes).toHaveLength(2);
+    expect(wakes).toHaveLength(1);
   });
 });
 
@@ -1361,5 +1421,57 @@ describe("owner override of a MERGE verdict", () => {
     await w.host.runtime.wait(runId);
 
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+});
+
+describe("a failed required check at a pull request head", () => {
+  /** `validate` fails on H1's first run; a rerun posts a new run that passes or fails again. */
+  function flaky(rerunPasses: boolean, dbPath = ":memory:") {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => ({ kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head" }) });
+    const w = world(phases, () => "success", fake, undefined, undefined, dbPath);
+    fake.onGetPr = (pr) => {
+      const attempt = fake.effects.rerunFailedJobs;
+      const conclusion = attempt > 0 && rerunPasses ? "success" : "failure";
+      fake.setRuns(pr.headSha, [successRun("validate", 1 + attempt * 10, undefined, conclusion), successRun("dag-check", 2)]);
+    };
+    fake.addPr({ headSha: H1 });
+    return { w, wakes, fake };
+  }
+
+  it("never wakes the implementer when the rerun passes", async () => {
+    const { w, wakes } = flaky(true);
+    const runId = shepherdPr1(w);
+
+    await approve(w.host, runId, H1);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toEqual([]);
+  });
+
+  it("wakes the implementer once, naming the second run, when the rerun fails too", async () => {
+    const { w, wakes } = flaky(false);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toHaveLength(1);
+    expect(JSON.stringify(wakes[0]!.payload)).toContain("/actions/runs/1011/");
+  });
+
+  it("reruns a head at most once, even when the run is replayed after a restart", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp2228-")), "factory.db");
+    const first = flaky(false, dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+
+    const second = flaky(false, dbPath);
+    second.fake.effects.rerunFailedJobs = 1;
+    await second.w.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(second.fake.effects.rerunFailedJobs).toBe(1);
   });
 });

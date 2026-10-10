@@ -58,7 +58,23 @@ const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), 
 
 type ExitRun = GateRun & { state: { round: number; reruns: number } };
 
-/** Heads rerun after a fixer's exit, per run; a head gets one, and a replay of the run's steps rebuilds the set. */
+const headsRerun = (run: ExitRun): Set<string> => rerunHeads.get(run.ctx) ?? rerunHeads.set(run.ctx, new Set()).get(run.ctx)!;
+
+/**
+ * True when a ci-red head had its failed Actions jobs rerun before any fixer is woken, so the caller lands the next
+ * round and reads CI afresh; a head that fails again is woken as usual. A head is rerun once, by this or by a fixer's exit.
+ */
+export async function rerunFlakyHead(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  const red = kind === "ci-red" ? FailingPayload.safeParse(payload) : undefined;
+  if (!red?.success || red.data.failing.length === 0 || red.data.failing.some((check) => check.workflowRunId === null)) return false;
+  const reran = headsRerun(run);
+  if (reran.has(headSha)) return false;
+  reran.add(headSha);
+  await rerun(run.ctx, run.target, { kind: "ci-failed", headSha, failing: red.data.failing }, run.state);
+  return true;
+}
+
+/** Heads rerun, per run, whether before the wake or after a fixer's exit; a head gets one, and a replay of the run's steps rebuilds the set. */
 const rerunHeads = new WeakMap<object, Set<string>>();
 
 /**
@@ -68,7 +84,7 @@ const rerunHeads = new WeakMap<object, Set<string>>();
  * the error that ends it.
  */
 export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, exit: { reason: string; wake?: WakeEvidence }, leave: (outcome?: LandOutcome) => Error): Promise<true> {
-  const reran = rerunHeads.get(run.ctx) ?? rerunHeads.set(run.ctx, new Set()).get(run.ctx)!;
+  const reran = headsRerun(run);
   const red = kind === "ci-red" && !reran.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
   if (red?.success) {
     const check = await step(run.ctx, `${FLAKE_CHECK_STEP}:${run.state.round}`, { ...run.target, headSha, failing: red.data.failing }, FlakeCheckResult);

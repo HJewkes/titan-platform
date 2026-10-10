@@ -46,21 +46,23 @@ export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: st
 /** Land's own gates the head sweep may cancel; a cancelled one leaves land, so the run reads the head again. */
 const LAND_HEAD_GATES = ["approve-merge", "stuck-behind"];
 
-/** An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. */
-export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error): WorkflowContext["assisted"] {
+/** An approve-merge or stuck-behind gate the head sweep cancelled throws `leave()`, so the caller re-reads the head; `rereview` names a head to review again, `gated` the head the gate asked about. `answered` runs when the owner answers an approve-merge gate. */
+export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string | undefined, gated: string | undefined, stepId: string) => Error, answered: () => void = () => undefined): WorkflowContext["assisted"] {
   return async (stepId, prompt, options = {}) => {
     if (!LAND_HEAD_GATES.some((gate) => stepIdMatches(gate, stepId))) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
-    if (!("superseded" in answer)) return answer;
+    if (!("superseded" in answer)) return stepIdMatches("approve-merge", stepId) ? (answered(), answer) : answer;
     const gated = gateHead(prompt);
     throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated, stepId);
   };
 }
 
-/** The run state a superseded approve-merge gate clears. */
+/** The run state a superseded approve-merge gate clears or hands on. */
 interface SupersededRun {
   reviews: Map<string, unknown>;
   escalations: Map<string, Escalated>;
+  /** An owner-gated escalation the head moved past: it gates every head until an owner answer to an approve-merge gate consumes it. */
+  carried?: Escalated;
   failedRounds: number;
   updateBound: UpdateBound;
 }
@@ -72,5 +74,10 @@ interface SupersededRun {
 export function clearSuperseded(run: SupersededRun, rereview: string | undefined, gated: string | undefined, stepId: string): void {
   if (stepIdMatches("stuck-behind", stepId)) resetBound(run.updateBound);
   else if (rereview !== undefined) run.reviews.delete(rereview);
-  else if (gated !== undefined && run.escalations.get(gated)?.escalation === "failed-rounds") run.failedRounds = 0;
+  else if (gated !== undefined) {
+    const here = run.escalations.get(gated);
+    const escalated = run.carried ?? here;
+    if (here?.escalation === "failed-rounds") run.failedRounds = 0;
+    else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
+  }
 }

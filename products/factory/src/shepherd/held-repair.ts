@@ -3,6 +3,8 @@ import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
+import type { LandPrState } from "../workflows/land-pr.js";
+import { rerunFlakyHead } from "./flake-check.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
@@ -29,7 +31,7 @@ interface HeldInput {
 }
 
 /** A joined seat or `none` names no one agent to message, so the hub seat stands in. */
-const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
+export const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
 
 function heldCheck(registration: Registration | undefined): z.infer<typeof HeldCheckResult> {
   if (!registration?.held) return { held: false };
@@ -73,12 +75,13 @@ function causeOf(kind: WakeRequest["kind"], payload: unknown): string {
  * G10: a held run wakes no fixer and spends no repair, so nothing pushes while it is held. The seat is told once per
  * hold, head and cause, and the run waits. True means the head moved and the next round lands; false means the run is
  * not held, or its hold was released at this head, and the repair goes ahead as usual.
+ * A run that is not held first reruns a red head's failed jobs once, so a flaky check never wakes the implementer.
  */
-export async function heldRepair(run: GateRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+export async function heldRepair(run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   const input: HeldInput = { runId: run.ctx.runId, ...run.target, headSha };
   for (;;) {
     const hold = await step(run.ctx, HELD_CHECK_STEP, input, HeldCheckResult);
-    if (!hold.held) return false;
+    if (!hold.held) return rerunFlakyHead(run, kind, headSha, payload);
     const reason = hold.reason ?? "held";
     const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });
