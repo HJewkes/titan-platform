@@ -108,8 +108,22 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     expect(metric("app/core.py#report", "symbol_unlisted_calls")).toBe(1);
   });
 
+  it("clears a method str shares with stateful types only on a receiver proven to be a value", () => {
+    const shared = ["mv", "copy_object", "list_keys", "clone", "wait_for"];
+    for (const symbol of shared) {
+      expect(kinds(`app/core.py#${symbol}`).pure, symbol).toBe(0);
+      expect(metric(`app/core.py#${symbol}`, "symbol_unlisted_calls"), symbol).toBe(1);
+    }
+  });
+
+  it("does not call advancing an iterator or writing os.environ pure", () => {
+    expect(kinds("app/core.py#peek").pure).toBe(0);
+    expect(metric("app/core.py#set_mode", "symbol_state_writes")).toBe(1);
+    expect(kinds("app/core.py#set_mode").pure).toBe(0);
+  });
+
   it("keeps a function pure when every call is allow-listed or resolves to a pure function", () => {
-    for (const symbol of ["squares", "shout_twice", "dump", "join_parts"]) {
+    for (const symbol of ["squares", "shout_twice", "dump", "join_parts", "slugify", "tally", "csv_line"]) {
       expect(kinds(`app/core.py#${symbol}`).pure, symbol).toBe(1);
     }
   });
@@ -129,8 +143,17 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     expect(tests("app/core.py#save")).toEqual({ ...none, snapshot: 1 });
   });
 
-  it("credits a CliRunner test to the command it invokes", () => {
-    expect(tests("app/clicmd.py#greet")).toEqual({ ...none, snapshot: 1, errorPath: 1 });
+  it("credits a CliRunner test, constructed or annotated, to the command it invokes", () => {
+    expect(tests("app/clicmd.py#greet")).toEqual({ ...none, snapshot: 1, errorPath: 2 });
+  });
+
+  it("credits a group, not the subcommand argv names, for runner.invoke(cli, ['sub'])", () => {
+    expect(tests("app/clicmd.py#cli")).toEqual({ ...none, exact: 1 });
+  });
+
+  it("credits nothing for an invoke on a non-CliRunner receiver or through a local alias", () => {
+    expect(metric("app/clicmd.py#sub", "symbol_tests_exact_output")).toBeUndefined();
+    expect(metric("app/clicmd.py#other", "symbol_tests_exact_output")).toBeUndefined();
   });
 
   it("credits no test to a boundary it does not reach, even when the test linker pairs their files", () => {

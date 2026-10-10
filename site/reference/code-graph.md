@@ -776,8 +776,10 @@ consumer's policy. Values are 0 or 1 unless they are counts.
 | `test_kind_*` (snapshot, exact_output, loose_output, error_path, property, roundtrip) | each pytest test function | the kinds of check the test makes |
 | `symbol_tests_*` (snapshot, exact_output, loose_output_only, error_path, property, roundtrip) | each source function a test reaches | how many tests of each kind reach it |
 
-A test reaches what its `calls` edges reach, and `runner.invoke(cmd, ...)` counts as a call
-to `cmd`; a test is credited only to what it reaches. `symbol_kind_pure` needs every call
+A test reaches what its `calls` edges reach. A click `CliRunner`'s `runner.invoke(cmd, ...)`
+counts as a call to `cmd` (the group alone for `invoke(cli, ["sub"])`, nothing for a locally
+rebound target); a test is credited only to what it reaches. Methods `str` shares with
+stateful types (`replace`, `copy`, `join`, `keys`) count as pure only on a proven value. `symbol_kind_pure` needs every call
 off the allow-list to resolve to a pure source function: an unresolved call means not pure.
 The per-function facts are carried forward under reuse; the boundary, purity and count
 metrics are recomputed on every index.

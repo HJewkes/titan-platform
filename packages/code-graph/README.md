@@ -792,11 +792,15 @@ Every value is 0 or 1 unless it is a count.
 - For each source function some test reaches: `symbol_tests_snapshot`,
   `symbol_tests_exact_output`, `symbol_tests_loose_output_only`, `symbol_tests_error_path`,
   `symbol_tests_property` and `symbol_tests_roundtrip`. A test reaches what its `calls`
-  edges reach, and `runner.invoke(cmd, ...)` counts as a call to `cmd`. A test is credited
+  edges reach. A click `CliRunner`'s `runner.invoke(cmd, ...)` counts as a call to `cmd` when
+  the receiver is a `CliRunner()` or a name bound to or annotated as one; `invoke(cli, ["sub"])`
+  credits the group `cli` only, and a target the test rebinds locally credits nothing. A test is credited
   only to what it reaches. Reach is one pass over the call graph's strongly connected
   components, with a bitset of tests flowing to callees.
 - `symbol_kind_pure` needs every unlisted call resolved to a source function that is itself
   pure. An unresolved call (an external library, `input()`, `module.func()`) means not pure.
+  Methods `str` shares with stateful types (`replace`, `copy`, `join`, `keys`) clear only on a
+  receiver proven to be a str, list or dict value, so `Path.replace` and `s3.copy` do not.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.

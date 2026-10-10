@@ -282,7 +282,7 @@ const kindFlag = (name: string, description: string, absent: "zero" | "exclude" 
 
 const testCount = (name: string, direction: "lower-worse" | "higher-worse" | "neutral", description: string): MetricDescriptor => ({
   name, unit: "count", appliesTo: SYMBOL, rollup: "none", direction, absent: "zero", source: "test-kinds",
-  description: `${description} Counts test functions reaching the symbol through calls edges (a click CliRunner invoke counts as a call); written only where a test reaches it.`,
+  description: `${description} Counts test functions reaching the symbol through calls edges (a click CliRunner's invoke(cmd, ...) counts as a call to cmd, the group alone for a group); written only where a test reaches it.`,
 });
 
 /**
@@ -298,7 +298,7 @@ const TEST_KINDS: readonly MetricDescriptor[] = [
   {
     name: "symbol_unlisted_calls", unit: "count", appliesTo: SYMBOL, rollup: "sum", direction: "neutral",
     absent: "exclude", source: "test-kinds",
-    description: "Calls in the function the purity allow-list does not cover (pure builtins, str methods, math, re, json.dumps and the like, mutators of its own locals). symbol_kind_pure needs a resolved calls edge for every one.",
+    description: "Calls in the function the purity allow-list does not cover: pure builtins, math, re, json.dumps and the like, methods only str has on any receiver, and methods str, list or dict share with stateful types (replace, copy, join, keys, get) or mutators only on a local proven to hold such a value. symbol_kind_pure needs a resolved calls edge for every one.",
   },
   kindFlag("symbol_kind_output_boundary", "1 when symbol_output_signal is, or a pyproject console script or a module-level call in a __main__.py starts the function."),
   kindFlag("symbol_kind_pure", "1 when the function is no parser, and neither it nor any function it reaches through calls edges does I/O, writes state it does not own, is an output boundary, or makes a call that is neither on the allow-list nor resolved to a source function. An unresolved call means not pure."),

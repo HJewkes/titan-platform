@@ -6,6 +6,7 @@ import type { GraphEdge } from "../types.js";
 import { addCallSite, type CallSite } from "./call-sites.js";
 import { hasReceiver } from "./callable-params.js";
 import { symbolId } from "./ids.js";
+import { invokedCommands } from "./python-invoke.js";
 
 /** Resolves a dotted module name, relative or absolute, from this file to an in-repo file id. */
 export type ResolveModule = (specifier: string) => string | null;
@@ -22,14 +23,15 @@ interface PyCallContext {
  * by `from <in-repo module> import <name>`, and `self.<name>(...)` to a method of
  * the enclosing class. Attribute chains, `module.func`, star imports and names a
  * parameter or nested def shadows are dropped. The caller is the enclosing def
- * or class, or the file for a module-level call. `runner.invoke(cmd, ...)` also
- * calls `cmd` when it resolves (TP-2170), so a click `CliRunner` test reaches its command.
+ * or class, or the file for a module-level call. A click `CliRunner`'s
+ * `runner.invoke(cmd, ...)` also calls `cmd` when it resolves (TP-2170; see python-invoke.ts).
  */
 export function collectPythonCallEdges(file: ParsedFile, fileId: string, resolve: ResolveModule): GraphEdge[] {
   const declarations = new Map<string, Node>();
   forEachDeclaration(file, (_name, qualifiedName, node) => declarations.set(qualifiedName, node));
   const ctx: PyCallContext = { fileId, declarations, imports: fromImports(file.tree.rootNode, resolve) };
   const agg = new Map<string, GraphEdge>();
+  const invoked = invokedCommands(file.tree.rootNode);
   walkScopes(file.tree.rootNode, true, (node, scope) => {
     if (node.type !== "call") return;
     const args = node.childForFieldName("arguments");
@@ -37,22 +39,15 @@ export function collectPythonCallEdges(file: ParsedFile, fileId: string, resolve
     const srcId = declarations.has(scope) ? symbolId(fileId, scope) : fileId;
     const dst = resolveCallee(node.childForFieldName("function"), scope, ctx);
     if (dst) addCallSite(agg, srcId, dst, pythonCallSite(args));
-    const invoked = resolveInvoked(node, args, scope, ctx);
-    if (invoked) addCallSite(agg, srcId, invoked, UNKNOWN_SITE);
+    const command = invoked(node, args, scope);
+    const commandId = command ? resolveBareName(command, scope, ctx) : null;
+    if (commandId) addCallSite(agg, srcId, commandId, UNKNOWN_SITE);
   });
   return [...agg.values()];
 }
 
 /** A site whose arguments are unknown: click's own argv parsing passes them, not this call. */
 const UNKNOWN_SITE: CallSite = { args: [], kwSplat: true };
-
-/** `runner.invoke(cmd, ...)`, click's `CliRunner` running a command: the call runs `cmd`. */
-function resolveInvoked(call: Node, args: Node, scope: string, ctx: PyCallContext): string | null {
-  const callee = call.childForFieldName("function");
-  if (callee?.type !== "attribute" || callee.childForFieldName("attribute")?.text !== "invoke") return null;
-  const target = args.namedChildren[0];
-  return target?.type === "identifier" ? resolveBareName(target.text, scope, ctx) : null;
-}
 
 function resolveCallee(callee: Node | null, scope: string, ctx: PyCallContext): string | null {
   if (callee?.type === "identifier") return resolveBareName(callee.text, scope, ctx);
