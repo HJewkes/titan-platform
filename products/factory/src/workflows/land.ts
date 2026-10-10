@@ -2,9 +2,9 @@ import type { GitHubPort, MergeMethod, RepoSlug } from "@titan-design/github";
 import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { TRACE_DATA_KEYS, evidenceRecord, traceRef } from "../evidence.js";
+import { evidenceRecord } from "../evidence.js";
 import { stuckBehindDecision } from "../gate-brief.js";
-import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
+import type { GateDecision, GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
@@ -17,10 +17,12 @@ import { flakyState, type FlakyChecks } from "./land-flaky.js";
 import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
-import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
+import { sleep } from "./deadline.js";
+import { baseMovedOrThrow, mergePolicyRecord, type MergePolicyInput, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 export { afterWrite } from "./land-ci-wait.js";
+export { sleep } from "./deadline.js";
 export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
@@ -370,25 +372,4 @@ export interface Timing {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;
   timeoutMs: number;
-}
-
-interface MergePolicyInput {
-  headSha: string;
-  decision: GateDecision;
-  evidence?: Record<string, unknown>;
-}
-
-function mergePolicyRecord(input: MergePolicyInput, step: RoutedStepInput): object {
-  const { outcome, rule, reason } = input.decision;
-  const trace = { [TRACE_DATA_KEYS.gates]: [policyTraceGate(input.decision, traceRef(step))] };
-  return { result: { outcome, headSha: input.headSha, rule, reason }, ...(input.evidence ? { allowEvidence: input.evidence } : {}), ...trace };
-}
-
-export function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) return reject(signal.reason);
-    const timer = setTimeout(() => (signal.removeEventListener("abort", abort), resolve()), ms);
-    const abort = () => (clearTimeout(timer), reject(signal.reason));
-    signal.addEventListener("abort", abort, { once: true });
-  });
 }
