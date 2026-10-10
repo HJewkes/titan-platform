@@ -7,18 +7,19 @@ import { stuckBehindDecision } from "../gate-brief.js";
 import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-policy.js";
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
-import { deadline } from "./deadline.js";
 import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseMergeInput, type BaseWaitInput } from "./land-base.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
-import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
-import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
-import { flakyState, rerunIfFlaky, type FlakyChecks, type FlakyState } from "./land-flaky.js";
+import type { CiInput, CiSnapshot, FailingCheck } from "./land-ci.js";
+import { afterWrite, waitForCi } from "./land-ci-wait.js";
+import { budgetSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
+import { flakyState, type FlakyChecks } from "./land-flaky.js";
 import { SettleResult, settleOrGate, settleRun, type MergeTreeProbe, type SettleHold, type SettleInput, type UnsettledMerge } from "./land-settle.js";
 import { UPDATE_RESENDS, updateBranch, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
 import { baseMovedOrThrow, CiSnapshotResult, LandRulesResult, BackoffResult, MergePolicyResult, MergeResultResult, UpdateResultResult } from "./land-steps.js";
 
 export { readCi, type CiSnapshot, type FailingCheck } from "./land-ci.js";
+export { afterWrite } from "./land-ci-wait.js";
 export { DEVICE_CHECK, type ApprovalAnswer, type ApprovalQuestion, type AskApproval } from "./land-approval.js";
 export { CI_BACKLOG_CEILING_FACTOR, MAX_UPDATE_CYCLES, MAX_UPDATE_RETRIES, MISSING_CHECK_GRACE_MS, UPDATE_BUDGET_MS, newUpdateBound, type UpdateBound } from "./land-budget.js";
 
@@ -353,45 +354,6 @@ export interface Timing {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;
   timeoutMs: number;
-}
-
-/** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
-export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, write: Promise<T>): Promise<T> {
-  try {
-    return await write;
-  } finally {
-    deps.snapshot?.invalidate(input.repo);
-  }
-}
-
-/** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
-async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, signal: AbortSignal, flaky: FlakyState, firstReads: FirstReads): Promise<CiSnapshot> {
-  const { port, snapshot: reads } = deps;
-  const clock = deadline(timing);
-  const startedAt = timing.now();
-  let backlog = false;
-  const graceMs = deps.missingCheckGraceMs ?? MISSING_CHECK_GRACE_MS;
-  const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
-  let last = "no read yet";
-  const openSeen = {};
-  for (;;) {
-    try {
-      const snapshot = await readCi(port, input, reads, { missingSettled, openSeen });
-      if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
-      if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
-      last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
-      backlog = snapshot.backlog === true;
-    } catch (error) {
-      last = error instanceof Error ? error.message : String(error);
-      backlog = false;
-    }
-    if (clock.expired()) {
-      const ceilingMs = timing.timeoutMs * CI_BACKLOG_CEILING_FACTOR;
-      if (!backlog) throw new Error(`ci-wait timed out after ${timing.timeoutMs} ms: ${last}`);
-      if (timing.now() - startedAt >= ceilingMs) throw new Error(`ci-wait gave up after ${ceilingMs} ms on a CI backlog: checks still queued or running, none red; ${last}`);
-    }
-    await clock.sleep(timing.pollMs, signal);
-  }
 }
 
 interface MergePolicyInput {
