@@ -56,7 +56,8 @@
           "packages/coordinator",
           "packages/owner-queue",
           "packages/review-panel",
-          "packages/pm"
+          "packages/pm",
+          "packages/throughput"
         ],
         "ui": [
           "packages/react-app"
@@ -123,7 +124,8 @@
           "packages/coordinator",
           "packages/owner-queue",
           "packages/review-panel",
-          "packages/pm"
+          "packages/pm",
+          "packages/throughput"
         ],
         [
           "packages/react-app"

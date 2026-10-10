@@ -1,9 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { indexPaths } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
+
+async function writeFixture(root: string): Promise<void> {
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "src/a.ts"), "export const A = 1;\n");
+  await fs.writeFile(path.join(root, "src/b.ts"), 'import { A } from "./a.js";\nexport const B = A;\n');
+}
+
+// The first index in a worker pays a one-time TypeScript and ts-morph warm-up that grows to seconds under full-suite
+// load; paying it here keeps it out of the 5 s budget of whichever test happens to run first.
+beforeAll(async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-warm-"));
+  await writeFixture(root);
+  const store = openCodeGraph(path.join(root, "graph.sqlite3"));
+  try {
+    await indexPaths(store, { paths: [root], computeChurn: false });
+  } finally {
+    store.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 60_000);
 
 interface HeadView {
   snapshotId: number | null;
@@ -44,9 +64,7 @@ describe("indexPaths visibility to a second connection", () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-atomic-"));
-    await fs.mkdir(path.join(root, "src"));
-    await fs.writeFile(path.join(root, "src/a.ts"), "export const A = 1;\n");
-    await fs.writeFile(path.join(root, "src/b.ts"), 'import { A } from "./a.js";\nexport const B = A;\n');
+    await writeFixture(root);
     const dbPath = path.join(root, "graph.sqlite3");
     writer = openCodeGraph(dbPath);
     reader = openCodeGraph(dbPath);
@@ -94,9 +112,7 @@ describe("indexPaths when a write throws part-way", () => {
 
   beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "code-graph-throw-"));
-    await fs.mkdir(path.join(root, "src"));
-    await fs.writeFile(path.join(root, "src/a.ts"), "export const A = 1;\n");
-    await fs.writeFile(path.join(root, "src/b.ts"), 'import { A } from "./a.js";\nexport const B = A;\n');
+    await writeFixture(root);
     store = openCodeGraph(path.join(root, "graph.sqlite3"));
   });
 

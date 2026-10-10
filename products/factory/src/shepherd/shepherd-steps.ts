@@ -13,6 +13,7 @@ import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
 import { G10_RELEASE_STEPS } from "./g10-release.js";
 import { SEAT_NOTICE_STEPS } from "./gate-route.js";
+import { HELD_REPAIR_STEPS } from "./held-repair.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -36,4 +37,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...FREEZE_HOLD_STEPS,
   ...G10_RELEASE_STEPS,
   ...SEAT_NOTICE_STEPS,
+  ...HELD_REPAIR_STEPS,
 ];
