@@ -144,7 +144,11 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> evidence
   evals --> health
+  evals --> reviewPanel
+  evals --> sessionAnalytics
+  evals --> sessionRead
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths

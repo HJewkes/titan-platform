@@ -3,7 +3,7 @@ import { deriveLabel, type LabelInput, type RawLabels } from "./labels.js";
 
 const NOW = new Date("2026-03-01T00:00:00Z");
 const NONE: RawLabels = { revert: false, "main-red": false, "later-fix": false, "owner-override": false, "fixer-changed-cited-paths": null };
-const input = (overrides: Partial<LabelInput> & { labels?: Partial<RawLabels> }): LabelInput => ({
+const input = (overrides: Omit<Partial<LabelInput>, "labels"> & { labels?: Partial<RawLabels> }): LabelInput => ({
   verdict: "MERGE",
   verdictAt: "2026-01-01T00:00:00Z",
   now: NOW,
