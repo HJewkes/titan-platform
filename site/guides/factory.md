@@ -493,8 +493,15 @@ refusal names `index.lock`, its reason ends with a report on the service checkou
 is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
 `shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
 row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
-gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
-clears. A failed message is retried on the next check.
+gets an agent-chat message when the alarm goes up, and again every
+`shepherd.deployAlarm.renotifyTicks` checks (default 6, so 30 minutes) while it stays up. A
+failed message is retried on the next check. Once the alarm has stood for
+`shepherd.deployAlarm.escalateAfterMinutes` (default 30), serve files one `do` item for the owner
+into the titan console's deposit spool (`$TITAN_CONSOLE_INBOX_DIR`, else
+`$TITAN_CONSOLE_STATE/inbox/deposits`, default `~/.local/state/titan-console/inbox/deposits`),
+keyed on the running build so a restart files no second one. That item is filed with or without
+a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `service check` fails
+with `no hub seat`.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
 It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The

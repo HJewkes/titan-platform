@@ -429,7 +429,7 @@ checkout that should serve, not from a worktree that will be removed.
 | Verb | What it does | Exit 0 when |
 | --- | --- | --- |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers and its `github` field is `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and the burndown tick is not failing or stale |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock` (the service checkout's `.git/index.lock` with no process holding it, older than 10 minutes, named by path and age and never removed), `deploy stalled` (`/health`'s deploy block has its alarm up), then `tick failing` or `tick stale` from agent-chat's `$AGENT_CHAT_HOME/burndown-status.json`, default `~/.agent-chat/burndown-status.json`, which an absent file skips; a heartbeat older than 3 x its `intervalSeconds` is stale), then `no hub seat` (the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, the burndown tick is not failing or stale, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same `/health` wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>] [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Fast-forwards the service checkout, rebuilds the factory closure when the range touches it, restarts drained, and restores `dist` on failure | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -531,8 +531,15 @@ refusal names `index.lock`, its reason ends with a report on the service checkou
 is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
 `shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
 row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
-gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
-clears. A failed message is retried on the next check.
+gets an agent-chat message when the alarm goes up, and again every
+`shepherd.deployAlarm.renotifyTicks` checks (default 6, so 30 minutes) while it stays up. A
+failed message is retried on the next check. Once the alarm has stood for
+`shepherd.deployAlarm.escalateAfterMinutes` (default 30), serve files one `do` item for the owner
+into the titan console's deposit spool (`$TITAN_CONSOLE_INBOX_DIR`, else
+`$TITAN_CONSOLE_STATE/inbox/deposits`, default `~/.local/state/titan-console/inbox/deposits`),
+keyed on the running build so a restart files no second one. That item is filed with or without
+a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `service check` fails
+with `no hub seat`.
 
 Shepherd starts the deployer itself. After `sh-main-ci` reads green on a merge into the
 factory's own repo (its `package.json` `repository`), step `sh-redeploy:<merge sha>` spawns
