@@ -13,7 +13,7 @@ import {
   writeFileWithMode,
 } from "../fixtures/temp-home.js";
 import type { AccountProfile } from "../profile.js";
-import { REFRESH_LOCK, REFRESH_LOCK_HOLDER } from "./credentials-write.js";
+import { REFRESH_LOCK, REFRESH_LOCK_HOLDER, acquireRefreshLock } from "./credentials-write.js";
 import { CREDENTIALS_FILE } from "./login.js";
 import type { FetchLike } from "./poll.js";
 import { DEFAULT_REFRESH_SCOPES, OAUTH_CLIENT_ID, TOKEN_URL, refreshIfNeeded, type RefreshOptions } from "./refresh.js";
@@ -411,6 +411,28 @@ describe("refreshIfNeeded yields to another writer", () => {
     expect(await refresh(fetch)).toEqual({ status: "locked" });
     expect(calls).toHaveLength(0);
     expect(fs.existsSync(path.join(profile.configDir, REFRESH_LOCK))).toBe(true);
+  });
+
+  it("keeps the fresh record of an acquirer that takes the lock mid-reclaim", async () => {
+    writeText(JSON.stringify(expiringCredentials()));
+    leaveOwnLock(deadPid());
+    const primary = path.join(profile.configDir, REFRESH_LOCK);
+    const realRmdir = fs.rmdirSync;
+    const racer: { release?: (() => void) | null } = {};
+    const rmdir = vi.spyOn(fs, "rmdirSync").mockImplementation(((target: fs.PathLike, ...rest: unknown[]) => {
+      (realRmdir as (...args: unknown[]) => void)(target, ...rest);
+      if (String(target) === primary && racer.release === undefined) racer.release = acquireRefreshLock(profile.configDir, uid);
+    }) as typeof fs.rmdirSync);
+    const { fetch, calls } = fakeFetch(() => granted());
+
+    const result = await refresh(fetch);
+    rmdir.mockRestore();
+
+    expect(result).toEqual({ status: "locked" });
+    expect(calls).toHaveLength(0);
+    const fresh = JSON.parse(fs.readFileSync(holderFile(), "utf8"));
+    expect(fresh).toMatchObject({ pid: process.pid, primary: { ino: fs.lstatSync(primary).ino } });
+    racer.release?.();
   });
 
   it("never reclaims a lock whose holder record names a different lock", async () => {

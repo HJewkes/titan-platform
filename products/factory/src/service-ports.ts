@@ -98,6 +98,15 @@ function tickStatusRead(): TickStatusRead {
   return { file, text: readIfPresent(file) };
 }
 
+/** A config that fails to load was already refused by runServiceVerb, so here it reads as no seat. */
+function configuredHubSeat(env: NodeJS.ProcessEnv): string | undefined {
+  try {
+    return loadConfig(configPath(env)).shepherd?.hubSeat;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `checkout` is the service checkout whose index.lock blocks deploys. */
 export function systemCheckPorts(checkout: string): CheckPorts {
   return {
@@ -107,5 +116,6 @@ export function systemCheckPorts(checkout: string): CheckPorts {
     installedBuildSha: buildSha,
     tickStatus: tickStatusRead,
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+    hubSeat: () => configuredHubSeat(process.env),
   };
 }

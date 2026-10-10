@@ -131,12 +131,13 @@ function readHolder(configDir: string, uid: number): HolderRecord | null {
 
 // Only lock dirs the record names are removed, and only once the process that
 // made them has exited: a lock with no record, or another inode, is Claude Code's.
+// The old record is left for recordHolder to replace: removing it here could remove the
+// fresh record of an acquirer that took the freed dirs in between.
 function reclaimAbandoned(configDir: string, uid: number, lockDir: string, legacyDir: string): void {
   const holder = readHolder(configDir, uid);
   if (holder === null || isAlive(holder.pid)) return;
   if (holder.legacy !== undefined) removeLockDir({ dir: legacyDir, ...holder.legacy });
   removeLockDir({ dir: lockDir, ...holder.primary });
-  fs.rmSync(path.join(configDir, REFRESH_LOCK_HOLDER), { force: true });
 }
 
 const identityOf = ({ ino, ctimeMs }: HeldDir): DirIdentity => ({ ino, ctimeMs });
