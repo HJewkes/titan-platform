@@ -695,8 +695,9 @@ reviews the new head, then comes back to the merge step there, where the same ho
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
 
-A hold whose reason starts `g10-review:` releases itself in the `sh-g10-release` step when an
-opus reviewer Shepherd spawned says `MERGE` and the required checks are green at that head.
+A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
+`sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
+checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the
@@ -716,7 +717,9 @@ run ab0f9228-…: asked for Shepherd's own review at 0123abcd…
 `shepherd review` asks for a fresh reviewer of Shepherd's own at the pull request's head as
 read now. The ask is stored on the registration (migration 18), so it survives a serve
 restart. The next review intent at that head spawns a reviewer under a name nobody has held,
-never the named reviewer of a `hold --reviewer`, records `requested: true`, and takes the ask.
+never the standing reviewer or the named reviewer of a `hold --reviewer`, records
+`requested: true`, and takes the ask. A retry at that head, after a silent or timed-out
+reviewer, spawns again too.
 
 A held run waiting in `merging` at that head stops waiting without merging and reads CI
 again. The `sh-review-request` step then sets aside the verdict the run already had there,
@@ -726,8 +729,9 @@ verdict from a hold's named reviewer still counts toward the hold.
 
 The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and
 prints `Shepherd's own review was already asked`. An ask names one head; after a push the new
-head gets its own review anyway. A pull request that is not registered, or whose run already
-ended, is refused before anything is recorded. The run reads the ask only at a merge wait and
+head gets its own review anyway. A pull request that is not registered, a run that already
+ended, and the Version Packages run (its release preflight stands in for a reviewer) are
+refused before anything is recorded. The run reads the ask only at a merge wait and
 at a green head it already reviewed, so a run waiting at an owner gate takes it only after
 that gate is answered.
 

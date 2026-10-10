@@ -8,6 +8,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdServices } from "./commands.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { CauseTrail } from "./review-cause.js";
+import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -65,14 +66,15 @@ export interface ReviewAsk {
 
 const refused = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
-/** Only a registered PR's run can take an ask, and a finished run reads none, so either is refused before anything is recorded. */
+/** Only a registered PR's run can take an ask, and a finished or release run reads none, so each is refused before anything is recorded. */
 async function askReview({ repo, pr }: { repo: RepoSlug; pr: number }, ctx: FactoryContext): Promise<ReviewAsk> {
   const services: ShepherdServices | undefined = ctx.shepherd;
   if (!services) throw refused("shepherd commands need the shepherd routes, and this host was opened without them", EXIT.UNAVAILABLE);
   const registration = services.store.get().byPr(repo, pr);
   if (!registration) throw refused(`${repo}#${pr} is not registered with shepherd`, EXIT.NOINPUT);
-  const status = ctx.host.runtime.status(registration.runId)?.status;
-  if (status === undefined || FINISHED_RUN_STATUSES.has(status)) throw refused(`shepherd run ${registration.runId} already ended (${status ?? "missing"}), so no review was asked`, EXIT.DATAERR);
+  const run = ctx.host.runtime.status(registration.runId);
+  if (run === undefined || FINISHED_RUN_STATUSES.has(run.status)) throw refused(`shepherd run ${registration.runId} already ended (${run?.status ?? "missing"}), so no review was asked`, EXIT.DATAERR);
+  if (run.params.branch === VERSION_PACKAGES_BRANCH) throw refused(`shepherd run ${run.id} lands the Version Packages PR, whose release preflight stands in for a reviewer, so no review was asked`, EXIT.DATAERR);
   const { headSha } = await services.port.getPr(repo, pr);
   return { runId: registration.runId, head: headSha, requested: services.store.get().requestReview(registration.runId, headSha) };
 }

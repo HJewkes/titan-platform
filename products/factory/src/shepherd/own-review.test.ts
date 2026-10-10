@@ -10,6 +10,7 @@ import type { ReviewAsk } from "./review-request.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
+import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 
@@ -20,6 +21,8 @@ const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixe
 const G10_ADVERSARY = "g10-adversary: merge-policy change; TP-1";
 const G10_REVIEW = "g10-review: auth change; TP-1";
 const SEAT_REVIEWER = "seat-x-review";
+/** The registration's opt-in reviewer, exited with room left, so a review without an ask resumes it. */
+const STANDING = "standing-rv";
 
 /** Where a reviewer's verdict sits in its session; only the conversation's native id is read here. */
 function locatorIn(sessionId: string): SourceTextLocator {
@@ -29,16 +32,25 @@ function locatorIn(sessionId: string): SourceTextLocator {
   return { source, evidence, selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] } };
 }
 
-const row = (name: string, presence: ReviewerAgent["presence"] = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null });
+const row = (name: string, presence: ReviewerAgent["presence"] = "exited"): ReviewerAgent => ({ name, agentId: `agent-${name}`, sessionId: `session-${name}`, presence, spawnedBy: "coord", predecessor: null, fillTokens: 1_000 });
 
-/** The seat reviewer and every reviewer Shepherd spawns say MERGE at the head they read; `spawned` names Shepherd's. */
-function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReader; spawned: string[] } {
-  const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), row(SEAT_REVIEWER)];
+interface Reviewers {
+  dispatch: ReviewerDispatch;
+  reader: ReviewerReader;
+  spawned: string[];
+  resumed: string[];
+}
+
+/** Every reviewer says MERGE at the head it reads, except the seat reviewer when `seatSilent` and Shepherd's first `silentSpawns` spawns. */
+function mergingReviewers(seatSilent: boolean, silentSpawns: number): Reviewers {
+  const agents: ReviewerAgent[] = [{ ...row("coord", "live"), spawnedBy: null }, row("impl-a"), row(SEAT_REVIEWER), row(STANDING)];
   const spawned: string[] = [];
-  const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void (spawned.push(name), agents.push(row(name))), resume: async () => undefined };
-  const said = (who: ReviewerAgent, head: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: 1, text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}\n`, locator: locatorIn(who.sessionId) });
-  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, input.head)) };
-  return { dispatch, reader, spawned };
+  const resumed: string[] = [];
+  const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void (spawned.push(name), agents.push(row(name))), resume: async (name) => void resumed.push(name) };
+  const silent = (who: ReviewerAgent) => (seatSilent && who.name === SEAT_REVIEWER) || (spawned.includes(who.name) && spawned.indexOf(who.name) < silentSpawns);
+  const said = (who: ReviewerAgent, head: string) => ({ agentId: who.agentId, sessionId: who.sessionId, writtenAt: Date.now(), text: `Verdict: MERGE\nPR: ${REPO}#1\nHead: ${head}\n`, locator: locatorIn(who.sessionId) });
+  const reader: ReviewerReader = { read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId && !silent(who)).map((who) => said(who, input.head)) };
+  return { dispatch, reader, spawned, resumed };
 }
 
 interface World {
@@ -48,26 +60,37 @@ interface World {
   store: ShepherdStore;
   runId: string;
   spawned: string[];
+  resumed: string[];
+}
+
+interface Options {
+  seatSilent?: boolean;
+  /** Shepherd's first spawns that never write a verdict; with any, the clock is real and the waits are short, so they time out. */
+  silentSpawns?: number;
+  standing?: boolean;
+  branch?: string;
 }
 
 /** One green, clean head H1 under `hold`, with the hold's named reviewer when one is given. */
-function heldRun(hold: string, reviewer?: string): World {
+function heldRun(hold: string, reviewer?: string, { seatSilent = false, silentSpawns = 0, standing = false, branch }: Options = {}): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge"), mergeableState: "clean" });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   fake.setRuns(H1, [successRun("validate", 1), successRun("dag-check", 2)]);
-  const reviewers = mergingReviewers();
+  const reviewers = mergingReviewers(seatSilent, silentSpawns);
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
-  const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" } };
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
+  const waits = silentSpawns > 0 ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1 } : {};
+  const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" }, ...waits };
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: silentSpawns > 0 ? Date.now : () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
   const store = ref.get();
-  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
-  store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "security" });
+  const policy = standing ? { ...AUTO_POLICY, reviewer: STANDING } : AUTO_POLICY;
+  const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(policy), ...(branch && { branch }) });
+  store.register({ repo: REPO, pr: 1, ...(branch && { branch }), runId, task: "demo/1", implementer: "impl-a", policy, kind: "security" });
   store.hold(runId, hold, reviewer);
-  return { host, routes, fake, store, runId, spawned: reviewers.spawned };
+  return { host, routes, fake, store, runId, spawned: reviewers.spawned, resumed: reviewers.resumed };
 }
 
 const results = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults);
@@ -124,6 +147,44 @@ describe("shepherd review", () => {
 
     expect(w.spawned).toHaveLength(1);
     expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn", requested: true })]);
+  });
+
+  it("never lets Shepherd's own MERGE release a g10-review hold whose named reviewer has not answered", async () => {
+    const w = heldRun(G10_REVIEW, SEAT_REVIEWER, { seatSilent: true });
+    w.store.requestReview(w.runId, H1);
+
+    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 1).toBe(true), { timeout: 5_000 });
+
+    expect(results(w).filter((result) => result.stepId.startsWith("sh-g10-release")).map((result) => result.data?.["result"])).not.toContainEqual(expect.objectContaining({ released: true }));
+    expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: G10_REVIEW, holdSatisfied: null });
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+
+  it("keeps a timed-out asked review's retry Shepherd's own, never the hold's named reviewer", async () => {
+    const w = heldRun(G10_REVIEW, SEAT_REVIEWER, { seatSilent: true, silentSpawns: 1 });
+    w.store.requestReview(w.runId, H1);
+
+    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 2).toBe(true), { timeout: 5_000 });
+
+    expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn", requested: true }), expect.objectContaining({ mode: "spawn", cause: { cause: "retry", reason: "timeout" } })]);
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+
+  it("spawns a fresh reviewer for an ask instead of resuming the registration's standing reviewer", async () => {
+    const w = heldRun(G10_ADVERSARY, undefined, { standing: true });
+    w.store.requestReview(w.runId, H1);
+
+    await vi.waitFor(() => expect(waitingToMerge(w)).toBe(true), { timeout: 5_000 });
+
+    expect(w.resumed).toEqual([]);
+    expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn", requested: true })]);
+  });
+
+  it("refuses the Version Packages run, whose release preflight stands in for a reviewer", async () => {
+    const w = heldRun(G10_ADVERSARY, undefined, { branch: VERSION_PACKAGES_BRANCH });
+
+    expect(await ask(w)).toMatchObject({ ok: false, code: 65, error: expect.stringContaining("Version Packages") });
+    expect(w.store.byRun(w.runId)?.reviewRequest).toBeNull();
   });
 
   it("refuses a run that already ended", async () => {

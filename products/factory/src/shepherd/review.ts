@@ -104,13 +104,14 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
 
 /**
  * A hold that names a reviewer waits for that reviewer, unless its class needs Shepherd's own review too or a seat asked for
- * one at this head; `fresh` skips the standing reviewer, which may be the one that went silent.
+ * one at this head, taken or not, so a retry of the asked review is Shepherd's own too; `fresh` skips the standing reviewer,
+ * which may be the one that went silent.
  */
 function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
-  const requested = reviewPendingAt(registration, target.head);
-  const external = requested ? undefined : adoptedReviewer(registration);
+  const asked = registration?.reviewRequest?.head === target.head;
+  const external = asked ? undefined : adoptedReviewer(registration);
   if (external) return { mode: "external", reviewer: external };
-  if (requested) return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
+  if (asked) return { mode: "spawn", reviewer: freshName(target, registration.implementer, roster) };
   const standing = fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };

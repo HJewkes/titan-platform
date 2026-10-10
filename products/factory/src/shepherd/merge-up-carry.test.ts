@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openFactoryHost, type FactoryHost } from "../host.js";
+import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
+import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
@@ -66,6 +67,7 @@ function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReade
 
 interface World {
   host: FactoryHost;
+  routes: FactoryRoutes;
   fake: FakeGitHub;
   store: ShepherdStore;
   runId: string;
@@ -100,7 +102,7 @@ function heldBehindRun({ shape = "clean", hold = G10_REVIEW, redAtH2 = false }: 
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "correctness" });
   store.hold(runId, hold);
-  return { host, fake, store, runId, spawned: reviewers.spawned };
+  return { host, routes, fake, store, runId, spawned: reviewers.spawned };
 }
 
 const results = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults);
@@ -131,6 +133,19 @@ describe("a verdict carried across Shepherd's own clean merge-up of main", () =>
     expect(stepIds(w).filter((id) => id.startsWith(`${G10_RELEASE_STEP}:${h2(w)}`))).toEqual([]);
     expect(w.store.byRun(w.runId)).toMatchObject({ held: true, holdReason: G10_ADVERSARY });
     expect(w.fake.pr(1).merged).toBe(false);
+  });
+});
+
+describe("a seat's ask at a head a MERGE was carried to", () => {
+  it("sets the carried MERGE aside and spawns a fresh reviewer at H2 instead of carrying it again", async () => {
+    const w = heldBehindRun({ hold: G10_ADVERSARY });
+    await vi.waitFor(() => expect(settledAtH2(w) && stepIds(w).includes(`${MERGE_UP_STEP}:${h2(w)}`)).toBe(true), { timeout: 5_000 });
+
+    const asked = await callCommand(w.host, w.routes, "shepherd.review", { repo: REPO, pr: 1 });
+    await vi.waitFor(() => expect(w.spawned).toHaveLength(2), { timeout: 5_000 });
+
+    expect(asked).toMatchObject({ ok: true, data: { head: h2(w), requested: true } });
+    expect(resultOf(w, `sh-review-intent:${h2(w)}`)).toMatchObject({ mode: "spawn", requested: true, cause: { cause: "seat-request" } });
   });
 });
 
