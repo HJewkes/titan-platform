@@ -34,6 +34,12 @@ export const ReviewConfigSchema = z.strictObject({
   sessionStartTimeoutMs: z.number().int().positive().optional(),
   /** Repos whose CI uploads a `codewatch-report` artifact; their reviewer briefs get its questions. */
   codewatchRepos: z.array(z.string().refine(isRepoKey, "must be an owner/name repo")).optional(),
+  /** The free bytes a review needs on the filesystem that holds review checkouts; absent means 5 GiB. */
+  minFreeBytes: z.number().int().min(0).optional(),
+  /** The free inodes a review needs, as a percent of that filesystem's, raised to twice the last checkout's; absent means 15. */
+  minFreeInodesPct: z.number().min(0).max(100).optional(),
+  /** No reviewer starts while this many run; absent means 3. */
+  maxConcurrent: z.number().int().positive().optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
