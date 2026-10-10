@@ -183,6 +183,31 @@ that sent it, per model. An approve counts as an error when the same PR later go
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
 
+### taskActuals
+
+`taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The
+caller reads the done tasks (`id`, `initiative`, `doneAt`) and passes them with an
+`initiatives` allowlist; a task outside it gets no row, and nothing else is read.
+`doneAt` may be an ISO datetime or a date alone.
+
+A row carries `implAgentHours` and `reviewAgentHours`, each as `capped` (the 15 minute idle
+cap, or `capMinutes`), `at5m` and `at60m`. Active time is the sum of request gaps, each
+capped, so a first request adds nothing. `usd` is `request_cost` at list price. Sessions are
+linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
+task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
+implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+
+| Flag | Meaning |
+|---|---|
+| `no-impl-session` | No implementer session links to the task. Hours are 0, not unknown. |
+| `weak-link` | A session's link came from `brief-paragraph` or `brief-anchor`, which can mis-link. |
+| `multi-task` | A session names k tasks, so its hours and cost split 1/k. |
+| `reopened` | An implementer session started after `doneAt`. All work still counts. |
+| `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
+
+Roles come from `roleFromProfile` and `workerRole`, so a long-lived standing peer is not
+counted as an implementer.
+
 ## What it deliberately does not do
 
 It does not open a transcript, a log or the network, it never writes the graph, and it does
