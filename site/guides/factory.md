@@ -11,6 +11,8 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   it under a per-repo policy. It has its own guide: [Shepherd](/guides/shepherd).
   `shepherd stats --cost` reports what its review costs, in dollars and tokens per merged
   PR: see [Review cost](/guides/shepherd#review-cost).
+  `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
+  [SLOs](/guides/shepherd#slo).
 
 The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
 when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
@@ -127,6 +129,11 @@ stays out of the repo.
   busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
   machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
   of recording `none`.
+  A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
+  filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
+  while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
+  last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
+  queue.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with

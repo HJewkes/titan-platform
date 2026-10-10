@@ -12,6 +12,8 @@ export interface ApprovalQuestion {
   round: number;
   /** The merge policy's reason for asking. */
   reason: string;
+  /** The base the merge lands in, as the green read that asks saw it. */
+  base?: string;
 }
 
 /** `merge` approves only the head asked about; `failed` names why a check outside CI found that head red. */
@@ -25,9 +27,9 @@ export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => 
 
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
 export function approveMergeGate(rule: PolicyRule, reviewedMerge?: (headSha: string) => boolean): AskApproval {
-  return async (ctx, { repo, pr, headSha, reason }) => {
+  return async (ctx, { repo, pr, headSha, reason, base }) => {
     const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: reviewedMerge?.(headSha) ?? false });
-    const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
+    const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
     const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${headSha}: ${answer.error.message}`);
     return answer.data.decision;

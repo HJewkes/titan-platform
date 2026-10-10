@@ -23,6 +23,7 @@ export type MetricSource =
   | "growth-risk"
   | "history"
   | "test-linker"
+  | "test-kinds"
   | "coverage";
 
 export interface MetricDescriptor {
