@@ -8,7 +8,7 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, SplitReadingError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, SplitReadingError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
@@ -41,6 +41,8 @@ const OVERSIZE_REASON =
   "authority-guard does not check a Bash command over 8 KiB, so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const READINGS_REASON =
   "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
+const VALUE_REASON =
+  "authority-guard does not check this Bash command: it evaluates arithmetic (`(( X ))`, `let X`, `a[X]=1`), which runs a `$(` or backquote after a `[` in a variable's value, and it stores such text where the check cannot follow it (`read`, an argument, a loop item, a value built at run time) or in a value it cannot read in full; write the commands out where they run, or split the arithmetic into its own command.";
 const SPLIT_REASON =
   "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body, and the line's other heredoc bodies, from the next lines, while bash 3.2 runs those lines as commands; close the heredoc inside the substitution.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
@@ -105,6 +107,7 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
 
 function limitReason(error: ReadingLimitError): string {
   if (error instanceof ScriptBudgetError) return scriptsReason(error.overrun);
+  if (error instanceof ValueWalkError) return VALUE_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASON : READINGS_REASON;
 }
 

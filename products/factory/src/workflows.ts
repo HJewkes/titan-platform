@@ -18,7 +18,9 @@ import { carry } from "./shepherd/tree-carry.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
-import { spawnGate, type SpawnGate } from "./shepherd/spawn-gate.js";
+import { spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
+import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
+import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
@@ -180,6 +182,13 @@ function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> 
   return record && Object.fromEntries(Object.entries(record).map(([key, value]) => [key.toLowerCase(), value]));
 }
 
+/** The `spawnGate` overrides plus the review floors and cap from `shepherd.review`; a key left out keeps its default. */
+export function configuredSpawnLimits(shepherd: FactoryConfig["shepherd"]): Partial<SpawnLimits> {
+  const review = shepherd?.review;
+  const fromReview = { reviewMinFreeBytes: review?.minFreeBytes, reviewMinFreeInodesPct: review?.minFreeInodesPct, maxConcurrentReviews: review?.maxConcurrent };
+  return { ...shepherd?.spawnGate, ...Object.fromEntries(Object.entries(fromReview).filter(([, value]) => value !== undefined)) };
+}
+
 /** The bin this bundle was built as: dist/bin.js sits beside the bundled routes. */
 const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url));
 
@@ -193,7 +202,7 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const gate = overrides.spawnGate ?? spawnGate({ limits: shepherd?.spawnGate });
+  const gate = overrides.spawnGate ?? spawnGate({ limits: configuredSpawnLimits(shepherd), disk: reviewCheckoutDisk(reviewCheckoutRoot()) });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
   const review = configuredReview(shepherd, seats, roster, gate, fixerReview(freeze, store));

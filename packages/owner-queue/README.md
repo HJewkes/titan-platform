@@ -49,6 +49,22 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   head differs (`new-head:<sha>`), `task-done` (`task-done:<id>`) and `asker-retired`
   (`asker-retired:<asker>`), which fires only when the asker declared an `onNoAnswer` other
   than `parked`. A missing fact never labels an item.
+- `supersede(items, heads?)` withdraws items pinned to an old PR head, because an approval
+  resets on a new push. A PR's live head is `heads[<owner>/<repo>#<n>]` (case-insensitive, a
+  full sha only), or else the head of its newest pinned item; on equal `openedAt` the later
+  item wins. An `open`, `answered` or `decided` item pinned to another head is returned in
+  `withdrawn` as `{ item, was, pr, reason: "new-head:<sha>" }`, with the item's status set to
+  `withdrawn`. Other items stay in `kept`, in input order, and `heads` gives each live head.
+  An unpinned or short-sha PR key pins nothing and is never withdrawn.
+  **Change requests:** a withdrawn item keeps its answer, so a `changeRequested` against an
+  old head stays readable as context, but it is no longer open and must not block a ship.
+  Only a change request answered at the live head (a re-assertion) is in `kept` and blocks.
+  Likewise an approval at an old head never counts as approval at the live head.
+- `stackContext(items, stacks)` takes `stacks` mapping a stacked PR to its base PR, both
+  `<owner>/<repo>#<n>` (case-insensitive). It returns `{ item, context }` for every item:
+  `context` is the base chain of the item's stacked PRs, nearest first, shown as context and
+  not under review. An item orders after every item on its bases; other items keep input
+  order, and a cycle in `stacks` falls back to input order.
 - `buildOwnerRounds(items, options)` turns open Decide items into `titan-review/round@2`
   manifests that pass `RoundSchema` from `@titan-design/review-schema`. It returns
   `{ rounds: [{ manifest, bindings }], skipped }`. Each ask is one question in its own section,
