@@ -77,6 +77,8 @@ export type { CappedList, RecoveredCommand, RecoveredMessage, RecoveredMessageTa
 export { CLAUDE_TRANSCRIPT_FORMAT, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, findClaudeSessionSource, assertClaudeSessionSource } from "./claude-source.js";
 export type { FindClaudeSessionSourceInput, SessionSourceLookup } from "./claude-source.js";
 export { CLAUDE_DECODER_ID, CLAUDE_CHECKPOINT_VERSION, ClaudeTranscriptDecoder } from "./claude-decoder.js";
+export { decodeClaudeToolLines } from "./claude-tool-lines.js";
+export type { ClaudeToolCallLine, ClaudeToolLine, ClaudeToolResultLine } from "./claude-tool-lines.js";
 export { readClaudeObservations, readClaudeText } from "./claude-read.js";
 export type { ReadClaudeTextOptions } from "./claude-read.js";
 export { readSessionObservations, readSessionSourceText } from "./session-observations.js";
