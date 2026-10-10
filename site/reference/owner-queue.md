@@ -314,12 +314,14 @@ const { open, dropped, flags } = recheck(asked, answered);
 
 | Shared key | Answer | Result |
 |---|---|---|
-| `ask:` | newer than the item's `openedAt`, same head | dropped as `gone-elsewhere`, citing the newest such answer |
+| `ask:` | newer than the item's `openedAt`, not pinned to another head of the item's PR | dropped as `gone-elsewhere`, citing the newest such answer |
 | `ask:` | older, or pinned to another head of the item's PR | `conflict` if it is not the recommended pick, else `reasked` |
 | only `component:`, `token:` or `topic:` | any | `related-answer`; never drops |
 
 - **Heads.** An answer given on one head of a PR never settles an item pinned to another
-  head of it, so a new commit always gets its own look. It still shows as a flag.
+  head of it, so a new commit always gets its own look. It still shows as a flag. A PR key
+  with no `@<sha>` pins nothing, so on either side it never blocks a settle. Heads compare as
+  written, case-insensitively: a short sha is a different head from its full form.
 - **Conflict.** Free text, a change request or a different pick against an item's
   recommendation is a conflict. An item with no recommendation reads as reasked.
 - **Order.** `open` is sorted by id and `flags` by item, answer and kind, so the result is the

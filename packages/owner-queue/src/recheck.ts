@@ -57,10 +57,16 @@ function prHeads(keys: readonly string[]): Map<string, string | null> {
   return heads;
 }
 
-/** An answer given on another head of a PR the item names is about code the item is not. */
+/**
+ * An answer given on another head of a PR the item names is about code the item is not. A PR
+ * key with no head pins nothing, as in `stale.ts`, so it never conflicts with a head.
+ */
 function sameHeads(item: OwnerItem, answer: Answered): boolean {
   const theirs = prHeads(answer.keys);
-  return [...prHeads(item.keys)].every(([pr, sha]) => !theirs.has(pr) || (sha !== null && theirs.get(pr) === sha));
+  return [...prHeads(item.keys)].every(([pr, sha]) => {
+    const other = theirs.get(pr);
+    return sha === null || other === undefined || other === null || other === sha;
+  });
 }
 
 function settles(item: OwnerItem, match: Match): boolean {

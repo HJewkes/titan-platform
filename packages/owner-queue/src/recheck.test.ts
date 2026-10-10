@@ -71,6 +71,23 @@ describe("recheck", () => {
     expect(result.dropped.map((drop) => drop.item.id)).toEqual(["b"]);
   });
 
+  it("settles an item when neither side pins the PR to a head", () => {
+    const pr = "pr:org-a/repo-1#12";
+
+    const result = recheck([open("b", { keys: [ASK, pr] })], [answer("a", AFTER, [ASK, pr])]);
+
+    expect(result.dropped.map((drop) => drop.item.id)).toEqual(["b"]);
+  });
+
+  it.each([
+    ["the item is pinned and the answer is not", prKey("org-a/repo-1", 12, SHA_A), "pr:org-a/repo-1#12"],
+    ["the answer is pinned and the item is not", "pr:org-a/repo-1#12", prKey("org-a/repo-1", 12, SHA_A)],
+  ])("settles an item when %s, since an unpinned PR key pins no other head", (_case, itemPr, answerPr) => {
+    const result = recheck([open("b", { keys: [ASK, itemPr] })], [answer("a", AFTER, [ASK, answerPr])]);
+
+    expect(result.dropped.map((drop) => drop.item.id)).toEqual(["b"]);
+  });
+
   it("flags an older answer that differs from the recommendation as a conflict", () => {
     const result = recheck([open("b")], [answer("a", BEFORE, [ASK], { optionId: "blue" })]);
 
