@@ -212,6 +212,19 @@ describe("readUsage", () => {
     expect(JSON.stringify(read)).not.toContain(CANARY);
   });
 
+  it("falls back to an older reading when the newest lacks a window the caller needs", () => {
+    writeReading(configDir, reading());
+    const fiveOnly = { five_hour: { used_percentage: 30 } };
+    writeSessionFile("session-a.json", reading({ session_id: "session-a", written_at: WRITTEN_AT + 60, rate_limits: fiveOnly }));
+    const now = (WRITTEN_AT + 60) * 1000;
+
+    const newest = readUsage(configDir, { now });
+    const withBoth = readUsage(configDir, { now, windows: ["five_hour", "seven_day"] });
+
+    expect(newest?.reading.session_id).toBe("session-a");
+    expect(withBoth).toMatchObject({ file: usageFilePath(configDir), ageSeconds: 60 });
+  });
+
   it("never reports a negative age for a reading from the future", () => {
     writeReading(configDir, reading());
 

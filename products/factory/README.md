@@ -30,7 +30,7 @@ titan-factory resume                                          # drive every unfi
 titan-factory gate resolve <runId> <stepId> --json '<payload>'  # answer a gate; its stored schema checks the payload
 titan-factory service install [--port <n>] [--mcp]            # write the LaunchAgent plist (systemd unit on Linux), load it, wait for /health
 titan-factory service status|check|restart|uninstall               # macOS only, like install
-titan-factory service deploy [--expect <sha>]                 # fast-forward main, rebuild the factory closure, restart drained
+titan-factory service deploy [--expect <sha>]                 # fast-forward the dedicated deploy checkout's main (cloned when absent), rebuild the factory closure, restart drained
 titan-factory service plist                                   # print the LaunchAgent plist (systemd unit on Linux) for titan-factory serve
 titan-factory shepherd register owner/repo#N --task <t> --implementer <agent>  # or owner/repo --branch <b>
 titan-factory shepherd status|list|timeline|hold|release|merge ...  # --json prints the result as JSON

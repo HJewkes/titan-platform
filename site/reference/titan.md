@@ -70,6 +70,50 @@ Each tick ends with one row for target `titan-health-sampler`, kind `self`, stat
 Its `observed` holds `cpuUserUs`, `cpuSystemUs`, `fsReadBlocks`, `fsWriteBlocks`,
 `voluntaryCtx`, `involuntaryCtx`, `maxRssKb`, `wallMs` and `targets`.
 
+## `titan health uptime`
+
+```sh
+titan health uptime <target> [--window 24h] [--end <iso>] [--min 0.99] [--json] [--db <path>]
+```
+
+- `--window` is `<n>m`, `<n>h` or `<n>d` ending at `--end` (default now). The store is
+  opened read-only; a store that cannot be opened exits 2 with its path.
+- The report comes from `uptime` in [`health`](/reference/health): slots, up, down,
+  unknown and missing, `upShareOfWindow`, `upShareOfObserved` and the gaps. A missing
+  minute is never up.
+- `restarts` and `uncleanStarts` are the deltas of serve's own `restartCount` and
+  `uncleanStartsTotal` between the first and last sample in the window that carries them,
+  as `{ first, last, delta, counterReset }`. When a counter drops anywhere in the window
+  (serve's state file was reset), `counterReset` is true and `delta` is null rather than
+  negative or undercounted.
+- Text prints at most 10 gaps, longest first. `--json` prints all of them, oldest first.
+- `--min` exits 1 when `upShareOfWindow` is below it; a window with no whole slot counts as 0.
+
+## `titan health cost`
+
+```sh
+titan health cost [--window 24h] [--end <iso>] [--json] [--db <path>]
+```
+
+It folds the `self` rows in the window: `ticks` (wakeups), then the mean and max per tick
+of `wallMs`, `cpuMs` (user plus system), `fsReadBlocks`, `fsWriteBlocks` and
+`contextSwitches` (voluntary plus involuntary), the max `maxRssKb`, and `store` from
+`storeStats` (rows, bytes, oldest and newest `ts`).
+
+## `titan health import`
+
+```sh
+titan health import <jsonl> [--target factory] [--db <path>]
+```
+
+It loads the shepherd-health stopgap log. Each line `{ts, up, code, secs, sha, running,
+pendingGates}` becomes a sample of `--target` with kind `http`, status `pass` when `up`
+else `fail`, `latencyMs` from `secs`, `observed` holding `code`, `build.sha`, `running`
+and `pendingGates` when present, and source `import:shepherd-health`. The dedup key is the
+sha256 of the file's base name and the raw line, so importing the same file twice gives the
+same row count. Lines that do not parse are skipped and counted; it prints the imported,
+duplicate and bad counts.
+
 ## What it deliberately does not do
 
 - It does not run as a daemon. A scheduler starts it each minute.

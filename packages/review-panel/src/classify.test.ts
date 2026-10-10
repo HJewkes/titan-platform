@@ -1,3 +1,4 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
 import type { ChangedFile, PrFacts } from "./types.js";
@@ -98,8 +99,8 @@ describe("classifyPr", () => {
   });
 
   it("counts no lines when any file lacks them, generated or not", () => {
-    const bare = { path: "docs/a.md" } as unknown as ChangedFile;
-    const bareGenerated = { path: "CAPABILITIES.md" } as unknown as ChangedFile;
+    const bare = partialFake<ChangedFile>({ path: "docs/a.md" });
+    const bareGenerated = partialFake<ChangedFile>({ path: "CAPABILITIES.md" });
     expect(changedLineCount([file("docs/b.md"), bare])).toBeUndefined();
     expect(changedLineCount([file("docs/b.md"), bareGenerated])).toBeUndefined();
   });
@@ -116,7 +117,7 @@ describe("classifyPr", () => {
   });
 
   it("falls back to file count when line counts are absent", () => {
-    const bare = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `docs/${i}.md` }) as unknown as ChangedFile);
+    const bare = (n: number) => Array.from({ length: n }, (_, i) => partialFake<ChangedFile>({ path: `docs/${i}.md` }));
     expect(classifyPr({ ...facts([]), changedFiles: bare(12) }).touches).toEqual([]);
     expect(classifyPr({ ...facts([]), changedFiles: bare(13) }).touches).toEqual(["large"]);
   });
