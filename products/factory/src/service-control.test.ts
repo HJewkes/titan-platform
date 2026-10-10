@@ -12,6 +12,8 @@ const PLIST = plistPath(HOME);
 const ERR_LOG = "/xdg/state/titan-factory/serve.err.log";
 const MCP_ADD = "claude mcp add --transport http --scope user titan-factory http://127.0.0.1:7410/mcp";
 const OLD_PID = 100;
+const DEPLOY_CHECKOUT = `${HOME}/Library/Application Support/titan-factory/deploy/titan-platform`;
+const DEPLOY_BIN = `${DEPLOY_CHECKOUT}/products/factory/dist/bin.js`;
 const GH_DOWN = "gh api rate_limit failed (1): gh: command not found";
 const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
@@ -42,6 +44,8 @@ interface MachineInit {
   busy?: BusyRun[][];
   /** `service.labelPrefix` from the factory config. */
   labelPrefix?: string;
+  /** The deploy checkout has no built bin yet; absent means it has. */
+  unbuilt?: boolean;
   /** The factory config failed to load with this message. */
   configError?: string;
 }
@@ -105,7 +109,7 @@ function fakeMachine(init: MachineInit = {}) {
     mkdir: (dir) => void dirs.push(dir),
     writeFile: (path, text) => void files.set(path, text),
     readFile: (path) => files.get(path),
-    exists: (path) => files.has(path),
+    exists: (path) => files.has(path) || (path === DEPLOY_BIN && init.unbuilt !== true),
     remove: (path) => void files.delete(path),
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
@@ -133,6 +137,29 @@ describe("titan-factory service install", () => {
     expect(machine.launchctlCalls()).toEqual([`launchctl bootstrap gui/${UID} ${PLIST}`]);
     expect(out).toContain("/health answers on port 7410");
     expect(machine.calls.some((call) => call.startsWith("claude"))).toBe(false);
+  });
+
+  it("runs serve from the dedicated deploy checkout, not from the checkout install ran in", async () => {
+    const machine = fakeMachine();
+
+    await service(["install"], machine);
+
+    const plist = machine.files.get(PLIST) ?? "";
+    expect(plist).toContain(`<string>${DEPLOY_BIN}</string>`);
+    expect(plist).toContain("<key>WorkingDirectory</key>");
+    expect(plist).toContain(`<string>${DEPLOY_CHECKOUT}</string>`);
+  });
+
+  it("refuses before writing anything when the deploy checkout has no built bin, naming the deploy verb", async () => {
+    const machine = fakeMachine({ unbuilt: true });
+
+    const { code, err } = await service(["install"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain(DEPLOY_BIN);
+    expect(err).toContain("titan-factory service deploy");
+    expect(machine.files.has(PLIST)).toBe(false);
+    expect(machine.launchctlCalls()).toEqual([]);
   });
 
   it("boots a loaded job out before bootstrapping the new plist", async () => {

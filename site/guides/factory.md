@@ -9,6 +9,10 @@ file, and a crash resumes from the last completed step. Two workflows are regist
   human, merge, run an optional chore.
 - `shepherd-pr` watches a pull request, or a branch that has no pull request yet, and lands
   it under a per-repo policy. It has its own guide: [Shepherd](/guides/shepherd).
+  `shepherd stats --cost` reports what its review costs, in dollars and tokens per merged
+  PR: see [Review cost](/guides/shepherd#review-cost).
+  `shepherd stats --slo` checks it against the SLOs in `metrics/shepherd.yml`: see
+  [SLOs](/guides/shepherd#slo).
 
 The factory starts one kind of agent: the Shepherd reviewer, through agent-chat, and only
 when `shepherd.review` is configured. Relay and agent-chat keep every other dispatch. For the design and the file map, read the
@@ -378,7 +382,7 @@ titan-factory service install --port 7411 --mcp
 | --- | --- | --- |
 | `service install [--port <n>] [--node <path>] [--mcp]` | The five steps above | the job answers `/health` with `github` `ok` |
 | `service status [--port <n>]` | Prints loaded or not, the pid, and a `/health` summary | `/health` answers with `github` `ok` |
-| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, and deploys are not stalled |
+| `service check [--port <n>] [--json]` | Read-only diagnosis: one line naming the first cause that holds (`not loaded`, `stale pid`, `crash loop`, `stale build`, `GitHub down`, `stale index.lock`, `deploy stalled`, `no hub seat`); `--json` adds `cause`, `pid`, `health` and `detail` | `/health` answers from the launchd or systemd pid with `github` `ok`, deploys are not stalled, and a hub seat is configured |
 | `service restart [--port <n>] [--drain-timeout <d>] [--no-drain] [--force]` | Waits until `/health` lists no busy run, then `launchctl kickstart -k`, then the same wait as install | the new process answers with `github` `ok` |
 | `service deploy [--expect <sha>]` | Fast-forwards the service checkout, rebuilds the factory when the range touches it, restarts drained; see [below](#service-deploy-redeploy-from-main) | the target is deployed, already deployed, or skipped as untouched |
 | `service uninstall` | Boots the job out when loaded, then removes the plist | the job is unloaded |
@@ -404,6 +408,7 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 - **GitHub down**: the right pid answers but `github` is not `ok`.
 - **stale index.lock**: the service checkout's `.git/index.lock` has no process holding it and is older than 10 minutes. The line names its path and age. `service check` never removes it; a person does, once no git runs there.
 - **deploy stalled**: the deploy block in `/health` has its alarm up (see [below](#service-deploy-redeploy-from-main)). The line names each cause, with the last refusal's reason; `--json` adds the running sha, the waiting asks, the refusals in a row and the last refusal.
+- **no hub seat**: the config sets no `shepherd.hubSeat`, so a deploy alarm reaches no seat. It is reported only once the server and the burndown tick are sound.
 
 It never starts, stops or restarts the job.
 
@@ -438,8 +443,16 @@ titan-factory service deploy                    # deploy origin/main
 titan-factory service deploy --expect <sha>     # deploy one commit already on origin/main
 ```
 
-`service deploy [--expect <sha>]` rebuilds and restarts the service from the checkout the bin
-was built in, which must be on `main` with no tracked changes. It takes the pid lock
+`service deploy [--expect <sha>]` rebuilds and restarts the service from the dedicated deploy
+checkout, which must be on `main` with no tracked changes. No agent or coordinator uses it as
+a cwd, so a reviewer's in-place checkout can no longer block a deploy. Its path is
+`service.deployCheckout` from the factory config, else `deploy/titan-platform` under the app
+data dir (`@titan-design/app-paths`, app `titan-factory`). When it is absent, deploy runs
+`git clone --branch main <remote>` into it, never a copy of a working tree; the remote is
+`service.deployRemote`, else the origin of the checkout the CLI runs from. While the installed
+unit or plist does not start the deploy checkout's bin, every run only fast-forwards and
+builds it, never restarts, and says to run `service install`; the automatic redeploy after a
+merge therefore cannot restart the service onto the old tree and roll back. It takes the pid lock
 `$XDG_STATE_HOME/titan-factory/deploy.lock`. A lock whose pid is dead is stale; a deployer
 takes it over by renaming it, so two deployers cannot both win, and on exit removes the lock
 only while it still holds its own pid. It runs `git fetch origin main` and targets `--expect`
@@ -493,8 +506,15 @@ refusal names `index.lock`, its reason ends with a report on the service checkou
 is older than 10 minutes is reported as stale. `shepherd status` ends with a `deploy:` line.
 `shepherd status --json --deploy` prints `{ rows, deploy }`; plain `--json` prints the bare
 row array, as before. With `shepherd.hubSeat` and `shepherd.agentChatBin` set, the hub seat
-gets one agent-chat message when the alarm goes up. It gets no second message until the alarm
-clears. A failed message is retried on the next check.
+gets an agent-chat message when the alarm goes up, and again every
+`shepherd.deployAlarm.renotifyTicks` checks (default 6, so 30 minutes) while it stays up. A
+failed message is retried on the next check. Once the alarm has stood for
+`shepherd.deployAlarm.escalateAfterMinutes` (default 30), serve files one `do` item for the owner
+into the titan console's deposit spool (`$TITAN_CONSOLE_INBOX_DIR`, else
+`$TITAN_CONSOLE_STATE/inbox/deposits`, default `~/.local/state/titan-console/inbox/deposits`),
+keyed on the running build so a restart files no second one. That item is filed with or without
+a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `service check` fails
+with `no hub seat`.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
 It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
@@ -551,8 +571,22 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.hjewkes.titan-factor
 curl -s http://127.0.0.1:7410/health
 ```
 
-The plist names the checkout it came from. After you move the checkout or change node, run
-`service install` again, or print and bootstrap the plist again.
+The plist names the deploy checkout's built bin and sets `WorkingDirectory` to that checkout.
+After you move the checkout or change node, run `service install` again, or print and
+bootstrap the plist again.
+
+#### Migrating to the dedicated deploy checkout
+
+One-time, from any checkout that has this change built (the old dev tree is fine):
+
+1. `titan-factory service deploy` clones and builds the deploy checkout. It does not restart
+   the service.
+2. `titan-factory service install` re-renders the plist or unit so serve runs from the deploy
+   checkout, and restarts it. Install refuses until step 1 has built the bin there.
+
+The old `~/projects/titan-platform` checkout is then no longer a deploy target and keeps working
+as a dev tree. Later `service deploy` runs fast-forward only the deploy checkout, from any
+checkout's bin.
 
 ## How it fails
 

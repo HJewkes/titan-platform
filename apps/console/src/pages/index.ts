@@ -3,6 +3,7 @@ import type { Route, ViewKey } from "../router.js";
 import { AgentsRoute } from "./AgentsPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
+import { SessionsRoute } from "./SessionsPage.js";
 import { StatusPage } from "./StatusPage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
@@ -13,5 +14,6 @@ const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(Initiat
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   home: StatusPage,
   initiatives: WorkPage,
+  sessions: SessionsRoute,
   agents: AgentsRoute,
 };
