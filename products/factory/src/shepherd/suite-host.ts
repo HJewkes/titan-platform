@@ -35,9 +35,14 @@ const macRule = (touched: string): string =>
 
 const basementRule = (touched: string): string => `Run only targeted tests in your checkout (${touched}, with \`timeout 300 pnpm exec vitest run <paths>\`); ${BASEMENT_SUITE_TAIL}`;
 
+/** One install in a review checkout is about 100k inodes, and parallel reviews filled a disk; basement-suite tests in its own throwaway tree. */
+const BASEMENT_REVIEWER_RULE =
+  "Never install dependencies in your checkout; it is for reading. Run targeted tests (the files the PR touches) with `basement-suite <repo> <branch> --agent <your name> -- <paths>`, and check that its `head=` line is the head you review; " +
+  BASEMENT_SUITE_TAIL;
+
 export function suiteRules(onBasement: boolean): SuiteRules {
-  const rule = onBasement ? basementRule : macRule;
-  return { fixer: rule("the files your fix touches"), reviewer: rule("the files the PR touches") };
+  if (onBasement) return { fixer: basementRule("the files your fix touches"), reviewer: BASEMENT_REVIEWER_RULE };
+  return { fixer: macRule("the files your fix touches"), reviewer: macRule("the files the PR touches") };
 }
 
 /** What a brief built with no host wired says: the form for agents off basement. */

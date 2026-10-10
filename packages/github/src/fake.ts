@@ -31,6 +31,8 @@ export interface FakeGitHub {
   classicRules: RequiredChecks;
   /** What `reviewRulesBypassable` answers; false like a repo whose approval rule the caller cannot bypass. */
   reviewBypass: boolean;
+  /** What the branch endpoint's `protected` flag answers. */
+  branchProtected: boolean;
   addPr(fields: Partial<PullRequest> & { headSha: string }): PullRequest;
   /** The live record, so a test can move the world (behind, mergeable_state) between steps. */
   pr(number: number): PullRequest;
@@ -121,6 +123,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     rules: { contexts: ["validate", "dag-check"], strict: true },
     classicRules: { contexts: [], strict: false },
     reviewBypass: false,
+    branchProtected: false,
     createdCheckRuns: [],
     commits: new Map(),
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
@@ -188,6 +191,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
     getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
+    getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
     listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
