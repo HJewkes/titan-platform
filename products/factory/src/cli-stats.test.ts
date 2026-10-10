@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
@@ -133,6 +133,95 @@ describe("shepherd stats verb", () => {
     expect(report.reviewCauses).toEqual([{ repo: "acme/widgets", week: "2026-W41", reviews: 1, causes: { first: 1 } }]);
     expect(human.out.join("")).toContain("red after merge:");
     expect(human.out.join("")).toContain("review causes:\nacme/widgets  2026-W41  reviews 1\n  first  1\n");
+  });
+
+  describe("--slo", () => {
+    const REGISTRY = {
+      schema: "titan.metrics/v1",
+      area: "shepherd",
+      owner: "seat",
+      stores: [{ id: "shepherd-stats", kind: "cli", readonly: true }],
+      metrics: [
+        {
+          id: "shepherd.business.merges_per_day",
+          family: "business",
+          title: "Merges per day",
+          definition: "Shepherd merges per UTC day",
+          unit: "count",
+          source: { anchor: "a.ts#a", store: "ledger", captured: "Y" },
+          query: { kind: "cli", store: "shepherd-stats", text: "business.merges-per-day" },
+          cadence: "1d",
+          slo: { objective: "at least 1 a day", target: 1, op: ">=", window: "7d", alert: { threshold: 1, sustain: 1 } },
+          surfaces: ["stats"],
+          answers: [4],
+        },
+      ],
+      reports: [],
+      lastAudit: { at: "2026-10-08T00:00:00Z", codeRev: "0000000", report: "audit.md" },
+    };
+
+    function ledgerWithOneMerge(dir: string): string {
+      const db = join(dir, "factory.db");
+      openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+      const store = openDatabase(db);
+      const at = "2026-10-07T09:00:00.000Z";
+      const merge = { stepId: "merge", iteration: 0, agentId: null, signal: null, completedAt: at, data: { result: { done: true } } };
+      new WorkflowRunStore(store).create({ id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "1" }, currentStep: null, activeSteps: {}, revision: 0, ownerGeneration: 0, error: null, status: "completed", stepResults: { "merge:0": merge }, startedAt: at, completedAt: at });
+      store.close();
+      return db;
+    }
+
+    it("prints each metric's value, SLO and pass or fail from a registry file, as JSON and as text", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "stats-slo-"));
+      try {
+        const db = ledgerWithOneMerge(dir);
+        writeFileSync(join(dir, "shepherd.yml"), JSON.stringify(REGISTRY));
+        const args = ["--db", db, "shepherd", "stats", "--slo", "--registry", join(dir, "shepherd.yml"), "--from", "2026-10-07", "--to", "2026-10-07"];
+        const json = capture();
+        const text = capture();
+
+        const codes = [await runCli([...args, "--json"], json.io), await runCli(args, text.io)];
+
+        expect(codes).toEqual([0, 0]);
+        expect(JSON.parse(json.out.join(""))).toEqual({
+          slo: [{ id: "shepherd.business.merges_per_day", family: "business", title: "Merges per day", unit: "count", query: "business.merges-per-day", from: "2026-10-07", to: "2026-10-07", value: 1, n: 1, slo: { objective: "at least 1 a day", op: ">=", target: 1 }, status: "pass" }],
+        });
+        expect(text.out.join("")).toContain("pass      shepherd.business.merges_per_day  1 count  SLO >= 1 (at least 1 a day)  2026-10-07..2026-10-07  n 1\n");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    });
+
+    it("evaluates this checkout's metrics/shepherd.yml by default", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "stats-slo-"));
+      try {
+        const { out, io } = capture();
+
+        const code = await runCli(["--db", ledgerWithOneMerge(dir), "shepherd", "stats", "--slo", "--json"], io);
+
+        expect(code).toBe(0);
+        const results = JSON.parse(out.join("")).slo as { id: string; status: string }[];
+        expect(results.map((r) => r.id)).toContain("shepherd.flow.merge_verdict_to_merged");
+        expect(results.filter((r) => r.status === "error")).toEqual([]);
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    });
+
+    it("exits 2 naming the field when the registry is invalid", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "stats-slo-"));
+      try {
+        writeFileSync(join(dir, "shepherd.yml"), JSON.stringify({ ...REGISTRY, owner: undefined }));
+        const { err, io } = capture();
+
+        const code = await runCli(["--db", ledgerWithOneMerge(dir), "shepherd", "stats", "--slo", "--registry", join(dir, "shepherd.yml")], io);
+
+        expect(code).toBe(2);
+        expect(err.join("")).toContain("owner");
+      } finally {
+        rmSync(dir, { recursive: true });
+      }
+    });
   });
 
   it("refuses a malformed date", async () => {

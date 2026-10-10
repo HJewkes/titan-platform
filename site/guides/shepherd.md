@@ -493,6 +493,24 @@ step resolved, or one with no requests in its window) is listed under `unreadabl
 and adds nothing to the dollars. A PR with one is left out of p50 and p90, so they never treat a
 gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
 
+### SLOs {#slo}
+
+```
+titan-factory shepherd stats --slo [--registry FILE] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--slo` prints this report instead of the sections above. It reads the `titan.metrics/v1` entry
+`metrics/shepherd.yml` from the factory's own checkout, or `--registry`, and evaluates every metric
+in file order. A metric whose query has `kind: cli`, `store: shepherd-stats` and a query id in
+`text` (such as `flow.merge-verdict-to-merged-p90`) is measured over its SLO's window, whole UTC
+days ending today (`1d`, `7d` or `28d`; seven days for a metric with no SLO), or over `--from` and
+`--to` for every metric. Each line gives the status, the value and unit, the SLO, the window and
+`n`, the count the value rests on. The statuses are `pass`, `fail`, `no-data` (nothing in the
+window to measure, never reported as a zero), `no-slo`, `no-query` (the metric names the slice
+that would add a query, its `gapSlice`) and `error` (a query id stats does not know, a query for
+another store, or a query that threw, such as unreadable transcripts). It exits 0 whatever the
+statuses; a missing or invalid registry exits 2. `--json` returns `{ "slo": [...] }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts

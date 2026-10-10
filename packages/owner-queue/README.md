@@ -27,6 +27,12 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `run:<id>`. A PR key with no sha or a short sha never merges. Two items naming one PR stay
   apart, even through another shared key, unless both carry the same full head sha.
   `isMergeKey` says whether a key can merge at all.
+- Relation keys relate items without merging them, so `isMergeKey` is false for each:
+  `askKey(id)` (`ask:<id>`, one question across rounds; `roundAskKey(unit, questionId)` gives
+  the default `ask:<unit>/<questionId>`), and `componentKey`, `tokenKey` and `topicKey`, whose
+  names are lower-cased with spaces turned to `-`. A blank name throws. `relationKind(key)`
+  returns `ask`, `component`, `token`, `topic` or null. `prKey(repo, pr, headSha)` builds the
+  canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
 - `staleLabel(item, evidence)` returns `{ status: "gone-elsewhere", rule, reason }` or null for
@@ -48,3 +54,14 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `maxQuestions` or `firstRound` below 1) throw, and each manifest is parsed with `RoundSchema`
   before it is returned. A `binding` maps each question id to its item ids and each
   shown option label back to the item's option id.
+- `fromRoundQuestions(manifest, roundId, { openedAt, bindings? })` reads each question of a
+  round@2 manifest as an open OwnerItem: id `round:<roundId>/<questionId>`, source
+  `round:<roundId>#<questionId>`, the question's `ask:` key, and for a merge-bound pick-one the
+  pinned `pr:` key, kind `approve` and lens `blocking-merge`. Other questions are `review`
+  (`decide` when bound) with lens `planning`. With the bindings `buildOwnerRounds` returned, a
+  single-item question takes its item's id and option ids; a principle stays a round item.
+  `answeredFromFeedback(feedback, manifest, { roundId, openedAt, bindings? })` returns the
+  same items for the questions a feedback@1 file answered, `answered` at `submittedAt` by
+  `ROUND_ANSWERER`. A revision request becomes `changeRequested: true`, pick-many picks
+  become `optionIds`, and variant comments are kept. Both parse with `ManifestSchema` and `FeedbackSchema` and throw on an
+  invalid file or a feedback for another unit or round.
