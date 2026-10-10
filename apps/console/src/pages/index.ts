@@ -1,9 +1,9 @@
 import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
+import { HomePage } from "./HomePage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
-import { StatusPage } from "./StatusPage.js";
 import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 
@@ -13,7 +13,7 @@ const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(Initiat
 
 /** One entry per built view; a rail entry with none here renders its placeholder. */
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
-  home: StatusPage,
+  home: HomePage,
   initiatives: WorkPage,
   tasks: ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query })),
   sessions: SessionsRoute,
