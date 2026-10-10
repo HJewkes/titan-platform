@@ -43,7 +43,7 @@ function HomeSection({ title, subtitle, children }: { title: string; subtitle: s
 function UpstreamsRegion(): ReactNode {
   const health = useQuery("upstreams.health");
   if (health.status === "loading") return <Spinner size="sm" label="Loading upstream health" />;
-  if (health.data === undefined) return <Alert status="error" message={`Could not load upstream health: ${health.error?.message ?? "no answer"}`} />;
+  if (health.data === undefined) return <Alert status="error" message={`Could not load upstream health: ${health.error.message}`} />;
   return (
     <HStack gap={4} wrap>
       {health.data.upstreams.map((upstream) => (
