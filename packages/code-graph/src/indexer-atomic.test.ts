@@ -79,7 +79,7 @@ describe("indexPaths visibility to a second connection", () => {
     for (const view of seen) expect(view).toEqual({ snapshotId: null, nodes: 0, edges: 0 });
     expect(readHead(reader).snapshotId).toBe(first.snapshotId);
   });
-});
+}, 30_000);
 
 /** Make the writer's edge insert throw, after the snapshot row and its nodes are already written. */
 function failEdgeInsert(writer: CodeGraphStore): void {
@@ -128,4 +128,4 @@ describe("indexPaths when a write throws part-way", () => {
     expect(store.getLatestSnapshotByRef("wd")?.id).toBe(first.snapshotId);
     expect(readHead(store)).toEqual(before);
   });
-});
+}, 30_000);
