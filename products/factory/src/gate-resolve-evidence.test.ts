@@ -279,7 +279,7 @@ describe("coordinator abandon of a gate whose PR is gone", () => {
 
     const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
 
-    expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "closed", run: { rule: "authority/MRG-AU" } } });
+    expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "closed" } });
   });
 
   it("abandons a red-CI gate once the PR merged, with the head its schema pins", async () => {
@@ -309,11 +309,58 @@ describe("coordinator abandon of a gate whose PR is gone", () => {
     expectFellBack(await resolveAs(world, "sent-back", { decision: "abandon" }));
   });
 
-  it("falls back on an abandon of a closed PR's visual-path gate", async () => {
-    const world = await paused({ gate: "merge", rule: "shepherd-merge-guard/visual-path" });
-    world.gh.pr(1).state = "closed";
+  it.each([
+    ["a visual-path gate", { gate: "merge", rule: "shepherd-merge-guard/visual-path" }],
+    ["a seat owner-gate", { gate: "merge", rule: "shepherd-seat/synthetic", policy: OWNER_GATE_POLICY }],
+    ["a gate the authority policy would not call mechanical", { gate: "merge", reason: authorityGateReason(HEAD, { changedPaths: ["CODEOWNERS"] }) }],
+  ] satisfies [string, Scenario][])("abandons %s once the PR merged, as nothing is left to merge", async (_case, scenario) => {
+    const world = await paused(scenario);
+    mergedPr(world.gh);
 
-    expectFellBack(await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD }));
+    const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
+
+    expect(result.reasons).toEqual([]);
+    expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", repo: REPO, pr: 1, state: "merged" } });
+  });
+
+  it("abandons a held run's approve-merge gate once the PR merged", async () => {
+    const world = await paused({ gate: "merge" });
+    world.registration.held = true;
+    mergedPr(world.gh);
+
+    const result = await resolveAs(world, "merge", { decision: "abandon", headSha: HEAD });
+
+    expect(result.gate).toMatchObject({ status: "resolved", resolvedEvidence: { kind: "pr-gone", state: "merged" } });
+  });
+
+  it("falls back on an approve-merge abandon while the PR is still open, held or not", async () => {
+    const open = await paused({ gate: "merge" });
+    const held = await paused({ gate: "merge" });
+    held.registration.held = true;
+
+    expectFellBack(await resolveAs(open, "merge", { decision: "abandon", headSha: HEAD }));
+    expectFellBack(await resolveAs(held, "merge", { decision: "abandon", headSha: HEAD }));
+  });
+
+  it("falls back on an approve-merge abandon naming another head than the gate's", async () => {
+    const world = await paused({ gate: "merge" });
+    mergedPr(world.gh);
+
+    expectFellBack(await resolveAs(world, "merge", { decision: "abandon", headSha: fakeSha("other") }));
+    expectFellBack(await resolveAs(world, "merge", { decision: "abandon" }));
+  });
+
+  it("falls back on any other decision once the PR is gone: merge, await-new-head and unfreeze", async () => {
+    const merge = await paused({ gate: "merge" });
+    mergedPr(merge.gh);
+    const sentBack = await paused({ gate: "sent-back" });
+    mergedPr(sentBack.gh);
+    const frozen = await paused({ gate: "main-frozen" });
+    Object.assign(frozen.gh.pr(1), { state: "closed", merged: false });
+
+    expectFellBack(await resolveAs(merge, "merge", MERGE));
+    expectFellBack(await resolveAs(sentBack, "sent-back", { decision: "await-new-head" }));
+    expectFellBack(await resolveAs(frozen, "main-frozen", { decision: "unfreeze", mergeSha: MERGE_SHA }));
   });
 });
 

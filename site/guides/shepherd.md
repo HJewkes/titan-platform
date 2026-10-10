@@ -208,7 +208,12 @@ A head that moved during the review always starts a new round, and the new head 
 A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
 post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
 request of each run that is waiting on a gate. When that pull request was merged or closed
-elsewhere, the serve process cancels the run and its gate. The same check supersedes a gate
+elsewhere, the serve process cancels the run and its gate, whichever gate it waits on and
+whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
+after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
+release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
+whose pull request is merged or closed (and only abandon, only on a fresh read of that state).
+The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
 Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
