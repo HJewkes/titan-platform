@@ -770,6 +770,25 @@ step posts the evidence comment. With no `review` key, no checkout for the repo,
 refused dispatch, the phase records `none` with the reason, and the
 [route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
 
+The reviewer reads the head from a `git archive` extract under `<data dir>/checkouts/reviews`.
+On basement, its brief tells it never to install dependencies there, and to run targeted tests
+with `basement-suite <repo> <branch> --agent <name> -- <paths>` instead. Each extract then stays
+around 3k inodes. A titan-platform install added about 99k more, and several parallel reviews
+filled a disk. Three fixes were weighed:
+
+- **Defer the install until a check runs.** Most reviews run targeted tests, so most would still
+  install.
+- **Hardlink or reflink `node_modules` from a shared store.** pnpm already hardlinks files from
+  its store, and the extract still gets its own directory and symlink tree. pnpm 9 has no global
+  virtual store.
+- **Reuse a tree that already exists for checks.** basement-suite gives each run its own
+  worktree, caps how many run at once by its slots, and removes the tree on exit. No reviewer
+  shares a mutable tree with an implementer or another reviewer.
+
+Shepherd uses the third. It changes one rule in the brief, and it adds no tree to keep warm. The reviewer checks that the `head=` line basement-suite prints is the head it
+reviews, since basement-suite fetches the branch tip. Off basement, a reviewer still installs in
+its extract to run targeted tests.
+
 These limits remain:
 
 - **The freeze exemption is not a security boundary.** `register` accepts any
