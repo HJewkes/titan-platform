@@ -75,8 +75,9 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
   if (stepIdMatches("stuck-behind", stepId)) resetBound(run.updateBound);
   else if (rereview !== undefined) run.reviews.delete(rereview);
   else if (gated !== undefined) {
-    const escalated = run.escalations.get(gated) ?? run.carried;
-    if (escalated?.escalation === "failed-rounds") run.failedRounds = 0;
+    const here = run.escalations.get(gated);
+    const escalated = run.carried ?? here;
+    if (here?.escalation === "failed-rounds") run.failedRounds = 0;
     else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
   }
 }
