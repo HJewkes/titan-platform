@@ -7,7 +7,7 @@ import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
  * The machine limits a seat's own spawn passes (charter section 4, enforced by agent-chat in src/agents/seats/stops.ts and
  * src/agents/machine-guard.ts). They are copied here because the factory cannot call the broker's gate; unify them when agent-chat exposes it.
  */
-interface SpawnLimits {
+export interface SpawnLimits {
   /** No new dispatch at a load5 above this. */
   load5: number;
   /** No new dispatch at a build-capable load5 above this; a review started in the last five minutes adds `reviewLoad` to the reading. */
@@ -26,9 +26,28 @@ interface SpawnLimits {
   headroomReviews: number;
   /** What one running review adds to the load5 reading it is compared with. */
   reviewLoad: number;
+  /** No review starts with fewer free bytes than this on the filesystem that holds review checkouts. */
+  reviewMinFreeBytes: number;
+  /** No review starts with fewer free inodes than this percent of that filesystem's, or than twice the last checkout's. */
+  reviewMinFreeInodesPct: number;
+  /** No review starts while this many reviewers run. */
+  maxConcurrentReviews: number;
 }
 
-export const DEFAULT_SPAWN_LIMITS: SpawnLimits = { load5: 28, buildLoad5: 20, pressureLevel: 2, freeMemoryPct: 20, windowMs: 60_000, headroomIntervalMs: 15_000, burstMax: 4, headroomReviews: 4, reviewLoad: 4 };
+export const DEFAULT_SPAWN_LIMITS: SpawnLimits = {
+  load5: 28,
+  buildLoad5: 20,
+  pressureLevel: 2,
+  freeMemoryPct: 20,
+  windowMs: 60_000,
+  headroomIntervalMs: 15_000,
+  burstMax: 4,
+  headroomReviews: 4,
+  reviewLoad: 4,
+  reviewMinFreeBytes: 5 * 1024 ** 3,
+  reviewMinFreeInodesPct: 15,
+  maxConcurrentReviews: 3,
+};
 
 /** A reading the machine would not give is absent, and the limit it feeds is not applied. */
 export interface MachineReadings {
@@ -37,7 +56,19 @@ export interface MachineReadings {
   freeMemoryPct?: number;
 }
 
+/** The filesystem review checkouts are extracted onto; a reading it would not give is absent, and the floor it feeds is not applied. */
+export interface CheckoutDisk {
+  freeBytes?: number;
+  freeInodes?: number;
+  /** Zero on a filesystem that allocates inodes on demand, which has no inode floor. */
+  totalInodes?: number;
+  /** The inodes the newest measured checkout took. */
+  lastCheckoutInodes?: number;
+}
+
 type Admission = { admit: true } | { admit: false; reason: string };
+
+const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
 
 /** load5 is a five-minute average, so a review older than this is already in the reading. */
 const LOAD5_WINDOW_MS = 5 * 60_000;
@@ -62,7 +93,6 @@ function admitPace(limits: SpawnLimits, recentStarts: readonly number[], now: nu
 
 /** Pure: the verdict for one spawn from the readings, the limits, the epoch-ms of earlier admissions and the start of each review already running. */
 export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recentStarts: readonly number[], now: number, runningReviews: readonly number[] = []): Admission {
-  const refuse = (what: string, reading: number, limit: number): Admission => ({ admit: false, reason: `${what} ${reading} is past the limit ${limit}` });
   if (readings.load5 > limits.load5) return refuse("load5", readings.load5, limits.load5);
   const unabsorbed = runningReviews.filter((startedAt) => now - startedAt < LOAD5_WINDOW_MS).length;
   const build = readings.load5 + unabsorbed * limits.reviewLoad;
@@ -70,6 +100,23 @@ export function admitSpawn(readings: MachineReadings, limits: SpawnLimits, recen
   if (readings.pressureLevel !== undefined && readings.pressureLevel >= limits.pressureLevel) return refuse("memory pressure level", readings.pressureLevel, limits.pressureLevel);
   if (readings.freeMemoryPct !== undefined && readings.freeMemoryPct < limits.freeMemoryPct) return refuse("free memory percent", readings.freeMemoryPct, limits.freeMemoryPct);
   return admitPace(limits, recentStarts, now, hasHeadroom(readings, limits, unabsorbed));
+}
+
+/** The free inodes a checkout needs: a percent of the filesystem's, or twice the last checkout's, whichever is more; undefined when unread. */
+function inodeFloor(disk: CheckoutDisk, limits: SpawnLimits): number | undefined {
+  const share = disk.totalInodes ? Math.ceil((disk.totalInodes * limits.reviewMinFreeInodesPct) / 100) : undefined;
+  const twice = disk.lastCheckoutInodes === undefined ? undefined : 2 * disk.lastCheckoutInodes;
+  if (disk.totalInodes === 0 || (share === undefined && twice === undefined)) return undefined;
+  return Math.max(share ?? 0, twice ?? 0);
+}
+
+/** Pure: a review also needs a free reviewer slot and room for its checkout, which can run a filesystem out of inodes before bytes. */
+function admitReview(disk: CheckoutDisk, limits: SpawnLimits, runningReviews: number): Admission {
+  if (runningReviews >= limits.maxConcurrentReviews) return { admit: false, reason: `${runningReviews} reviews are running, the concurrent cap ${limits.maxConcurrentReviews}` };
+  if (disk.freeBytes !== undefined && disk.freeBytes < limits.reviewMinFreeBytes) return refuse("free bytes", disk.freeBytes, limits.reviewMinFreeBytes);
+  const floor = inodeFloor(disk, limits);
+  if (floor !== undefined && disk.freeInodes !== undefined && disk.freeInodes < floor) return refuse("free inodes", disk.freeInodes, floor);
+  return { admit: true };
 }
 
 /** What a review spawn tells the gate: whether its PR is the fix for its repo's red main, and which PR it is, so status can name its place. */
@@ -191,6 +238,8 @@ export interface SpawnGate {
 interface SpawnGateOptions {
   limits?: Partial<SpawnLimits>;
   read?: () => MachineReadings;
+  /** Read only for a review spawn; absent means unread, so no floor applies. */
+  disk?: () => CheckoutDisk;
   now?: () => number;
   /** How long a refused review stays queued without asking again. */
   reviewStaleMs?: number;
@@ -198,19 +247,33 @@ interface SpawnGateOptions {
   log?: (line: string) => void;
 }
 
+const unread = (value: number | undefined) => value ?? "unread";
+
+function diskNote(disk: CheckoutDisk, runningReviews: number): string {
+  const last = disk.lastCheckoutInodes === undefined ? "unmeasured" : `${disk.lastCheckoutInodes} inodes`;
+  return `; checkout fs ${unread(disk.freeBytes)} bytes, ${unread(disk.freeInodes)} of ${unread(disk.totalInodes)} inodes free, last checkout ${last}; ${runningReviews} reviews running`;
+}
+
+/** The machine verdict, then for a review its slot and checkout room, then its place in the queue; a deferral on any keeps that place. */
+function verdictFor(machine: Admission, review: Admission, queue: readonly WaitingReview[], name: string, ask: ReviewAsk | undefined): Admission {
+  return admitQueued(machine.admit ? review : machine, queue, name, ask);
+}
+
 /** Remembers the admissions and the waiting reviews of this process, so every spawn site shares one window and one queue. */
 export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
   const limits = { ...DEFAULT_SPAWN_LIMITS, ...options.limits };
-  const { read = () => readMachine(), now = Date.now, log = (line) => console.warn(line) } = options;
+  const { read = () => readMachine(), disk = () => ({}), now = Date.now, log = (line) => console.warn(line) } = options;
   const starts: number[] = [];
   const reviews = reviewWaitList(options.reviewStaleMs ?? REVIEW_STALE_MS);
   return {
     admit(name, runningReviews = [], review) {
       const at = now();
       const readings = read();
+      const checkout = review ? disk() : {};
       const queue = review ? reviews.ask(name, review, at) : [];
-      const verdict = admitQueued(admitSpawn(readings, limits, starts, at, runningReviews), queue, name, review);
-      const seen = `load5 ${readings.load5}, pressure ${readings.pressureLevel ?? "unread"}, free ${readings.freeMemoryPct ?? "unread"}%`;
+      const reviewVerdict = review ? admitReview(checkout, limits, runningReviews.length) : { admit: true as const };
+      const verdict = verdictFor(admitSpawn(readings, limits, starts, at, runningReviews), reviewVerdict, queue, name, review);
+      const seen = `load5 ${readings.load5}, pressure ${unread(readings.pressureLevel)}, free ${unread(readings.freeMemoryPct)}%${review ? diskNote(checkout, runningReviews.length) : ""}`;
       if (!verdict.admit) {
         log(`shepherd: spawn_gate deferred ${name}: ${verdict.reason} (${seen})${queueNote(queue, name)}`);
         throw new SpawnDeferred(verdict.reason);
