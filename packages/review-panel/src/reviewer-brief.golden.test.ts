@@ -4,7 +4,7 @@ import { correctionPrompt, reviewerBrief, type MalformedRefusal } from "./review
 
 // The fixture was rendered by Shepherd's own builders before they moved here; any edit to a brief shows up as a diff against it.
 const golden: Record<string, string> = JSON.parse(readFileSync(new URL("./__fixtures__/briefs.golden.json", import.meta.url), "utf8"));
-const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567" };
+const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/data/titan-factory/checkouts/reviews" };
 const questions = ["Is   the retry\nbounded?", "Does the cache key include the head?"];
 const refusals: MalformedRefusal[] = ["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target"];
 
