@@ -9,9 +9,9 @@ import { provablyIndependent, type ReviewerAgent, type ReviewerMessage, type Rev
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
-import { namesPr } from "./verdict-target.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 import { CARRYING_KINDS } from "./carry-merge.js";
+import { namesPr } from "@titan-design/review-panel";
 
 export const HOLD_POLL_MS = 10_000;
 
@@ -134,10 +134,10 @@ export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: 
   const held = heldCheck(port, holds, freeze, satisfy);
   return {
     ...port,
-    merge: async (repo, pr, sha, method) => {
+    merge: async (repo, pr, sha, method, message) => {
       const reason = await held(repo, pr, sha);
       if (reason !== undefined) throw new MergeHeldError(`${repo}#${pr} is held: ${reason}`);
-      return port.merge(repo, pr, sha, method);
+      return port.merge(repo, pr, sha, method, message);
     },
   };
 }

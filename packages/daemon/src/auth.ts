@@ -158,6 +158,12 @@ export function getRequestAuth(request: Request): RequestAuth | undefined {
   return requestAuth.get(request);
 }
 
+/** Keeps the gate's record when middleware replaces the raw request, as hono's bodyLimit does. */
+export function carryRequestAuth(from: Request, to: Request): void {
+  const auth = requestAuth.get(from);
+  if (auth && from !== to) requestAuth.set(to, auth);
+}
+
 const LOGIN_METHODS = "GET, HEAD, POST";
 
 /**
@@ -221,7 +227,9 @@ function unauthorized(c: Context): Response {
   return c.json(errorEnvelope("Authentication required", EXIT.USAGE), 401);
 }
 
-const COOKIE_OPTIONS = { httpOnly: true, sameSite: "Strict", path: "/" } as const;
+// Secure always: the gate runs only on the remote listener, which speaks only TLS, so a browser
+// never sends the session over plain HTTP, even to another port on the same host.
+const COOKIE_OPTIONS = { httpOnly: true, secure: true, sameSite: "Strict", path: "/" } as const;
 
 /** `GET` and `HEAD` render the page, `POST` spends the code, anything else is 405. */
 function answerLogin(c: Context, auth: DaemonAuth): Response | Promise<Response> {

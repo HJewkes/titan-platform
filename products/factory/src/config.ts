@@ -52,6 +52,14 @@ function isTimeZone(zone: string): boolean {
   }
 }
 
+/** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
+export const DigestPushConfigSchema = z.strictObject({
+  url: z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL"),
+  tokenFile: absolutePath.optional(),
+});
+
+export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
+
 /** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
 export const DigestConfigSchema = z.strictObject({
   outDir: absolutePath.optional(),
@@ -60,8 +68,10 @@ export const DigestConfigSchema = z.strictObject({
   icloudDir: absolutePath.optional(),
   timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
+  /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
+  push: DigestPushConfigSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
@@ -84,7 +94,22 @@ export const SpawnGateConfigSchema = z.strictObject({
   reviewLoad: z.number().min(0).optional(),
 });
 
+/** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
+export const ServiceConfigSchema = z.strictObject({
+  labelPrefix: noNul.min(1).optional(),
+  /** The checkout the service runs from and deploys fast-forward; absent means `<data dir>/deploy/titan-platform`. */
+  deployCheckout: absolutePath.optional(),
+  /** What deploy clones the checkout from when it is absent; absent means the origin of the checkout the CLI runs from. */
+  deployRemote: noNul.min(1).optional(),
+});
+
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
+
+/** How a standing deploy alarm repeats; absent keys keep the defaults, every 6 deploy-watch ticks and 30 minutes. */
+export const DeployAlarmConfigSchema = z.strictObject({
+  renotifyTicks: z.number().int().positive().optional(),
+  escalateAfterMinutes: z.number().int().positive().optional(),
+});
 
 /** The GitHub App `shepherd/review` is posted as; absent means the publish step records `published: false`. */
 export const ReviewCheckConfigSchema = z.strictObject({
@@ -113,6 +138,7 @@ export const FactoryConfigSchema = z.object({
   remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
+  service: ServiceConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),
@@ -124,8 +150,9 @@ export const FactoryConfigSchema = z.object({
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
-      /** The agent-chat seat told once when the deploy alarm goes up; absent means the alarm shows only in status. */
+      /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
+      deployAlarm: DeployAlarmConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

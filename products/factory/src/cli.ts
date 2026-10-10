@@ -1,4 +1,5 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
+import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { parsePort } from "./cli-options.js";
@@ -20,7 +21,8 @@ import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, star
 import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
-import { ownCheckout, registerService } from "./cli-service.js";
+import { deployCheckoutFor, registerService } from "./cli-service.js";
+import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
@@ -67,7 +69,7 @@ export interface CliDeps {
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, ownCheckout()) };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)) };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
 export interface Verbs {
@@ -102,7 +104,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -197,6 +199,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
+  registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
@@ -245,6 +248,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   });
 }
 
+/** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
+const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
+
 function unansweredMessage(probe: ServeProbe, port: number): string {
   if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
   if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
@@ -255,7 +261,7 @@ function unansweredMessage(probe: ServeProbe, port: number): string {
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
-    return EXIT.FAILURE;
+    return exitOf(envelope.code);
   }
   if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
   else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);

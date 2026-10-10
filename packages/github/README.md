@@ -83,6 +83,25 @@ put in `body`) alone on a line; trailing whitespace on that line still counts. A
 concurrent callers can both post; there is no lock. Each read carries the same ETag cache and
 rate budget as the others.
 
+`formatSquashMessage({ title, body, prNumber, taskIds, commits })` is pure and builds a squash
+commit message: a subject of the PR title, any task id the title does not already name, and
+`(#<pr>)`; a body of `## Summary` (the PR body), `## Changes` (one `- **<subject>.** <body>`
+bullet per commit) and `Refs: <task ids>, #<pr>`. Author text passes through as written: only a
+plain paragraph in a commit body is joined onto one line, and headings, setext underlines,
+lists, blockquotes, tables, HTML and code keep their own lines. It drops `Co-authored-by` and
+`Signed-off-by` trailers, the "Generated with Claude Code" line, standalone email addresses
+and any commit merging main into the branch, but never touches code (fenced, indented or
+inline) or an address inside a URL or ssh remote. GitHub's own squash text is recognised only
+in a commit whose subject ends `(#<n>)`, the one place GitHub writes it: there a `---------`
+line followed only by trailers is dropped and a `* <subject>` header standing alone loses its
+star, so an author's lists and rules pass through everywhere else. An empty PR body omits
+`## Summary`, and an empty title leaves the subject as `(#<pr>)`. The same input always gives
+byte-identical output, and formatting its own output again (as title and body) changes
+nothing: only the exact Changes and Refs tail it would write is cut from the PR body, so an
+author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads the same
+input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
+with `--json`; bad input exits 2 naming the field.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).

@@ -1,9 +1,17 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 
-export const SERVICE_LABEL = "dev.hjewkes.titan-factory";
+const DEFAULT_LABEL_PREFIX = "dev.hjewkes.";
+const SERVICE_NAME = "titan-factory";
+
+/** The label for `service.labelPrefix` from the factory config. Changing the prefix after an install leaves the old job loaded under its old label; uninstall first. */
+export function serviceLabel(prefix: string = DEFAULT_LABEL_PREFIX): string {
+  return `${prefix}${SERVICE_NAME}`;
+}
+
+export const SERVICE_LABEL = serviceLabel();
 /** The launchd label without its owner prefix, the rule active-work's `active-work.service` follows too. */
-export const UNIT_NAME = `${SERVICE_LABEL.replace(/^dev\.hjewkes\./, "")}.service`;
+export const UNIT_NAME = `${SERVICE_NAME}.service`;
 
 export interface PlistOptions {
   /** Absolute path of the built `bin.js`. */
@@ -11,9 +19,13 @@ export interface PlistOptions {
   /** Absolute path of the node binary launchd runs. */
   nodePath: string;
   logDir: string;
+  /** `service.labelPrefix` from the factory config; unset keeps the default label. */
+  labelPrefix?: string;
   port?: number;
   /** The job's whole PATH; see `servicePath`. */
   path: string;
+  /** The directory the job starts in: the deploy checkout, so serve never runs from a tree an agent uses. */
+  workingDirectory?: string;
 }
 
 /** What `titan-factory serve` runs by bare name: gh for every GitHub call, the other two for dispatch steps. */
@@ -40,8 +52,8 @@ export function servicePath(which: (binary: string) => string | undefined, nodeP
   return { path: [...new Set(dirs)].join(":"), missing: found.filter(({ file }) => file === undefined).map(({ binary }) => binary) };
 }
 
-export function plistPath(home: string): string {
-  return join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
+export function plistPath(home: string, labelPrefix?: string): string {
+  return join(home, "Library", "LaunchAgents", `${serviceLabel(labelPrefix)}.plist`);
 }
 
 /** XDG says a relative XDG_CONFIG_HOME is invalid and must be ignored. */
@@ -83,11 +95,12 @@ export function renderPlist(options: PlistOptions): string {
     '<plist version="1.0">',
     "<dict>",
     "  <key>Label</key>",
-    `  <string>${SERVICE_LABEL}</string>`,
+    `  <string>${serviceLabel(options.labelPrefix)}</string>`,
     "  <key>ProgramArguments</key>",
     "  <array>",
     strings(argv),
     "  </array>",
+    ...(options.workingDirectory === undefined ? [] : ["  <key>WorkingDirectory</key>", `  <string>${escapeXml(options.workingDirectory)}</string>`]),
     "  <key>RunAtLoad</key>",
     "  <true/>",
     "  <key>KeepAlive</key>",
@@ -132,6 +145,7 @@ export function renderUnit(options: PlistOptions): string {
     "",
     "[Service]",
     "Type=simple",
+    ...(options.workingDirectory === undefined ? [] : [`WorkingDirectory=${noSpecifiers(options.workingDirectory)}`]),
     `ExecStart=${serveArgv(options).map(execArg).join(" ")}`,
     "Restart=always",
     "RestartSec=5",

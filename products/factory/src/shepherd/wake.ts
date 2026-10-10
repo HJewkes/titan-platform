@@ -302,7 +302,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, ...(await describeWake(deps.port, input, pr)), implementer: registration.implementer, successors };
+  return { input, pr, ...(await describeWake(deps.port, input, pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors };
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {

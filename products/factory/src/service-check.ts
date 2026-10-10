@@ -2,13 +2,13 @@ import type { Command } from "commander";
 import { parsePort } from "./cli-options.js";
 import { deployBlockOf, type DeployHealth } from "./deploy-health.js";
 import { FACTORY_PORT } from "./serve.js";
-import { SERVICE_LABEL, UNIT_NAME } from "./service.js";
+import { serviceLabel, UNIT_NAME } from "./service.js";
 import { MANAGED_PLATFORMS, runServiceVerb, settledHealth, type ServiceIo, type ServicePorts } from "./service-control.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 import { judgeTick, type TickStatusRead } from "./tick-status.js";
 
 /** The causes in the order `check` tests them; the first that holds is the one reported. */
-type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale";
+type Cause = "not loaded" | "stale pid" | "crash loop" | "stale build" | "GitHub down" | "stale index.lock" | "deploy stalled" | "tick failing" | "tick stale" | "no hub seat";
 
 /** What `check` reads beyond `ServicePorts`; every one is read-only, so a fake never has to model a mutation. */
 export interface CheckPorts extends ServicePorts {
@@ -21,6 +21,8 @@ export interface CheckPorts extends ServicePorts {
   tickStatus: () => TickStatusRead;
   /** The service checkout's .git/index.lock, read only: a stale one blocks every later deploy, and only a person removes it. */
   indexLock: () => Promise<IndexLock>;
+  /** The config's shepherd.hubSeat, the seat a deploy alarm reaches; undefined when none is set. */
+  hubSeat: () => string | undefined;
 }
 
 interface CheckResult {
@@ -60,7 +62,7 @@ function loadedJob(manager: Manager, pid: number | undefined, runs: number | und
 }
 
 async function readLaunchdJob(ports: CheckPorts): Promise<Job> {
-  const printed = await ports.launchctl(["print", `gui/${ports.uid}/${SERVICE_LABEL}`]);
+  const printed = await ports.launchctl(["print", `gui/${ports.uid}/${serviceLabel(ports.labelPrefix)}`]);
   if (printed.code !== 0) return { manager: "launchd", loaded: false };
   return loadedJob("launchd", field(printed.stdout, "pid"), field(printed.stdout, "runs"), field(printed.stdout, "last exit code"));
 }
@@ -79,7 +81,7 @@ async function readUnit(ports: CheckPorts): Promise<Job> {
 }
 
 const readJob = (ports: CheckPorts): Promise<Job> => (ports.platform === "linux" ? readUnit(ports) : readLaunchdJob(ports));
-const jobName = (job: Job): string => (job.manager === "systemd" ? UNIT_NAME : SERVICE_LABEL);
+const jobName = (job: Job, ports: CheckPorts): string => (job.manager === "systemd" ? UNIT_NAME : serviceLabel(ports.labelPrefix));
 
 /** `service restart` and `kickstart -k` record the killed run's non-zero exit and bump runs, so a young process that answers /health itself is a restart, not a loop. */
 async function isCrashLoop(ports: CheckPorts, job: Job, answersFromJob: boolean): Promise<boolean> {
@@ -107,17 +109,18 @@ function verdict(cause: Cause | null, message: string, job: Job, health: Record<
 /** Never starts, stops or restarts the job: it reads launchctl or systemctl, ps, /health and the installed build only. */
 async function diagnoseService(ports: CheckPorts, port: number): Promise<CheckResult> {
   const job = await readJob(ports);
-  if (!job.loaded) return verdict("not loaded", `${jobName(job)} is not loaded; run titan-factory service install`, job, null);
+  if (!job.loaded) return verdict("not loaded", `${jobName(job, ports)} is not loaded; run titan-factory service install`, job, null);
   const { health, failedProbes } = await probeHealth(ports, job, port);
   const healthPid = typeof health?.pid === "number" ? health.pid : undefined;
   const stale = stalePid(ports, job, healthPid, port);
   if (stale) return verdict("stale pid", stale, job, health, { healthPid: healthPid ?? null });
   const answersFromJob = health?.ok === true && healthPid === job.pid;
-  if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, health);
+  if (await isCrashLoop(ports, job, answersFromJob)) return crashLoop(job, jobName(job, ports), health);
   if (!answersFromJob) return verdict("stale pid", unansweredWhy(job, port, failedProbes), job, health, { healthPid: healthPid ?? null });
   const running = judgeRunning(job, health, ports.installedBuildSha());
   if (!running.ok) return running;
-  return (await withDeploy(running, ports)) ?? withTick(running, ports);
+  const judged = (await withDeploy(running, ports)) ?? withTick(running, ports);
+  return judged.ok ? withHubSeat(judged, ports) : judged;
 }
 
 /** One failed read is not an outage: serve can miss a single probe while up, so a live job pid gets a few more polls before the answer counts. */
@@ -152,7 +155,14 @@ function deployDetail(deploy: DeployHealth): CheckResult["detail"] {
   return { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal: lastRefusal?.reason ?? null };
 }
 
-/** Last in order: a server fault is reported before the tick that depends on it. */
+const NO_HUB_SEAT = "shepherd.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat, so set it to the coordinating seat and run titan-factory service restart";
+
+/** Last in order: a config gap only matters once the server and its tick are sound. */
+function withHubSeat(running: CheckResult, ports: CheckPorts): CheckResult {
+  return ports.hubSeat() === undefined ? { ...running, ok: false, cause: "no hub seat", message: NO_HUB_SEAT, detail: {} } : running;
+}
+
+/** A server fault is reported before the tick that depends on it. */
 function withTick(running: CheckResult, ports: CheckPorts): CheckResult {
   const problem = judgeTick(ports.tickStatus(), ports.now());
   return problem === undefined ? running : { ...running, ok: false, cause: problem.cause, message: problem.message, detail: problem.detail };
@@ -173,8 +183,8 @@ const unansweredWhy = (job: Job, port: number, failedProbes: number): string => 
   return `${job.pid === undefined ? `${job.manager} holds no process` : `${job.manager} pid ${job.pid} does not answer /health on port ${port}${probes}`}; ${RESTART}`;
 };
 
-function crashLoop(job: Job, health: Record<string, unknown> | null): CheckResult {
-  const message = `${jobName(job)} is crash-looping: last exit ${job.lastExit}, ${job.runs} ${job.manager === "systemd" ? "restarts" : "runs"}; read serve.err.log in the service log directory, fix it, then run titan-factory service restart`;
+function crashLoop(job: Job, name: string, health: Record<string, unknown> | null): CheckResult {
+  const message = `${name} is crash-looping: last exit ${job.lastExit}, ${job.runs} ${job.manager === "systemd" ? "restarts" : "runs"}; read serve.err.log in the service log directory, fix it, then run titan-factory service restart`;
   return verdict("crash loop", message, job, health, { lastExitCode: job.lastExit ?? null, runs: job.runs ?? null });
 }
 

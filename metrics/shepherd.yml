@@ -1,0 +1,497 @@
+# Shepherd's metrics, from the 2026-10-08 measurement audit (44 metrics in six families).
+# A metric with a query names a `shepherd stats --slo` query id in `query.text`; one with no query
+# names the slice that would add it in `source.gapSlice` (`unfiled` when no task exists yet).
+# Where the audit gave an SLO but no alert, the alert is the SLO itself with a sustain of 1.
+schema: titan.metrics/v1
+area: shepherd
+owner: titan-coord
+stores:
+  - { id: ledger, kind: sqlite, readonly: true }
+  - { id: shepherd-stats, kind: cli, command: "titan-factory shepherd stats --slo --json", readonly: true }
+  - { id: health, kind: http, readonly: true }
+  - { id: serve-log, kind: log, readonly: true }
+  - { id: transcripts, kind: jsonl, readonly: true }
+  - { id: github, kind: cli, command: "gh api", readonly: true }
+  - { id: tasks, kind: cli, command: "active-work", readonly: true }
+  - { id: broker, kind: cli, command: "agent-chat", readonly: true }
+metrics:
+  # availability
+  - id: shepherd.availability.service_up
+    family: availability
+    title: Service up
+    definition: Share of 60 s probes where /health answers ok with identity
+    unit: ratio
+    source: { anchor: "products/factory/src/serve.ts#factoryHealth", store: health, captured: P, gapSlice: TP-1651 }
+    cadence: 1m
+    slo: { objective: "99.5% per 24 h; alert after 3 failed probes", target: 0.995, op: ">=", window: 1d, alert: { threshold: 0.995, sustain: 3 } }
+    surfaces: [health, dashboard]
+    answers: [5]
+  - id: shepherd.availability.build_lag
+    family: availability
+    title: Build lag versus main
+    definition: Minutes the deployed build is behind a factory-touching commit on main (deploy.behindMinutes)
+    unit: minutes
+    source: { anchor: "products/factory/src/deploy-health.ts#deployHealth", store: health, captured: P, gapSlice: TP-1651 }
+    cadence: 1h
+    slo: { objective: "at most 30 min behind; alert over 60 min or at 2 consecutive refusals", target: 30, op: "<=", window: 1d, alert: { threshold: 60, sustain: 1 } }
+    surfaces: [health, status, digest]
+    answers: [5]
+  - id: shepherd.availability.unclean_exits
+    family: availability
+    title: Restarts and unclean exits
+    definition: Serve starts that removed a stale daemon pid file
+    unit: count
+    source: { anchor: "products/factory/src/serve-starts.ts#serveStartsHealth", store: health, captured: P, gapSlice: TP-1651 }
+    cadence: 1d
+    slo: { objective: "0 unclean exits per week; alert on any", target: 0, op: "<=", window: 7d, alert: { threshold: 1, sustain: 1 } }
+    surfaces: [health, digest]
+    answers: [5]
+  - id: shepherd.availability.stuck_runs
+    family: availability
+    title: Stuck runs
+    definition: Runs now in recovery_required, plus paused runs with no pending gate
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/owner-friction-read.ts#readAllGates", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: availability.stuck-runs }
+    cadence: 1h
+    slo: { objective: "0 recovery_required and 0 orphan paused; alert on either", target: 0, op: "<=", window: 1d, alert: { threshold: 1, sustain: 1 } }
+    surfaces: [health, status, digest]
+    answers: [2]
+  - id: shepherd.availability.failed_share
+    family: availability
+    title: Failed runs
+    definition: Runs started in the window that failed, over all runs started in it
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/failure-class.ts#failureClassOf", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: availability.failed-share }
+    cadence: 1d
+    slo: { objective: "under 5% per week; alert on a new class or over 5 ci-wait timeouts a day", target: 0.05, op: "<=", window: 7d, alert: { threshold: 0.05, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [13]
+  - id: shepherd.availability.github_ok
+    family: availability
+    title: GitHub API health
+    definition: Share of /health probes whose github field is ok
+    unit: ratio
+    source: { anchor: "products/factory/src/github-health.ts#githubHealth", store: health, captured: P, gapSlice: TP-1651 }
+    cadence: 1m
+    slo: { objective: "ok 99%; alert on 3 ticks not ok", target: 0.99, op: ">=", window: 1d, alert: { threshold: 0.99, sustain: 3 } }
+    surfaces: [health]
+    answers: [5]
+  - id: shepherd.availability.spawn_deferral
+    family: availability
+    title: Spawn-gate deferrals
+    definition: p90 minutes a reviewer spawn waited on the machine-load or window gate
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/spawn-gate.ts#spawnGate", store: serve-log, captured: P, gapSlice: unfiled }
+    cadence: 1h
+    slo: { objective: "p90 deferral under 5 min", target: 5, op: "<=", window: 1d, alert: { threshold: 5, sustain: 1 } }
+    surfaces: [health]
+    answers: [8]
+  - id: shepherd.availability.freeze_hours_max
+    family: availability
+    title: Main-freeze episodes
+    definition: Longest freeze-to-thaw episode ending in the window, an open one counted to now; 0 when nothing froze
+    unit: hours
+    source: { anchor: "products/factory/src/shepherd/events.ts#appendEvent", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: availability.freeze-hours-max }
+    cadence: 1h
+    slo: { objective: "frozen under 2 h per episode; alert at 2 h", target: 2, op: "<=", window: 7d, alert: { threshold: 2, sustain: 1 } }
+    surfaces: [status, digest]
+    answers: [11]
+  # flow
+  - id: shepherd.flow.queued
+    family: flow
+    title: Queued
+    definition: p90 minutes from register to the first review dispatched
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/review.ts#reviewPhase", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.queued-p90 }
+    cadence: 1d
+    slo: { objective: "p50 15 min, p90 60 min; alert when p90 is over 120 min in a day", target: 60, op: "<=", window: 7d, alert: { threshold: 120, sustain: 1 } }
+    surfaces: [stats, status]
+    answers: [7]
+  - id: shepherd.flow.review
+    family: flow
+    title: Review
+    definition: p90 minutes from a review dispatch to the verdict that answered it
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/await-verdict.ts#awaitVerdict", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.review-p90 }
+    cadence: 1d
+    slo: { objective: "p90 20 min; alert on any review over 60 min", target: 20, op: "<=", window: 7d, alert: { threshold: 60, sustain: 1 } }
+    surfaces: [stats]
+    answers: [7, 8]
+  - id: shepherd.flow.ci_per_head
+    family: flow
+    title: CI per head
+    definition: p90 minutes from CI start to green, per head
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/stage-times.ts#stageSpans", store: ledger, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "p90 25 min; alert at a timeout", target: 25, op: "<=", window: 7d, alert: { threshold: 25, sustain: 1 } }
+    surfaces: [stats, status]
+    answers: [7]
+  - id: shepherd.flow.rereviews_per_merge
+    family: flow
+    title: Re-reviews per merged PR
+    definition: Review dispatches whose recorded cause is neither first nor unknown, per review recorded as first; reviews of unknown cause (most predate recorded causes) are left out
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/review-cause.ts#reviewCauseStats", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.rereviews-per-first-review }
+    cadence: 1d
+    slo: { objective: "under 0.5 per merged PR; merge-up re-reviews 0", target: 0.5, op: "<=", window: 7d, alert: { threshold: 0.5, sustain: 1 } }
+    surfaces: [stats]
+    answers: [3, 14]
+  - id: shepherd.flow.hold_time
+    family: flow
+    title: Hold time
+    definition: p90 hours from a hold to its release, an open hold counted to now
+    unit: hours
+    source: { anchor: "products/factory/src/shepherd/events.ts#appendEvent", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.hold-p90-hours }
+    cadence: 1d
+    slo: { objective: "p90 4 h; alert at 24 h", target: 4, op: "<=", window: 7d, alert: { threshold: 24, sustain: 1 } }
+    surfaces: [status, stats]
+    answers: [11]
+  - id: shepherd.flow.merge_gate_wait
+    family: flow
+    title: Owner merge-gate wait
+    definition: p90 hours an approve-merge gate resolved in the window was open
+    unit: hours
+    source: { anchor: "products/factory/src/shepherd/owner-friction.ts#ownerFriction", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.merge-gate-wait-p90 }
+    cadence: 1d
+    slo: { objective: "p50 2 h, p90 12 h; alert on any over 24 h", target: 12, op: "<=", window: 7d, alert: { threshold: 24, sustain: 1 } }
+    surfaces: [stats, dashboard]
+    answers: [1]
+  - id: shepherd.flow.merge_verdict_to_merged
+    family: flow
+    title: MERGE to merged
+    definition: p90 minutes from the last MERGE verdict before the merge to the merge step
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/stats.ts#mergeVerdictAt", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.merge-verdict-to-merged-p90 }
+    cadence: 1d
+    slo: { objective: "p50 15 min, p90 60 min; alert when any is over 4 h", target: 60, op: "<=", window: 7d, alert: { threshold: 240, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [6]
+  - id: shepherd.flow.register_to_merged
+    family: flow
+    title: Register to merged
+    definition: p90 minutes from register to the merge step, end to end
+    unit: minutes
+    source: { anchor: "products/factory/src/shepherd/stats.ts#mergedAt", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.register-to-merged-p90 }
+    cadence: 1d
+    slo: { objective: "p50 60 min, p90 6 h", target: 360, op: "<=", window: 7d, alert: { threshold: 360, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [7]
+  - id: shepherd.flow.outside_share
+    family: flow
+    title: Merged outside Shepherd
+    definition: Registered PRs merged by someone else, over all registered PRs that merged in the window
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/stats.ts#shepherdStats", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.outside-share }
+    cadence: 1d
+    slo: { objective: "under 10% (M1 criterion 2: 18 of 20)", target: 0.1, op: "<=", window: 7d, alert: { threshold: 0.1, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [12]
+  - id: shepherd.flow.flake_rate
+    family: flow
+    title: Flake rate
+    definition: Share of red CI heads judged outside the PR diff
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/flake-check.ts#failuresOutsideDiff", store: ledger, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "under 5% of heads; alert when a test flakes 3 times in a week", target: 0.05, op: "<=", window: 7d, alert: { threshold: 0.05, sustain: 1 } }
+    surfaces: [stats]
+    answers: [13]
+  - id: shepherd.flow.merge_ups_per_merge
+    family: flow
+    title: Merge-ups per merged PR
+    definition: update-branch steps per run merged in the window
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/merge-up-carry.ts#recordMergeUp", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: flow.merge-ups-per-merge }
+    cadence: 1d
+    slo: { objective: "under 1.5 per merged PR after TP-2080", target: 1.5, op: "<=", window: 7d, alert: { threshold: 1.5, sustain: 1 } }
+    surfaces: [stats]
+    answers: [14]
+  - id: shepherd.flow.carry_hit_rate
+    family: flow
+    title: Carry hit rate
+    definition: Carried reviews over carry-eligible head moves
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/merge-up-carry.ts#treeCarries", store: ledger, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "95% of clean merge-ups carry", target: 0.95, op: ">=", window: 7d, alert: { threshold: 0.95, sustain: 1 } }
+    surfaces: [stats]
+    answers: [14]
+  # quality
+  - id: shepherd.quality.fix_first_rate
+    family: quality
+    title: FIX_FIRST rate
+    definition: FIX_FIRST verdicts over all verdicts given in the window
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/await-verdict.ts#awaitVerdict", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: quality.fix-first-rate }
+    cadence: 1d
+    slo: { objective: "a band of 15 to 35%, alert outside it for a week; target holds the lower bound, as too low suggests rubber-stamping", target: 0.15, op: ">=", window: 7d, alert: { threshold: 0.15, sustain: 7 } }
+    surfaces: [stats, digest]
+    answers: []
+  - id: shepherd.quality.escaped_defects
+    family: quality
+    title: Escaped defects
+    definition: Merged runs whose post-merge main CI read red, over merged runs that read main CI
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/stats-quality.ts#redAfterMerge", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: quality.red-after-merge-rate }
+    cadence: 1d
+    slo: { objective: "under 2% per week; alert on any red main older than 1 h", target: 0.02, op: "<=", window: 7d, alert: { threshold: 0.02, sustain: 1 } }
+    surfaces: [stats, digest, health]
+    answers: [9]
+  - id: shepherd.quality.reverts
+    family: quality
+    title: Reverts
+    definition: Shepherd merges a later main commit reverted
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/reverts.ts#markRevertedRuns", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: quality.reverts }
+    cadence: 1d
+    slo: { objective: "0 per week; alert on any", target: 0, op: "<=", window: 7d, alert: { threshold: 1, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [9]
+  - id: shepherd.quality.reviewer_agreement
+    family: quality
+    title: Reviewer agreement
+    definition: Runs whose MERGE verdict the owner or a seat overrode, over runs with a MERGE verdict; second-reviewer sampling is not recorded
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/override-stats.ts#overrideStats", store: ledger, captured: P }
+    query: { kind: cli, store: shepherd-stats, text: quality.override-rate }
+    cadence: 1d
+    slo: { objective: "disagreement under 5%; alert at 10%", target: 0.05, op: "<=", window: 7d, alert: { threshold: 0.1, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: []
+  - id: shepherd.quality.no_verdict_rate
+    family: quality
+    title: No-verdict rate
+    definition: Verdict waits that ended with no verdict (silence, refusal, usage limit), over all verdict waits
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/await-verdict.ts#awaitVerdict", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: quality.no-verdict-rate }
+    cadence: 1d
+    slo: { objective: "under 5%; alert at 15% a day", target: 0.05, op: "<=", window: 7d, alert: { threshold: 0.15, sustain: 1 } }
+    surfaces: [stats]
+    answers: [8]
+  - id: shepherd.quality.fix_rounds
+    family: quality
+    title: Fix rounds to MERGE
+    definition: p90 FIX_FIRST verdicts per run merged in the window
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/await-verdict.ts#awaitVerdict", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: quality.fix-rounds-p90 }
+    cadence: 1d
+    slo: { objective: "p90 2 or fewer", target: 2, op: "<=", window: 7d, alert: { threshold: 2, sustain: 1 } }
+    surfaces: [stats]
+    answers: [3]
+  # owner-load
+  - id: shepherd.owner-load.waiting_now
+    family: owner-load
+    title: Waiting on the owner now
+    definition: Owner gates (not seat-routed) pending over 24 hours
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/waiting.ts#waitingGates", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: owner-load.overdue-owner-gates }
+    cadence: 1h
+    slo: { objective: "none older than 24 h; alert at 24 h and on more than 20 pending", target: 0, op: "<=", window: 1d, alert: { threshold: 1, sustain: 1 } }
+    surfaces: [dashboard, status, digest]
+    answers: [1]
+  - id: shepherd.owner-load.touches_per_day
+    family: owner-load
+    title: Owner touches per day
+    definition: Gates the owner resolved, per UTC day in the window
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/owner-friction.ts#ownerFriction", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: owner-load.touches-per-day }
+    cadence: 1d
+    slo: { objective: "under 15 a day, trending down", target: 15, op: "<=", window: 7d, alert: { threshold: 15, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [15]
+  - id: shepherd.owner-load.wait_by_kind
+    family: owner-load
+    title: Owner wait
+    definition: p90 hours a gate the owner resolved in the window was open, all kinds together; per kind is in shepherd stats
+    unit: hours
+    source: { anchor: "products/factory/src/shepherd/owner-friction.ts#ownerFriction", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: owner-load.gate-wait-p90 }
+    cadence: 1d
+    slo: { objective: "per kind as the merge-gate wait: p90 12 h, alert at 24 h", target: 12, op: "<=", window: 7d, alert: { threshold: 24, sustain: 1 } }
+    surfaces: [stats]
+    answers: [1]
+  - id: shepherd.owner-load.superseded_gates
+    family: owner-load
+    title: Superseded gates
+    definition: Gates opened in the window that were cancelled, for any reason, over all opened
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/owner-friction-read.ts#readAllGates", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: owner-load.cancelled-gate-share }
+    cadence: 1d
+    slo: { objective: "under 10% of opened gates", target: 0.1, op: "<=", window: 7d, alert: { threshold: 0.1, sustain: 1 } }
+    surfaces: [stats]
+    answers: [1]
+  - id: shepherd.owner-load.delegation_share
+    family: owner-load
+    title: Delegation share
+    definition: Gates resolved by a coordinator, decider or Ship, over all gates resolved with a recorded resolver; tracked for a week-on-week rise, no SLO
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/owner-friction-read.ts#readAllGates", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: owner-load.delegation-share }
+    cadence: 1d
+    surfaces: [stats, digest]
+    answers: [15]
+  # cost
+  - id: shepherd.cost.reviewer_usd_per_merge
+    family: cost
+    title: Reviewer dollars per merged PR
+    definition: Mean list-price cost of the review rounds of a PR merged in the window, over PRs whose every transcript was read
+    unit: usd
+    source: { anchor: "products/factory/src/shepherd/stats-cost.ts#reviewCost", store: transcripts, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: cost.reviewer-usd-per-merge }
+    cadence: 1d
+    slo: { objective: "at most $1.50 per merged PR; alert at $5", target: 1.5, op: "<=", window: 7d, alert: { threshold: 5, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [10]
+  - id: shepherd.cost.reviewer_tokens_per_merge
+    family: cost
+    title: Reviewer tokens per merged PR
+    definition: Mean input, output and cache tokens of the review rounds of a PR merged in the window; per repo is in shepherd stats --cost; tracked, no SLO
+    unit: tokens
+    source: { anchor: "products/factory/src/shepherd/stats-cost.ts#reviewCost", store: transcripts, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: cost.reviewer-tokens-per-merge }
+    cadence: 1d
+    surfaces: [stats]
+    answers: [10]
+  - id: shepherd.cost.reviews_per_merge
+    family: cost
+    title: Reviews per merged PR
+    definition: Reviews dispatched in the window over runs merged in it
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/review.ts#reviewPhase", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: cost.reviews-per-merge }
+    cadence: 1d
+    slo: { objective: "1.5 or fewer", target: 1.5, op: "<=", window: 7d, alert: { threshold: 1.5, sustain: 1 } }
+    surfaces: [stats]
+    answers: [10]
+  - id: shepherd.cost.wasted_reviews
+    family: cost
+    title: Wasted reviews
+    definition: Review dispatches whose recorded cause is superseded, over all with a cause other than unknown; reviews on runs later cancelled are not counted
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/review-cause.ts#reviewCauseStats", store: ledger, captured: P }
+    query: { kind: cli, store: shepherd-stats, text: cost.superseded-review-share }
+    cadence: 1d
+    slo: { objective: "under 10%", target: 0.1, op: "<=", window: 7d, alert: { threshold: 0.1, sustain: 1 } }
+    surfaces: [stats]
+    answers: [3]
+  - id: shepherd.cost.fixer_usd
+    family: cost
+    title: Fixer spawn cost
+    definition: List-price cost of sh-spawn-fixer and sh-wake sessions; tracked, no SLO
+    unit: usd
+    source: { anchor: "products/factory/src/shepherd/main-red.ts#spawnFixer", store: transcripts, captured: N, gapSlice: unfiled }
+    cadence: 1d
+    surfaces: [stats]
+    answers: [10]
+  # business
+  - id: shepherd.business.merges_per_day
+    family: business
+    title: Merges per day
+    definition: Shepherd merges per UTC day in the window, all repos
+    unit: count
+    source: { anchor: "products/factory/src/shepherd/stats.ts#mergedAt", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: business.merges-per-day }
+    cadence: 1d
+    slo: { objective: "at least 60 a day while implementer caps hold", target: 60, op: ">=", window: 7d, alert: { threshold: 60, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [4]
+  - id: shepherd.business.shepherd_share
+    family: business
+    title: Shepherd share of all merges
+    definition: Shepherd merges over all seat-repo merges on GitHub
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/coverage.ts#coverage", store: github, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "at least 90% (M1: 18 of 20)", target: 0.9, op: ">=", window: 7d, alert: { threshold: 0.9, sustain: 1 } }
+    surfaces: [stats, digest]
+    answers: [12]
+  - id: shepherd.business.task_to_merge
+    family: business
+    title: Task-to-merge cycle time
+    definition: p50 hours from an active-work task's creation to its Shepherd merge
+    unit: hours
+    source: { anchor: "products/factory/src/digest/flow.ts#taskToMerge", store: tasks, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "p50 under 1 day for priority-1 tasks", target: 24, op: "<=", window: 7d, alert: { threshold: 24, sustain: 1 } }
+    surfaces: [digest]
+    answers: [4]
+  - id: shepherd.business.throughput_per_slot
+    family: business
+    title: Throughput versus capacity
+    definition: Merges per implementer slot-hour; tracked, alert when the review queue holds slots, no SLO
+    unit: count
+    source: { anchor: "products/factory/src/digest/flow.ts#implementerHours", store: broker, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    surfaces: [digest]
+    answers: []
+  - id: shepherd.business.review_queue_depth
+    family: business
+    title: Review queue depth
+    definition: Runs waiting on a review or a spawn; the objective is under twice the reviewer cap, which the registry does not hold, so no SLO
+    unit: count
+    source: { anchor: "products/factory/src/serve.ts#factoryHealth", store: health, captured: P, gapSlice: TP-1651 }
+    cadence: 1h
+    surfaces: [health, status]
+    answers: [8]
+  - id: shepherd.business.task_closes_on_land
+    family: business
+    title: Task closes on land
+    definition: Merged runs whose sh-landed step closed or noted the task
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/outcome.ts#recordLanded", store: ledger, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "100%", target: 1, op: ">=", window: 7d, alert: { threshold: 1, sustain: 1 } }
+    surfaces: [stats]
+    answers: []
+  - id: shepherd.business.version_packages_latency
+    family: business
+    title: Version Packages latency
+    definition: Hours from a release PR opening to its publish
+    unit: hours
+    source: { anchor: "products/factory/src/shepherd/release.ts#releasePreflight", store: ledger, captured: P, gapSlice: unfiled }
+    cadence: 1d
+    slo: { objective: "under 2 h", target: 2, op: "<=", window: 7d, alert: { threshold: 2, sustain: 1 } }
+    surfaces: [digest]
+    answers: []
+  - id: shepherd.business.unattended_share
+    family: business
+    title: Unattended merges
+    definition: Runs merged in the window with no gate the owner resolved, over all merged; tracked for a rise, no SLO
+    unit: ratio
+    source: { anchor: "products/factory/src/shepherd/owner-friction-read.ts#readAllGates", store: ledger, captured: Y }
+    query: { kind: cli, store: shepherd-stats, text: business.unattended-share }
+    cadence: 1d
+    surfaces: [digest]
+    answers: [15]
+reports:
+  - { id: owner-waits, title: Owner waits, metrics: [shepherd.owner-load.waiting_now, shepherd.owner-load.wait_by_kind, shepherd.owner-load.delegation_share, shepherd.flow.merge_gate_wait], view: "#/approvals", command: "titan-factory shepherd waiting" }
+  - { id: stage-funnel, title: Stage funnel, metrics: [shepherd.flow.queued, shepherd.flow.review, shepherd.flow.ci_per_head, shepherd.flow.rereviews_per_merge, shepherd.flow.hold_time, shepherd.flow.merge_gate_wait, shepherd.flow.merge_verdict_to_merged, shepherd.flow.register_to_merged], command: "titan-factory shepherd stats" }
+  - { id: re-review, title: Re-review audit, metrics: [shepherd.flow.rereviews_per_merge, shepherd.flow.carry_hit_rate, shepherd.cost.wasted_reviews], command: "titan-factory shepherd stats --rereviews" }
+  - { id: stuck-runs, title: Stuck and orphan runs, metrics: [shepherd.availability.stuck_runs], command: "titan-factory shepherd status" }
+  - { id: quality, title: Quality, metrics: [shepherd.quality.fix_first_rate, shepherd.quality.escaped_defects, shepherd.quality.reverts, shepherd.quality.no_verdict_rate] }
+  - { id: cost, title: Cost, metrics: [shepherd.cost.reviewer_usd_per_merge, shepherd.cost.reviewer_tokens_per_merge, shepherd.cost.reviews_per_merge, shepherd.cost.wasted_reviews, shepherd.cost.fixer_usd], command: "titan-factory shepherd stats --cost" }
+  - { id: availability, title: Availability, metrics: [shepherd.availability.service_up, shepherd.availability.build_lag, shepherd.availability.unclean_exits, shepherd.availability.freeze_hours_max], command: "titan-factory service status" }
+  - { id: failure-classes, title: Failure classes, metrics: [shepherd.availability.failed_share], command: "titan-factory shepherd stats --failures" }
+  - { id: m1-scorecard, title: M1 scorecard re-run, metrics: [shepherd.availability.service_up, shepherd.flow.outside_share, shepherd.business.merges_per_day, shepherd.business.unattended_share], command: "titan-factory shepherd stats --slo" }
+lastAudit: { at: "2026-10-09T03:40:00Z", codeRev: "a4814b33", report: "shepherd-measurement-audit-2026-10-08.md" }

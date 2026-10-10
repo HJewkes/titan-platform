@@ -7,6 +7,7 @@ import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
@@ -59,7 +60,11 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
-    merge: async (repo, number, sha, method) => ({ sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, { sha, merge_method: method })).sha }),
+    merge: async (repo, number, sha, method, message) => {
+      const fields = { sha, merge_method: method, ...(message ? { commit_title: message.subject, commit_message: message.body } : {}) };
+      return { sha: (await api.send<{ sha: string }>("PUT", `repos/${repo}/pulls/${number}/merge`, fields)).sha };
+    },
+    getSquashSource: (repo, number) => getSquashSource(api, repo, number),
     rerunFailedJobs: async (repo, runId) => void (await api.send("POST", `repos/${repo}/actions/runs/${runId}/rerun-failed-jobs`)),
     listPrFiles: (repo, number) => listPrFiles(api, repo, number),
     listPrCommits: (repo, number) => api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { sha: string }[]) => page.map((commit) => commit.sha)),
@@ -131,6 +136,19 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
     mergeableState: pr.mergeable_state ?? "unknown",
     behind,
   };
+}
+
+async function getSquashSource(api: Rest, repo: string, number: number): Promise<SquashSource> {
+  const [pr, commits] = await Promise.all([
+    api.get<{ title: string; body: string | null }>(`repos/${repo}/pulls/${number}`),
+    api.pages(`repos/${repo}/pulls/${number}/commits`, { per_page: "100" }, (page: { commit: { message: string } }[]) => page.map((commit) => splitMessage(commit.commit.message))),
+  ]);
+  return { title: pr.title, body: pr.body ?? "", commits };
+}
+
+function splitMessage(message: string): SquashSource["commits"][number] {
+  const [subject = "", ...rest] = message.split("\n");
+  return { subject, body: rest.join("\n").trim() };
 }
 
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {

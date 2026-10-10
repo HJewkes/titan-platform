@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/code-parser",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tree-sitter WASM parsing for TypeScript, TSX and Python, plus the source-file filter and the Extractor contract",
   "type": "module",
   "main": "./dist/index.js",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./node-kinds": {
+      "types": "./dist/node-kinds.d.ts",
+      "import": "./dist/node-kinds.js"
     }
   },
   "files": [

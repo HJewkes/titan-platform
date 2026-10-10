@@ -38,7 +38,7 @@ export function isoWeek(at: number): string {
 }
 
 /** When Shepherd's own `merge` step landed the PR, or undefined if the run did not merge it. */
-function mergedAt(run: WorkflowRun): number | undefined {
+export function mergedAt(run: WorkflowRun): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "merge" && payloadOf(result).done === true)
     .map(([, result]) => Date.parse(result.completedAt));
@@ -46,7 +46,7 @@ function mergedAt(run: WorkflowRun): number | undefined {
 }
 
 /** The latest MERGE verdict the reviewer gave before the merge. */
-function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
+export function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "sh-await-verdict" && payloadOf(result).kind === "verdict" && payloadOf(result).verdict === "MERGE")
     .map(([, result]) => Date.parse(result.completedAt))

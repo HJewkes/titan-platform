@@ -1,6 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import type { SourceTextLocator } from "@titan-design/session-read";
-import type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader } from "@titan-design/review-panel";
+import { DEPTH_FLOOR_REASON, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -12,10 +11,10 @@ import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./cod
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
-import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema, type OwnerBrief } from "./review-schemas.js";
+import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
+import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import { dispatchedNoVerdictCause } from "./depth-floor.js";
-import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { NoVerdictCause, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
@@ -51,7 +50,8 @@ export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
 export { provablyIndependent } from "./lineage.js";
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
-export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
+export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
+export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
 export type { AwaitVerdictInput, ReviewTarget, ReviewerAgent, ReviewerDispatch, ReviewerMessage, ReviewerReader };
 
 export type ReviewInput = z.infer<typeof ReviewInputSchema>;
@@ -63,23 +63,14 @@ export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
-export interface AcceptedVerdict {
-  kind: "verdict";
-  head: string;
-  locator: SourceTextLocator;
-  /** The author of the accepted message, as the reader attributed it. */
-  reviewer: AgentIdentity;
-  /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
-  ownerBrief?: OwnerBrief | null;
+/** The package's accepted verdict, plus the seat disagreement only Shepherd records. */
+type AcceptedVerdict = PanelAcceptedVerdict & {
   /** Set when a seat reviewer and Shepherd's own review gave opposite verdicts at this head (G10). */
   ownerOverride?: OwnerOverride;
-  /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
-  reviewerProfile?: string;
-}
+};
 
 /** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
 export type AwaitVerdictResult = (AcceptedVerdict & { verdict: "MERGE" }) | (AcceptedVerdict & { verdict: "FIX_FIRST"; text: string; closer?: "yes" | "no" }) | { kind: "none"; reason?: string };
-
 const HeadSchema = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const ReviewTargetSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive(), head: HeadSchema });
 const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), fresh: z.boolean().optional(), cause: ReviewCauseSchema.optional() });
@@ -221,6 +212,23 @@ async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent:
   return intent.mode === "spawn" ? { ...facts, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
 }
 
+const checkoutRootOf = (deps: ShepherdDeps): string => deps.reviewCheckouts?.root ?? reviewCheckoutRoot();
+
+/** Removes the run's checkout dir; the reviewer is told to, but a reviewer that failed or timed out never does, and a verdict must not depend on it. */
+async function dropCheckout(deps: ShepherdDeps, target: ReviewTarget): Promise<void> {
+  await removeReviewCheckout(checkoutRootOf(deps), target, deps.reviewCheckouts?.remove);
+}
+
+/**
+ * Removes the checkout once the reviewer is finished with it: when `work` returns and `finished` says so. A throw (an abort at
+ * shutdown, say) leaves it, because the reviewer outlives the step and a replay waits on it; the sweep is the backstop.
+ */
+async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarget, work: () => Promise<T>, finished: (result: T) => boolean): Promise<T> {
+  const result = await work();
+  if (finished(result)) await dropCheckout(deps, target);
+  return result;
+}
+
 /** The body of the sh-review step; `repeat` means a crash interrupted an earlier run. The brief is built from the target alone, so no registration text can reach it. */
 const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> = async (deps, { dispatch, questions, codewatch, sessionStartTimeoutMs, busyWaitMs, roles }, { intent, runId, fixFirsts, ownerBrief, ...target }, signal, repeat) => {
   const timing = { ...brokerTiming(deps), timeoutMs: sessionStartTimeoutMs ?? DEFAULT_SESSION_START_TIMEOUT_MS, busyWaitMs: busyWaitMs ?? DEFAULT_BUSY_WAIT_MS };
@@ -229,13 +237,19 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
   const asked = roster.some(intent.mode === "resume" ? (agent) => repeat && resumedSince(intent)(agent) : holds(intent));
   const waits: string[] = [];
   const facts = await spawnFacts(deps, runId, intent, target, roles);
-  const asking = asked ? undefined : await reviewBrief({ ...target, fixFirsts, ownerBrief }, codewatch, questions);
+  const asking = asked ? undefined : await reviewBrief({ ...target, checkoutRoot: checkoutRootOf(deps), fixFirsts, ownerBrief, testRule: deps.suiteRules?.reviewer }, codewatch, questions);
   if (asking) {
     const refused = await startReviewer(dispatch, intent, target, facts, asking.brief, timing, signal, waits).then(() => undefined, (error: unknown) => notStarted(error, waits));
-    if (refused) return refused;
+    if (refused) {
+      await dropCheckout(deps, target);
+      return refused;
+    }
   }
   const { agent: started, rosterError } = await startedSession(() => dispatch.roster(), holds(intent), timing, signal);
-  if (!started) return notStartedInTime(intent, rosterError);
+  if (!started) {
+    await dropCheckout(deps, target);
+    return notStartedInTime(intent, rosterError);
+  }
   return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && roles && { profile: reviewerRoleFor(facts, roles) }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }) };
 };
 
@@ -258,7 +272,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     if (isExternalVerdictInput(raw)) return wiring?.dispatch ? bounded(await awaitExternalVerdict(wiring.dispatch.roster, wiring.reader, raw, timing, signal)) : { kind: "none" };
     const input = parseAwaitVerdictInput(raw);
     const dispatch = wiring?.dispatch;
-    return wiring ? awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster())) : { kind: "none" };
+    return wiring ? thenDropCheckout(deps, input, () => awaitVerdict(wiring.reader, input, timing, signal, dispatch && (() => dispatch.roster())), (result) => result.kind === "verdict") : { kind: "none" };
   };
   const isFrozen = wiring?.isFrozen ?? noFreezeStoreUntilTp523;
   return [
@@ -279,7 +293,7 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
   if (!dispatch) return { kind: "none" };
   const timing = { ...brokerTiming(deps), timeoutMs: wiring.lateVerdictMs ?? DEFAULT_LATE_VERDICT_MS };
   const exited = async () => (await dispatch.roster()).every((agent) => agent.agentId !== input.reviewerAgentId || agent.presence === "exited");
-  return awaitLateVerdict(wiring.reader, exited, input, timing, signal);
+  return thenDropCheckout(deps, input, () => awaitLateVerdict(wiring.reader, exited, input, timing, signal), () => true);
 }
 
 /** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
@@ -326,6 +340,9 @@ type ExternalAwaiting = ReviewTarget & { external: string };
  * reviewer that missed the wait is read once more, so a MERGE it writes late is a MERGE, not a no-facts gate, and one whose
  * final message was malformed gets one correction turn.
  */
+/** A dispatched reviewer that wrote a verdict below the floor gave no verdict; any other silence is a timeout. */
+const dispatchedNoVerdictCause = (reason: unknown): NoVerdictCause => (reason === DEPTH_FLOOR_REASON ? "no-verdict" : "timeout");
+
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
