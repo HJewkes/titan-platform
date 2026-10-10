@@ -31,7 +31,7 @@ interface HeldInput {
 }
 
 /** A joined seat or `none` names no one agent to message, so the hub seat stands in. */
-const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
+export const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
 
 function heldCheck(registration: Registration | undefined): z.infer<typeof HeldCheckResult> {
   if (!registration?.held) return { held: false };
