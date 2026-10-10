@@ -1,5 +1,5 @@
 import type { Node } from "web-tree-sitter";
-import { forEachOwnNode, qualifiedCallee } from "./python-code-kinds.js";
+import { forEachOwnNode, isFileRead, qualifiedCallee } from "./python-code-kinds.js";
 
 /** The kinds of check one test function makes (TP-2170). A test can be several kinds at once. */
 export interface TestKindFacts {
@@ -21,7 +21,6 @@ const SNAPSHOT_FIXTURES = new Set([
 ]);
 /** `.code` only as an attribute (`excinfo.value.code`), so a bare local named `code` stays an ordinary value. */
 const EXIT_STATUS = /(?:^|\.)(?:exit_code|returncode|status_code)$|\.code$/;
-const GOLDEN_READ = /\.(?:read_text|read_bytes|read)\(/;
 const EXACT_UNITTEST = /^assert(?:Equals?|ListEqual|DictEqual|TupleEqual|SetEqual|MultiLineEqual|SequenceEqual|CountEqual)$/;
 const ERROR_CALLS = /^(?:pytest\.raises|.*\.assertRaises(?:Regex)?)$/;
 
@@ -59,16 +58,10 @@ function isSnapshotSide(side: Node): boolean {
   return side.type === "call" && side.childForFieldName("function")?.text === "snapshot";
 }
 
-const LITERAL_TYPES = new Set(["string", "concatenated_string", "integer", "float", "true", "false", "none"]);
-
-/** A file read compared with something other than an inline literal: the expected value lives in a golden file. */
-function isGoldenComparison(read: Node, other: Node): boolean {
-  return GOLDEN_READ.test(read.text) && !LITERAL_TYPES.has(other.type);
-}
-
 function equalityKind(left: Node, right: Node): AssertionKind {
   if (isSnapshotSide(left) || isSnapshotSide(right)) return "snapshot";
-  if (isGoldenComparison(left, right) || isGoldenComparison(right, left)) return "snapshot";
+  // Golden only when both sides are file reads: one side alone may be the output under test, checked exactly.
+  if (isFileRead(left) && isFileRead(right)) return "snapshot";
   if (roundtripSubject(left) === right.text || roundtripSubject(right) === left.text) return "roundtrip";
   const sized = (n: Node) => /^len\(/.test(n.text) || /\.shape$/.test(n.text);
   return sized(left) || sized(right) ? "loose" : "exact";

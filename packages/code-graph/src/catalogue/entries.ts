@@ -292,12 +292,12 @@ const testCount = (name: string, direction: "lower-worse" | "higher-worse" | "ne
  */
 const TEST_KINDS: readonly MetricDescriptor[] = [
   kindFlag("symbol_kind_parser", "1 when the function's own name (a method's too) says parse, decode, deserialize, tokenize, lex or loads, or it calls json, yaml, toml, csv, ast.literal_eval or struct.unpack decoding."),
-  kindFlag("symbol_kind_io", "1 when the function itself calls open, a pathlib read or write on a Path value (a Path(...) call, a name bound to one, or a Path-annotated parameter), os (path arithmetic aside), subprocess, socket, shutil, requests, httpx or urllib.request."),
+  kindFlag("symbol_kind_io", "1 when the function itself calls open; a method only paths and files have (read_text, write_text, mkdir, unlink, open and the like) on any receiver; a method str or other types share (replace, rename, glob, read) on a proven Path (a Path(...) call, a name bound to one, or a Path-annotated parameter); os (path arithmetic aside), subprocess, socket, shutil, requests, httpx or urllib.request."),
   kindFlag("symbol_output_signal", "1 when the function itself prints, writes sys.stdout, echoes through click or typer, builds an argparse parser, carries a click, typer, Flask or FastAPI command or route decorator, or is called in its file's __main__ guard."),
   kindFlag("symbol_global_writes", "1 when the function declares global or nonlocal, or assigns into or mutates a name its module assigns and it does not rebind locally."),
   kindFlag("symbol_kind_output_boundary", "1 when symbol_output_signal is, or a pyproject console script or a module-level call in a __main__.py starts the function."),
   kindFlag("symbol_kind_pure", "1 when the function is no parser, and neither it nor any function it reaches through calls edges does I/O, writes globals or is an output boundary."),
-  kindFlag("test_kind_snapshot", "1 when the test takes a syrupy or pytest-regressions fixture, calls approvaltests verify, or compares with == against snapshot, or compares a file read with anything but an inline literal (a golden file)."),
+  kindFlag("test_kind_snapshot", "1 when the test takes a syrupy or pytest-regressions fixture, calls approvaltests verify, or compares with == against snapshot, or compares one file read with another (a golden file). A file read compared with a literal or a variable is exact output."),
   kindFlag("test_kind_exact_output", "1 when the test asserts == on a value (not a length, shape, exit status, snapshot or round trip), or calls a unittest assertEqual family method."),
   kindFlag("test_kind_loose_output", "1 when the test's output assertions are all loose (in, startswith, a length or shape, a comparison or truthiness) and none is exact, snapshot or round trip."),
   kindFlag("test_kind_error_path", "1 when the test uses pytest.raises or assertRaises, or asserts a non-zero exit_code, returncode or .code attribute, or an HTTP error status_code."),

@@ -52,10 +52,52 @@ export function qualifiedCallee(call: Node, imports: ReadonlyMap<string, string>
 
 const IO_MODULES = ["subprocess", "socket", "requests", "httpx", "urllib.request", "shutil", "os"];
 const PURE_OS_PATH = /^os\.path\.(?:join|basename|dirname|split|splitext|normpath|normcase|relpath|isabs|commonpath)$/;
-const PATH_IO_METHODS = new Set([
-  "write_text", "write_bytes", "read_text", "read_bytes", "mkdir", "unlink", "rmdir", "touch", "rename", "replace",
-  "iterdir", "glob",
+/**
+ * The one table of file methods, keyed by what the receiver must be for the call to touch the filesystem.
+ * `any`: only paths and file objects have the method, so whatever receiver it is called on reads or writes a
+ * file, and nothing in the file need prove the receiver is a `Path` (`self.root.read_text()`). `path`: `str` or
+ * other common types share the name (`str.replace`, `str.rename` on pandas), so it counts only on a proven `Path`.
+ * `read` marks the methods whose result is a file's content, for the golden-file check in python-test-kinds.ts.
+ */
+const FILE_METHODS: ReadonlyMap<string, { receiver: "any" | "path"; read?: true }> = new Map([
+  ["read_text", { receiver: "any", read: true }],
+  ["read_bytes", { receiver: "any", read: true }],
+  ["write_text", { receiver: "any" }],
+  ["write_bytes", { receiver: "any" }],
+  ["mkdir", { receiver: "any" }],
+  ["rmdir", { receiver: "any" }],
+  ["unlink", { receiver: "any" }],
+  ["touch", { receiver: "any" }],
+  ["iterdir", { receiver: "any" }],
+  ["rglob", { receiver: "any" }],
+  ["symlink_to", { receiver: "any" }],
+  ["open", { receiver: "any" }],
+  ["read", { receiver: "path", read: true }],
+  ["replace", { receiver: "path" }],
+  ["rename", { receiver: "path" }],
+  ["glob", { receiver: "path" }],
 ]);
+
+function methodCall(call: Node): { method: string; receiver: Node | null } | null {
+  const callee = call.type === "call" ? call.childForFieldName("function") : null;
+  if (callee?.type !== "attribute") return null;
+  return { method: callee.childForFieldName("attribute")?.text ?? "", receiver: callee.childForFieldName("object") };
+}
+
+/** True when `call` touches the filesystem through a {@link FILE_METHODS} method on a receiver that qualifies. */
+export function isFileMethodCall(call: Node, isPathReceiver: (receiver: Node | null) => boolean): boolean {
+  const m = methodCall(call);
+  const entry = m ? FILE_METHODS.get(m.method) : undefined;
+  if (!m || !entry) return false;
+  return entry.receiver === "any" || isPathReceiver(m.receiver);
+}
+
+/** True for an expression whose value is a file's content: `p.read_text()`, `f.read()`, `open(x).read()`. */
+export function isFileRead(node: Node): boolean {
+  const m = methodCall(node);
+  return m !== null && FILE_METHODS.get(m.method)?.read === true;
+}
+
 const PATH_CONSTRUCTORS = new Set(["pathlib.Path", "pathlib.PurePath", "Path"]);
 const PARSE_CALLS = new Set([
   "json.loads", "json.load", "yaml.safe_load", "yaml.load", "tomllib.loads", "tomllib.load", "toml.loads",
@@ -82,15 +124,9 @@ function isPathValue(node: Node | null, scope: FunctionScope): boolean {
   return node.type === "call" && PATH_CONSTRUCTORS.has(qualifiedCallee(node, scope.imports));
 }
 
-function isPathIoCall(call: Node, scope: FunctionScope): boolean {
-  const callee = call.childForFieldName("function");
-  if (callee?.type !== "attribute") return false;
-  const method = callee.childForFieldName("attribute")?.text ?? "";
-  return PATH_IO_METHODS.has(method) && isPathValue(callee.childForFieldName("object"), scope);
-}
-
 function isIoCall(call: Node, callee: string, scope: FunctionScope): boolean {
-  if (callee === "open" || callee === "io.open" || isPathIoCall(call, scope)) return true;
+  if (callee === "open" || callee === "io.open") return true;
+  if (isFileMethodCall(call, (receiver) => isPathValue(receiver, scope))) return true;
   if (PURE_OS_PATH.test(callee)) return false;
   return IO_MODULES.some((m) => callee.startsWith(`${m}.`));
 }

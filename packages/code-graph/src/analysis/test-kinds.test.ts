@@ -72,9 +72,18 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     }
   });
 
-  it("reads a pathlib method as I/O only on a path, so str.replace stays pure", () => {
-    expect(kinds("app/core.py#slugify")).toEqual({ outputBoundary: 0, parser: 0, io: 0, pure: 1 });
-    expect(kinds("app/core.py#touch_marker")).toMatchObject({ io: 1, pure: 0 });
+  it("counts a method only files have as I/O on any receiver", () => {
+    const symbols = ["touch_marker", "read_cfg", "make_dirs", "write_cfg", "Store.save", "Store.load"];
+    for (const symbol of symbols) {
+      expect(kinds(`app/core.py#${symbol}`), symbol).toMatchObject({ io: 1, pure: 0 });
+    }
+  });
+
+  it("counts a method str or other types share as I/O only on a proven Path", () => {
+    expect(kinds("app/core.py#move")).toMatchObject({ io: 1, pure: 0 });
+    for (const symbol of ["slugify", "rename_columns"]) {
+      expect(kinds(`app/core.py#${symbol}`), symbol).toEqual({ outputBoundary: 0, parser: 0, io: 0, pure: 1 });
+    }
   });
 
   it("does not count a mutation of a local that shadows a module-level name as a global write", () => {
@@ -145,11 +154,20 @@ describe("test-kind facts of one test function", () => {
     expect(bareCode.test_a).toEqual(only("exact_output"));
   });
 
-  it("reads a file compared with an inline literal as exact output, not a golden file", async () => {
+  it("reads a file compared with a literal, a local or a constant as exact output, not a golden file", async () => {
     const inline = await testFacts(lines("def test_a():", "    assert out.read_text() == 'hello\\n'"));
     expect(inline.test_a).toEqual(only("exact_output"));
+    const local = await testFacts(lines("def test_a(tmp_path):", "    expected = 'a\\n'", "    assert p.read_text() == expected"));
+    expect(local.test_a).toEqual(only("exact_output"));
+    const constant = await testFacts(lines("def test_a():", "    assert f.read() == EXPECTED"));
+    expect(constant.test_a).toEqual(only("exact_output"));
+  });
+
+  it("reads a file compared with another file read as a golden-file snapshot", async () => {
     const golden = await testFacts(lines("def test_a():", "    assert out.read_text() == GOLDEN.read_text()"));
     expect(golden.test_a).toEqual(only("snapshot"));
+    const opened = await testFacts(lines("def test_a():", "    assert open(got).read() == open(want).read()"));
+    expect(opened.test_a).toEqual(only("snapshot"));
   });
 
   it("reads length and shape equalities as loose, and any exact one as exact", async () => {
