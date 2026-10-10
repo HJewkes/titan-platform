@@ -1,5 +1,6 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { probeHealth } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
@@ -8,6 +9,7 @@ import { systemServicePorts } from "./service-ports.js";
 
 const GIT_TIMEOUT_MS = 120_000;
 const PNPM_TIMEOUT_MS = 15 * 60_000;
+const CLONE_TIMEOUT_MS = 10 * 60_000;
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const NOT_FOUND = 127;
 
@@ -95,6 +97,7 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     ...systemServicePorts(),
     pid: process.pid,
     healthWithin: (port, timeoutMs) => probeHealth(port, { timeoutMs }),
+    clone: (remote, dest) => runCommand("git", ["clone", "--branch", "main", "--", remote, dest], dirname(dest), CLONE_TIMEOUT_MS, gitEnv),
     git: (args) => runCommand("git", args, checkout, GIT_TIMEOUT_MS, gitEnv),
     pnpm: (args) => runCommand("pnpm", args, checkout, PNPM_TIMEOUT_MS, deployPnpmEnv(process.env, args)),
     listDirs,
@@ -104,6 +107,12 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     rename,
     isAlive,
   };
+}
+
+/** The origin URL of `checkout`, the canonical remote a deploy clone defaults to; undefined when it has none. */
+export async function originOf(checkout: string): Promise<string | undefined> {
+  const result = await runCommand("git", ["remote", "get-url", "origin"], checkout, GIT_TIMEOUT_MS, gitChildEnv(process.env));
+  return result.code === 0 && result.stdout.trim() !== "" ? result.stdout.trim() : undefined;
 }
 
 /** What `/health` shows as `lastDeploy`; null before the first deploy. */
