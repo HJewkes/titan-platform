@@ -35,7 +35,6 @@ describe("suiteRules", () => {
     const rules = suiteRules(true);
 
     for (const rule of [rules.fixer, rules.reviewer]) {
-      expect(rule).toContain("`timeout 300 pnpm exec vitest run <paths>`");
       expect(rule).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
       expect(rule).toContain("Exit 75 means busy: retry every 5 minutes.");
       expect(rule).toMatch(/dead:check.*dag:check/);
@@ -43,6 +42,22 @@ describe("suiteRules", () => {
       expect(rule).not.toContain("ssh basement");
       expect(rule).not.toContain("Mac");
     }
+  });
+
+  it("on basement keeps the reviewer's checkout read-only and sends its targeted tests to basement-suite", () => {
+    const { reviewer } = suiteRules(true);
+
+    expect(reviewer).toContain("Never install dependencies in your checkout");
+    expect(reviewer).toContain("`basement-suite <repo> <branch> --agent <your name> -- <paths>`");
+    expect(reviewer).toContain("`head=`");
+    expect(reviewer).not.toContain("pnpm exec vitest");
+  });
+
+  it("on basement still lets a fixer run targeted tests in its own worktree", () => {
+    const { fixer } = suiteRules(true);
+
+    expect(fixer).toContain("`timeout 300 pnpm exec vitest run <paths>`");
+    expect(fixer).not.toContain("Never install");
   });
 
   it("elsewhere keeps the ssh form", () => {

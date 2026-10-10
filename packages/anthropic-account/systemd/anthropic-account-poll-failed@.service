@@ -1,0 +1,15 @@
+[Unit]
+Description=Record that %i failed
+
+[Service]
+Type=oneshot
+# An error-priority journal line (journalctl --user -p err), and a marker file whose
+# presence and mtime say the poller is failing; the poll service removes it on success.
+ExecStart=logger --priority user.err --tag anthropic-account "%i failed; see journalctl --user -u %i"
+ExecStart=touch %S/anthropic-account/%i.failed
+StateDirectory=anthropic-account
+NoNewPrivileges=yes
+UMask=0077
+# Best effort, as in anthropic-account-poll.service: a no-op where the user manager cannot
+# use unprivileged user namespaces.
+ProtectSystem=strict
