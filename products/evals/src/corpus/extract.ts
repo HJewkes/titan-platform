@@ -49,6 +49,8 @@ const CLOSER = /^\s*Closer:\s*(.+?)\s*$/m;
 interface PrContext {
   git: GitPort | undefined;
   mergeSha: string | null;
+  /** True when Shepherd landed the merge, so its post-merge main read was recorded; a squash found on main has none. */
+  landedByShepherd: boolean;
   merge: MergeOutcome;
   /** The PR's reviewed heads in verdict order, then the landed head if it was never reviewed. */
   heads: string[];
@@ -68,9 +70,10 @@ function squashMergeOf(git: GitPort, pr: number): string | null {
 function prContext(deps: ExtractDeps, verdict: HeadVerdict): PrContext {
   const key = prKey(verdict.repo, verdict.pr);
   const git = deps.gitFor(verdict.repo);
-  const mergeSha = deps.facts.landings.get(key)?.mergeSha ?? (git ? squashMergeOf(git, verdict.pr) : null);
+  const landed = deps.facts.landings.get(key)?.mergeSha;
+  const mergeSha = landed ?? (git ? squashMergeOf(git, verdict.pr) : null);
   const merge = git && mergeSha ? mergeOutcome(git, mergeSha) : { revert: null, laterFix: null };
-  return { git, mergeSha, merge, heads: prHeads(deps.facts, key) };
+  return { git, mergeSha, landedByShepherd: landed !== undefined, merge, heads: prHeads(deps.facts, key) };
 }
 
 function classOf(git: GitPort | undefined, verdict: HeadVerdict, kind: string | null, rules: ClassRules): Pick<CorpusRow, "class" | "touches"> {
@@ -97,11 +100,18 @@ function isOverride(deps: ExtractDeps, verdict: HeadVerdict): boolean {
   return verdict.result.verdict === "FIX_FIRST" ? decision === "merge" : decision === "abandon";
 }
 
+/** No red record is evidence of green only for a merge Shepherd landed and then read main for. */
+function mainRed(deps: ExtractDeps, context: PrContext): boolean | null {
+  if (!context.mergeSha) return null;
+  if (deps.facts.redMerges.has(context.mergeSha)) return true;
+  return context.landedByShepherd ? false : null;
+}
+
 function rawLabels(deps: ExtractDeps, context: PrContext, verdict: HeadVerdict, cited: readonly string[]): RawLabels {
   const isFixFirst = verdict.result.verdict === "FIX_FIRST";
   return {
     revert: context.merge.revert,
-    "main-red": context.mergeSha ? deps.facts.redMerges.has(context.mergeSha) : null,
+    "main-red": mainRed(deps, context),
     "later-fix": context.merge.laterFix,
     "owner-override": isOverride(deps, verdict),
     "fixer-changed-cited-paths": isFixFirst ? fixerChangedCited(context, verdict.result.head, nextHeadOf(context, verdict.result.head), cited) : null,

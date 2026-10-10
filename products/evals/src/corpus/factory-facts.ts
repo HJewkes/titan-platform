@@ -1,3 +1,4 @@
+import { RESOLVER_CLASSES } from "@titan-design/authority";
 import { z } from "zod";
 import type { FactoryReader, FactoryRegistration, FactoryRun, OwnerGateRow } from "./factory-db.js";
 import {
@@ -141,10 +142,13 @@ function latestPerHead(verdicts: readonly HeadVerdict[]): HeadVerdict[] {
   return [...byHead.values()].sort((a, b) => a.verdictAt.localeCompare(b.verdictAt));
 }
 
+/** The owner resolves at a terminal or, through Matrix, remotely; both are the owner deciding. */
+const OWNER_RESOLVERS: ReadonlySet<string> = new Set(RESOLVER_CLASSES);
+
 function ownerDecision(gate: OwnerGateRow): [string, OwnerDecision] | undefined {
   const resolver = ResolverSchema.safeParse(parseJson(gate.resolvedBy));
   const payload = OwnerGatePayloadSchema.safeParse(parseJson(gate.payload));
-  if (!resolver.success || resolver.data.class !== "owner-terminal" || !payload.success) return undefined;
+  if (!resolver.success || !OWNER_RESOLVERS.has(resolver.data.class) || !payload.success) return undefined;
   return [payload.data.headSha, { decision: payload.data.decision, reason: gate.reason }];
 }
 

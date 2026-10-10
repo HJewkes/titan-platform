@@ -25,7 +25,7 @@
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.15"
   },
   "scripts": {
     "build": "tsup",
@@ -34,6 +34,7 @@
   },
   "private": true,
   "dependencies": {
+    "@titan-design/authority": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/health": "workspace:^",
     "@titan-design/review-panel": "workspace:^",

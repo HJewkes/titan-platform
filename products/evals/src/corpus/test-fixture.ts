@@ -32,6 +32,8 @@ export interface FixtureGate {
   decision: "merge" | "abandon";
   headSha: string;
   reason: string | null;
+  /** Defaults to `owner-terminal`; the owner answering from Matrix is `owner-remote`. */
+  resolverClass?: string;
 }
 
 function stepValue(step: FixtureStep): Record<string, unknown> {
@@ -50,7 +52,7 @@ function insertRun(db: DatabaseSync, run: FixtureRun): void {
 }
 
 function insertGate(db: DatabaseSync, gate: FixtureGate, index: number): void {
-  const resolvedBy = JSON.stringify({ class: "owner-terminal", id: "owner", channel: "factory-cli" });
+  const resolvedBy = JSON.stringify({ class: gate.resolverClass ?? "owner-terminal", id: "owner", channel: "factory-cli" });
   db.prepare("insert into hitl_gate values (?, 'merge?', 'resolved', ?, ?, 'x', ?)").run(
     `${gate.runId}/approve-merge:${index}`,
     JSON.stringify({ decision: gate.decision, headSha: gate.headSha }),

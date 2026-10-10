@@ -797,6 +797,9 @@ importers:
 
   products/evals:
     dependencies:
+      '@titan-design/authority':
+        specifier: workspace:^
+        version: link:../../packages/authority
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../../packages/evidence

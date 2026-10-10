@@ -85,6 +85,8 @@ function runs(): FixtureRun[] {
     run("r6", 6, [verdict(p("p6a"), "FIX_FIRST", "2026-01-02T01:00:00Z", "See src/e.ts:2 for the bug.\nCloser: no"), verdict(p("p6b"), "MERGE", "2026-01-03T01:00:00Z")]),
     run("r7", 7, [verdict("7".repeat(40), "FIX_FIRST", "2026-01-02T01:00:00Z", "`src/a.ts` is wrong")]),
     run("r8", 8, [verdict("8".repeat(40), "FIX_FIRST", "2026-01-02T01:00:00Z", "`src/a.ts` is wrong")]),
+    run("r10", 10, [verdict("a".repeat(40), "FIX_FIRST", "2026-01-02T01:00:00Z", "`src/a.ts` is wrong")]),
+    run("r11", 11, [verdict("b".repeat(40), "FIX_FIRST", "2026-01-02T01:00:00Z", "`src/a.ts` is wrong")]),
     run("r9", 9, [verdict("9".repeat(40), "MERGE", "2026-02-25T00:00:00Z")]),
   ];
 }
@@ -92,6 +94,8 @@ function runs(): FixtureRun[] {
 const gates: FixtureGate[] = [
   { runId: "r7", decision: "merge", headSha: "7".repeat(40), reason: "risk accepted for the demo" },
   { runId: "r8", decision: "merge", headSha: "8".repeat(40), reason: null },
+  { runId: "r10", decision: "merge", headSha: "a".repeat(40), reason: "merged from my phone", resolverClass: "owner-remote" },
+  { runId: "r11", decision: "merge", headSha: "b".repeat(40), reason: "a coordinator merged it", resolverClass: "coordinator" },
 ];
 
 let rows: CorpusRow[];
@@ -126,7 +130,7 @@ describe("reading the factory database", () => {
   });
 
   it("keeps one row per (repo, pr, head) across replays, iterations and step shapes", () => {
-    expect(rows).toHaveLength(11);
+    expect(rows).toHaveLength(13);
     expect(rows.filter((row) => row.pr === 1)).toHaveLength(1);
     expect(rowAt(1)?.step).toBe("late");
     expect(rowAt(2)?.verdict).toBe("MERGE");
@@ -192,6 +196,16 @@ describe("label rules", () => {
   it("an owner merge over a FIX_FIRST is a false block when the owner gave a reason, and pending when not", () => {
     expect(rowAt(7)).toMatchObject({ label: "false-block", labels: { "owner-override": true }, overrideReason: "risk accepted for the demo" });
     expect(rowAt(8)).toMatchObject({ label: "pending", labels: { "owner-override": true } });
+  });
+
+  it("reads an override the owner resolved from Matrix, and not one a coordinator resolved", () => {
+    expect(rowAt(10)).toMatchObject({ label: "false-block", labels: { "owner-override": true }, overrideReason: "merged from my phone" });
+    expect(rowAt(11)).toMatchObject({ labels: { "owner-override": false }, overrideReason: null });
+  });
+
+  it("does not read a missing red record as green for a merge Shepherd did not land", () => {
+    expect(rowAt(3)?.labels["main-red"]).toBeNull();
+    expect(rowAt(1)?.labels["main-red"]).toBe(false);
   });
 
   it("a verdict younger than 14 days is pending", () => {

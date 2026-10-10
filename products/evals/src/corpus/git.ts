@@ -69,7 +69,7 @@ export function gitClone(dir: string, mainRef = "origin/main"): GitPort {
     pathsBetween: (from, to) => git(["log", "--first-parent", "--no-merges", "--format=", "--name-only", `${from}..${to}`])?.split("\n").filter((line) => line !== ""),
     mainLog: () => (log ??= parseMainLog(git(["log", "--first-parent", "--format=%H%x1f%ct%x1f%s%x1f%b%x1e", mainRef]) ?? "")),
     hunks: (sha) => {
-      if (!hunkCache.has(sha)) hunkCache.set(sha, mapDefined(git(["diff", "-U0", "--no-color", "--no-ext-diff", "-M", `${sha}^1`, sha]), parseHunks));
+      if (!hunkCache.has(sha)) hunkCache.set(sha, mapDefined(git(["diff", "-U0", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", "-M", `${sha}^1`, sha]), parseHunks));
       return hunkCache.get(sha);
     },
   };
