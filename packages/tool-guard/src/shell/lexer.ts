@@ -2,7 +2,7 @@ import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { ansiCEnd, backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
 import { nested } from "./nesting.js";
-import { ParseError, SplitParseError } from "./parse-error.js";
+import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
@@ -194,9 +194,9 @@ function markComputed(w: WordToken): WordToken {
 function readDollar(s: LexState): void {
   const next = s.src[s.i + 1];
   const w = ensureWord(s);
-  if (next === "(" && s.src[s.i + 2] === "(") return readArithmetic(s, w);
+  if (next === "(" && s.src[s.i + 2] === "(") return refusingAs("unclosed-expansion", () => readArithmetic(s, w));
   if (next === "(") return pushSubstitution(s, w, s.i + 2);
-  if (next === "{") return readBraced(s, w);
+  if (next === "{") return refusingAs("unclosed-expansion", () => readBraced(s, w));
   if (next === "'") return readAnsiC(s, w);
   VARIABLE_RE.lastIndex = s.i + 1;
   const name = VARIABLE_RE.exec(s.src)?.[0];
@@ -299,10 +299,11 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
     backtick: (start) => scanBacktick(at.src, start, found, at.trials),
     quotedSpan: (from, to) => found.push(...quotedSpanSubstitutions(at, from, to)),
     nesting: at.trials.nesting,
-    dollarParens: (dollar) => {
-      const end = arithmeticExpansionEnd(at, dollar, found);
-      return end === -1 ? read.substitution(dollar + 2) : end;
-    },
+    dollarParens: (dollar) =>
+      refusingAs("unclosed-expansion", () => {
+        const end = arithmeticExpansionEnd(at, dollar, found);
+        return end === -1 ? read.substitution(dollar + 2) : end;
+      }),
   };
   return read;
 }
@@ -312,14 +313,7 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
  * otherwise reads the text as literal, so one left unclosed there cannot be a pass: it is refused.
  */
 function quotedSpanSubstitutions(at: Reading, from: number, to: number): Token[][] {
-  try {
-    return scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials));
-  } catch (error) {
-    if (error instanceof ParseError && !(error instanceof SplitParseError)) {
-      throw new SplitParseError("a single-quoted span in ${ } holds an unclosed substitution", "quoted-substitution");
-    }
-    throw error;
-  }
+  return refusingAs("quoted-substitution", () => scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials)));
 }
 
 /** Token lists of every substitution in `src` between `from` and `to`, such as a heredoc body's. */

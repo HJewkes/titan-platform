@@ -141,6 +141,7 @@ describe("ordinary ${…} usage", () => {
     'echo "${HOME}/${name:-app}.log"',
     "echo ${x-<(echo ${y})}",
     "echo $(( (1+2) )) ${x-$(( (1+2)*2 ))}",
+    "echo ${x-$$} $$[1] ${x-$$[}",
   ])("passes %s", async (command) => {
     expect(await hookDenies(command)).toBe(false);
   });
@@ -185,6 +186,41 @@ describe("a heredoc in a $( ) inside ${…}, which bash 3.2 ends at the first )"
     const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(command("ls")), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("move the command substitution out of the expansion");
+  });
+});
+
+/**
+ * Lines bash accepts and then runs past, failing only at expansion with "bad substitution". The first
+ * three come from review; the rest are differential-fuzz cases (bash 5.3 against the hook) that
+ * main denied and this reader let through.
+ */
+const UNCLOSED: Array<[string, string]> = [
+  [": $((${))", "\n"],
+  [": $(($[ #))", "\n"],
+  [': "${x+$[}${)]}"', "\n"],
+  [": $((#})-)", "\n"],
+  [': "$((${#-)}) "', "; "],
+  [": $(($[ )#{})", "; "],
+  [": ${]))$$((}#", "\n"],
+  [": ${x-$$[}", "; "],
+  [": $(([${:#))+", "\n"],
+  [': "$((]}1)#{)"', "; "],
+];
+const UNCLOSED_CASES = UNCLOSED.flatMap(([line, sep]) => GUARDED.map(([name, guarded]): [string, string, string] => [name, line, `${line}${sep}${guarded}`]));
+
+describe("an expansion the reader cannot close where bash runs the next command", () => {
+  it.each(UNCLOSED_CASES)("the hook denies %s after %s", async (_name, _line, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it.each(UNCLOSED_CASES)("the built hook denies %s after %s", (_name, _line, command) => {
+    expect(builtHookStdout(command)).toContain('"permissionDecision":"deny"');
+  });
+
+  it("the hook names the expansion it could not close", async () => {
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const result = await handle(event(`: $((\${))\n${PUSH}`), { PATH: "/usr/bin" }, port);
+    expect(result.stdout).toContain("close the expansion or move it into a variable");
   });
 });
 

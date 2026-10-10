@@ -54,6 +54,7 @@ function constructEnd(src: string, j: number, read: NestedReaders, braces: boole
 
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
   const next = src[j + 1];
+  if (next === "$") return j + 1;
   if (next === "{" || next === "[") return balancedEnd(src, j + 1, read);
   if (next === "(") return sameIn32(src, j + 1, src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read);
   if (next === "'") return ansiCEnd(src, j + 1);
