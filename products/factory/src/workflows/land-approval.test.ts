@@ -30,7 +30,7 @@ describe("land with an askApproval hook", () => {
     const run = await host.runtime.wait(runId);
 
     expect(run.status).toBe("completed");
-    expect(asked).toEqual([{ repo: REPO, pr: 1, headSha: H1, round: 0, reason: expect.any(String) }]);
+    expect(asked).toEqual([{ repo: REPO, pr: 1, headSha: H1, round: 0, reason: expect.any(String), base: "main" }]);
     expect(host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
     expect(fake.effects.merge).toBe(1);
     expect(outcomes.at(-1)).toEqual({ kind: "merged", headSha: H1, mergeSha: fake.pr(1).mergeSha });

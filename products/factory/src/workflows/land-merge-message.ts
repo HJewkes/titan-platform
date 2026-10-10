@@ -7,12 +7,14 @@ export interface MergeInput {
   method: MergeMethod;
   /** Absent on a merge step recorded before the field existed. */
   taskIds?: string[];
+  /** The base the merge must land in; GitHub's merge is skipped as `base-changed` on any other. */
+  base?: string;
 }
 
 /** Only a squash records a message of its own; a merge commit or a rebase keeps the PR's commits as they are. */
 export async function mergeWithMessage(port: GitHubPort, input: MergeInput) {
-  if (input.method !== "squash") return port.merge(input.repo, input.pr, input.sha, input.method);
-  return port.merge(input.repo, input.pr, input.sha, input.method, await squashMessageFor(port, input.repo, input.pr, input.taskIds ?? []));
+  if (input.method !== "squash") return port.merge(input.repo, input.pr, input.sha, input.method, undefined, input.base);
+  return port.merge(input.repo, input.pr, input.sha, input.method, await squashMessageFor(port, input.repo, input.pr, input.taskIds ?? []), input.base);
 }
 
 /** The id half of a registration's `<initiative>/<ID>` task, which is what a commit subject names. */

@@ -5,12 +5,14 @@ Review-panel types and the reviewer ports a caller satisfies
 Tier 2 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 
-Status: types, ports, `classifyPr`, `planPanel`, the reviewer briefs and the verdict acceptor. Tracked by TP-1916.
+Status: types, ports, `classifyPr`, `planPanel`, the reviewer briefs, the verdict acceptor and the aggregate. Tracked by TP-1916.
 
 `acceptVerdict(input, messages)` decides whether a reviewer's final message is its verdict for this PR at this head: the dispatched agent and session, written after dispatch, a block that names the target, and at least one investigative call (`isInvestigativeCall`) unless the reader could not count. Anything else is `{ kind: "none" }`, with a `malformed` record (`readMalformed`) when the block was refused or named another target. A FIX_FIRST carries its findings, bounded by `boundedFindings`; a verdict carries the reviewer's OWNER-BRIEF block as `parseOwnerBrief` reads it.
 
 `classifyPr(facts, rules?)` returns the review class (`g10` or `standard`) and the touch flags, from signals alone. `DEFAULT_CLASS_RULES` holds the glob tables and the large threshold (400 lines; more than 12 files when a file lacks line counts); pass `rules` to override them. `changedLineCount(files, rules?)` is the size it compares, with the `generated` globs (registry files a script rewrites) left out, unless those lines alone pass `largeLines` or a rename brought the file in from a non-generated path.
 
 `planPanel(cls, policy, headroom)` plans the panel for one head: each member's shape, profile, brief id and blocking flag, and a spend estimate in points. It plans at most 3 members and 1 opus member, and drops none on cost. When `headroom.opus` is false, an opus member is planned at its sonnet profile with `degraded: true`. `DEFAULT_PANEL_POLICY` has no panel table, so it plans the correctness member alone at the `g10` or `standard` profile (`bd-reviewer`, `reviewer`); set `panel: DEFAULT_PANEL_TABLE` for the class table.
+
+`aggregate(plan, results, input)` is the panel verdict for `input.head`. Any blocking FIX_FIRST blocks; MERGE needs every blocking member's MERGE at that head; a blocking member with no verdict is `no-verdict` (or `timeout`), never MERGE. Advisory findings ride along only when every `path:line` they cite exists in `input.source`; blocking findings are kept as written. `satisfiesG10` is false when any member is degraded.
 
 `shapeBrief(shape, input)` is the brief for an `adversary`, `tests`, `visual` or `perf` member: its overlay from `SHAPE_BRIEFS`, then the unchanged `reviewerBrief`. Each overlay has a stable `id` (the shape name, which is `planPanel`'s default brief id) and a sha256 `hash`, so an edited overlay is a new variant. Every overlay points at the base brief's test rule for where checks run instead of restating it. The tests brief reads `input.fixProof`, a `fix-proof/v1` result line: it uses the verdict, counts and flags for this head, never test names or paths, and ignores a line that does not parse or names another head.
