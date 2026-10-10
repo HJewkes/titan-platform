@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import oauthUsage from "../fixtures/oauth-usage.json" with { type: "json" };
-import { CANARY, FAKE_ACCESS_TOKEN, HOUR, NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
+import { CANARY, FAKE_ACCESS_TOKEN, FAKE_JWT, FAKE_OPAQUE, HOUR, NOW, fakeCredentials } from "../fixtures/fake-tokens.js";
 import { makeTempHome, removeTempHome, writeFileWithMode } from "../fixtures/temp-home.js";
 import { CREDENTIALS_FILE } from "../node/login.js";
 import type { FetchLike } from "../node/poll.js";
@@ -55,7 +55,12 @@ function fakeFetch(usage: () => Response, token: () => Response = () => json({},
   };
 }
 
-function run(argv: string[], fetch: FetchLike = fakeFetch(usageOk), env: CliContext["env"] = {}): Promise<number> {
+function run(
+  argv: string[],
+  fetch: FetchLike = fakeFetch(usageOk),
+  env: CliContext["env"] = {},
+  overrides: Partial<CliContext> = {},
+): Promise<number> {
   return runCli(argv, {
     env,
     home,
@@ -64,17 +69,19 @@ function run(argv: string[], fetch: FetchLike = fakeFetch(usageOk), env: CliCont
     uid,
     out: (line) => stdout.push(line),
     err: (line) => stderr.push(line),
+    ...overrides,
   });
 }
 
+const readingOf = (five: number, weekly: number, ageSeconds: number): Record<string, unknown> => ({
+  session_id: "usage-poll",
+  written_at: Math.floor(NOW / 1000) - ageSeconds,
+  rate_limits: { five_hour: { used_percentage: five, resets_at: 1791478800 }, seven_day: { used_percentage: weekly } },
+});
+
 function writeReadingFile(label: string, five: number, weekly: number, ageSeconds: number): void {
-  const reading = {
-    session_id: "usage-poll",
-    written_at: Math.floor(NOW / 1000) - ageSeconds,
-    rate_limits: { five_hour: { used_percentage: five, resets_at: 1791478800 }, seven_day: { used_percentage: weekly } },
-  };
   fs.mkdirSync(path.dirname(usageFilePath(configDir(label))), { recursive: true });
-  fs.writeFileSync(usageFilePath(configDir(label)), JSON.stringify(reading));
+  fs.writeFileSync(usageFilePath(configDir(label)), JSON.stringify(readingOf(five, weekly, ageSeconds)));
 }
 
 describe("arguments", () => {
@@ -147,6 +154,27 @@ describe("status", () => {
     expect(stdout).toEqual(["23|41|1791478800||||||30", "other|agents|5|60|90|"]);
   });
 
+  it("falls back to an older reading on the status line when the newest lacks seven_day", async () => {
+    writeReadingFile("default", 23.9, 41.5, 300);
+    const fiveOnly = { session_id: "session-a", written_at: Math.floor(NOW / 1000) - 10, rate_limits: { five_hour: { used_percentage: 70 } } };
+    fs.writeFileSync(path.join(path.dirname(usageFilePath(configDir("default"))), "session-a.json"), JSON.stringify(fiveOnly));
+
+    expect(await run(["status", "--statusline"])).toBe(0);
+
+    expect(stdout).toEqual(["23|41|1791478800||||||300"]);
+  });
+
+  it("lists the other accounts under CLAUDE_PROFILE_ROOT on the status line", async () => {
+    const root = path.join(home, "accounts");
+    writeReadingFile("default", 23, 41.5, 30);
+    fs.mkdirSync(path.join(root, "work"), { recursive: true });
+    writeFileWithMode(usageFilePath(path.join(root, "work")), JSON.stringify(readingOf(5, 60, 90)), 0o600);
+
+    expect(await run(["status", "--statusline"], undefined, { CLAUDE_PROFILE_ROOT: root })).toBe(0);
+
+    expect(stdout).toEqual(["23|41|1791478800||||||30", "other|work|5|60|90|"]);
+  });
+
   it("prints unknown for the status line and exits 0 with no stderr when nothing is readable", async () => {
     emptyProfile("agents");
 
@@ -177,6 +205,29 @@ describe("poll", () => {
       session_id: "usage-poll",
       account: "default",
     });
+  });
+
+  it("skips a profile dir with no login and exits 0, so the timer does not fail every tick", async () => {
+    login("default");
+    emptyProfile("agents");
+
+    expect(await run(["poll", "--write", "--refresh"])).toBe(0);
+
+    expect(stdout).toEqual(["default: five_hour 23%, seven_day 41.5%, seven_day_opus 0% (written)", "agents: no login, skipped"]);
+    expect(stderr).toEqual([]);
+  });
+
+  it("fails once on a 429, then skips quietly with exit 0 until the backoff runs out", async () => {
+    login("default");
+    const fetch = fakeFetch(() => json({ echoed: FAKE_ACCESS_TOKEN }, 429));
+
+    const first = await run(["poll", "--write"], fetch);
+    const second = await run(["poll", "--write"], fetch);
+
+    expect([first, second]).toEqual([1, 0]);
+    expect(stderr).toEqual(["anthropic-account: default: poll failed: http-429"]);
+    expect(stdout).toEqual([`default: rate limited, skipped until ${new Date(NOW + 300_000).toISOString()}`]);
+    expect(calls).toHaveLength(1);
   });
 
   it("exits 2 without a request when a login is expired", async () => {
@@ -237,5 +288,36 @@ describe("poll --write --refresh", () => {
 
     expect(stderr).toEqual(["anthropic-account: default: token refresh failed: http-500"]);
     expect(fs.existsSync(usageFilePath(configDir("default")))).toBe(true);
+  });
+});
+
+// The afterEach canary check sees these outputs too; each case feeds a token in another way.
+describe("output never carries a token", () => {
+  it.each([["poll", "--write"], ["status", "--json"], ["status", "--statusline"]])(
+    "prints only the fixed line when %s %s throws an error quoting a token",
+    async (...argv) => {
+      const now = (): number => {
+        throw new Error(`refused Bearer ${FAKE_ACCESS_TOKEN}`);
+      };
+
+      expect(await run(argv, undefined, {}, { now })).toBe(1);
+
+      expect(stderr).toEqual(["anthropic-account: an unexpected error stopped the run"]);
+      expect(stdout).toEqual([]);
+    },
+  );
+
+  it("prints status --json for files whose labels and strings are token-shaped", async () => {
+    login("default");
+    const hostile = { ...readingOf(23, 41.5, 30), session_id: FAKE_OPAQUE, account: FAKE_ACCESS_TOKEN, source: FAKE_JWT };
+    fs.mkdirSync(path.dirname(usageFilePath(configDir("default"))), { recursive: true });
+    fs.writeFileSync(usageFilePath(configDir("default")), JSON.stringify(hostile));
+    login(FAKE_OPAQUE);
+
+    expect(await run(["status", "--json"])).toBe(0);
+
+    const profiles = JSON.parse(stdout.join("")).profiles;
+    expect(profiles.map((profile: { label: string }) => profile.label)).toEqual(["default", "unlabelled"]);
+    expect(profiles[0].usage).toMatchObject({ rate_limits: { five_hour: { used_percentage: 23 } } });
   });
 });

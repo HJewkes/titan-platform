@@ -212,6 +212,6 @@ describe("land over the PR snapshot", () => {
     expect(outcomes.at(-1)).toMatchObject({ kind: "merged", headSha: pushed });
     expect(fake.effects.merge).toBe(1);
     expect(fake.calls.filter((call, i) => call === "merge" || fake.calls[i + 1] === "merge")).toEqual(["getPr", "merge"]);
-    expect(fake.calls.filter((call) => call === "getPr")).toHaveLength(5);
+    expect(fake.calls.filter((call) => call === "getPr")).toHaveLength(6);
   });
 });

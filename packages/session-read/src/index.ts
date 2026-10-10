@@ -20,7 +20,7 @@ export { simpleCommandHead } from "./command-heads.js";
 export type { ShellWord } from "./shell-split.js";
 export { splitCommands, splitPipelines } from "./shell-split.js";
 export type { DiscoveredTranscript, TranscriptRoot } from "./discover.js";
-export { claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
+export { TRANSCRIPT_MIRRORS_ENV, claudeTranscriptRoots, discoverAllTranscripts, discoverTranscripts, toAbsolutePath, transcriptsRoot } from "./discover.js";
 export { normalizedSearchText, SPAN_TEXT_CAP, searchText, thinkingTokens } from "./text.js";
 export type { DiscoverCodexSourcesOptions } from "./codex-discover.js";
 export { CODEX_ROLLOUT_FORMAT, CodexSourceCollisionError, codexHome, codexSourceId, discoverCodexSources } from "./codex-discover.js";

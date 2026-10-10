@@ -80,6 +80,15 @@ describe("shepherd view phases", () => {
 
     expect(noted).toBe("waiting for reviewer admission (the broker has not started rv-1): ReviewerBrokerBusy; asking again in 1 min; waiting for a spawn slot, position 3 of 3");
   });
+  it("names the refused base as the next action while an approved head waits for a retarget, outside any phase limit", () => {
+    const reason = "waiting for a retarget: the base is feat/x, not the default branch main, and the run's policy merges only into main";
+    const run = { ...pausedAt("base-wait:0"), status: "running" } as WorkflowRun;
+    run.stepResults["base-check:0#0"] = { stepId: "base-check:0", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { base: "feat/x", defaultBranch: "main", allowed: false, reason } } };
+
+    const row = watchRow({ registration, run, now: new Date("2026-01-02T00:00:00.000Z") });
+
+    expect(row).toMatchObject({ phase: "awaiting-approval", nextAction: reason, stalled: null });
+  });
 });
 
 describe("shepherd view holds", () => {

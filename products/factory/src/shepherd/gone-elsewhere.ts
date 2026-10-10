@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
@@ -43,6 +44,19 @@ export function mergedByShepherd(run: WorkflowRun): boolean {
   return [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
 }
 
+/**
+ * A run that merged the PR itself: a merge step in flight or one that recorded `done`. The landing record and the
+ * post-merge steps alone do not say so, because a run that saw its PR merged elsewhere records them too; a waiting
+ * gate of such a run is stale, where the gate of a run that merged for itself is the owner's signal about main.
+ */
+export function mergedItself(run: Pick<WorkflowRun, "stepResults" | "activeSteps">): boolean {
+  const attempted = Object.keys(run.activeSteps).some((key) => stepName(key) === "merge");
+  const landed = Object.entries(run.stepResults).some(([key, result]) => stepName(key) === "merge" && MergeLanded.safeParse(result.data?.result).success);
+  return attempted || landed;
+}
+
+const MergeLanded = z.looseObject({ done: z.literal(true) });
+
 class UnreadablePr extends Error {}
 
 /** `GhError` and the fake's `FakeHttpError` both carry the HTTP status; a 404 on the PR means it or its repo is gone. */
@@ -64,18 +78,30 @@ async function goneReason(services: ShepherdServices, runId: string): Promise<st
   return pr.merged ? `${LANDED_ELSEWHERE}${target} was merged outside Shepherd` : `${CLOSED_ELSEWHERE}${target} was closed outside Shepherd`;
 }
 
-/** Live and not Shepherd's own merge; read again after every await, since the run moves on while GitHub answers. */
-function endable(run: WorkflowRun | undefined): run is WorkflowRun {
-  return run !== undefined && LIVE.has(run.status) && !mergedByShepherd(run);
+/**
+ * Live and not Shepherd's own merge; read again after every await, since the run moves on while GitHub answers.
+ * A run parked on a gate is not walking toward `sh-landed`, so the sweep over gated runs counts only a merge the run did.
+ */
+function endable(run: WorkflowRun | undefined, scope: GoneScope): run is WorkflowRun {
+  if (run === undefined || !LIVE.has(run.status)) return false;
+  return !(scope === "gated" ? mergedItself(run) : mergedByShepherd(run));
 }
+
+/** The questions a merged PR leaves about main: the freeze is repo-scoped and these gates hold the owner's only release, so a merged PR never answers them. */
+const MAIN_GATES: ReadonlySet<string> = new Set(POST_MERGE_STEPS.filter((declared) => declared.kind === "assisted").map((declared) => declared.id));
+const gateStep = (gateId: string): string => stepName(gateId.slice(gateId.lastIndexOf("/") + 1));
 
 /** A run already `cancelling` is on its way out, so neither scope picks it up again. */
 function candidateRuns(host: FactoryHost, scope: GoneScope): WorkflowRun[] {
-  const runs =
-    scope === "live"
-      ? host.runtime.list(["running", "paused"])
-      : [...new Set(host.pendingGates().map((pending) => pending.runId))].flatMap((runId) => host.runtime.status(runId) ?? []);
-  return runs.filter((run) => run.workflowName === SHEPHERD_WORKFLOW && endable(run));
+  const runs = scope === "live" ? host.runtime.list(["running", "paused"]) : gatedRuns(host);
+  return runs.filter((run) => run.workflowName === SHEPHERD_WORKFLOW && endable(run, scope));
+}
+
+/** Runs with a pending gate, less those waiting on a main gate. */
+function gatedRuns(host: FactoryHost): WorkflowRun[] {
+  const pending = host.pendingGates();
+  const onMain = new Set(pending.filter(({ gate }) => MAIN_GATES.has(gateStep(gate.id))).map((gated) => gated.runId));
+  return [...new Set(pending.map((gated) => gated.runId))].filter((runId) => !onMain.has(runId)).flatMap((runId) => host.runtime.status(runId) ?? []);
 }
 
 type CancelOutcome = "cancelled" | "held" | "failed";
@@ -99,7 +125,8 @@ function tryCancel(host: FactoryHost, runId: string, reason: string, options: Go
  */
 export async function endRunsGoneElsewhere(host: FactoryHost, services: ShepherdServices, options: GoneOptions = {}): Promise<EndedRun[]> {
   const ended: EndedRun[] = [];
-  for (const { id: runId } of candidateRuns(host, options.scope ?? "gated")) {
+  const scope = options.scope ?? "gated";
+  for (const { id: runId } of candidateRuns(host, scope)) {
     if (options.only && !options.only.has(runId)) continue;
     let reason: string | undefined;
     try {
@@ -109,7 +136,7 @@ export async function endRunsGoneElsewhere(host: FactoryHost, services: Shepherd
       options.onUnreadable?.(runId, error.message);
       continue;
     }
-    if (reason === undefined || !endable(host.runtime.status(runId))) continue;
+    if (reason === undefined || !endable(host.runtime.status(runId), scope)) continue;
     const outcome = options.dryRun ? "cancelled" : tryCancel(host, runId, reason, options);
     if (outcome === "cancelled") ended.push({ runId, reason });
     else if (outcome === "held") options.onHeld?.(runId);
