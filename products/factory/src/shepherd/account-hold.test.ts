@@ -5,6 +5,7 @@ import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, accountWithHeadroom, type Account
 import { RECHECK_AFTER_MS } from "./account-limit.js";
 import { AccountLimitStore, accountLimitMigration, type AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdDeps } from "./phases.js";
+import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
 
@@ -17,7 +18,7 @@ const HELD = `account-exhausted: ${ACCOUNT} until 2026-10-11T00:00:00.000Z; TP-1
 
 function migrated(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), accountLimitMigration(17)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17)]);
   return db;
 }
 

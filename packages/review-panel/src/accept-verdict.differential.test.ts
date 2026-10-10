@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { acceptVerdict } from "./accept-verdict.js";
+import { acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 
 // The oracle is Shepherd's acceptVerdict and its helpers as they stood before the move, frozen here so a later edit to the
@@ -114,7 +114,8 @@ describe("acceptVerdict against the frozen Shepherd copy", () => {
 
     const after = acceptVerdict(recorded.input, recorded.messages);
 
-    expect(after).toStrictEqual(before);
+    // Since TP-1955 a limit result also keeps the client's notice, which the frozen copy dropped.
+    expect(after).toStrictEqual(isUsageLimit(after) ? { ...before, notice: recorded.messages.at(-1)?.text.trim() } : before);
   });
 
   it("covers every outcome the acceptor can reach", () => {

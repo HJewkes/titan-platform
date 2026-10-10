@@ -963,7 +963,11 @@
             ]
           }
         },
-        "investigativeCalls": 4
+        "investigativeCalls": 4,
+        "synthetic": {
+          "apiError": "rate_limit",
+          "resetsAt": null
+        }
       }
     ]
   },
