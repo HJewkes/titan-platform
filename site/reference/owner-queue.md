@@ -170,6 +170,38 @@ const label = staleLabel(gate, {
 - PR refs and heads compare case-insensitively; `prs` uses the same `<owner>/<repo>#<n>`
   ref as a merge key without its `@<sha>`.
 
+## Supersede and stacked context
+
+GitHub and GitLab reset an approval when a new commit is pushed, so an answer pinned to an
+old head of a PR must not approve the new one. `supersede(items, heads?)` applies that rule
+across the queue, and `stackContext(items, stacks)` labels the base of a stacked PR as context.
+
+```ts
+import { stackContext, supersede } from "@titan-design/owner-queue";
+
+const { kept, withdrawn, heads } = supersede(items, { "org-a/repo-1#12": liveHeadSha });
+// withdrawn[i] is { item, was, pr, reason: "new-head:<sha>" }
+
+const ordered = stackContext(kept, { "org-a/repo-1#13": "org-a/repo-1#12" });
+// each item on #13 has context ["org-a/repo-1#12"] and comes after the items on #12
+```
+
+- **Live head.** `heads[<owner>/<repo>#<n>]` when it is a full 40-hex sha, else the head of
+  the PR's newest pinned item by `openedAt`; on a tie the later item in input order wins. PR
+  refs and shas compare case-insensitively.
+- **Withdrawn.** An `open`, `answered` or `decided` item with a `pr:…@<sha>` key on another
+  head comes back in `withdrawn` with status `withdrawn`, its earlier status in `was`, and
+  `reason` `new-head:<live sha>`. Every other item stays in `kept`, in input order. An item
+  that is already closed, or whose PR key has no sha or a short one, is never withdrawn.
+- **Change requests.** A withdrawn item keeps its `answer`. A `changeRequested` on an old head
+  therefore stays readable as context, but it is not open and does not block a ship at the new
+  head. It blocks again only when re-asserted: answered with `changeRequested` at the live
+  head, which keeps the item in `kept`. An approval at an old head never counts at the new one.
+- **Stacks.** `stacks` maps each stacked PR to its base. An item's `context` is the base chain
+  of its own PRs, nearest first (`#c` on `#b` on `#a` gives `[#b, #a]`); a PR the item itself
+  names is never its context. Items on a base come before the items stacked on it; unrelated
+  items keep input order, and a cycle in `stacks` falls back to input order.
+
 ## Review rounds
 
 `buildOwnerRounds(items, options)` turns the open Decide items of a queue into
