@@ -16,6 +16,8 @@ export { askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind, roundAsk
 export type { RelationKeyKind } from "./keys.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
 export { rank } from "./rank.js";
+export { recheck } from "./recheck.js";
+export type { Recheck, RecheckCite, RecheckDrop, RecheckFlag, RecheckFlagKind } from "./recheck.js";
 export { answeredFromFeedback, fromRoundQuestions, ROUND_ANSWERER, roundItemId } from "./round-items.js";
 export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-items.js";
 export { buildOwnerRounds } from "./rounds.js";
