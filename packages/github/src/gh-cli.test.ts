@@ -286,6 +286,7 @@ describe("gh api adapter, REST only", () => {
       revalidateOpenPrs: () => port.revalidateOpenPrs(REPO, null),
       openPr: () => port.openPr(REPO, { head: "topic", base: "main", title: "t", body: "b" }),
       getPr: () => port.getPr(REPO, 7),
+      defaultBranch: () => port.defaultBranch(REPO),
       requiredChecks: () => port.requiredChecks(REPO, "main"),
       classicRequiredChecks: () => port.classicRequiredChecks(REPO, "main"),
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
