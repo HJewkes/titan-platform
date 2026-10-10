@@ -66,7 +66,7 @@ function matches(row: Row, filters: Filters): boolean {
 export function TasksPage({ query }: { query?: string }): ReactNode {
   const tasks = useQuery("work.tasks");
   if (tasks.status === "loading") return <Spinner size="sm" label="Loading tasks" />;
-  if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error?.message ?? "no answer"}`} />;
+  if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
   const { tasks: rows, evidence } = tasks.data;
   if (rows.length === 0) return <EmptyState title="No open tasks" description="No initiative has an open task." />;
   const filters = filtersOf(query);

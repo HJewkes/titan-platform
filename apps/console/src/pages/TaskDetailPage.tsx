@@ -28,7 +28,7 @@ export function TaskDetailPage({ id }: { id: string }): ReactNode {
   const detail = useQuery("work.task", { id });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading task" />;
   if (detail.data === undefined) {
-    const message = detail.error?.code === EXIT.NOINPUT ? `No task named ${id}` : `Could not load ${id}: ${detail.error?.message ?? "no answer"}`;
+    const message = detail.error.code === EXIT.NOINPUT ? `No task named ${id}` : `Could not load ${id}: ${detail.error.message}`;
     return (
       <VStack gap={4}>
         <Trail id={id} />
