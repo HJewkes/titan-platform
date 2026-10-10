@@ -1,7 +1,6 @@
 import type { Db } from "@titan-design/store-sqlite";
-import { workerRole, type WorkerRole } from "./roles.js";
+import { roleFromProfile, type WorkerRole } from "./roles.js";
 import {
-  readAssignmentCounts,
   readOriginsOf,
   readPrSessions,
   readSessionPrs,
@@ -22,6 +21,8 @@ export type TaskActualsFlag = "no-impl-session" | "weak-link" | "multi-task" | "
 /**
  * Profiles the plan counts toward a task that `PROFILE_ROLES` does not map. Kept here so the worker
  * report's role table is unchanged; a profile in neither table surfaces as `unmapped-role`.
+ * A task's sessions take their role from the spawn profile alone: the worker report's lifetime-based
+ * standing-peer override would turn a resumed fix-round implementer into a peer and drop its hours.
  */
 const TASK_PROFILE_ROLES: Readonly<Record<string, WorkerRole>> = {
   "fable-implementer": "implementer",
@@ -66,7 +67,7 @@ export interface TaskActuals {
   firstImplAt: string | null;
   lastImplAt: string | null;
   prs: TaskPr[];
-  /** Task-linked sessions whose profile maps to no role. Their hours are in no total, so the count says how much is missing. */
+  /** Task-linked sessions that count toward neither total: a profile that is not an implementer or reviewer. */
   unmappedSessions: number;
   flags: TaskActualsFlag[];
 }
@@ -100,20 +101,17 @@ export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options:
 function buildRecords(db: Db, origins: readonly OriginLink[], caps: readonly number[]): Map<string, SessionRecord> {
   const ids = origins.map((o) => o.sessionId);
   const stats = new Map(readSessionStats(db, ids, caps).map((s) => [s.sessionId, s]));
-  const assignments = readAssignmentCounts(db, ids);
   const records = new Map<string, SessionRecord>();
   for (const origin of origins) {
     const s = stats.get(origin.sessionId);
     if (!s) continue;
-    const lifetimeMs = Date.parse(s.lastTs) - Date.parse(s.firstTs);
-    const role = roleOf(origin.profile, lifetimeMs, assignments.get(origin.sessionId) ?? 0);
-    records.set(origin.sessionId, { origin, role, stats: s });
+    records.set(origin.sessionId, { origin, role: roleOf(origin.profile), stats: s });
   }
   return records;
 }
 
-function roleOf(profile: string | null, lifetimeMs: number, assignments: number): WorkerRole {
-  const role = workerRole({ profile, lifetimeMs, assignments });
+function roleOf(profile: string | null): WorkerRole {
+  const role = roleFromProfile(profile);
   return role === "unknown" ? (TASK_PROFILE_ROLES[(profile ?? "").toLowerCase()] ?? "unknown") : role;
 }
 
@@ -167,7 +165,7 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
   const impl = all.filter((c) => c.record.role === "implementer");
   const review = all.filter((c) => c.record.role === "reviewer");
   const used = [...impl, ...review];
-  const unmapped = all.filter((c) => c.record.role === "unknown").length;
+  const unmapped = all.length - used.length;
   const starts = impl.map((c) => c.record.stats.firstTs).sort();
   const prs = collectPrs(db, impl);
   return {

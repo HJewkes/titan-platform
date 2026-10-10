@@ -200,18 +200,19 @@ implementer sessions, and `prs` lists each linked PR with its `merged_at`.
 
 | Flag | Meaning |
 |---|---|
-| `no-impl-session` | No implementer session links to the task. Hours are 0, not unknown. |
+| `no-impl-session` | No implementer session links to the task, so `implAgentHours` is 0 and `implSessions` is 0. |
 | `weak-link` | A session's link came from `brief-paragraph` or `brief-anchor`, which can mis-link. |
 | `multi-task` | A session names k tasks, so its hours and cost split 1/k. |
 | `reopened` | An implementer session started after `doneAt`. All work still counts. |
 | `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
-| `unmapped-role` | A task-linked session's profile maps to no role; `unmappedSessions` counts them and their hours are in no total. |
+| `unmapped-role` | A task-linked session counts toward neither total; `unmappedSessions` counts them. |
 
-Roles come from `roleFromProfile` and `workerRole`, so a long-lived standing peer is not
-counted as an implementer. `fable-implementer` and `fable-reviewer` count as implementer and
-reviewer here, without changing the worker report's table. Planner, researcher, coordinator and
-standing-peer sessions are known roles that the totals leave out on purpose; only an unknown
-profile raises `unmapped-role`. `capMinutes` must be positive.
+A session's role comes from its spawn profile alone (`roleFromProfile`, plus `fable-implementer`
+as implementer and `fable-reviewer` as reviewer), so a resumed or fix-round implementer counts
+however long it lived. The worker report's standing-peer override is not applied. Every session
+linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or is counted in
+`unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
+and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
 
 ## What it deliberately does not do
 

@@ -73,17 +73,6 @@ export function readSessionStats(db: Db, sessionIds: readonly string[], capsMinu
   }));
 }
 
-/** Episodes an assignment opened, which is what the standing-peer overlay counts. */
-export function readAssignmentCounts(db: Db, sessionIds: readonly string[]): Map<string, number> {
-  const rows = db
-    .prepare(
-      `SELECT session_id AS sessionId, COUNT(*) AS n FROM episode
-       WHERE heuristic = 'worker-v1' AND opened_by IN ('brief', 'channel_followup') AND ${IN_SESSIONS} GROUP BY session_id`,
-    )
-    .all({ ids: JSON.stringify(sessionIds) }) as { sessionId: string; n: number }[];
-  return new Map(rows.map((r) => [r.sessionId, r.n]));
-}
-
 interface SessionPr {
   sessionId: string;
   prRef: string;

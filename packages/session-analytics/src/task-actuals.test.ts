@@ -154,7 +154,7 @@ describe("taskActuals", () => {
     expect(row!.unmappedSessions).toBe(0);
   });
 
-  it("reports a task-linked session with an unmapped profile instead of dropping it silently", () => {
+  it("counts every task-linked session outside the two totals in unmappedSessions", () => {
     addSession({ id: "impl", tasks: ["T-1"], gaps: [4] });
     addSession({ id: "odd", profile: "brand-new-profile", tasks: ["T-1"], gaps: [9] });
     addSession({ id: "planner", profile: "planner", tasks: ["T-1"], gaps: [9] });
@@ -162,8 +162,26 @@ describe("taskActuals", () => {
     const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
 
     expect(row!.flags).toEqual(["unmapped-role"]);
-    expect(row!.unmappedSessions).toBe(1);
+    expect(row!.unmappedSessions).toBe(2);
     expect(row!.implAgentHours.capped).toBeCloseTo(4 / 60);
+  });
+
+  it("keeps a resumed implementer that outlived 12 hours with two assignment episodes", () => {
+    addSession({ id: "impl", tasks: ["T-1"], gaps: [10, 13 * 60, 10] });
+    const db = fixture.graph.db;
+    for (const [index, openedBy] of ["brief", "channel_followup"].entries()) {
+      db.prepare(
+        `INSERT INTO episode (session_id, episode_index, heuristic, heuristic_version, started_at, ended_at, start_offset, end_offset, opened_by)
+         VALUES ('impl', ?, 'worker-v1', 1, '2026-09-20T09:00:00Z', '2026-09-20T09:10:00Z', 0, 1, ?)`,
+      ).run(index, openedBy);
+    }
+
+    const [row] = taskActuals(fixture.openReadOnly(), [task("T-1", "2026-09-30T00:00:00Z")], OPTIONS);
+
+    expect(row!.implSessions).toBe(1);
+    expect(row!.implAgentHours.capped).toBeCloseTo((10 + 15 + 10) / 60);
+    expect(row!.flags).toEqual([]);
+    expect(row!.unmappedSessions).toBe(0);
   });
 
   it("rejects a non-positive cap", () => {
