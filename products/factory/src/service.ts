@@ -24,6 +24,8 @@ export interface PlistOptions {
   port?: number;
   /** The job's whole PATH; see `servicePath`. */
   path: string;
+  /** The directory the job starts in: the deploy checkout, so serve never runs from a tree an agent uses. */
+  workingDirectory?: string;
 }
 
 /** What `titan-factory serve` runs by bare name: gh for every GitHub call, the other two for dispatch steps. */
@@ -98,6 +100,7 @@ export function renderPlist(options: PlistOptions): string {
     "  <array>",
     strings(argv),
     "  </array>",
+    ...(options.workingDirectory === undefined ? [] : ["  <key>WorkingDirectory</key>", `  <string>${escapeXml(options.workingDirectory)}</string>`]),
     "  <key>RunAtLoad</key>",
     "  <true/>",
     "  <key>KeepAlive</key>",
@@ -142,6 +145,7 @@ export function renderUnit(options: PlistOptions): string {
     "",
     "[Service]",
     "Type=simple",
+    ...(options.workingDirectory === undefined ? [] : [`WorkingDirectory=${noSpecifiers(options.workingDirectory)}`]),
     `ExecStart=${serveArgv(options).map(execArg).join(" ")}`,
     "Restart=always",
     "RestartSec=5",

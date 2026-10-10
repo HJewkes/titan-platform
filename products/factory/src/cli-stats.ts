@@ -1,5 +1,5 @@
 import { openDatabase } from "@titan-design/store-sqlite";
-import { WorkflowRunStore, type WorkflowStatus } from "@titan-design/workflow";
+import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
@@ -10,6 +10,7 @@ import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
 import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
+import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
@@ -19,6 +20,7 @@ interface StatsOpts {
   from?: string;
   to?: string;
   json?: boolean;
+  cost?: boolean;
   rereviews?: boolean;
   failures?: boolean;
 }
@@ -43,10 +45,19 @@ function causesReport(rows: readonly ReviewCauseRow[], json: boolean | undefined
   return `${(rows.length === 0 ? ["no reviews in range"] : formatCauses(rows)).join("\n")}\n`;
 }
 
+function shepherdRuns(db: ReturnType<typeof openDatabase>): WorkflowRun[] {
+  return new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
+}
+
+async function costReport(runs: readonly WorkflowRun[], opts: StatsOpts): Promise<string> {
+  const cost = await reviewCost(runs, claudeTranscripts(), opts);
+  return opts.json ? `${JSON.stringify({ reviewCost: cost }, null, 2)}\n` : formatReviewCost(cost);
+}
+
 /** The review causes are their own section, after the others, so the other sections read as before. */
 function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
   const range = { from: opts.from, to: opts.to };
-  const runs = new WorkflowRunStore(db).listByStatus(ALL_STATUSES).filter((run) => run.workflowName === SHEPHERD_WORKFLOW);
+  const runs = shepherdRuns(db);
   const causes = reviewCauseStats(runs, range);
   if (opts.rereviews) return causesReport(causes, opts.json);
   const rows = shepherdStats(runs, range);
@@ -68,6 +79,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
+    .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
     .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
     .action((opts: StatsOpts) => {
@@ -80,6 +92,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
         return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
       }
       try {
+        if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
         io.stdout(statsReport(db, opts, now()));
       } finally {
         db.close();
