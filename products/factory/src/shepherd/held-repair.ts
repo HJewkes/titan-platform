@@ -71,25 +71,28 @@ function causeOf(kind: WakeRequest["kind"], payload: unknown): string {
   return `the review said ${verdict.success ? verdict.data.kind : kind}`;
 }
 
-const isHeldRepairStep = (stepId: string): boolean => stepId === HELD_CHECK_STEP || stepId.startsWith("rerun:");
+const isRerunStep = (stepId: string): boolean => /^rerun:\d+$/.test(stepId);
 
-/** True while replaying, when the record's next step is none this wake would record first. */
-export const recordedPastThisWake = (next: string | undefined): boolean => next !== undefined && !isHeldRepairStep(next);
+/** True while replaying, when the record's next step is not the one this wake would record: the record predates it. */
+function recordedWithout(run: GateRun, records: (stepId: string) => boolean): boolean {
+  const next = run.ctx.historyNext();
+  return next !== undefined && !records(next);
+}
 
 /**
  * G10: a held run wakes no fixer and spends no repair, so nothing pushes while it is held. The seat is told once per
  * hold, head and cause, and the run waits. True means the head moved and the next round lands; false means the run is
  * not held, or its hold was released at this head, and the repair goes ahead as usual.
  * A run that is not held first reruns a red head's failed jobs once, so a flaky check never wakes the implementer.
- * A replay whose record went on to something else at this wake took the path before the hold check and the rerun
- * existed, so it neither rechecks the hold nor reruns: a run that landed on that path must not touch CI again.
+ * The hold check and the rerun shipped in separate deploys, so a replay checks its record before each: a record that
+ * went on without one took the path from before it, and a run that landed on that path must not touch CI again.
  */
 export async function heldRepair(run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
-  if (recordedPastThisWake(run.ctx.historyNext())) return false;
+  if (recordedWithout(run, (stepId) => stepId === HELD_CHECK_STEP)) return false;
   const input: HeldInput = { runId: run.ctx.runId, ...run.target, headSha };
   for (;;) {
     const hold = await step(run.ctx, HELD_CHECK_STEP, input, HeldCheckResult);
-    if (!hold.held) return rerunFlakyHead(run, kind, headSha, payload);
+    if (!hold.held) return !recordedWithout(run, isRerunStep) && rerunFlakyHead(run, kind, headSha, payload);
     const reason = hold.reason ?? "held";
     const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
@@ -1485,5 +1486,36 @@ describe("a failed required check at a pull request head", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(second.fake.effects.rerunFailedJobs).toBe(1);
+  });
+
+  /** Rewrites a stored run to an earlier deploy's record: the steps before the hold check, `withHeldCheck` or not, then the repair spend. */
+  function recordedBeforeRerun(dbPath: string, runId: string, withHeldCheck: boolean): void {
+    const db = openDatabase(dbPath);
+    const row = db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId) as { step_results: string };
+    const entries = Object.entries(JSON.parse(row.step_results) as Record<string, { stepId: string }>);
+    const heldAt = entries.findIndex(([, result]) => result.stepId === "sh-held-check");
+    const repair = entries.find(([, result]) => result.stepId === "sh-repair")!;
+    const old = [...entries.slice(0, withHeldCheck ? heldAt + 1 : heldAt), repair];
+    db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(old)), runId);
+    db.close();
+  }
+
+  it.each([
+    ["before the hold check shipped", false],
+    ["with the hold check but before the rerun shipped", true],
+  ])("sends no rerun when replaying a run recorded %s", async (_shape, withHeldCheck) => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp2246-")), "factory.db");
+    const first = flaky(false, dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+    recordedBeforeRerun(dbPath, runId, withHeldCheck);
+
+    const second = flaky(false, dbPath);
+    await second.w.host.resume();
+    await vi.waitFor(() => expect(second.wakes).toHaveLength(1));
+
+    expect(second.fake.effects.rerunFailedJobs).toBe(0);
+    expect(stepIds(second.w.host, runId).filter((id) => id.startsWith("rerun:"))).toEqual([]);
   });
 });
