@@ -375,7 +375,7 @@ only after required CI is green at that head, so a head with no verdict or a red
 owner again. A `security` or `unknown` run never carries, and neither does an escalation gate.
 Any error computing the tree or the diff asks again. The run records an
 `sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
-`remerge-generated-only` or `small-fix`) and the proof: both trees, or the changed line count and
+`remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
 paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 
 ## Watch

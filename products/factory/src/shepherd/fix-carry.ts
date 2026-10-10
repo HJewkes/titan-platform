@@ -118,6 +118,9 @@ async function judge(git: Git, dir: string, input: FixCarryInput, merged: { base
 async function probe(git: Git, dir: string, url: string, input: FixCarryInput, signal?: AbortSignal): Promise<FixCarryResult> {
   await ensureCache(git, dir, signal);
   await must(git, dir, fetchArgs(url, input), signal);
+  const ancestry = await git(dir, ["merge-base", "--is-ancestor", input.fromHead, input.head], signal);
+  if (ancestry.code === 1) return refuse(`${input.head} does not contain ${input.fromHead}, so it is a rebase, not a fix on top`);
+  if (ancestry.code !== 0) throw new CarryRefusal("merge-base", ancestry.code);
   const base = await must(git, dir, ["merge-base", input.head, remoteBase(input.baseRef)], signal);
   const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", input.fromHead, base], signal);
   if (merged.code === 1) return refuse(`${input.fromHead} conflicts with ${base}`, { base });

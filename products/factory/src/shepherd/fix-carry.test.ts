@@ -126,6 +126,52 @@ describe("fixCarry", { timeout: 30_000 }, () => {
     expect((await probe(h1, commit("src/new.ts", "x\n"))).carries).toBe(false);
   });
 
+  it("asks again at a rebase of the approved head onto the moved base, even with an identical tree", async () => {
+    commit("src/a.ts", body(60, "a"));
+    git("checkout", "-q", "-B", "feature", "HEAD");
+    const h1 = commit("src/a.ts", body(60, "a").replace("a 1\n", "a one\n"));
+    git("checkout", "-q", "-B", "main", "main");
+    commit("other.txt", "main moved\n");
+    git("checkout", "-q", "-B", "rebased", "main");
+    git("cherry-pick", h1);
+
+    const result = await probe(h1, git("rev-parse", "HEAD"));
+
+    expect(result).toMatchObject({ carries: false, reason: expect.stringContaining("rebase") });
+  });
+
+  it("asks again when the fix deletes a file the PR changed", async () => {
+    const { h1 } = approvedAndMergedUp();
+    git("rm", "-q", "src/a.ts");
+    git("commit", "-q", "-m", "delete a");
+
+    expect(await probe(h1, git("rev-parse", "HEAD"))).toMatchObject({ carries: false, reason: expect.stringContaining("adds, deletes") });
+  });
+
+  it("asks again when the fix renames a file the PR changed", async () => {
+    const { h1 } = approvedAndMergedUp();
+    git("mv", "src/a.ts", "src/renamed.ts");
+    git("commit", "-q", "-m", "rename a");
+
+    expect(await probe(h1, git("rev-parse", "HEAD"))).toMatchObject({ carries: false, reason: expect.stringContaining("adds, deletes") });
+  });
+
+  it("asks again when the fix only changes the mode of a file the PR changed", async () => {
+    const { h1 } = approvedAndMergedUp();
+    git("update-index", "--chmod=+x", "src/a.ts");
+    git("commit", "-q", "-m", "chmod a");
+
+    expect(await probe(h1, git("rev-parse", "HEAD"))).toMatchObject({ carries: false, reason: expect.stringContaining("mode") });
+  });
+
+  it("asks again when the fix changes a file into binary content", async () => {
+    const { h1 } = approvedAndMergedUp();
+
+    const result = await probe(h1, commit("src/a.ts", "binary\0content\n"));
+
+    expect(result).toMatchObject({ carries: false, reason: "the fix changes a binary file" });
+  });
+
   it("asks again when the fix touches a file the PR had not changed", async () => {
     const { h1 } = approvedAndMergedUp();
 

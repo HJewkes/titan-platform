@@ -88,6 +88,17 @@ describe("an approve-merge answer following the head", () => {
     });
   });
 
+  it("asks the owner again when the fix probe refuses, whatever rule it names", async () => {
+    const fix: FixCarryResult = { carries: false, rule: "small-fix", reason: "refused" };
+    const r = rig({ remerge: RESOLVED, fix });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)).toBe(false);
+  });
+
   it("asks the owner again at a fix with no standing verdict at its head, even when the diff is small", async () => {
     const fix: FixCarryResult = { carries: true, rule: "small-fix", changedLines: 12, paths: ["src/a.ts"] };
     const r = rig({ remerge: RESOLVED, fix, reviewed: (head) => head !== MERGED_UP });
