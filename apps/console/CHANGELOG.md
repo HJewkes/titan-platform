@@ -1,5 +1,15 @@
 # titan-console
 
+## 0.3.0
+
+### Minor Changes
+
+- 644a538: Add the `#/rounds` read pages. `rounds.list` and `rounds.get` (class read) serve the review rounds under `TITAN_CONSOLE_ROUNDS_DIR` (default `<state>/rounds`), one `<round-id>/round.json` each, validated with `RoundSchema` from `@titan-design/review-schema`. An invalid manifest, round@1 included, is listed with the schema's reason. While an `after-answer` round is unsent, `rounds.get` strips every question's recommendation. `#/rounds` lists open and sent rounds; `#/rounds/<id>` renders each question with its options and keys 1-9 choosing one, through a reusable `RoundQuestion` component. A round with frames shows "design round: open in the harness". Round ids are plain names, symlinked round directories and files are refused, and `round.json` is read only up to 1 MiB.
+
+### Patch Changes
+
+- d6b7b42: Add the Tasks pages. `#/tasks` lists open tasks from `work.tasks` grouped by derived stage, with stage, initiative, severity and text filters kept in the query string and a caption on each guessed stage. `#/tasks/<id>` shows one task from `work.task` with its pull request state, mentions and linked sessions as links. Both ship on react-ui 0.20.0's `Table` and `Badge` until the console pins a react-ui that exports `TaskTable` stage rows and `TaskStagePill`.
+
 ## 0.2.1
 
 ### Patch Changes

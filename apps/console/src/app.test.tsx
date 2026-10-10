@@ -35,9 +35,9 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 }
 
 describe("the shell", () => {
-  it("shows the rail of six and marks the current one", () => {
+  it("shows the rail and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Work", "Tasks", "Sessions", "Agents", "Notes"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds"]);
     // react-ui's NavItem sets no aria-selected on the web, so its accent bar is the only mark of the active item.
     expect(within(screen.getByRole("tab", { name: "Sessions" })).getByTestId("nav-item-accent")).toBeTruthy();
     expect(screen.getAllByTestId("nav-item-accent")).toHaveLength(1);
