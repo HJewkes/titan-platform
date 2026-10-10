@@ -181,7 +181,7 @@ function scopeOf(def: Node, body: Node, imports: ReadonlyMap<string, string>): F
 }
 
 /** What the file around one function provides: its imports, declarations and module-level names. */
-export interface FileContext {
+interface FileContext {
   imports: ReadonlyMap<string, string>;
   declared: ReadonlySet<string>;
   moduleNames: ReadonlySet<string>;

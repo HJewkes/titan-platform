@@ -86,7 +86,7 @@ function isStateWrite(node: Node, scope: PurityScope): boolean {
   return outer(rootName(callee.childForFieldName("object")));
 }
 
-export interface PurityFacts {
+interface PurityFacts {
   /** Calls the allow-list does not cover; pure needs the call graph to resolve every one of them. */
   unlistedCalls: number;
   stateWrites: boolean;
