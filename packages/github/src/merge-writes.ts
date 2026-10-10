@@ -1,5 +1,6 @@
 import { writeWithReadBack, type Sleep } from "./write-read-back.js";
-import type { GitHubWire, MergeMessage, MergeMethod, RepoSlug, WriteResult } from "./port.js";
+import type { MergeMessage } from "./port-types.js";
+import type { GitHubWire, MergeMethod, RepoSlug, WriteResult } from "./port.js";
 
 export async function merge(wire: GitHubWire, repo: RepoSlug, number: number, sha: string, method: MergeMethod, sleep: Sleep, message?: MergeMessage): Promise<WriteResult<{ mergeSha: string }>> {
   const pr = await wire.getPr(repo, number);

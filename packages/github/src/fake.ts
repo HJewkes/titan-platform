@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, CommitMessage, IssueComment, LoggedCommit, PrFile, PrText, GitHubWire, MergeMessage, MergeMethod, PullRequest, PutFileRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMessage, MergeMethod, PullRequest, PutFileRequest, RequiredChecks, SquashSource } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -65,10 +65,8 @@ export interface FakeGitHub {
   prChangedFiles: Map<number, number>;
   /** PR number to its commit shas, oldest first; unset means the PR's head alone. `listPrCommits` returns at most 250, like GitHub. */
   prCommits: Map<number, string[]>;
-  /** PR number to its title and body for `getPrText`; unset reads as an empty title and body. */
-  prText: Map<number, PrText>;
-  /** PR number to its commit messages for `listPrCommitMessages`, oldest first; unset means none. */
-  prCommitMessages: Map<number, CommitMessage[]>;
+  /** PR number to what `getSquashSource` reads; unset reads as an empty title, body and commit list. */
+  squashSources: Map<number, SquashSource>;
   /** Every `merge` PUT's pull number and message, in order; `message` is undefined when none was sent. */
   merges: { number: number; message: MergeMessage | undefined }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
@@ -132,8 +130,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     prFiles: new Map(),
     prChangedFiles: new Map(),
     prCommits: new Map(),
-    prText: new Map(),
-    prCommitMessages: new Map(),
+    squashSources: new Map(),
     merges: [],
     history: [],
     compares: new Map(),
@@ -206,8 +203,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       fake.merges.push({ number, message });
       return mergePr(fake, mustPr(prs, number), sha, method, nextSha);
     },
-    getPrText: async (_repo, number) => record("getPrText", { ...(fake.prText.get(number) ?? { title: "", body: "" }) }),
-    listPrCommitMessages: async (_repo, number) => record("listPrCommitMessages", (fake.prCommitMessages.get(number) ?? []).slice(0, PR_COMMITS_CAP)),
+    getSquashSource: async (_repo, number) => record("getSquashSource", fake.squashSources.get(number) ?? { title: "", body: "", commits: [] }),
     rerunFailedJobs: async (_repo, runId) => {
       record("rerunFailedJobs", undefined);
       const fault = fake.rerunFaults?.shift();

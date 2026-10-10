@@ -14,11 +14,14 @@ const noreply = ["12345+bot", "users.noreply.github.com"].join("@");
 const trailers = `Co-authored-by: Pat <${noreply}>\nSigned-off-by: Pat <${personal}>`;
 
 function dirtyPr(scenario: LandScenario): void {
-  scenario.fake.prText.set(1, { title: "Add the widget", body: `Adds a widget.\n\n${trailers}` });
-  scenario.fake.prCommitMessages.set(1, [
-    { subject: "Wire the widget", body: `Reachable at ${personal} for questions.\n\n${trailers}` },
-    { subject: "Fix the widget", body: trailers },
-  ]);
+  scenario.fake.squashSources.set(1, {
+    title: "Add the widget",
+    body: `Adds a widget.\n\n${trailers}`,
+    commits: [
+      { subject: "Wire the widget", body: `Reachable at ${personal} for questions.\n\n${trailers}` },
+      { subject: "Fix the widget", body: trailers },
+    ],
+  });
 }
 
 async function mergeApproved(scenario: LandScenario): Promise<void> {
@@ -47,9 +50,9 @@ describe("the squash message a land merge sends", () => {
 
   it("falls back to the plain title and an empty body when formatting throws, and says so", async () => {
     const scenario = landScenario();
-    scenario.fake.prText.set(1, { title: "Add the widget", body: "Adds a widget." });
     const port = githubPort(scenario.fake.wire);
-    const hostile = { ...port, listPrCommitMessages: async () => [{ get subject(): string { throw new Error("boom"); }, body: "" }] };
+    const commits = [{ get subject(): string { throw new Error("boom"); }, body: "" }];
+    const hostile = { ...port, getSquashSource: async () => ({ title: "Add the widget", body: "Adds a widget.", commits }) };
     const warn = vi.fn();
 
     const message = await squashMessageFor(hostile, "octo/demo", 1, [], warn);

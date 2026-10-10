@@ -8,7 +8,7 @@ import { policyTraceGate, type GateDecision, type GatePolicy } from "../gate-pol
 import { requireRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { deadline } from "./deadline.js";
-import { squashMessageFor } from "./land-merge-message.js";
+import { mergeWithMessage, type MergeInput } from "./land-merge-message.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
 import { readCi, type CiInput, type CiSnapshot, type FailingCheck } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, budgetSpent, missingCheckGraceSpent, recordRetry, retriesLeft, retryBackoffMs, restartUpdates, retryLanded, newUpdateBound, recordUpdate, resetBound, stuckBehindReason, type FirstReads, type UpdateBound } from "./land-budget.js";
@@ -368,20 +368,6 @@ function mergePolicyRecord(input: MergePolicyInput, step: RoutedStepInput): obje
   const { outcome, rule, reason } = input.decision;
   const trace = { [TRACE_DATA_KEYS.gates]: [policyTraceGate(input.decision, traceRef(step))] };
   return { result: { outcome, headSha: input.headSha, rule, reason }, ...(input.evidence ? { allowEvidence: input.evidence } : {}), ...trace };
-}
-
-interface MergeInput {
-  repo: string;
-  pr: number;
-  sha: string;
-  method: MergeMethod;
-  taskIds: string[];
-}
-
-/** Only a squash records a message of its own; a merge commit or a rebase keeps the PR's commits as they are. */
-async function mergeWithMessage(port: GitHubPort, input: MergeInput) {
-  if (input.method !== "squash") return port.merge(input.repo, input.pr, input.sha, input.method);
-  return port.merge(input.repo, input.pr, input.sha, input.method, await squashMessageFor(port, input.repo, input.pr, input.taskIds));
 }
 
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {
