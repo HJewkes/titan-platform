@@ -4,6 +4,8 @@ import { HomePage } from "./HomePage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
+import { TaskDetailPage } from "./TaskDetailPage.js";
+import { TasksPage } from "./TasksPage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
 
@@ -13,5 +15,6 @@ const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(Initiat
 export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   home: HomePage,
   initiatives: WorkPage,
+  tasks: ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query })),
   sessions: SessionsRoute,
 };
