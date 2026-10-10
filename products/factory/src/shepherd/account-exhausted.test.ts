@@ -20,7 +20,23 @@ const PRIMARY = "/accounts/review";
 const SPARE = "/accounts/spare";
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
 
-const locatorIn = (nativeId: string) => ({ source: { conversation: { nativeId } } }) as SourceTextLocator;
+const locatorIn = (nativeId: string): SourceTextLocator => ({
+  source: {
+    sourceId: nativeId,
+    harness: "claude-code",
+    format: "jsonl",
+    formatVersion: null,
+    path: `${nativeId}.jsonl`,
+    namespace: "test",
+    conversation: { harness: "claude-code", namespace: "test", nativeId },
+    provenance: { kind: "claude-code-transcript", legacySessionId: nativeId },
+  },
+  evidence: {
+    line: { sourceId: nativeId, byteOffset: 0, byteLength: 0, contentHash: "", lineNumber: null, nativeOrdinal: null },
+    subrecord: { index: 0, path: [] },
+  },
+  selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+});
 
 interface Spawned {
   name: string;

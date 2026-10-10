@@ -27,16 +27,16 @@ function scene(options: { alert?: (text: string) => Promise<void>; dirs?: string
   const db = migrated();
   const clock = { now: T0 };
   let store = new ShepherdStore(db, () => clock.now);
-  const ref = { get: () => store } as ShepherdStoreRef;
+  const ref: ShepherdStoreRef = { get: () => store, bind: () => () => undefined };
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: HEAD });
-  const limits = { get: () => new AccountLimitStore(db, () => clock.now) } as AccountLimitStoreRef;
+  const limits: AccountLimitStoreRef = { get: () => new AccountLimitStore(db, () => clock.now), bind: () => () => undefined };
   const deps: ShepherdDeps = { port: githubPort(fake.wire), store: ref, accountLimits: limits, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 60_000, agentChatBin: "agent-chat" };
   const alerts: string[] = [];
   const accounts: AccountsView = { dirs: options.dirs ?? [ACCOUNT], alert: options.alert ?? (async (_repo, text) => void alerts.push(text)) };
   const routes = accountRoutes(deps, accounts);
   const run = async (match: string, input: object) => {
-    const outcome = await routes.find((route) => route.match === match)!.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: match } as never);
+    const outcome = await routes.find((route) => route.match === match)!.runner.run({ runId: "r", workflowName: "w", stepId: match, iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k" });
     return outcome.ok ? JSON.parse(outcome.output).result : outcome;
   };
   const register = (runId: string, pr: number) => store.register({ repo: REPO, pr, runId, task: "demo", implementer: "impl-a", policy: OWNER_GATE_POLICY });

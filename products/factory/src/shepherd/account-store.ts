@@ -1,4 +1,5 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { RECHECK_AFTER_MS } from "./account-limit.js";
 
 const ACCOUNT_LIMIT_DDL = `
@@ -28,15 +29,13 @@ interface Exhaustion {
   alerted: boolean;
 }
 
-interface Row {
-  resets_at: number;
-  alerted_at: string | null;
-}
+const RowSchema = z.object({ resets_at: z.number(), alerted_at: z.string().nullable() });
+type Row = z.infer<typeof RowSchema>;
 
-interface HeldRow {
-  held: number;
-  hold_reason: string | null;
-}
+const HeldRowSchema = z.object({ held: z.number(), hold_reason: z.string().nullable() });
+type HeldRow = z.infer<typeof HeldRowSchema>;
+
+const ReasonRowSchema = z.object({ reason: z.string() });
 
 /**
  * Which reviewer accounts are out of usage, and whether their seat was told, in the factory database so a restart keeps both;
@@ -126,15 +125,18 @@ export class AccountLimitStore {
   }
 
   private row(configDir: string): Row | undefined {
-    return this.db.prepare("SELECT resets_at, alerted_at FROM shepherd_account_limit WHERE config_dir = ?").get(configDir) as Row | undefined;
+    const row = this.db.prepare("SELECT resets_at, alerted_at FROM shepherd_account_limit WHERE config_dir = ?").get(configDir);
+    return row === undefined ? undefined : RowSchema.parse(row);
   }
 
   private held(runId: string): HeldRow | undefined {
-    return this.db.prepare("SELECT held, hold_reason FROM shepherd_registration WHERE run_id = ?").get(runId) as HeldRow | undefined;
+    const row = this.db.prepare("SELECT held, hold_reason FROM shepherd_registration WHERE run_id = ?").get(runId);
+    return row === undefined ? undefined : HeldRowSchema.parse(row);
   }
 
   private ownReason(runId: string): string | undefined {
-    return (this.db.prepare("SELECT reason FROM shepherd_account_hold WHERE run_id = ?").get(runId) as { reason: string } | undefined)?.reason;
+    const row = this.db.prepare("SELECT reason FROM shepherd_account_hold WHERE run_id = ?").get(runId);
+    return row === undefined ? undefined : ReasonRowSchema.parse(row).reason;
   }
 
   private stamp(): string {

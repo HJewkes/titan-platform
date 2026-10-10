@@ -42,20 +42,24 @@ export function reviewerMessages(agentId: string, observation: NormalizedSession
 /** Claude Code's model name on a record it wrote itself, such as an API error notice; a model's own output never carries it. */
 const SYNTHETIC_MODEL = "<synthetic>";
 
+function fieldOf(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+}
+
 /** The API error and quota reset of a record the client wrote, read from its metadata; undefined for a model's own record. */
 function syntheticOf(observation: NormalizedSessionObservation): ReviewerMessage["synthetic"] {
   if (observation.kind !== "metadata") return undefined;
   const value = (name: string): unknown => observation.entries.find((entry) => entry.name === name)?.value;
   if (value("model") !== SYNTHETIC_MODEL) return undefined;
   const error = value("error");
-  const reset = (value("quotaLimits") as { resetsAt?: unknown } | null | undefined)?.resetsAt;
+  const reset = fieldOf(value("quotaLimits"), "resetsAt");
   return { apiError: typeof error === "string" ? error : null, resetsAt: typeof reset === "number" && Number.isFinite(reset) ? reset * 1000 : null };
 }
 
 /** A seat reviewer sends its verdict as a chat_send call's `text` input, never as an assistant text part. */
 export function sentMessages(agentId: string, observation: NormalizedSessionObservation): ReviewerMessage[] {
   if (observation.kind !== "tool_call" || !observation.name.endsWith("chat_send") || observation.historyOrigin !== null) return [];
-  const text = (observation.input as { text?: unknown } | null)?.text;
+  const text = fieldOf(observation.input, "text");
   const inputLocator = observation.inputLocator;
   if (typeof text !== "string" || inputLocator === null) return [];
   const locator = { ...inputLocator, selector: { ...inputLocator.selector, path: [...inputLocator.selector.path, "text"] } };

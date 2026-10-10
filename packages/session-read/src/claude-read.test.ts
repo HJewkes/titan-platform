@@ -125,7 +125,8 @@ describe("readClaudeObservations", () => {
   });
 
   it("keeps the API error fields of a record the client wrote in the model's place as native metadata", async () => {
-    const notice = { ...records[3]!, uuid: "synthetic-1", message: { ...(records[3]!.message as object), id: "msg-synthetic", model: "<synthetic>", content: [{ type: "text", text: "You've hit your weekly limit" }] } };
+    const assistant = records[3]!.message;
+    const notice = { ...records[3]!, uuid: "synthetic-1", message: { ...(typeof assistant === "object" ? assistant : {}), id: "msg-synthetic", model: "<synthetic>", content: [{ type: "text", text: "You've hit your weekly limit" }] } };
     const fields = { isApiErrorMessage: true, error: "rate_limit", apiErrorStatus: 429, quotaLimits: { status: "rejected", resetsAt: 1_789_862_400 } };
     writeFileSync(filePath, render([...records, { ...notice, ...fields }]), "utf8");
 
