@@ -298,7 +298,7 @@ const TEST_KINDS: readonly MetricDescriptor[] = [
   {
     name: "symbol_unlisted_calls", unit: "count", appliesTo: SYMBOL, rollup: "sum", direction: "neutral",
     absent: "exclude", source: "test-kinds",
-    description: "Calls in the function the purity allow-list does not cover: pure builtins, math, re, json.dumps and the like, methods only str has on any receiver, and methods str, list or dict share with stateful types (replace, copy, join, keys, get) or mutators only on a local proven to hold such a value. symbol_kind_pure needs a resolved calls edge for every one.",
+    description: "Calls in the function the purity allow-list does not cover: pure builtins, math, re, json.dumps and the like, methods only str has on any receiver, and methods str, list or dict share with stateful types (replace, copy, join, keys, get) or mutators only on a local proven to hold such a value (every binding of it a plain assignment from a literal, a value-typed builtin such as str or sorted, or another value). A function handed to map, filter, functools.reduce or a key= argument counts as a call to it. symbol_kind_pure needs a resolved calls edge for every one.",
   },
   kindFlag("symbol_kind_output_boundary", "1 when symbol_output_signal is, or a pyproject console script or a module-level call in a __main__.py starts the function."),
   kindFlag("symbol_kind_pure", "1 when the function is no parser, and neither it nor any function it reaches through calls edges does I/O, writes state it does not own, is an output boundary, or makes a call that is neither on the allow-list nor resolved to a source function. An unresolved call means not pure."),

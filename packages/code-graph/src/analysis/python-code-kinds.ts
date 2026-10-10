@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { forEachBinding } from "../python-bindings.js";
 import { purityFacts, type PurityScope } from "./python-purity.js";
 
 /** What one Python function does by itself, before the call graph is consulted (TP-2170). */
@@ -31,7 +32,8 @@ export function forEachOwnNode(root: Node, visit: (node: Node) => void): void {
  */
 export function importedNames(root: Node): Map<string, string> {
   const out = new Map<string, string>();
-  for (const stmt of root.descendantsOfType(["import_statement", "import_from_statement"])) {
+  forEachOwnNode(root, (stmt) => {
+    if (stmt.type !== "import_statement" && stmt.type !== "import_from_statement") return;
     const from = stmt.type === "import_from_statement" ? stmt.childForFieldName("module_name")?.text : undefined;
     for (const item of stmt.childrenForFieldName("name")) {
       const name = item.type === "aliased_import" ? item.childForFieldName("name")?.text : item.text;
@@ -40,8 +42,19 @@ export function importedNames(root: Node): Map<string, string> {
       const local = alias ?? (from ? name : name.split(".")[0]!);
       out.set(local, from ? `${from}.${name}` : alias ? name : local);
     }
-  }
+  });
   return out;
+}
+
+/**
+ * The imports one function sees: the module's, less any name the function binds itself in any form, plus the
+ * imports in its own body. A module's `import shutil as x` does not make another function's local `x` a module.
+ */
+export function functionImports(def: Node, moduleImports: ReadonlyMap<string, string>): Map<string, string> {
+  const bound = new Set<string>();
+  forEachOwnNode(def, (node) => forEachBinding(node, (name) => bound.add(name)));
+  const visible = [...moduleImports].filter(([name]) => !bound.has(name));
+  return new Map([...visible, ...importedNames(def)]);
 }
 
 /** A call's callee as a dotted name with its first segment expanded through the file's imports. */

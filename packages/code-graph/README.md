@@ -801,6 +801,12 @@ Every value is 0 or 1 unless it is a count.
   pure. An unresolved call (an external library, `input()`, `module.func()`) means not pure.
   Methods `str` shares with stateful types (`replace`, `copy`, `join`, `keys`) clear only on a
   receiver proven to be a str, list or dict value, so `Path.replace` and `s3.copy` do not.
+  A local is a proven value only when every binding of it is a plain `name = expr` from a
+  value: a for target, `with`/`except ... as`, unpacking, walrus, augmented assignment,
+  match capture, import, `del`, `global` or `nonlocal` disqualifies it. Only value-typed
+  builtins (`str`, `len`, `sorted`, `dict` and the like) yield a value; `getattr`, `max` and
+  `next` do not. A function handed to `map`, `filter`, `functools.reduce` or `key=` counts as
+  a call to it. A runner shadowed by a parameter or local of the same name is no runner.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.

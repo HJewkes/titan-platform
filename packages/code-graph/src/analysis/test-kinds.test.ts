@@ -4,7 +4,7 @@ import { makeTestRepo, type TestRepo } from "../history/test-repo.js";
 import { indexPaths } from "../indexer.js";
 import { computeSourceMetrics } from "../source-metrics.js";
 import { openCodeGraph, type CodeGraphStore } from "../store.js";
-import { TEST_KINDS_PROJECT } from "./test-kinds.fixture.js";
+import { REBIND_FORMS, TEST_KINDS_PROJECT } from "./test-kinds.fixture.js";
 import { consoleScripts } from "./test-kinds.js";
 
 const lines = (...ls: string[]): string => `${ls.join("\n")}\n`;
@@ -111,6 +111,28 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     }
   });
 
+  it("treats a local as a value only when every binding of it is a plain assignment from a value", () => {
+    for (const form of REBIND_FORMS) {
+      expect(kinds(`app/rebind.py#${form}`).pure, form).toBe(0);
+      expect(metric(`app/rebind.py#${form}`, "symbol_unlisted_calls"), form).toBe(1);
+    }
+    expect(kinds("app/rebind.py#by_import").pure, "import-as").toBe(0);
+    expect(kinds("app/rebind.py#plain_str").pure, "only plain assignments from values").toBe(1);
+  });
+
+  it("does not treat getattr, max or anything returning an argument's element as a value", () => {
+    for (const symbol of ["by_getattr", "by_max", "by_max_local"]) {
+      expect(kinds(`app/rebind.py#${symbol}`).pure, symbol).toBe(0);
+      expect(metric(`app/rebind.py#${symbol}`, "symbol_unlisted_calls"), symbol).toBe(1);
+    }
+  });
+
+  it("counts a function handed to map as a call to it", () => {
+    expect(kinds("app/rebind.py#remove_all").pure).toBe(0);
+    expect(metric("app/rebind.py#remove_all", "symbol_unlisted_calls")).toBe(1);
+    expect(kinds("app/rebind.py#lengths").pure, "map over a pure builtin").toBe(1);
+  });
+
   it("does not call advancing an iterator or writing os.environ pure", () => {
     expect(kinds("app/core.py#peek").pure).toBe(0);
     expect(metric("app/core.py#set_mode", "symbol_state_writes")).toBe(1);
@@ -138,15 +160,15 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     expect(tests("app/core.py#save")).toEqual({ ...none, snapshot: 1 });
   });
 
-  it("credits a CliRunner test, constructed or annotated, to the command it invokes", () => {
-    expect(tests("app/clicmd.py#greet")).toEqual({ ...none, snapshot: 1, errorPath: 2 });
+  it("credits a CliRunner test, constructed, annotated or module-level, to the command it invokes", () => {
+    expect(tests("app/clicmd.py#greet")).toEqual({ ...none, snapshot: 1, errorPath: 2, looseOnly: 1 });
   });
 
   it("credits a group, not the subcommand argv names, for runner.invoke(cli, ['sub'])", () => {
     expect(tests("app/clicmd.py#cli")).toEqual({ ...none, exact: 1 });
   });
 
-  it("credits nothing for an invoke on a non-CliRunner receiver or through a local alias", () => {
+  it("credits nothing for an invoke on a non-CliRunner receiver, a shadowed runner, or through a local alias", () => {
     expect(metric("app/clicmd.py#sub", "symbol_tests_exact_output")).toBeUndefined();
     expect(metric("app/clicmd.py#other", "symbol_tests_exact_output")).toBeUndefined();
   });

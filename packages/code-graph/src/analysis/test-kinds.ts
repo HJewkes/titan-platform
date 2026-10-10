@@ -6,6 +6,7 @@ import { parseSymbolId, symbolId } from "../extractors/ids.js";
 import type { GraphEdge, GraphMetric } from "../types.js";
 import {
   codeKindFacts,
+  functionImports,
   importedNames,
   mainGuardCallees,
   moduleAssignedNames,
@@ -78,11 +79,12 @@ export function testKindSourceMetrics(fileId: string, file: ParsedFile, symbolNa
   forEachDeclaration(file, (_name, qualifiedName, node) => {
     if (node.type !== "function_definition" || !symbolNames.has(qualifiedName)) return;
     const nodeId = symbolId(fileId, qualifiedName);
+    const visible = functionImports(node, imports);
     if (testFile) {
-      if (isTestFunctionName(qualifiedName)) out.push(...flagRows(nodeId, testKindFacts(node, imports), TEST_FACT_METRICS));
+      if (isTestFunctionName(qualifiedName)) out.push(...flagRows(nodeId, testKindFacts(node, visible), TEST_FACT_METRICS));
       return;
     }
-    const facts = codeKindFacts(qualifiedName, node, context);
+    const facts = codeKindFacts(qualifiedName, node, { ...context, imports: visible });
     if (guarded.has(qualifiedName)) facts.outputSignal = true;
     out.push(...flagRows(nodeId, facts, CODE_FACT_METRICS));
   });

@@ -779,7 +779,9 @@ consumer's policy. Values are 0 or 1 unless they are counts.
 A test reaches what its `calls` edges reach. A click `CliRunner`'s `runner.invoke(cmd, ...)`
 counts as a call to `cmd` (the group alone for `invoke(cli, ["sub"])`, nothing for a locally
 rebound target); a test is credited only to what it reaches. Methods `str` shares with
-stateful types (`replace`, `copy`, `join`, `keys`) count as pure only on a proven value. `symbol_kind_pure` needs every call
+stateful types (`replace`, `copy`, `join`, `keys`) count as pure only on a proven value: a
+literal, a value-typed builtin's result, or a local every binding of which is a plain
+assignment from one. A function handed to `map`, `filter` or `key=` counts as a call to it. `symbol_kind_pure` needs every call
 off the allow-list to resolve to a pure source function: an unresolved call means not pure.
 The per-function facts are carried forward under reuse; the boundary, purity and count
 metrics are recomputed on every index.
