@@ -503,7 +503,7 @@ Key exports:
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- +65 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
+- +67 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/github)
 
 <a id="cap-health"></a>
 
