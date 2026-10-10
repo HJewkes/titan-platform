@@ -26,6 +26,13 @@ Zero lint warnings in files you touched. `pnpm build` has to precede `pnpm test`
 `dag:check`, because an import of a workspace package by its published name resolves
 through that package's built `dist/*.d.ts` entry.
 
+CI also runs `pnpm lint:types` as its own `lint-types` job. It applies the type-aware rules
+`no-unsafe-type-assertion`, `no-unnecessary-type-assertion` and `no-unnecessary-condition`
+(`eslint.typed.config.js`) to source and tests. It needs `pnpm build` first and takes about
+half a minute. Existing hits live in `eslint-suppressions.typed.json` and are fixed when the
+file is next touched. Fix a new hit with a type guard or a parse, not a disable comment:
+`pnpm lint` does not run these rules, so it reports such a comment as unused.
+
 ## The egress scan
 
 This repository is public. [egress-scan](/reference/egress-scan) refuses pushes that add an
