@@ -1,16 +1,11 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
+import { ansiCEnd, balancedEnd, type NestedReaders } from "./balanced.js";
+import { ParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 
-export class ParseError extends Error {
-  override name = "ParseError";
-}
-
-/** A newline reached while a closed `$( )` or `<( )` still has a heredoc open, which bash 5 and bash 3.2 read differently. */
-export class SplitParseError extends ParseError {
-  override name = "SplitParseError";
-}
+export { ParseError, SplitParseError } from "./parse-error.js";
 
 /** A `$NAME` or `${NAME}` reference; `start` and `end` index into the word's `value`. */
 export interface VarRef {
@@ -268,9 +263,9 @@ function markComputed(w: WordToken): WordToken {
 function readDollar(s: LexState): void {
   const next = s.src[s.i + 1];
   const w = ensureWord(s);
-  if (next === "(" && s.src[s.i + 2] === "(") return readBalanced(s, w, "(", ")");
+  if (next === "(" && s.src[s.i + 2] === "(") return readBalanced(s, w);
   if (next === "(") return pushSubstitution(s, w, s.i + 2);
-  if (next === "{") return readBalanced(s, w, "{", "}");
+  if (next === "{") return readBalanced(s, w);
   if (next === "'") return readAnsiC(s, w);
   VARIABLE_RE.lastIndex = s.i + 1;
   const name = VARIABLE_RE.exec(s.src)?.[0];
@@ -304,44 +299,45 @@ function pushSubstitution(s: LexState, w: WordToken, start: number): void {
   w.subs.push(readSubstitution(s, start));
 }
 
-function readBalanced(s: LexState, w: WordToken, open: string, close: string): void {
-  let depth = 0;
-  let i = s.i + 1;
-  for (; i < s.src.length; i++) {
-    if (s.src[i] === open) depth++;
-    if (s.src[i] === close && --depth === 0) break;
-  }
-  if (i >= s.src.length) throw new ParseError(`unterminated $${open}`);
-  const text = s.src.slice(s.i, i + 1);
+/** Reads a `${ }` or `$(( ))`; every substitution in it is lexed once, as the brace or paren matching meets it. */
+function readBalanced(s: LexState, w: WordToken): void {
+  const found: Token[][] = [];
+  const end = balancedEnd(s.src, s.i + 1, nestedReaders(s, found));
+  const text = s.src.slice(s.i, end + 1);
   const name = BRACED_NAME_RE.exec(text)?.[1];
   if (name) pushRef(w, name, text);
   else {
     markComputed(w).value += text;
-    w.subs.push(...scanSubstitutions(s.src, s.i + 2, i, s.trials, { line: s, procsubs: open === "{" }));
+    w.subs.push(...found);
   }
-  s.i = i + 1;
+  s.i = end + 1;
 }
 
-/** Token lists of every substitution in `src` between `from` and `to`; `at` is the line they sit on, null in a heredoc body. */
-export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src), at: { line: LexState; procsubs: boolean } | null = null): Token[][] {
+function nestedReaders(s: LexState, found: Token[][]): NestedReaders {
+  return {
+    substitution: (start) => {
+      const inner = lexNested(s.src, start, s.trials, s);
+      found.push(inner.tokens);
+      return inner.i;
+    },
+    backtick: (start) => scanBacktick(s.src, start, found, s.trials),
+    quotedSpan: (from, to) => found.push(...scanSubstitutions(s.src.slice(from, to), 0, to - from, sameSpend(s.trials))),
+  };
+}
+
+/** Token lists of every substitution in `src` between `from` and `to`, such as a heredoc body's. */
+export function scanSubstitutions(src: string, from: number, to: number, trials = newTrials(src)): Token[][] {
   const found: Token[][] = [];
   for (let j = from; j < to; j++) {
     const c = src[j];
     if (c === "\\") j++;
-    else if (opensSubstitution(src, j, at?.procsubs === true)) {
-      const inner = lexNested(src, j + 2, trials, at?.line ?? null);
+    else if (c === "$" && src[j + 1] === "(" && src[j + 2] !== "(") {
+      const inner = lexNested(src, j + 2, trials, null);
       found.push(inner.tokens);
       j = inner.i;
     } else if (c === "`") j = scanBacktick(src, j, found, trials);
   }
   return found;
-}
-
-/** `<(` and `>(` substitute only where `procsubs` says so, as in `${...}`; in `$((...))` they compare. */
-function opensSubstitution(src: string, j: number, procsubs: boolean): boolean {
-  if (src[j + 1] !== "(") return false;
-  if (src[j] === "$") return src[j + 2] !== "(";
-  return procsubs && (src[j] === "<" || src[j] === ">");
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {
@@ -353,9 +349,7 @@ function scanBacktick(src: string, start: number, found: Token[][], trials: Arit
 }
 
 function readAnsiC(s: LexState, w: WordToken): void {
-  let end = s.i + 2;
-  while (end < s.src.length && s.src[end] !== "'") end += s.src[end] === "\\" ? 2 : 1;
-  if (end >= s.src.length) throw new ParseError("unterminated $'");
+  const end = ansiCEnd(s.src, s.i + 1);
   w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
   w.quoted = true;
   w.spliced = true;

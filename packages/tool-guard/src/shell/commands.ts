@@ -126,7 +126,7 @@ function tokenizeLine(src: string): Token[] {
   try {
     return tokenize(src);
   } catch (error) {
-    if (error instanceof SplitParseError) throw new SplitReadingError();
+    if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
     throw error;
   }
 }
