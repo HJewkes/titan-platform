@@ -11,6 +11,10 @@ export {
 export type { ItemStatus, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
 export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
 export type { OwnerItemDeposit } from "./deposit.js";
+export { consolidate } from "./consolidate.js";
+export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockReason } from "./consolidate.js";
+export { INFLUENCE_RULES, influenceEdges } from "./influence.js";
+export type { InfluenceContext, InfluenceEdge, InfluenceRule } from "./influence.js";
 export type { ClosedStatus, QueueSource, ResolveResult, SourceEvent } from "./port.js";
 export { askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind, roundAskKey, tokenKey, topicKey } from "./keys.js";
 export type { RelationKeyKind } from "./keys.js";
