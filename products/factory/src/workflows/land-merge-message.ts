@@ -5,13 +5,14 @@ export interface MergeInput {
   pr: number;
   sha: string;
   method: MergeMethod;
-  taskIds: string[];
+  /** Absent on a merge step recorded before the field existed. */
+  taskIds?: string[];
 }
 
 /** Only a squash records a message of its own; a merge commit or a rebase keeps the PR's commits as they are. */
 export async function mergeWithMessage(port: GitHubPort, input: MergeInput) {
   if (input.method !== "squash") return port.merge(input.repo, input.pr, input.sha, input.method);
-  return port.merge(input.repo, input.pr, input.sha, input.method, await squashMessageFor(port, input.repo, input.pr, input.taskIds));
+  return port.merge(input.repo, input.pr, input.sha, input.method, await squashMessageFor(port, input.repo, input.pr, input.taskIds ?? []));
 }
 
 /** The id half of a registration's `<initiative>/<ID>` task, which is what a commit subject names. */

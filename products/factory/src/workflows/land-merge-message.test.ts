@@ -3,7 +3,7 @@ import { githubPort } from "@titan-design/github";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, gateId, gateOpened, landScenario, type LandScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
-import { squashMessageFor, taskIdOf } from "./land-merge-message.js";
+import { mergeWithMessage, squashMessageFor, taskIdOf } from "./land-merge-message.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -59,6 +59,18 @@ describe("the squash message a land merge sends", () => {
 
     expect(message).toEqual({ subject: "Add the widget", body: "" });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("boom"));
+  });
+});
+
+describe("a merge step recorded without task ids", () => {
+  it("still sends the formatted message", async () => {
+    const scenario = landScenario();
+    scenario.fake.squashSources.set(1, { title: "Add the widget", body: "Adds a widget.", commits: [] });
+    scenario.fake.pr(1).state = "open";
+
+    await mergeWithMessage(githubPort(scenario.fake.wire), { repo: "octo/demo", pr: 1, sha: H1, method: "squash" });
+
+    expect(scenario.fake.merges[0]?.message?.subject).toBe("Add the widget (#1)");
   });
 });
 
