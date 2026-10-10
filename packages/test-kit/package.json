@@ -1,7 +1,7 @@
 {
-  "name": "@titan-design/review-panel",
-  "version": "0.2.0",
-  "description": "Review-panel types and the reviewer ports a caller satisfies",
+  "name": "@titan-design/test-kit",
+  "version": "0.0.0",
+  "description": "Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,7 +21,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/HJewkes/titan-platform.git",
-    "directory": "packages/review-panel"
+    "directory": "packages/test-kit"
   },
   "bugs": "https://github.com/HJewkes/titan-platform/issues",
   "engines": {
@@ -33,15 +33,5 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@titan-design/session-read": "workspace:^"
-  },
-  "peerDependencies": {
-    "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@titan-design/test-kit": "workspace:*",
-    "zod": "^4.4.3"
   }
 }
