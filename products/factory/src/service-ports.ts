@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { buildSha } from "./build-info.js";
+import { configPath, loadConfig } from "./config.js";
 import type { CheckPorts } from "./service-check.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 import type { CommandResult, ServicePorts } from "./service-control.js";
@@ -54,8 +55,23 @@ function readIfPresent(path: string): string | undefined {
   }
 }
 
+/**
+ * The one place the label prefix is resolved, from the env the CLI runs under. A config that fails
+ * to load yields its error instead of a prefix: runServiceVerb refuses on it, so no verb acts on the
+ * default label's job when the configured one may differ. Only `service plist` prints without it.
+ */
+function configuredLabelPrefix(env: NodeJS.ProcessEnv): Pick<ServicePorts, "labelPrefix" | "configError"> {
+  try {
+    const labelPrefix = loadConfig(configPath(env)).service?.labelPrefix;
+    return labelPrefix === undefined ? {} : { labelPrefix };
+  } catch (err) {
+    return { configError: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export function systemServicePorts(): ServicePorts {
   return {
+    ...configuredLabelPrefix(process.env),
     platform: process.platform,
     uid: process.getuid?.() ?? -1,
     home: homedir(),

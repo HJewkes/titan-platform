@@ -1,4 +1,4 @@
-import { ParseError, tokenize } from "./lexer.js";
+import { ParseError, SplitParseError, tokenize } from "./lexer.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
@@ -12,7 +12,7 @@ import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, unsureReadings } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, ReadingLimitError, SplitReadingError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -117,8 +117,18 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenize(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
+  walk(tokenizeLine(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
   return out;
+}
+
+/** A line bash 5 and bash 3.2 read differently is refused outright, whatever it names; a plain ParseError is not. */
+function tokenizeLine(src: string): Token[] {
+  try {
+    return tokenize(src);
+  } catch (error) {
+    if (error instanceof SplitParseError) throw new SplitReadingError();
+    throw error;
+  }
 }
 
 function walk(tokens: Token[], w: Walk): void {
@@ -260,7 +270,7 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
-    walk(tokenize(text), child(w, [...wrapping, script.wrap]));
+    walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));
   }
 }
 

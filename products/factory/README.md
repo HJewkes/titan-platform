@@ -314,20 +314,31 @@ A source that fails becomes one Gaps line and the rest still render. An ask that
 same PR or run id as an earlier one is dropped, so a factory gate wins over a queue line
 about the same PR.
 
+With `digest.push` set, each written slot is also pushed to an ntfy topic after the files are
+written: title `Digest <date> <HH>:00`, the first three headline lines as the message, and the full
+markdown attached (`PUT` with a `Filename:` header). If the server refuses the attachment, the push
+retries as a `POST` with the markdown truncated to 4 KB. `tokenFile` names a file holding a bearer
+token, sent as `Authorization: Bearer <token>`. A push failure is a warning on stderr; the digest
+file in the out dir always stays and the run still exits 0. The topic URL is the only credential
+on an anonymous topic, so keep it in the owner's config and out of logs.
+
 ```json
 {
   "digest": {
     "outDir": "<state>/titan-factory/digests",
     "icloudDir": "<home>/Library/Mobile Documents/com~apple~CloudDocs/Digests",
     "timezone": "America/Denver",
-    "slots": [6, 12, 18]
+    "slots": [6, 12, 18],
+    "push": { "url": "<ntfy topic URL>", "tokenFile": "<home>/.config/titan-factory/ntfy-token" }
   }
 }
 ```
 
 Every key is optional. `outDir` defaults to `$XDG_STATE_HOME/titan-factory/digests`, and no
-`icloudDir` means no copy. `queuesDir` and `logsDir` default to `queues` and `logs` beside
-`shepherd.seatsDir`. Paths must be absolute.
+`icloudDir` means no copy, and no `push` means no push. `push.tokenFile` is optional. `queuesDir` and `logsDir` default to `queues` and `logs` beside
+`shepherd.seatsDir`. `queuesDir` also sets the directory the `needs` owner-queue reader reads;
+unset, that reader uses `<active root>/claude-channels/sources/autonomy/queues`. Paths must be
+absolute.
 
 ## Owner-queue sources
 
@@ -391,6 +402,13 @@ this checkout (`scripts/factory-link-bin.mjs`). The link is a path, so a rebuild
 relink, and it needs neither sudo nor `pnpm setup`. A link that already points at another
 checkout is left alone unless you pass `--force`; `--bin-dir <dir>` picks another directory. The
 script says so when the directory is not on `PATH`.
+
+The launchd label is `dev.hjewkes.titan-factory` unless the config sets `service.labelPrefix`
+(`{ "service": { "labelPrefix": "dev.ex." } }` gives `dev.ex.titan-factory`). The plist file
+and every `launchctl` target follow it; the systemd unit name does not. Run `service uninstall`
+before changing the prefix, or the old job stays loaded under its old label. When the config
+fails to load, every service verb but `service plist` exits non-zero with the config error
+rather than act on the default label; `service plist` prints the default label with a warning.
 
 `service install [--port <n>] [--node <path>] [--mcp] [--dry-run]` does these in order on macOS:
 

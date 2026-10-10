@@ -52,6 +52,14 @@ function isTimeZone(zone: string): boolean {
   }
 }
 
+/** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
+export const DigestPushConfigSchema = z.strictObject({
+  url: z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL"),
+  tokenFile: absolutePath.optional(),
+});
+
+export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
+
 /** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
 export const DigestConfigSchema = z.strictObject({
   outDir: absolutePath.optional(),
@@ -60,8 +68,10 @@ export const DigestConfigSchema = z.strictObject({
   icloudDir: absolutePath.optional(),
   timezone: z.string().refine(isTimeZone, "must be an IANA time zone").optional(),
   slots: z.array(z.number().int().min(0).max(23)).min(1).optional(),
+  /** Where both the digest and the owner-queue reader find the seat Morning files. */
   queuesDir: absolutePath.optional(),
   logsDir: absolutePath.optional(),
+  push: DigestPushConfigSchema.optional(),
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
@@ -82,6 +92,11 @@ export const SpawnGateConfigSchema = z.strictObject({
   burstMax: z.number().int().positive().optional(),
   headroomReviews: z.number().int().min(0).optional(),
   reviewLoad: z.number().min(0).optional(),
+});
+
+/** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
+export const ServiceConfigSchema = z.strictObject({
+  labelPrefix: noNul.min(1).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
@@ -113,6 +128,7 @@ export const FactoryConfigSchema = z.object({
   remoteFactory: remoteFactoryUrl.optional(),
   postMerge: PostMergeConfigSchema.optional(),
   digest: DigestConfigSchema.optional(),
+  service: ServiceConfigSchema.optional(),
   shepherd: z
     .object({
       seatsDir: z.string().min(1).optional(),

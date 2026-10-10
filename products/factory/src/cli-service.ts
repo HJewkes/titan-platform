@@ -49,6 +49,7 @@ export function registerService(program: Command, verbs: Verbs): void {
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => {
       const ports = verbs.deps.service ?? systemServicePorts();
+      if (ports.configError !== undefined) verbs.io.stderr(`warning: printing the default label, because ${ports.configError}\n`);
       verbs.io.stdout(renderServiceFile(ports, plistOptions(verbs.io, opts, ports).plist));
     });
   registerServiceControl(service, verbs);

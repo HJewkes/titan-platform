@@ -338,6 +338,13 @@ call finds them held, sees the recorded pid has exited, removes only the dirs wh
 and ctime still match, and takes the locks again. A lock with no record, or one whose
 identity differs, is Claude Code's and is left alone.
 
+The record is written with `O_CREAT | O_EXCL | O_NOFOLLOW` after any stale record is
+unlinked, so a symlink planted at its path is removed, never written through. It is read
+through the same gate as the credentials file: a record that is not this uid's own regular,
+owner-only, singly linked file, or that is a FIFO, names no lock, and nothing is reclaimed.
+A release whose record removal throws still frees the lock dirs, and the result already
+reached, such as `write-failed`, stands.
+
 | result | when | deposit |
 |---|---|---|
 | `fresh` | the token is not due | no |
@@ -364,6 +371,69 @@ Like `pollUsage`, it never logs, and never throws for anything the file, the loc
 server does. An error body is cancelled unread, a fetch rejection or filesystem error is
 dropped with its message, and only a bad `now`, `marginMs` or `timeoutMs` throws a
 `RangeError` with a fixed message.
+
+## The `anthropic-account` bin
+
+```sh
+anthropic-account poll [--write [--refresh]]
+anthropic-account status [--json | --statusline]
+```
+
+Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
+`~/.claude-profiles`, or `CLAUDE_CONFIG_DIRS` when it is set.
+
+- `poll` runs `pollUsage` for every profile and prints one line each, such as
+  `agents: five_hour 23%, seven_day 41.5%`. With `--write` it runs `pollAll`, which stores
+  each reading as `usage-poll.json`.
+- `--refresh`, which needs `--write`, first runs `refreshIfNeeded` for every profile with a
+  10-minute margin, then polls with the renewed token. **It writes
+  `<config dir>/.credentials.json`** whenever a token is due, and the server may rotate
+  the refresh token, so leave it off for a poller that only reads credentials. A refreshed
+  profile prints `<label>: token refreshed`, and a failed refresh prints
+  `anthropic-account: <label>: token refresh failed: <failure>` to stderr. The bin passes
+  no `onFailure`, so no owner-queue deposit is filed: this package is tier 0 and
+  owner-queue is tier 2. A tier-2 or product caller wires `writeDeposit`.
+- `status` reads local files only, with no request. It prints each profile's login state
+  and newest reading with its age. `--json` prints `{ profiles: [{ label, configDir, login,
+  usage }] }`, where `login` is the token-free `LoginState` (or `{ status: "unreadable" }`)
+  and `usage` is `{ written_at, age_seconds, rate_limits }` or `null`.
+- `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints: first
+  `5h|weekly|5h_reset|weekly_reset|||||age_s` for the account in `CLAUDE_CONFIG_DIR` (or
+  `~/.claude`), or `unknown|unknown|||||||`, then `other|<label>|5h|weekly|age_s|` for each
+  other profile whose reading has both windows. Percentages are floored. It always exits
+  0 and writes no stderr.
+
+| exit | when |
+|---|---|
+| 0 | every profile succeeded |
+| 1 | a poll, a refresh, a usage-file write or a credentials read failed |
+| 2 | a login is `missing`, `expired` or `refused`; this wins over 1 |
+| 64 | an unknown command or flag, a repeated flag, or `--refresh` without `--write` |
+
+Each account whose login is not present gets one stderr line,
+`anthropic-account: <label>: login <missing|expired|refused (<reason>)>`. Every stderr line
+is a fixed template of the label, a state and a failure kind. A label that is not a short
+plain name, or that `redactSecrets` would change, prints as `unlabelled`. Arguments, file
+contents, response bodies and error messages are never printed.
+
+### Installing the poll timer
+
+`systemd/` ships `anthropic-account-poll.service`, a oneshot running
+`%h/.local/bin/anthropic-account poll --write --refresh`, and `anthropic-account-poll.timer`,
+which starts it 10 s after the timer starts and every 150 s after that. The package
+installs and enables nothing. The host operator runs:
+
+```sh
+npm install -g --prefix ~/.local @titan-design/anthropic-account
+mkdir -p ~/.config/systemd/user
+cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now anthropic-account-poll.timer
+```
+
+Because the service passes `--refresh`, the timer writes credentials files. Remove the flag
+from `ExecStart` before enabling to keep it read-only. Failures land in
+`journalctl --user -u anthropic-account-poll.service`.
 
 ## What it deliberately does not do
 

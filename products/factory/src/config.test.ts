@@ -78,6 +78,13 @@ describe("loadConfig", () => {
     expect(loadConfig(configPath(env)).digest).toEqual({ copyDirs: ["/a", "/b"], icloudDir: "/legacy" });
   });
 
+  it("reads digest.push and refuses an unknown key inside it", () => {
+    const push = { url: "https://ntfy.example/test-topic", tokenFile: "/run/secrets/ntfy" };
+    expect(loadConfig(configPath(xdg({ digest: { push } }))).digest?.push).toEqual(push);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { ...push, token: "x" } } })))).toThrow(/invalid config .*token/);
+    expect(() => loadConfig(configPath(xdg({ digest: { push: { url: "https://ntfy.example/t", tokenFile: "relative" } } })))).toThrow(/absolute/);
+  });
+
   it("refuses an unknown digest key", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
   });
@@ -223,5 +230,22 @@ describe("loadConfig", () => {
 
   it("rejects an empty shepherd seats directory", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { seatsDir: "" } })))).toThrow(/shepherd\.seatsDir/);
+  });
+});
+
+describe("digest.queuesDir and service.labelPrefix", () => {
+  it("loads both keys when set and leaves them absent otherwise", () => {
+    const set = loadConfig(configPath(xdg({ digest: { queuesDir: "/srv/queues" }, service: { labelPrefix: "dev.ex." } })));
+    const unset = loadConfig(configPath(xdg({})));
+
+    expect(set.digest?.queuesDir).toBe("/srv/queues");
+    expect(set.service?.labelPrefix).toBe("dev.ex.");
+    expect(unset.digest?.queuesDir).toBeUndefined();
+    expect(unset.service).toBeUndefined();
+  });
+
+  it("refuses a relative queuesDir and an empty labelPrefix", () => {
+    expect(() => loadConfig(configPath(xdg({ digest: { queuesDir: "queues" } })))).toThrow(/absolute/);
+    expect(() => loadConfig(configPath(xdg({ service: { labelPrefix: "" } })))).toThrow(/labelPrefix/);
   });
 });
