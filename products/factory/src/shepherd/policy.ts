@@ -170,12 +170,19 @@ export function shepherdLandOptions(
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
     const decision = shepherdGatePolicy(effective(), current).decide(action, target);
-    if (decision.outcome !== "gate") return decision;
+    if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
-    if (escalated !== undefined) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalationReason(escalated.escalation, escalated.detail) };
+    // A carried escalation gates even a head the policy would allow: the owner's question must be asked again, never resolved for them.
+    if (escalated !== undefined && (decision.outcome === "gate" || escalated.carriedFrom !== undefined)) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalatedReason(escalated, target?.headSha, current) };
+    if (decision.outcome !== "gate") return decision;
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
   return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
+}
+
+function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
+  const reason = escalationReason(escalated.escalation, escalated.detail);
+  return escalated.carriedFrom === undefined ? reason : `${reason}; carried from the gate at head ${escalated.carriedFrom}${reviewNote(headSha, verdictFor)}`;
 }
 
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
