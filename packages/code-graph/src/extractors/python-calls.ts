@@ -22,7 +22,8 @@ interface PyCallContext {
  * by `from <in-repo module> import <name>`, and `self.<name>(...)` to a method of
  * the enclosing class. Attribute chains, `module.func`, star imports and names a
  * parameter or nested def shadows are dropped. The caller is the enclosing def
- * or class, or the file for a module-level call.
+ * or class, or the file for a module-level call. `runner.invoke(cmd, ...)` also
+ * calls `cmd` when it resolves (TP-2170), so a click `CliRunner` test reaches its command.
  */
 export function collectPythonCallEdges(file: ParsedFile, fileId: string, resolve: ResolveModule): GraphEdge[] {
   const declarations = new Map<string, Node>();
@@ -31,13 +32,26 @@ export function collectPythonCallEdges(file: ParsedFile, fileId: string, resolve
   const agg = new Map<string, GraphEdge>();
   walkScopes(file.tree.rootNode, true, (node, scope) => {
     if (node.type !== "call") return;
-    const dst = resolveCallee(node.childForFieldName("function"), scope, ctx);
     const args = node.childForFieldName("arguments");
-    if (!dst || args?.type !== "argument_list") return;
+    if (args?.type !== "argument_list") return;
     const srcId = declarations.has(scope) ? symbolId(fileId, scope) : fileId;
-    addCallSite(agg, srcId, dst, pythonCallSite(args));
+    const dst = resolveCallee(node.childForFieldName("function"), scope, ctx);
+    if (dst) addCallSite(agg, srcId, dst, pythonCallSite(args));
+    const invoked = resolveInvoked(node, args, scope, ctx);
+    if (invoked) addCallSite(agg, srcId, invoked, UNKNOWN_SITE);
   });
   return [...agg.values()];
+}
+
+/** A site whose arguments are unknown: click's own argv parsing passes them, not this call. */
+const UNKNOWN_SITE: CallSite = { args: [], kwSplat: true };
+
+/** `runner.invoke(cmd, ...)`, click's `CliRunner` running a command: the call runs `cmd`. */
+function resolveInvoked(call: Node, args: Node, scope: string, ctx: PyCallContext): string | null {
+  const callee = call.childForFieldName("function");
+  if (callee?.type !== "attribute" || callee.childForFieldName("attribute")?.text !== "invoke") return null;
+  const target = args.namedChildren[0];
+  return target?.type === "identifier" ? resolveBareName(target.text, scope, ctx) : null;
 }
 
 function resolveCallee(callee: Node | null, scope: string, ctx: PyCallContext): string | null {

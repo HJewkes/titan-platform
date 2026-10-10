@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { purityFacts, type PurityScope } from "./python-purity.js";
 
 /** What one Python function does by itself, before the call graph is consulted (TP-2170). */
 export interface CodeKindFacts {
@@ -6,10 +7,14 @@ export interface CodeKindFacts {
   io: boolean;
   /** Prints, writes stdout, builds an argparse parser, or is declared a CLI command or web route. */
   outputSignal: boolean;
-  globalWrites: boolean;
+  /** Writes module state, or an attribute or item of `self`, `cls` or a parameter. */
+  stateWrites: boolean;
+  /** Calls the purity allow-list does not cover, which only resolved `calls` edges can clear. */
+  unlistedCalls: number;
 }
 
-const NESTED_SCOPES = new Set(["function_definition", "class_definition", "lambda"]);
+/** A lambda opens no scope of its own for the call extractor either, so its calls stay its enclosing def's. */
+const NESTED_SCOPES = new Set(["function_definition", "class_definition"]);
 
 /** Every node under `root`, without entering a nested def or class, whose behaviour is its own symbol's. */
 export function forEachOwnNode(root: Node, visit: (node: Node) => void): void {
@@ -108,11 +113,12 @@ const OUTPUT_CALLS = /^(?:print|sys\.stdout\.write|sys\.stdout\.buffer\.write|cl
 const ARGPARSE_CALLS = /(?:^|\.)(?:ArgumentParser|add_argument|parse_args|parse_known_args)$/;
 const ENTRY_DECORATOR = /(?:^|\.)(?:command|group|callback|route|get|post|put|patch|delete|websocket)$/;
 
-/** What one function binds: names that hold a path, and names it binds locally (parameters included). */
+/** What one function binds: names that hold a path, its parameters, and the names it binds itself. */
 interface FunctionScope {
   imports: ReadonlyMap<string, string>;
   pathNames: Set<string>;
-  localNames: Set<string>;
+  params: Set<string>;
+  locals: Set<string>;
 }
 
 /** True for a `Path(...)` call, `path / "x"` on one, or a name bound to one; a `str.replace` receiver is not. */
@@ -136,7 +142,7 @@ function bindParameters(def: Node, scope: FunctionScope): void {
   for (const param of def.childForFieldName("parameters")?.namedChildren ?? []) {
     const id = param?.type === "identifier" ? param : param?.descendantsOfType("identifier")[0];
     if (!id) continue;
-    scope.localNames.add(id.text);
+    scope.params.add(id.text);
     if (/\b(?:Path|PurePath)\b/.test(param?.childForFieldName("type")?.text ?? "")) scope.pathNames.add(id.text);
   }
 }
@@ -150,10 +156,10 @@ function bindLocals(body: Node, scope: FunctionScope): void {
     }
     const left = node.type === "assignment" ? node.childForFieldName("left") : null;
     if (left?.type !== "identifier") return;
-    scope.localNames.add(left.text);
+    scope.locals.add(left.text);
     if (isPathValue(node.childForFieldName("right"), scope)) scope.pathNames.add(left.text);
   });
-  for (const name of declaredOuter) scope.localNames.delete(name);
+  for (const name of declaredOuter) scope.locals.delete(name);
 }
 
 /** Decorators that make a def a click or typer command, or a Flask or FastAPI route. */
@@ -167,47 +173,39 @@ function isEntryDecorated(def: Node): boolean {
   });
 }
 
-/** A module-level `global`/`nonlocal` rebinding, or a mutation of a module-level name the function does not shadow. */
-function isGlobalWrite(node: Node, isModuleName: (name: string) => boolean): boolean {
-  if (node.type === "global_statement" || node.type === "nonlocal_statement") return true;
-  if (node.type !== "assignment" && node.type !== "augmented_assignment") return false;
-  const left = node.childForFieldName("left");
-  if (left?.type !== "subscript" && left?.type !== "attribute") return false;
-  const base = left.childForFieldName(left.type === "subscript" ? "value" : "object");
-  return base?.type === "identifier" && isModuleName(base.text);
-}
-
-const MUTATORS = /^(\w+)\.(?:append|extend|insert|update|add|pop|popitem|clear|setdefault|remove|discard)$/;
-
 function scopeOf(def: Node, body: Node, imports: ReadonlyMap<string, string>): FunctionScope {
-  const scope: FunctionScope = { imports, pathNames: new Set(), localNames: new Set() };
+  const scope: FunctionScope = { imports, pathNames: new Set(), params: new Set(), locals: new Set() };
   bindParameters(def, scope);
   bindLocals(body, scope);
   return scope;
 }
 
-/** Classify one function body against the file's imports and module-level names; `name` is its qualified name. */
-export function codeKindFacts(
-  name: string,
-  def: Node,
-  imports: ReadonlyMap<string, string>,
-  moduleNames: ReadonlySet<string>,
-): CodeKindFacts {
+/** What the file around one function provides: its imports, declarations and module-level names. */
+export interface FileContext {
+  imports: ReadonlyMap<string, string>;
+  declared: ReadonlySet<string>;
+  moduleNames: ReadonlySet<string>;
+}
+
+function purityScope(scope: FunctionScope, file: FileContext): PurityScope {
+  const unshadowed = [...file.moduleNames].filter((n) => !scope.locals.has(n) && !scope.params.has(n));
+  return { ...file, params: scope.params, locals: scope.locals, moduleNames: new Set(unshadowed) };
+}
+
+/** Classify one function against its file; `name` is its qualified name. */
+export function codeKindFacts(name: string, def: Node, file: FileContext): CodeKindFacts {
   const ownName = name.slice(name.lastIndexOf(".") + 1);
-  const facts = { parser: PARSE_NAME.test(ownName), io: false, outputSignal: isEntryDecorated(def), globalWrites: false };
+  const base = { parser: PARSE_NAME.test(ownName), io: false, outputSignal: isEntryDecorated(def) };
   const body = def.childForFieldName("body");
-  if (!body) return facts;
-  const scope = scopeOf(def, body, imports);
-  const isModuleName = (n: string) => moduleNames.has(n) && !scope.localNames.has(n);
+  if (!body) return { ...base, stateWrites: false, unlistedCalls: 0 };
+  const scope = scopeOf(def, body, file.imports);
+  const facts = { ...base, ...purityFacts(def, purityScope(scope, file), forEachOwnNode) };
   forEachOwnNode(body, (node) => {
-    if (isGlobalWrite(node, isModuleName)) facts.globalWrites = true;
     if (node.type !== "call") return;
-    const callee = qualifiedCallee(node, imports);
+    const callee = qualifiedCallee(node, file.imports);
     if (isIoCall(node, callee, scope)) facts.io = true;
     if (PARSE_CALLS.has(callee)) facts.parser = true;
     if (OUTPUT_CALLS.test(callee) || ARGPARSE_CALLS.test(callee)) facts.outputSignal = true;
-    const mutated = MUTATORS.exec(callee)?.[1];
-    if (mutated && isModuleName(mutated)) facts.globalWrites = true;
   });
   return facts;
 }

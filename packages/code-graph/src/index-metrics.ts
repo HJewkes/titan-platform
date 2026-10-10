@@ -5,7 +5,7 @@ import { computeDeadCodeMetrics } from "./analysis/dead-code.js";
 import { computeCallMetrics } from "./analysis/call-metrics.js";
 import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
-import { linkTestsToSources, testCoverageCountMetrics, type TestSourceLink } from "./analysis/test-linker.js";
+import { linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
 import { computeTestKindMetrics } from "./analysis/test-kinds.js";
 import { computeChangeCoupling, type ChurnEntry } from "./history/index.js";
 import {
@@ -72,8 +72,6 @@ export function assembleIndexerMetrics(input: IndexerMetricsInput): AssembledInd
   const nodeList = [...input.nodes.values()];
   const edgeList = [...input.edges.values()];
   const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
-  const entries = history?.primaryEntries ?? null;
-  const links = linkTests(nodeList, entries);
   const sourceMetrics = [
     ...computeSourceMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p), symbolNamesByFile(nodeList)),
     ...input.reusedSourceMetrics,
@@ -85,28 +83,25 @@ export function assembleIndexerMetrics(input: IndexerMetricsInput): AssembledInd
     ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...(history?.metrics ?? []),
-    ...computeTestCoverage(links, entries, input.history?.churnWindowDays),
-    ...computeTestKindMetrics({ edges: edgeList, sourceMetrics, links, entryPoints: input.entryPoints }),
+    ...computeTestCoverage(nodeList, history?.primaryEntries ?? null, input.history?.churnWindowDays),
+    ...computeTestKindMetrics({ edges: edgeList, sourceMetrics, entryPoints: input.entryPoints }),
   ];
   return { metrics, warnings: history?.warnings ?? [] };
-}
-
-/** Path-convention links need no churn; co-edit supplementation reuses the already-loaded churn entries. */
-function linkTests(nodes: readonly GraphNode[], entries: readonly ChurnEntry[] | null): TestSourceLink[] {
-  const coEditPairs = entries ? computeChangeCoupling(entries, { knownPaths: collectFileIds(nodes) }).pairs : [];
-  return linkTestsToSources(nodes, coEditPairs);
 }
 
 /**
  * Two-pass test↔source linker outputs: per-source coverage counts (always) and,
  * when churn is available, the bus-factor / top-author-share of each source's
- * test coverage.
+ * test coverage. Path-convention links need no churn; co-edit supplementation
+ * and the ownership split reuse the already-loaded churn entries.
  */
 function computeTestCoverage(
-  links: readonly TestSourceLink[],
+  nodes: readonly GraphNode[],
   entries: readonly ChurnEntry[] | null,
   windowDays: number | undefined,
 ): GraphMetric[] {
+  const coEditPairs = entries ? computeChangeCoupling(entries, { knownPaths: collectFileIds(nodes) }).pairs : [];
+  const links = linkTestsToSources(nodes, coEditPairs);
   if (links.length === 0) return [];
   const out = testCoverageCountMetrics(links);
   if (entries) {

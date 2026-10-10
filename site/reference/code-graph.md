@@ -770,16 +770,17 @@ consumer's policy. Values are 0 or 1 unless they are counts.
 | Metric | Written on | What it says |
 |---|---|---|
 | `symbol_kind_parser`, `symbol_kind_io` | each function outside a test file | parses or decodes input; does file, process, socket or HTTP I/O itself |
-| `symbol_output_signal`, `symbol_global_writes` | each function outside a test file | prints, argparse, CLI or route decorator, `__main__` guard call; writes module state |
+| `symbol_output_signal`, `symbol_state_writes`, `symbol_unlisted_calls` | each function outside a test file | prints, argparse, CLI or route decorator, `__main__` guard call; writes state it does not own; calls the purity allow-list does not cover |
 | `symbol_kind_output_boundary` | each function outside a test file | the output signal, a console script, or a call from a `__main__.py` |
 | `symbol_kind_pure` | each function outside a test file | no parser, and no I/O, output or global write in anything it reaches through `calls` |
 | `test_kind_*` (snapshot, exact_output, loose_output, error_path, property, roundtrip) | each pytest test function | the kinds of check the test makes |
 | `symbol_tests_*` (snapshot, exact_output, loose_output_only, error_path, property, roundtrip) | each source function a test reaches | how many tests of each kind reach it |
 
-A test reaches what its `calls` edges reach. A test that reaches no source function, such as
-a click `CliRunner` test, reaches the output boundaries of the sources the test linker pairs
-its file with. The per-function facts are carried forward under reuse; the boundary,
-purity and count metrics are recomputed on every index.
+A test reaches what its `calls` edges reach, and `runner.invoke(cmd, ...)` counts as a call
+to `cmd`; a test is credited only to what it reaches. `symbol_kind_pure` needs every call
+off the allow-list to resolve to a pure source function: an unresolved call means not pure.
+The per-function facts are carried forward under reuse; the boundary, purity and count
+metrics are recomputed on every index.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.

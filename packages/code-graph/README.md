@@ -778,7 +778,8 @@ Every value is 0 or 1 unless it is a count.
 - On each function outside a test file, written from the file's own bytes and carried
   forward under reuse: `symbol_kind_parser`, `symbol_kind_io`, `symbol_output_signal`
   (prints, writes stdout, argparse, a click, typer, Flask or FastAPI decorator, or a call in
-  the file's `__main__` guard) and `symbol_global_writes`.
+  the file's `__main__` guard), `symbol_state_writes` (module state, `self`, `cls` or a
+  parameter) and `symbol_unlisted_calls` (calls the purity allow-list does not cover).
 - On each pytest test function, also carried forward: `test_kind_snapshot`,
   `test_kind_exact_output`, `test_kind_loose_output` (every output assertion is `in`,
   `startswith`, a length, a shape or truthiness), `test_kind_error_path`,
@@ -791,8 +792,11 @@ Every value is 0 or 1 unless it is a count.
 - For each source function some test reaches: `symbol_tests_snapshot`,
   `symbol_tests_exact_output`, `symbol_tests_loose_output_only`, `symbol_tests_error_path`,
   `symbol_tests_property` and `symbol_tests_roundtrip`. A test reaches what its `calls`
-  edges reach. A test that reaches no source function, such as a click `CliRunner` test,
-  instead reaches the output boundaries of the sources the test linker pairs its file with.
+  edges reach, and `runner.invoke(cmd, ...)` counts as a call to `cmd`. A test is credited
+  only to what it reaches. Reach is one pass over the call graph's strongly connected
+  components, with a bitset of tests flowing to callees.
+- `symbol_kind_pure` needs every unlisted call resolved to a source function that is itself
+  pure. An unresolved call (an external library, `input()`, `module.func()`) means not pure.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.

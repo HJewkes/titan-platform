@@ -81,13 +81,12 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
 
   it("counts a method str or other types share as I/O only on a proven Path", () => {
     expect(kinds("app/core.py#move")).toMatchObject({ io: 1, pure: 0 });
-    for (const symbol of ["slugify", "rename_columns"]) {
-      expect(kinds(`app/core.py#${symbol}`), symbol).toEqual({ outputBoundary: 0, parser: 0, io: 0, pure: 1 });
-    }
+    expect(kinds("app/core.py#slugify")).toEqual({ outputBoundary: 0, parser: 0, io: 0, pure: 1 });
+    expect(kinds("app/core.py#rename_columns"), "an unknown receiver's method").toMatchObject({ io: 0 });
   });
 
-  it("does not count a mutation of a local that shadows a module-level name as a global write", () => {
-    expect(metric("app/core.py#collect", "symbol_global_writes")).toBe(0);
+  it("does not count a mutation of a local that shadows a module-level name as a state write", () => {
+    expect(metric("app/core.py#collect", "symbol_state_writes")).toBe(0);
     expect(kinds("app/core.py#collect")).toMatchObject({ pure: 1 });
   });
 
@@ -96,9 +95,30 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
   });
 
   it("does not call a function pure when it writes globals or calls one that does I/O", () => {
-    expect(metric("app/core.py#remember", "symbol_global_writes")).toBe(1);
+    expect(metric("app/core.py#remember", "symbol_state_writes")).toBe(1);
     expect(kinds("app/core.py#remember")).toMatchObject({ io: 0, pure: 0 });
     expect(kinds("app/core.py#shout_and_save")).toMatchObject({ io: 0, pure: 0 });
+  });
+
+  it("does not call a function pure when one of its calls resolves nowhere", () => {
+    const unresolved = ["report", "ask", "read_stdin", "warn", "mean", "rename_columns"];
+    for (const symbol of unresolved) {
+      expect(kinds(`app/core.py#${symbol}`), symbol).toMatchObject({ io: 0, pure: 0 });
+    }
+    expect(metric("app/core.py#report", "symbol_unlisted_calls")).toBe(1);
+  });
+
+  it("keeps a function pure when every call is allow-listed or resolves to a pure function", () => {
+    for (const symbol of ["squares", "shout_twice", "dump", "join_parts"]) {
+      expect(kinds(`app/core.py#${symbol}`).pure, symbol).toBe(1);
+    }
+  });
+
+  it("does not call a method pure when it writes self", () => {
+    for (const symbol of ["Counter.bump", "Counter.grow"]) {
+      expect(metric(`app/core.py#${symbol}`, "symbol_state_writes"), symbol).toBe(1);
+      expect(kinds(`app/core.py#${symbol}`).pure, symbol).toBe(0);
+    }
   });
 
   it("counts the tests of each kind that reach a symbol through calls", () => {
@@ -109,8 +129,14 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     expect(tests("app/core.py#save")).toEqual({ ...none, snapshot: 1 });
   });
 
-  it("credits a CliRunner test to the output boundary of the source the test linker pairs it with", () => {
+  it("credits a CliRunner test to the command it invokes", () => {
     expect(tests("app/clicmd.py#greet")).toEqual({ ...none, snapshot: 1, errorPath: 1 });
+  });
+
+  it("credits no test to a boundary it does not reach, even when the test linker pairs their files", () => {
+    expect(metric("app/other.py#other_main", "symbol_kind_output_boundary")).toBe(1);
+    expect(metric("app/other.py#other_main", "symbol_tests_exact_output")).toBeUndefined();
+    expect(metric("app/other.py#other_main", "symbol_tests_loose_output_only")).toBeUndefined();
   });
 
   it("writes no test counts on a symbol no test reaches", () => {

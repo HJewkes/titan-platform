@@ -3,6 +3,7 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { IndexSource } from "../index-source.js";
 import { forEachDeclaration } from "../declared-names.js";
 import { parseSymbolId, symbolId } from "../extractors/ids.js";
+import type { CallEdgeAttrs } from "../extractors/call-sites.js";
 import type { GraphEdge, GraphMetric } from "../types.js";
 import {
   codeKindFacts,
@@ -12,7 +13,7 @@ import {
   type CodeKindFacts,
 } from "./python-code-kinds.js";
 import { isTestFunctionName, testKindFacts, type TestKindFacts } from "./python-test-kinds.js";
-import type { TestSourceLink } from "./test-linker.js";
+import { countShared, testsReaching } from "./test-reach.js";
 
 /**
  * Code kinds and test kinds for Python (TP-2170): facts about code, not a policy
@@ -20,13 +21,14 @@ import type { TestSourceLink } from "./test-linker.js";
  * {@link testKindSourceMetrics} reads one file's bytes and writes what each
  * function does by itself, so a reused file carries those rows forward.
  * {@link computeTestKindMetrics} combines them over every file's `calls` edges
- * and test links on each index.
+ * on each index.
  */
 const CODE_FACT_METRICS: readonly [string, keyof CodeKindFacts][] = [
   ["symbol_kind_parser", "parser"],
   ["symbol_kind_io", "io"],
   ["symbol_output_signal", "outputSignal"],
-  ["symbol_global_writes", "globalWrites"],
+  ["symbol_state_writes", "stateWrites"],
+  ["symbol_unlisted_calls", "unlistedCalls"],
 ];
 
 const TEST_FACT_METRICS: readonly [string, keyof TestKindFacts][] = [
@@ -57,7 +59,10 @@ export const TEST_KIND_SOURCE_METRIC_NAMES: readonly string[] = [
 const PY_TEST_PATH = /(?:^|\/)(?:tests?\/|test_[^/]*\.py$|[^/]*_test\.py$|conftest\.py$)/;
 
 function flagRows<T>(nodeId: string, facts: T, table: readonly [string, keyof T][]): GraphMetric[] {
-  return table.map(([name, key]) => ({ nodeId, name, value: facts[key] ? 1 : 0, unit: "count" }));
+  return table.map(([name, key]) => {
+    const v = facts[key];
+    return { nodeId, name, value: typeof v === "number" ? v : v ? 1 : 0, unit: "count" };
+  });
 }
 
 /** Local rows for one Python file: code-kind facts on source functions, test-kind facts on test functions. */
@@ -66,7 +71,9 @@ export function testKindSourceMetrics(fileId: string, file: ParsedFile, symbolNa
   const root = file.tree.rootNode;
   const imports = importedNames(root);
   const testFile = PY_TEST_PATH.test(fileId);
-  const moduleNames = moduleAssignedNames(root);
+  const declared = new Set<string>();
+  forEachDeclaration(file, (_name, qualifiedName) => declared.add(qualifiedName));
+  const context = { imports, declared, moduleNames: moduleAssignedNames(root) };
   const guarded = mainGuardCallees(root);
   const out: GraphMetric[] = [];
   forEachDeclaration(file, (_name, qualifiedName, node) => {
@@ -76,7 +83,7 @@ export function testKindSourceMetrics(fileId: string, file: ParsedFile, symbolNa
       if (isTestFunctionName(qualifiedName)) out.push(...flagRows(nodeId, testKindFacts(node, imports), TEST_FACT_METRICS));
       return;
     }
-    const facts = codeKindFacts(qualifiedName, node, imports, moduleNames);
+    const facts = codeKindFacts(qualifiedName, node, context);
     if (guarded.has(qualifiedName)) facts.outputSignal = true;
     out.push(...flagRows(nodeId, facts, CODE_FACT_METRICS));
   });
@@ -87,7 +94,6 @@ interface TestKindInput {
   edges: readonly GraphEdge[];
   /** Every source-local row of the snapshot, fresh and reused alike. */
   sourceMetrics: readonly GraphMetric[];
-  links: readonly TestSourceLink[];
   /** Console-script targets such as `pkg.cli:main`, from {@link consoleScripts}. */
   entryPoints?: readonly string[];
 }
@@ -150,23 +156,45 @@ function entrySymbols(input: TestKindInput, sources: ReadonlySet<string>): Set<s
 
 type Facts = Map<string, Map<string, number>>;
 
-const flag = (facts: Facts, name: string, id: string): boolean => facts.get(name)?.get(id) === 1;
+const value = (facts: Facts, name: string, id: string): number => facts.get(name)?.get(id) ?? 0;
+const flag = (facts: Facts, name: string, id: string): boolean => value(facts, name, id) === 1;
 
 function outputBoundaries(input: TestKindInput, facts: Facts, sources: ReadonlySet<string>): Set<string> {
   const entries = entrySymbols(input, sources);
   return new Set([...sources].filter((id) => entries.has(id) || flag(facts, "symbol_output_signal", id)));
 }
 
-/** Symbols that do I/O, write output or globals, or reach one that does through their calls. */
-function impureSymbols(edges: readonly GraphEdge[], facts: Facts, sources: ReadonlySet<string>, boundary: ReadonlySet<string>): Set<string> {
-  const callers = callAdjacency(edges.map((e) => ({ ...e, srcId: e.dstId, dstId: e.srcId })));
-  const effectful = (id: string) =>
-    boundary.has(id) || flag(facts, "symbol_kind_io", id) || flag(facts, "symbol_global_writes", id);
-  return closure([...sources].filter(effectful), callers);
+/** Call sites per caller that a `calls` edge resolved, recursion included. */
+function resolvedSites(edges: readonly GraphEdge[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const e of edges) {
+    if (e.kind !== "calls") continue;
+    const sites = (e.attrs as CallEdgeAttrs | undefined)?.sites?.length ?? 1;
+    out.set(e.srcId, (out.get(e.srcId) ?? 0) + sites);
+  }
+  return out;
+}
+
+/**
+ * Symbols whose own effects rule out purity: I/O, output, a write to state they do not own, a call the
+ * graph did not resolve and the allow-list does not cover, or a resolved call to anything but a source function.
+ */
+function effectfulSymbols(edges: readonly GraphEdge[], facts: Facts, sources: ReadonlySet<string>, boundary: ReadonlySet<string>): string[] {
+  const resolved = resolvedSites(edges);
+  const callees = callAdjacency(edges);
+  return [...sources].filter(
+    (id) =>
+      boundary.has(id) ||
+      flag(facts, "symbol_kind_io", id) ||
+      flag(facts, "symbol_state_writes", id) ||
+      value(facts, "symbol_unlisted_calls", id) > (resolved.get(id) ?? 0) ||
+      (callees.get(id) ?? []).some((callee) => !sources.has(callee)),
+  );
 }
 
 function codeKindRows(input: TestKindInput, facts: Facts, sources: ReadonlySet<string>, boundary: ReadonlySet<string>): GraphMetric[] {
-  const impure = impureSymbols(input.edges, facts, sources, boundary);
+  const callers = callAdjacency(input.edges.map((e) => ({ ...e, srcId: e.dstId, dstId: e.srcId })));
+  const impure = closure(effectfulSymbols(input.edges, facts, sources, boundary), callers);
   return [...sources].flatMap((nodeId) => {
     const pure = !impure.has(nodeId) && !flag(facts, "symbol_kind_parser", nodeId);
     return [
@@ -176,44 +204,31 @@ function codeKindRows(input: TestKindInput, facts: Facts, sources: ReadonlySet<s
   });
 }
 
+/** Bitsets over `tests` of those with each test kind, in {@link TEST_FACT_METRICS} order. */
+function kindMasks(facts: Facts, tests: readonly string[]): Uint32Array[] {
+  return TEST_FACT_METRICS.map(([name]) => {
+    const mask = new Uint32Array(Math.ceil(tests.length / 32));
+    tests.forEach((id, i) => {
+      if (flag(facts, name, id)) mask[i >>> 5]! |= 1 << (i & 31);
+    });
+    return mask;
+  });
+}
+
 /**
- * Source symbols a test reaches through `calls` edges. A test that reaches none drives
- * its code from outside (a click `CliRunner`, a subprocess, a web test client), so it
- * reaches the output boundaries of the sources the test linker pairs its file with.
+ * Per source symbol, the tests of each kind that reach it through `calls` edges; written only where at least
+ * one test does. A test is credited only to what it actually reaches.
  */
-function reachedBy(testId: string, ctx: ReachContext): string[] {
-  const reached = [...closure([testId], ctx.callees)].filter((id) => ctx.sources.has(id));
-  if (reached.length > 0) return reached;
-  const linked = ctx.linkedSources.get(parseSymbolId(testId)?.fileId ?? "");
-  return linked ? [...ctx.boundary].filter((id) => linked.has(parseSymbolId(id)!.fileId)) : [];
-}
-
-interface ReachContext {
-  callees: Map<string, string[]>;
-  sources: ReadonlySet<string>;
-  boundary: ReadonlySet<string>;
-  linkedSources: Map<string, Set<string>>;
-}
-
-function linkedSourcesByTest(links: readonly TestSourceLink[]): Map<string, Set<string>> {
-  const out = new Map<string, Set<string>>();
-  for (const l of links) out.set(l.testId, (out.get(l.testId) ?? new Set()).add(l.sourceId));
-  return out;
-}
-
-/** Per source symbol, the tests of each kind that reach it; written only where at least one test does. */
-function testCountRows(input: TestKindInput, facts: Facts, ctx: ReachContext): GraphMetric[] {
-  const counts = new Map<string, number[]>();
-  for (const testId of facts.get(TEST_FACT_METRICS[0]![0])!.keys()) {
-    const kinds = TEST_FACT_METRICS.map(([name]) => (flag(facts, name, testId) ? 1 : 0));
-    for (const target of reachedBy(testId, ctx)) {
-      const sum = counts.get(target) ?? kinds.map(() => 0);
-      counts.set(target, sum.map((v, i) => v + kinds[i]!));
-    }
-  }
-  return [...counts].flatMap(([nodeId, sum]) =>
-    TESTS_BY_KIND_METRICS.map((name, i) => ({ nodeId, name, value: sum[i]!, unit: "count" })),
-  );
+function testCountRows(input: TestKindInput, facts: Facts, sources: ReadonlySet<string>): GraphMetric[] {
+  const tests = [...facts.get(TEST_FACT_METRICS[0]![0])!.keys()];
+  if (tests.length === 0) return [];
+  const reaching = testsReaching(callAdjacency(input.edges), tests);
+  const masks = kindMasks(facts, tests);
+  return [...sources].flatMap((nodeId) => {
+    const bits = reaching.get(nodeId);
+    if (!bits) return [];
+    return TESTS_BY_KIND_METRICS.map((name, k) => ({ nodeId, name, value: countShared(bits, masks[k]!), unit: "count" }));
+  });
 }
 
 /** Graph-wide code kinds and per-kind test counts over every Python function's local facts. */
@@ -222,13 +237,7 @@ export function computeTestKindMetrics(input: TestKindInput): GraphMetric[] {
   const sources = new Set(facts.get("symbol_kind_io")!.keys());
   if (sources.size === 0) return [];
   const boundary = outputBoundaries(input, facts, sources);
-  const ctx: ReachContext = {
-    callees: callAdjacency(input.edges),
-    sources,
-    boundary,
-    linkedSources: linkedSourcesByTest(input.links),
-  };
-  return [...codeKindRows(input, facts, sources, boundary), ...testCountRows(input, facts, ctx)];
+  return [...codeKindRows(input, facts, sources, boundary), ...testCountRows(input, facts, sources)];
 }
 
 const SCRIPT_SECTIONS = new Set(["[project.scripts]", "[tool.poetry.scripts]"]);
