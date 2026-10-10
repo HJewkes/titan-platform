@@ -2,6 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { followingApprovals } from "./approval-carry.js";
+import type { FixCarryResult } from "./fix-carry.js";
 import type { RemergeResult } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
@@ -10,6 +11,7 @@ const APPROVED = fakeSha("approved");
 const MERGED_UP = fakeSha("merged-up");
 const LATER = fakeSha("later");
 const EMPTY: RemergeResult = { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
+const NO_FIX: FixCarryResult = { carries: false, reason: "the fix changes 41 lines, over 40" };
 const RESOLVED: RemergeResult = { carries: false, paths: ["src/a.ts"], generatedPaths: [], reason: "the merge changed 1 path(s) outside the declared generated files" };
 
 const landPrompt = (head: string, table = "authority", row = "MRG-AU"): string =>
@@ -25,18 +27,20 @@ interface Rig {
 interface RigOptions {
   kind?: string;
   remerge?: RemergeResult;
+  fix?: FixCarryResult;
   /** Heads whose review is a MERGE; every head by default. */
   reviewed?: (head: string) => boolean;
   /** The owner's answer at each gate; merge at the asked head by default. */
   answer?: (head: string) => Record<string, unknown>;
 }
 
-function rig({ kind = "correctness", remerge = EMPTY, reviewed = () => true, answer = (head) => ({ decision: "merge", headSha: head }) }: RigOptions = {}): Rig {
+function rig({ kind = "correctness", remerge = EMPTY, fix = NO_FIX, reviewed = () => true, answer = (head) => ({ decision: "merge", headSha: head }) }: RigOptions = {}): Rig {
   const gates: string[] = [];
   const steps: Rig["steps"] = [];
   const respond = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope:")) return { kind, baseRef: "main" };
     if (stepId.startsWith("sh-remerge:")) return remerge;
+    if (stepId.startsWith("sh-approval-carry:fix:")) return fix;
     return input;
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
@@ -63,7 +67,47 @@ describe("an approve-merge answer following the head", () => {
     expect(answer.data).toEqual({ decision: "merge", headSha: MERGED_UP });
     expect(r.gates).toEqual([APPROVED]);
     expect(r.steps.find((step) => step.stepId === `sh-remerge:${MERGED_UP}`)!.input).toMatchObject({ fromHead: APPROVED, head: MERGED_UP, baseRef: "main" });
-    expect(r.steps.find((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)!.input).toEqual({ decision: "merge", headSha: MERGED_UP, fromHead: APPROVED, rule: "remerge-empty" });
+    expect(r.steps.find((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)!.input).toEqual({ decision: "merge", headSha: MERGED_UP, fromHead: APPROVED, rule: "remerge-empty", proof: { headTree: "t", mergeTree: "t", paths: [] } });
+  });
+
+  it("follows a small fix the merge-up probe refused, and records the diff it rests on", async () => {
+    const fix: FixCarryResult = { carries: true, rule: "small-fix", base: "b", headTree: "h", mergeTree: "m", changedLines: 12, paths: ["src/a.ts"] };
+    const r = rig({ remerge: RESOLVED, fix });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    const answer = await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(answer.data).toEqual({ decision: "merge", headSha: MERGED_UP });
+    expect(r.gates).toEqual([APPROVED]);
+    expect(r.steps.find((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)!.input).toEqual({
+      decision: "merge",
+      headSha: MERGED_UP,
+      fromHead: APPROVED,
+      rule: "small-fix",
+      proof: { base: "b", headTree: "h", mergeTree: "m", changedLines: 12, paths: ["src/a.ts"] },
+    });
+  });
+
+  it("asks the owner again when the fix probe refuses, whatever rule it names", async () => {
+    const fix: FixCarryResult = { carries: false, rule: "small-fix", reason: "refused" };
+    const r = rig({ remerge: RESOLVED, fix });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)).toBe(false);
+  });
+
+  it("asks the owner again at a fix with no standing verdict at its head, even when the diff is small", async () => {
+    const fix: FixCarryResult = { carries: true, rule: "small-fix", changedLines: 12, paths: ["src/a.ts"] };
+    const r = rig({ remerge: RESOLVED, fix, reviewed: (head) => head !== MERGED_UP });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps).toEqual([]);
   });
 
   it("asks the owner again when the later gate names another base, and follows on the same one", async () => {
@@ -94,7 +138,7 @@ describe("an approve-merge answer following the head", () => {
     await r.ask("approve-merge:1", landPrompt(MERGED_UP));
 
     expect(r.gates).toEqual([APPROVED, MERGED_UP]);
-    expect(r.steps.some((step) => step.stepId.startsWith("sh-approval-carry"))).toBe(false);
+    expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)).toBe(false);
   });
 
   it("follows a chain of merge-ups, each from the head the last answer covered", async () => {

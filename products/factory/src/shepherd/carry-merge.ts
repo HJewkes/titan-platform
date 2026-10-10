@@ -10,18 +10,20 @@ import { seatFixFirst } from "./external-review.js";
 import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
+import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
 
 const CARRY_SCOPE_STEP = "sh-carry-scope";
 const CARRY_SEAT_STEP = "sh-carry-seat";
-/** Records an approve-merge answer that followed a head to its remerge-clean update, so the ledger shows why no gate opened. */
+/** Records an approve-merge answer that followed a head to its remerge-clean update or small fix, so the ledger shows why no gate opened. */
 export const APPROVAL_CARRY_STEP = "sh-approval-carry";
 export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SCOPE_STEP, kind: "dispatch" },
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
   { id: REMERGE_STEP, kind: "dispatch" },
+  { id: FIX_CARRY_STEP, kind: "dispatch" },
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
   { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
@@ -216,6 +218,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
     carryScopeRoute(deps),
     carrySeatRoute(deps, wiring),
     remergeRoute(deps.now, wiring?.carry),
+    fixCarryRoute(deps.now, wiring?.carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
     mergeUpRoute(deps.now),
   ];
