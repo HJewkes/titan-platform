@@ -1,14 +1,14 @@
 # review-panel
 
-**Tier 2 · domain.** Depends on [`session-read`](/reference/session-read).
+**Tier 2 · domain.** Depends on [`evidence`](/reference/evidence) and [`session-read`](/reference/session-read).
 
 ```sh
 npm install @titan-design/review-panel
 ```
 
 Status: types, ports, the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`), the planner (`planPanel`,
-`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`), the reviewer briefs and the verdict acceptor (`acceptVerdict`). The
-aggregate lands in a later slice of TP-1916.
+`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`), the reviewer briefs, the verdict acceptor (`acceptVerdict`) and
+the aggregate (`aggregate`).
 
 ## The problem it solves
 
@@ -52,9 +52,20 @@ every caller plans, briefs and aggregates the same way:
   FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
-  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
-  message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
-  `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
+  (`parseOwnerBrief`).
+- `aggregate(plan, results, input)`: the pure panel verdict from the members' results
+  (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
+  a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other
+  value is a missing member. Any blocking FIX_FIRST makes it `FIX_FIRST` and
+  lists that member in `dissent`; `MERGE` needs every blocking member's MERGE. A blocking
+  member with no verdict is `no-verdict` (`timeout` when every such member timed out), and
+  a plan with no blocking member is `no-verdict`. Advisory members never block; their
+  FIX_FIRST findings ride along with `blocking: false`, and each finding that cites no
+  `path:line` existing in `input.source` (checked with `evidence`) is dropped. A blocking
+  finding is kept whatever it cites. Findings are in shape order, each member bounded to an
+  equal share of 16,000 characters. `satisfiesG10` needs a g10 class, a MERGE, no degraded
+  member, the correctness member at an opus profile (a key of `sonnetFor`) and the
+  adversary's MERGE.
 
 ## When to reach for it
 
@@ -133,8 +144,11 @@ const brief = shapeBrief("adversary", {
   verdict so evals compare variants, not ids.
 - The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
   that does not parse, or names another head, is ignored.
-- `tests` is advisory in the plan. Aggregation makes it block when the fix-proof result
-  is `vacuous` or `no-tests`.
+- `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
+  `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
+  member, that seat counts as missing, so the panel never says MERGE.
+- `aggregate` reads `sonnetFor` from its input, not the plan. Pass the same table you gave
+  `planPanel`, or `satisfiesG10` stays false for a custom opus profile.
 
 ## Where it came from
 

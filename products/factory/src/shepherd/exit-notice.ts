@@ -26,6 +26,8 @@ export interface LastReport {
 export interface ExitNoticePorts {
   /** The agent-chat name of the one seat that owns `repo`, or undefined when no single seat does. */
   seatFor(repo: string): string | undefined;
+  /** The config's shepherd.hubSeat, told about a held run whose policy names no seat; absent when none is set. */
+  hubSeat?(): string | undefined;
   lastReport(target: { repo: string; pr: number; head: string }, agent: string, sessionId?: string): Promise<LastReport | undefined>;
   send(seat: string, text: string): Promise<void>;
 }
@@ -184,10 +186,11 @@ interface ExitNoticeAgents {
   message(name: string, message: string): Promise<void>;
 }
 
-/** The production ports: the seat book re-read per notice, the agent's transcript, and an agent-chat message to the seat. */
-export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents): ExitNoticePorts {
+/** The production ports: the seat book re-read per notice, the hub seat, the agent's transcript, and an agent-chat message to the seat. */
+export function configuredExitNotice(seats: () => SeatBook, agents: ExitNoticeAgents, hubSeat?: string): ExitNoticePorts {
   return {
     seatFor: (repo) => singleSeat(seats(), repo),
+    hubSeat: () => hubSeat,
     lastReport: transcriptLastReport(() => agents.roster()),
     send: (seat, text) => agents.message(seat, text),
   };

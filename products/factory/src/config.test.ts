@@ -164,6 +164,14 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", g10ChangedLines: 0 } } })))).toThrow(/g10ChangedLines/);
   });
 
+  it("reads the review checkout floors and concurrent cap, and rejects a cap that is not a positive integer", () => {
+    const review = { profile: "rv", minFreeBytes: 1_073_741_824, minFreeInodesPct: 15, maxConcurrent: 3 };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", maxConcurrent: 0 } } })))).toThrow(/maxConcurrent/);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", minFreeInodesPct: 101 } } })))).toThrow(/minFreeInodesPct/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 

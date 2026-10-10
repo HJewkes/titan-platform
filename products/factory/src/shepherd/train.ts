@@ -139,6 +139,29 @@ export function rideTrain(route: StepRoute, deps: TrainDeps): StepRoute {
   };
 }
 
+const WaitTarget = z.looseObject({ repo: z.string() });
+
+/**
+ * Wraps `base-wait` so a shepherd-pr run gives its repo's train up before it waits on a retarget, which can take any
+ * time: a refused base never wedges the repo. The run boards again at its next merge.
+ */
+export function leaveTrainToWait(route: StepRoute, train: MergeTrainRef): StepRoute {
+  return {
+    ...route,
+    runner: {
+      run: async (input) => {
+        if (input.workflowName !== TRAIN_WORKFLOW) return route.runner.run(input);
+        try {
+          train.get().leave(WaitTarget.parse(JSON.parse(input.prompt)).repo, input.runId);
+        } catch (error) {
+          return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
+        }
+        return route.runner.run(input);
+      },
+    },
+  };
+}
+
 /** Undefined means merge now; a string says why land must read CI first. */
 async function boardingWait(deps: TrainDeps, target: MergeInput, runId: string, signal: AbortSignal): Promise<string | undefined> {
   const boarding = await untilBoarded(deps, target, runId, signal);

@@ -137,13 +137,10 @@ async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: Workf
   const registration = sources.registration(run.id);
   const runPr = run.params.pr === undefined ? registration?.pr : Number(run.params.pr);
   if (!target || !offersAbandon(gate) || run.params.repo !== target.repo || runPr !== target.pr) return undefined;
-  const land = stepOf(gate.id) === MERGE_GATE ? landGate(gate) : undefined;
-  const facts = land && runFacts(sources, run, gate, land);
-  if (stepOf(gate.id) === MERGE_GATE && !facts) return undefined;
   const pull = await sources.port.getPr(target.repo, target.pr);
   const state = pull.merged ? "merged" : pull.state === "closed" ? "closed" : undefined;
   if (!state) return undefined;
-  return { kind: "pr-gone", gateId: gate.id, ...target, state, ...(facts && { run: facts }), readAt: readAt(sources) };
+  return { kind: "pr-gone", gateId: gate.id, ...target, state, readAt: readAt(sources) };
 }
 
 function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {
