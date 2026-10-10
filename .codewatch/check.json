@@ -21,7 +21,8 @@
           "packages/tool-guard",
           "packages/eslint-plugin",
           "packages/app-paths",
-          "packages/anthropic-account"
+          "packages/anthropic-account",
+          "packages/test-kit"
         ],
         "1": [
           "packages/retrieval",
@@ -55,7 +56,8 @@
           "packages/coordinator",
           "packages/owner-queue",
           "packages/review-panel",
-          "packages/pm"
+          "packages/pm",
+          "packages/throughput"
         ],
         "ui": [
           "packages/react-app"
@@ -87,7 +89,8 @@
           "packages/tool-guard",
           "packages/eslint-plugin",
           "packages/app-paths",
-          "packages/anthropic-account"
+          "packages/anthropic-account",
+          "packages/test-kit"
         ],
         [
           "packages/retrieval",
@@ -121,7 +124,8 @@
           "packages/coordinator",
           "packages/owner-queue",
           "packages/review-panel",
-          "packages/pm"
+          "packages/pm",
+          "packages/throughput"
         ],
         [
           "packages/react-app"

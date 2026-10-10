@@ -35,6 +35,7 @@ graph TD
     locator["locator"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
+    testKit["test-kit"]
     toolGuard["tool-guard"]
   end
   subgraph T1["Tier 1 · engines"]
@@ -69,6 +70,7 @@ graph TD
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
     styleProfile["style-profile"]
+    throughput["throughput"]
     workflow["workflow"]
   end
   subgraph UI["UI"]
@@ -117,6 +119,7 @@ graph TD
   registry --> rpcProtocol
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewPanel --> fixProof
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
@@ -202,7 +205,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, `style-profile`, and `throughput` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.

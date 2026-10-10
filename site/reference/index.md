@@ -26,6 +26,7 @@ Domain-free building blocks. No titan dependencies.
 | [`locator`](/reference/locator) | Byte-offset provenance locators and raw-mirror durability helpers | none |
 | [`rpc-protocol`](/reference/rpc-protocol) | Dependency-free wire contract between a titan daemon and its clients: envelope, exit codes, routes, SSE vocabulary, CommandMap | none |
 | [`store-sqlite`](/reference/store-sqlite) | SQLite table-factory kit: bi-temporal edges, current-state entities with soft expiry, content-addressed cache, contentless FTS5, watermark, migrations | none |
+| [`test-kit`](/reference/test-kit) | Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast | none |
 | [`tool-guard`](/reference/tool-guard) | Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer | `authority` |
 
 ## Tier 1 — engines
@@ -63,13 +64,14 @@ Modules that know about a subject: transcripts, code, rules.
 | [`owner-queue`](/reference/owner-queue) | The owner queue core: one OwnerItem schema across every store of record, the QueueSource port, merge-by-keys and rank as pure functions | `review-schema` |
 | [`pm`](/reference/pm) | Project-management schemas: the zod task schema and its type, as active-work stores tasks | none |
 | [`queue-mirror`](/reference/queue-mirror) | Projects a local queue of human-actionable items into a Matrix room and folds the owner's verdicts back | `hitl`, `matrix-bus`, `store-sqlite` |
-| [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `session-read` |
+| [`review-panel`](/reference/review-panel) | Review-panel types and the reviewer ports a caller satisfies | `fix-proof`, `session-read` |
 | [`session-analytics`](/reference/session-analytics) | Pricing, session classification, banding, the cost report and the session timeline over mined session data | `agent-protocol`, `session-graph`, `session-read`, `store-sqlite` |
 | [`session-graph`](/reference/session-graph) | Fold session events into the activity graph on store-sqlite | `locator`, `session-read`, `store-sqlite`, `agent-protocol` |
 | [`session-read`](/reference/session-read) | Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators | `locator`, `agent-protocol`, `anthropic-account` |
 | [`style-analyzer`](/reference/style-analyzer) | Tree-sitter style extractors that turn source files into observations, and the aggregator that turns observations into a style profile with confidence and stability | `code-parser`, `style-profile` |
 | [`style-checker`](/reference/style-checker) | Run external lint tools (ruff, ESLint) against configs generated from a style profile, normalize their output into one diagnostic shape, and diff observations against a profile | `style-analyzer`, `style-profile` |
 | [`style-profile`](/reference/style-profile) | Declare one code-style profile and export it as enforcement artifacts: ESLint and ruff configs, EditorConfig, Claude rules, hooks, a skill, and markdown | none |
+| [`throughput`](/reference/throughput) | Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals | none |
 | [`workflow`](/reference/workflow) | Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart | `agent`, `agent-protocol`, `authority`, `hitl`, `store-sqlite` |
 
 ## UI

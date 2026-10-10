@@ -35,6 +35,8 @@ import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, type PrTarget, type WakeRun } from "./gates.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
+import { heldRepair, heldRepairRoutes } from "./held-repair.js";
+import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 
 export { SHEPHERD_STEPS };
@@ -46,6 +48,8 @@ export interface ShepherdPrParams {
   policy: EffectivePolicy;
   /** Parsed before land, so a malformed list fails the run before any merge. */
   after: AfterStage[];
+  /** The registration's `<initiative>/<ID>`; its id is named in the squash subject. */
+  task?: string;
   /** The changesets Version Packages PR: a release preflight stands in for the reviewer. */
   release: boolean;
 }
@@ -60,7 +64,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   if (pr !== undefined && (!Number.isInteger(pr) || pr <= 0)) throw new Error(`shepherd-pr: param pr must be a positive integer, got ${rawPr}`);
   if (pr === undefined && !branch) throw new Error("shepherd-pr: param pr or branch is required");
   const policy = runPolicyCeiling(ctx.param("policy"));
-  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
+  return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, ...(ctx.param("task") ? { task: ctx.param("task") } : {}), after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
 interface ShepherdRun extends WakeRun {
@@ -75,6 +79,7 @@ interface ShepherdRun extends WakeRun {
   policyReads: number;
   carryScopeReads: number;
   release: boolean;
+  task?: string;
   lastCi?: CiSnapshot;
   /** Stuck rounds at this task: a silent or timed-out reviewer, an unanswered hold, or a conflict. */
   failedRounds: number;
@@ -111,7 +116,7 @@ class LeaveLand extends Error {
 export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams, phases: ShepherdPhases): Promise<LandOutcome> {
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
-    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release },
+    ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
     ...{ failedRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
@@ -129,7 +134,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
 /** Undefined means a review send-back ended this round from inside `land` and the next round lands. */
 async function landRound(ctx: WorkflowContext, run: ShepherdRun, options: LandOptions): Promise<LandOutcome | undefined> {
   try {
-    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options);
+    return await land(ctx, { ...run.target, method: run.policy.mergeMethod, taskIds: taskIdOf(run.task), round: run.state.round, updateBound: run.updateBound, settleHold: run.settleHold }, options);
   } catch (error) {
     if (error instanceof LeaveLand) return error.outcome;
     throw error;
@@ -167,11 +172,12 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 /**
  * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
  * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
- * a wake past the budget asks the owner instead and leaves the round.
+ * a wake past the budget asks the owner instead and leaves the round. A held run spends none and wakes nobody.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   run.trail.woken = kind;
   if (await awaitedPast(run, headSha)) return true;
+  if (await heldRepair(run, kind, headSha, payload)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
 }
@@ -360,6 +366,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps),
+    ...heldRepairRoutes(deps),
   ];
 }
 

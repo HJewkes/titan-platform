@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import plugin, { recommended } from "./index.js";
 
 describe("recommended", () => {
-  it("enables exactly the three rules at error under the titan namespace", () => {
+  it("enables every rule at error under the titan namespace", () => {
     expect(recommended.rules).toEqual({
       "titan/max-function-lines": "error",
+      "titan/no-chained-type-assertions": "error",
       "titan/no-commented-code": "error",
+      "titan/no-internal-module-mock": "error",
       "titan/todo-needs-issue": "error",
     });
   });

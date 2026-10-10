@@ -1,8 +1,11 @@
+import { fileURLToPath } from "node:url";
+import type { MetricsEntryRead } from "@titan-design/health/metrics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
+import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
@@ -12,6 +15,7 @@ import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
 import { claudeTranscripts, formatReviewCost, reviewCost } from "./shepherd/stats-cost.js";
 import { formatRedAfterMerge, redAfterMerge } from "./shepherd/stats-quality.js";
+import { evaluateSlo, formatSlo, readRegistry } from "./shepherd/slo.js";
 
 const ALL_STATUSES: WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,7 +27,12 @@ interface StatsOpts {
   cost?: boolean;
   rereviews?: boolean;
   failures?: boolean;
+  slo?: boolean;
+  registry?: string;
 }
+
+/** This checkout's registry entry: the factory runs from its own checkout, and src/ and dist/ sit at the same depth. */
+const SHEPHERD_REGISTRY = fileURLToPath(new URL("../../../metrics/shepherd.yml", import.meta.url));
 
 function formatStages(weeks: readonly StageWeek[]): string[] {
   const lines = weeks.flatMap((w) => [`${w.repo}  ${w.week}`, ...w.stages.map((s) => `  ${s.stage}  runs ${s.runs}  median ${s.medianMinutes}m  p90 ${s.p90Minutes}m  max ${s.maxMinutes}m`)]);
@@ -54,6 +63,13 @@ async function costReport(runs: readonly WorkflowRun[], opts: StatsOpts): Promis
   return opts.json ? `${JSON.stringify({ reviewCost: cost }, null, 2)}\n` : formatReviewCost(cost);
 }
 
+/** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
+function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): Promise<string> {
+  const runs = shepherdRuns(db);
+  const base = { runs, gates: readAllGates(db), events: eventsSince(db), now, cost: (range: { from?: string; to?: string }) => reviewCost(runs, claudeTranscripts(), range) };
+  return evaluateSlo(entry, base, { from: opts.from, to: opts.to }).then((results) => (opts.json ? `${JSON.stringify({ slo: results }, null, 2)}\n` : formatSlo(results)));
+}
+
 /** The review causes are their own section, after the others, so the other sections read as before. */
 function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
   const range = { from: opts.from, to: opts.to };
@@ -71,6 +87,16 @@ function statsReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: 
   return `${formatStats(rows, friction, stages, overrides)}${lines}${causes.length === 0 ? "" : `\nreview causes:\n${causesReport(causes, false)}`}`;
 }
 
+function sloOrExit(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number, io: CliIo, setExit: (code: number) => void): Promise<void> | void {
+  let entry: MetricsEntryRead;
+  try {
+    entry = readRegistry(opts.registry ?? SHEPHERD_REGISTRY);
+  } catch (error) {
+    return (io.stderr(`error: cannot read the metrics registry: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
+  }
+  return sloReport(entry, db, opts, now).then((report) => io.stdout(report));
+}
+
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
@@ -81,6 +107,8 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--json", "print the rows as JSON")
     .option("--cost", "instead: reviewer dollars and tokens per merged PR, per repo and ISO week, read from the verdicts' transcripts")
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
+    .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
+    .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
     .action((opts: StatsOpts) => {
       const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
@@ -92,6 +120,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
         return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
       }
       try {
+        if (opts.slo) return sloOrExit(db, opts, now(), io, setExit);
         if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
         io.stdout(statsReport(db, opts, now()));
       } finally {
