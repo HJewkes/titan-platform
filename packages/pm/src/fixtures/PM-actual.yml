@@ -1,0 +1,22 @@
+id: PM-1
+title: Task with actuals and datetimes
+priority: 2
+estimate: 2
+status: done
+created: 2026-10-08T14:03:22Z
+started_at: 2026-10-08T15:00:00Z
+updated: 2026-10-09
+done_at: 2026-10-09T01:00:00Z
+claimedHours:
+  - hours: 4
+    by: planner
+    at: 2026-10-08T14:10:00Z
+actual:
+  agentHours: 2.5
+  reviewAgentHours: 0.5
+  usd: 9.87
+  serviceWallHours: 10
+  peakContext: 150000
+  contextAtFirstDeliverable: 90000
+  at: 2026-10-09T02:00:00Z
+  model: a1b2c3d
