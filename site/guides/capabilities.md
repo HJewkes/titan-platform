@@ -748,7 +748,7 @@ Key exports:
 - `schema`: `ownerItemSchema`, `sourceRefSchema`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `keys`: `askKey`, `componentKey`, `prKey`, `relationKind`, `roundAskKey`, `tokenKey`, `topicKey`
-- +46 more in the [reference page](/reference/owner-queue)
+- +52 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-pm"></a>
 

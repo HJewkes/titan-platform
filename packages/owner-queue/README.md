@@ -35,6 +35,13 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   canonical PR merge key.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.
+- `recheck(open, answered)` re-checks open items against answers already given and returns
+  `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
+  `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its
+  `ask:` key is newer than its `openedAt` and is not pinned to another head of a PR the item
+  names; a PR key with no `@<sha>` on either side pins nothing. An older or other-head answer on the same `ask:` key flags `conflict` when it is not
+  the item's recommendation (free text and change requests included) and `reasked` otherwise.
+  Sharing only a `component:`, `token:` or `topic:` key flags `related-answer` and never drops.
 - `staleLabel(item, evidence)` returns `{ status: "gone-elsewhere", rule, reason }` or null for
   an open item, from a snapshot of source facts the caller read: `prs[<owner>/<repo>#<n>]`
   (state and head), `tasks[id].status`, `askers[name].retired` and `onNoAnswer[itemId]`. Rules,
