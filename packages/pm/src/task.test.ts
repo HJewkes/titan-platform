@@ -160,3 +160,95 @@ describe("TaskSchema", () => {
     expect(TaskSchema.safeParse({ ...validBase, title: "" }).success).toBe(false);
   });
 });
+
+describe("TaskSchema datetime-tolerant dates", () => {
+  it("parses a date-only task and a datetime task", () => {
+    expect(TaskSchema.safeParse(validBase).success).toBe(true);
+    const datetime = {
+      ...validBase,
+      created: "2026-10-08T14:03:22.123Z",
+      done_at: "2026-10-09T01:00:00Z",
+      started_at: "2026-10-08T15:00:00Z",
+    };
+    expect(TaskSchema.safeParse(datetime).success).toBe(true);
+  });
+
+  it.each(["2026-10-08T25:00:00Z", "2026-02-30T10:00:00Z", "2026-10-08T10:00", "not-a-date", "2026-10-08 10:00:00Z"])(
+    "rejects the malformed datetime %s",
+    (value) => {
+      expect(TaskSchema.safeParse({ ...validBase, created: value }).success).toBe(false);
+      expect(TaskSchema.safeParse({ ...validBase, done_at: value }).success).toBe(false);
+      expect(TaskSchema.safeParse({ ...validBase, started_at: value }).success).toBe(false);
+    },
+  );
+
+  it("keeps started_at optional and rejects a date-only value", () => {
+    expect(TaskSchema.safeParse({ ...validBase, started_at: "2026-10-08" }).success).toBe(false);
+  });
+
+  it("still requires updated to be a date", () => {
+    expect(TaskSchema.safeParse({ ...validBase, updated: "2026-10-08T14:03:22Z" }).success).toBe(false);
+  });
+});
+
+describe("TaskSchema actual block", () => {
+  const actual = {
+    agentHours: 1.5,
+    reviewAgentHours: 0.25,
+    usd: 12.34,
+    serviceWallHours: 3,
+    peakContext: 180000,
+    contextAtFirstDeliverable: 120000,
+    at: "2026-10-09T02:00:00Z",
+    model: "a1b2c3d",
+  };
+
+  it("accepts a populated actual block", () => {
+    const result = TaskSchema.safeParse({ ...validBase, actual });
+    expect(result.success).toBe(true);
+    expect(result.data?.actual).toEqual(actual);
+  });
+
+  it("accepts a task with no actual block", () => {
+    expect(TaskSchema.parse(validBase).actual).toBeUndefined();
+  });
+
+  it.each([
+    { ...actual, agentHours: -1 },
+    { ...actual, usd: "12" },
+    { ...actual, at: "yesterday" },
+    { ...actual, peakContext: -5 },
+    "nope",
+  ])("rejects the malformed actual block %#", (bad) => {
+    expect(TaskSchema.safeParse({ ...validBase, actual: bad }).success).toBe(false);
+  });
+});
+
+describe("TaskSchema claimedHours", () => {
+  it("accepts a list of claims", () => {
+    const claimedHours = [{ hours: 4, by: "bd-planner", at: "2026-10-08T10:00:00Z" }];
+    expect(TaskSchema.parse({ ...validBase, claimedHours }).claimedHours).toEqual(claimedHours);
+  });
+
+  it("accepts a task with no claims", () => {
+    expect(TaskSchema.parse(validBase).claimedHours).toBeUndefined();
+  });
+
+  it.each([
+    [{ hours: -1, by: "x", at: "2026-10-08T10:00:00Z" }],
+    [{ hours: 2, by: "", at: "2026-10-08T10:00:00Z" }],
+    [{ hours: 2, by: "x", at: "soon" }],
+    [{ by: "x", at: "2026-10-08T10:00:00Z" }],
+  ])("rejects the malformed claim %#", (claim) => {
+    expect(TaskSchema.safeParse({ ...validBase, claimedHours: [claim] }).success).toBe(false);
+  });
+});
+
+describe("new task fixture", () => {
+  it("parses a task with datetimes, an actual block and claimed hours", () => {
+    const task = TaskSchema.parse(readFixture("PM-actual.yml"));
+    expect(task.actual?.agentHours).toBe(2.5);
+    expect(task.claimedHours).toHaveLength(1);
+    expect(task.started_at).toBe("2026-10-08T15:00:00Z");
+  });
+});
