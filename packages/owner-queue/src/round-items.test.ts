@@ -129,6 +129,38 @@ describe("answeredFromFeedback", () => {
     expect(fill!.answer).toEqual({ text: "Outline", by: ROUND_ANSWERER, at: SUBMITTED });
   });
 
+  it("answers a merge-bound revision request with no comment as a change request", () => {
+    const [ship] = answeredFromFeedback(feedback([{ questionId: "ship", revisionRequested: true }]), designRound(), context);
+
+    expect(ship!.lens).toBe("blocking-merge");
+    expect(ship!.answer).toEqual({ changeRequested: true, by: ROUND_ANSWERER, at: SUBMITTED });
+  });
+
+  it("keeps a revision request's comment as text beside the change request", () => {
+    const answers = feedback([{ questionId: "ship", revisionRequested: true, comment: "Fix the focus ring first" }]);
+
+    const [ship] = answeredFromFeedback(answers, designRound(), context);
+
+    expect(ship!.answer).toEqual({ changeRequested: true, text: "Fix the focus ring first", by: ROUND_ANSWERER, at: SUBMITTED });
+  });
+
+  it("keeps a revision request even when a partial submit lists it unanswered", () => {
+    const answers = feedback([{ questionId: "ship", revisionRequested: true }], { unansweredQuestionIds: ["ship"] });
+
+    expect(answeredFromFeedback(answers, designRound(), context).map((each) => each.answer?.changeRequested)).toEqual([true]);
+  });
+
+  it("maps pick-many picks through the bindings to option ids and keeps variant comments", () => {
+    const question = { id: "tones", kind: "pick-many" as const, prompt: "Which tones?", options: ["Info", "Warn", "Error"] };
+    const bindings = [{ questionId: "tones", itemIds: ["tones-item"], options: { Info: "info", Warn: "warn", Error: "error" } }];
+    const variantComments = [{ key: "alert--warn", comment: "Too loud" }];
+    const answers = feedback([{ questionId: "tones", picks: ["Error", "Info", "Mauve"], variantComments }]);
+
+    const [tones] = answeredFromFeedback(answers, designRound({ questions: [question], sections: undefined }), { ...context, bindings });
+
+    expect(tones!.answer).toEqual({ optionIds: ["error", "info"], text: "Mauve", variantComments, by: ROUND_ANSWERER, at: SUBMITTED });
+  });
+
   it("refuses feedback for another round", () => {
     expect(() => answeredFromFeedback(feedback([], { round: 4 }), designRound(), context)).toThrow(/alert round 4.*alert round 3/);
   });

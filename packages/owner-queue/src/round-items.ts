@@ -110,29 +110,52 @@ export function fromRoundQuestions(manifest: ManifestInput, roundId: string, con
   return parsed.questions.map((question) => questionItem(question, parsed, roundId, context));
 }
 
-function pickOf(answer: Answer, question: Question, binding: RoundQuestionBinding | undefined): string | undefined {
-  if (question.kind !== "pick-one" || answer.pick === undefined || !question.options.includes(answer.pick)) return undefined;
-  return optionId(answer.pick, binding);
+interface Picks {
+  ids: string[];
+  unoffered: string[];
 }
 
-function textOf(answer: Answer, hasPick: boolean): string | undefined {
-  const given = answer.text ?? answer.picks?.join(", ") ?? (answer.value === undefined ? undefined : String(answer.value));
-  const unmatchedPick = hasPick ? undefined : answer.pick;
-  const parts = [given ?? unmatchedPick, answer.comment].filter((part): part is string => !!part?.trim());
+/** Picks the item offers become option ids; any other pick is kept as text so nothing the owner chose is lost. */
+function picksOf(answer: Answer, question: Question, binding: RoundQuestionBinding | undefined): Picks {
+  const labels = question.kind === "pick-many" ? (answer.picks ?? []) : answer.pick === undefined ? [] : [answer.pick];
+  const offered = optionsOf(question, binding) ?? [];
+  const ids = labels.flatMap((label) => offered.find((option) => option.label === label)?.id ?? []);
+  const unoffered = labels.filter((label) => !offered.some((option) => option.label === label));
+  return { ids, unoffered };
+}
+
+function textOf(answer: Answer, unoffered: string[]): string | undefined {
+  const given = answer.text ?? (answer.value === undefined ? undefined : String(answer.value));
+  const parts = [given, unoffered.join(", "), answer.comment].filter((part): part is string => !!part?.trim());
   return parts.length === 0 ? undefined : parts.join("\n");
 }
 
+function choiceOf(question: Question, ids: string[]): Pick<OwnerAnswer, "optionId" | "optionIds"> {
+  if (ids.length === 0) return {};
+  return question.kind === "pick-many" ? { optionIds: ids } : { optionId: ids[0]! };
+}
+
 function ownerAnswer(answer: Answer, question: Question, binding: RoundQuestionBinding | undefined, at: string): OwnerAnswer | undefined {
-  const picked = pickOf(answer, question, binding);
-  const text = textOf(answer, picked !== undefined);
-  if (picked === undefined && text === undefined) return undefined;
-  return { ...(picked === undefined ? {} : { optionId: picked }), ...(text === undefined ? {} : { text }), by: ROUND_ANSWERER, at };
+  const { ids, unoffered } = picksOf(answer, question, binding);
+  const text = textOf(answer, unoffered);
+  const variantComments = answer.variantComments?.filter((each) => each.comment.trim() !== "") ?? [];
+  const changeRequested = answer.revisionRequested === true;
+  if (ids.length === 0 && text === undefined && variantComments.length === 0 && !changeRequested) return undefined;
+  return {
+    ...choiceOf(question, ids),
+    ...(text === undefined ? {} : { text }),
+    ...(changeRequested ? { changeRequested } : {}),
+    ...(variantComments.length === 0 ? {} : { variantComments }),
+    by: ROUND_ANSWERER,
+    at,
+  };
 }
 
 /**
  * The answered questions of a feedback@1 file as answered OwnerItems: the same items
  * fromRoundQuestions gives, with the owner's answer at `submittedAt`. With the round's bindings a
- * pick maps back to the option id of the item it asked. Questions left unanswered are omitted.
+ * pick maps back to the option id of the item it asked. Questions left unanswered are omitted,
+ * but a revision request is always kept, because it must still block a ship.
  * Throws when either file is invalid or the feedback is for another unit or round.
  */
 export function answeredFromFeedback(feedback: FeedbackInput, manifest: ManifestInput, context: AnsweredContext): OwnerItem[] {
@@ -144,7 +167,7 @@ export function answeredFromFeedback(feedback: FeedbackInput, manifest: Manifest
   const skipped = new Set(answers.unansweredQuestionIds ?? []);
   return answers.answers.flatMap((answer) => {
     const question = round.questions.find((each) => each.id === answer.questionId);
-    if (question === undefined || skipped.has(question.id)) return [];
+    if (question === undefined || (skipped.has(question.id) && answer.revisionRequested !== true)) return [];
     const binding = context.bindings?.find((each) => each.questionId === question.id);
     const given = ownerAnswer(answer, question, binding, answers.submittedAt);
     if (given === undefined) return [];

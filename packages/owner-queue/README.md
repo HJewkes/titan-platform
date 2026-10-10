@@ -62,5 +62,6 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   single-item question takes its item's id and option ids; a principle stays a round item.
   `answeredFromFeedback(feedback, manifest, { roundId, openedAt, bindings? })` returns the
   same items for the questions a feedback@1 file answered, `answered` at `submittedAt` by
-  `ROUND_ANSWERER`. Both parse with `ManifestSchema` and `FeedbackSchema` and throw on an
+  `ROUND_ANSWERER`. A revision request becomes `changeRequested: true`, pick-many picks
+  become `optionIds`, and variant comments are kept. Both parse with `ManifestSchema` and `FeedbackSchema` and throw on an
   invalid file or a feedback for another unit or round.

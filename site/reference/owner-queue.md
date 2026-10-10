@@ -283,8 +283,12 @@ const answered = answeredFromFeedback(feedbackJson, manifest, context);
   recommendation on an offered option becomes `recommended`, hidden in an `after-answer` round.
 - **Answers.** `answeredFromFeedback` returns only the questions the feedback answered and
   did not list in `unansweredQuestionIds`, with status `answered`, `at` its `submittedAt` and
-  `by` `ROUND_ANSWERER`. An offered pick becomes `optionId`; free text, picks, a scale value,
-  a pick the question does not offer and the comment become `text`.
+  `by` `ROUND_ANSWERER`. An offered pick becomes `optionId` and offered pick-many picks become
+  `optionIds`, both through the bindings; free text, a scale value, a pick the question does
+  not offer and the comment become `text`. A feedback `revisionRequested` becomes
+  `changeRequested: true`, kept even with no comment or when a partial submit lists the
+  question unanswered, so a change request on a merge-bound question still blocks the ship.
+  Non-empty `variantComments` are carried as they are.
 - **Validation.** Both functions parse with `ManifestSchema` and `FeedbackSchema` from
   `@titan-design/review-schema` and throw on an invalid file, an invalid `openedAt`, or a
   feedback whose unit or round differs from the manifest. round@2 carries no time, so
