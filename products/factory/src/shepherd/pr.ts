@@ -26,7 +26,7 @@ import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
-import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
+import { clearSuperseded, expireStaleGates, supersedingGates, takeCarried } from "./stale-gates.js";
 import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
@@ -98,6 +98,8 @@ interface ShepherdRun extends WakeRun {
   settleHold: SettleHold;
   /** Heads whose merge decision is the owner's, with why. */
   escalations: Map<string, Escalated>;
+  /** An escalation whose owner gate the head moved past; the next reviewable head takes it, so the owner is asked there. */
+  carried?: Escalated;
   /** What names the next review's cause. */
   trail: CauseTrail;
 }
@@ -225,6 +227,8 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   run.lastCi = ci.data;
   expireStaleGates(run.ctx, ci.data.headSha);
   if (!reviewable(ci.data)) return;
+  const carried = takeCarried(run, ci.data.headSha);
+  if (carried) run.escalations.set(ci.data.headSha, carried);
   if (ci.data.verdict === "green") run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
   await releaseG10Hold(run, await narrowToRegistration(run));

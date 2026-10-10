@@ -57,10 +57,12 @@ export function supersedingGates(ctx: WorkflowContext, leave: (rereview: string 
   };
 }
 
-/** The run state a superseded approve-merge gate clears. */
+/** The run state a superseded approve-merge gate clears or hands on. */
 interface SupersededRun {
   reviews: Map<string, unknown>;
   escalations: Map<string, Escalated>;
+  /** An owner-gated escalation the head moved past, waiting for the next reviewable head to take it. */
+  carried?: Escalated;
   failedRounds: number;
   updateBound: UpdateBound;
 }
@@ -72,5 +74,20 @@ interface SupersededRun {
 export function clearSuperseded(run: SupersededRun, rereview: string | undefined, gated: string | undefined, stepId: string): void {
   if (stepIdMatches("stuck-behind", stepId)) resetBound(run.updateBound);
   else if (rereview !== undefined) run.reviews.delete(rereview);
-  else if (gated !== undefined && run.escalations.get(gated)?.escalation === "failed-rounds") run.failedRounds = 0;
+  else if (gated !== undefined) {
+    const escalated = run.escalations.get(gated);
+    if (escalated?.escalation === "failed-rounds") run.failedRounds = 0;
+    else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
+  }
+}
+
+/**
+ * A superseded gate is only ever cancelled, never answered: the escalation it carried gates the next reviewable head, so
+ * that head's merge decision asks the owner again however its review comes out. Returns the escalation to set at `headSha`.
+ */
+export function takeCarried(run: Pick<SupersededRun, "carried">, headSha: string): Escalated | undefined {
+  const { carried } = run;
+  if (!carried || carried.carriedFrom === headSha) return undefined;
+  run.carried = undefined;
+  return carried;
 }

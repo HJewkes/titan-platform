@@ -216,10 +216,13 @@ whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
 request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
-`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate, a `ci-failed`
-gate and a `stuck-behind` gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
-failed-rounds gate starts the new head's review rounds from zero, so the run does not ask the
-owner again before the new head has failed its own rounds. A superseded `ci-failed` gate reads as
+`shepherd-route` (`failed-rounds`, `fix-first-runaway`, `no-progress` or `conflict`)
+`approve-merge` gate, an `sh-sent-back` gate, a `ci-failed` gate and a `stuck-behind` gate. A
+superseded failed-rounds gate starts the new head's review rounds from zero, so the run does not
+ask the owner again before the new head has failed its own rounds. A superseded fix-first-runaway,
+no-progress or conflict gate is only cancelled, never answered: the run reviews the new head and
+asks the owner again there, with the gate naming the carried reason and the new review, even
+under an `auto` policy that would allow the merge. A superseded `ci-failed` gate reads as
 `await-fix`, so the run lands the new head with no owner answer. A superseded `stuck-behind`
 gate starts a new land round at the new head with a fresh update budget. Resync also answers
 the active `merge` step of a run no runtime holds, when the head that step merges is no longer

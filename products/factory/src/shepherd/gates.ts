@@ -3,7 +3,7 @@ import type { RepoSlug } from "@titan-design/github";
 import { conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { step, type LandOutcome } from "../workflows/land.js";
-import { escalationReason } from "./route-table.js";
+import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
 
 export interface PrTarget {
@@ -16,6 +16,8 @@ export interface GateRun {
   ctx: WorkflowContext;
   target: PrTarget;
   state: { waits: number };
+  /** Where a superseded conflict gate leaves its escalation for the next reviewable head to take. */
+  carried?: Escalated;
 }
 
 /** Waits, with no gate, for the PR to show any other head; undefined lands the next round. */
@@ -52,7 +54,13 @@ export async function conflictGate(run: GateRun, headSha: string): Promise<LandO
   const reason = escalationReason("conflict", `mergeable_state is dirty at ${headSha} after a fixer's attempt`);
   const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}? Policy shepherd-route/conflict: ${reason}. Answer merge to have Shepherd land the next resolved head, or abandon.`;
   const { schema, brief } = conflictDecision({ repo, pr, headSha, reason });
-  const answer = schema.parse((await run.ctx.assisted("approve-merge", prompt, { schema, brief })).data);
+  const answered = await askAtHead(run.ctx, "approve-merge", prompt, { schema, brief });
+  if (!answered) {
+    // The head moved past the conflict: land reads the new head, and its owner gate is asked again there, not answered here.
+    run.carried = { escalation: "conflict", detail: `mergeable_state was dirty at ${headSha} after a fixer's attempt`, carriedFrom: headSha };
+    return undefined;
+  }
+  const answer = schema.parse(answered.data);
   if (answer.decision === "abandon") return { kind: "stopped", reason: "abandoned", headSha, detail: "a human abandoned the PR at a conflict" };
   return awaitNewHead(run, headSha);
 }
