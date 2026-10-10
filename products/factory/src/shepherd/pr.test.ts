@@ -5,7 +5,9 @@ import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispa
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase } from "@titan-design/store-sqlite";
+import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -80,6 +82,29 @@ function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectiveP
   w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: registered });
   return runId;
 }
+
+function transcriptLocator(): SourceTextLocator {
+  return {
+    source: {
+      sourceId: "transcript-1",
+      harness: "claude-code",
+      format: "jsonl",
+      formatVersion: null,
+      path: "/transcripts/transcript-1.jsonl",
+      namespace: "test",
+      conversation: { harness: "claude-code", namespace: "test", nativeId: "session-rv-1" },
+      provenance: { kind: "native", name: "test" },
+    },
+    evidence: {
+      line: { sourceId: "transcript-1", byteOffset: 0, byteLength: 1, contentHash: "0".repeat(64), lineNumber: 1, nativeOrdinal: null },
+      subrecord: { index: 0, path: [] },
+    },
+    selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+  };
+}
+
+const CiWaitResult = z.object({ result: z.object({ verdict: z.string() }) });
+const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
 
 function stepResult(host: FactoryHost, runId: string, stepId: string): unknown {
   return Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === stepId)?.data;
@@ -164,7 +189,7 @@ describe("shepherd-pr", () => {
 
   function lastCiVerdict(w: World, runId: string): string | undefined {
     const reads = stepIds(w.host, runId).filter((stepId) => stepId.startsWith("ci-wait:"));
-    return reads.map((stepId) => (stepResult(w.host, runId, stepId) as { result: { verdict: string } }).result.verdict).at(-1);
+    return reads.map((stepId) => CiWaitResult.parse(stepResult(w.host, runId, stepId)).result.verdict).at(-1);
   }
 
   function landedSteps(w: World, runId: string): string[] {
@@ -439,7 +464,7 @@ describe("a pull request whose base moved into a conflict while approve-merge wa
 
 describe("the route table in a run", () => {
   const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-  const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+  const locator = transcriptLocator();
   const merges = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>
     mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
 
@@ -893,7 +918,7 @@ describe("the Version Packages PR", () => {
 
   it("defers another PR's merge while the Version Packages PR is ready, then re-reads CI and merges once it lands", async () => {
     const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const locator = transcriptLocator();
     const merges: ShepherdPhases["review"] = (ctx, request) =>
       mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
     const w = world({ review: merges, wake: async () => UNHANDLED });
@@ -1021,7 +1046,7 @@ describe("the effective merge policy", () => {
 
   it("under auto, merges on MRG-AU-RV with no hitl gate and stores the evidence record in merge-policy", async () => {
     const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const locator = transcriptLocator();
     const phases: ShepherdPhases = {
       wake: async () => UNHANDLED,
       review: async (ctx, request) =>
@@ -1062,9 +1087,9 @@ describe("the merge hold", () => {
     const fake = fakeGitHub();
     fake.addPr({ headSha: H1 });
     const merge = factoryRoutesFor({ port: githubPort(fake.wire), store: shepherdStoreRef() }).find((route) => route.match === "merge")!;
-    const input = { prompt: JSON.stringify({ repo: REPO, pr: 1, sha: H1, method: "squash" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "merge:0" };
+    const input: RoutedStepInput = { runId: "run-1", workflowName: "shepherd-pr", iteration: 0, prompt: JSON.stringify({ repo: REPO, pr: 1, sha: H1, method: "squash" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "merge:0" };
 
-    const outcome = await merge.runner.run(input as never);
+    const outcome = await merge.runner.run(input);
 
     expect(outcome).toMatchObject({ ok: false, error: expect.stringMatching(/not bound/) });
     expect(fake.effects.merge).toBe(0);
@@ -1491,8 +1516,8 @@ describe("a failed required check at a pull request head", () => {
   /** Rewrites a stored run to an earlier deploy's record: the steps before the hold check, `withHeldCheck` or not, then the repair spend. */
   function recordedBeforeRerun(dbPath: string, runId: string, withHeldCheck: boolean): void {
     const db = openDatabase(dbPath);
-    const row = db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId) as { step_results: string };
-    const entries = Object.entries(JSON.parse(row.step_results) as Record<string, { stepId: string }>);
+    const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
+    const entries = Object.entries(StoredStepResults.parse(JSON.parse(row.step_results)));
     const heldAt = entries.findIndex(([, result]) => result.stepId === "sh-held-check");
     const repair = entries.find(([, result]) => result.stepId === "sh-repair")!;
     const old = [...entries.slice(0, withHeldCheck ? heldAt + 1 : heldAt), repair];
