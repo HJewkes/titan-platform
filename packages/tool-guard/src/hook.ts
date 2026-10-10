@@ -42,7 +42,7 @@ const OVERSIZE_REASON =
 const READINGS_REASON =
   "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const VALUE_REASON =
-  "authority-guard cannot read the substitutions in a variable's value that this command evaluates as arithmetic (`(( X ))`, `let X`, `a[X]=1`), so it refuses it; write the commands out where they run, or keep the value free of `$(`, backquotes and long chains of names.";
+  "authority-guard does not check this Bash command: it evaluates arithmetic (`(( X ))`, `let X`, `a[X]=1`), which runs a `$(` or backquote after a `[` in a variable's value, and it stores such text where the check cannot follow it (`read`, an argument, a loop item, a value built at run time) or in a value it cannot read in full; write the commands out where they run, or split the arithmetic into its own command.";
 const SPLIT_REASON =
   "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body, and the line's other heredoc bodies, from the next lines, while bash 3.2 runs those lines as commands; close the heredoc inside the substitution.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";

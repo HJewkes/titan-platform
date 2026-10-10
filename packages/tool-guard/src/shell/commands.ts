@@ -5,16 +5,16 @@ import { printedText } from "./printed.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
-import { assign, childVars, expandWord, lookup, noteSureCommands, parseAssignment, trackCompound, trackVars } from "./vars.js";
+import { assign, childVars, expandWord, lookup, noteSureCommands, observeStores, trackCompound, trackVars } from "./vars.js";
 import { normalizeDeclarations } from "./declarations.js";
 import { cutReading, pipedShellTexts } from "./piped-nul.js";
 import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
-import { arithmeticTexts } from "./writers.js";
-import { assignedSubstitutions, valueSubstitutions, walkOrDrop } from "./value-subscripts.js";
-import { afterKeywords, writtenBy } from "./writes.js";
+import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
+import { noteCommand, noteWord } from "./stored-words.js";
+import type { ValueMarks } from "./value-marks.js";
 import { MAX_UNSURE_WORDS, ReadingLimitError, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
@@ -109,6 +109,8 @@ interface Walk {
   walked: Set<string> | null;
   /** The line's budget of `unsure` reading words, shared by every walk of it. */
   unsure: UnsureBudget;
+  /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
+  marks: ValueMarks;
 }
 
 /**
@@ -120,7 +122,10 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  walk(tokenizeLine(src), { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure: { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true } });
+  const unsure = { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
+  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
+  walk(tokenizeLine(src), observed(w));
+  settle(w.marks);
   return out;
 }
 
@@ -140,7 +145,7 @@ function walk(tokens: Token[], w: Walk): void {
   let redirects: RedirectToken[] = [];
   for (const token of noteSureCommands(normalizeDeclarations(tokens))) {
     if (token.type === "op") {
-      walkValues(token, words, w);
+      noteValues(token, words, w);
       const cmd = emit(words, redirects, w, token.value);
       w.stdin = groupStdin(w, token.value, words, redirects, cmd, nextStdin(token.value, cmd, words.length + redirects.length === 0, w.stdin));
       words = [];
@@ -152,44 +157,32 @@ function walk(tokens: Token[], w: Walk): void {
       scope(token.value, w);
       continue;
     }
-    if (token.type === "word") words.push(token);
+    if (token.type === "word") words.push(noteWord(token, w.marks));
+    if (token.type === "redirect") noteRedirect(w.marks, token);
     redirects = addRedirect(redirects, token);
     for (const sub of nestedLists(token)) walk(sub, child(w, [...w.scope.wrapping, "subshell"]));
   }
-  walkValues(null, words, w);
+  noteValues(null, words, w);
   emit(words, redirects, w, null);
 }
 
-/**
- * Runs the substitutions that arithmetic over the values of known names would run. A value arithmetic surely reads
- * that cannot be walked to its end refuses the line, as the same text written inline does; one it only maybe reads
- * is dropped, since it may add actions to the line but not take any away.
- */
-function walkValues(op: Token | null, all: WordToken[], w: Walk): void {
-  const words = afterKeywords(all);
-  const head = words.findIndex((word) => parseAssignment(word) === null);
-  const { sure, maybe } = arithmeticTexts(op, words, head);
-  walkWritten(words, head, w);
-  const scope = withPrefixAssignments(w.scope, words, head);
-  const into = (text: Token[]) => walk(text, child(w, [...w.scope.wrapping, "subshell"]));
-  for (const text of valueSubstitutions(sure, scope, w.out, true)) walkSure(() => into(text));
-  for (const text of valueSubstitutions(maybe, scope, w.out, false)) walkOrDrop(() => into(text));
+/** Notes what a command evaluates and stores, before it runs. */
+function noteValues(op: Token | null, words: WordToken[], w: Walk): void {
+  noteCommand(w.marks, { op, words, prev: w.prev }, (value) => hear(w, value));
 }
 
-/** `X='...' let X` hands the builtin the value before the line records it, so the walk reads it from a copy. */
-function withPrefixAssignments(scope: Scope, words: WordToken[], head: number): Scope {
-  const prefix = head < 0 ? [] : words.slice(0, head).map(parseAssignment).filter((a) => a !== null);
-  if (prefix.length === 0) return scope;
-  const vars = childVars(scope.vars);
-  for (const assignment of prefix) assign(vars, assignment);
-  return { ...scope, vars };
+/** Records a stored value; a known one is walked, if the line evaluates arithmetic, in the scope it was stored in. */
+function hear(w: Walk, value: string | null): void {
+  recordValue(w.marks, value, (list) => {
+    const into = child(w, [...w.scope.wrapping, "subshell"]);
+    return () => walkSure(() => walk(list, into));
+  });
 }
 
-/** Walks the code the text a write leaves in a variable holds in a subscript, once, where it is written. */
-function walkWritten(words: WordToken[], head: number, w: Walk): void {
-  for (const write of writtenBy(words, head)) {
-    for (const text of assignedSubstitutions(write, w.scope, w.out)) walkSure(() => walk(text, child(w, [...w.scope.wrapping, "subshell"])));
-  }
+/** A walk whose variables report every value they store. */
+function observed(w: Walk): Walk {
+  observeStores(w.scope.vars, (value) => hear(w, value));
+  return w;
 }
 
 /** A substitution the lexer rejects while it is walked leaves the line unchecked, which the hook refuses. */
@@ -229,13 +222,14 @@ function nestedLists(token: Token): Token[][] {
 
 function child(w: Walk, wrapping: Wrapping[]): Walk {
   const scope = { dir: w.scope.dir, vars: childVars(w.scope.vars), wrapping };
-  return { ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false, walked: null };
+  return observed({ ...w, scope, stack: [], depth: w.depth + 1, stdin: null, prev: null, chain: { start: null }, negated: false, walked: null });
 }
 
 function scope(op: string, w: Walk): void {
   if (op === "(") {
     w.stack.push(w.scope);
     w.scope = { dir: w.scope.dir, vars: new Map(w.scope.vars), wrapping: [...w.scope.wrapping, "subshell"] };
+    observed(w);
   }
   if (op === ")") w.scope = w.stack.pop() ?? w.scope;
 }
@@ -289,7 +283,7 @@ function runAdded(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: str
 function addedReading(w: Walk, read: (copy: Walk) => void): void {
   const start = w.out.length;
   try {
-    read({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } });
+    read(observed({ ...w, scope: { ...w.scope, vars: new Map(w.scope.vars) } }));
   } catch (error) {
     // Main's runs of the same command still decide; this reading is dropped, unless the line is past checking.
     if (error instanceof ReadingLimitError) throw error;
@@ -300,6 +294,8 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   trackVars(cmd, w.scope.vars);
+  // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
+  if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;
   const { name, path, args } = cmd;
   w.negated ||= cmd.negated === true;
@@ -316,6 +312,8 @@ function walkScript(script: Inline, w: Walk, wrapping: Wrapping[]): void {
   for (const text of script.texts) {
     if (w.walked?.has(text)) continue;
     w.walked?.add(text);
+    // A shell's arguments and input become its positional parameters and what its `read` stores.
+    if (script.wrap !== "eval") w.marks.opaque = true;
     walk(tokenizeLine(text), child(w, [...wrapping, script.wrap]));
   }
 }

@@ -193,28 +193,6 @@ export function parseAssignment(w: WordToken): Assignment | null {
   return parsed && isCaseUnsure(w) ? [parsed[0], parsed[1], parsed[2], true] : parsed;
 }
 
-/**
- * What an assignment word writes: the text it types after the `=`, with each command substitution cut out as the
- * lexer does, whether any part of it is only known at run time, whether it adds to the old value, and the typed
- * source of what is substituted into it (`sources`, filled by whoever has the substitutions' tokens).
- */
-export interface AssignedPart {
-  name: string;
-  text: string;
-  dynamic: boolean;
-  append: boolean;
-  element: boolean;
-  sources: string[];
-}
-
-/** The part of a `NAME=text`, `NAME+=text` or `NAME[i]=text` word that is written, whatever the variable tracks. */
-export function assignedPart(w: WordToken): AssignedPart | null {
-  const parts = ASSIGNMENT_PARTS_RE.exec(w.value);
-  if (!parts || w.hidden) return null;
-  const [whole, name = "", subscript, plus] = parts;
-  return { name, text: w.value.slice(whole.length), dynamic: w.dynamic, append: plus === "+", element: subscript !== undefined, sources: [] };
-}
-
 function splitAssignment(w: WordToken): Assignment | null {
   if (w.hidden) {
     const eq = w.value.indexOf("=");
@@ -232,12 +210,21 @@ function splitAssignment(w: WordToken): Assignment | null {
 export function assign(vars: Vars, [name, value, kind, cased]: Assignment): void {
   const priorCased = isCased(vars, name);
   if (kind === "hidden") restore(vars, name, value);
-  else if (kind !== "append") write(vars, name, value);
+  else if (kind !== "append") write(vars, name, value, kind !== "element");
   else {
     const prior = vars.get(name) ?? null;
     write(vars, name, prior !== null && value !== null ? prior + value : null);
   }
   markCased(vars, name, cased || (kind === "append" && priorCased));
+}
+
+/** Hears each value a scope's variables take, null when the walk cannot know it. */
+export type StoreObserver = (value: string | null) => void;
+const observers = new WeakMap<Vars, StoreObserver>();
+
+/** Every write to `vars` goes through `write`, so the observer hears each value the scope stores. */
+export function observeStores(vars: Vars, observer: StoreObserver): void {
+  observers.set(vars, observer);
 }
 
 /** A copy for a new shell: `eval` keeps every readonly variable and a child shell drops them, so each only may be. */
@@ -249,12 +236,17 @@ export function childVars(vars: Vars): Vars {
 
 const readonlyKey = (name: string) => `readonly@${name}`;
 
-/** Bash rejects a write to a readonly variable, so it keeps its value; one that may be readonly becomes unknown. */
-function write(vars: Vars, name: string, value: string | null): void {
+/**
+ * Bash rejects a write to a readonly variable, so it keeps its value; one that may be readonly becomes unknown.
+ * Arithmetic stores only numbers, and an element write is heard where it is typed, as the variable keeps only
+ * element 0, so neither is `heard` here.
+ */
+function write(vars: Vars, name: string, value: string | null, heard = true): void {
   const flag = vars.get(readonlyKey(name));
   if (flag === "") return;
   clearCased(vars, name);
   vars.set(name, flag === null || vars.has(ANY_READONLY) ? null : value);
+  if (heard) observers.get(vars)?.(value);
 }
 
 /** A function's return restores a local's outer value, which may or may not have been readonly. */
@@ -270,21 +262,21 @@ function restore(vars: Vars, name: string, value: string | null): void {
  */
 export function trackVars({ name, args, assigned }: TrackedCommand, vars: Vars): void {
   if (name === null) return;
-  for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null);
+  for (const [target, , kind] of assigned) if (kind === "element") write(vars, target, null, false);
   if (DECLARERS.has(name)) return trackDeclaration(name, args, vars);
   if (name === "printf") printfVar(args, vars);
-  writeEach(vars, commandWrites(name, args, vars));
+  writeEach(vars, commandWrites(name, args, vars), name !== "let" && name !== "unset");
 }
 
 /** `(( ))` writes in the current shell, though the walk reads its parentheses as a subshell. */
 export function trackCompound(op: Token, vars: Vars): void {
-  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars));
+  writeEach(vars, compoundWrites(op, (w) => expandWord(w, (name) => lookup(vars, null, name)), vars), false);
 }
 
 /** A null list means the command may write any variable. */
-function writeEach(vars: Vars, writes: Assignment[] | null): void {
-  if (!writes) return forgetAll(vars);
-  for (const [target, value] of writes) write(vars, target, value);
+function writeEach(vars: Vars, writes: Assignment[] | null, heard: boolean): void {
+  if (!writes) return forgetAll(vars, heard);
+  for (const [target, value] of writes) write(vars, target, value, heard);
 }
 
 /**
@@ -315,9 +307,10 @@ function unreadableDeclareWord(name: string, arg: WordToken): boolean {
 }
 
 /** Nulls every tracked variable, `HOME` included, after a declaration this walk cannot read. */
-function forgetAll(vars: Vars): void {
+function forgetAll(vars: Vars, heard = true): void {
   for (const key of vars.keys()) vars.set(key, null);
   vars.set("HOME", null);
+  if (heard) observers.get(vars)?.(null);
 }
 
 /** How a declaration makes its names readonly; null when it does not. */
@@ -331,7 +324,7 @@ function declareArg(name: string, assignment: Assignment | null, mode: ReadonlyM
   if (!assignment) return;
   const [target, value, kind, cased] = assignment;
   if (kind === "element") {
-    if (!SCALAR_DECLARERS.has(name)) write(vars, target, mode ? null : value);
+    if (!SCALAR_DECLARERS.has(name)) write(vars, target, mode ? null : value, false);
   } else if (mode === "array") write(vars, target, null);
   else return assign(vars, assignment);
   markCased(vars, target, cased);

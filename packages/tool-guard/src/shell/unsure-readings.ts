@@ -12,11 +12,11 @@ export class ReadingLimitError extends Error {
   }
 }
 
-/** A value arithmetic surely reads that the walk cannot finish; the hook denies the line unchecked, as past the reading budget. */
+/** A line that evaluates arithmetic and stores code behind a bracket the walk cannot finish; the hook denies it unchecked, as past the reading budget. */
 export class ValueWalkError extends ReadingLimitError {
   constructor() {
     super();
-    this.message = "a value read as arithmetic cannot be walked to its end";
+    this.message = "a value the line may evaluate as arithmetic cannot be walked to its end";
     this.name = "ValueWalkError";
   }
 }

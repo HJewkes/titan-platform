@@ -55,8 +55,8 @@ describe("a command substitution in the subscript of an arithmetic value (TP-162
   it.each([
     ["a plain echo of the name", `${VALUE}; echo X`],
     ["a default expansion", `${VALUE}; s=hello; echo \${s:-X}`],
-  ])("classifies the push where the value is stored, for %s", (_, command) => {
-    expect(spellings(command)).toContain("bash.merge.git-push-protected");
+  ])("leaves a value the line never evaluates as arithmetic unchecked, for %s", (_, command) => {
+    expect(spellings(command)).not.toContain("bash.merge.git-push-protected");
   });
 
   it("leaves a value with no bracket before its substitution to the lines that evaluate it", () => {
@@ -84,10 +84,13 @@ describe("a value arithmetic reads that cannot be walked to its end (TP-1624)", 
     ["the same value read by let", `X='a[$(bash -c "echo \\""; ${push})]'; let X`],
     ["the same value read by a numeric [[ ]]", `X='a[$(bash -c "echo \\""; ${push})]'; [[ X -eq 1 ]]`],
     ["a push in a later value once the substitution budget is spent", `X='a[${"$(:)".repeat(1500)}]'; (( X )); Y='a[$(${push})]'; (( Y ))`],
-    ["a chain of names past the hop cap", `${Array.from({ length: 40 }, (_, i) => `V${i}=V${i + 1}`).join("; ")}; (( V0 ))`],
     ["an unlexable value read a second time", `X='a[$(bash -c "echo \\"")]'; [[ -n $X ]]; (( X ))`],
   ])("refuses %s", (_, line) => {
     expect(() => extractCommands(line)).toThrow(ValueWalkError);
+  });
+
+  it("follows no chain of plain names, which holds no code to run", () => {
+    expect(() => extractCommands(`${Array.from({ length: 40 }, (_, i) => `V${i}=V${i + 1}`).join("; ")}; (( V0 ))`)).not.toThrow();
   });
 
   it("drops an unlexable value that arithmetic only maybe reads", () => {

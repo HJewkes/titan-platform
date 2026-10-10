@@ -184,12 +184,13 @@ function withoutPlus(w: WordToken): WordToken {
   return { ...w, value: w.value.slice(0, plus) + w.value.slice(plus + 1), refs: w.refs.map(shift) };
 }
 
+/** Each element of a compound array assignment, which the one word that stands for it keeps only the first of. */
+export const arrayElements = new WeakMap<WordToken, WordToken[]>();
+
 /**
  * `NAME=(a b)` as one word whose value is element 0, unknown unless it is plainly literal: a brace, glob or
  * `[i]=` element can change it. An append to a variable that is not a new local keeps its element 0.
  */
-/** Each element of a compound array assignment, which the one word that stands for it keeps only the first of. */
-export const arrayElements = new WeakMap<WordToken, WordToken[]>();
 
 function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): number {
   const w = tokens[i] as WordToken;

@@ -1,6 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
-import { arithmeticWordTexts } from "./arith-words.js";
+import { wordsEvaluateArithmetic } from "./arith-words.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
@@ -102,25 +102,21 @@ function integerValues(words: string[]): string[] {
 const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
 const TEST_COMMANDS = new Set(["[", "test"]);
 
-/** Arithmetic text split by how sure it is: `sure` is always evaluated, `maybe` only if the name turns out numeric. */
-interface ArithmeticTexts {
-  sure: string[];
-  maybe: string[];
-}
-
 /**
- * The text bash evaluates as arithmetic around an operator: its `$(( ))`, its `(( ))`, and the operands of `let` or
- * `[[`. A `[[` may reach the lexer in pieces (`&&` and `(` split it), so a numeric comparison makes its words sure
- * wherever they sit; `head` is the index of the command word, after any prefix assignments, or -1; `[[ -n $msg ]]` does not evaluate `msg`, and `[` and `test` never do.
+ * Whether the command an operator ends, or the `(( ))` it opens, makes bash evaluate arithmetic: a `$(( ))`, a
+ * `(( ))`, `let`, a subscript, a numeric `[[` comparison, and `unset` or a `-v` test, which evaluate the subscript of
+ * a name. A `[[` may reach the lexer in pieces (`&&` and `(` split it), so a numeric comparison counts wherever it
+ * sits; `head` is the index of the command word, after any prefix assignments, or -1. `[` and `test` compare numbers
+ * without arithmetic.
  */
-export function arithmeticTexts(op: Token | null, words: WordToken[], head: number): ArithmeticTexts {
-  const span = (op ? (compounds.get(op) ?? []) : []).map(spanText);
+export function evaluatesArithmetic(op: Token | null, words: WordToken[], head: number): boolean {
+  if (op !== null && (compounds.has(op) || expansions.has(op))) return true;
   const values = words.map((w) => w.value);
   const command = head < 0 ? [] : values.slice(head);
-  const operands = command[0] === "let" || command[0] === "[[" ? command.slice(1) : head < 0 ? [] : command;
-  const numeric = command[0] === "let" || (!TEST_COMMANDS.has(command[0] ?? "") && operands.some((v) => COMPARISON_RE.test(v)));
-  const sure = [...(op ? (expansions.get(op) ?? []) : []), ...values.flatMap(expansionBodies), ...arithmeticWordTexts(values), span.join(" ")];
-  return numeric ? { sure: [...sure, ...operands], maybe: [] } : { sure, maybe: command[0] === "[[" ? operands : [] };
+  const name = command[0] ?? "";
+  if (name === "let" || name === "unset" || ((name === "[[" || TEST_COMMANDS.has(name)) && command.includes("-v"))) return true;
+  const numeric = !TEST_COMMANDS.has(name) && command.some((v) => COMPARISON_RE.test(v));
+  return numeric || values.some((v) => expansionBodies(v).length > 0) || wordsEvaluateArithmetic(words);
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */
@@ -137,13 +133,6 @@ function spanWrites(op: Token, expand: (w: WordToken) => WordToken, vars: Vars):
   const words = span.flatMap((t) => (t.type === "word" ? [expand(t)] : t.type === "redirect" && t.target ? [expand(t.target)] : []));
   if (span.some((t) => t.type === "subs") || words.some(runTimeExpression)) return null;
   return arithmeticWrites([span.map((t) => compoundText(t, expand)).join(" ")], vars);
-}
-
-/** A token of a `(( ))` header, with a `<` or `>` and its operand kept together, as the lexer reads them as a redirection. */
-function spanText(t: Token): string {
-  if (t.type === "word") return t.value;
-  if (t.type === "redirect") return t.op + (t.target?.value ?? "");
-  return t.type === "op" ? t.value : "";
 }
 
 /** The lexer reads `<` and `>` in an expression as redirections; `Y>>=1` keeps its operator whole. */

@@ -33,7 +33,6 @@ describe("a subscript in a variable's value that holds code, whichever way the v
     ["unset", `${HIDDEN}; unset X`],
     ["test -v", `${HIDDEN}; [[ -v X ]]`],
     ["a declared value", `declare ${HIDDEN}; (( X ))`],
-    ["a prefix assignment", `${HIDDEN} true`],
     ["a plain (( ))", `${HIDDEN}; (( X ))`],
     ["an append that completes the subscript, read as an integer", `X='a['; X+='$(${PUSH})]'; declare -i n=0; n=X`],
     ["an append that completes the subscript, used as a key", `X='a['; X+='$(${PUSH})]'; a=([X]=1)`],
@@ -43,7 +42,6 @@ describe("a subscript in a variable's value that holds code, whichever way the v
     ["an element write", `a[1]='b[$(${PUSH})]'; declare -i n=0; n=\${a[1]}`],
     ["an element append", `a[1]=x; a[1]+='b[$(${PUSH})]'; declare -i n=0; n=\${a[1]}`],
     ["an appended compound array", `arr=(1); arr+=('a[$(${PUSH})]'); (( arr[1] ))`],
-    ["an append to a value read from input", `read P; P+='x [$(${PUSH})]'`],
     ["a literal payload with a command substitution after it", `X="a[\\$(${PUSH})]$(true)"; (( X ))`],
     ["a literal payload with a command substitution before it", `X="$(true)a[\\$(${PUSH})]"; let X`],
     ["a literal payload with a variable after it", `X="a[\\$(${PUSH})]$RANDOM"; (( X ))`],
@@ -86,6 +84,8 @@ describe("benign arithmetic and values stay unchecked (TP-1624)", () => {
     ["a plain append", "P=1; P+=2; (( P ))"],
     ["a plain compound array and element write", "arr=(1 2 3); a[1]=5; arr+=(4); (( arr[1] ))"],
     ["an append of plain text to a value from input", "read P; P+=' more'"],
+    ["a prefix assignment to a builtin that evaluates nothing", `${HIDDEN} true`],
+    ["an append to a value read from input that nothing evaluates", `read P; P+='x [$(${PUSH})]'`],
   ])("passes %s", (_, command) => {
     expect(verdict(command)).toBe("pass");
   });
