@@ -115,7 +115,9 @@ function statsBy(rows: readonly WeightedRow[], keyOf: (row: WeightedRow) => stri
   const groups = new Map<string, WeightedRow[]>();
   for (const row of rows) {
     const key = keyOf(row);
-    groups.set(key, [...(groups.get(key) ?? []), row]);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
   }
   const keys = [...groups.keys()].sort();
   return Object.fromEntries(keys.map((key) => [key, levelStats(groups.get(key)!)]));
@@ -164,6 +166,24 @@ function buildClasses(weighted: readonly WeightedRow[], levels: ClassTable["leve
   return Object.fromEntries(keys.map((key) => [key, resolveClass(levels, minN, places.get(key)!)]));
 }
 
+interface FitSettings {
+  asOf: string;
+  asOfMs: number;
+  halfLifeDays: number;
+  minN: number;
+}
+
+// asOf is normalised to ISO so one instant always yields one hash, whatever its spelling.
+function fitSettings(config: ThroughputConfig, newestDoneAt: string): FitSettings {
+  const asOfMs = Date.parse(config.asOf ?? newestDoneAt);
+  if (Number.isNaN(asOfMs)) throw new RangeError(`asOf ${JSON.stringify(config.asOf)} is not a date`);
+  const halfLifeDays = config.halfLifeDays ?? DEFAULT_HALF_LIFE_DAYS;
+  if (!(halfLifeDays > 0) || !Number.isFinite(halfLifeDays)) throw new RangeError(`halfLifeDays must be a positive number, got ${halfLifeDays}`);
+  const minN = config.minN ?? DEFAULT_MIN_N;
+  if (!(minN >= 0) || !Number.isFinite(minN)) throw new RangeError(`minN must be a non-negative number, got ${minN}`);
+  return { asOf: new Date(asOfMs).toISOString(), asOfMs, halfLifeDays, minN };
+}
+
 /**
  * Per-class weighted quantiles of implementer hours, reviewer hours and USD, keyed kind x size
  * band. Pure: equal rows and config give equal output, whatever the row order.
@@ -173,10 +193,8 @@ export function classTable(actuals: readonly ThroughputRow[], config: Throughput
   if (eligible.length === 0) throw new RangeError("classTable needs at least one row with an implementer session");
   const newestMs = eligible.reduce((newest, row) => Math.max(newest, doneAtMs(row)), Number.NEGATIVE_INFINITY);
   const watermark: Watermark = { newestDoneAt: new Date(newestMs).toISOString(), minerIndexedAt: config.minerIndexedAt ?? null };
-  const asOf = config.asOf ?? watermark.newestDoneAt;
-  const halfLifeDays = config.halfLifeDays ?? DEFAULT_HALF_LIFE_DAYS;
-  const minN = config.minN ?? DEFAULT_MIN_N;
-  const weighted = weighRows(eligible, Date.parse(asOf), halfLifeDays);
+  const { asOf, asOfMs, halfLifeDays, minN } = fitSettings(config, watermark.newestDoneAt);
+  const weighted = weighRows(eligible, asOfMs, halfLifeDays);
   const levels = buildLevels(weighted);
   const hash = modelHash({ config: { asOf, halfLifeDays, minN }, watermark, packageVersion: PACKAGE_VERSION });
   return {

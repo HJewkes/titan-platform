@@ -80,7 +80,9 @@ does not forecast a set of tasks or wall-clock time yet. Those land as `forecast
 - The model hash covers the config, the watermark (newest `doneAt` and the optional
   `minerIndexedAt`) and the package version, not every row. Pass `minerIndexedAt` so a
   re-index with no new done task still changes the hash.
-- `classTable` throws a `RangeError` when no row is eligible or a `doneAt` does not parse.
+- `classTable` throws a `RangeError` when no row is eligible, when a `doneAt` or `asOf` does
+  not parse, or when `halfLifeDays` is not positive or `minN` is negative. `table.asOf` is
+  always an ISO datetime, so `"2026-10-01"` and its full spelling hash the same.
 
 ## Where it came from
 

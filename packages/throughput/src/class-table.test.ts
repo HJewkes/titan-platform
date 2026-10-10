@@ -140,6 +140,15 @@ describe("classTable recency weighting", () => {
   it("rejects a row whose done date does not parse", () => {
     expect(() => classTable([row({ doneAt: "yesterday" })])).toThrow(/doneAt/);
   });
+
+  it("rejects a reference time that does not parse", () => {
+    expect(() => classTable(rows(20), { asOf: "garbage" })).toThrow(RangeError);
+  });
+
+  it("rejects a half-life or minimum n that is not usable", () => {
+    expect(() => classTable(rows(20), { asOf: AS_OF, halfLifeDays: 0 })).toThrow(/halfLifeDays/);
+    expect(() => classTable(rows(20), { asOf: AS_OF, minN: -1 })).toThrow(/minN/);
+  });
 });
 
 describe("classTable determinism", () => {
@@ -152,6 +161,14 @@ describe("classTable determinism", () => {
     const config = { asOf: AS_OF, minerIndexedAt: "2026-09-30T12:00:00Z" };
 
     expect(JSON.stringify(classTable([...actuals].reverse(), config))).toBe(JSON.stringify(classTable(actuals, config)));
+  });
+
+  it("hashes and reports the same instant the same way whatever its spelling", () => {
+    const dateOnly = classTable(actuals, { asOf: "2026-10-01" });
+    const full = classTable(actuals, { asOf: "2026-10-01T00:00:00.000Z" });
+
+    expect(dateOnly.asOf).toBe("2026-10-01T00:00:00.000Z");
+    expect(dateOnly.modelHash).toBe(full.modelHash);
   });
 
   it("carries the watermark, the package version and a model hash", () => {

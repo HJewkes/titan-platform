@@ -81,9 +81,9 @@ typed events with locators. [`session-graph`](/reference/session-graph) folds th
 incrementally maintained graph. [`session-analytics`](/reference/session-analytics) prices
 requests, classifies sessions and roles, cuts episodes, and renders the cost report over
 that graph. [`throughput`](/reference/throughput) turns per-task actuals into per-class
-quantiles of agent-hours and cost. [`memory`](/reference/memory) keeps a decaying rule playbook that such mining
-can feed. [Case study: the session miner](/guides/session-miner) runs the first two end to
-end.
+quantiles of agent-hours and cost. [`memory`](/reference/memory) keeps a decaying rule
+playbook that such mining can feed. [Case study: the session miner](/guides/session-miner)
+runs the first two end to end.
 
 ## Code audit
 
