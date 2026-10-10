@@ -50,6 +50,10 @@ describe("busy runs on /health", () => {
     expect(busyRuns([run("a", "sh-late-verdict:abc1234")], parkPostMerge)).toEqual([{ runId: "a", step: "sh-late-verdict:abc1234", phase: "review" }]);
   });
 
+  it("does not wait on a run held at sh-account-wait, though its watch phase is review", () => {
+    expect(busyRuns([run("a", "sh-account-wait:abc1234"), run("b", "sh-account-hold:abc1234")], parkPostMerge)).toEqual([{ runId: "b", step: "sh-account-hold:abc1234", phase: "review" }]);
+  });
+
   it("marks a step whose route parks on restart as park", () => {
     expect(busyRuns([run("a", "post-merge")], parkPostMerge)).toEqual([{ runId: "a", step: "post-merge", phase: "park" }]);
   });

@@ -8,17 +8,19 @@ function expectedRoute(run: RunState, state: MergeableState, outcome: ReviewOutc
   if (run !== "open") return "end-run";
   if (outcome === "head-moved") return "new-cycle";
   if (outcome === "FIX_FIRST" || state === "dirty") return "wake-fixer";
+  if (state === "draft") return "end-run";
+  // An exhausted account never takes a head on toward the merge decision unreviewed; its head is reviewed again once the hold lifts.
+  if (outcome === "account-exhausted") return "await-account";
   if (state === "behind") return outcome === "not-started" ? "retry-review" : "update-branch";
   if (state === "unknown") return "new-cycle";
-  if (state === "draft") return "end-run";
   return MERGE_COLUMN[outcome]!;
 }
 
 const CELLS = RUN_STATES.flatMap((run) => MERGEABLE_STATES.flatMap((state) => REVIEW_OUTCOMES.map((outcome) => [run, state, outcome] as const)));
 
 describe("the Shepherd route table", () => {
-  it("has 168 cells: 3 run states x 8 mergeable states x 7 review outcomes", () => {
-    expect(CELLS).toHaveLength(168);
+  it("has 192 cells: 3 run states x 8 mergeable states x 8 review outcomes", () => {
+    expect(CELLS).toHaveLength(192);
   });
 
   it("gives every cell a route, so a missing state or outcome fails here", () => {
@@ -63,6 +65,7 @@ describe("roundKind", () => {
     ["merge", "MERGE", "progress"],
     ["retry-review", "not-started", "not-started"],
     ["wake-fixer", "not-started", "not-started"],
+    ["await-account", "account-exhausted", "progress"],
   ] as const)("reads route %s on outcome %s as a %s round", (route, outcome, kind) => {
     expect(roundKind(route, outcome)).toBe(kind);
   });

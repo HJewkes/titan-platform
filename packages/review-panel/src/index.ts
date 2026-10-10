@@ -37,7 +37,7 @@ export {
   reviewerBrief,
 } from "./reviewer-brief.js";
 export type { MalformedRefusal, ReviewerBriefInput } from "./reviewer-brief.js";
-export { USAGE_LIMIT_REASON, acceptVerdict } from "./accept-verdict.js";
+export { USAGE_LIMIT_REASON, acceptVerdict, isUsageLimit } from "./accept-verdict.js";
 export type { AcceptedVerdict, AwaitVerdictResult } from "./accept-verdict.js";
 export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
 export { BLOCK_LINE, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings, findingsText, fixFirstFindings } from "./fix-first-findings.js";
