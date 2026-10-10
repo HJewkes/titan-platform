@@ -111,7 +111,7 @@ function inodeFloor(disk: CheckoutDisk, limits: SpawnLimits): number | undefined
 }
 
 /** Pure: a review also needs a free reviewer slot and room for its checkout, which can run a filesystem out of inodes before bytes. */
-export function admitReview(disk: CheckoutDisk, limits: SpawnLimits, runningReviews: number): Admission {
+function admitReview(disk: CheckoutDisk, limits: SpawnLimits, runningReviews: number): Admission {
   if (runningReviews >= limits.maxConcurrentReviews) return { admit: false, reason: `${runningReviews} reviews are running, the concurrent cap ${limits.maxConcurrentReviews}` };
   if (disk.freeBytes !== undefined && disk.freeBytes < limits.reviewMinFreeBytes) return refuse("free bytes", disk.freeBytes, limits.reviewMinFreeBytes);
   const floor = inodeFloor(disk, limits);
