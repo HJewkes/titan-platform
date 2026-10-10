@@ -21,7 +21,8 @@
           "packages/tool-guard",
           "packages/eslint-plugin",
           "packages/app-paths",
-          "packages/anthropic-account"
+          "packages/anthropic-account",
+          "packages/test-kit"
         ],
         "1": [
           "packages/retrieval",
@@ -88,7 +89,8 @@
           "packages/tool-guard",
           "packages/eslint-plugin",
           "packages/app-paths",
-          "packages/anthropic-account"
+          "packages/anthropic-account",
+          "packages/test-kit"
         ],
         [
           "packages/retrieval",

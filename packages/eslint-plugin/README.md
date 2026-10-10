@@ -10,7 +10,13 @@ next, so an agent that hits the rule can fix the code without asking.
   sentence. `TODO UTF-8 support`, `TODO ES-2022` (keys with a standards prefix such as `UTF`, `ES`, `ISO`, `RFC`, `SHA`, `MD`, `TLS`, `SSL`, `IPV`, `ECMA`, `HTTP` are prose), and a key that sits later in the comment
   or inside a URL are reported. `FIXME` is deliberately not checked; the rule is about `TODO`.
 - `no-commented-code`: a comment whose text parses as statements with a code signal (a declaration or control statement, an assignment, a call, `;`) is reported; a lone expression such as `read-only` or `100 - 75` is prose. JSDoc and directive comments pass.
-- `recommended`: a flat config enabling all three rules at `error` under the `titan` namespace.
+- `no-chained-type-assertions`: a type assertion applied to another one, such as
+  `x as unknown as T` or `<T>(x as unknown)`, is reported once at the outermost assertion. A chain
+  made only of `as const` passes. In tests, build the fake with `partialFake<T>()` from
+  `@titan-design/test-kit`. It reads syntax only, so it cannot see a double cast split across two
+  statements (`const u: unknown = x; u as T`); type-aware `@typescript-eslint/no-unsafe-type-assertion`
+  covers that.
+- `recommended`: a flat config enabling all four rules at `error` under the `titan` namespace.
 
 Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.

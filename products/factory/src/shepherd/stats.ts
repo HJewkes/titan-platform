@@ -46,7 +46,7 @@ export function mergedAt(run: WorkflowRun): number | undefined {
 }
 
 /** The latest MERGE verdict the reviewer gave before the merge. */
-function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
+export function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "sh-await-verdict" && payloadOf(result).kind === "verdict" && payloadOf(result).verdict === "MERGE")
     .map(([, result]) => Date.parse(result.completedAt))

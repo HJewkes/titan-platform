@@ -64,6 +64,10 @@
         "link": "/reference/store-sqlite"
       },
       {
+        "text": "test-kit",
+        "link": "/reference/test-kit"
+      },
+      {
         "text": "tool-guard",
         "link": "/reference/tool-guard"
       }
