@@ -1,4 +1,5 @@
 import { prepareAuditRollup } from "./audit-rollup.js";
+import { SIGNAL_COPY_RANK } from "./audit-schema.js";
 import type { SessionGraph } from "./graph.js";
 
 const BATCH = 400;
@@ -40,12 +41,50 @@ const RENUMBER_TURNS = `
   )
   UPDATE turn SET turn_index = ordered.idx FROM ordered WHERE turn.prompt_id = ordered.prompt_id`;
 
-/** Recompute turn aggregates and the audit rollup for the given sessions in one transaction. */
+const IN_SHARED = "session_id IN (SELECT session_id FROM shared)";
+
+/**
+ * `session`'s counters accumulate per transcript at write time, so a session found in two
+ * transcripts (a mirror from another host, a resume that copied its history) counts every
+ * shared line twice. Those sessions are recounted from their children instead: an assistant
+ * line counts once however many files hold a verbatim copy, and a commit or push once per
+ * first signal copy. A session in one transcript keeps its accumulated counts, which are exact
+ * and do not depend on its audit facet being current.
+ */
+const RECOUNT_SHARED_SESSIONS = `
+  WITH shared AS (
+    SELECT session_id FROM fact WHERE session_id IN (SELECT value FROM json_each(@sessionIds))
+    GROUP BY session_id HAVING COUNT(DISTINCT transcript_id) > 1
+  ),
+  per_file AS (
+    SELECT session_id, event_type, ts, byte_length, tool_use_id, COUNT(*) AS n FROM fact
+    WHERE ${IN_SHARED} AND event_type IN ('assistant_response', 'tool_decision')
+    GROUP BY session_id, transcript_id, event_type, ts, byte_length, tool_use_id
+  ),
+  lines AS (
+    SELECT session_id, SUM(copies) AS n FROM (
+      SELECT session_id, MAX(n) AS copies FROM per_file GROUP BY session_id, event_type, ts, byte_length, tool_use_id)
+    GROUP BY session_id
+  ),
+  signals AS (
+    SELECT session_id, SUM(signal = 'commit') AS commits, SUM(signal = 'push') AS pushes FROM (
+      SELECT session_id, signal, ${SIGNAL_COPY_RANK} AS copy_rank FROM session_signal
+      WHERE ${IN_SHARED} AND signal IN ('commit', 'push'))
+    WHERE copy_rank = 1 GROUP BY session_id
+  )
+  UPDATE session SET
+    turn_count   = COALESCE((SELECT n FROM lines WHERE lines.session_id = session.session_id), 0),
+    commit_count = COALESCE((SELECT commits FROM signals WHERE signals.session_id = session.session_id), 0),
+    push_count   = COALESCE((SELECT pushes FROM signals WHERE signals.session_id = session.session_id), 0)
+  WHERE ${IN_SHARED}`;
+
+/** Recompute turn aggregates, shared-session counters and the audit rollup for the given sessions in one transaction. */
 export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[]): number {
   const unique = [...new Set(sessionIds)];
   if (unique.length === 0) return 0;
   const aggregate = graph.db.prepare(ROLLUP);
   const renumber = graph.db.prepare(RENUMBER_TURNS);
+  const recount = graph.db.prepare(RECOUNT_SHARED_SESSIONS);
   const audit = prepareAuditRollup(graph.db);
   return graph.db.transaction(() => {
     let updated = 0;
@@ -53,6 +92,7 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
       const batch = JSON.stringify(unique.slice(i, i + BATCH));
       renumber.run({ sessionIds: batch });
       updated += aggregate.run({ sessionIds: batch }).changes;
+      recount.run({ sessionIds: batch });
       audit(batch);
     }
     return updated;

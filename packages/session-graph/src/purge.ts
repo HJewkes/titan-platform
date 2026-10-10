@@ -8,6 +8,12 @@ import { KIT } from "./schema.js";
 /** Derived tables keyed by `session_id`, reachable from a transcript through `session`. */
 const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "session_model_usage", EPISODE_TABLE] as const;
 
+const HAND_OFF_SHARED_SESSIONS = `
+  UPDATE session SET transcript_id = (
+    SELECT MIN(f.transcript_id) FROM fact f WHERE f.session_id = session.session_id AND f.transcript_id <> @transcriptId)
+  WHERE transcript_id = @transcriptId
+    AND EXISTS (SELECT 1 FROM fact f WHERE f.session_id = session.session_id AND f.transcript_id <> @transcriptId)`;
+
 /**
  * Drop every derived row one transcript produced, so re-reading it from byte 0
  * rebuilds those rows instead of doubling them.
@@ -28,9 +34,17 @@ const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoi
  *
  * Audit rows, facet state and chat review verdicts carry `transcript_id`
  * themselves, so they go by it directly rather than through `session`.
+ *
+ * A session another transcript also holds (a mirror from another host, a resume
+ * that copied its history) is handed to that transcript first, so purging one
+ * copy keeps the session and its session-scoped rows. Re-reading the copy
+ * re-asserts them idempotently, and the rollup recounts the shared session.
+ * Only this copy's search spans go.
  */
 export function purgeTranscript(graph: SessionGraph, transcriptId: number): void {
   graph.db.transaction(() => {
+    graph.db.prepare(HAND_OFF_SHARED_SESSIONS).run({ transcriptId });
+    graph.db.prepare(`DELETE FROM "${KIT.spanFts}_span" WHERE source_id = ?`).run(transcriptId);
     const owned = graph.db.prepare("SELECT session_id FROM session WHERE transcript_id = ?").all(transcriptId) as { session_id: string }[];
     for (const { session_id } of owned) graph.spans.purgeOwner(sessionRef(session_id));
 

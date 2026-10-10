@@ -245,6 +245,16 @@ An index built before this rule keeps its old prompt spans until `resetIndex` re
 
 ## Gotchas
 
+**One session can live in several transcripts.** A mirror from another host and a resume
+that copied its history both hold lines of a session under the same session id. The `session`
+row is keyed by that id, and each file is a child transcript, so the copies never make a
+second session. Whenever a session has facts in more than one transcript, the rollup
+recounts `turn_count`, `commit_count` and `push_count`. A line found verbatim in several files
+counts once, and so does a commit or push signal. Read `session_signal` through
+`SIGNAL_COPY_RANK` (`copy_rank = 1`) to count signals the same way. `purgeTranscript` on one
+copy hands the session row to another copy rather than deleting it, and drops only that
+copy's search spans.
+
 **`refreshCorpus` takes `DiscoveredTranscript` objects**, not paths. Use
 `discoverTranscripts()` rather than assembling them yourself; the `displayPath` field is the
 watermark key.

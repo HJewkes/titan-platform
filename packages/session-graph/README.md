@@ -51,6 +51,11 @@ off by default and ignored when `readonly` is set. See migration 9.
 3. `rollupSessions` recomputes turn aggregates (index, end, duration, tool calls, thinking
    time) for the sessions that changed, including those the backfill touched. Recompute, never accumulate, so incremental and
    full passes converge.
+   A session with facts in more than one transcript (a mirror from another host, a resume
+   that copied its history) also has `turn_count`, `commit_count` and `push_count`
+   recounted, so a line found verbatim in several files counts once. Count `session_signal`
+   the same way through `SIGNAL_COPY_RANK` (`copy_rank = 1`). `purgeTranscript` on one copy
+   hands the session row to another copy and drops only that copy's search spans.
 4. `resolveOrigins` runs if the caller passed a `resolveOrigins` resolver. See migration 5.
 5. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
    complete `gh pr create` sightings into new PR rows, subagent end times and parentage
