@@ -84,7 +84,7 @@ export function readAssignmentCounts(db: Db, sessionIds: readonly string[]): Map
   return new Map(rows.map((r) => [r.sessionId, r.n]));
 }
 
-export interface SessionPr {
+interface SessionPr {
   sessionId: string;
   prRef: string;
   mergedAt: string | null;
