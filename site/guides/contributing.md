@@ -45,8 +45,8 @@ list. A finding names only `file:line` and the rule, never the text.
   run `pnpm install` there; the hook fails closed rather than skip the scan. The hook is never
   installed in CI. If the install printed "pre-push hook not installed", run `pnpm build`,
   then `pnpm run prepare`.
-- **The CI job.** `egress-scan` scans every commit of a pull request, from its base sha to its
-  head sha, and every push to main. It is a merge gate, not an egress control: a branch is
+- **The CI step.** A step of the `validate` job scans every commit of a pull request, from its
+  base sha to its head sha, and every push to main. It is a merge gate, not an egress control: a branch is
   public as soon as it is pushed. CI does not have the private term list.
 - **The allow file.** `.egress-allow` at the root holds `<glob> <rule-id> <reason>` lines,
   one per file and rule. The reason names a task id. `private-term` hits are never
