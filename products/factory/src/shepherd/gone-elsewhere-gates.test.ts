@@ -19,18 +19,19 @@ const HEAD = fakeSha("gate-sweep-head");
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-/** Records the landing the way a run does after it saw its PR merged elsewhere, then waits on a post-merge gate. */
-const landedElsewhereThenFrozen = defineWorkflow({
-  name: SHEPHERD_WORKFLOW,
-  steps: [
-    { id: "sh-landed", kind: "dispatch" },
-    { id: "main-frozen", kind: "assisted" },
-  ],
-  run: async (ctx) => {
-    await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
-    await ctx.assisted("main-frozen", "the repo is frozen", { brief: TEST_BRIEF });
-  },
-});
+/** Records the landing the way a run does after it saw its PR merged elsewhere, then waits on a main gate: the repo is frozen and the gate holds the owner's only release. */
+const landedThenWaitingOn = (gate: string): WorkflowDefinition =>
+  defineWorkflow({
+    name: SHEPHERD_WORKFLOW,
+    steps: [
+      { id: "sh-landed", kind: "dispatch" },
+      { id: gate, kind: "assisted" },
+    ],
+    run: async (ctx) => {
+      await step(ctx, "sh-landed", { repo: REPO, pr: 1 }, z.unknown());
+      await ctx.assisted(gate, "main is red after the merge", { brief: TEST_BRIEF });
+    },
+  });
 
 /** Merges the PR itself, then waits on a post-merge gate, as a red main after its own merge would. */
 const mergedItselfThenFrozen = defineWorkflow({
@@ -85,14 +86,14 @@ describe("the periodic sweep over runs waiting on a gate", () => {
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
   });
 
-  it("cancels a main-frozen gate of a run that recorded the landing of a PR merged elsewhere", async () => {
-    const { host, fake, runId, services } = await gatedAt(landedElsewhereThenFrozen, "main-frozen");
+  it.each(["main-frozen", "main-red", "main-red-again"])("keeps a %s gate of a run that recorded the landing of a PR merged elsewhere", async (gate) => {
+    const { host, fake, runId, services } = await gatedAt(landedThenWaitingOn(gate), gate);
     settle(fake, "merged");
 
     const ended = await endRunsGoneElsewhere(host, services);
 
-    expect(ended).toEqual([{ runId, reason: expect.stringContaining(LANDED_ELSEWHERE) }]);
-    expect(host.gates.get(gateId(runId, "main-frozen"))?.status).toBe("cancelled");
+    expect(ended).toEqual([]);
+    expect(host.gates.get(gateId(runId, gate))?.status).toBe("pending");
   });
 
   it("cancels a sent-back gate once its PR closed", async () => {

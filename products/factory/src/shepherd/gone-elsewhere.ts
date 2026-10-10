@@ -87,13 +87,21 @@ function endable(run: WorkflowRun | undefined, scope: GoneScope): run is Workflo
   return !(scope === "gated" ? mergedItself(run) : mergedByShepherd(run));
 }
 
+/** The questions a merged PR leaves about main: the freeze is repo-scoped and these gates hold the owner's only release, so a merged PR never answers them. */
+const MAIN_GATES: ReadonlySet<string> = new Set(POST_MERGE_STEPS.filter((declared) => declared.kind === "assisted").map((declared) => declared.id));
+const gateStep = (gateId: string): string => stepName(gateId.slice(gateId.lastIndexOf("/") + 1));
+
 /** A run already `cancelling` is on its way out, so neither scope picks it up again. */
 function candidateRuns(host: FactoryHost, scope: GoneScope): WorkflowRun[] {
-  const runs =
-    scope === "live"
-      ? host.runtime.list(["running", "paused"])
-      : [...new Set(host.pendingGates().map((pending) => pending.runId))].flatMap((runId) => host.runtime.status(runId) ?? []);
+  const runs = scope === "live" ? host.runtime.list(["running", "paused"]) : gatedRuns(host);
   return runs.filter((run) => run.workflowName === SHEPHERD_WORKFLOW && endable(run, scope));
+}
+
+/** Runs with a pending gate, less those waiting on a main gate. */
+function gatedRuns(host: FactoryHost): WorkflowRun[] {
+  const pending = host.pendingGates();
+  const onMain = new Set(pending.filter(({ gate }) => MAIN_GATES.has(gateStep(gate.id))).map((gated) => gated.runId));
+  return [...new Set(pending.map((gated) => gated.runId))].filter((runId) => !onMain.has(runId)).flatMap((runId) => host.runtime.status(runId) ?? []);
 }
 
 type CancelOutcome = "cancelled" | "held" | "failed";
