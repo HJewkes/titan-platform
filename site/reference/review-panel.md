@@ -129,7 +129,8 @@ const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABL
 - A profile counts as opus only when `sonnetFor` maps it to a sonnet profile; an opus
   profile missing from that map is never degraded or capped.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
-  `vacuous` or `no-tests`, and then its MERGE is needed too.
+  `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
+  member, that seat counts as missing, so the panel never says MERGE.
 - `aggregate` reads `sonnetFor` from its input, not the plan. Pass the same table you gave
   `planPanel`, or `satisfiesG10` stays false for a custom opus profile.
 

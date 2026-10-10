@@ -4,6 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { aggregate } from "./aggregate.js";
 import type { AggregateInput, MemberResult } from "./aggregate.js";
+import { classifyPr } from "./classify.js";
 import { MAX_FIX_FIRST_TEXT_CHARS } from "./fix-first-findings.js";
 import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel } from "./plan.js";
 import type { PanelPolicy } from "./plan.js";
@@ -155,6 +156,19 @@ describe("aggregate advisory members", () => {
   it("needs the tests member's MERGE when fix-proof made it blocking", () => {
     expect(aggregate(untested, [merge("correctness")], { ...input, fixProof: "vacuous" }).outcome).toBe("no-verdict");
     expect(aggregate(untested, [merge("correctness")], { ...input, fixProof: "reproduced" }).outcome).toBe("MERGE");
+  });
+
+  it.each([
+    { name: "the default table", policy: PANEL },
+    { name: "the default policy", policy: DEFAULT_PANEL_POLICY },
+  ])("withholds MERGE under $name when fix-proof is bad and no tests member was planned", ({ policy }) => {
+    const changed = ["src/gate.ts", "src/gate.test.ts"].map((path) => ({ path, additions: 5, deletions: 1 }));
+    const planned = planPanel(classifyPr({ repo: "o/r", pr: 1, head: HEAD, base: OLD_HEAD, kind: "feature", changedFiles: changed }), policy, { opus: true });
+    expect(planned.members.map((m) => m.shape)).not.toContain("tests");
+
+    const verdicts = ["vacuous", "no-tests", "reproduced"].map((fixProof) => aggregate(planned, [merge("correctness")], { ...input, fixProof }).outcome);
+
+    expect(verdicts).toEqual(["no-verdict", "no-verdict", "MERGE"]);
   });
 });
 
