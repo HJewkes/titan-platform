@@ -115,6 +115,14 @@ describe("gh api adapter", () => {
     await expect(ghCliWire(broken.exec).getClassicRequiredChecks(REPO, "main")).rejects.toThrow(/502/);
   });
 
+  it("reads the branch endpoint's protected flag and throws when it is not a boolean", async () => {
+    const off = scriptedGh({ "branches/main": JSON.stringify({ name: "main", protected: false }) });
+    const missing = scriptedGh({ "branches/main": JSON.stringify({ name: "main" }) });
+
+    expect(await ghCliWire(off.exec).getBranchProtected(REPO, "main")).toBe(false);
+    await expect(ghCliWire(missing.exec).getBranchProtected(REPO, "main")).rejects.toThrow(/no boolean protected flag/);
+  });
+
   it("throws a named error for a required_status_checks rule with no parameters, rather than reading no contexts", async () => {
     const gh = scriptedGh({ "rules/branches/main": JSON.stringify([{ type: "required_status_checks", ruleset_id: 12 }]) });
 
@@ -271,6 +279,7 @@ describe("gh api adapter, REST only", () => {
       requiredChecks: () => port.requiredChecks(REPO, "main"),
       classicRequiredChecks: () => port.classicRequiredChecks(REPO, "main"),
       reviewRulesBypassable: () => port.reviewRulesBypassable(REPO, "main"),
+      branchProtected: () => port.branchProtected(REPO, "main"),
       checkRuns: () => port.checkRuns(REPO, H1),
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),

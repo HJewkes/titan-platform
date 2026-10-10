@@ -675,7 +675,9 @@ validation.
   status check does not refuse: `ci-wait` then waits on every check-run at the head from the GitHub Actions app and
   lands only when there is at least one and all are complete and green (success, neutral or skipped). The first green read is held until a
   second poll sees the same runs, because a job behind `needs:` has no run yet. Zero runs wait
-  and time out; another app's runs neither count nor block. A rules read that errors still fails the run.
+  and time out; another app's runs neither count nor block. A rules read that errors still fails the run, except one
+  answer: HTTP 403 "Upgrade to GitHub Pro" on a repo whose branch endpoint reports `protected: false` reads as no rules,
+  so the same all-check-runs rule applies. A `protected: true`, an unreadable branch or any other 403 refuses.
 - `ci-wait:<n>`: one blocking step that polls every 30 s (45 min timeout) until every required
   check's latest run completed (every Actions run, for a base that requires none). An empty rollup is pending. `mergeable_state` `unknown` or
   `blocked` keeps it waiting; it is never treated as clean.
