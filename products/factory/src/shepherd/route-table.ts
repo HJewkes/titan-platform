@@ -82,6 +82,8 @@ export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
 export interface Escalated {
   escalation: Escalation;
   detail: string;
+  /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
+  carriedFrom?: string;
 }
 
 /** Routes that retry the same head because nobody answered; each one taken is a stuck round. */

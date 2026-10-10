@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/test-kit",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Typed test doubles: partialFake builds a T from only the fields a test uses, without a cast",
   "type": "module",
   "main": "./dist/index.js",

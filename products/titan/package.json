@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/titan",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The titan host CLI: health sampling of the factory and the host",
   "type": "module",
   "main": "./dist/index.js",
