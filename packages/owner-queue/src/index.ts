@@ -21,4 +21,6 @@ export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-
 export { buildOwnerRounds } from "./rounds.js";
 export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";
 export { PARKED, STALE_RULES, staleLabel } from "./stale.js";
+export { stackContext, supersede } from "./supersede.js";
+export type { StackedItem, Superseded, WithdrawnItem } from "./supersede.js";
 export type { StaleEvidence, StaleLabel, StaleRule } from "./stale.js";
