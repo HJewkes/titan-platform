@@ -70,7 +70,8 @@ const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${label
 const detail = (result: CommandResult): string => (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`);
 const isSystemd = (ports: ServicePorts): boolean => ports.platform === "linux";
 const serviceName = (ports: ServicePorts): string => (isSystemd(ports) ? UNIT_NAME : labelOf(ports));
-const serviceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home, ports.labelPrefix));
+/** The plist or unit `service install` writes for this platform. */
+export const installedServiceFile = (ports: ServicePorts): string => (isSystemd(ports) ? unitPath(ports.home, ports.xdgConfigHome) : plistPath(ports.home, ports.labelPrefix));
 export const renderServiceFile = (ports: ServicePorts, options: PlistOptions): string => (isSystemd(ports) ? renderUnit(options) : renderPlist({ ...options, ...(ports.labelPrefix === undefined ? {} : { labelPrefix: ports.labelPrefix }) }));
 
 function fail(io: ServiceIo, message: string): number {
@@ -196,6 +197,9 @@ async function runCommands(ports: ServicePorts, commands: readonly ServiceComman
 
 function preflight(ports: ServicePorts, options: InstallOptions): string | undefined {
   if (options.missing.includes("gh")) return "gh is not on PATH, and titan-factory serve cannot reach GitHub without it; install gh, then rerun";
+  if (!options.dryRun && !ports.exists(options.plist.binPath)) {
+    return `${options.plist.binPath} does not exist; run titan-factory service deploy to clone and build the deploy checkout, then rerun install`;
+  }
   const notDir = options.claudeConfigDirs.find((dir) => !ports.isDirectory(resolve(dir)));
   return notDir === undefined ? undefined : `--claude-config-dir ${notDir} is not a directory`;
 }
@@ -208,7 +212,7 @@ function printInstallPlan(ports: ServicePorts, io: ServiceIo, file: string, job:
 }
 
 export async function installService(ports: ServicePorts, io: ServiceIo, options: InstallOptions): Promise<number> {
-  const file = serviceFile(ports);
+  const file = installedServiceFile(ports);
   const refused = preflight(ports, options);
   if (refused !== undefined) return fail(io, refused);
   const job = await jobState(ports);
@@ -256,7 +260,7 @@ export async function uninstallService(ports: ServicePorts, io: ServiceIo): Prom
 
 /** systemd still lists a unit whose file is gone until the next daemon-reload. */
 async function uninstallUnit(ports: ServicePorts, io: ServiceIo): Promise<number> {
-  const file = serviceFile(ports);
+  const file = installedServiceFile(ports);
   const known = (await unitState(ports)).state !== undefined || ports.exists(file);
   if (!known) {
     io.stdout(`${UNIT_NAME} was not installed\n`);
