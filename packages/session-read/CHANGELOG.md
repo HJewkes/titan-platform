@@ -1,5 +1,19 @@
 # @titan-design/session-read
 
+## 0.12.0
+
+### Minor Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+
+### Patch Changes
+
+- Updated dependencies [37550f4]
+- Updated dependencies [0fb5cf6]
+- Updated dependencies [6eea59d]
+- Updated dependencies [167611d]
+  - @titan-design/anthropic-account@0.3.0
+
 ## 0.11.1
 
 ### Patch Changes

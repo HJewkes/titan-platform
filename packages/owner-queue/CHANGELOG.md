@@ -1,5 +1,14 @@
 # @titan-design/owner-queue
 
+## 0.3.0
+
+### Minor Changes
+
+- 4a42590: Add `consolidate(open, { answered, heads, stacks, deps })`, which returns the approvals Flow: per-PR and topic groups, influence order, holds and a per-PR `shipBlockedBy`. Add `influenceEdges` and `INFLUENCE_RULES`.
+- b7c53ee: Add `recheck(open, answered)`: drop an open item as `gone-elsewhere` when a newer answer on the same head shares its `ask:` key, and flag older shared answers as `conflict` or `reasked`. A shared component, token or topic only flags `related-answer` and never drops.
+- 9c173c9: Add relation keys and round questions as items. `askKey`, `roundAskKey`, `componentKey`, `tokenKey` and `topicKey` build `ask:`, `component:`, `token:` and `topic:` keys that relate items without merging them (`isMergeKey` is unchanged and false for each); `relationKind` reads one back and `prKey` builds a canonical PR merge key. `fromRoundQuestions(manifest, roundId, { openedAt, bindings? })` reads each round@2 question as an open OwnerItem, and `answeredFromFeedback(feedback, manifest, { roundId, openedAt, bindings? })` returns the answered ones from a feedback@1 file. With `buildOwnerRounds` bindings a question maps back to the item and option ids it asked, so a built and answered round round-trips. An owner answer can now carry `optionIds` (pick-many), `changeRequested` (a feedback revision request, so an open change request blocks a ship) and `variantComments`.
+- c174b71: Add `supersede(items, heads?)` and `stackContext(items, stacks)`. `supersede` withdraws open, answered or decided items pinned to a PR head other than the live one (`heads[pr]`, else the newest item's head) as `new-head:<sha>`, keeping their answers so an old change request stays readable as context without blocking a ship. `stackContext` gives each item on a stacked PR its base chain as context and orders it after the items on those bases.
+
 ## 0.2.0
 
 ### Minor Changes
