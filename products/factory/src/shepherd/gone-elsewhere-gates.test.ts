@@ -1,5 +1,5 @@
 import type { WorkflowRun } from "@titan-design/workflow";
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -48,16 +48,30 @@ const mergedItselfThenFrozen = defineWorkflow({
   },
 });
 
+/** Tries to merge, loses the race to another PR, and asks again before retrying, as a re-gated run does. */
+const mergeRacedThenGated = defineWorkflow({
+  name: SHEPHERD_WORKFLOW,
+  steps: [
+    { id: "merge", kind: "dispatch" },
+    { id: "approve-merge", kind: "assisted" },
+  ],
+  run: async (ctx) => {
+    await step(ctx, "merge:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
+    await ctx.assisted("approve-merge", "approve the merge again", { brief: TEST_BRIEF });
+  },
+});
+
 const sentBack = defineWorkflow({
   name: SHEPHERD_WORKFLOW,
   steps: [{ id: "sh-sent-back", kind: "assisted" }],
   run: async (ctx) => void (await ctx.assisted("sh-sent-back", "the review sent it back", { brief: TEST_BRIEF })),
 });
 
-async function gatedAt(workflow: WorkflowDefinition, gate: string, options: { held?: boolean; mergeDone?: boolean } = {}) {
+async function gatedAt(workflow: WorkflowDefinition, gate: string, options: { held?: boolean; baseMoved?: boolean } = {}) {
   const fake: FakeGitHub = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.addPr({ headSha: HEAD });
+  if (options.baseMoved) fake.mergeFaults = [{ error: new FakeHttpError(405, "Base branch was modified. Review and try the merge again.") }];
   const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
@@ -103,6 +117,17 @@ describe("the periodic sweep over runs waiting on a gate", () => {
     const ended = await endRunsGoneElsewhere(host, services);
 
     expect(ended).toEqual([{ runId, reason: expect.stringContaining(CLOSED_ELSEWHERE) }]);
+  });
+
+  it("cancels the re-opened approve-merge gate of a run whose merge attempt did not land", async () => {
+    const { host, fake, runId, services } = await gatedAt(mergeRacedThenGated, "approve-merge", { baseMoved: true });
+    expect(host.runtime.status(runId)?.stepResults["merge:0:0"]?.data?.result).toMatchObject({ done: false, skipped: "base-moved" });
+    settle(fake, "merged");
+
+    const ended = await endRunsGoneElsewhere(host, services);
+
+    expect(ended).toEqual([{ runId, reason: expect.stringContaining(LANDED_ELSEWHERE) }]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
   });
 
   it("keeps a main-frozen gate of a run that merged the PR itself", async () => {
