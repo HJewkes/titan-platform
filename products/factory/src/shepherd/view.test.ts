@@ -202,10 +202,11 @@ describe("a run held at registration waiting in its merge step", () => {
 });
 
 describe("shepherd view stalls", () => {
-  function reviewedRun(outcomes: readonly ("started" | "not-started")[]): WorkflowRun {
+  function reviewedRun(outcomes: readonly ("started" | "not-started")[], shape: "nested" | "top-level" = "nested"): WorkflowRun {
     const run = pausedAt("sh-review:abc1234");
     outcomes.forEach((outcome, iteration) => {
-      const data = outcome === "started" ? { kind: "dispatched" } : { kind: "none", notStarted: true };
+      const result = outcome === "started" ? { kind: "dispatched", reviewer: "rev-1" } : { kind: "none", notStarted: true, reason: "refused" };
+      const data = shape === "nested" ? { result } : result;
       const completedAt = `2026-01-01T00:00:0${iteration}.000Z`;
       run.stepResults[`sh-review:abc1234#${iteration}`] = { stepId: "sh-review:abc1234", iteration, agentId: null, signal: null, completedAt, data };
     });
@@ -220,6 +221,15 @@ describe("shepherd view stalls", () => {
     expect(two.stalled).toBeNull();
     expect(three.stalled).toEqual({ reason: "3 review dispatches in a row started no reviewer" });
     expect(three.phase).toBe("review");
+  });
+
+  it("still counts not-started dispatches stored at the top level of older rows", () => {
+    const now = new Date("2026-01-01T00:01:00.000Z");
+    const row = watchRow({ registration, run: reviewedRun(["started", "not-started", "not-started", "not-started"], "top-level"), now });
+    const reset = watchRow({ registration, run: reviewedRun(["not-started", "not-started", "started"], "top-level"), now });
+
+    expect(row.stalled).toEqual({ reason: "3 review dispatches in a row started no reviewer" });
+    expect(reset.stalled).toBeNull();
   });
 
   describe("time in phase", () => {
