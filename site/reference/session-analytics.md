@@ -183,6 +183,37 @@ that sent it, per model. An approve counts as an error when the same PR later go
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
 
+### taskActuals
+
+`taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The
+caller reads the done tasks (`id`, `initiative`, `doneAt`) and passes them with an
+`initiatives` allowlist; a task outside it gets no row. It reads the spawn record's task ids and
+profile, request timestamps and cost, never briefs or transcript text.
+`doneAt` may be an ISO datetime or a date alone.
+
+A row carries `implAgentHours` and `reviewAgentHours`, each as `capped` (the 15 minute idle
+cap, or `capMinutes`), `at5m` and `at60m`. Active time is the sum of request gaps, each
+capped, so a first request adds nothing. `usd` is `request_cost` at list price. Sessions are
+linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
+task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
+implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+
+| Flag | Meaning |
+|---|---|
+| `no-impl-session` | No implementer session links to the task, so `implAgentHours` is 0 and `implSessions` is 0. |
+| `weak-link` | A session's link came from `brief-paragraph` or `brief-anchor`, which can mis-link. |
+| `multi-task` | A session names k tasks, so its hours and cost split 1/k. |
+| `reopened` | An implementer session started after `doneAt`. All work still counts. |
+| `unpriced` | A request ran on a model with no price row, so `usd` is a floor. |
+| `unmapped-role` | A task-linked session counts toward neither total; `unmappedSessions` counts them. |
+
+A session's role comes from its spawn profile alone (`roleFromProfile`, plus `fable-implementer`
+as implementer and `fable-reviewer` as reviewer), so a resumed or fix-round implementer counts
+however long it lived. The worker report's standing-peer override is not applied. Every session
+linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or is counted in
+`unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
+and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
+
 ## What it deliberately does not do
 
 It does not open a transcript, a log or the network, it never writes the graph, and it does
