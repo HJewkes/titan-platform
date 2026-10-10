@@ -1,5 +1,24 @@
 # @titan-design/evals
 
+## 0.2.0
+
+### Minor Changes
+
+- 19fa0ef: Add the review outcome corpus: `titan-evals corpus` and `buildCorpus` write one row per reviewed head from the factory database, opened read-only, and git history, with the revert, main-red, later-fix, owner-override and fixer-changed-cited-paths labels and a derived escaped, caught, false-block, clean, pending or unresolved label.
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [d7102a6]
+- Updated dependencies [73683d7]
+- Updated dependencies [7d52415]
+- Updated dependencies [446c60a]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/review-panel@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes
