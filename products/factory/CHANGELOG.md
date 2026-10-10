@@ -1,5 +1,12 @@
 # @titan-design/factory
 
+## 0.12.1
+
+### Patch Changes
+
+- b3c0688: Shepherd no longer reruns a red head's failed jobs when it replays a run recorded before the hold check or the rerun existed, so a run that landed before a serve restart does not touch CI again. A rerun GitHub answers with "cannot be retried" or "already running" is recorded as not rerunnable and the run goes on to the normal wake instead of failing.
+- 23b4922: Read the not-started review flag from `data.result`, where the sh-review step stores it, so the "review dispatches started no reviewer" stall fires on real runs. Rows with the flag at the top level still count.
+
 ## 0.12.0
 
 ### Minor Changes
