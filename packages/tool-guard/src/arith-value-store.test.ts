@@ -64,6 +64,13 @@ describe("a payload a name operand or a positional offset reads as arithmetic (T
     ["a positional parameter offset", `${value}; set -- 1 2; echo \${1:X}`],
     ["an offset into all positional parameters", `${value}; set -- 1 2; echo "\${@:X}"`],
     ["an offset into the joined positional parameters", `${value}; set -- 1 2; echo "\${*:X}"`],
+    ["builtin printf -v with a subscript", `${value}; builtin printf -v 'b[X]' 1`],
+    ["command printf -v with a subscript", `${value}; command printf -v 'b[X]' 1`],
+    ["builtin read with a subscript", `${value}; builtin read 'b[X]' <<< 1`],
+    ["command read with a subscript", `${value}; command read 'b[X]' <<< 1`],
+    ["command -p read with a subscript", `${value}; command -p read 'b[X]' <<< 1`],
+    ["an exec fd variable with a subscript", `${value}; exec {b[X]}>/dev/null`],
+    ["a : fd variable with a subscript", `${value}; : {b[X]}>/dev/null`],
   ])("denies %s", async (_, command) => {
     expect(await handled(command)).toBe("deny");
     expect(built(command)).toBe("deny");
