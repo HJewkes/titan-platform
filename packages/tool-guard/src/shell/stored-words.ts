@@ -26,10 +26,24 @@ export function noteCommand(marks: ValueMarks, { op, words: all, prev }: Command
   const head = words.findIndex((word) => parseAssignment(word) === null);
   marks.arithmetic ||= evaluatesArithmetic(op, words, head);
   const header = (op?.type === "op" && op.value === ")" && all.length === 0 && prev === "(") || words[head]?.value === "function";
-  if (header || words[head]?.value === "set" || words.some((word) => DEFAULT_ASSIGN_RE.test(word.value))) marks.opaque = true;
+  if (header || setsPositional(head < 0 ? [] : words.slice(head)) || words.some((word) => DEFAULT_ASSIGN_RE.test(word.value))) marks.opaque = true;
   for (const element of words.flatMap((word) => arrayElements.get(word) ?? [])) hear(element.dynamic ? null : noteWord(element, marks).value);
   const assigning = head < 0 || DECLARERS.has(words[head]?.value ?? "") ? words : words.slice(0, head);
   for (const word of assigning) hearElementWrite(word, hear);
+}
+
+/**
+ * `set` stores positional parameters only from operands: those after `--` or `-`, or the first word that is no
+ * option. `-o` and `+o` take the next word as an option name; a word known only at run time may be anything.
+ */
+function setsPositional([name, ...args]: WordToken[]): boolean {
+  if (name?.value !== "set") return false;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as WordToken;
+    if (arg.dynamic || arg.value === "--" || arg.value === "-" || !/^[-+]/.test(arg.value)) return true;
+    if (/^[-+][A-Za-z]*o$/.test(arg.value)) i++;
+  }
+  return false;
 }
 
 /** `a[i]=text` stores text the variables do not keep; an append or an expansion in it stores text the walk cannot know. */

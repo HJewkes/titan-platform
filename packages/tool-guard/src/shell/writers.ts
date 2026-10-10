@@ -1,6 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
-import { wordsEvaluateArithmetic } from "./arith-words.js";
+import { nameOperandEvaluates, wordsEvaluateArithmetic } from "./arith-words.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
@@ -116,7 +116,8 @@ export function evaluatesArithmetic(op: Token | null, words: WordToken[], head: 
   const name = command[0] ?? "";
   if (name === "let" || name === "unset" || ((name === "[[" || TEST_COMMANDS.has(name)) && command.includes("-v"))) return true;
   const numeric = !TEST_COMMANDS.has(name) && command.some((v) => COMPARISON_RE.test(v));
-  return numeric || values.some((v) => expansionBodies(v).length > 0) || wordsEvaluateArithmetic(words);
+  if (numeric || values.some((v) => expansionBodies(v).length > 0)) return true;
+  return wordsEvaluateArithmetic(words) || (head >= 0 && nameOperandEvaluates(words.slice(head)));
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */

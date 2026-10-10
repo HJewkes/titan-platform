@@ -191,7 +191,6 @@ export const arrayElements = new WeakMap<WordToken, WordToken[]>();
  * `NAME=(a b)` as one word whose value is element 0, unknown unless it is plainly literal: a brace, glob or
  * `[i]=` element can change it. An append to a variable that is not a new local keeps its element 0.
  */
-
 function arrayAssignment(tokens: Token[], i: number, append: boolean, p: Pass): number {
   const w = tokens[i] as WordToken;
   const end = tokens.findIndex((t, j) => j > i && t.type === "op" && t.value === ")");

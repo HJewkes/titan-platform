@@ -54,6 +54,40 @@ describe("a typed payload stored without an assignment word, then read as arithm
   });
 });
 
+describe("a payload a name operand or a positional offset reads as arithmetic (TP-1624)", () => {
+  const value = `X=${PAYLOAD}`;
+  it.each([
+    ["a printf -v target with a subscript", `${value}; printf -v 'b[X]' 1`],
+    ["an attached printf -v target with a subscript", `${value}; printf -vb[X] 1`],
+    ["a read target with a subscript", `${value}; read 'b[X]' <<< 1`],
+    ["a read target named by a variable", `${value}; N='b[X]'; read "$N" <<< 1`],
+    ["a positional parameter offset", `${value}; set -- 1 2; echo \${1:X}`],
+    ["an offset into all positional parameters", `${value}; set -- 1 2; echo "\${@:X}"`],
+    ["an offset into the joined positional parameters", `${value}; set -- 1 2; echo "\${*:X}"`],
+  ])("denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
+describe("set stores positional parameters only through its operands (TP-1624)", () => {
+  const body = "gh pr create --title t --body \"$(cat <<'EOF'\n- [x] ran `pnpm test`\nEOF\n)\"";
+
+  it("passes shell options set beside arithmetic and a PR body", async () => {
+    const command = `set -euo pipefail; n=3; (( n>0 )); ${body}`;
+    expect(await handled(command)).toBe("pass");
+    expect(built(command)).toBe("pass");
+  });
+
+  it.each([
+    ["set -- with an expansion", `set -- "$X"; (( n>0 )); ${body}`],
+    ["set with operands and no --", `set -e "$X"; (( n>0 )); ${body}`],
+  ])("still denies %s", async (_, command) => {
+    expect(await handled(command)).toBe("deny");
+    expect(built(command)).toBe("deny");
+  });
+});
+
 describe("a value nothing on the line reads as arithmetic (TP-1624)", () => {
   it.each([
     ["a PR body with a checklist and inline code", "BODY=$(cat <<'EOF'\n- [x] tests pass\n- Run `pnpm test` locally\nEOF\n); gh pr create --title t --body \"$BODY\""],
