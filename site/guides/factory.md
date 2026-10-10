@@ -129,6 +129,11 @@ stays out of the repo.
   busy wait, which doubles from 1 to 8 minutes. That waiting counts against the 3 hour
   machine-hold ceiling, not the reviewer's 30 minute busy budget, so a backlog drains instead
   of recording `none`.
+  A reviewer also waits while `shepherd.review.maxConcurrent` (3) reviewers run, while the
+  filesystem holding review checkouts has under `shepherd.review.minFreeBytes` (5 GiB) free, or
+  while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
+  last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
+  queue.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
