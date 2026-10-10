@@ -5,7 +5,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@t
 import { GATE_CANCELLED_SIGNAL, type StepResult, type WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { REPO, gateId, gateOpened } from "../test-support/land.js";
+import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -380,7 +380,7 @@ const FIXED = fakeSha("cc749-fixed");
 
 /** A host where RED fails `validate` and the ci-red wake is unhandled, as when the implementer detached. */
 function redUnwoken(fake: FakeGitHub, dbPath = ":memory:"): { host: FactoryHost; services: Services; reviewed: string[] } {
-  fake.onGetPr = (open) => fake.setRuns(open.headSha, [successRun("validate", 1, undefined, open.headSha === RED ? "failure" : "success"), successRun("dag-check", 2)]);
+  fake.onGetPr = (open) => fake.setRuns(open.headSha, [outsideActions(successRun("validate", 1, undefined, open.headSha === RED ? "failure" : "success")), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
   const phases: ShepherdPhases = {
     review: async (_ctx, request) => (reviewed.push(request.headSha), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
