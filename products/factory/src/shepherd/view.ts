@@ -5,6 +5,7 @@ import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
+import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -45,6 +46,10 @@ export const WatchRowSchema = z.object({
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
+  /** The registration's implementer; null when it names none. Absent in rows older than the field. */
+  implementer: z.string().nullable().optional(),
+  /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
+  reviewer: z.string().nullable().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -232,15 +237,6 @@ export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
 }
 
-/** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
-export const MAX_NOT_STARTED_REVIEWS = 3;
-
-/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
-function notStartedStreak(steps: readonly StepResult[]): number {
-  const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
-  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
-}
-
 const MINUTE = 60_000;
 
 /** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
@@ -307,6 +303,8 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    implementer: registration.implementer || null,
+    reviewer: reviewerName(steps),
   };
 }
 

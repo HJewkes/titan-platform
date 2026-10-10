@@ -8,8 +8,9 @@ import { SUPERSEDED, gateHead } from "./stale-gates.js";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const ROUTE_TABLE = "shepherd-route";
-/** Silent, timed-out or unparsed (no_block) review rounds; every other route row, a conflict among them, stays with the owner. */
 const FAILED_ROUNDS: Escalation = "failed-rounds";
+const CONFLICT: Escalation = "conflict";
+const ROUTE_GATE = new RegExp(`Policy ${ROUTE_TABLE}/([a-z-]+):`);
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
 const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
 const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
@@ -92,13 +93,19 @@ interface AuthorityGate {
   reason: string;
 }
 
-/** The head a failed-rounds route gate asks about: the run's last decision gated that head under the route table's failed-rounds row. */
-function failedRoundsHead(run: WorkflowRun, gate: PendingGate["gate"]): string | undefined {
-  if (!gate.prompt.includes(`Policy ${ROUTE_TABLE}/${FAILED_ROUNDS}:`)) return undefined;
+/**
+ * The head a route-table approve-merge gate asks about: failed-rounds, fix-first-runaway, no-progress or conflict. The
+ * run's last decision gated that head under the gate's own route row; a conflict gate records no merge decision, so its
+ * prompt's head stands. Superseding only cancels: the run asks the owner again at the new head (see `clearSuperseded`).
+ */
+function routeGateHead(run: WorkflowRun, gate: PendingGate["gate"]): string | undefined {
+  const row = ROUTE_GATE.exec(gate.prompt)?.[1];
+  if (row === undefined) return undefined;
+  if (row === CONFLICT) return gateHead(gate.prompt);
   const decision = gatingDecision(run, gate.prompt);
-  if (decision) return decision.rule?.rowId === FAILED_ROUNDS ? decision.headSha : undefined;
-  // Only a run that recorded no merge decision at all falls back to the head the gate's own schema pins.
-  return lastMergeDecision(run) === undefined ? schemaHead(gate.schema) : undefined;
+  if (decision) return decision.rule?.rowId === row ? decision.headSha : undefined;
+  // Only a failed-rounds gate of a run that recorded no merge decision at all falls back to the head the gate's own schema pins.
+  return row === FAILED_ROUNDS && lastMergeDecision(run) === undefined ? schemaHead(gate.schema) : undefined;
 }
 
 function schemaHead(schema: unknown): string | undefined {
@@ -132,17 +139,17 @@ function stuckBehindHead(host: FactoryHost, { runId, gate }: PendingGate): strin
   return run?.workflowName === SHEPHERD_WORKFLOW ? lastReadHead(run) : undefined;
 }
 
-/** A conflict, other escalation or release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
+/** A release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
   if (pending.stepId === "stuck-behind") return stuckBehindHead(host, pending);
   const run = approveMergeRun(host, pending);
-  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? failedRoundsHead(run, gate));
+  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate));
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or failed-rounds route approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
