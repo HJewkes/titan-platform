@@ -140,6 +140,7 @@ graph TD
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> health
   factory --> agent
   factory --> agentDispatch
   factory --> appPaths
@@ -153,6 +154,7 @@ graph TD
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient
+  factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
