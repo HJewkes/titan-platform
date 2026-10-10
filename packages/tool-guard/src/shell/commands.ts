@@ -1,4 +1,5 @@
 import { ParseError, SplitParseError, tokenize } from "./lexer.js";
+import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
@@ -12,7 +13,7 @@ import { addRedirect, groupStdin } from "./group-stdin.js";
 import { xargsCommands } from "./xargs-runs.js";
 import { runReadings } from "./xargs-readings.js";
 import type { Vars } from "./vars.js";
-import { MAX_UNSURE_WORDS, ReadingLimitError, SplitReadingError, unsureReadings } from "./unsure-readings.js";
+import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SplitReadingError, unsureReadings } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -127,6 +128,7 @@ function tokenizeLine(src: string): Token[] {
     return tokenize(src);
   } catch (error) {
     if (error instanceof SplitParseError) throw new SplitReadingError(error.split);
+    if (error instanceof NestingLimitError) throw new NestingReadingError();
     throw error;
   }
 }

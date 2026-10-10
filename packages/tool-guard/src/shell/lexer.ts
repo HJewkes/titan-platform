@@ -1,6 +1,7 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
 import { ansiCEnd, backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
+import { nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
@@ -213,7 +214,7 @@ function pushRef(w: WordToken, name: string, text: string): void {
 /** Every substitution on a line is lexed here, so a heredoc it leaves open stays pending on `line`, where bash 5 reads its body. */
 function lexNested(src: string, start: number, trials: ArithTrials, line: LexState | null): LexState {
   const inner = newState(src, start, true, trials);
-  lex(inner);
+  nested(trials.nesting, () => lex(inner));
   if (line && (inner.leftOpen || inner.heredocs.length > 0)) line.leftOpen = true;
   return inner;
 }
@@ -297,6 +298,7 @@ function nestedReaders(at: Reading, found: Token[][]): NestedReaders {
     },
     backtick: (start) => scanBacktick(at.src, start, found, at.trials),
     quotedSpan: (from, to) => found.push(...scanSubstitutions(at.src.slice(from, to), 0, to - from, sameSpend(at.trials))),
+    nesting: at.trials.nesting,
     dollarParens: (dollar) => {
       const end = arithmeticExpansionEnd(at, dollar, found);
       return end === -1 ? read.substitution(dollar + 2) : end;
@@ -320,7 +322,7 @@ export function scanSubstitutions(src: string, from: number, to: number, trials 
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {
   const end = backtickEnd(src, start);
-  found.push(tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1"), sameSpend(trials)));
+  found.push(nested(trials.nesting, () => tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1"), sameSpend(trials))));
   return end;
 }
 

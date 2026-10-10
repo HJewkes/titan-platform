@@ -56,6 +56,15 @@ export class SplitReadingError extends ReadingLimitError {
   }
 }
 
+/** A line whose expansions nest past `MAX_NESTING`; the hook denies it unchecked rather than recurse past its stack. */
+export class NestingReadingError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "expansions nested too deep to check";
+    this.name = "NestingReadingError";
+  }
+}
+
 export interface UnsureBudget {
   left: number;
   /** Past the budget, walk no more readings instead of throwing, so the rest is read as main reads it. */

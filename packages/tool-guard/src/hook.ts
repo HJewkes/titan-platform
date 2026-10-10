@@ -8,7 +8,8 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, SplitReadingError } from "./shell/unsure-readings.js";
+import { MAX_NESTING } from "./shell/nesting.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplitReadingError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { Split } from "./shell/parse-error.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
@@ -50,6 +51,7 @@ const SPLIT_REASONS: Record<Split, string> = {
   "nested-substitution":
     "authority-guard does not check this Bash command: bash 3.2 ends a `$( )` inside `${ }` or `$(( ))` at the first `)` that balances its parens, blind to heredocs, comments and case patterns, and here that is not where bash 5 ends it; move the command substitution out of the expansion.",
 };
+const NESTING_REASON = `authority-guard does not check a Bash command whose expansions or substitutions are nested more than ${MAX_NESTING} deep, so it refuses every one; flatten the nesting into variables or a script file.`;
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -112,6 +114,7 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
 
 function limitReason(error: ReadingLimitError): string {
   if (error instanceof ScriptBudgetError) return scriptsReason(error.overrun);
+  if (error instanceof NestingReadingError) return NESTING_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
 
