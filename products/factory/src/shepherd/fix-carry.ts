@@ -26,15 +26,12 @@ export const FIX_CARRY_STEP = "sh-approval-carry:fix";
 /** What an owner's merge answer may follow across a fix push: the fix's own diff, past what the base merge brought. One place, so a policy change is one edit. */
 export const SMALL_FIX_LIMITS = { maxChangedLines: 40, maxFiles: 3 } as const;
 
-/** `merge-up` is a head whose tree is the approved head merged with the base; `small-fix` adds a small diff to a file the PR already had. */
-export type FixCarryRule = "merge-up" | "small-fix";
-
 const LOCKFILES: ReadonlySet<string> = new Set(["pnpm-lock.yaml", "package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "bun.lock", "bun.lockb", "pnpm-workspace.yaml"]);
 const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "bundledDependencies", "bundleDependencies", "overrides", "resolutions", "pnpm", "packageManager"];
 
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 const FixInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
-export type FixCarryInput = z.infer<typeof FixInputSchema>;
+type FixCarryInput = z.infer<typeof FixInputSchema>;
 
 const FixResultSchema = z.object({
   carries: z.boolean(),
