@@ -24,11 +24,32 @@ export async function readRequiredChecks(port: GitHubPort, repo: RepoSlug, base:
   }
 }
 
+/** Narrow on purpose: the status and GitHub's own plan message, since any other 403 is a real denial. */
+function isFreePlanRulesRefusal(error: unknown): boolean {
+  const { status, message } = (error ?? {}) as { status?: unknown; message?: unknown };
+  return status === 403 && typeof message === "string" && message.includes("Upgrade to GitHub Pro");
+}
+
+/** Only the branch's own `protected:false` makes the Pro 403 mean "no rules"; a failed or true read leaves it unreadable. */
+async function freePlanHasNoRules(port: GitHubPort, repo: RepoSlug, base: string): Promise<boolean> {
+  try {
+    return (await port.branchProtected(repo, base)) === false;
+  } catch {
+    return false;
+  }
+}
+
 /** For land steps: an unreadable answer stops the step, so the run never proceeds on unknown rules. */
 export async function requireRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecks> {
-  const read = await readRequiredChecks(port, repo, base);
-  if (!read.readable) throw new Error(`${read.reason}; land refuses`);
-  return read.checks;
+  let checks: RequiredChecks;
+  try {
+    checks = await port.requiredChecks(repo, base);
+  } catch (error) {
+    if (isFreePlanRulesRefusal(error) && (await freePlanHasNoRules(port, repo, base))) return { contexts: [], strict: false };
+    throw new Error(`required checks of ${repo}@${base} are unreadable: ${statusOf(error)}; land refuses`);
+  }
+  if (!wellFormed(checks)) throw new Error(`required checks of ${repo}@${base} are unreadable: the answer is malformed; land refuses`);
+  return checks;
 }
 
 /** Classic branch protection's required status checks; a 404 reads as none, and any other failure is unreadable. */

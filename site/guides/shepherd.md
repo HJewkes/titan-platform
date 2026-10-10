@@ -466,6 +466,47 @@ GitHub call:
 by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
 `--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
 
+### Review cost {#review-cost}
+
+```
+titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--cost` prints this report instead of the sections above. For each merged PR it takes every review
+round across all the PR's runs: a round opens at its `sh-review` dispatch (or an external review
+intent) and ends at the last step that resolved it, the on-time `sh-await-verdict`, its
+`:corrected` reply, or `sh-late-verdict`, whether that step held a verdict or a timeout. It reads
+the reviewer transcript the round's verdict locator names, or for a round with no verdict the one
+another verdict named for the same session, and prices each request with session-analytics
+`priceRequest`. It reports list-price dollars and tokens (input, cache read, cache write, output)
+per PR, then per repo and ISO week of the merge, then in total, with the p50 and p90 dollars per
+merged PR. A round counts only the requests from its review intent to the step that resolved it,
+so a standing or `hold --reviewer` session that serves several PRs is split between them, and
+requests after that step count nowhere. A request counts once in the whole report, even when a
+resumed session repeats it. A round that cannot be priced (a missing transcript, a model with no
+price row, a parse error, an external review or a timed-out round with no transcript, a round no
+step resolved, or one with no requests in its window) is listed under `unreadable` with its reason
+and adds nothing to the dollars. A PR with one is left out of p50 and p90, so they never treat a
+gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
+
+### SLOs {#slo}
+
+```
+titan-factory shepherd stats --slo [--registry FILE] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--slo` prints this report instead of the sections above. It reads the `titan.metrics/v1` entry
+`metrics/shepherd.yml` from the factory's own checkout, or `--registry`, and evaluates every metric
+in file order. A metric whose query has `kind: cli`, `store: shepherd-stats` and a query id in
+`text` (such as `flow.merge-verdict-to-merged-p90`) is measured over its SLO's window, whole UTC
+days ending today (`1d`, `7d` or `28d`; seven days for a metric with no SLO), or over `--from` and
+`--to` for every metric. Each line gives the status, the value and unit, the SLO, the window and
+`n`, the count the value rests on. The statuses are `pass`, `fail`, `no-data` (nothing in the
+window to measure, never reported as a zero), `no-slo`, `no-query` (the metric names the slice
+that would add a query, its `gapSlice`) and `error` (a query id stats does not know, a query for
+another store, or a query that threw, such as unreadable transcripts). It exits 0 whatever the
+statuses; a missing or invalid registry exits 2. `--json` returns `{ "slo": [...] }`.
+
 ## Seat policy {#seat-policy}
 
 Every registration resolves a policy before anything starts
@@ -769,6 +810,25 @@ transcript. A verdict then reaches the `MRG-AU-RV` decision, and the `sh-merge-e
 step posts the evidence comment. With no `review` key, no checkout for the repo, or a
 refused dispatch, the phase records `none` with the reason, and the
 [route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
+
+The reviewer reads the head from a `git archive` extract under `<data dir>/checkouts/reviews`.
+On basement, its brief tells it never to install dependencies there, and to run targeted tests
+with `basement-suite <repo> <branch> --agent <name> -- <paths>` instead. Each extract then stays
+around 3k inodes. A titan-platform install added about 99k more, and several parallel reviews
+filled a disk. Three fixes were weighed:
+
+- **Defer the install until a check runs.** Most reviews run targeted tests, so most would still
+  install.
+- **Hardlink or reflink `node_modules` from a shared store.** pnpm already hardlinks files from
+  its store, and the extract still gets its own directory and symlink tree. pnpm 9 has no global
+  virtual store.
+- **Reuse a tree that already exists for checks.** basement-suite gives each run its own
+  worktree, caps how many run at once by its slots, and removes the tree on exit. No reviewer
+  shares a mutable tree with an implementer or another reviewer.
+
+Shepherd uses the third. It changes one rule in the brief, and it adds no tree to keep warm. The reviewer checks that the `head=` line basement-suite prints is the head it
+reviews, since basement-suite fetches the branch tip. Off basement, a reviewer still installs in
+its extract to run targeted tests.
 
 These limits remain:
 

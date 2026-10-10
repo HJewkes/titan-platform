@@ -45,6 +45,7 @@
     "@titan-design/registry": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/rpc-client": "workspace:^",
+    "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "@titan-design/workflow": "workspace:^",
