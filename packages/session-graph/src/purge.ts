@@ -38,6 +38,12 @@ const HAND_OFF_SHARED_SESSIONS = `
     SELECT MIN(f.transcript_id) FROM fact f WHERE f.session_id = session.session_id AND f.transcript_id <> @transcriptId)
   WHERE session_id IN (${SHARED_SESSIONS})`;
 
+function sessionIdOf(row: unknown): string {
+  const id = typeof row === "object" && row !== null ? Object.getOwnPropertyDescriptor(row, "session_id")?.value : undefined;
+  if (typeof id !== "string") throw new Error("expected a string session_id");
+  return id;
+}
+
 /**
  * Drop every derived row one transcript produced, so re-reading it from byte 0
  * rebuilds those rows instead of doubling them.
@@ -70,7 +76,7 @@ const HAND_OFF_SHARED_SESSIONS = `
  */
 export function purgeTranscript(graph: SessionGraph, transcriptId: number): string[] {
   return graph.db.transaction(() => {
-    const handedOff = (graph.db.prepare(SHARED_SESSIONS).all({ transcriptId }) as { session_id: string }[]).map((r) => r.session_id);
+    const handedOff = graph.db.prepare(SHARED_SESSIONS).all({ transcriptId }).map(sessionIdOf);
     graph.db.prepare(HAND_OFF_SHARED_SESSIONS).run({ transcriptId });
     graph.db.prepare(`DELETE FROM "${KIT.spanFts}_span" WHERE source_id = ?`).run(transcriptId);
     const owned = graph.db.prepare("SELECT session_id FROM session WHERE transcript_id = ?").all(transcriptId) as { session_id: string }[];
