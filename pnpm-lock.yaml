@@ -600,6 +600,9 @@ importers:
 
   packages/review-panel:
     dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read

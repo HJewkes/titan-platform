@@ -44,3 +44,5 @@ export { BLOCK_LINE, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT
 export { MALFORMED_REFUSALS, MalformedSchema, OwnerBriefSchema, parseOwnerBrief, readMalformed } from "./verdict-schemas.js";
 export type { Malformed, OwnerBrief } from "./verdict-schemas.js";
 export { namesPr, namesTarget } from "./verdict-target.js";
+export { aggregate } from "./aggregate.js";
+export type { AggregateInput, MemberResult } from "./aggregate.js";
