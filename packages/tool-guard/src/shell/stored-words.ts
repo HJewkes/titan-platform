@@ -39,7 +39,8 @@ export function noteCommand(marks: ValueMarks, { op, words: all, prev }: Command
 function setsPositional([name, ...args]: WordToken[]): boolean {
   if (name?.value !== "set") return false;
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i] as WordToken;
+    const arg = args[i];
+    if (arg === undefined) return false;
     if (arg.dynamic || arg.value === "--" || arg.value === "-" || !/^[-+]/.test(arg.value)) return true;
     if (/^[-+][A-Za-z]*o$/.test(arg.value)) i++;
   }
