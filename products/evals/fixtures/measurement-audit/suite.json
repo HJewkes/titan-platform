@@ -1,0 +1,34 @@
+{
+  "schema": "titan.suite/v1",
+  "unit": {
+    "id": "measurement-audit",
+    "version": "2.0.0"
+  },
+  "id": "measurement-audit-capability",
+  "version": "2.0.0",
+  "cases": [
+    "db4817a7b82eeb2321dba158425616597d1540156edfa57f37b0c0f7dff45725"
+  ],
+  "checks": [
+    {
+      "id": "output-shape",
+      "family": "deterministic",
+      "role": "required",
+      "scope": "trial",
+      "critical": true,
+      "type": "output.schema",
+      "params": {
+        "from": "unit.output"
+      }
+    },
+    {
+      "id": "cost-cap",
+      "family": "metric",
+      "role": "required",
+      "scope": "trial",
+      "metric": "cost_usd",
+      "max": 5
+    }
+  ],
+  "trials": 3
+}
