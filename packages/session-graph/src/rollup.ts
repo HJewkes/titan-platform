@@ -49,12 +49,13 @@ const IN_SHARED = "session_id IN (SELECT session_id FROM shared)";
  * shared line twice. Those sessions are recounted from their children instead: an assistant
  * line counts once however many files hold a verbatim copy, and a commit or push once per
  * first signal copy. A session in one transcript keeps its accumulated counts, which are exact
- * and do not depend on its audit facet being current.
+ * and do not depend on its audit facet being current — unless `@minCopies` is 1, which purge
+ * passes for a session it handed off: those counts still hold the purged copy's lines.
  */
 const RECOUNT_SHARED_SESSIONS = `
   WITH shared AS (
     SELECT session_id FROM fact WHERE session_id IN (SELECT value FROM json_each(@sessionIds))
-    GROUP BY session_id HAVING COUNT(DISTINCT transcript_id) > 1
+    GROUP BY session_id HAVING COUNT(DISTINCT transcript_id) >= @minCopies
   ),
   per_file AS (
     SELECT session_id, event_type, ts, byte_length, tool_use_id, COUNT(*) AS n FROM fact
@@ -92,11 +93,17 @@ export function rollupSessions(graph: SessionGraph, sessionIds: readonly string[
       const batch = JSON.stringify(unique.slice(i, i + BATCH));
       renumber.run({ sessionIds: batch });
       updated += aggregate.run({ sessionIds: batch }).changes;
-      recount.run({ sessionIds: batch });
+      recount.run({ sessionIds: batch, minCopies: 2 });
       audit(batch);
     }
     return updated;
   })();
+}
+
+/** Recount `session`'s counters from the facts of every transcript still holding these sessions, even a single one. */
+export function recountSessions(graph: SessionGraph, sessionIds: readonly string[]): void {
+  if (sessionIds.length === 0) return;
+  graph.db.prepare(RECOUNT_SHARED_SESSIONS).run({ sessionIds: JSON.stringify(sessionIds), minCopies: 1 });
 }
 
 /**

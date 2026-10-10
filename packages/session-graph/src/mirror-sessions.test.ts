@@ -131,6 +131,34 @@ describe("one session in a basement tree and a mac mirror", () => {
     expect(dangling.n).toBe(0);
   });
 
+  it("keeps a shared turn the other copy holds when the re-read copy drops it", async () => {
+    await refreshCorpus(graph, [basement(), mac()]);
+    const rewritten = transcriptAt("claude-profiles/server/projects/p", BASEMENT_TAIL, "server");
+
+    await refreshCorpus(graph, [rewritten, mac()]);
+
+    const prompts = graph.db.prepare("SELECT prompt_id FROM turn ORDER BY prompt_id").all().map((r) => (r as { prompt_id: string }).prompt_id);
+    expect(prompts).toEqual(["u-2026-10-01T00:00:00Z", "u-2026-10-01T01:00:00Z", "u-2026-10-01T02:00:00Z"]);
+    const dangling = graph.db.prepare("SELECT COUNT(*) AS n FROM turn WHERE fact_id_start NOT IN (SELECT fact_id FROM fact)").get() as { n: number };
+    expect(dangling.n).toBe(0);
+  });
+
+  it("recounts a session left in one copy to that copy's counts", async () => {
+    await refreshCorpus(graph, [basement(), mac()]);
+    const emptied = transcriptAt("claude-profiles/server/projects/p", [], "server");
+
+    await refreshCorpus(graph, [emptied, mac()]);
+
+    const alone = openSessionGraph(":memory:");
+    try {
+      await refreshCorpus(alone, [mac()]);
+      const expected = alone.db.prepare("SELECT turn_count, commit_count, push_count FROM session").get();
+      expect(graph.db.prepare("SELECT turn_count, commit_count, push_count FROM session").get()).toEqual(expected);
+    } finally {
+      alone.db.close();
+    }
+  });
+
   it("drops only the purged copy's search spans", async () => {
     await refreshCorpus(graph, [basement(), mac()]);
     const owner = graph.db.prepare("SELECT transcript_id AS id FROM session").get() as { id: number };
