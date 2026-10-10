@@ -6,11 +6,11 @@ import { writeFileAtomic } from "./usage-file.js";
 
 // Beside the sessions dir, not in it, and not `.json`: every status-line reader globs
 // `sessions/*.json` and must never take this for a reading.
-export const BACKOFF_FILE = "usage-poll.backoff";
+const BACKOFF_FILE = "usage-poll.backoff";
 // The timer ticks every 150 s, so the first 429 skips at least one tick and each further
 // one doubles the wait, up to an hour.
-export const BACKOFF_BASE_SECONDS = 300;
-export const BACKOFF_MAX_SECONDS = 3600;
+const BACKOFF_BASE_SECONDS = 300;
+const BACKOFF_MAX_SECONDS = 3600;
 const MAX_BACKOFF_BYTES = 256;
 
 export interface PollBackoff {
