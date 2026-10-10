@@ -50,7 +50,7 @@ export function AgentDetailPage({ name, route }: { name: string; route: Route })
     return (
       <VStack gap={4}>
         <Trail name={name} />
-        <BrokerFailure message={roster.error?.message} />
+        <BrokerFailure message={roster.error.message} />
       </VStack>
     );
   }
@@ -109,7 +109,7 @@ function AgentCard({ agent }: { agent: RosterEntry }): ReactNode {
 function Runs({ name }: { name: string }): ReactNode {
   const runs = useQuery("sessions.list", { agent: name, limit: RUNS_PAGE });
   if (runs.status === "loading") return <Spinner size="sm" label="Loading sessions" />;
-  if (runs.data === undefined) return <Alert status="error" message={`Could not load sessions: ${runs.error?.message ?? "no answer"}`} />;
+  if (runs.data === undefined) return <Alert status="error" message={`Could not load sessions: ${runs.error.message}`} />;
   const { sessions, degraded } = runs.data;
   if (degraded) return <GraphDegraded reason={degraded.reason} detail={degraded.detail} />;
   if (sessions.length === 0) return <Typography variant="body2">{`No sessions recorded for ${name}.`}</Typography>;

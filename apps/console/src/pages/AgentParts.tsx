@@ -80,7 +80,7 @@ export function formatCost(costUsd: number | null): string {
 export function MessageFeed({ agent, empty }: { agent?: string; empty: string }): ReactNode {
   const feed = useQuery("agents.messages", agent === undefined ? { limit: FEED_PAGE } : { agent, limit: FEED_PAGE });
   if (feed.status === "loading") return <Spinner size="sm" label="Loading messages" />;
-  if (feed.data === undefined) return <BrokerFailure message={feed.error?.message} />;
+  if (feed.data === undefined) return <BrokerFailure message={feed.error.message} />;
   const { messages } = feed.data;
   return (
     <VStack gap={2}>

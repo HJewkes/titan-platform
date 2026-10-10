@@ -44,7 +44,7 @@ function AgentsPage({ route }: { route: Route }): ReactNode {
 function Roster(): ReactNode {
   const roster = useQuery("agents.roster");
   if (roster.status === "loading") return <Spinner size="sm" label="Loading agents" />;
-  if (roster.data === undefined) return <BrokerFailure message={roster.error?.message} />;
+  if (roster.data === undefined) return <BrokerFailure message={roster.error.message} />;
   const { agents, reconnecting } = roster.data;
   return (
     <VStack gap={3}>
