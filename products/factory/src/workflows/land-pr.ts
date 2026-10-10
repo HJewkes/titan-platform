@@ -139,12 +139,28 @@ interface RerunInput {
   failing: FailingCheck[];
 }
 
+/** GitHub answers 403 for a run it will not retry, such as one whose head has merged, or one still running. */
+const NOT_RERUNNABLE = /cannot be retried|already running/i;
+
+type RerunOutcome = WriteResult | { done: false; skipped: "not-rerunnable" };
+
 /** One rerun per distinct Actions run, then a bounded wait so the next ci-wait does not read the failed checks again. */
 async function rerunFailed(port: GitHubPort, input: RerunInput, timing: Timing, signal: AbortSignal): Promise<object> {
   const runIds = [...new Set(input.failing.flatMap((check) => (check.workflowRunId === null ? [] : [check.workflowRunId])))];
-  const reruns: (WriteResult & { runId: number })[] = [];
-  for (const runId of runIds) reruns.push({ runId, ...(await port.rerunFailed(input.repo, runId)) });
+  const reruns: (RerunOutcome & { runId: number })[] = [];
+  for (const runId of runIds) reruns.push({ runId, ...(await rerunOne(port, input.repo, runId)) });
+  if (reruns.length > 0 && reruns.every((result) => !result.done && result.skipped === "not-rerunnable")) return { reruns, settled: false };
   return { reruns, settled: await waitSuperseded(port, input, timing, signal) };
+}
+
+/** A run GitHub refuses to retry is recorded as not rerunnable, so the round goes on to the wake instead of failing the run. */
+async function rerunOne(port: GitHubPort, repo: RepoSlug, runId: number): Promise<RerunOutcome> {
+  try {
+    return await port.rerunFailed(repo, runId);
+  } catch (error) {
+    if (!NOT_RERUNNABLE.test(error instanceof Error ? error.message : String(error))) throw error;
+    return { done: false, skipped: "not-rerunnable" };
+  }
 }
 
 /** Expiry is not an error: the next ci-wait reads CI afresh, and a still-red head goes to the human gate. */

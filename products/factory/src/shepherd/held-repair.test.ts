@@ -7,6 +7,7 @@ import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { recordedPastThisWake } from "./held-repair.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
 
@@ -150,5 +151,18 @@ describe("a held run whose head needs a fix wakes no agent and tells the seat on
 
     expect(wakes).toEqual([]);
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("a replay whose record went past this ci-red wake", () => {
+  it("skips the hold check and the rerun, so a run that landed on that path does not touch CI again", () => {
+    expect(recordedPastThisWake("sh-repair:0")).toBe(true);
+    expect(recordedPastThisWake("sh-landed")).toBe(true);
+  });
+
+  it("goes on when the record is live or its next step is one this wake records", () => {
+    expect(recordedPastThisWake(undefined)).toBe(false);
+    expect(recordedPastThisWake("sh-held-check")).toBe(false);
+    expect(recordedPastThisWake("rerun:0")).toBe(false);
   });
 });

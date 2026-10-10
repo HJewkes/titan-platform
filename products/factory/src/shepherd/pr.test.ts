@@ -1460,6 +1460,18 @@ describe("a failed required check at a pull request head", () => {
     expect(JSON.stringify(wakes[0]!.payload)).toContain("/actions/runs/1011/");
   });
 
+  it("wakes the implementer, with the run not failed, when GitHub answers 403 that the run cannot be retried", async () => {
+    const { w, wakes, fake } = flaky(false);
+    fake.rerunFaults = [{ error: Object.assign(new Error("gh api -i -X POST failed (1): gh: This workflow run cannot be retried (HTTP 403)"), { status: 403 }) }];
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(wakes).toHaveLength(1);
+    expect(stepResult(w.host, runId, "rerun:0")).toMatchObject({ result: { reruns: [{ done: false, skipped: "not-rerunnable" }] } });
+    expect(w.host.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
   it("reruns a head at most once, even when the run is replayed after a restart", async () => {
     const dbPath = join(mkdtempSync(join(tmpdir(), "tp2228-")), "factory.db");
     const first = flaky(false, dbPath);
