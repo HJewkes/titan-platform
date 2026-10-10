@@ -69,7 +69,7 @@ function equalityKind(left: Node, right: Node): AssertionKind {
 
 function comparisonKind(cmp: Node): AssertionKind {
   const [left, right] = cmp.namedChildren;
-  const op = cmp.children.find((c) => c !== null && !c.isNamed)?.type ?? "";
+  const op = cmp.children.find((c) => !c.isNamed)?.type ?? "";
   if (!left || !right || cmp.namedChildren.length !== 2) return "loose";
   if (EXIT_STATUS.test(left.text)) return exitStatusKind(op, right);
   if (EXIT_STATUS.test(right.text)) return exitStatusKind(op, left);
@@ -97,13 +97,13 @@ function callKind(call: Node, imports: ReadonlyMap<string, string>): AssertionKi
 
 function hasGivenDecorator(def: Node): boolean {
   if (def.parent?.type !== "decorated_definition") return false;
-  return def.parent.namedChildren.some((d) => d?.type === "decorator" && /^@\s*(?:hypothesis\.)?given\b/.test(d.text));
+  return def.parent.namedChildren.some((d) => d.type === "decorator" && /^@\s*(?:hypothesis\.)?given\b/.test(d.text));
 }
 
 function takesSnapshotFixture(def: Node): boolean {
   return (def.childForFieldName("parameters")?.namedChildren ?? []).some((p) => {
-    const id = p?.type === "identifier" ? p : p?.descendantsOfType("identifier")[0];
-    return id !== null && id !== undefined && SNAPSHOT_FIXTURES.has(id.text);
+    const id = p.type === "identifier" ? p : p.descendantsOfType("identifier")[0];
+    return id !== undefined && SNAPSHOT_FIXTURES.has(id.text);
   });
 }
 

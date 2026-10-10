@@ -27,7 +27,7 @@ function collectBindings(root: Node): { runners: Set<string>; assigned: Set<stri
       assigned.add(key(scope, left.text));
       if (isRunnerConstruction(node.childForFieldName("right"))) runners.add(key(scope, left.text));
     } else if (TYPED_PARAMS.has(node.type) && CLI_RUNNER.test(node.childForFieldName("type")?.text ?? "")) {
-      const id = node.namedChildren.find((c) => c?.type === "identifier");
+      const id = node.namedChildren.find((c) => c.type === "identifier");
       if (id) runners.add(key(scope, id.text));
     }
   });

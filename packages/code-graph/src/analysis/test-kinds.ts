@@ -3,7 +3,6 @@ import type { ParsedFile } from "@titan-design/code-parser";
 import type { IndexSource } from "../index-source.js";
 import { forEachDeclaration } from "../declared-names.js";
 import { parseSymbolId, symbolId } from "../extractors/ids.js";
-import type { CallEdgeAttrs } from "../extractors/call-sites.js";
 import type { GraphEdge, GraphMetric } from "../types.js";
 import {
   codeKindFacts,
@@ -169,7 +168,8 @@ function resolvedSites(edges: readonly GraphEdge[]): Map<string, number> {
   const out = new Map<string, number>();
   for (const e of edges) {
     if (e.kind !== "calls") continue;
-    const sites = (e.attrs as CallEdgeAttrs | undefined)?.sites?.length ?? 1;
+    const recorded = e.attrs?.sites;
+    const sites = Array.isArray(recorded) ? recorded.length : 1;
     out.set(e.srcId, (out.get(e.srcId) ?? 0) + sites);
   }
   return out;

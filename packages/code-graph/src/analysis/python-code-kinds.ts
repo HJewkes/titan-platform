@@ -19,7 +19,6 @@ const NESTED_SCOPES = new Set(["function_definition", "class_definition"]);
 /** Every node under `root`, without entering a nested def or class, whose behaviour is its own symbol's. */
 export function forEachOwnNode(root: Node, visit: (node: Node) => void): void {
   for (const child of root.namedChildren) {
-    if (!child) continue;
     visit(child);
     if (!NESTED_SCOPES.has(child.type)) forEachOwnNode(child, visit);
   }
@@ -33,11 +32,10 @@ export function forEachOwnNode(root: Node, visit: (node: Node) => void): void {
 export function importedNames(root: Node): Map<string, string> {
   const out = new Map<string, string>();
   for (const stmt of root.descendantsOfType(["import_statement", "import_from_statement"])) {
-    if (!stmt) continue;
     const from = stmt.type === "import_from_statement" ? stmt.childForFieldName("module_name")?.text : undefined;
     for (const item of stmt.childrenForFieldName("name")) {
-      const name = item?.type === "aliased_import" ? item.childForFieldName("name")?.text : item?.text;
-      const alias = item?.type === "aliased_import" ? item.childForFieldName("alias")?.text : undefined;
+      const name = item.type === "aliased_import" ? item.childForFieldName("name")?.text : item.text;
+      const alias = item.type === "aliased_import" ? item.childForFieldName("alias")?.text : undefined;
       if (!name) continue;
       const local = alias ?? (from ? name : name.split(".")[0]!);
       out.set(local, from ? `${from}.${name}` : alias ? name : local);
@@ -140,10 +138,10 @@ function isIoCall(call: Node, callee: string, scope: FunctionScope): boolean {
 /** Parameters, with those annotated `Path` also recorded as paths. */
 function bindParameters(def: Node, scope: FunctionScope): void {
   for (const param of def.childForFieldName("parameters")?.namedChildren ?? []) {
-    const id = param?.type === "identifier" ? param : param?.descendantsOfType("identifier")[0];
+    const id = param.type === "identifier" ? param : param.descendantsOfType("identifier")[0];
     if (!id) continue;
     scope.params.add(id.text);
-    if (/\b(?:Path|PurePath)\b/.test(param?.childForFieldName("type")?.text ?? "")) scope.pathNames.add(id.text);
+    if (/\b(?:Path|PurePath)\b/.test(param.childForFieldName("type")?.text ?? "")) scope.pathNames.add(id.text);
   }
 }
 
@@ -152,7 +150,7 @@ function bindLocals(body: Node, scope: FunctionScope): void {
   const declaredOuter = new Set<string>();
   forEachOwnNode(body, (node) => {
     if (node.type === "global_statement" || node.type === "nonlocal_statement") {
-      for (const id of node.namedChildren) if (id?.type === "identifier") declaredOuter.add(id.text);
+      for (const id of node.namedChildren) if (id.type === "identifier") declaredOuter.add(id.text);
     }
     const left = node.type === "assignment" ? node.childForFieldName("left") : null;
     if (left?.type !== "identifier") return;
@@ -166,7 +164,7 @@ function bindLocals(body: Node, scope: FunctionScope): void {
 function isEntryDecorated(def: Node): boolean {
   if (def.parent?.type !== "decorated_definition") return false;
   return def.parent.namedChildren.some((d) => {
-    if (d?.type !== "decorator") return false;
+    if (d.type !== "decorator") return false;
     const expr = d.namedChildren[0];
     const target = expr?.type === "call" ? expr.childForFieldName("function") : expr;
     return target !== null && target !== undefined && ENTRY_DECORATOR.test(target.text);
@@ -214,7 +212,7 @@ export function codeKindFacts(name: string, def: Node, file: FileContext): CodeK
 export function moduleAssignedNames(root: Node): Set<string> {
   const out = new Set<string>();
   for (const stmt of root.namedChildren) {
-    const expr = stmt?.type === "expression_statement" ? stmt.namedChildren[0] : null;
+    const expr = stmt.type === "expression_statement" ? stmt.namedChildren[0] : null;
     const left = expr?.type === "assignment" ? expr.childForFieldName("left") : null;
     if (left?.type === "identifier") out.add(left.text);
   }
@@ -227,9 +225,9 @@ const MAIN_GUARD = /^__name__\s*==\s*["']__main__["']$|^["']__main__["']\s*==\s*
 export function mainGuardCallees(root: Node): Set<string> {
   const out = new Set<string>();
   for (const stmt of root.namedChildren) {
-    if (stmt?.type !== "if_statement" || !MAIN_GUARD.test(stmt.childForFieldName("condition")?.text ?? "")) continue;
+    if (stmt.type !== "if_statement" || !MAIN_GUARD.test(stmt.childForFieldName("condition")?.text ?? "")) continue;
     for (const call of stmt.descendantsOfType("call")) {
-      const callee = call?.childForFieldName("function");
+      const callee = call.childForFieldName("function");
       if (callee?.type === "identifier") out.add(callee.text);
     }
   }

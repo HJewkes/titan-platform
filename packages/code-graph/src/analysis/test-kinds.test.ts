@@ -37,12 +37,7 @@ describe("test kinds over an indexed Python project (TP-2170)", () => {
     repo.commit("fixture");
     store = openCodeGraph(":memory:");
     const { snapshotId } = await indexPaths(store, { paths: [repo.dir] });
-    const rows = store.db.prepare("SELECT node_id, name, value FROM metric WHERE snapshot_id = ?").all(snapshotId) as {
-      node_id: string;
-      name: string;
-      value: number;
-    }[];
-    values = new Map(rows.map((r) => [`${r.node_id} ${r.name}`, r.value]));
+    values = new Map(store.listMetrics(snapshotId).map((m) => [`${m.nodeId} ${m.name}`, m.value ?? 0]));
   });
 
   afterAll(async () => {
