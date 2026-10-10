@@ -1,5 +1,6 @@
 import { lineSourceFromTexts } from "@titan-design/evidence";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
 import { aggregate } from "./aggregate.js";
 import type { AggregateInput, MemberResult } from "./aggregate.js";
@@ -10,7 +11,9 @@ import type { PanelPlan, PrTouch, ReviewClass, ReviewShape } from "./types.js";
 
 const HEAD = "a".repeat(40);
 const OLD_HEAD = "b".repeat(40);
-const locator = { source: { conversation: { nativeId: "session-1" } } } as unknown as SourceTextLocator;
+const locator = partialFake<SourceTextLocator>();
+/** A result read back from stored JSON, so its fields carry no type guarantee. */
+const stored = (value: unknown): MemberResult => JSON.parse(JSON.stringify(value));
 const reviewer = { agentId: "agent-1", sessionId: "session-1" };
 const PANEL: PanelPolicy = { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABLE };
 const source = lineSourceFromTexts({ "src/gate.ts": "one\ntwo\nthree\n", "src/view.tsx": "a\nb\n" });
@@ -56,7 +59,7 @@ describe("aggregate fails closed", () => {
   it.each([["fix_first"], ["FIX_FIRST "], ["WAIT"], ["Fix-First"], ["merge"], ["MERGE "], [undefined], [null]])(
     "reads a verdict of %j at the head as missing, never MERGE",
     (verdict) => {
-      const odd = { shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer, verdict } } as unknown as MemberResult;
+      const odd = stored({ shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer, verdict } });
       const result = aggregate(G10, [merge("correctness"), odd], input);
       expect(result.outcome).toBe("no-verdict");
       expect(result.satisfiesG10).toBe(false);
@@ -64,12 +67,12 @@ describe("aggregate fails closed", () => {
   );
 
   it("reads a verdict result with no verdict field as missing", () => {
-    const bare = { shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer } } as unknown as MemberResult;
+    const bare = stored({ shape: "adversary", result: { kind: "verdict", head: HEAD, locator, reviewer } });
     expect(aggregate(G10, [merge("correctness"), bare], input).outcome).toBe("no-verdict");
   });
 
   it("reads an unknown result kind as missing", () => {
-    const odd = { shape: "adversary", result: { kind: "VERDICT", head: HEAD, verdict: "MERGE" } } as unknown as MemberResult;
+    const odd = stored({ shape: "adversary", result: { kind: "VERDICT", head: HEAD, verdict: "MERGE" } });
     expect(aggregate(G10, [merge("correctness"), odd], input).outcome).toBe("no-verdict");
   });
 
