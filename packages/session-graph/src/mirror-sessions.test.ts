@@ -46,19 +46,42 @@ function transcriptAt(relative: string, lines: unknown[], account: string, host?
 const basement = () => transcriptAt("claude-profiles/server/projects/p", [...SHARED, ...BASEMENT_TAIL], "server");
 const mac = () => transcriptAt("mac-transcripts/server/projects/p", [...SHARED, ...MAC_TAIL], "server", "mac");
 
+const column = (row: unknown, key: string): unknown => (typeof row === "object" && row !== null ? Object.getOwnPropertyDescriptor(row, key)?.value : undefined);
+const numberAt = (row: unknown, key: string): number => {
+  const value = column(row, key);
+  if (typeof value !== "number") throw new Error(`expected a number in column ${key}`);
+  return value;
+};
+const stringAt = (row: unknown, key: string): string => {
+  const value = column(row, key);
+  if (typeof value !== "string") throw new Error(`expected a string in column ${key}`);
+  return value;
+};
+const scalar = (sql: string, ...params: unknown[]): number => numberAt(graph.db.prepare(sql).get(...params), "n");
+const ownerId = () => numberAt(graph.db.prepare("SELECT transcript_id AS id FROM session").get(), "id");
+const promptIds = () =>
+  graph.db
+    .prepare("SELECT prompt_id FROM turn ORDER BY prompt_id")
+    .all()
+    .map((r) => stringAt(r, "prompt_id"));
+const danglingTurns = () => scalar("SELECT COUNT(*) AS n FROM turn WHERE fact_id_start NOT IN (SELECT fact_id FROM fact)");
+
 const sessionRow = () =>
-  graph.db.prepare("SELECT session_id, turn_count, commit_count, push_count FROM session").all() as {
-    session_id: string;
-    turn_count: number;
-    commit_count: number;
-    push_count: number;
-  }[];
+  graph.db
+    .prepare("SELECT session_id, turn_count, commit_count, push_count FROM session")
+    .all()
+    .map((r) => ({
+      session_id: stringAt(r, "session_id"),
+      turn_count: numberAt(r, "turn_count"),
+      commit_count: numberAt(r, "commit_count"),
+      push_count: numberAt(r, "push_count"),
+    }));
 
 const firstCopySignals = () =>
   graph.db
     .prepare(`SELECT signal FROM (SELECT signal, ${SIGNAL_COPY_RANK} AS copy_rank FROM session_signal WHERE session_id = ?) WHERE copy_rank = 1 ORDER BY signal`)
     .all(SESSION)
-    .map((r) => (r as { signal: string }).signal);
+    .map((r) => stringAt(r, "signal"));
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), "titan-session-graph-mirror-"));
@@ -74,8 +97,7 @@ describe("one session in a basement tree and a mac mirror", () => {
     await refreshCorpus(graph, [basement(), mac()]);
 
     expect(sessionRow().map((r) => r.session_id)).toEqual([SESSION]);
-    const children = graph.db.prepare("SELECT COUNT(DISTINCT transcript_id) AS n FROM fact WHERE session_id = ?").get(SESSION) as { n: number };
-    expect(children.n).toBe(2);
+    expect(scalar("SELECT COUNT(DISTINCT transcript_id) AS n FROM fact WHERE session_id = ?", SESSION)).toBe(2);
   });
 
   it("counts the shared commit, push and assistant lines once", async () => {
@@ -83,8 +105,7 @@ describe("one session in a basement tree and a mac mirror", () => {
 
     // Assistant lines: one shared, one basement-only, two mac-only.
     expect(sessionRow()[0]).toMatchObject({ turn_count: 4, commit_count: 1, push_count: 1 });
-    const stored = graph.db.prepare("SELECT COUNT(*) AS n FROM session_signal WHERE signal = 'commit'").get() as { n: number };
-    expect(stored.n).toBe(2);
+    expect(scalar("SELECT COUNT(*) AS n FROM session_signal WHERE signal = 'commit'")).toBe(2);
     expect(firstCopySignals()).toEqual(["command_heads", "commit", "push"]);
   });
 
@@ -106,29 +127,26 @@ describe("one session in a basement tree and a mac mirror", () => {
   it("keeps the session when one copy is purged for a re-read", async () => {
     const copies = [basement(), mac()];
     await refreshCorpus(graph, copies);
-    const owner = graph.db.prepare("SELECT transcript_id AS id FROM session").get() as { id: number };
+    const owner = ownerId();
 
-    purgeTranscript(graph, owner.id);
+    purgeTranscript(graph, owner);
 
     expect(sessionRow().map((r) => r.session_id)).toEqual([SESSION]);
-    const turns = graph.db.prepare("SELECT COUNT(*) AS n FROM turn WHERE session_id = ?").get(SESSION) as { n: number };
-    expect(turns.n).toBeGreaterThan(0);
-    const repointed = graph.db.prepare("SELECT transcript_id AS id FROM session").get() as { id: number };
-    expect(repointed.id).not.toBe(owner.id);
+    expect(scalar("SELECT COUNT(*) AS n FROM turn WHERE session_id = ?", SESSION)).toBeGreaterThan(0);
+    expect(ownerId()).not.toBe(owner);
   });
 
   it("re-reads a shortened copy without phantom turns or dangling fact ids", async () => {
     await refreshCorpus(graph, [basement(), mac()]);
     const shortened = transcriptAt("claude-profiles/server/projects/p", SHARED, "server");
-    const owner = graph.db.prepare("SELECT transcript_id AS id FROM session").get() as { id: number };
+    const owner = ownerId();
 
-    purgeTranscript(graph, owner.id);
+    purgeTranscript(graph, owner);
     await refreshCorpus(graph, [shortened, mac()]);
 
-    const prompts = graph.db.prepare("SELECT prompt_id FROM turn ORDER BY prompt_id").all().map((r) => (r as { prompt_id: string }).prompt_id);
+    const prompts = promptIds();
     expect(prompts).toEqual(["u-2026-10-01T00:00:00Z", "u-2026-10-01T02:00:00Z"]);
-    const dangling = graph.db.prepare("SELECT COUNT(*) AS n FROM turn WHERE fact_id_start NOT IN (SELECT fact_id FROM fact)").get() as { n: number };
-    expect(dangling.n).toBe(0);
+    expect(danglingTurns()).toBe(0);
   });
 
   it("keeps a shared turn the other copy holds when the re-read copy drops it", async () => {
@@ -137,10 +155,9 @@ describe("one session in a basement tree and a mac mirror", () => {
 
     await refreshCorpus(graph, [rewritten, mac()]);
 
-    const prompts = graph.db.prepare("SELECT prompt_id FROM turn ORDER BY prompt_id").all().map((r) => (r as { prompt_id: string }).prompt_id);
+    const prompts = promptIds();
     expect(prompts).toEqual(["u-2026-10-01T00:00:00Z", "u-2026-10-01T01:00:00Z", "u-2026-10-01T02:00:00Z"]);
-    const dangling = graph.db.prepare("SELECT COUNT(*) AS n FROM turn WHERE fact_id_start NOT IN (SELECT fact_id FROM fact)").get() as { n: number };
-    expect(dangling.n).toBe(0);
+    expect(danglingTurns()).toBe(0);
   });
 
   it("recounts a session left in one copy to that copy's counts", async () => {
@@ -161,13 +178,16 @@ describe("one session in a basement tree and a mac mirror", () => {
 
   it("drops only the purged copy's search spans", async () => {
     await refreshCorpus(graph, [basement(), mac()]);
-    const owner = graph.db.prepare("SELECT transcript_id AS id FROM session").get() as { id: number };
+    const owner = ownerId();
 
-    purgeTranscript(graph, owner.id);
+    purgeTranscript(graph, owner);
 
-    const sources = graph.db.prepare("SELECT DISTINCT source_id AS id FROM search_span").all() as { id: number }[];
+    const sources = graph.db
+      .prepare("SELECT DISTINCT source_id AS id FROM search_span")
+      .all()
+      .map((r) => numberAt(r, "id"));
     expect(sources.length).toBe(1);
-    expect(sources[0]!.id).not.toBe(owner.id);
+    expect(sources[0]).not.toBe(owner);
   });
 
   it("still counts a session read from one transcript as before", async () => {
