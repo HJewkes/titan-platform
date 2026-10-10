@@ -446,9 +446,10 @@ a cwd, so a reviewer's in-place checkout can no longer block a deploy. Its path 
 `service.deployCheckout` from the factory config, else `deploy/titan-platform` under the app
 data dir (`@titan-design/app-paths`, app `titan-factory`). When it is absent, deploy runs
 `git clone --branch main <remote>` into it, never a copy of a working tree; the remote is
-`service.deployRemote`, else the origin of the checkout the CLI runs from. That first run
-builds the clone and stops without restarting, because the installed unit does not run from it
-yet. It takes the pid lock
+`service.deployRemote`, else the origin of the checkout the CLI runs from. While the installed
+unit or plist does not start the deploy checkout's bin, every run only fast-forwards and
+builds it, never restarts, and says to run `service install`; the automatic redeploy after a
+merge therefore cannot restart the service onto the old tree and roll back. It takes the pid lock
 `$XDG_STATE_HOME/titan-factory/deploy.lock`. A lock whose pid is dead is stale; a deployer
 takes it over by renaming it, so two deployers cannot both win, and on exit removes the lock
 only while it still holds its own pid. It runs `git fetch origin main` and targets `--expect`
