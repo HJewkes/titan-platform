@@ -46,6 +46,36 @@ describe("shepherd view outcomes", () => {
   });
 });
 
+describe("shepherd view agent names", () => {
+  const withImplementer: Registration = { ...registration, implementer: "impl-1" };
+
+  function reviewedBy(...reviews: Array<[string, object]>): WorkflowRun {
+    const run = pausedAt("sh-await-verdict:abc1234");
+    reviews.forEach(([completedAt, result], iteration) => {
+      run.stepResults[`sh-review:abc1234#${iteration}`] = { stepId: "sh-review:abc1234", iteration, agentId: null, signal: null, completedAt, data: { result } };
+    });
+    return run;
+  }
+
+  it("names the implementer and the reviewer the newest started review dispatched", () => {
+    const run = reviewedBy(
+      ["2026-01-01T00:10:00.000Z", { kind: "dispatched", mode: "spawn", reviewer: "rv-acme-widgets-1-1", agentId: "a1", sessionId: "s1" }],
+      ["2026-01-01T00:20:00.000Z", { kind: "dispatched", mode: "spawn", reviewer: "rv-acme-widgets-1-2", agentId: "a2", sessionId: "s2" }],
+      ["2026-01-01T00:30:00.000Z", { kind: "none", notStarted: true, reason: "refused" }],
+    );
+
+    expect(watchRow({ registration: withImplementer, run })).toMatchObject({ implementer: "impl-1", reviewer: "rv-acme-widgets-1-2" });
+  });
+
+  it("leaves the reviewer null for a run no reviewer has started on", () => {
+    expect(watchRow({ registration: withImplementer, run: pausedAt("sh-review-intent:abc1234") })).toMatchObject({ implementer: "impl-1", reviewer: null });
+  });
+
+  it("leaves the implementer null for a run registered with none", () => {
+    expect(watchRow({ registration: { ...registration, implementer: "" }, run: pausedAt("ci-wait") }).implementer).toBeNull();
+  });
+});
+
 describe("shepherd view phases", () => {
   it.each(["sh-review-intent:abc1234", "sh-merge-evidence:abc1234"])("reads a run paused at %s as review", (step) => {
     expect(watchRow({ registration, run: pausedAt(step) }).phase).toBe("review");

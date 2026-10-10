@@ -8,8 +8,10 @@ import { formatDecisionLine, formatErrorLine } from "./log.js";
 import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, ReadingLimitError, ScriptBudgetError, SplitReadingError, ValueWalkError } from "./shell/unsure-readings.js";
+import { MAX_NESTING } from "./shell/nesting.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplitReadingError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
+import type { Split } from "./shell/parse-error.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
 
 export type DecideFn = (actions: readonly ClassifiedAction[], actor: ActorObservation) => GuardDecision;
@@ -43,8 +45,19 @@ const READINGS_REASON =
   "authority-guard does not check a Bash command with this many variables in wrapper positions (`sudo $a`, `timeout $T`), so it refuses every one; split it into shorter commands, or write the steps to a script file and run that.";
 const VALUE_REASON =
   "authority-guard does not check this Bash command: it evaluates arithmetic (`(( X ))`, `let X`, `a[X]=1`), which runs a `$(` or backquote after a `[` in a variable's value, and it stores such text where the check cannot follow it (`read`, an argument, a loop item, a value built at run time) or in a value it cannot read in full; write the commands out where they run, or split the arithmetic into its own command.";
-const SPLIT_REASON =
-  "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body, and the line's other heredoc bodies, from the next lines, while bash 3.2 runs those lines as commands; close the heredoc inside the substitution.";
+const SPLIT_REASONS: Record<Split, string> = {
+  heredoc:
+    "authority-guard does not check this Bash command: a heredoc opened inside `$( )` or `<( )` is still open when it closes, so bash 5 reads its body, and the line's other heredoc bodies, from the next lines, while bash 3.2 runs those lines as commands; close the heredoc inside the substitution.",
+  "procsub-brace":
+    "authority-guard does not check this Bash command: bash 3.2 reads the text of a `<( )` or `>( )` in `${ }` as part of the parameter, and here a `}` or a quote in it ends that reading somewhere bash 5 does not; move the process substitution out of the parameter.",
+  "nested-substitution":
+    "authority-guard does not check this Bash command: bash 3.2 ends a `$( )` inside `${ }` or `$(( ))` at the first `)` that balances its parens, blind to heredocs, comments and case patterns, and here that is not where bash 5 ends it; move the command substitution out of the expansion.",
+  "quoted-substitution":
+    "authority-guard does not check this Bash command: a single-quoted span in `${ }` holds an unclosed `$(` or backtick, which bash reads as literal text unless the `${ }` sits in double quotes; close the substitution or move it out of the parameter.",
+  "unclosed-expansion":
+    "authority-guard does not check this Bash command: it cannot find where a `${ }`, `$(( ))` or `$[ ]` ends, and bash may close it elsewhere, fail only when expanding it, and run the rest of the line; close the expansion or move it into a variable.",
+};
+const NESTING_REASON = `authority-guard does not check a Bash command whose expansions or substitutions are nested more than ${MAX_NESTING} deep, so it refuses every one; flatten the nesting into variables or a script file.`;
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -107,8 +120,9 @@ function classifyEvent(event: Event, ctx: ClassifyContext): Classified {
 
 function limitReason(error: ReadingLimitError): string {
   if (error instanceof ScriptBudgetError) return scriptsReason(error.overrun);
+  if (error instanceof NestingReadingError) return NESTING_REASON;
   if (error instanceof ValueWalkError) return VALUE_REASON;
-  return error instanceof SplitReadingError ? SPLIT_REASON : READINGS_REASON;
+  return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
 
 /** The limit a line's scripts hit, how far past it they go, and a split that then passes. */

@@ -8,6 +8,7 @@ import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
+import { configuredMainWatch } from "./main-watch-ports.js";
 import { EXIT } from "./exit-codes.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
@@ -27,6 +28,7 @@ import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
 import type { ShepherdCommandName } from "./shepherd/commands.js";
+import type { MainWatchPorts } from "./shepherd/main-watch.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
@@ -66,10 +68,12 @@ export interface CliDeps {
   serveWaitMs?: number;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
   deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
+  /** The serve verb's main CI watch; absent, or undefined for an env, means serve watches main only after its own merges. */
+  mainWatch?: (env: NodeJS.ProcessEnv) => MainWatchPorts | undefined;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)) };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
 export interface Verbs {
@@ -140,7 +144,7 @@ function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) =>
-      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env) }, deps.stop),
+      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), mainWatch: deps.mainWatch?.(io.env) }, deps.stop),
     );
 }
 

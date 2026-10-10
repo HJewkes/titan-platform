@@ -22,6 +22,7 @@ import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.j
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
+import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -59,6 +60,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   resyncOnStart?: boolean;
   /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
   deployWatch?: DeployWatch;
+  /** Where the main CI watch sends a red sha's one event; absent means main is watched only after a Shepherd run's own merge. */
+  mainWatch?: MainWatchPorts;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
@@ -103,11 +106,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   const deploySweep = startDeployWatch(options.deployWatch, log);
+  const mainWatch = services && options.mainWatch && openMainWatch(services, options.mainWatch, stateDir, log);
+  const mainSweep = mainWatch && startSweep(mainWatch.tick, MAIN_WATCH_MS, "main CI watch", log);
+  void mainSweep?.tick();
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, releaseSweep, checkoutSweep, deploySweep]) await later?.stop();
+    for (const later of [goneSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep]) await later?.stop();
+    mainWatch?.close();
     await daemon.close();
     unbindCarry();
     host.close();
