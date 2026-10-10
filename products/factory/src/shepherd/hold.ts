@@ -134,10 +134,10 @@ export function holdingPort(port: GitHubPort, holds: () => HoldLookup, freeze?: 
   const held = heldCheck(port, holds, freeze, satisfy);
   return {
     ...port,
-    merge: async (repo, pr, sha, method) => {
+    merge: async (repo, pr, sha, method, message) => {
       const reason = await held(repo, pr, sha);
       if (reason !== undefined) throw new MergeHeldError(`${repo}#${pr} is held: ${reason}`);
-      return port.merge(repo, pr, sha, method);
+      return port.merge(repo, pr, sha, method, message);
     },
   };
 }

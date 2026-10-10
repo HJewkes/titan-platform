@@ -604,6 +604,9 @@ importers:
         specifier: workspace:^
         version: link:../session-read
     devDependencies:
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
       zod:
         specifier: ^4.4.3
         version: 4.5.4
@@ -745,6 +748,8 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
 
+  packages/test-kit: {}
+
   packages/tool-guard:
     dependencies:
       '@titan-design/authority':
@@ -835,6 +840,9 @@ importers:
       '@titan-design/rpc-client':
         specifier: workspace:^
         version: link:../../packages/rpc-client
+      '@titan-design/session-analytics':
+        specifier: workspace:^
+        version: link:../../packages/session-analytics
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../../packages/session-read

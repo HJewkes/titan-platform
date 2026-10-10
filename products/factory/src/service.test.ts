@@ -58,6 +58,11 @@ describe("titan-factory service plist", () => {
     expect(args(renderPlist({ ...options, port: 7411 }))).toEqual([options.nodePath, options.binPath, "serve", "--port", "7411"]);
   });
 
+  it("sets WorkingDirectory only when one is given", () => {
+    expect(renderPlist(options)).not.toContain("WorkingDirectory");
+    expect(keyValue(renderPlist({ ...options, workingDirectory: "/srv/deploy/tree" }), "WorkingDirectory")).toBe("/srv/deploy/tree");
+  });
+
   it("escapes XML in paths", () => {
     expect(renderPlist({ ...options, binPath: "/a&b/<x>/bin.js" })).toContain("<string>/a&amp;b/&lt;x&gt;/bin.js</string>");
   });
@@ -168,6 +173,11 @@ describe("titan-factory service unit", () => {
   it("runs the plist's argv, with the port when given", () => {
     expect(directive(renderUnit(options), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve`]);
     expect(directive(renderUnit({ ...options, port: 7411 }), "ExecStart")).toEqual([`${options.nodePath} ${options.binPath} serve --port 7411`]);
+  });
+
+  it("starts serve from the working directory when one is given, and from none otherwise", () => {
+    expect(directive(renderUnit(options), "WorkingDirectory")).toEqual([]);
+    expect(directive(renderUnit({ ...options, workingDirectory: "/srv/deploy tree" }), "WorkingDirectory")).toEqual(["/srv/deploy tree"]);
   });
 
   it("sets the plist's PATH and no other variable", () => {

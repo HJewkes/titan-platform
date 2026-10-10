@@ -14,6 +14,15 @@ metrics:
     cadence: 1d
     surfaces: [stats]
     answers: [1]
+  - id: demo.cost.usd_per_run
+    family: cost
+    title: Dollars per run
+    definition: List-price cost of a run's sessions
+    unit: usd
+    source: { anchor: "products/demo/src/run.ts#finish", store: ledger, captured: N, gapSlice: unfiled }
+    cadence: 1d
+    surfaces: [stats]
+    answers: [2]
 reports:
   - { id: flow, title: Flow, metrics: [demo.flow.end_to_end] }
 lastAudit: { at: "2026-01-01T00:00:00Z", codeRev: "0000000", report: "reports/demo.json" }

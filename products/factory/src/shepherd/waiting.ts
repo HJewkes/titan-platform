@@ -6,7 +6,7 @@ import { headGateAsks } from "./stale-gates.js";
 import type { WatchRow } from "./view.js";
 
 /** Gates a seat can answer; TP-2033 routes these to the seat that owns the PR. Any other gate, a new kind included, is the owner's. */
-const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuck-behind"];
+export const SEAT_STEPS: readonly string[] = ["ci-failed", "sh-sent-back", "stuck-behind"];
 
 const HOUR_MS = 3_600_000;
 /** The longest an owner gate may wait before `shepherd waiting` exits 1. */

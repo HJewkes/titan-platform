@@ -31,6 +31,8 @@ interface Machine {
   tick?: string;
   /** The deploy checkout's index.lock; absent by default. */
   lock?: IndexLock;
+  /** True when the config sets no shepherd.hubSeat; one is set by default. */
+  noHubSeat?: boolean;
 }
 
 const LOCK = "/srv/checkout/.git/index.lock";
@@ -72,6 +74,7 @@ function fakePorts(init: Machine) {
     installedBuildSha: () => init.installed ?? BUILD,
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
+    hubSeat: () => (init.noHubSeat ? undefined : "hub"),
   };
   return { ports, calls };
 }
@@ -443,6 +446,21 @@ describe("titan-factory service check", () => {
       const fresh = await check({ print: running, health: healthy(), lock: { state: "fresh", path: LOCK, ageMs: 5 * 60_000 } });
 
       expect([held.code, fresh.code]).toEqual([EXIT.OK, EXIT.OK]);
+    });
+  });
+
+  describe("the hub seat the deploy alarm reaches", () => {
+    it("exits 1 naming no hub seat when the config sets none", async () => {
+      const { code, out } = await check({ print: running, health: healthy(), noHubSeat: true });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^no hub seat: shepherd\.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat/);
+    });
+
+    it("reports a stalled deploy or a failing tick before the missing hub seat", async () => {
+      const tick = await check({ print: running, health: healthy(), tick: tickFixture(), noHubSeat: true });
+
+      expect(tick.out).toMatch(/^tick failing: /);
     });
   });
 });
