@@ -101,6 +101,12 @@ export const ServiceConfigSchema = z.strictObject({
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
+/** How a standing deploy alarm repeats; absent keys keep the defaults, every 6 deploy-watch ticks and 30 minutes. */
+export const DeployAlarmConfigSchema = z.strictObject({
+  renotifyTicks: z.number().int().positive().optional(),
+  escalateAfterMinutes: z.number().int().positive().optional(),
+});
+
 /** The GitHub App `shepherd/review` is posted as; absent means the publish step records `published: false`. */
 export const ReviewCheckConfigSchema = z.strictObject({
   appId: z.number().int().positive(),
@@ -140,8 +146,9 @@ export const FactoryConfigSchema = z.object({
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
-      /** The agent-chat seat told once when the deploy alarm goes up; absent means the alarm shows only in status. */
+      /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
+      deployAlarm: DeployAlarmConfigSchema.optional(),
     })
     .refine((s) => !s.hardStopRepos || s.charterPath, { message: "hardStopRepos needs a charterPath", path: ["charterPath"] })
     .refine((s) => !s.review || s.agentChatBin, { message: "review needs an agentChatBin", path: ["agentChatBin"] })

@@ -226,6 +226,18 @@ describe("serveFactoryUntilSignal", () => {
   });
 });
 
+describe("serve's start-up warnings", () => {
+  it("logs a warning when the deploy watch has no hub seat to tell", async () => {
+    const warnings: unknown[] = [];
+    const logger = { ...silentLogger, warn: (_fields: unknown, msg?: unknown) => void warnings.push(msg) };
+    const startupWarning = "shepherd.hubSeat is not set: a deploy alarm reaches no seat";
+
+    await serve(dbFile(), landScenario(), { logger, deployWatch: { tick: async () => undefined, status: () => null, startupWarning } });
+
+    expect(warnings).toContain(startupWarning);
+  });
+});
+
 describe("sweepCheckouts", () => {
   it("logs a warning naming the path and message when a checkout cannot be removed", async () => {
     const root = mkdtempSync(join(tmpdir(), "factory-sweep-"));
