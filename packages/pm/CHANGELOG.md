@@ -1,5 +1,14 @@
 # @titan-design/pm
 
+## 0.2.0
+
+### Minor Changes
+
+- 8030b8e: `TaskSchema` gains an optional `actual` block (agent hours, review hours, USD, service wall
+  hours, peak context, context at first deliverable, `at`, `model`), an optional `claimedHours`
+  list of `{ hours, by, at }`, and an optional `started_at` datetime. `created` and `done_at` now
+  accept a full ISO-8601 datetime as well as `YYYY-MM-DD`. `isoDate` is unchanged.
+
 ## 0.1.0
 
 ### Minor Changes
