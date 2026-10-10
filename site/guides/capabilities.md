@@ -489,7 +489,7 @@ Key exports:
 - `checks`: `isPassing`, `latestPerName`
 - `readiness`: `headCheckFindings`, `mergeReadiness`
 - `budget`: `backoffMs`, `rateBudget`, `sharedRateBudget`
-- +65 more in the [reference page](/reference/github)
+- +67 more in the [reference page](/reference/github)
 
 <a id="cap-health"></a>
 
@@ -965,7 +965,7 @@ Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
 - `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
-- +38 more in `products/evals/src/index.ts`
+- +44 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 
