@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
-import { SERVICE_LABEL } from "./service.js";
+import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./service-control.js";
 
 const CHECKOUT = "/srv/repo";
@@ -55,6 +55,8 @@ interface MachineInit {
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
   absent?: boolean;
+  /** The installed unit starts a bin outside the deploy checkout, as before `service install` re-rendered it. */
+  unitElsewhere?: boolean;
   /** `git clone` fails with this output. */
   cloneFails?: string;
 }
@@ -95,7 +97,8 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
 
 /** A launchd whose kickstart loads whatever build sits in products/factory/dist at that moment. */
 function fakeMachine(init: MachineInit = {}) {
-  const files = new Map(Object.entries({ ...WORKSPACE_FILES, ...init.files, ...(init.absent ? {} : { [`${CHECKOUT}/.git`]: "" }) }));
+  const unit = `<string>${init.unitElsewhere || init.absent ? "/srv/dev-tree" : CHECKOUT}/products/factory/dist/bin.js</string>`;
+  const files = new Map(Object.entries({ ...WORKSPACE_FILES, [plistPath("/srv/tester")]: unit, ...init.files, ...(init.absent ? {} : { [`${CHECKOUT}/.git`]: "" }) }));
   const running = init.running === undefined ? BASE : init.running;
   const trees = new Map<string, string>([FACTORY_DIST, WORKFLOW_DIST, CHARTS_DIST].map((dist) => [dist, `build:${running ?? BASE}`]));
   const state = { head: init.head ?? BASE };
@@ -231,6 +234,37 @@ describe("titan-factory service deploy", () => {
 
   it("builds a fresh clone even when the running build already contains the target", async () => {
     const machine = fakeMachine({ absent: true, running: TIP });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toContain("pnpm install --frozen-lockfile");
+  });
+
+  it("builds an existing deploy checkout whose unit runs elsewhere even when the running build contains the target, and never restarts", async () => {
+    const machine = fakeMachine({ unitElsewhere: true, running: TIP });
+
+    const { code, out } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${TIP}`, "pnpm install --frozen-lockfile", "pnpm --filter @titan-design/factory... build"]);
+    expect(out).toContain("titan-factory service install");
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("never restarts or rolls back while the unit runs elsewhere, even when the range reaches the factory build", async () => {
+    const machine = fakeMachine({ unitElsewhere: true, running: BASE });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.calls.some((call) => call.startsWith("launchctl kickstart"))).toBe(false);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("does not hold on a rolled-back record while the unit runs elsewhere", async () => {
+    const rolledBack = { outcome: "rolled-back", target: TIP, from: BASE, at: "2026-10-02T00:00:00.000Z", why: "build failed" };
+    const machine = fakeMachine({ unitElsewhere: true, files: { [RECORD]: JSON.stringify(rolledBack) } });
 
     const { code } = await deploy(machine);
 

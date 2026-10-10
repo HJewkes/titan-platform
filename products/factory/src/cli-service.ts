@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
@@ -136,7 +138,7 @@ function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): 
   withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
     const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
     const ports = deps.deploy ?? systemDeployPorts(checkout);
-    const remote = serviceConfig(io.env).deployRemote ?? (deps.deploy === undefined ? await originOf(ownCheckout()) : undefined);
+    const remote = serviceConfig(io.env).deployRemote ?? (deps.deploy === undefined && !existsSync(join(checkout, ".git")) ? await originOf(ownCheckout()) : undefined);
     const options = { checkout, remote, stateDir: factoryStateDir(io.env), logDir: factoryStateDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
     setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS));
   });

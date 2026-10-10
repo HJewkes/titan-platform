@@ -1,4 +1,5 @@
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
@@ -60,8 +61,8 @@ interface Go {
   running: string | undefined;
   closure: string[];
   touched: string[];
-  /** The checkout was cloned by this run, so no service runs from it yet. */
-  fresh: boolean;
+  /** The installed unit does not start this checkout's bin yet, so deploy only builds it and leaves the service alone. */
+  prepareOnly: boolean;
 }
 
 type Stop = { kind: "stop"; code: number; message: string; record?: DeployRecord };
@@ -135,26 +136,23 @@ function refuse(why: string): Stop {
 async function planDeploy(deploy: Deploy): Promise<Plan> {
   const { ports } = deploy;
   if (ports.which("pnpm") === undefined) return refuse("pnpm is not on PATH");
-  const cloned = await ensureCheckout(deploy);
-  if (typeof cloned === "object") return cloned;
+  const cloneRefusal = await ensureCheckout(deploy);
+  if (cloneRefusal !== undefined) return cloneRefusal;
   const guard = await checkoutGuard(ports);
   if (guard !== undefined) return refuse(`checkout not clean main: ${guard}`);
   const fetched = await ports.git(["fetch", "origin", MAIN]);
   if (fetched.code !== 0) return refuse(`git fetch origin main failed: ${detail(fetched)}`);
   const target = await resolveTarget(ports, deploy.options.expect);
   if (typeof target !== "object") return refuse(target);
-  return planFor(deploy, target.sha, cloned);
+  return planFor(deploy, target.sha, !serviceRunsFromCheckout(ports, deploy.options.checkout));
 }
 
-/** Resolves to whether this run cloned the checkout; the clone comes from the remote, so a working tree is never copied. */
-async function ensureCheckout({ ports, options }: Deploy): Promise<boolean | Stop> {
-  if (ports.exists(join(options.checkout, ".git"))) return false;
-  if (options.remote === undefined) {
+async function ensureCheckout({ ports, options }: Deploy): Promise<Stop | undefined> {
+  const cloned = await cloneIfAbsent(ports, options.checkout, options.remote);
+  if (cloned === "no-remote") {
     return refuse(`${options.checkout} does not exist and no remote is known to clone it from; set service.deployRemote (or service.deployCheckout) in the factory config`);
   }
-  ports.mkdir(dirname(options.checkout));
-  const cloned = await ports.clone(options.remote, options.checkout);
-  return cloned.code === 0 ? true : refuse(`git clone failed: ${detail(cloned)}`);
+  return cloned === undefined || cloned.code === 0 ? undefined : refuse(`git clone failed: ${detail(cloned)}`);
 }
 
 /** The checkout is dedicated to the deployer, so anything but a clean main means someone has used it by hand. */
@@ -202,20 +200,20 @@ async function answeredBuild(ports: DeployPorts, port: number): Promise<string |
 /** A dirty or unknown build has no commit to diff from, so it neither no-ops nor skips. */
 const cleanSha = (sha: string | undefined): string | undefined => (sha === undefined || sha === UNKNOWN || sha.endsWith(DIRTY_SUFFIX) ? undefined : sha);
 
-async function planFor(deploy: Deploy, target: string, fresh: boolean): Promise<Plan> {
+async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Promise<Plan> {
   const { ports, options } = deploy;
   const last = parseDeployRecord(ports.readFile(deployRecordPath(options.stateDir)));
-  if (last?.outcome === "rolled-back" && last.target === target) {
+  if (!prepareOnly && last?.outcome === "rolled-back" && last.target === target) {
     return { kind: "stop", code: FAILURE, message: `deploy held: ${target} rolled back at ${last.at} (${last.why ?? "no reason recorded"}); a newer main sha deploys` };
   }
   const running = await runningBuild(ports, options.port);
   const from = cleanSha(running);
-  if (!fresh && from !== undefined && (await isAncestor(ports, target, from))) return { kind: "stop", code: 0, message: `already deployed: build ${from} contains ${target}` };
+  if (!prepareOnly && from !== undefined && (await isAncestor(ports, target, from))) return { kind: "stop", code: 0, message: `already deployed: build ${from} contains ${target}` };
   const head = (await ports.git(["rev-parse", "HEAD"])).stdout.trim();
   if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports, from, target);
-  const go = { target, running, closure, touched: touchedPaths(changed, closure), fresh };
+  const go = { target, running, closure, touched: touchedPaths(changed, closure), prepareOnly };
   const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
   return native === undefined ? { kind: "go", go } : refuse(native);
 }
@@ -246,7 +244,7 @@ async function changedPaths(ports: DeployPorts, from: string, target: string): P
 async function execute(deploy: Deploy, go: Go): Promise<number> {
   const merged = await fastForward(deploy.ports, go.target);
   if (merged !== undefined) return stop(deploy, refuse(merged));
-  if (go.fresh) return prepare(deploy, go);
+  if (go.prepareOnly) return prepare(deploy, go);
   if (go.touched.length === 0) return finish(deploy, go, "skipped", "no changed path reaches the factory build");
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
@@ -256,7 +254,7 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   return why === undefined ? finish(deploy, go, "deployed") : rollback(deploy, go, backup, why, "restarted");
 }
 
-/** A first clone has no backup to restore and no service running from it, so it builds and stops: `service install` points the service at it. */
+/** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
 async function prepare(deploy: Deploy, go: Go): Promise<number> {
   const built = await installAndBuild(deploy.ports);
   if (built !== undefined) return stop(deploy, refuse(built));
