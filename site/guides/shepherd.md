@@ -354,6 +354,30 @@ record before the gate opens yet.
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.
 
+### An owner's merge answer follows a clean head move {#carried-answer}
+
+An owner's `merge` answer at a head follows to a later land gate at the run's next head, so the
+owner is not asked twice, in two cases and no others:
+
+- **Merge-up.** The new head is the approved head merged with a commit of the base branch, and
+  its tree equals `git merge-tree --write-tree` of the two (or the merge resolved only declared
+  generated files). A hand-resolved conflict asks again.
+- **Small reviewed fix.** The new head is the approved head merged with the base it already
+  contains, plus a fix whose own diff, past what the base merge brought, is at most
+  `SMALL_FIX_LIMITS.maxChangedLines` (40) changed lines across at most
+  `SMALL_FIX_LIMITS.maxFiles` (3) files (`products/factory/src/shepherd/fix-carry.ts`). Every
+  file must already be in the pull request at the approved head, with no file added, deleted,
+  renamed or mode-changed, and no change under `.github/`, to a lockfile or to a `package.json`
+  dependency field.
+
+Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
+only after required CI is green at that head, so a head with no verdict or a red check asks the
+owner again. A `security` or `unknown` run never carries, and neither does an escalation gate.
+Any error computing the tree or the diff asks again. The run records an
+`sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
+`remerge-generated-only` or `small-fix`) and the proof: both trees, or the changed line count and
+paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
+
 ## Watch
 
 ```sh
