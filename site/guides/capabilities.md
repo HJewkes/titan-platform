@@ -26,7 +26,7 @@ Before adding code:
 | [`code-parser`](#cap-code-parser) | 0 | You want tree-sitter syntax trees for TypeScript, TSX or Python and nothing else. For imports, symbols or snapshots, use code-graph. |
 | [`egress-scan`](#cap-egress-scan) | 0 | Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead. |
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
-| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
+| [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
 | [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
@@ -277,13 +277,14 @@ Key exports:
 
 Tier 0, `@titan-design/eslint-plugin@0.1.0`. ESLint rules that enforce the titan code-quality limits: functions of at most 30 non-blank lines, comments that hold code, and TODO comments without a tracking task
 
-**Use this when:** You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
+**Use this when:** You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead.
 
 Key exports:
 
 - `max-function-lines`: `DEFAULT_MAX_LINES`, `maxFunctionLines`
 - `no-chained-type-assertions`: `noChainedTypeAssertions`
 - `no-commented-code`: `noCommentedCode`
+- `no-internal-module-mock`: `noInternalModuleMock`
 - `todo-needs-issue`: `todoNeedsIssue`
 - `index`: `recommended`
 
