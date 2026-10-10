@@ -13,7 +13,7 @@ import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
 import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
-import { configuredRoutes, type FactoryRouteDeps } from "./workflows.js";
+import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
 import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 import { OWNER } from "./test-support/resolver.js";
@@ -424,5 +424,17 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
     expect(activeWork.calls).toEqual(["task.list", "task.list", "task.edit", "task.done"]);
     expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
     expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
+  });
+});
+
+describe("configuredSpawnLimits", () => {
+  it("takes the review floors and concurrent cap from shepherd.review beside the spawnGate overrides", () => {
+    const shepherd = { agentChatBin: "/opt/bin/agent-chat", spawnGate: { load5: 30 }, review: { profile: "rv", minFreeBytes: 1_000, minFreeInodesPct: 20, maxConcurrent: 2 } };
+
+    expect(configuredSpawnLimits(shepherd)).toEqual({ load5: 30, reviewMinFreeBytes: 1_000, reviewMinFreeInodesPct: 20, maxConcurrentReviews: 2 });
+  });
+
+  it("leaves every review limit unset when shepherd.review names none, so the defaults hold", () => {
+    expect(configuredSpawnLimits({ review: { profile: "rv" } })).toEqual({});
   });
 });
