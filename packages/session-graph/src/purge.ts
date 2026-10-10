@@ -8,6 +8,15 @@ import { KIT } from "./schema.js";
 /** Derived tables keyed by `session_id`, reachable from a transcript through `session`. */
 const SESSION_SCOPED = ["turn", "permission_phase", "human_edit", "file_checkpoint", "subagent", "session_model_usage", EPISODE_TABLE] as const;
 
+/** Session-scoped rows that point at the fact that asserted them; a handed-off session keeps the rest. */
+const FACT_LINKED = [
+  ["turn", "fact_id_start"],
+  ["permission_phase", "fact_id"],
+  ["human_edit", "fact_id"],
+  ["file_checkpoint", "fact_id"],
+  ["subagent", "fact_id"],
+] as const;
+
 const HAND_OFF_SHARED_SESSIONS = `
   UPDATE session SET transcript_id = (
     SELECT MIN(f.transcript_id) FROM fact f WHERE f.session_id = session.session_id AND f.transcript_id <> @transcriptId)
@@ -37,9 +46,11 @@ const HAND_OFF_SHARED_SESSIONS = `
  *
  * A session another transcript also holds (a mirror from another host, a resume
  * that copied its history) is handed to that transcript first, so purging one
- * copy keeps the session and its session-scoped rows. Re-reading the copy
- * re-asserts them idempotently, and the rollup recounts the shared session.
- * Only this copy's search spans go.
+ * copy keeps the session. Its rows that point at this copy's facts still go, or
+ * a turn the rewrite removed would linger and a kept turn would point at a
+ * deleted fact; re-reading recreates whatever the copy still holds with fresh
+ * fact ids, and the rollup recounts the shared session. Rows the other copy
+ * asserted stay, and only this copy's search spans go.
  */
 export function purgeTranscript(graph: SessionGraph, transcriptId: number): void {
   graph.db.transaction(() => {
@@ -51,6 +62,9 @@ export function purgeTranscript(graph: SessionGraph, transcriptId: number): void
     // Children first: each subquery reads the `session` rows deleted last.
     for (const table of SESSION_SCOPED) {
       graph.db.prepare(`DELETE FROM "${table}" WHERE session_id IN (SELECT session_id FROM session WHERE transcript_id = ?)`).run(transcriptId);
+    }
+    for (const [table, column] of FACT_LINKED) {
+      graph.db.prepare(`DELETE FROM "${table}" WHERE "${column}" IN (SELECT fact_id FROM fact WHERE transcript_id = ?)`).run(transcriptId);
     }
     graph.db.prepare(`DELETE FROM "${KIT.edge}" WHERE fact_id IN (SELECT fact_id FROM fact WHERE transcript_id = ?)`).run(transcriptId);
     for (const table of [...AUDIT_TABLES, FACET_TABLE, REVIEW_TABLE]) {
