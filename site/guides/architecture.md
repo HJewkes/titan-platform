@@ -119,6 +119,7 @@ graph TD
   retrieval --> embed
   retrieval --> storeSqlite
   reviewPanel --> evidence
+  reviewPanel --> fixProof
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol

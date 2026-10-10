@@ -603,6 +603,9 @@ importers:
       '@titan-design/evidence':
         specifier: workspace:^
         version: link:../evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read

@@ -35,6 +35,7 @@ import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, type PrTarget, type WakeRun } from "./gates.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
+import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 
@@ -171,11 +172,12 @@ function isConflict(run: ShepherdRun, outcome: LandOutcome): boolean {
 /**
  * A woken agent has already awaited its new head, so the caller goes straight to the next land round.
  * Every wake kind spends one repair budget per run, recorded as a step so a replay and a new head keep the count;
- * a wake past the budget asks the owner instead and leaves the round.
+ * a wake past the budget asks the owner instead and leaves the round. A held run spends none and wakes nobody.
  */
 async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
   run.trail.woken = kind;
   if (await awaitedPast(run, headSha)) return true;
+  if (await heldRepair(run, kind, headSha, payload)) return true;
   if (!(await spendRepair(run.ctx, run.target, kind, headSha))) throw new LeaveLand(await repairGate(run, kind, headSha, payload));
   return afterWake(run, kind, headSha, payload, await run.phases.wake(run.ctx, { kind, ...run.target, round: run.state.round, headSha, payload }), (left) => new LeaveLand(left));
 }
@@ -364,6 +366,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps),
+    ...heldRepairRoutes(deps),
   ];
 }
 

@@ -19,10 +19,14 @@ interface Figures {
   age: number;
 }
 
+// Like rate-limits.sh, the newest reading with both windows, not merely the newest: a
+// session that has seen only five_hour must not blank the weekly figure.
+const NEEDED_WINDOWS = ["five_hour", "seven_day"];
+
 function figuresOf(configDir: string, now: number): Figures | null {
   let read: UsageFileRead | null;
   try {
-    read = readUsage(configDir, { now });
+    read = readUsage(configDir, { now, windows: NEEDED_WINDOWS });
   } catch {
     return null;
   }

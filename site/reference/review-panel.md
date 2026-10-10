@@ -110,6 +110,18 @@ const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABL
 // plan.members: correctness at bd-reviewer, adversary at reviewer; both blocking
 ```
 
+```ts
+import { SHAPE_BRIEFS, shapeBrief } from "@titan-design/review-panel";
+
+const brief = shapeBrief("adversary", {
+  repo: "acme/app",
+  pr: 7,
+  head: "0123456789abcdef0123456789abcdef01234567",
+  checkoutRoot: "/srv/reviews",
+});
+// the adversary overlay, then the base reviewer brief; SHAPE_BRIEFS.adversary.hash names this variant
+```
+
 ## What it deliberately does not do
 
 - It runs nothing. Every side effect (starting an agent, reading a transcript, the clock,
@@ -128,6 +140,10 @@ const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABL
   weights (`DEFAULT_MEMBER_POINTS`) are placeholders until the scorecard measures spend.
 - A profile counts as opus only when `sonnetFor` maps it to a sonnet profile; an opus
   profile missing from that map is never degraded or capped.
+- A shape brief's `hash` changes with any edit to its overlay; record the hash with each
+  verdict so evals compare variants, not ids.
+- The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
+  that does not parse, or names another head, is ignored.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
   `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
   member, that seat counts as missing, so the panel never says MERGE.

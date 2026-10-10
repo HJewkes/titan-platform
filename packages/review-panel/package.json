@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "@titan-design/evidence": "workspace:^",
+    "@titan-design/fix-proof": "workspace:^",
     "@titan-design/session-read": "workspace:^"
   },
   "peerDependencies": {

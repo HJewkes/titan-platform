@@ -32,11 +32,25 @@ function failureText(failure: PollFailure): string {
   return `poll failed: ${failure.failure}`;
 }
 
+// A profile dir with no login, such as one made before its first login, has nothing to poll;
+// `status` still reports it. Failing on it would fail every timer tick.
+function skippedText(entry: PollAllEntry): string | null {
+  if (entry.result.ok) return null;
+  if (entry.result.failure === "missing") return "no login, skipped";
+  if (entry.result.failure !== "backoff" || entry.backoffUntil === undefined) return null;
+  return `rate limited, skipped until ${new Date(entry.backoffUntil * 1000).toISOString()}`;
+}
+
 function reportEntry(entry: PollAllEntry, context: CliContext): number {
   const { label, result } = entry;
+  const skipped = skippedText(entry);
+  if (skipped !== null) {
+    context.out(`${printableLabel(label)}: ${skipped}`);
+    return EXIT_OK;
+  }
   if (!result.ok) {
     context.err(failureLine(label, failureText(result)));
-    return ["missing", "expired", "refused"].includes(result.failure) ? EXIT_LOGIN : EXIT_FAILED;
+    return ["expired", "refused"].includes(result.failure) ? EXIT_LOGIN : EXIT_FAILED;
   }
   const written = entry.file === undefined ? "" : " (written)";
   context.out(`${printableLabel(label)}: ${windowsText(result.reading.rate_limits)}${written}`);

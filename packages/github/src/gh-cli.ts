@@ -49,6 +49,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
+    getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
     listCheckRuns: (repo, sha) => listCheckRuns(api, repo, sha),
     createCheckRun: async (repo, request) => createCheckRun(exec, options, repo, request),
     getCommit: async (repo, sha) => {
@@ -212,6 +213,12 @@ async function classicRequiredChecks(api: Rest, repo: string, branch: string): P
   if (body === null || typeof body !== "object") throw new Error("classic protection answered an unexpected shape, so the required contexts are unknown");
   const contexts = [...new Set([...(body.contexts ?? []), ...(body.checks ?? []).map((check) => check.context)])].sort();
   return { contexts, strict: body.strict === true, ...pinsOf((body.checks ?? []).map((check) => [check.context, check.app_id] as const)) };
+}
+
+async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
+  const body = await api.get<{ protected?: unknown }>(`repos/${repo}/branches/${branch}`);
+  if (typeof body?.protected !== "boolean") throw new Error("the branch answered no boolean protected flag, so whether it is protected is unknown");
+  return body.protected;
 }
 
 function requiresReview(rule: GhRule): boolean {
