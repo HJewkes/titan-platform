@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeTempHome, removeTempHome } from "../fixtures/temp-home.js";
-import { CONFIG_DIRS_ENV, discoverProfiles } from "./profiles.js";
+import { CONFIG_DIRS_ENV, PROFILE_ROOT_ENV, discoverProfiles } from "./profiles.js";
 
 let home: string;
 
@@ -64,6 +64,25 @@ describe("discoverProfiles", () => {
     expect(profiles).toEqual([
       { label: "default", configDir: dirs[0] },
       { label: "agents", configDir: dirs[1] },
+    ]);
+  });
+
+  it("scans CLAUDE_PROFILE_ROOT instead of ~/.claude-profiles when it is set", () => {
+    makeDirs(".claude", ".claude-profiles/ignored", "accounts/agents");
+
+    const profiles = discoverProfiles({ home, env: { [PROFILE_ROOT_ENV]: path.join(home, "accounts") } });
+
+    expect(profiles).toEqual([
+      { label: "default", configDir: path.join(home, ".claude") },
+      { label: "agents", configDir: path.join(home, "accounts", "agents") },
+    ]);
+  });
+
+  it("scans ~/.claude-profiles when CLAUDE_PROFILE_ROOT is empty", () => {
+    makeDirs(".claude-profiles/agents");
+
+    expect(discoverProfiles({ home, env: { [PROFILE_ROOT_ENV]: "" } }).map((profile) => profile.label)).toEqual([
+      "agents",
     ]);
   });
 

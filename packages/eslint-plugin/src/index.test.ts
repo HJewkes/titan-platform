@@ -7,6 +7,7 @@ describe("recommended", () => {
       "titan/max-function-lines": "error",
       "titan/no-chained-type-assertions": "error",
       "titan/no-commented-code": "error",
+      "titan/no-internal-module-mock": "error",
       "titan/todo-needs-issue": "error",
     });
   });

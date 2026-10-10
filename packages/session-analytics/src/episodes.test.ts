@@ -420,6 +420,20 @@ describe("readEpisodeInput", () => {
     expect(inputRows("original").map((r) => r.transcriptId)).toEqual([1, 3]);
   });
 
+  it("episode input reads a signal once when two transcripts of the session hold a copy", () => {
+    const db = fixture.graph.db;
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 2, offset: 900, ts: at(3), signal: "commit", toolUseId: "tu-1" });
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 1, offset: 40, ts: at(3), signal: "commit", toolUseId: "tu-1" });
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 2, offset: 950, ts: at(4), signal: "commit", toolUseId: "tu-2" });
+
+    const signals = readEpisodeInput(db, "mirrored", false).signals;
+
+    expect([...signals].sort((a, b) => a.ts.localeCompare(b.ts))).toEqual([
+      { offset: 40, ts: at(3), transcriptId: 1, signal: "commit" },
+      { offset: 950, ts: at(4), transcriptId: 2, signal: "commit" },
+    ]);
+  });
+
   it("episode input for one session does not scan every request", () => {
     const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
     const details = plan.map((row) => row.detail);

@@ -11,6 +11,16 @@ function setup() {
   return { fake, port: githubPort(fake.wire) };
 }
 
+describe("defaultBranch", () => {
+  it("answers the repo's default branch, and validates the repo before any call", async () => {
+    const fake = fakeGitHub({ base: "trunk" });
+    const port = githubPort(fake.wire);
+
+    expect(await port.defaultBranch(REPO)).toBe("trunk");
+    await expect(port.defaultBranch("not a repo")).rejects.toBeInstanceOf(GitHubInputError);
+  });
+});
+
 describe("deleteRef", () => {
   it("deletes a same-repo head once, then skips it as absent", async () => {
     const { fake, port } = setup();

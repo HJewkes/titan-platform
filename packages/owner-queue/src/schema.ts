@@ -31,7 +31,12 @@ const recommendationSchema = z.object({
 
 const answerSchema = z.object({
   optionId: z.string().min(1).optional(),
+  /** A pick-many answer's offered options, in the order picked. */
+  optionIds: z.array(z.string().min(1)).min(1).optional(),
   text: z.string().optional(),
+  /** The owner asked for changes rather than choosing; an open change request blocks a ship. */
+  changeRequested: z.literal(true).optional(),
+  variantComments: z.array(z.object({ key: z.string().min(1), comment: z.string().min(1) })).min(1).optional(),
   by: z.object({ class: z.string().min(1), id: z.string().min(1), channel: z.string().min(1) }),
   at: timestamp,
   covers: z.number().int().positive().optional(),

@@ -1,7 +1,15 @@
 {
+  "apps/console/server/daemon.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
   "apps/console/server/owner-guard.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 2
+    },
+    "titan/no-internal-module-mock": {
+      "count": 1
     }
   },
   "apps/console/server/tasks.ts": {
@@ -154,6 +162,21 @@
       "count": 1
     }
   },
+  "packages/code-graph/src/history-overflow.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/history/git-overflow.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/code-graph/src/indexer-history-warnings.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
   "packages/code-graph/src/indexer.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -192,6 +215,14 @@
   "packages/daemon/src/daemon.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 2
+    },
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
+  "packages/daemon/src/http.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
     }
   },
   "packages/decider/src/router.ts": {
@@ -375,6 +406,11 @@
       "count": 1
     }
   },
+  "packages/style-checker/src/orchestrator/orchestrate.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 2
+    }
+  },
   "packages/style-checker/src/profile-diff/diff-against-profile.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -480,6 +516,11 @@
       "count": 2
     }
   },
+  "products/factory/src/remote-factory.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
   "products/factory/src/required-checks.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1
@@ -568,6 +609,9 @@
   "products/factory/src/shepherd/merge-facts.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 13
+    },
+    "titan/no-internal-module-mock": {
+      "count": 1
     }
   },
   "products/factory/src/shepherd/merge-state-unsettled.test.ts": {
@@ -592,6 +636,9 @@
   },
   "products/factory/src/shepherd/policy.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    },
+    "titan/no-internal-module-mock": {
       "count": 1
     }
   },
@@ -630,6 +677,11 @@
       "count": 1
     }
   },
+  "products/factory/src/shepherd/reviewer-reader.test.ts": {
+    "titan/no-internal-module-mock": {
+      "count": 1
+    }
+  },
   "products/factory/src/shepherd/roster.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -637,6 +689,11 @@
   },
   "products/factory/src/shepherd/seat-fix-first.test.ts": {
     "titan/no-chained-type-assertions": {
+      "count": 1
+    }
+  },
+  "products/factory/src/shepherd/spawn-profile.test.ts": {
+    "titan/no-internal-module-mock": {
       "count": 1
     }
   },

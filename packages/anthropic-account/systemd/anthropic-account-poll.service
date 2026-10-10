@@ -1,13 +1,34 @@
 [Unit]
 Description=Poll Anthropic OAuth usage for every Claude Code config dir, renewing access tokens that are due
 Documentation=https://github.com/HJewkes/titan-platform/tree/main/packages/anthropic-account#readme
+# A failed run (a refresh or poll failure, or a login that needs the owner) is recorded by
+# the template below, so it is never only a line in the journal.
+OnFailure=anthropic-account-poll-failed@%n.service
 
 [Service]
 Type=oneshot
 # --refresh rewrites <config dir>/.credentials.json when a token is due. Drop it to keep
 # the poller read-only on credentials.
 ExecStart=%h/.local/bin/anthropic-account poll --write --refresh
+# Clears the marker the failure template leaves, so it names only an unrecovered failure.
+ExecStartPost=rm -f %S/anthropic-account/%n.failed
 # Each request has its own 10 s timeout; this only stops a hung run before the next tick.
 TimeoutStartSec=90
 NoNewPrivileges=yes
 UMask=0077
+# Best effort. A user manager can apply ProtectSystem= only where unprivileged user
+# namespaces are allowed. Where they are not (for example Ubuntu with
+# kernel.apparmor_restrict_unprivileged_userns=1), these lines do nothing and the run keeps
+# the caller's whole writable home. The real protection is the CLI's own: gated reads
+# (O_NOFOLLOW, owner uid, 0600, one link), atomic 0600 writes, and Claude Code's refresh lock.
+# Where the sandbox does apply, only the config dirs (credentials file, refresh lock, status
+# cache) stay writable. The legacy lock beside ~/.claude (~/.claude.lock) is then
+# read-only and is skipped as unusable, as Claude Code skips it; the primary lock inside
+# the config dir still serializes every refresh. Setting CLAUDE_PROFILE_ROOT or
+# CLAUDE_CONFIG_DIRS for this unit means adding those dirs here too.
+ProtectSystem=strict
+ReadWritePaths=-%h/.claude -%h/.claude-profiles
+StateDirectory=anthropic-account
+# Says so in the journal, at warning priority, on each run the sandbox did not take: the
+# home dir is outside ReadWritePaths, so it is writable only when the sandbox is absent.
+ExecStartPre=-sh -c 'if test -w "%h"; then logger --priority user.warning --tag anthropic-account "%n: ProtectSystem is not in effect on this host"; fi'

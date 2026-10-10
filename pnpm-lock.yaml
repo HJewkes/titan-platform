@@ -600,6 +600,12 @@ importers:
 
   packages/review-panel:
     dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
+      '@titan-design/fix-proof':
+        specifier: workspace:^
+        version: link:../fix-proof
       '@titan-design/session-read':
         specifier: workspace:^
         version: link:../session-read
@@ -749,6 +755,8 @@ importers:
         version: 4.5.4
 
   packages/test-kit: {}
+
+  packages/throughput: {}
 
   packages/tool-guard:
     dependencies:

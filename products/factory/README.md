@@ -629,6 +629,9 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.verdictTimeoutMs` | Optional, default 30 minutes. How long `sh-await-verdict` waits for the reviewer's verdict before it answers `none` |
 | `shepherd.review.sessionStartTimeoutMs` | Optional, default 5 minutes. How long `sh-review` waits for the spawned reviewer's session to show on the roster before it answers `none` |
 | `shepherd.review.codewatchRepos` | Optional `owner/name` list. For these repos `sh-review` reads the head's `codewatch-report` CI artifact through `gh` and puts up to 3 of its questions ahead of the others in the brief, and the step records `codewatch: { found, schema, questions }`. A missing artifact, a wrong schema or a failed fetch adds no questions and never blocks the review |
+| `shepherd.review.minFreeBytes` | Optional, default 5 GiB. The spawn gate defers a reviewer while the filesystem that holds review checkouts (the app data dir's `checkouts/reviews`) has fewer free bytes |
+| `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
+| `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir` |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
@@ -682,7 +685,9 @@ validation.
   status check does not refuse: `ci-wait` then waits on every check-run at the head from the GitHub Actions app and
   lands only when there is at least one and all are complete and green (success, neutral or skipped). The first green read is held until a
   second poll sees the same runs, because a job behind `needs:` has no run yet. Zero runs wait
-  and time out; another app's runs neither count nor block. A rules read that errors still fails the run.
+  and time out; another app's runs neither count nor block. A rules read that errors still fails the run, except one
+  answer: HTTP 403 "Upgrade to GitHub Pro" on a repo whose branch endpoint reports `protected: false` reads as no rules,
+  so the same all-check-runs rule applies. A `protected: true`, an unreadable branch or any other 403 refuses.
 - `ci-wait:<n>`: one blocking step that polls every 30 s (45 min timeout) until every required
   check's latest run completed (every Actions run, for a base that requires none). An empty rollup is pending. `mergeable_state` `unknown` or
   `blocked` keeps it waiting; it is never treated as clean.

@@ -1,4 +1,7 @@
+import type { RoutedStepInput } from "@titan-design/workflow";
 import { z } from "zod";
+import { TRACE_DATA_KEYS, traceRef } from "../evidence.js";
+import { policyTraceGate, type GateDecision } from "../gate-policy.js";
 
 /*
  * One schema per land code step. Each names only the fields its branch reads and lets the rest of the
@@ -18,6 +21,7 @@ export const CiSnapshotResult = z.looseObject({
   verdict: z.enum(["pending", "green", "red", "behind", "merged", "closed", "not-mergeable"]),
   headSha: z.string(),
   mergeableState: z.string(),
+  baseRef: z.string().optional(),
   mergeSha: z.string().nullish(),
   failing: z.array(FailingCheck).optional(),
   backlog: z.boolean().optional(),
@@ -49,4 +53,16 @@ export function conflictOrThrow(error: unknown): "conflict" {
   const { status, message } = error as { status?: number; message?: string };
   if (status === 422 && /merge conflict between base and head/i.test(message ?? "")) return "conflict";
   throw error;
+}
+
+export interface MergePolicyInput {
+  headSha: string;
+  decision: GateDecision;
+  evidence?: Record<string, unknown>;
+}
+
+export function mergePolicyRecord(input: MergePolicyInput, step: RoutedStepInput): object {
+  const { outcome, rule, reason } = input.decision;
+  const trace = { [TRACE_DATA_KEYS.gates]: [policyTraceGate(input.decision, traceRef(step))] };
+  return { result: { outcome, headSha: input.headSha, rule, reason }, ...(input.evidence ? { allowEvidence: input.evidence } : {}), ...trace };
 }
