@@ -4,6 +4,7 @@ import type { AccountProfile } from "../profile.js";
 import { redactSecrets } from "../redact.js";
 import { usageFromOAuthResponse, type UsageReading } from "../usage.js";
 import { currentUid, readCredentialsFile, type CredentialsRead } from "./login.js";
+import { clearBackoff, nextBackoff, readBackoff, writeBackoff, type PollBackoff } from "./poll-backoff.js";
 import { discoverProfiles, type DiscoverOptions } from "./profiles.js";
 import { redactedError } from "./redact-error.js";
 import { writeReading } from "./usage-file.js";
@@ -36,7 +37,17 @@ const usageResponseSchema = z.object({
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-export type PollFailureKind = "expired" | "missing" | "refused" | "network" | "malformed" | "io" | `http-${number}`;
+// `backoff` comes only from pollAll: an earlier 429 set a wait that has not run out, so no
+// request was sent.
+export type PollFailureKind =
+  | "expired"
+  | "missing"
+  | "refused"
+  | "network"
+  | "malformed"
+  | "io"
+  | "backoff"
+  | `http-${number}`;
 
 export type PollFailure =
   | { ok: false; failure: "refused"; reason: RefusedReason }
@@ -65,6 +76,8 @@ export interface PollAllEntry {
   result: PollResult;
   file?: string;
   writeError?: Error;
+  // Epoch seconds before which this profile is not polled again, after a 429.
+  backoffUntil?: number;
 }
 
 function fail(failure: Exclude<PollFailureKind, "refused">): PollFailure {
@@ -197,9 +210,35 @@ export async function pollUsage(profile: AccountProfile, options: PollOptions): 
   }
 }
 
+// Best effort: a backoff that cannot be stored or cleared only means the next tick
+// decides afresh, which is never worse than polling with no backoff at all.
+function trackBackoff(configDir: string, result: PollResult, previous: PollBackoff | null, nowSeconds: number): number | undefined {
+  try {
+    if (result.ok) {
+      // Unconditional, so a file readBackoff ignored as broken is removed too.
+      clearBackoff(configDir);
+      return undefined;
+    }
+    if (result.failure !== "http-429") return undefined;
+    const next = nextBackoff(previous, nowSeconds);
+    writeBackoff(configDir, next);
+    return next.until;
+  } catch {
+    return undefined;
+  }
+}
+
 async function pollAndWrite(profile: AccountProfile, options: PollOptions): Promise<PollAllEntry> {
-  const result = await pollUsage(profile, options);
+  const now = options.now ?? Date.now();
+  const nowSeconds = Math.floor(now / 1000);
+  const backoff = readBackoff(profile.configDir, nowSeconds);
+  if (backoff !== null && nowSeconds < backoff.until) {
+    return { label: profile.label, result: fail("backoff"), backoffUntil: backoff.until };
+  }
+  const result = await pollUsage(profile, { ...options, now });
   const entry: PollAllEntry = { label: profile.label, result };
+  const backoffUntil = trackBackoff(profile.configDir, result, backoff, nowSeconds);
+  if (backoffUntil !== undefined) entry.backoffUntil = backoffUntil;
   if (!result.ok) return entry;
   try {
     entry.file = writeReading(profile.configDir, result.reading);
@@ -219,7 +258,8 @@ function profilesFor(options: PollAllOptions): readonly AccountProfile[] {
 }
 
 // Polls every profile at once and writes each successful reading to its usage-poll.json.
-// One profile's failure, or its failed write, never stops another's.
+// One profile's failure, or its failed write, never stops another's. A 429 makes the
+// profile wait out an exponential backoff before its next request; a success clears it.
 export async function pollAll(options: PollAllOptions): Promise<PollAllEntry[]> {
   const profiles = profilesFor(options);
   return Promise.all(profiles.map((profile) => pollAndWrite(profile, options)));

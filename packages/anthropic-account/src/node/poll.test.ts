@@ -453,3 +453,78 @@ describe("pollAll", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("pollAll backs off after a 429", () => {
+  const MINUTE = 60_000;
+  const nowSeconds = (at: number): number => Math.floor(at / 1000);
+  const pollAt = (fetch: FetchLike, at: number) => pollAll({ fetch, now: at, uid, profiles: [profile] });
+  const tooMany = (): Response => json({ error: FAKE_ACCESS_TOKEN }, { status: 429 });
+
+  it("sends no request until the backoff runs out, then polls again", async () => {
+    writeCredentials(fakeCredentials());
+    const { fetch, calls } = fakeFetch(tooMany);
+
+    const [limited] = await pollAt(fetch, NOW);
+    const [waiting] = await pollAt(fetch, NOW + 4 * MINUTE);
+    const [retried] = await pollAt(fetch, NOW + 5 * MINUTE);
+
+    expect(limited).toMatchObject({ result: { ok: false, failure: "http-429" }, backoffUntil: nowSeconds(NOW) + 300 });
+    expect(waiting).toEqual({ label: "default", result: { ok: false, failure: "backoff" }, backoffUntil: nowSeconds(NOW) + 300 });
+    expect(retried).toMatchObject({ result: { ok: false, failure: "http-429" } });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("doubles the wait on each further 429, up to an hour", async () => {
+    writeCredentials(fakeCredentials({ expiresAt: NOW + 24 * HOUR }));
+    const { fetch } = fakeFetch(tooMany);
+    const waits: number[] = [];
+
+    for (let at = NOW, round = 0; round < 6; round += 1) {
+      const [entry] = await pollAt(fetch, at);
+      waits.push((entry?.backoffUntil ?? 0) - nowSeconds(at));
+      at = ((entry?.backoffUntil ?? 0) + 1) * 1000;
+    }
+
+    expect(waits).toEqual([300, 600, 1200, 2400, 3600, 3600]);
+  });
+
+  it("clears the backoff on a success, so the next 429 starts over", async () => {
+    writeCredentials(fakeCredentials());
+    let status = 429;
+    const { fetch } = fakeFetch(() => (status === 429 ? tooMany() : json(oauthUsage)));
+
+    await pollAt(fetch, NOW);
+    status = 200;
+    const [ok] = await pollAt(fetch, NOW + 6 * MINUTE);
+    status = 429;
+    const [again] = await pollAt(fetch, NOW + 7 * MINUTE);
+
+    expect(ok).toMatchObject({ result: { ok: true } });
+    expect(ok?.backoffUntil).toBeUndefined();
+    expect(again?.backoffUntil).toBe(nowSeconds(NOW + 7 * MINUTE) + 300);
+  });
+
+  it("keeps the backoff out of the sessions dir every status-line reader globs", async () => {
+    writeCredentials(fakeCredentials());
+
+    await pollAt(fakeFetch(tooMany).fetch, NOW);
+
+    expect(fs.existsSync(path.join(profile.configDir, "status-cache", "usage-poll.backoff"))).toBe(true);
+    expect(fs.existsSync(path.dirname(usageFilePath(profile.configDir)))).toBe(false);
+  });
+
+  it.each([
+    ["is not JSON", "{not json"],
+    ["waits longer than an hour", JSON.stringify({ until: nowSeconds(NOW) + 3601, strikes: 1 })],
+  ])("polls as normal when the backoff file %s", async (_case, text) => {
+    writeCredentials(fakeCredentials());
+    writeFileWithMode(path.join(profile.configDir, "status-cache", "usage-poll.backoff"), text, 0o600);
+    const { fetch, calls } = fakeFetch(() => json(oauthUsage));
+
+    const [entry] = await pollAt(fetch, NOW);
+
+    expect(entry).toMatchObject({ result: { ok: true } });
+    expect(calls).toHaveLength(1);
+    expect(fs.existsSync(path.join(profile.configDir, "status-cache", "usage-poll.backoff"))).toBe(false);
+  });
+});

@@ -24,17 +24,23 @@ anthropic-account status [--json | --statusline]
 ```
 
 - `poll` sends one usage request per profile and prints its windows. `--write` stores each
-  reading as `<config dir>/status-cache/sessions/usage-poll.json`.
+  reading as `<config dir>/status-cache/sessions/usage-poll.json`. A profile dir with no
+  login is skipped. With `--write`, a 429 makes that profile wait 5 minutes before its next
+  request, doubling on each further 429 up to an hour; skipped runs exit 0.
 - `--refresh` first renews every access token due within 10 minutes. **It writes
   `<config dir>/.credentials.json`** and rotates the refresh token, under Claude Code's own
   refresh lock. Leave it off to keep the poller read-only on credentials. A failed refresh
   is printed to stderr; it does not file an owner-queue deposit.
 - `status` reads local files only: each profile's login state and newest reading.
   `--json` prints them as one document, and `--statusline` prints the format
-  `~/.claude/scripts/rate-limits.sh` prints.
+  `~/.claude/scripts/rate-limits.sh` prints, from the newest reading that has both the
+  five-hour and the weekly window.
 
-Exit codes: 0 ok, 1 a poll, refresh or read failed, 2 a login is missing, expired or
-refused, 64 a usage error. Each account whose login is not present gets one stderr line,
+Profiles are `~/.claude` and each dir under `~/.claude-profiles`, or under
+`CLAUDE_PROFILE_ROOT` when it is set; a non-empty `CLAUDE_CONFIG_DIRS` replaces the scan.
+
+Exit codes: 0 ok, 1 a poll, refresh or read failed, 2 a login is expired or refused (or,
+for `status`, missing), 64 a usage error. Each account whose login is not present gets one stderr line,
 `anthropic-account: <label>: login <state>`. Output never holds a token or file contents.
 `--statusline` always exits 0 and writes no stderr, so the status line shows `unknown`.
 
@@ -46,7 +52,7 @@ The bin installs and enables nothing. The templates in `systemd/` run
 ```sh
 npm install -g --prefix ~/.local @titan-design/anthropic-account
 mkdir -p ~/.config/systemd/user
-cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll.* ~/.config/systemd/user/
+cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now anthropic-account-poll.timer
 journalctl --user -u anthropic-account-poll.service -n 20
@@ -54,5 +60,12 @@ journalctl --user -u anthropic-account-poll.service -n 20
 
 Remove `--refresh` from the service's `ExecStart` before enabling to keep the timer from
 writing credentials files.
+
+The service runs with `ProtectSystem=strict`: only `~/.claude` and `~/.claude-profiles`
+are writable. Add any `CLAUDE_PROFILE_ROOT` or `CLAUDE_CONFIG_DIRS` dirs you set for it to
+`ReadWritePaths`. A failed run starts `anthropic-account-poll-failed@.service`, which logs
+an error-priority journal line and leaves
+`~/.local/state/anthropic-account/anthropic-account-poll.service.failed`; the next
+successful run removes it.
 
 The first npm publish is pending and owner-only; trusted publishing is set up after it.

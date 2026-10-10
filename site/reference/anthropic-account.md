@@ -162,7 +162,9 @@ for (const { label, configDir } of discoverProfiles()) {
 
 `discoverProfiles({ home?, env? })` returns `AccountProfile`s: `<home>/.claude` first, then
 each directory under `<home>/.claude-profiles` in name order, each labelled by
-`accountLabel`. A directory that does not exist is left out, and so is a symlink, at either
+`accountLabel`. A non-empty `CLAUDE_PROFILE_ROOT` in `env` (`PROFILE_ROOT_ENV`) names
+another dir to scan in place of `<home>/.claude-profiles`, as `rate-limits.sh` does. A
+directory that does not exist is left out, and so is a symlink, at either
 level. A non-empty `CLAUDE_CONFIG_DIRS` in `env` replaces the scan: its entries, split on
 the path delimiter, are taken as given. `home` defaults to `os.homedir()` and `env` to
 `process.env`.
@@ -204,9 +206,10 @@ end in `.json`, so a reader that globs the dir never takes it. On a failure the 
 removed and the error is thrown through `redactSecrets`. agent-chat's status-line budget
 reader accepts the file as written; a test restates its rules.
 
-`readUsage(configDir, { now? })` returns `{ reading, file, ageSeconds }` for the reading with
+`readUsage(configDir, { now?, windows? })` returns `{ reading, file, ageSeconds }` for the reading with
 the newest `written_at` across every `.json` file in the sessions dir, the poller's and each
-status-line session's, or `null`. Each file goes through the same `lstat`, `O_NOFOLLOW` open
+status-line session's, or `null`. With `windows`, only a reading that carries every named
+window counts, so a newer reading that lacks one falls back to an older one that has it. Each file goes through the same `lstat`, `O_NOFOLLOW` open
 and `fstat` steps as the credentials file, without the owner, mode and link rules, so a
 symlink or FIFO swapped in mid-read is refused and never blocks. A file is skipped when it
 is not a regular file, is larger than 256 KiB (checked on the read itself, so growth after
@@ -264,6 +267,16 @@ once, `profiles` or else `discoverProfiles(discover)`, and writes each reading w
 `writeReading`. It resolves to one `{ label, result, file?, writeError? }` per profile, in
 order. `file` is the written path; `writeError` is a failed write, through `redactSecrets`.
 One profile's failure never stops another.
+
+A `http-429` makes `pollAll` back off that profile: it writes
+`<configDir>/status-cache/usage-poll.backoff` (outside the sessions dir, and not `.json`,
+so no reading glob takes it) and sets `backoffUntil`, in epoch seconds, on the entry. The
+first wait is 5 minutes, and each further 429 doubles it, up to an hour. Until it runs out
+the profile's entry is `{ ok: false, failure: "backoff" }` with `backoffUntil`, and no
+request is sent. A success removes the file. A backoff file that cannot be read, or that
+waits longer than an hour from `now`, counts as none, and one that cannot be written is
+skipped, so a broken or planted file never stops polling.
+`pollUsage` itself keeps no state and never backs off.
 
 ## Refreshing an access token
 
@@ -380,11 +393,15 @@ anthropic-account status [--json | --statusline]
 ```
 
 Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
-`~/.claude-profiles`, or `CLAUDE_CONFIG_DIRS` when it is set.
+`~/.claude-profiles` (or `CLAUDE_PROFILE_ROOT`), or `CLAUDE_CONFIG_DIRS` when it is set.
 
 - `poll` runs `pollUsage` for every profile and prints one line each, such as
   `agents: five_hour 23%, seven_day 41.5%`. With `--write` it runs `pollAll`, which stores
-  each reading as `usage-poll.json`.
+  each reading as `usage-poll.json`. A profile with no login (`missing`), such as a dir
+  made before its first login, prints `<label>: no login, skipped` and counts as success;
+  `status` still reports it. With `--write`, a profile backing off after a 429 prints
+  `<label>: rate limited, skipped until <ISO time>` and counts as success. The 429 itself
+  is a failure.
 - `--refresh`, which needs `--write`, first runs `refreshIfNeeded` for every profile with a
   10-minute margin, then polls with the renewed token. **It writes
   `<config dir>/.credentials.json`** whenever a token is due, and the server may rotate
@@ -400,14 +417,15 @@ Both commands work on `discoverProfiles()`: `~/.claude`, each dir under
 - `status --statusline` prints the lines `~/.claude/scripts/rate-limits.sh` prints: first
   `5h|weekly|5h_reset|weekly_reset|||||age_s` for the account in `CLAUDE_CONFIG_DIR` (or
   `~/.claude`), or `unknown|unknown|||||||`, then `other|<label>|5h|weekly|age_s|` for each
-  other profile whose reading has both windows. Percentages are floored. It always exits
-  0 and writes no stderr.
+  other profile whose reading has both windows. Like `rate-limits.sh`, each line uses the
+  newest reading that has both `five_hour` and `seven_day`, falling back past a newer one
+  that lacks either. Percentages are floored. It always exits 0 and writes no stderr.
 
 | exit | when |
 |---|---|
 | 0 | every profile succeeded |
 | 1 | a poll, a refresh, a usage-file write or a credentials read failed |
-| 2 | a login is `missing`, `expired` or `refused`; this wins over 1 |
+| 2 | a login is `expired` or `refused`, or for `status` `missing`; this wins over 1 |
 | 64 | an unknown command or flag, a repeated flag, or `--refresh` without `--write` |
 
 Each account whose login is not present gets one stderr line,
@@ -418,27 +436,43 @@ contents, response bodies and error messages are never printed.
 
 ### Installing the poll timer
 
-`systemd/` ships `anthropic-account-poll.service`, a oneshot running
-`%h/.local/bin/anthropic-account poll --write --refresh`, and `anthropic-account-poll.timer`,
-which starts it 10 s after the timer starts and every 150 s after that. The package
-installs and enables nothing. The host operator runs:
+`systemd/` ships three units. The package installs and enables nothing.
+
+- `anthropic-account-poll.service`, a oneshot running
+  `%h/.local/bin/anthropic-account poll --write --refresh`. It runs with
+  `ProtectSystem=strict`, `NoNewPrivileges` and `UMask=0077`, and only `~/.claude` and
+  `~/.claude-profiles` are writable (`ReadWritePaths`): the credentials file, the refresh
+  lock and the status cache all live there. The legacy lock beside `~/.claude`
+  (`~/.claude.lock`) stays read-only and is skipped as unusable, as Claude Code skips it;
+  the primary lock inside the config dir still serializes every refresh. Setting
+  `CLAUDE_PROFILE_ROOT` or `CLAUDE_CONFIG_DIRS` for the unit means adding those dirs to
+  `ReadWritePaths`.
+- `anthropic-account-poll.timer`, which starts the service 10 s after the timer starts and
+  every 150 s after that, with up to 30 s of `RandomizedDelaySec`.
+- `anthropic-account-poll-failed@.service`, the service's `OnFailure=` target. It logs an
+  error-priority journal line (`journalctl --user -p err`) and touches
+  `~/.local/state/anthropic-account/anthropic-account-poll.service.failed`. The poll service
+  removes that file after its next successful run, so the file names only an unrecovered
+  failure, and its mtime says when the latest failure happened.
+
+The host operator runs:
 
 ```sh
 npm install -g --prefix ~/.local @titan-design/anthropic-account
 mkdir -p ~/.config/systemd/user
-cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll.* ~/.config/systemd/user/
+cp "$(npm root -g --prefix ~/.local)/@titan-design/anthropic-account/systemd/"anthropic-account-poll* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now anthropic-account-poll.timer
 ```
 
 Because the service passes `--refresh`, the timer writes credentials files. Remove the flag
-from `ExecStart` before enabling to keep it read-only. Failures land in
+from `ExecStart` before enabling to keep it read-only. Each run's output lands in
 `journalctl --user -u anthropic-account-poll.service`.
 
 ## What it deliberately does not do
 
 The root reads no files, makes no request and writes nothing. Outside `refreshIfNeeded`, the
-`./node` subpath writes only the usage file and sends only the usage request, through the
+`./node` subpath writes only the usage file and `pollAll`'s backoff file, and sends only the usage request, through the
 caller's `fetch`; `pollUsage` reports an expired token and never renews it. Nothing returns,
 logs or stores a token anywhere but the credentials file, and no failure carries a message. The tests use
 canary tokens, a fake `fetch` and a temp home, and assert the canary is absent from every
