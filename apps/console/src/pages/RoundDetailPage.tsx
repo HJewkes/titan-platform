@@ -12,7 +12,7 @@ type ValidRound = Extract<RoundDetail, { valid: true }>;
 export function RoundDetailPage({ id }: { id: string }): ReactNode {
   const detail = useQuery("rounds.get", { id });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading round" />;
-  if (detail.data === undefined) return <Framed id={id}><Alert status="error" message={`Could not load ${id}: ${detail.error?.message ?? "no answer"}`} /></Framed>;
+  if (detail.data === undefined) return <Framed id={id}><Alert status="error" message={`Could not load ${id}: ${detail.error.message}`} /></Framed>;
   const round = detail.data;
   if (!round.valid) return <Framed id={id}><Alert status="error" message={`This round does not pass the round schema: ${round.reason}`} /></Framed>;
   return (

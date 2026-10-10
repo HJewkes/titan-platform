@@ -74,7 +74,8 @@ interface LoadedRound {
   parsed: Parsed;
 }
 
-const errnoOf = (error: unknown): string | undefined => (error as NodeJS.ErrnoException).code;
+const errnoOf = (error: unknown): string | undefined =>
+  error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
 
 function schemaReason(error: z.ZodError): string {
   const issues = error.issues.slice(0, MAX_REASON_ISSUES).map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);

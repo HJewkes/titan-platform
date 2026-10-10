@@ -29,7 +29,7 @@ const COUNT_WIDTH = 96;
 export function RoundsPage(): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
-  if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error?.message ?? "no answer"}`} />;
+  if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error.message}`} />;
   const { rounds, truncated } = list.data;
   return (
     <VStack gap={6}>
