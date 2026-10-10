@@ -61,25 +61,31 @@ function readReadingFile(file: string): UsageReading | null {
   }
 }
 
-function newestReading(dir: string, names: string[]): { reading: UsageReading; file: string } | null {
+export interface ReadUsageOptions {
+  now?: number;
+  // Only a reading carrying every one of these windows counts, so a newer reading that
+  // lacks one falls back to an older one that has it.
+  windows?: readonly string[];
+}
+
+function newestReading(dir: string, names: string[], windows: readonly string[]): { reading: UsageReading; file: string } | null {
   let newest: { reading: UsageReading; file: string } | null = null;
   for (const name of names) {
     const file = path.join(dir, name);
     const reading = readReadingFile(file);
-    if (reading !== null && (newest === null || reading.written_at > newest.reading.written_at)) {
-      newest = { reading, file };
-    }
+    if (reading === null || !windows.every((window) => reading.rate_limits[window] !== undefined)) continue;
+    if (newest === null || reading.written_at > newest.reading.written_at) newest = { reading, file };
   }
   return newest;
 }
 
 // The newest reading with at least one window across every file in the sessions dir: the
 // poller's and each status-line session's, since all describe the same account.
-export function readUsage(configDir: string, options: { now?: number } = {}): UsageFileRead | null {
+export function readUsage(configDir: string, options: ReadUsageOptions = {}): UsageFileRead | null {
   try {
     const dir = sessionsDir(configDir);
     const names = listReadingFiles(dir);
-    const newest = names === null ? null : newestReading(dir, names);
+    const newest = names === null ? null : newestReading(dir, names, options.windows ?? []);
     if (newest === null) return null;
     const ageSeconds = Math.max(0, Math.floor((options.now ?? Date.now()) / 1000) - newest.reading.written_at);
     return { ...newest, ageSeconds };
@@ -114,11 +120,11 @@ export function syncDir(dir: string): void {
 }
 
 // The temp name ends in `.tmp`, not `.json`, so no reader of the dir picks up a partial file.
-function writeAtomic(dir: string, target: string, text: string): void {
-  const temp = path.join(dir, `.${USAGE_FILE}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+export function writeFileAtomic(dir: string, name: string, text: string): void {
+  const temp = path.join(dir, `.${name}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   try {
     writeSynced(temp, text);
-    fs.renameSync(temp, target);
+    fs.renameSync(temp, path.join(dir, name));
   } catch (error) {
     fs.rmSync(temp, { force: true });
     throw error;
@@ -142,12 +148,11 @@ function serialize(reading: UsageReading): string {
 export function writeReading(configDir: string, reading: UsageReading): string {
   const text = serialize(reading);
   const dir = sessionsDir(configDir);
-  const target = path.join(dir, USAGE_FILE);
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    writeAtomic(dir, target, text);
+    writeFileAtomic(dir, USAGE_FILE, text);
   } catch (error) {
     throw redactedError(error, "writing the usage reading failed");
   }
-  return target;
+  return path.join(dir, USAGE_FILE);
 }
