@@ -94,6 +94,31 @@ low-sensitivity, never as redacted.
 The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
 `bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
 
+## Transcripts mirrored from another host
+
+`claudeTranscriptRoots` reads `CLAUDE_TRANSCRIPT_MIRRORS` as well as this machine's own
+config dirs. Each entry is `<host>=<dir>`, and entries are joined by the path delimiter
+(`:`). Every `<dir>/<account>` with a `projects` dir becomes a root whose `account` is the
+directory name and whose `host` is the label, so a mirror laid out as
+`<dir>/<account>/projects/...` needs one entry for all its accounts:
+
+```sh
+CLAUDE_TRANSCRIPT_MIRRORS="mac=~/mac-transcripts"
+```
+
+`discoverAllTranscripts` stamps each mirrored transcript with that `host`; a transcript from
+this machine has no `host` at all. A missing mirror dir adds no roots, and an entry without
+a valid `<host>=` label throws. Mirrors are appended whether or not `CLAUDE_CONFIG_DIRS` is
+set.
+
+Do not add a mirror to `CLAUDE_CONFIG_DIRS`. That variable also names the accounts
+anthropic-account polls for credentials and usage, and a mirror is a copy of transcripts, not
+a config dir anyone can run Claude Code with. A caller that turns a root back into a config
+dir should skip any root with a `host`.
+
+A mirrored session usually exists on this machine too, under the same session id. The
+graph treats both files as transcripts of that one session; see session-graph.
+
 ## Folding
 
 `EventFolder` merges a chunk's events into a `TranscriptDelta` with rules chosen so chunk

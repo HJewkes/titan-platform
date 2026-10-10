@@ -748,7 +748,7 @@ Key exports:
 - `schema`: `ownerItemSchema`, `sourceRefSchema`
 - `deposit`: `depositItemId`, `fromDeposit`, `ownerItemDepositSchema`
 - `keys`: `askKey`, `componentKey`, `prKey`, `relationKind`, `roundAskKey`, `tokenKey`, `topicKey`
-- +41 more in the [reference page](/reference/owner-queue)
+- +46 more in the [reference page](/reference/owner-queue)
 
 <a id="cap-pm"></a>
 
@@ -844,7 +844,7 @@ Key exports:
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`
-- +92 more in the [reference page](/reference/session-graph)
+- +93 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -860,7 +860,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +202 more in the [reference page](/reference/session-read)
+- +203 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
