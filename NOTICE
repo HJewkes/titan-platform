@@ -38,7 +38,10 @@ anti-slop
 https://github.com/dmmulroy/anti-slop
 
 Adapted in packages/eslint-plugin/src/no-chained-type-assertions.ts from
-src/rules/no-chained-type-assertions.ts (rewritten on ESLint's rule API).
+src/rules/no-chained-type-assertions.ts (rewritten on ESLint's rule API), and
+in packages/eslint-plugin/src/no-internal-module-mock.ts from
+src/rules/no-module-mocking.ts (rewritten on ESLint's rule API, and narrowed
+to mocks of the repo's own modules).
 
 MIT License
 
