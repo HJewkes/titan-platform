@@ -5,6 +5,7 @@ export const ITEM_KINDS = ["decide", "approve", "do", "review", "know"] as const
 export const DOORS = ["one-way", "two-way"] as const;
 export const LENSES = ["blocking-agent", "blocking-merge", "stuck", "planning", "fyi"] as const;
 export const ROUTE_TARGETS = ["owner-now", "owner-queue", "decider"] as const;
+export const AUDIENCES = ["owner", "operator"] as const;
 export const ITEM_STATUSES = ["open", "answered", "decided", "expired", "gone-elsewhere", "withdrawn"] as const;
 
 const timestamp = z.iso.datetime({ offset: true });
@@ -62,6 +63,8 @@ export const ownerItemSchema = z.object({
   lens: z.enum(LENSES),
   stuckKind: z.string().optional(),
   unblocks: z.array(z.string().min(1)),
+  /** Which reader the item is for; absent means the owner. Selects a view, grants no authority. */
+  audience: z.enum(AUDIENCES).optional(),
   route: z.object({ target: z.enum(ROUTE_TARGETS), reason: z.string(), shadow: z.boolean() }).optional(),
   authority: z.object({ table: z.string(), ruleId: z.string(), resolvers: z.array(z.string()) }).optional(),
   openedAt: timestamp,
@@ -75,3 +78,4 @@ export type SourceRef = z.infer<typeof sourceRefSchema>;
 export type OwnerItem = z.infer<typeof ownerItemSchema>;
 export type OwnerAnswer = z.infer<typeof answerSchema>;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
+export type Audience = (typeof AUDIENCES)[number];
