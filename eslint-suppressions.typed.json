@@ -3039,11 +3039,6 @@
       "count": 3
     }
   },
-  "products/factory/src/shepherd/freeze.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/g10-release-workflow.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1

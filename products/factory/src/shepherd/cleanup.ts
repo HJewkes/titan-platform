@@ -1,7 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
-import { failureOf } from "./error-class.js";
+import { consoleTextOf, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
@@ -225,7 +225,7 @@ async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAg
 }
 
 /** Reads the refusal text only to recognise an agent that is already gone; none of it is stored. */
-const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(error instanceof Error ? error.message : String(error));
+const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(consoleTextOf(error));
 
 /** Fixed words for the refusals an owner triages by, since the refusal's own text names paths. */
 const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
@@ -234,7 +234,7 @@ const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
 ];
 
 function retireRefusal(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
+  const text = consoleTextOf(error);
   return KNOWN_REFUSALS.find(([pattern]) => pattern.test(text))?.[1] ?? failureOf(error);
 }
 

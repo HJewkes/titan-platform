@@ -2,14 +2,16 @@ import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
+import { userInfo } from "node:os";
 import { parsePort } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
-import { configuredMainWatch } from "./main-watch-ports.js";
+import { configuredFixerRetire, configuredMainWatch } from "./main-watch-ports.js";
 import { configuredSeatDigest } from "./seat-digest-ports.js";
+import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
@@ -72,12 +74,13 @@ export interface CliDeps {
   deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
   /** The serve verb's main CI watch; absent, or undefined for an env, means serve watches main only after its own merges. */
   mainWatch?: (env: NodeJS.ProcessEnv) => MainWatchPorts | undefined;
+  fixerRetire?: (env: NodeJS.ProcessEnv) => FixerRetirePorts | undefined;
   /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
   seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, seatDigest: configuredSeatDigest };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
 export interface Verbs {
@@ -148,7 +151,7 @@ function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) =>
-      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), mainWatch: deps.mainWatch?.(io.env), seatDigest: deps.seatDigest?.(io.env) }, deps.stop),
+      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env) }, deps.stop),
     );
 }
 
@@ -202,15 +205,20 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .requiredOption("--reason <text>", "why it is held")
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
     .action((ref: string, opts: ShepherdOpts & { reason: string; reviewer?: string }) =>
-      runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer }), opts));
+      runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer, actor: callerOf(verbs.io.env) }), opts));
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   for (const [name, description] of PR_VERBS) {
-    verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
+    verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => (name === "release" ? { ...parsePrRef(ref), actor: callerOf(verbs.io.env) } : parsePrRef(ref)), opts));
   }
+}
+
+/** The seat agent-chat launched this shell for, else the OS user: the owner at their own terminal. */
+function callerOf(env: NodeJS.ProcessEnv): string {
+  return env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || userInfo().username;
 }
 
 const PR_VERBS = [

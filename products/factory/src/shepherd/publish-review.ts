@@ -15,9 +15,6 @@ const PUBLISH_REVIEW_STEP = "sh-publish-review";
 export const REVIEW_CHECK_NAME = "shepherd/review";
 export const PUBLISH_REVIEW_STEPS: readonly StepDeclaration[] = [{ id: PUBLISH_REVIEW_STEP, kind: "dispatch" }];
 
-/** The port does not read GitHub's `auto_merge`, and Shepherd never arms it, so every publish passes this until the port reads it. */
-const AUTO_MERGE_UNREAD = false;
-
 const PublishInputSchema = z.strictObject({
   repo: z.string().min(1),
   pr: z.number().int().positive(),
@@ -27,11 +24,13 @@ const PublishInputSchema = z.strictObject({
   head: z.string().min(1),
   carriedFrom: z.string().min(1).optional(),
   carryRule: z.enum(["tree-equal", "remerge-empty", "remerge-generated-only"]).optional(),
-  autoMergeArmed: z.boolean(),
   releaseBlockers: z.number().int().min(0).optional(),
 });
 
 type PublishInput = z.infer<typeof PublishInputSchema>;
+
+/** Where the armed flag is read, so the mapper guard sees what GitHub says at publish time. */
+type ArmedReader = Pick<GitHubPort, "getPr">;
 
 type PublishResult = { headSha: string; conclusion: ReviewConclusion } & ({ published: true; checkRunId: number; checkRunUrl: string } | { published: false; reason: string });
 
@@ -46,7 +45,7 @@ type PrTarget = { repo: RepoSlug; pr: number };
 export async function publishReview(ctx: WorkflowContext, target: PrTarget, check: Omit<ReviewCheckInput, "autoMergeArmed">): Promise<void> {
   const next = ctx.historyNext();
   if (next !== undefined && !next.startsWith(`${PUBLISH_REVIEW_STEP}:`)) return;
-  const input = { repo: target.repo, pr: target.pr, runId: ctx.runId, ...check, autoMergeArmed: AUTO_MERGE_UNREAD };
+  const input = { repo: target.repo, pr: target.pr, runId: ctx.runId, ...check };
   await step(ctx, `${PUBLISH_REVIEW_STEP}:${check.head}`, input, PublishedResult);
 }
 
@@ -68,11 +67,11 @@ function reviewOutcome(verdict: Verdict, observed: ObservedPr, headSha: string):
 }
 
 export const publishReviewRoute = (deps: ShepherdDeps): StepRoute =>
-  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown) => publish(deps.reviewCheck, PublishInputSchema.parse(raw)));
+  codeRoute(PUBLISH_REVIEW_STEP, deps.now, async (raw: unknown) => publish(deps.reviewCheck, deps.port, PublishInputSchema.parse(raw)));
 
 /** Each publish is a new run, and GitHub keeps the newest per name and App, so a repeat after a crash is harmless. */
-async function publish(port: GitHubPort | undefined, input: PublishInput): Promise<PublishResult> {
-  const check = reviewCheck(input);
+async function publish(port: GitHubPort | undefined, reads: ArmedReader, input: PublishInput): Promise<PublishResult> {
+  const check = reviewCheck({ ...input, autoMergeArmed: await autoMergeArmed(reads, input) });
   const posted = { headSha: check.headSha, conclusion: check.conclusion };
   if (!port) return { ...posted, published: false, reason: "no shepherd.reviewCheck App is configured" };
   try {
@@ -82,6 +81,16 @@ async function publish(port: GitHubPort | undefined, input: PublishInput): Promi
     // The stored reason can reach a public PR, so the message goes to the local console only.
     console.warn(`shepherd: publishing ${REVIEW_CHECK_NAME} at ${check.headSha} failed: ${consoleTextOf(error)}`);
     return { ...posted, published: false, reason: `the check run post failed: ${failureOf(error)}` };
+  }
+}
+
+/** An unreadable PR counts as armed: the check then holds the merge instead of vouching for a PR it could not see. */
+async function autoMergeArmed(reads: ArmedReader, input: PublishInput): Promise<boolean> {
+  try {
+    return (await reads.getPr(input.repo, input.pr)).autoMerge;
+  } catch (error) {
+    console.warn(`shepherd: reading auto-merge of ${input.repo}#${input.pr} failed: ${consoleTextOf(error)}`);
+    return true;
   }
 }
 

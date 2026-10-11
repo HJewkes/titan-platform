@@ -22,6 +22,8 @@ import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.j
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
+import type { FreezeStoreRef } from "./shepherd/freeze.js";
+import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
@@ -63,6 +65,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   deployWatch?: DeployWatch;
   /** Where the main CI watch sends a red sha's one event; absent means main is watched only after a Shepherd run's own merge. */
   mainWatch?: MainWatchPorts;
+  /** Reclaims a main-red fixer once its red main is over; absent means fixers stay until the owner retires them. */
+  fixerRetire?: FixerRetirePorts;
   /** Where each seat's digest of open gates, told fix rounds and finished runs goes on a change; absent means serve sends none. */
   seatDigest?: SeatDigestPorts;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
@@ -103,7 +107,11 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
   const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
-  thaws.onThaw(() => void goneSweep?.tick());
+  const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
+  thaws.onThaw(() => {
+    void goneSweep?.tick();
+    void fixerSweep?.tick();
+  });
   await goneSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
@@ -117,7 +125,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep]) await later?.stop();
+    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -352,6 +360,13 @@ export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps 
   const onError = (path: string, error: unknown): void =>
     log.warn({ path, err: error instanceof Error ? error.message : String(error) }, "review checkout sweep failed on an entry");
   for (const path of await sweepReviewCheckouts({ ...deps, onError })) log.info({ path }, "removed a stale review checkout");
+}
+
+export async function sweepFixers(ports: FixerRetirePorts, freeze: FreezeStoreRef, log: Logger): Promise<void> {
+  for (const note of await retireEndedFixers(ports, freeze.get().activeFreezes())) {
+    if (note.outcome === "retired") log.info({ ...note }, "retired an ended main-red fixer");
+    else log.warn({ ...note }, "left an ended main-red fixer");
+  }
 }
 
 /** The first tick is not awaited: its redeploy.log read and index.lock probe (lsof, pgrep) must not hold up the start. */

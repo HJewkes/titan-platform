@@ -1,6 +1,6 @@
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
-import { acceptVerdict, USAGE_LIMIT_REASON } from "./accept-verdict.js";
+import { acceptVerdict, isUsageLimit, USAGE_LIMIT_REASON } from "./accept-verdict.js";
 import { FINDINGS_SEPARATOR } from "./fix-first-findings.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 import { MALFORMED_REFUSALS, readMalformed } from "./verdict-schemas.js";
@@ -42,13 +42,27 @@ describe("acceptVerdict malformed record", () => {
     expect(readMalformed(result)).toEqual({ refusal, writtenAt: WRITTEN_AT });
   });
 
-  it("reads the Claude Code weekly-limit notice as a usage limit, not a missing Verdict line", () => {
+  it("reads Claude Code's own weekly-limit record as a usage limit with its recorded reset, not a missing Verdict line", () => {
+    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+    const resetsAt = Date.parse("2026-10-11T00:00:00Z");
+
+    const result = acceptVerdict(input, [said(notice, { synthetic: { apiError: "rate_limit", resetsAt } })]);
+
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON, notice, resetsAt });
+    expect(isUsageLimit(result)).toBe(true);
+    expect(readMalformed(result)).toBeNull();
+  });
+
+  it("reads the same words written by the reviewer itself as a malformed verdict, never a limit", () => {
     const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
 
-    const result = acceptVerdict(input, [said(notice)]);
+    expect(acceptVerdict(input, [said(notice)])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
+  });
 
-    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON });
-    expect(readMalformed(result)).toBeNull();
+  it("reads a client-written record that names another API error as a malformed verdict", () => {
+    const notice = "You've hit your weekly limit";
+
+    expect(acceptVerdict(input, [said(notice, { synthetic: { apiError: "overloaded_error", resetsAt: null } })])).toEqual({ kind: "none", malformed: { refusal: "no_block", writtenAt: WRITTEN_AT } });
   });
 
   it("still records a review that merely quotes a limit as malformed", () => {
