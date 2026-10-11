@@ -37,6 +37,10 @@ describe("ownerItemDepositSchema", () => {
     expect(ownerItemDepositSchema.safeParse({ ...deposit(), ...extra }).success).toBe(false);
   });
 
+  it("refuses an audience outside owner and operator", () => {
+    expect(ownerItemDepositSchema.safeParse({ ...deposit(), audience: "admin" }).success).toBe(false);
+  });
+
   it("refuses a hidden recommendation", () => {
     const hidden = { ...deposit(), recommended: { optionId: "flat", by: "agent-a", hidden: true } };
     expect(ownerItemDepositSchema.safeParse(hidden).success).toBe(false);
@@ -61,6 +65,16 @@ describe("fromDeposit", () => {
       unblocks: [],
       personal: false,
     });
+  });
+
+  it("keeps an operator audience on the filed item", () => {
+    const filed = fromDeposit(deposit({ audience: "operator" }), NOW);
+
+    expect(ownerItemSchema.parse(filed).audience).toBe("operator");
+  });
+
+  it("files a deposit with no audience as an item with none", () => {
+    expect(fromDeposit(deposit(), NOW)).not.toHaveProperty("audience");
   });
 
   it("derives the lens from the kind", () => {

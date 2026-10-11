@@ -27,6 +27,7 @@ export const ownerItemDepositSchema = z.strictObject({
   initiative: item.initiative,
   personal: item.personal.default(false),
   unblocks: item.unblocks.default([]),
+  audience: item.audience,
   expiresAt: item.expiresAt,
 });
 
