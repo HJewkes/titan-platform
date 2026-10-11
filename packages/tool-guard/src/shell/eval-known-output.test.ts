@@ -48,6 +48,15 @@ const splicedIntoWord: [string, string][] = [
   ["bash -c of a word around a backquoted echo", `bash -c "git \`echo push\` origin HEAD:main"`],
 ];
 
+/** Lines where only one of bash and zsh prints the guarded command, so each shell's output is read on its own. */
+const printedByOneShell = (cmd: string): [string, string][] => [
+  ["eval of echo -, whose - zsh drops and bash prints", `eval "$(echo - ${cmd})"`],
+  ["eval of echo -n -, whose - zsh drops and bash prints", `eval "$(echo -n - ${cmd})"`],
+  ["bash -c of echo -, whose - zsh drops and bash prints", `bash -c "$(echo - ${cmd})"`],
+  ["eval of printf %.3s cutting bytes in bash before zsh's x", `eval "$(printf '%.3s%s' 'é;x' '${cmd}')"`],
+  ["eval of printf %.2s cutting zsh's characters after bash's é", `eval "$(printf '%.2s%s' 'é;' '${cmd}')"`],
+];
+
 /** Lines whose substitution prints differently in bash and zsh, or than written, so its output stays unknown. */
 const outputUnsure: [string, string][] = [
   ["eval after an echo of an escape bash prints as written", `eval "$(echo '\\0043');${PUSH}"`],
@@ -65,6 +74,8 @@ const outputMismodelled: [string, string][] = [
 const denyRows = [
   ...reachedThroughOutput(PUSH).map(([n, c]) => [`${n} (push)`, c]),
   ...reachedThroughOutput(MERGE).map(([n, c]) => [`${n} (merge)`, c]),
+  ...printedByOneShell(PUSH).map(([n, c]) => [`${n} (push)`, c]),
+  ...printedByOneShell(MERGE).map(([n, c]) => [`${n} (merge)`, c]),
   ...splicedIntoWord,
   ...outputUnsure,
   ...outputMismodelled,

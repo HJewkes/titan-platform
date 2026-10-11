@@ -3,7 +3,7 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { catOperands, splicedWords, stdinScript } from "./sub-output.js";
+import { catOperands, SPLICING_SHELLS, splicedWords, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -347,12 +347,14 @@ function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string 
 
 /**
  * Splicing only adds a reading: where the model of a substitution's output is wrong (`printf '%d' '#'` prints `0`,
- * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too. Only the
- * texts splicing adds are charged, so a line that nests eval walks them in time linear in its length or is refused.
+ * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too. Each
+ * shell's spliced text is a reading of its own, so output that bash and zsh print differently hides in neither. Only
+ * the texts splicing adds are charged, so a line that nests eval walks them in time linear in its length or is refused.
  */
 function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
   const plain = caseScripts(words);
-  const added = [...new Set(caseScripts(splicedWords(words)))].filter((text) => !plain.includes(text));
+  const spliced = SPLICING_SHELLS.flatMap((shell) => caseScripts(splicedWords(words, shell)));
+  const added = [...new Set(spliced)].filter((text) => !plain.includes(text));
   chargeSpliced(budget, added);
   return [...new Set([...plain, ...added])];
 }

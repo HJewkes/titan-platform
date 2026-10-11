@@ -1,37 +1,42 @@
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { printedText } from "./printed.js";
+import type { Shell } from "./printed.js";
 import { unwrap } from "./unwrap.js";
+
+/** Either may run the line, and their builtins print some of the same arguments differently. */
+export const SPLICING_SHELLS: readonly Shell[] = ["bash", "zsh"];
 
 /**
  * The words with each command substitution's output spliced in where the substitution sits, as `eval` and `-c` read
- * them. Output is known when literal on the line: one `echo` or `printf` with static arguments, or one `cat` reading a
- * heredoc or here-string. Any other substitution prints text only known at run time and splices in nothing.
+ * them under `shell`. Output is known when literal on the line: one `echo` or `printf` with static arguments, or one
+ * `cat` reading a heredoc or here-string. Any other substitution prints text only known at run time and splices in
+ * nothing.
  */
-export function splicedWords(words: WordToken[]): WordToken[] {
-  return words.map((word) => (word.cuts ? { ...word, value: spliced(word, word.cuts) } : word));
+export function splicedWords(words: WordToken[], shell: Shell): WordToken[] {
+  return words.map((word) => (word.cuts ? { ...word, value: spliced(word, word.cuts, shell) } : word));
 }
 
-function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>): string {
+function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>, shell: Shell): string {
   let value = "";
   let last = 0;
   for (const { at, sub } of cuts) {
     const tokens = word.subs[sub];
-    const output = tokens ? (subOutput(tokens) ?? "") : "";
+    const output = tokens ? (subOutput(tokens, shell) ?? "") : "";
     value += word.value.slice(last, at) + output.replace(/\n+$/, "");
     last = at;
   }
   return value + word.value.slice(last);
 }
 
-/** Output only counts when bash and zsh, either of which may run the line, would print exactly the same text. */
-function subOutput(tokens: Token[]): string | null {
+/** The text `shell` prints; a whole line runs under one shell, so each shell's outputs make one reading together. */
+function subOutput(tokens: Token[], shell: Shell): string | null {
   const body = soleCommand(tokens);
   if (!body) return null;
   const cmd = unwrap(body.words);
   if (!cmd) return null;
   if (cmd.name === "cat") return readsOnlyStdin(cmd.args) ? literalStdin(body.redirects) : null;
-  // Bash's echo prints `\0043` as written where zsh's decodes it, so a backslash leaves the output unknown.
-  return cmd.args.some((a) => a.value.includes("\\")) ? null : printedText(cmd.name, cmd.args);
+  // Bash's echo prints `\0043` as written where zsh's decodes it, and escapes are modelled for neither shell alone.
+  return cmd.args.some((a) => a.value.includes("\\")) ? null : printedText(cmd.name, cmd.args, shell);
 }
 
 function readsOnlyStdin(args: WordToken[]): boolean {
