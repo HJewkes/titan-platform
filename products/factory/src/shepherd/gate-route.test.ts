@@ -60,7 +60,9 @@ function host(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases
   return { host: opened, store };
 }
 
-function world(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, dbPath = ":memory:"): FactoryHost {
+type World = FactoryHost & { runId: string; store: ShepherdStoreRef };
+
+function world(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, dbPath = ":memory:"): World {
   const { host: opened, store } = host(fake, ports, shepherd, dbPath);
   fake.addPr({ headSha: H1 });
   const runId = opened.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
@@ -68,20 +70,19 @@ function world(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhase
   return Object.assign(opened, { runId, store });
 }
 
-const runOf = (host: FactoryHost): string => (host as FactoryHost & { runId: string }).runId;
-const storeOf = (host: FactoryHost): ShepherdStoreRef => (host as FactoryHost & { store: ShepherdStoreRef }).store;
+const runOf = (host: World): string => host.runId;
 const seatGates = (host: FactoryHost): string[] => host.pendingGates().flatMap((gate) => (SEAT_GATES.some((step) => gate.stepId.startsWith(step)) ? [gate.gate.id] : []));
 
 /** H1 is red, every later head green. */
 const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success")), successRun("dag-check", 2)]));
 const green = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]));
 
-async function waitingForHead(host: FactoryHost): Promise<void> {
+async function waitingForHead(host: World): Promise<void> {
   await vi.waitFor(() => expect(host.runtime.status(runOf(host))?.currentStep).toMatch(/^await-new-head/));
 }
 
 /** The pushed fix lands through the normal path: the owner's approve-merge gate opens at the new head, as before. */
-async function ownerGateAtFix(host: FactoryHost, fake: FakeGitHub): Promise<void> {
+async function ownerGateAtFix(host: World, fake: FakeGitHub): Promise<void> {
   fake.pushHead(1, H2);
   await gateOpened(host, gateId(runOf(host), "approve-merge"));
   expect(host.gates.get(gateId(runOf(host), "approve-merge"))?.prompt).toContain(`at head ${H2}`);
@@ -163,7 +164,7 @@ describe("a told fix round reaches the seat digest", () => {
     const states = new Map<string, SeatState>();
 
     await sendSeatDigests(
-      storeOf(host).get().all().map((registration) => ({ row: watchRow({ registration, run }), run })),
+      host.store.get().all().map((registration) => ({ row: watchRow({ registration, run }), run })),
       { seatLookup: () => () => "demo-coord", send: async (_seat, text) => void digests.push(text) },
       { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) },
     );
