@@ -23,19 +23,25 @@ runs stay alive after your shell exits. Each verb below calls the server when on
 ```sh
 titan-factory shepherd register owner/repo#123 --task initiative/42 --implementer impl-1
 titan-factory shepherd register owner/repo --branch feat/example --task initiative/42 --implementer impl-1
+titan-factory shepherd register owner/repo#123
 ```
 
 ```
 run ab0f9228-… shepherd-pr owner/repo (feat/example): started; policy owner-gate
 ```
 
-`--task` and `--implementer` are required. The target is `owner/repo#N`, or `owner/repo`
-with `--branch`. The other flags:
+The target is `owner/repo#N`, or `owner/repo` with `--branch`. A missing `--task` or
+`--implementer` is read from the head branch: `--branch` when given, else the pull request's
+head. An `agent-chat/<name>` branch gives `<name>` as the implementer, and the first
+`<letters>-<digits>` pair in it gives the task, upper-cased and qualified like a bare ID:
+`agent-chat/dc-td-554-review-errors` registers implementer `dc-td-554-review-errors` and task
+`<initiative>/TD-554`. An explicit flag always wins. A branch that yields neither is a usage
+error (exit 2) naming the flag to pass and the branch it read. The other flags:
 
 | Flag | Meaning |
 | --- | --- |
 | `--reviewer <name>` | the agent that reviews |
-| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor` or `unknown` (the default) |
+| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor` or `unknown`; a new registration without it stores `correctness` |
 | `--policy <json>` | narrows the seat policy; see [seat policy](#seat-policy) |
 
 Registration is idempotent (`products/factory/src/shepherd/commands.ts`). A repeat for the

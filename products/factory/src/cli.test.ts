@@ -282,3 +282,50 @@ describe("shepherd register with a bare task ID", () => {
     expect(result.err).toContain("pass --task <initiative>/<ID>");
   });
 });
+
+describe("shepherd register with only a target", () => {
+  const AGENT_BRANCH = "agent-chat/tc-tp-2239";
+  const taskIndex = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2239", slug: "titan-platform" }] } }))) as typeof globalThis.fetch;
+
+  function inferDeps(headRef: string): CliDeps {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef });
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch: taskIndex, headRef: async () => headRef };
+  }
+
+  it("infers the implementer and the qualified task from the agent-chat head branch", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--offline", "--json", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "tc-tp-2239", kind: "correctness" });
+  });
+
+  it("keeps an explicit flag over the inferred value", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--implementer", "seat-x", "--offline", "--json", "--port", String(await deadPort())], deps);
+
+    expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "seat-x" });
+  });
+
+  it("exits with a usage error naming --task and the branch when the head branch has no task id", async () => {
+    const deps = inferDeps("agent-chat/review-errors");
+
+    const result = await cli(["shepherd", "register", `${REPO}#1`, "--offline", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.err).toContain("agent-chat/review-errors");
+    expect(result.err).toContain("pass --task");
+  });
+
+  it("reads --branch instead of the pull request's head", async () => {
+    const deps = { ...inferDeps(AGENT_BRANCH), headRef: async () => { throw new Error("headRef read"); } };
+
+    const result = await cli(["shepherd", "register", REPO, "--branch", "feat/tp-2239-x", "--offline", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.err).toContain("head branch feat/tp-2239-x is not agent-chat/<name>; pass --implementer");
+  });
+});
