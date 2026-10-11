@@ -342,19 +342,21 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   },
 });
 
-/** The head the seat releases at, so a later move off it is known; a read that fails records none, and a hold with none is never re-held. */
-const openHead = (services: ShepherdServices, repo: RepoSlug, pr: number): Promise<string | undefined> =>
-  services.port.getPr(repo, pr).then((read) => read.headSha, () => undefined);
+const ReleaseArgs = PrRefArgs.extend({ head: z.string().regex(/^[0-9a-f]{40}$/, "must be the 40-character head sha the hold was reviewed at") });
 
-const releaseCommand = defineCommand<PrRefArgs, HoldResult, FactoryContext>({
+/** A release is a statement about one head, the one the seat reviewed: a PR at another head, or a head that cannot be read, refuses it. */
+const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release a hold on owner/repo#pr so a merge its run reaches can go through",
-  args: PrRefArgs,
+  description: "Release a hold on owner/repo#pr at the head the seat reviewed (--head); refused when the PR's head is another sha",
+  args: ReleaseArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr }, ctx) {
+  async run({ repo, pr, head }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    services.store.get().release(runId, { headSha: await openHead(services, repo, pr) });
+    const now = await services.port.getPr(repo, pr).then((read) => read.headSha, () => undefined);
+    if (now === undefined) throw coded(`${repo}#${pr}: the PR's head could not be read, so the release is refused`, EXIT.UNAVAILABLE);
+    if (now !== head) throw coded(`${repo}#${pr} is at ${now}, not ${head}: review the new head, then release at it`, EXIT.DATAERR);
+    services.store.get().release(runId, { headSha: head });
     return { runId, held: null };
   },
 });

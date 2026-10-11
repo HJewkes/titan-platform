@@ -133,7 +133,7 @@ describe("a host whose config names a remoteFactory", () => {
     ["land", ["land", "acme/web#1"]],
     ["shepherd register", ["shepherd", "register", "acme/web#1", "--task", "demo/T-1", "--implementer", "impl"]],
     ["shepherd hold", ["shepherd", "hold", "acme/web#1", "--reason", "wait"]],
-    ["shepherd release", ["shepherd", "release", "acme/web#1"]],
+    ["shepherd release", ["shepherd", "release", "acme/web#1", "--head", "a".repeat(40)]],
     ["shepherd resync", ["shepherd", "resync"]],
   ])("refuses %s even when a serve answers on --port, and sends it nothing", async (_verb, argv) => {
     const { env, dbPath } = home({ remoteFactory: REMOTE });

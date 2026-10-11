@@ -682,7 +682,7 @@ merges only into the default branch.
 ```sh
 titan-factory shepherd hold owner/repo#123 --reason "stalled: no step progress for 70 minutes; TP-123"
 titan-factory shepherd hold owner/repo#123 --reason "g10-adversary: merge-policy change" --reviewer sec-audit-review
-titan-factory shepherd release owner/repo#123
+titan-factory shepherd release owner/repo#123 --head <sha>
 ```
 
 ```
@@ -727,6 +727,20 @@ When Shepherd's own update-branch then moves the head by a clean merge-up of mai
 with no fresh review and no seat release. A head reached by any other move, or carried by the
 remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
 seat releases it.
+
+`release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
+when the pull request is at another head, or with exit 69 when the head cannot be read: a seat
+that reviewed one head must not release a later one. A release at the wrong head is the
+`sh-g10-rehold` step's concern too, so the recorded head is always the reviewed one.
+
+A `g10-adversary:` hold the seat released is re-applied by the `sh-g10-rehold` step, read at every
+CI read, when the head then moves off the released one: a fix round, a fixer's push, a rebase, or
+a merge-up whose conflicts were resolved by hand. The hold event names the old and new head and
+the seat is told. A pure merge-up keeps the release: the head's first parent is the released head
+(or a head already shown pure), its second parent is on the base branch, and its tree equals
+`git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
+show, including a failed probe, counts as a move and re-holds. A release recorded without a head
+(made before `--head` was required) is never re-held.
 
 ### Ask for Shepherd's own review {#own-review}
 
