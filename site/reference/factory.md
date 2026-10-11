@@ -64,6 +64,52 @@ titan-factory service install --mcp   # write the plist, load it, wait for /heal
 the plist (`ProcessType` Interactive, `KeepAlive` and `RunAtLoad` true, a `PATH` that reaches
 `gh`). The [factory guide](/guides/factory#install-as-a-service) has the steps.
 
+## Shepherd coverage
+
+`shepherd coverage` measures how many of the seats' merges went through Shepherd. It counts the
+PRs each seat's `dispatch.jsonl` records as `merged` in the window. A PR counts as Shepherd when
+a registration for it has a `completed` run that merged it.
+
+```sh
+titan-factory shepherd coverage                  # the 24 h ending now, as text
+titan-factory shepherd coverage --end 2026-10-09T06:00:00Z --json
+titan-factory shepherd coverage --min 0.8        # exit 1 below 80%
+```
+
+```
+window 2026-10-08T06:00:00.000Z to 2026-10-09T06:00:00.000Z
+titan-coord  merged 10  excluded 0  shepherd 8  share 80%
+...
+total  merged 40  excluded 2  shepherd 33  share 83%
+
+misses:
+  titan-coord  acme/widgets#57  merged  hold: run-failed: land rules; TP-123
+```
+
+- **Seats.** By default the four that charter 8 sends through Shepherd: `titan-coord`,
+  `design-coord`, `voltras-coord` and `platform-coord`. Pass `--seat <name>` once per seat to
+  count others. A seat's remotes come from the seat book serve loads (`shepherd.seatsDir`). A
+  bare PR number resolves only when exactly one of the seat's remotes has a registration for
+  it. Any other PR is listed as `(unresolved)` and counts as a miss.
+- **Logs.** `--logs <dir>` holds `<seat>/dispatch.jsonl`. It defaults to `digest.logsDir`,
+  else the `logs` directory beside `shepherd.seatsDir`. A seat with no log reads as no merges.
+- **Window.** `--hours` (default 24) ending at `--end` (default now). Rows with no zone are
+  read as UTC.
+- **Exclusions.** Rows with `gate` `visual` or `bench` and owner-gated `visual-gate2` holds
+  are left out of the share, as charter 8 excludes them.
+- **Output.** Text prints one line per seat, then the total, the misses, and the untyped
+  holds. An untyped hold is a held run, active in the window, whose reason fails the
+  [hold-reason check](/guides/shepherd#hold-and-release). Each is flagged `serve-path` or
+  `seat-path` when its text names one. `--json` prints the whole report, with
+  the window in epoch milliseconds.
+- **`--min <share>`** exits 1 when the total share is below it, a fraction from 0 to 1. A
+  window with no counted merge also exits 1, because it cannot show the bar is met.
+
+The ledger is opened read-only, so a running serve is never disturbed. A store that cannot
+be read exits 2 and names its path. A bad flag, config or seat book also exits 2. When
+charter 8 adds a hold class, add it to `HOLD_CLASSES` in `shepherd/hold-reason.ts` too, or
+holds of that class are listed as untyped.
+
 ## What it deliberately does not do
 
 It does not create relay items, and it requests no agent except the Shepherd reviewer,

@@ -9,7 +9,7 @@ import { failure, unexpectedShape } from "./active-work.js";
 export const BROKER_HISTORY_LIMIT = 1000;
 
 /** The header agent-chat's `/api/*` guard reads; the same one its own queue mirror sends. */
-const TOKEN_HEADER = "X-Agent-Chat-Token";
+export const TOKEN_HEADER = "X-Agent-Chat-Token";
 const TIMEOUT_MS = 3000;
 
 export interface BrokerSnapshot {
@@ -69,7 +69,7 @@ export function brokerReader(options: BrokerReaderOptions): BrokerReader {
   };
 }
 
-async function readToken(file: string): Promise<string> {
+export async function readToken(file: string): Promise<string> {
   const handle = await open(file, "r").catch(() => null);
   if (!handle) throw new BrokerUnavailable(`agent-chat ui token not readable at ${file}`);
   try {
@@ -106,7 +106,8 @@ export interface EventRow {
 }
 
 export interface MessageQuery {
-  agent: string;
+  /** Absent for every agent's messages, the console's whole feed. */
+  agent?: string;
   /** With a peer, only the two agents' messages to each other. */
   peer?: string;
   /** Rows with an id below this; absent for the newest page. */
@@ -121,13 +122,22 @@ export function readMessageRows(file: string, query: MessageQuery): EventRow[] |
   try {
     const missing = EVENT_COLUMNS.filter((column) => !hasColumn(db, "events", column));
     if (missing.length > 0) throw new BrokerUnavailable(`agent-chat events.db at ${file} has no events column ${missing.join(", ")}`);
-    const party = query.peer === undefined ? "(actor = @agent OR target = @agent)" : "((actor = @agent AND target = @peer) OR (actor = @peer AND target = @agent))";
-    const sql = `SELECT ${EVENT_COLUMNS.join(", ")} FROM events WHERE kind IN (${MESSAGE_KINDS.map((k) => `'${k}'`).join(", ")}) AND ${party} AND id < @before ORDER BY id DESC LIMIT @limit`;
-    const params = { agent: query.agent, before: query.before ?? Number.MAX_SAFE_INTEGER, limit: query.limit, ...(query.peer === undefined ? {} : { peer: query.peer }) };
+    const sql = `SELECT ${EVENT_COLUMNS.join(", ")} FROM events WHERE kind IN (${MESSAGE_KINDS.map((k) => `'${k}'`).join(", ")}) AND ${partyClause(query)} AND id < @before ORDER BY id DESC LIMIT @limit`;
+    const params = {
+      before: query.before ?? Number.MAX_SAFE_INTEGER,
+      limit: query.limit,
+      ...(query.agent === undefined ? {} : { agent: query.agent }),
+      ...(query.peer === undefined ? {} : { peer: query.peer }),
+    };
     return db.prepare(sql).all(params) as EventRow[];
   } finally {
     db.close();
   }
+}
+
+function partyClause({ agent, peer }: MessageQuery): string {
+  if (agent === undefined) return "1 = 1";
+  return peer === undefined ? "(actor = @agent OR target = @agent)" : "((actor = @agent AND target = @peer) OR (actor = @peer AND target = @agent))";
 }
 
 function openReadOnly(file: string): Db | null {

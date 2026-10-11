@@ -1,5 +1,6 @@
 // Synthetic active-work answers for tests and screenshots. Nothing here is copied from a real workspace.
-import type { ActiveWork } from "./active-work.js";
+import { EXIT } from "@titan-design/registry";
+import { failure, type ActiveWork } from "./active-work.js";
 
 type Args = Record<string, unknown>;
 
@@ -75,13 +76,53 @@ const LOOPS = [
 const NOTES = [
   { id: "orbit-relay:notes:2031-03-03-backoff-ceiling.md", slug: "orbit-relay", filename: "2031-03-03-backoff-ceiling.md", path: "/synthetic/orbit-relay/sources/notes/2031-03-03-backoff-ceiling.md", kind: "decision", title: "Cap the backoff at thirty seconds", created: "2031-03-03", mtime: "2031-03-03T11:00:00.000Z" },
   { id: "orbit-relay:notes:2031-02-27-station-clock-skew.md", slug: "orbit-relay", filename: "2031-02-27-station-clock-skew.md", path: "/synthetic/orbit-relay/sources/notes/2031-02-27-station-clock-skew.md", kind: "gotcha", title: "Station clocks drift by minutes", created: "2031-02-27", mtime: "2031-02-27T14:30:00.000Z" },
+  { id: "lantern-docs:notes:2031-02-28-chapter-order.md", slug: "lantern-docs", filename: "2031-02-28-chapter-order.md", path: "/synthetic/lantern-docs/sources/notes/2031-02-28-chapter-order.md", kind: "plan", title: "Battery chapters come before radios", created: "2031-02-28", mtime: null },
+  { id: "garden-plan:notes:2031-01-19-seed-list.md", slug: "garden-plan", filename: "2031-01-19-seed-list.md", path: "/synthetic/garden-plan/sources/notes/2031-01-19-seed-list.md", kind: "fyi", title: "Seed list for the spring beds", created: "2031-01-19", mtime: "2031-01-19T10:00:00.000Z" },
 ];
+
+const NOTE_BODY = `## Decision
+
+Retries back off exponentially and **stop growing at thirty seconds**.
+
+- A station that restarts is back within a minute.
+- See OR-12 for the retry itself.
+`;
 
 const SOURCES = [
   { id: "orbit-relay:sources:deepdive-routing-table.md", slug: "orbit-relay", filename: "deepdive-routing-table.md", path: "/synthetic/orbit-relay/sources/deepdive-routing-table.md", type: "deepdive", title: "Routing table format", nested: false, mtime: "2031-02-20T09:00:00.000Z" },
   { id: "orbit-relay:sources:pr-41-handshake.md", slug: "orbit-relay", filename: "pr-41-handshake.md", path: "/synthetic/orbit-relay/sources/pr-41-handshake.md", type: "pr", title: "Handshake rewrite", nested: false, mtime: "2031-02-25T17:10:00.000Z" },
   { id: "orbit-relay:sources:captures/station-7.md", slug: "orbit-relay", filename: "captures/station-7.md", path: "/synthetic/orbit-relay/sources/captures/station-7.md", type: "pointer", title: "Station 7 capture", nested: true, mtime: "2031-02-26T08:00:00.000Z" },
+  { id: "kiln-tools:sources:deepdive-cone-chart.md", slug: "kiln-tools", filename: "deepdive-cone-chart.md", path: "/synthetic/kiln-tools/sources/deepdive-cone-chart.md", type: "deepdive", title: "Cone chart", nested: false, mtime: "2031-02-11T12:00:00.000Z" },
 ];
+
+const notFound = (what: string): Error => failure(`${what} not found`, EXIT.NOINPUT);
+
+function readNote(args: Args) {
+  const note = NOTES.find((entry) => entry.slug === args.slug && `sources/notes/${entry.filename}` === args.note);
+  if (!note) throw notFound(`note ${String(args.note)}`);
+  const { slug, filename, kind, title, created } = note;
+  return { id: note.id, slug, filename, path: `sources/notes/${filename}`, kind, title, created, body: NOTE_BODY, truncated: false };
+}
+
+function readSource(args: Args) {
+  const content = args.path === "brief.md" ? brief(args.slug) : sourceContent(args);
+  return { path: args.path, content, truncated: false, bytes: content.length };
+}
+
+function sourceContent(args: Args): string {
+  const source = SOURCES.find((entry) => entry.slug === args.slug && `sources/${entry.filename}` === args.path);
+  if (!source) throw notFound(`file ${String(args.path)}`);
+  return `---\ntype: ${source.type}\n---\n\n# ${source.title}\n\nSynthetic text for ${source.filename}.\n`;
+}
+
+/** Matches titles only; the real search also ranks body text, briefs, tasks and transcripts. */
+function search(args: Args) {
+  const query = String(args.query).toLowerCase();
+  const notes = NOTES.map((note) => ({ ref: `note:${note.slug}/${note.filename}`, class: "note", initiative: note.slug, title: note.title }));
+  const sources = SOURCES.map((source) => ({ ref: `source:${source.slug}/${source.filename}`, class: "source", initiative: source.slug, title: source.title }));
+  const hits = [...notes, ...sources].filter((hit) => hit.title.toLowerCase().includes(query));
+  return { query: args.query, hits: hits.map((hit, rank) => ({ ...hit, path: null, excerpt: `…${hit.title}…`, score: 1 / (rank + 1), sources: ["fts"] })), degraded: [] };
+}
 
 function inventory(humanOnlyKnown: boolean) {
   const initiatives = INITIATIVES.map(({ slug }) => {
@@ -122,13 +163,15 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
     case "loops":
       return { slug: args.slug, open: records ? LOOPS : [], resolved: [] };
     case "note.list":
-      return { notes: records ? NOTES : [], errors: [] };
+      return { notes: forSlug(NOTES, args), errors: [] };
+    case "note.read":
+      return readNote(args);
     case "source.list":
-      return { sources: records ? SOURCES.filter((source) => args.nested || !source.nested) : [], drift: [] };
-    case "source.read": {
-      const content = brief(args.slug);
-      return { path: "brief.md", content, truncated: false, bytes: content.length };
-    }
+      return { sources: forSlug(SOURCES, args).filter((source) => args.nested || !source.nested), drift: [] };
+    case "source.read":
+      return readSource(args);
+    case "search":
+      return search(args);
     default:
       throw new Error(`The fixture has no answer for ${command}`);
   }

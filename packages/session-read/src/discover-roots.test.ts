@@ -74,7 +74,69 @@ describe("claudeTranscriptRoots", () => {
   });
 });
 
+describe("claudeTranscriptRoots with CLAUDE_TRANSCRIPT_MIRRORS", () => {
+  const mirror = () => path.join(home, "mirror-of-mac");
+
+  it("adds each mirrored account that has a projects dir, labelled with the host", () => {
+    makeProjectsDir(path.join(home, ".claude"));
+    makeProjectsDir(path.join(mirror(), "work"));
+    makeProjectsDir(path.join(mirror(), "research"));
+    mkdirSync(path.join(mirror(), "empty"), { recursive: true });
+
+    const roots = claudeTranscriptRoots({ CLAUDE_TRANSCRIPT_MIRRORS: `mac=${mirror()}` });
+
+    expect(roots).toEqual([
+      { root: path.join(home, ".claude", "projects"), account: "default" },
+      { root: path.join(mirror(), "research", "projects"), account: "research", host: "mac" },
+      { root: path.join(mirror(), "work", "projects"), account: "work", host: "mac" },
+    ]);
+  });
+
+  it("adds the mirror beside a CLAUDE_CONFIG_DIRS override", () => {
+    const overrideDir = path.join(home, "elsewhere", "custom-account");
+    makeProjectsDir(overrideDir);
+    makeProjectsDir(path.join(mirror(), "work"));
+
+    const roots = claudeTranscriptRoots({ CLAUDE_CONFIG_DIRS: overrideDir, CLAUDE_TRANSCRIPT_MIRRORS: `mac=${mirror()}` });
+
+    expect(roots.map((r) => [r.account, r.host])).toEqual([["custom-account", undefined], ["work", "mac"]]);
+  });
+
+  it("expands a leading ~ in the mirror dir", () => {
+    makeProjectsDir(path.join(mirror(), "work"));
+
+    const roots = claudeTranscriptRoots({ CLAUDE_CONFIG_DIRS: path.join(home, "none"), CLAUDE_TRANSCRIPT_MIRRORS: "mac=~/mirror-of-mac" });
+
+    expect(roots.at(-1)).toEqual({ root: path.join(mirror(), "work", "projects"), account: "work", host: "mac" });
+  });
+
+  it("adds nothing for a mirror dir that does not exist yet", () => {
+    const roots = claudeTranscriptRoots({ CLAUDE_CONFIG_DIRS: path.join(home, "none"), CLAUDE_TRANSCRIPT_MIRRORS: `mac=${mirror()}` });
+
+    expect(roots.filter((r) => r.host)).toEqual([]);
+  });
+
+  it("refuses an entry with no host label", () => {
+    expect(() => claudeTranscriptRoots({ CLAUDE_TRANSCRIPT_MIRRORS: mirror() })).toThrow(/CLAUDE_TRANSCRIPT_MIRRORS/);
+  });
+});
+
 describe("discoverAllTranscripts", () => {
+  it("stamps a mirrored transcript with its host and leaves a local one without", async () => {
+    const local = path.join(home, ".claude", "projects", "proj-a");
+    mkdirSync(local, { recursive: true });
+    writeFileSync(path.join(local, "same-session.jsonl"), "");
+    const mirrored = path.join(home, "mirror-of-mac", "work", "projects", "proj-a");
+    mkdirSync(mirrored, { recursive: true });
+    writeFileSync(path.join(mirrored, "same-session.jsonl"), "");
+
+    const found = await discoverAllTranscripts(claudeTranscriptRoots({ CLAUDE_TRANSCRIPT_MIRRORS: `mac=${path.join(home, "mirror-of-mac")}` }));
+
+    expect(found.map((t) => [t.account, t.host])).toEqual([["default", undefined], ["work", "mac"]]);
+    expect(found[1]).toHaveProperty("host", "mac");
+    expect(found[0]).not.toHaveProperty("host");
+  });
+
   it("returns a stable order and sets account", async () => {
     const defaultRoot = path.join(home, ".claude", "projects", "proj-a");
     mkdirSync(defaultRoot, { recursive: true });

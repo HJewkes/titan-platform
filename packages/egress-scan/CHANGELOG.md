@@ -1,5 +1,23 @@
 # @titan-design/egress-scan
 
+## 0.6.2
+
+### Patch Changes
+
+- e9a7eb9: Stop `pre-push` from flagging a merge commit for content that came in from a parent the remote already has. With the push URL listed, a two-parent merge is diffed against a re-merge of its parents, so a conflict resolution or evil merge is still scanned. When the remote cannot be listed, every parent is diffed as before.
+
+## 0.6.1
+
+### Patch Changes
+
+- 9babb5d: Pre-push no longer re-scans commits the remote already has when a branch merged main: the range for a known remote sha now also excludes every commit reachable from the remote's refs.
+
+## 0.6.0
+
+### Minor Changes
+
+- f5c199d: Add the `credential-token` rule. It flags GitHub (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), Anthropic (`sk-ant-`), AWS access key id (`AKIA`/`ASIA`), Slack (`xox[abprs]-`) and PEM private-key shapes, each checked for length and charset. A finding names the token's kind (`<location> credential-token github`) and never the token. The rule is never allowable, and the report summary gains a `credential-token` count.
+
 ## 0.5.1
 
 ### Patch Changes

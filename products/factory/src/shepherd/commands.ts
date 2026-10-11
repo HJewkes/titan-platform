@@ -8,24 +8,27 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import {
-  EffectivePolicySchema,
-  OWNER_GATE_POLICY,
   RegistrationRefused,
-  RequestedPolicySchema,
+  RequestedPolicyFields,
   resolveEffectivePolicy,
+  runPolicyCeiling,
   shepherdGatePolicy,
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
+import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { FINISHED_RUN_STATUSES } from "./run-status.js";
+import { reviewCommand } from "./review-request.js";
+import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
-import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
+import type { Phase } from "./step-phase.js";
+import { waitingCommand } from "./waiting.js";
+import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -85,7 +88,7 @@ const RegisterArgs = z
     kind: z.enum(TASK_KINDS).optional(),
     slice: z.string().min(1).optional(),
     noSlice: z.boolean().optional(),
-    policy: RequestedPolicySchema.optional(),
+    policy: RequestedPolicyFields.optional(),
   })
   .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
   .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
@@ -100,32 +103,6 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
   }
-}
-
-/** The registration of another PR that holds `branch` under a run that has finished, if any. */
-function finishedBranchHolder(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return undefined;
-  return FINISHED_RUN_STATUSES.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed") ? byBranch : undefined;
-}
-
-/**
- * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
- * PR's run is live; a finished run gives the branch up (see `releaseFinishedBranch`). Reads only.
- */
-function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
-  if (byPr) return byPr;
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
-  if (finishedBranchHolder(ctx, store, repo, pr, branch)) return undefined;
-  throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
-}
-
-/** The changesets branch is reused by every release, so a finished run's hold on it is dropped once a lookup finds nothing. */
-function releaseFinishedBranch(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): void {
-  const holder = finishedBranchHolder(ctx, store, repo, pr, branch);
-  if (holder) store.releaseBranch(holder.runId);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -245,15 +222,18 @@ function rowOf(host: FactoryHost, services: ShepherdServices, registration: Regi
   return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
 }
 
-function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
+/** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */
+export function rowsWithRuns(host: FactoryHost, services: ShepherdServices): { row: WatchRow; run: WorkflowRun }[] {
   return services.store
     .get()
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, services, registration, run)] : [];
+      return run ? [{ row: rowOf(host, services, registration, run), run }] : [];
     });
 }
+
+const rows = (host: FactoryHost, services: ShepherdServices): WatchRow[] => rowsWithRuns(host, services).map(({ row }) => row);
 
 /** Every gate the run opened: the ones its results name, and the one it waits on now. */
 function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
@@ -263,8 +243,7 @@ function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 /** Reports what the run would decide and why it waits; it never signals the run or resolves a gate. */
@@ -280,6 +259,9 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
 }
 
 const PrRefArgs = z.object({ repo: RepoArg, pr: PrArg });
+
+/** The seat or owner behind a hold or release, sent by the CLI because serve cannot read the caller's environment; a client that sends none is recorded as unknown. */
+const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
@@ -302,6 +284,8 @@ const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], 
     rows(ctx.host, servicesOf(ctx)).filter((row) => (repo === undefined || row.repo === repo.toLowerCase()) && (pr === undefined || row.pr === pr)),
 });
 
+const waiting = waitingCommand((ctx) => rows(ctx.host, servicesOf(ctx)));
+
 const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, WatchRow[], FactoryContext>({
   name: "shepherd.list",
   description: "The watch list: every shepherded PR whose run is active (default), finished, or all of them",
@@ -313,46 +297,43 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   name: "shepherd.timeline",
-  description: "The watch row for owner/repo#pr and every step result and gate its run recorded, oldest first",
+  description: "The watch row for owner/repo#pr and every step result, gate, hold, release, freeze and thaw its run recorded, oldest first",
   args: PrRefArgs,
   result: z.custom<PrTimeline>(),
   async run({ repo, pr }, ctx) {
     const services = servicesOf(ctx);
     const registration = await locate(services, repo, pr);
     const run = runOf(ctx.host, registration);
-    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run)) };
+    return { row: rowOf(ctx.host, services, registration, run), entries: timelineEntries(run, gatesOf(ctx.host, run), services.store.get().eventsOf(registration.runId)) };
   },
 });
 
-interface HoldResult {
-  runId: string;
-  held: { reason: string; reviewer?: string } | null;
-}
-
-const HoldArgs = PrRefArgs.extend({ reason: z.string().min(1), reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(), actor: ActorArg });
 
 const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
   description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release; --reviewer names the reviewer whose verdict the run waits for",
   args: HoldArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, reason, reviewer }, ctx) {
+  async run({ repo, pr, reason, reviewer, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason, reviewer);
+    const held = services.store.get().hold(runId, reason, reviewer, { actor });
     return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
 
-const releaseCommand = defineCommand<PrRefArgs, HoldResult, FactoryContext>({
+const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg });
+
+const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
   description: "Release a hold on owner/repo#pr so a merge its run reaches can go through",
-  args: PrRefArgs,
+  args: ReleaseArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr }, ctx) {
+  async run({ repo, pr, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    services.store.get().release(runId);
+    services.store.get().release(runId, { actor });
     return { runId, held: null };
   },
 });
@@ -378,10 +359,12 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
   "shepherd.status": statusCommand,
   "shepherd.list": listCommand,
+  "shepherd.waiting": waiting,
   "shepherd.timeline": timelineCommand,
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
   "shepherd.merge": mergeCommand,
+  "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
 };
 

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HOOK_MARKER, hookBody, installHook } from "./install.js";
-import { makeTestRepo, tempDir, withoutInjectedHooksPath, type TestRepo } from "./test-repo.js";
+import { makeTestRepo, plantedHomePath, tempDir, withoutInjectedHooksPath, type TestRepo } from "./test-repo.js";
 
 const dirs: string[] = [];
 const originalEnv = { ...process.env };
@@ -149,7 +149,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     return spawnSync("sh", [hookPath, "origin", "git@example.com:o/r.git"], { cwd, env, input: "stdin-line\n" });
   }
 
-  it("runs the pushing worktree's scanner with the remote name and git's stdin", () => {
+  it("runs the pushing worktree's scanner with the remote name, the push url and git's stdin", () => {
     const repo = newRepo();
     const worktree = linkedWorktree(repo);
     const { hookPath = "" } = installHook(worktree, LOCAL);
@@ -160,7 +160,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const result = runHook(worktree, hookPath);
 
     expect(result.status).toBe(3);
-    expect(String(result.stdout)).toBe("args:pre-push origin\nstdin-line\n");
+    expect(String(result.stdout)).toBe("args:pre-push origin git@example.com:o/r.git\nstdin-line\n");
   });
 
   it("falls back to the package's built script when pnpm left no .bin link", () => {
@@ -174,7 +174,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const result = runHook(worktree, hookPath);
 
     expect(result.status).toBe(4);
-    expect(String(result.stdout)).toBe("args:pre-push origin\n");
+    expect(String(result.stdout)).toBe("args:pre-push origin git@example.com:o/r.git\n");
   });
 
   it("refuses the push and names all three places it looked when no scanner exists", () => {
@@ -202,7 +202,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const result = runHook(worktree, hookPath);
 
     expect(result.status).toBe(5);
-    expect(String(result.stdout)).toBe("args:pre-push origin\nstdin-line\n");
+    expect(String(result.stdout)).toBe("args:pre-push origin git@example.com:o/r.git\nstdin-line\n");
   });
 
   it("uses the main checkout's built script when it has no .bin link", () => {
@@ -227,7 +227,7 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const result = runHook(worktree, hookPath, pathDir);
 
     expect(result.status).toBe(7);
-    expect(String(result.stdout)).toBe("args:pre-push origin\nstdin-line\n");
+    expect(String(result.stdout)).toBe("args:pre-push origin git@example.com:o/r.git\nstdin-line\n");
   });
 
   it("prefers the worktree's scanner over the main checkout's", () => {
@@ -274,5 +274,39 @@ describe.skipIf(process.platform === "win32")("the installed hook", () => {
     const { hookPath = "" } = installHook(repo.dir, LOCAL);
 
     expect(runHook(repo.dir, hookPath).status).not.toBe(0);
+  });
+
+  it("hands the scanner the push url, so a real push excludes what the remote already has", () => {
+    const repo = newRepo();
+    const bare = tempDir("egress-push-remote-");
+    const priv = tempDir("egress-fetch-remote-");
+    dirs.push(bare, priv);
+    spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare]);
+    spawnSync("git", ["init", "-q", "--bare", "-b", "main", priv]);
+    repo.git(["branch", "-M", "main"]);
+    repo.git(["remote", "add", "origin", priv]);
+    repo.git(["remote", "set-url", "--push", "origin", bare]);
+    repo.git(["push", "-q", "origin", "main"]);
+    repo.git(["checkout", "-q", "-b", "feature"]);
+    repo.commit("branch work");
+    repo.git(["push", "-q", "origin", "feature"]);
+    repo.git(["checkout", "-q", "main"]);
+    repo.write("notes.txt", `see ${plantedHomePath()}\n`);
+    repo.commit("flagged but already on the remote");
+    fs.rmSync(path.join(repo.dir, "notes.txt"));
+    repo.commit("remove it again");
+    repo.git(["push", "-q", "origin", "main"]);
+    repo.git(["checkout", "-q", "feature"]);
+    repo.git(["merge", "-q", "--no-ff", "-m", "merge main", "main"]);
+    const bin = path.join(repo.dir, "node_modules", "@titan-design", "egress-scan", "dist", "bin.js");
+    fs.mkdirSync(path.dirname(bin), { recursive: true });
+    const built = new URL("../dist/bin.js", import.meta.url).href;
+    fs.writeFileSync(bin, `import(${JSON.stringify(built)});\n`);
+    installHook(repo.dir, LOCAL);
+
+    const push = spawnSync("git", ["push", "origin", "feature"], { cwd: repo.dir, encoding: "utf-8" });
+
+    expect(push.stderr).not.toContain("could not list the push URL");
+    expect(push.status).toBe(0);
   });
 });

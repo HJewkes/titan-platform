@@ -17,7 +17,7 @@ describe("the stage vocabulary", () => {
 });
 
 const NONE: StageEvidence = { openIds: new Set(), openChildren: new Map(), openPrs: new Map(), refs: new Map(), mergedAt: new Map() };
-const open = (fields: Partial<StagedTask> = {}): StagedTask => ({ id: "XY-10", status: "open", ...fields });
+const open = (fields: Partial<StagedTask> = {}): StagedTask => ({ id: "XY-10", status: "open", dep: [], ...fields });
 const withEvidence = (fields: Partial<StageEvidence>): StageEvidence => ({ ...NONE, ...fields });
 
 describe("task ids in a name", () => {
@@ -57,12 +57,16 @@ describe("a derived stage", () => {
     expect(deriveStage(open(), withEvidence({ refs, mergedAt: new Map([["XY-10", 150]]) })).stage).toBe("in-progress");
   });
 
-  it("is blocked by a dep: tag or a dependency clause naming an open task, and not by a done one", () => {
+  it("is blocked by a dep edge or a dependency clause naming an open task, and not by a done one", () => {
     const evidence = withEvidence({ openIds: new Set(["XY-1", "XY-2", "XY-3", "XY-4"]) });
-    expect(deriveStage(open({ tags: ["dep:XY-1"] }), evidence).reason).toBe("Depends on XY-1 (open)");
+    expect(deriveStage(open({ dep: ["XY-1"] }), evidence).reason).toBe("Depends on XY-1 (open)");
     expect(deriveStage(open({ notes: "Waits on XY-2 and XY-9. Then ship." }), evidence).reason).toBe("Depends on XY-2 (open)");
     expect(deriveStage(open({ notes: "Blocked by XY-3; after XY-4 lands" }), evidence).reason).toBe("Depends on XY-3 (open), XY-4 (open)");
     expect(deriveStage(open({ notes: "depends on XY-9 (done)" }), evidence)).toMatchObject({ stage: "ready", rule: "default" });
+  });
+
+  it("reads no dependency from a tag, since edges arrive already read from the field or the tags", () => {
+    expect(deriveStage(open({ tags: ["dep:XY-1"] }), withEvidence({ openIds: new Set(["XY-1"]) })).rule).toBe("default");
   });
 
   it("does not let a sentence after the clause add a dependency", () => {

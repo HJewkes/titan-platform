@@ -1,5 +1,14 @@
 # @titan-design/worktree
 
+## 0.1.5
+
+### Patch Changes
+
+- 1cb05e7: Seed the repository tests from a copied template repository instead of a fresh `git init` per test. Test-only; no runtime change.
+- 2159a49: The repo-test git fixture turns off git's auto gc and maintenance in its template repository, so a detached maintenance run cannot change `.git/objects` while the template is being copied.
+- 9784293: Test fixture: delete the git templates after each test file. Vitest ends worker threads without emitting `exit`, so every test run left a `wt-template-*` directory (about 2,000 files) in the temp dir.
+- d251acb: Install the hostile-npmrc git script in the setup repo test through a staged copy so a concurrent fork cannot hold it open for writing (ETXTBSY).
+
 ## 0.1.4
 
 ### Patch Changes

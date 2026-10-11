@@ -1,5 +1,24 @@
 # @titan-design/hitl
 
+## 0.8.0
+
+### Minor Changes
+
+- 69db518: A gate's rule may name `delegates`, drawn only from authority's `DELEGATE_RESOLVER_CLASSES`; `create` refuses any other class with `GateRuleInvalid`. A delegate is admitted only by a store that has `authorize`, and only when `authorize` allows it; without a rule, delegates or `authorize` it is refused as before. `SqliteGateStore` runs the new `gateDelegateMigration` as version 6, which reinstalls the rule triggers so a direct write admits a delegate class only when the row's own rule names it, and refuses to create a gate with delegates on a table without it.
+- cff7a11: A gate store takes an `evidencePolicy`: a pure, synchronous check that can admit a non-owner resolver class on the evidence its resolve carries, and only then. `resolve` takes an optional fourth `evidence` argument, a JSON object of at most 16 KB, stored on the row as `resolvedEvidence` so an audit can re-check the decision. The policy runs where allowances do, before the gate's rule and `authorize`; a throw or any answer but `true` refuses. `SqliteGateStore` keeps the evidence in a `resolved_evidence` column added by the new `gateEvidenceMigration`, and refuses an evidence resolve on a table without it. `GateEvidenceInvalid` names evidence that is not a JSON object or is too large.
+- bc96ab3: `MemoryGateStore` now clones a gate's `payload` and `schema` when it stores or returns one, so mutating a resolved payload no longer rewrites the stored gate. `create` refuses an unparseable `expiresAt` (a string or an invalid `Date`) with the new exported `GateExpiryInvalid` and stores nothing, in both stores; a valid string is normalised to ISO-8601 with milliseconds. The `migrate: false` docs now list `gateRuleMigration` and `gateBriefMigration` beside the other two.
+
+### Patch Changes
+
+- Updated dependencies [2ff0840]
+- Updated dependencies [69db518]
+- Updated dependencies [c517313]
+- Updated dependencies [1f7de27]
+- Updated dependencies [dcde08d]
+- Updated dependencies [20778a2]
+  - @titan-design/authority@0.4.0
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.7.0
 
 ### Minor Changes

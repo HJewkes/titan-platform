@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -11,7 +11,6 @@ import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
-import { SpawnDeferred } from "./spawn-gate.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
@@ -20,6 +19,7 @@ import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } 
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
+import { WAKE_ASK_MS, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type Waiting } from "./wake-wait.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
 export const WAKE_STEP = "sh-wake-implementer";
@@ -64,6 +64,8 @@ export interface WakeWiring {
   /** Defaults to reading the woken agent's transcript tail through `readWarmth`. */
   turnSince?: TurnSince;
   turnStartMs?: number;
+  /** Defaults to `WAKE_ASK_MS`. */
+  askDeadlineMs?: number;
   /** The repo's main checkout as configured, which a successor's worktree is cut from; undefined when none is bound. Defaults to the repo's seat path. */
   checkoutFor?: (repo: string) => string | undefined;
   /** The home a `~/`, `$HOME/` or `${HOME}/` checkout path expands against; defaults to the OS home. */
@@ -101,8 +103,6 @@ export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; session
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
 
-/** Waited out with no deadline: nothing was asked of the broker, or what was asked is checked on the next roster read. */
-const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
 
 interface WakeTask {
   input: WakeInput;
@@ -157,23 +157,24 @@ const liveChoice = (task: WakeTask, live: AgentRow): Choice => ({ mode: "live", 
 const sameAsk = (a: Choice | undefined, b: Choice): boolean => a !== undefined && a.mode === b.mode && a.agent === b.agent;
 
 /**
- * False when the broker was down or the ask timed out; any other failure is a refusal and throws. A refusal of a
- * re-ask is agent-chat refusing a duplicate once the earlier ask landed, so the roster decides.
+ * The wait when the broker was down, the ask timed out or the spawn gate deferred it; any other failure is a refusal
+ * and throws. A refusal of a re-ask is agent-chat refusing a duplicate once the earlier ask landed, so the roster decides.
  */
-async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, signal: AbortSignal): Promise<boolean> {
+async function ask(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, signal: AbortSignal): Promise<true | Wait> {
   try {
     if (choice.mode === "successor") await agents.spawn(choice.agent, choice.message, choice.cwd);
     else await (choice.mode === "resume" ? agents.resume(choice.agent, choice.message) : agents.message(choice.agent, choice.message));
     return true;
   } catch (error) {
-    if (brokerDown(error) || error instanceof SpawnDeferred) return false;
+    const wait = waitOf(error);
+    if (wait !== undefined) return wait;
     if (reask && tookEffect(choice, await rosterWhileBrokerDown(deps, agents, signal))) return true;
     throw error;
   }
 }
 
-/** What one ask came to: it was asked, the broker is waited out a poll, a successor is asked at once, or the step ends on a hold. */
-type Sent = "asked" | "wait" | "successor" | WakeStepResult;
+/** What one ask came to: it was asked, it is waited out a poll, a successor is asked at once, or the step ends on a hold. */
+type Sent = "asked" | Wait | "successor" | WakeStepResult;
 
 /**
  * A resume agent-chat refuses, as of an agent on a model its pool no longer runs, is asked of a successor instead; a
@@ -182,7 +183,8 @@ type Sent = "asked" | "wait" | "successor" | WakeStepResult;
  */
 async function askOrFallBack(deps: ShepherdDeps, agents: ImplementerAgents, choice: Choice, reask: boolean, refused: Set<string>, signal: AbortSignal): Promise<Sent> {
   try {
-    return (await ask(deps, agents, choice, reask, signal)) ? "asked" : "wait";
+    const sent = await ask(deps, agents, choice, reask, signal);
+    return sent === true ? "asked" : sent;
   } catch (error) {
     signal.throwIfAborted();
     if (choice.mode === "live" || !(error instanceof DispatchError)) throw error;
@@ -211,7 +213,7 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   const fallback: Fallback = latestRow(asked.choice.agent, roster)?.presence === "exited" ? "resume" : "message";
   const at = deps.now();
   try {
-    await whileDeferred(deps, signal, () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task))));
+    await whileDeferred(deps, wiring.askDeadlineMs ?? WAKE_ASK_MS, signal, () => (fallback === "resume" ? agents.resume(asked.choice.agent, resumeMessage(task)) : agents.message(asked.choice.agent, resumeMessage(task))));
   } catch (error) {
     return unhandled(`${asked.choice.agent} started no turn after the wake, and the ${fallback} fallback failed: ${failureOf(error)}`);
   }
@@ -219,17 +221,6 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
 }
 
-/** A spawn gate that defers the resume is waited out on the poll, as a broker that is down is. */
-async function whileDeferred(deps: ShepherdDeps, signal: AbortSignal, ask: () => Promise<void>): Promise<void> {
-  for (;;) {
-    try {
-      return await ask();
-    } catch (error) {
-      if (!(error instanceof SpawnDeferred)) throw error;
-    }
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
-  }
-}
 
 function turnWatch(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, name: string, signal: AbortSignal) {
   return {
@@ -249,31 +240,34 @@ interface Asked {
   at: number;
 }
 
-async function rosterWhileBrokerDown(deps: ShepherdDeps, agents: ImplementerAgents, signal: AbortSignal): Promise<readonly AgentRow[]> {
-  for (;;) {
-    signal.throwIfAborted();
-    try {
-      return await agents.roster();
-    } catch (error) {
-      if (!brokerDown(error)) throw error;
-    }
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
-  }
+
+const ASK_VERB: Record<Mode, string> = { resume: "resume", successor: "spawn", live: "message" };
+
+/** An ask that never lands, as a resume of a parked tree that times out each time, fails the wake once the deadline passes. */
+function askExpired(deps: ShepherdDeps, wiring: WakeWiring, asked: Asked | undefined, waiting: Waiting | undefined): WakeStepResult | undefined {
+  if (asked === undefined || waiting === undefined) return undefined;
+  const within = expiredWait(deps, wiring.askDeadlineMs ?? WAKE_ASK_MS, waiting);
+  return within === undefined ? undefined : unhandled(`${asked.choice.agent}'s ${ASK_VERB[asked.choice.mode]} took no effect within ${within}`);
 }
+
 
 async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
   const pr = await port.getPr(input.repo, input.pr).catch(() => undefined);
   return pr !== undefined && (pr.headSha !== input.headSha || pr.state !== "open");
 }
 
-/** A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the ask a poll. */
+/**
+ * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
+ * ask a poll under its own deadline, so the ask deadline restarts after it.
+ */
 async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, signal: AbortSignal): Promise<WakeStepResult> {
-  let asked: Asked | undefined;
+  let asked: Asked | undefined, waiting: Waiting | undefined;
   const refused = new Set<string>();
   const unreadable = unreadableHead(deps, task.input, signal);
   for (;;) {
     const roster = await rosterWhileBrokerDown(deps, agents, signal);
-    if (asked && tookEffect(asked.choice, roster)) return confirmTurn(deps, wiring, agents, task, asked, signal);
+    const settled = asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, waiting);
+    if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
     if (newest === undefined) return unhandled(`no agent of ${task.implementer}'s lineage is on the roster, so no checkout is known to start a successor in`);
     const live = newest.presence !== "exited";
@@ -281,6 +275,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
       if (gaveUp !== undefined) return unhandled(gaveUp);
+      waiting = undefined;
       continue;
     }
     unreadable.read();
@@ -292,7 +287,7 @@ async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: Impleme
     const sent = await askOrFallBack(deps, agents, choice, reask, refused, signal);
     if (sent === "asked") return confirmTurn(deps, wiring, agents, task, asked, signal);
     if (typeof sent === "object") return sent;
-    if (sent === "wait") await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    if (sent !== "successor") waiting = await waitAPoll(deps, { since: waiting?.since ?? asked.at, wait: sent }, signal);
   }
 }
 
@@ -302,7 +297,7 @@ async function wakeTask(deps: ShepherdDeps, input: WakeInput, registration: Regi
   if (!isRefName(pr.headRef)) return `the head branch name of ${input.repo}#${input.pr} is not one a brief can carry`;
   if (!isRefName(pr.baseRef)) return `the base branch name of ${input.repo}#${input.pr} is not a valid ref name`;
   const successors = deps.store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
-  return { input, pr, ...(await describeWake(deps.port, input, pr)), implementer: registration.implementer, successors };
+  return { input, pr, ...(await describeWake(deps.port, input, pr, deps.suiteRules?.fixer)), implementer: registration.implementer, successors };
 }
 
 function agentsFor(deps: ShepherdDeps, wiring: WakeWiring): ImplementerAgents | undefined {

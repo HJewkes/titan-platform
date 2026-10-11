@@ -21,6 +21,7 @@ Packages with no outgoing edge depend on nothing from this repo.
 graph TD
   subgraph T0["Tier 0 · primitives and contracts"]
     agentProtocol["agent-protocol"]
+    anthropicAccount["anthropic-account"]
     appPaths["app-paths"]
     authority["authority"]
     chatProtocol["chat-protocol"]
@@ -34,6 +35,7 @@ graph TD
     locator["locator"]
     rpcProtocol["rpc-protocol"]
     storeSqlite["store-sqlite"]
+    testKit["test-kit"]
     toolGuard["tool-guard"]
   end
   subgraph T1["Tier 1 · engines"]
@@ -43,6 +45,7 @@ graph TD
     agentSurface["agent-surface"]
     daemon["daemon"]
     github["github"]
+    health["health"]
     hitl["hitl"]
     matrixBus["matrix-bus"]
     messaging["messaging"]
@@ -67,6 +70,7 @@ graph TD
     styleAnalyzer["style-analyzer"]
     styleChecker["style-checker"]
     styleProfile["style-profile"]
+    throughput["throughput"]
     workflow["workflow"]
   end
   subgraph UI["UI"]
@@ -77,6 +81,7 @@ graph TD
     factory["factory"]
     retrievalEval["retrieval-eval"]
     sessionMiner["session-miner"]
+    titan["titan"]
     codewatch["codewatch"]
     console["console"]
   end
@@ -92,6 +97,7 @@ graph TD
   codeRead --> codeGraph
   codeRead --> registry
   codeRead --> rpcProtocol
+  coordinator --> agentDispatch
   daemon --> registry
   daemon --> rpcProtocol
   decider --> locator
@@ -99,6 +105,7 @@ graph TD
   decider --> sessionRead
   decider --> storeSqlite
   egressScan --> fixProof
+  health --> storeSqlite
   hitl --> authority
   hitl --> storeSqlite
   memory --> embed
@@ -112,6 +119,8 @@ graph TD
   registry --> rpcProtocol
   retrieval --> embed
   retrieval --> storeSqlite
+  reviewPanel --> evidence
+  reviewPanel --> fixProof
   reviewPanel --> sessionRead
   rpcClient --> rpcProtocol
   sessionAnalytics --> agentProtocol
@@ -123,28 +132,39 @@ graph TD
   sessionGraph --> sessionRead
   sessionGraph --> storeSqlite
   sessionRead --> agentProtocol
+  sessionRead --> anthropicAccount
   sessionRead --> locator
   styleAnalyzer --> codeParser
   styleAnalyzer --> styleProfile
   styleChecker --> styleAnalyzer
   styleChecker --> styleProfile
+  throughput --> evidence
   toolGuard --> authority
   workflow --> agent
   workflow --> agentProtocol
   workflow --> authority
   workflow --> hitl
   workflow --> storeSqlite
+  evals --> authority
+  evals --> evidence
+  evals --> health
+  evals --> reviewPanel
+  evals --> sessionAnalytics
+  evals --> sessionRead
+  factory --> agent
   factory --> agentDispatch
   factory --> appPaths
   factory --> authority
   factory --> daemon
   factory --> fixProof
   factory --> github
+  factory --> health
   factory --> hitl
   factory --> ownerQueue
   factory --> registry
   factory --> reviewPanel
   factory --> rpcClient
+  factory --> sessionAnalytics
   factory --> sessionRead
   factory --> storeSqlite
   factory --> workflow
@@ -165,6 +185,8 @@ graph TD
   sessionMiner --> sessionGraph
   sessionMiner --> sessionRead
   sessionMiner --> storeSqlite
+  titan --> daemon
+  titan --> health
   codewatch --> codeRead
   codewatch --> reactApp
   codewatch --> rpcClient
@@ -173,6 +195,8 @@ graph TD
   console --> chatProtocol
   console --> daemon
   console --> github
+  console --> ownerQueue
+  console --> pm
   console --> reactApp
   console --> registry
   console --> rpcClient
@@ -188,7 +212,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `coordinator`, `owner-queue`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `anthropic-account`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `eslint-plugin`, `evidence`, `fix-proof`, `locator`, `rpc-protocol`, `store-sqlite`, `test-kit`, `agent-dispatch`, `agent-surface`, `github`, `matrix-bus`, `messaging`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
@@ -237,7 +261,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds six units: `evals`, `factory`, `retrieval-eval`, `session-miner`, and the `codewatch` and `console` apps.
+The `product` tier holds seven units: `evals`, `factory`, `retrieval-eval`, `session-miner`, `titan`, and the `codewatch` and `console` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

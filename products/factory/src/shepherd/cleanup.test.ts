@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
@@ -17,7 +18,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -302,6 +303,19 @@ describe("sh-cleanup retire", () => {
     expect(result).toMatchObject({ ref: "unread", task: "done", retired: [IMPLEMENTER] });
     expect(result.caveats).toEqual(["head ref of #1: Error", "merge sha of #1: Error"]);
     expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
+  });
+
+  it("reports the fixed class fallback when a retire refusal's message getter throws", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+    w.agents.retire = async () => {
+      const refusal = new Error("x");
+      Object.defineProperty(refusal, "message", { get: () => { throw new Error(LEAKY_MESSAGE); } });
+      throw refusal;
+    };
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
   });
 
   it("retries a refusal at most every 10 minutes and finishes with a caveat after an hour", async () => {

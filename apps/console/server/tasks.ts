@@ -1,7 +1,9 @@
 import path from "node:path";
 import { z } from "zod";
-import { EXIT, defineCommand } from "@titan-design/registry";
-import { failure, type ActiveWork, type ReadResult, type WireTask } from "./active-work.js";
+import { readEdges, taskTree, type Task } from "@titan-design/pm";
+import { EXIT } from "@titan-design/registry";
+import { failure, type ActiveWork, type ReadResult, type WireDeliverable, type WireTask } from "./active-work.js";
+import { readCommand } from "./owner-guard.js";
 import { gitEvidenceReader, indexByTaskId, type EvidenceReader, type RepoEvidence } from "./repo-evidence.js";
 import { sessionsForTask, type SessionsSource, type TaskSessions } from "./sessions.js";
 import { deriveStage, taskIdsIn, type PrEvidence, type RefEvidence, type StageEvidence, type StageRule, type TaskStage } from "./task-stage.js";
@@ -22,6 +24,10 @@ type TaskRow = ReturnType<typeof taskRowOf> & {
   stageReason: string;
   /** True for the default rule: nothing was found either way, so the stage is not a verified state. */
   stageGuessed: boolean;
+  /** Edges from pm's `readEdges`: the field when the task has one, else the edge tags, so both shapes read the same. */
+  parent: string | null;
+  dep: string[];
+  deliverables: string[];
 };
 
 interface EvidenceSummary {
@@ -56,6 +62,12 @@ export interface TaskDetail {
   sessions: TaskSessions["sessions"];
   sessionsDegraded: TaskSessions["degraded"];
   evidence: EvidenceSummary;
+  /** Tasks whose parent edge names this one, in active-work's priority order. */
+  children: { id: string; title: string; status: string }[];
+  /** Each id in the task's `deliverables`, with its `deliverable.list` row, or null when no record has that id. */
+  deliverables: { id: string; record: WireDeliverable | null }[];
+  /** Why the registry could not be read, such as a daemon older than active-work 0.23; every record is null then. */
+  deliverablesDegraded: string | null;
 }
 
 const SESSION_LIMIT = 50;
@@ -63,14 +75,14 @@ const SESSION_LIMIT = 50;
 export function tasksCommands(source: TasksSource) {
   const evidence = source.evidence ?? gitEvidenceReader();
   return {
-    "work.tasks": defineCommand({
+    "work.tasks": readCommand({
       name: "work.tasks",
       description: "Open tasks across every initiative, each with a derived stage, the rule that produced it and its evidence",
       args: z.object({}),
       result: z.custom<TasksResult>(),
       run: () => readTasks(source, evidence),
     }),
-    "work.task": defineCommand({
+    "work.task": readCommand({
       name: "work.task",
       description: "One task with its derived stage, mentions, artifacts with PR state, and the sessions spawned for it",
       args: z.object({ id: z.string().regex(/^[A-Z][A-Z0-9]*-\d+$/) }),
@@ -106,9 +118,14 @@ async function readTasks(source: TasksSource, reader: EvidenceReader): Promise<T
   return { fetchedAt: new Date().toISOString(), tasks: list.tasks.filter((task) => keeps(personal)(task.slug)).map((task) => stagedRow(task, evidence)), evidence: summary(repos) };
 }
 
+// readEdges and taskTree read only id, title, status, estimate, tags, parent and dep, which a wire task carries.
+const asPmTask = (task: WireTask): Task => task as unknown as Task;
+
 function stagedRow(task: WireTask, evidence: StageEvidence): TaskRow {
-  const { stage, rule, reason, guessed } = deriveStage(task, evidence);
-  return { ...taskRowOf(task), status: task.status, stage, stageRule: rule, stageReason: reason, stageGuessed: guessed };
+  const { parent, dep } = readEdges(asPmTask(task));
+  const { stage, rule, reason, guessed } = deriveStage({ ...task, dep }, evidence);
+  const edges = { parent, dep, deliverables: task.deliverables ?? [] };
+  return { ...taskRowOf(task), status: task.status, stage, stageRule: rule, stageReason: reason, stageGuessed: guessed, ...edges };
 }
 
 function summary(repos: readonly RepoEvidence[]): EvidenceSummary {
@@ -119,8 +136,8 @@ function stageEvidence(tasks: readonly WireTask[], repos: readonly RepoEvidence[
   const open = tasks.filter((task) => task.status === "open");
   const openChildren = new Map<string, number>();
   for (const task of open) {
-    const parents = new Set((task.tags ?? []).filter((tag) => tag.startsWith("parent:") || tag.startsWith("epic:")).flatMap((tag) => taskIdsIn(tag)));
-    for (const parent of parents) openChildren.set(parent, (openChildren.get(parent) ?? 0) + 1);
+    const { parent } = readEdges(asPmTask(task));
+    if (parent !== null) openChildren.set(parent, (openChildren.get(parent) ?? 0) + 1);
   }
   const mergedAt = new Map<string, number>();
   for (const [id, at] of repos.flatMap((entry) => [...entry.mergedAt])) mergedAt.set(id, Math.max(at, mergedAt.get(id) ?? at));
@@ -138,11 +155,12 @@ async function readTask(source: TasksSource, reader: EvidenceReader, id: string)
   const [list, personal] = await Promise.all([activeWork.read("task.list", { all_initiatives: true, status: "all" }), personalSlugs(activeWork, source.work)]);
   const task = list.tasks.find((entry) => entry.id === id);
   if (!task || !keeps(personal)(task.slug)) throw failure(`No task ${id} in any initiative`, EXIT.NOINPUT);
-  const [repos, mentions, status, sessions] = await Promise.all([
+  const [repos, mentions, status, sessions, joined] = await Promise.all([
     readEvidence(activeWork, reader),
     activeWork.read("context.graph", { id }),
     activeWork.read("artifact.status", { slug: task.slug }),
     sessionsForTask(source.sessions, id, SESSION_LIMIT),
+    joinDeliverables(activeWork, task.deliverables ?? []),
   ]);
   const evidence = stageEvidence(list.tasks, repos);
   return {
@@ -155,7 +173,27 @@ async function readTask(source: TasksSource, reader: EvidenceReader, id: string)
     sessions: sessions.sessions,
     sessionsDegraded: sessions.degraded,
     evidence: summary(repos),
+    children: childrenOf(list.tasks.filter((entry) => keeps(personal)(entry.slug)), id),
+    ...joined,
   };
+}
+
+function childrenOf(tasks: readonly WireTask[], id: string): TaskDetail["children"] {
+  const tree = taskTree(tasks.map(asPmTask), id);
+  return (tree?.children ?? []).map(({ id: child, title, status }) => ({ id: child, title, status }));
+}
+
+type DeliverableJoin = Pick<TaskDetail, "deliverables" | "deliverablesDegraded">;
+
+/** Reads the registry only for a task that names a deliverable, so an older daemon is asked nothing it cannot answer. */
+async function joinDeliverables(activeWork: ActiveWork, ids: readonly string[]): Promise<DeliverableJoin> {
+  if (ids.length === 0) return { deliverables: [], deliverablesDegraded: null };
+  try {
+    const registry = new Map((await activeWork.read("deliverable.list")).map((record) => [record.id, record]));
+    return { deliverables: ids.map((id) => ({ id, record: registry.get(id) ?? null })), deliverablesDegraded: null };
+  } catch (error) {
+    return { deliverables: ids.map((id) => ({ id, record: null })), deliverablesDegraded: `Deliverables unread: ${(error as Error).message}` };
+  }
 }
 
 const carries = (id: string, ...texts: (string | null | undefined)[]): boolean => texts.some((text) => text != null && taskIdsIn(text).includes(id));

@@ -20,7 +20,8 @@ function workspace(): { root: string; env: NodeJS.ProcessEnv } {
   writeFileSync(join(root, "autonomy/queues/seat-a.md"), QUEUE);
   const config = { shepherd: { seatsDir: join(root, "autonomy/seats") }, digest: { outDir: join(root, "out"), icloudDir: join(root, "icloud") } };
   writeFileSync(join(root, "config/titan-factory/config.json"), JSON.stringify(config));
-  return { root, env: { XDG_CONFIG_HOME: join(root, "config"), XDG_STATE_HOME: join(root, "state") } };
+  // No broker home and a dead active-work port, so the test never reads this machine's real owner queue.
+  return { root, env: { XDG_CONFIG_HOME: join(root, "config"), XDG_STATE_HOME: join(root, "state"), AGENT_CHAT_HOME: join(root, "agent-chat"), AW_PORT: "1" } };
 }
 
 const call: FactoryCall = async (name) =>

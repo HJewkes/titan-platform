@@ -13,7 +13,7 @@ import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
 import { WAKE_STEPS, wakePhase } from "./shepherd/wake.js";
 import { H1, REPO, gateId, gateOpened } from "./test-support/land.js";
-import { configuredRoutes, type FactoryRouteDeps } from "./workflows.js";
+import { configuredRoutes, configuredSpawnLimits, type FactoryRouteDeps } from "./workflows.js";
 import { landPrWorkflow } from "./workflows/land-pr.js";
 import { NO_COMMAND, type ChoreExec } from "./workflows/post-merge.js";
 import { OWNER } from "./test-support/resolver.js";
@@ -147,6 +147,8 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-review-")));
   dirs.push(dir);
   vi.stubEnv("HOME", dir);
+  mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
+  for (const profile of [PROFILE, "rv-other"]) writeFileSync(join(dir, ".agent-chat", "profiles", `${profile}.json`), JSON.stringify({ surface: "headless" }));
   const checkout = join(dir, "checkouts", "demo");
   mkdirSync(checkout, { recursive: true });
   mkdirSync(join(dir, "seats"));
@@ -154,7 +156,7 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const deny = options.denied ? `deny_repos:\n  - ${checkout}\n` : "";
   if (seatRemote !== null) writeFileSync(join(dir, "seats", "demo.md"), `---\nschema: autonomy-seat/v1\nname: demo-seat\nrepos:\n  - path: ${checkout}\n    remote: ${seatRemote}\n${deny}---\n`);
   const transcript = writeTranscript(dir, options.lastWords ?? `Read it all.\n\nVerdict: MERGE\nPR: ${options.repo ?? REPO}#1\nHead: ${H1}\n`);
-  const row = { name: "@NAME@", ...REVIEWER, state: "exited", presence: "exited", status: "finished", profile: PROFILE, cwd: checkout, transcriptPath: transcript, transcriptExists: true };
+  const row = { name: "@NAME@", ...REVIEWER, state: "exited", presence: "exited", status: "finished", profile: PROFILE, surface: "headless", cwd: checkout, transcriptPath: transcript, transcriptExists: true, generation: 1 };
   writeFileSync(join(dir, "roster.template"), JSON.stringify([row]));
   const review = options.review === undefined ? { profile: PROFILE } : options.review;
   if (options.reply !== undefined) writeFileSync(join(dir, "reply.jsonl"), jsonl([{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-2", timestamp: "2026-09-30T10:06:00Z", message: { role: "user", content: "correct it" } }, assistantSaid(2, "2026-09-30T10:07:00Z", options.reply)]));
@@ -388,7 +390,7 @@ async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
 /** A fake `agent-chat` whose roster holds `impl-a`, exited, until `agent retire` removes it. */
 function fakeRetiringAgentChat(dir: string): string {
   const bin = join(dir, "agent-chat");
-  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", cwd: dir, sessionId: "session-impl-a" }]);
+  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", surface: "headless", cwd: dir, sessionId: "session-impl-a", generation: 1 }]);
   writeFileSync(join(dir, "roster.json"), row);
   const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" ;;`, `  retire) printf '[]' >"${dir}/roster.json"; echo "Retired $3" ;;`, "esac"];
   writeFileSync(bin, `${lines.join("\n")}\n`);
@@ -424,5 +426,17 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
     expect(activeWork.calls).toEqual(["task.list", "task.list", "task.edit", "task.done"]);
     expect(readFileSync(join(dir, "calls"), "utf8")).toContain("agent retire impl-a\n");
     expect(readFileSync(join(dir, "calls"), "utf8")).not.toContain("--force");
+  });
+});
+
+describe("configuredSpawnLimits", () => {
+  it("takes the review floors and concurrent cap from shepherd.review beside the spawnGate overrides", () => {
+    const shepherd = { agentChatBin: "/opt/bin/agent-chat", spawnGate: { load5: 30 }, review: { profile: "rv", minFreeBytes: 1_000, minFreeInodesPct: 20, maxConcurrent: 2 } };
+
+    expect(configuredSpawnLimits(shepherd)).toEqual({ load5: 30, reviewMinFreeBytes: 1_000, reviewMinFreeInodesPct: 20, maxConcurrentReviews: 2 });
+  });
+
+  it("leaves every review limit unset when shepherd.review names none, so the defaults hold", () => {
+    expect(configuredSpawnLimits({ review: { profile: "rv" } })).toEqual({});
   });
 });

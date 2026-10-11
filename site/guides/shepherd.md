@@ -57,7 +57,13 @@ reason (`abandoned`, `closed`, `stuck-behind`, `merge-denied`), comes back uncha
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
-nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. The kind
+nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. A tree-equal
+update carries only when it is a clean merge-up: its first parent is the reviewed head (or a
+head an earlier merge-up carried that MERGE to), its second parent is on the base branch, and
+its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
+commit or a rebase gets a fresh review. The run log records each clean merge-up as an
+`sh-merge-up` step naming the reviewed head, the new head, the base commit and the rule
+`clean-merge-up`. The kind
 does not run or skip the fix-proof check; nothing reads it for that. An explicit `--kind`
 replaces the stored kind, unless it would move a `correctness` run to `feature`, `refactor` or
 `unknown`, or a `security` run to any other kind. That repeat is refused with exit 65 and a
@@ -94,7 +100,7 @@ A phase is a view over the run's current step (`products/factory/src/shepherd/vi
 | `ci` | reading branch rules, waiting for required checks, updating a branch that is behind, or rerunning a cancelled run |
 | `fixing` | waking the implementer for red CI, a `FIX_FIRST`, a conflict or a failed fix-proof check, then waiting for its new head; or waiting for a new head after a human chose to await a fix |
 | `review` | reading the review verdict and the registration's policy for a green head |
-| `awaiting-approval` | recording the merge decision, or waiting on a gate: `approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind` |
+| `awaiting-approval` | recording the merge decision, waiting on a gate (`approve-merge`, `ci-failed`, `sh-sent-back` or `stuck-behind`), or holding an approved head whose base is [not the default branch](#feature-base) |
 | `merging` | merging the approved head; a [held](#hold-and-release) pull request, or one waiting for the [merge train](#merge-train), waits here |
 | `post-merge` | reading main CI on the merge commit, for up to 60 minutes, then [freezing on red or thawing on green](#after-the-merge) |
 | `done`, `failed`, `cancelled` | finished |
@@ -202,7 +208,12 @@ A head that moved during the review always starts a new round, and the new head 
 A pull request merged or closed outside Shepherd ends the run: a merge goes on to the
 post-merge read, a close stops. `titan-factory serve` also checks, every 5 minutes, the pull
 request of each run that is waiting on a gate. When that pull request was merged or closed
-elsewhere, the serve process cancels the run and its gate. The same check supersedes a gate
+elsewhere, the serve process cancels the run and its gate, whichever gate it waits on and
+whether the run is held. A run waiting on a main-red, main-red-again, main-frozen or
+after-stages gate is left alone: those gates are about main and, for a freeze, hold the owner's
+release, so only an owner or a coordinator on a green main clears them. A coordinator may also abandon a gate
+whose pull request is merged or closed (and only abandon, only on a fresh read of that state).
+The same check supersedes a gate
 whose open pull request moved head, as resync does below.
 
 Every `titan-factory serve` start resyncs before it adopts a run. Each running or paused run
@@ -210,14 +221,26 @@ whose pull request was merged outside Shepherd ends with a reason that starts
 `landed elsewhere: `, and one whose pull request was closed ends with `closed elsewhere: `. A
 pending gate whose run already ended is cancelled as orphaned, and a gate whose open pull
 request moved head is superseded. That covers a seat-policy, merge-guard, MRG-AU or
-`shepherd-route/failed-rounds` `approve-merge` gate, an `sh-sent-back` gate and a `ci-failed`
-gate. Any other `shepherd-route` gate, such as a conflict, stays with the owner. A superseded
-failed-rounds gate starts the new head's review rounds from zero, so the run does not ask the
-owner again before the new head has failed its own rounds. A superseded `ci-failed` gate reads as
-`await-fix`, so the run lands the new head with no owner answer. A run that recorded its own `merge`, `sh-landed` or a
+`shepherd-route` (`failed-rounds`, `fix-first-runaway`, `no-progress` or `conflict`)
+`approve-merge` gate, an `sh-sent-back` gate, a `ci-failed` gate and a `stuck-behind` gate. A
+superseded failed-rounds gate starts the new head's review rounds from zero, so the run does not
+ask the owner again before the new head has failed its own rounds. A superseded fix-first-runaway,
+no-progress or conflict gate is only cancelled, never answered: the run reviews the new head and
+asks the owner again there, with the gate naming the carried reason and the new review, even
+under an `auto` policy that would allow the merge. The carried reason stays on the run across
+send-backs, fixer pushes and further head moves until the owner answers an `approve-merge` gate. A superseded `ci-failed` gate reads as
+`await-fix`, so the run lands the new head with no owner answer. A superseded `stuck-behind`
+gate starts a new land round at the new head with a fresh update budget. Resync also answers
+the active `merge` step of a run no runtime holds, when the head that step merges is no longer
+the pull request's head: the answer is no merge, so the run reads CI and reviews the new head. A run that recorded its own `merge`, `sh-landed` or a
 post-merge step is Shepherd's merge and is never ended this way. The run is read again after
 its pull request is read, so a merge it records during that read keeps it too. A pull request that cannot be read leaves
-its run alone. `titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
+its run alone. Resync, and the 5-minute check, also mark a merged run reverted: for each repo
+with a run that merged in the last 7 days, one paged read of main since the earliest such merge
+looks for a commit whose body says `This reverts commit <merge sha>` or whose title is
+`Revert "<merge commit subject>"`, with or without its own ` (#n)`. The run gets an
+`sh-reverted` step that records the merge sha and the reverting sha, and is never marked twice.
+`titan-factory shepherd resync` runs the same pass by hand, and `--dry-run`
 prints what it would end, cancel or supersede and writes nothing.
 
 Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have passed. Some
@@ -227,7 +250,15 @@ reason starts `superseded: review again: ` and names the conditions, and the run
 policy again at the same head. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
-the same sweep at once for that repo's gates.
+the same sweep at once for that repo's gates. If a pull request's head cannot be read during
+that sweep, the repo stays queued and the next sweep tick tries it again. A thaw listener that
+throws is logged and does not stop the others.
+
+One gap is left to resync. A run that read `repo-not-frozen` as unmet, then saw the repo thaw
+before its gate opened, opens a gate the thaw sweep has already passed. That gate waits for the
+next `titan-factory shepherd resync` or server start. Shepherd does not sweep every
+transient-only gate on each tick, because a `merge-tree-clean` gate would then be superseded
+again on every tick while the merge tree stays dirty.
 
 A reviewer that misses the 30-minute wait is read again before Shepherd gives up on it. The
 `sh-late-verdict` step reads that reviewer's final message until it holds a verdict at the
@@ -238,7 +269,11 @@ goes through the evidence step like any other.
 A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
 resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own. It takes the
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
-implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
+implementer. Shepherd never reads a reviewer's name out of the hold's reason text. A
+`g10-adversary:` hold is the exception: it needs two independent `MERGE`s, so Shepherd
+still spawns its own reviewer, and the named reviewer's verdict only satisfies the hold
+(`adoptedReviewer` in `products/factory/src/shepherd/external-review.ts`). A seat can also
+ask for Shepherd's own review with [`shepherd review`](#own-review).
 
 `approve-merge` opens for five reasons only, and its prompt names the reason:
 
@@ -287,8 +322,9 @@ refusal as `held`. Like a fixer that exits with no push, the repo's seat is told
 started and the run waits for a new head; if no notice is sent, `sh-sent-back` opens and names
 the refusal. The watch row's next action and the timeline's wake entry carry the refusal, and the
 row says the seat was told only when a notice was sent after that wake. A ci-red or conflict wake
-records no `held`. A ci-red wake still opens `ci-failed`, and a conflict wake still stops the run as `not-mergeable`. Each such wake still
-spends one repair from the `repair-budget`.
+records no `held`. A ci-red wake no fixer took goes to the seat as described in
+[seat work](#seat-gates), and a conflict wake still stops the run as `not-mergeable`. Each such
+wake still spends one repair from the `repair-budget`.
 
 GitHub refuses `update-branch` with HTTP 422 `merge conflict between base and head` when the base
 cannot merge into the head. That is not a failure: the land round stops with reason `conflict` and
@@ -296,8 +332,55 @@ takes the same route as a `dirty` PR. The first time, the implementer is woken w
 if the conflict is still there on the next `update-branch`, `approve-merge` opens with
 `shepherd-route/conflict`. Any other `update-branch` error still fails the step.
 
+### Seat work goes to the seat {#seat-gates}
+
+Only owner approvals open an owner gate: `approve-merge` under an `owner-gate` or visual
+policy, one-way items, and holds that need the owner. Three gates are seat work. Before
+opening one, Shepherd records an `sh-seat-notice` step that messages the repo's seat, then
+takes the gate's default action:
+
+| Gate | When | Default action once the seat is told |
+| --- | --- | --- |
+| `ci-failed` | a red head no fixer took (a transient red still reruns first) | wait for a new head: the seat starts a fix round or a successor |
+| `sh-sent-back` | a `FIX_FIRST` or `NO_REPRO` no agent took, a spent repair budget, or a fixer exit (the exit notice above) | wait for a new head |
+| `stuck-behind` | the update budget and its retries are spent | answer `retry`: `update-branch` runs again with a fresh budget |
+
+The gate opens only when no notice was sent: no single seat owns the repo, no notice is wired,
+or the send failed. Its prompt then names why. A run tells the seat once per gate and head, and
+a restart replays the recorded notice instead of sending it again. A run that was already
+paused on one of these gates before the notice step existed keeps that gate.
+
+A review round's Ship pick at one head (decision 97) is the owner's merge approval at that
+head. Today it answers an `approve-merge` gate only after the gate is open, through
+`roundMergeDecisions` (`products/factory/src/shepherd/round-merge.ts`). Nothing reads a Ship
+record before the gate opens yet.
+
 When a run reads a new head, it cancels its own pending `approve-merge` and `sh-sent-back` gates
 whose prompt names an older head. A gate at the current head stays pending.
+
+### An owner's merge answer follows a clean head move {#carried-answer}
+
+An owner's `merge` answer at a head follows to a later land gate at the run's next head, so the
+owner is not asked twice, in two cases and no others:
+
+- **Merge-up.** The new head is the approved head merged with a commit of the base branch, and
+  its tree equals `git merge-tree --write-tree` of the two (or the merge resolved only declared
+  generated files). A hand-resolved conflict asks again.
+- **Small reviewed fix.** The new head is the approved head merged with the base it already
+  contains, plus a fix whose own diff, past what the base merge brought, is at most
+  `SMALL_FIX_LIMITS.maxChangedLines` (40) changed lines across at most
+  `SMALL_FIX_LIMITS.maxFiles` (3) files (`products/factory/src/shepherd/fix-carry.ts`). Every
+  file must already be in the pull request at the approved head, with no file added, deleted,
+  renamed or mode-changed, and no change under `.github/`, to a lockfile or to a `package.json`
+  dependency field.
+
+Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
+only after required CI is green at that head, so a head with no verdict or a red check asks the
+owner again. A `security` or `unknown` run never carries, and neither does an escalation gate.
+Any error computing the tree or the diff asks again. The run records an
+`sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
+`remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
+paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 
 ## Watch
 
@@ -305,6 +388,7 @@ whose prompt names an older head. A gate at the current head stays pending.
 titan-factory shepherd status                  # every registration
 titan-factory shepherd status owner/repo       # one repo
 titan-factory shepherd status owner/repo#123   # one pull request
+titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 ```
@@ -338,6 +422,16 @@ agent by design and have no limit. With nothing registered the verbs print
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
 factory UI reads.
 
+`shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
+PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes
+nothing. Gates the owner answers (`approve-merge`, `release`, `one-way`, `failed-rounds`, main-red
+and any kind not listed as seat work) come first; seat work (`ci-failed`, `sh-sent-back`, `stuck-behind`)
+is listed apart, because those are routed to the seat that owns the PR. `--json` prints
+`{ owner, seat }`, each an array of gates. Each gate carries `headIsCurrent`: true when the head
+the gate names is the run's current head, false when the run has moved on, null when the gate names
+none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
+The factory digest lists the five oldest owner gates under "Waiting on you".
+
 ## Stats {#stats}
 
 ```
@@ -356,8 +450,100 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   owner, so it counts to now, on today's row. A gate any other actor resolved is not the owner's
   and is left out. Releases do not appear: `shepherd release` records no actor.
 
-`--json` returns `{ "merges": [...], "ownerFriction": [...] }`. The morning digest shows today's
+- Per repo and ISO week, the time per stage: for each of `queued`, `ci`, `review`, `re-review`,
+  `hold` and `land`, how many runs spent time in it and the median, p90 (nearest rank) and
+  maximum minutes per run, summed over the run's visits. The ledger records only when a step
+  completed, so a step's time is the gap since the step before it, and the stage is that step's
+  phase (`ci` includes the fixer's wait for a new head; `hold` is the owner-decision gates). A
+  review after the run went back through CI or a fixer is a `re-review`, which covers a head
+  move and a clean merge-up. Time after the merge is in no stage. A hold polled inside the
+  merge step leaves no trace in the ledger, so `stats` counts it under `land`; `status` does
+  name a live hold.
+
+- Per repo and ISO week, red after merge: the merged runs that read main CI at their merge,
+  those whose stored `sh-main-ci` read was red, and the rate, plus those since marked
+  `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
+
+- With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
+  `gh-api-5xx`, `land-rules`, `update-branch`, `other`). Shepherd writes the class as the
+  error's `[<class>] ` prefix; an older error without one is classified from its text. A
+  `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. JSON adds
+  `"failures": [{ repo, week, failures, byClass }]`.
+
+`shepherd status` adds `(<stage> <n>m, <n>m total)` to each live row: the stage the run is in,
+the minutes it has been there, and the minutes since registration. `status --json` carries them
+as `stage` and `totalMinutes`.
+
+`--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
+each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
+
+### Review causes {#review-causes}
+
+Each `sh-review-intent` step records why Shepherd dispatched a reviewer at that head, as
+`cause` and, for some causes, `reason`. The run derives it from its own steps, with no extra
+GitHub call:
+
+| Cause | When |
+|---|---|
+| `first` | The run's first review. |
+| `fix-round` | A new head after a `FIX_FIRST` or `NO_REPRO` send-back. |
+| `conflict`, `ci-fix` | A new head after a conflict or red-CI wake. |
+| `superseded` | The head moved while the last review ran. |
+| `update-branch` | Shepherd's own update-branch moved the head, and there was no `MERGE` to carry. |
+| `merge-up-not-carried` | Shepherd's update-branch moved a head with a `MERGE`, and the carry refused. `reason` is `not-one-merge`, `base-off-branch`, `remerge-touched`, `seat`, `base-unknown` or `probe-failed`. |
+| `kind-no-carry` | The `MERGE` could not carry because of the registration's kind. `reason` is that kind, or `unregistered`. |
+| `seat-push` | A push Shepherd did not make moved the head; after a `MERGE`, `reason` says why it did not carry. |
+| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
+| `hold` | The hold's reviewer is read again. |
+| `owner-request` | A resync asked for the review again. |
+| `seat-request` | A seat's `shepherd review` asked for Shepherd's own review at a head the run already had a verdict at. |
+| `unknown` | Recorded before causes existed, or nothing explains it. |
+
+`stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
+by cause, labelled `cause(reason)` when there is a reason. `--json` adds `reviewCauses`, and
+`--rereviews` prints only this section, as text or with `--json` as `{ "reviewCauses": [...] }`.
+
+### Review cost {#review-cost}
+
+```
+titan-factory shepherd stats --cost [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--cost` prints this report instead of the sections above. For each merged PR it takes every review
+round across all the PR's runs: a round opens at its `sh-review` dispatch (or an external review
+intent) and ends at the last step that resolved it, the on-time `sh-await-verdict`, its
+`:corrected` reply, or `sh-late-verdict`, whether that step held a verdict or a timeout. It reads
+the reviewer transcript the round's verdict locator names, or for a round with no verdict the one
+another verdict named for the same session, and prices each request with session-analytics
+`priceRequest`. It reports list-price dollars and tokens (input, cache read, cache write, output)
+per PR, then per repo and ISO week of the merge, then in total, with the p50 and p90 dollars per
+merged PR. A round counts only the requests from its review intent to the step that resolved it,
+so a standing or `hold --reviewer` session that serves several PRs is split between them, and
+requests after that step count nowhere. A request counts once in the whole report, even when a
+resumed session repeats it. A round that cannot be priced (a missing transcript, a model with no
+price row, a parse error, an external review or a timed-out round with no transcript, a round no
+step resolved, or one with no requests in its window) is listed under `unreadable` with its reason
+and adds nothing to the dollars. A PR with one is left out of p50 and p90, so they never treat a
+gap as zero. `--json` returns `{ "reviewCost": { prs, weeks, totals } }`.
+
+### SLOs {#slo}
+
+```
+titan-factory shepherd stats --slo [--registry FILE] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--json]
+```
+
+`--slo` prints this report instead of the sections above. It reads the `titan.metrics/v1` entry
+`metrics/shepherd.yml` from the factory's own checkout, or `--registry`, and evaluates every metric
+in file order. A metric whose query has `kind: cli`, `store: shepherd-stats` and a query id in
+`text` (such as `flow.merge-verdict-to-merged-p90`) is measured over its SLO's window, whole UTC
+days ending today (`1d`, `7d` or `28d`; seven days for a metric with no SLO), or over `--from` and
+`--to` for every metric. Each line gives the status, the value and unit, the SLO, the window and
+`n`, the count the value rests on. The statuses are `pass`, `fail`, `no-data` (nothing in the
+window to measure, never reported as a zero), `no-slo`, `no-query` (the metric names the slice
+that would add a query, its `gapSlice`) and `error` (a query id stats does not know, a query for
+another store, or a query that threw, such as unreadable transcripts). It exits 0 whatever the
+statuses; a missing or invalid registry exits 2. `--json` returns `{ "slo": [...] }`.
 
 ## Seat policy {#seat-policy}
 
@@ -373,10 +559,23 @@ Every registration resolves a policy before anything starts
 The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. A seat whose
 `grants_extra` includes `merge-on-green-approve` raises the ceiling to `auto`. A seat that
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
-(see [Visual paths](#visual-paths)). `--policy`
+(see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
+`merge-into-feature-base` lets its runs merge into a base other than the default branch (see
+[Feature base](#feature-base)). `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
-`rebase`; default `squash`), `reviewer`, `priority` and `fixer`. An unknown key is refused.
+`rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown
+key is refused.
+
+A request with `"merge":"owner-gate"` must also name why the owner is asked, with
+`ownerGateReason` set to `gate-2-visual`, `g10-security`, `proof-fixture` or `owner-asked`.
+Without it the registration is refused and the CLI exits 65 with a message naming the four
+reasons; the reason with any other merge mode is refused too. The reason is stored in the
+effective policy, a repeat registration keeps the first one, and the gate reason shows it:
+`policy owner-gate (gate-2-visual) waits for the owner`. A run registered owner-gate before
+this field, with no reason, keeps working and reads as legacy. The owner digest lists a
+`proof-fixture` run in its own "Proof fixtures" section, with its gates and age, and leaves it
+out of the asks, merged and stuck lists; `shepherd status` shows it as usual.
 
 Seat files are read from `shepherd.seatsDir` in the
 [config file](/guides/factory#the-config-file): every `*.md` file there, frontmatter only
@@ -431,7 +630,7 @@ A push after registration is judged at its own head, so a later commit that adds
 file gates. A remote that several seats list gets the union of their `visual_paths`, so a
 file any of them calls visual gates. If one of those seats has neither `visual_paths` nor
 the merge grant, the remote stays at `owner-gate`. A seat with both the grant and
-`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate"}'` still gates
+`visual_paths` still gates visual files. `--policy '{"merge":"owner-gate","ownerGateReason":"gate-2-visual"}'` still gates
 every merge. A seat without `visual_paths` behaves as before.
 
 The seat book is read again on every `register`, so a change applies without a restart. An
@@ -443,18 +642,66 @@ The run re-reads its registration's policy before every merge decision and keeps
 stricter of the two. A later `register` can tighten a running pull request's policy. It
 cannot loosen it.
 
+### Feature base {#feature-base}
+
+A pull request merges only into its repo's default branch unless its seat says otherwise. Stacked pull requests are the reason: a child's GitHub base is its parent's
+branch, and GitHub's merge lands in whatever base the pull request names when it merges.
+
+Before every merge the land core records a `base-check` step. It reads the pull request and
+the repo's default branch live from GitHub, never from the snapshot. When the base is not the
+default branch and the policy does not allow a feature base, the approved head waits in a
+`base-wait` step. A run that holds its repo's [merge train](#merge-train) gives it up before it
+waits, so other pull requests keep merging. `shepherd status` names the base as the next action:
+
+```text
+waiting for a retarget: the base is feat/x, not the default branch main, and the run's policy merges only into main
+```
+
+The wait has no timeout and neither fails nor cancels the run. It ends when the pull request
+is retargeted, gets a new head, or is merged or closed elsewhere. The run then reads CI again.
+A green read that names a new base reads the branch rules again for that base, and the next
+`base-check` decides. Every land round also reads the rules and the base afresh. GitHub's merge
+reads the base once more before it writes, and again before each retry. A pull request
+retargeted after its `base-check` is skipped as `base-changed`, so a refused base never
+reaches GitHub's merge.
+
+An approval covers one head on one base. The `approve-merge` prompt names the base
+(`Merge PR #12 in owner/repo at head <sha> into main?`). When `base-check` finds a base other
+than the one the head was approved or allowed on, the run drops that trust, re-reads the merge
+evidence (changed files and visual paths) against the new base, and decides again. An owner
+gate asks again, and an approval never follows to a later head on another base.
+
+A seat whose `grants_extra` includes `merge-into-feature-base` lets its runs merge into the
+pull request's own base, whatever it is. No `--policy` key sets it, so an implementer that
+registers cannot widen its seat this way. It changes only where the merge lands: the merge
+mode and every gate still apply. The standalone `land-pr` workflow has no such option and
+merges only into the default branch.
+
 ## Hold and release
 
 ```sh
-titan-factory shepherd hold owner/repo#123 --reason "waiting on a schema decision"
-titan-factory shepherd hold owner/repo#123 --reason "security audit" --reviewer sec-audit-review
+titan-factory shepherd hold owner/repo#123 --reason "stalled: no step progress for 70 minutes; TP-123"
+titan-factory shepherd hold owner/repo#123 --reason "g10-adversary: merge-policy change" --reviewer sec-audit-review
 titan-factory shepherd release owner/repo#123
 ```
 
 ```
-run ab0f9228-…: held (waiting on a schema decision)
+run ab0f9228-…: held (stalled: no step progress for 70 minutes; TP-123)
 run ab0f9228-…: released
 ```
+
+A reason has the shape `<class>: <detail>; <task id>`. Its class is the text before the
+first colon, matched exactly, and must be one of the seven break-glass classes:
+`serve-down`, `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or
+`g10-adversary`. The first four are factory defects, so their reason must also cite the
+task for the defect, an ID like `TP-123` or `CC-45`. Only the ID's syntax is checked, not
+whether the task is open. The three gate classes need no task ID. A seat path or an interim
+procedure is not a hold reason. Any other reason is refused with exit 65 before anything is
+read or written: nothing is held, so the pull request stays unheld and Shepherd may still
+merge it. The refusal message lists the classes and the task-ID rule
+(`products/factory/src/shepherd/hold-reason.ts`). Only `shepherd hold` checks the reason.
+`release` clears any hold, and a typed `hold` replaces an existing one, including one
+stored before the check existed.
 
 A hold does not stop the run. CI waits, branch updates and gates carry on. The hold blocks
 the merge call itself: every merge route reads the hold first, and a held pull request waits
@@ -466,10 +713,58 @@ Both are read from the registration and the run's current step, never stored. Th
 branch registration can be held only once its pull request exists. `--reviewer` names the
 reviewer whose verdict the run waits for; `release` clears it. Only that reviewer's `MERGE`, at
 the head being merged, satisfies the hold. A `MERGE` from Shepherd's own reviewer never does,
-so it cannot carry a held run past a seat's `FIX_FIRST`. When a fix round moves the head, the
-merge waiting at the old head ends once the hold's reviewer sends `MERGE` at the new one. A
-merge that waited on a hold does not go through on release: land reads CI again first,
-because the base or the head may have moved.
+so it cannot carry a held run past a seat's `FIX_FIRST`. When a push moves the head, the
+merge waiting at the old head ends at its next poll without merging. The run reads CI and
+reviews the new head, then comes back to the merge step there, where the same hold applies.
+The push never releases or changes the hold. A merge that waited on a hold does not go
+through on release: land reads CI again first, because the base or the head may have moved.
+
+A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
+`sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
+checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
+When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
+`MERGE` stands at the new head: the step releases the hold there once its checks are green,
+with no fresh review and no seat release. A head reached by any other move, or carried by the
+remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
+seat releases it.
+
+### Ask for Shepherd's own review {#own-review}
+
+```sh
+titan-factory shepherd review owner/repo#123
+```
+
+```
+run ab0f9228-…: asked for Shepherd's own review at 0123abcd…
+```
+
+`shepherd review` asks for a fresh reviewer of Shepherd's own at the pull request's head as
+read now. The ask is stored on the registration (migration 18), so it survives a serve
+restart. The next review intent at that head spawns a reviewer under a name nobody has held,
+never the standing reviewer or the named reviewer of a `hold --reviewer`, records
+`requested: true` when it takes the ask. A retry at that head, after a silent or timed-out
+reviewer, spawns again too.
+
+A run waiting in `merging` at that head stops waiting without merging and reads CI again,
+held or not: an ask also stops an unheld pull request's merge at that head, which fails safe.
+The `sh-review-request` step then takes the ask and sets aside the verdict the run already
+had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It also ends the
+land round, because `land` trusts a head for the rest of a round once its old verdict let it
+through. The next round asks the policy, or the owner, again, so an asked review that
+escalates opens `approve-merge` instead of merging. That review is named `seat-request`,
+and neither it nor a retry at that head carries an earlier `MERGE`. The ask, taken or not,
+also stops a carry of the other kind: a `MERGE` reviewed at the asked head, or already
+carried there, is never carried on to a later head, even by a clean merge-up, so that head
+gets its own review too (`sh-carry-scope` reads the ask's head). A
+verdict from a hold's named reviewer still counts toward the hold.
+
+The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and
+prints `Shepherd's own review was already asked`. An ask names one head; after a push the new
+head gets its own review anyway. A pull request that is not registered, a run that already
+ended, and the Version Packages run (its release preflight stands in for a reviewer) are
+refused before anything is recorded. The run reads the ask only at a merge wait and
+at a green head it already reviewed, so a run waiting at an owner gate takes it only after
+that gate is answered.
 
 ## Merge train {#merge-train}
 
@@ -563,6 +858,10 @@ repeats from a fresh clock, so a crash can lengthen the wait but never shorten t
 titan-factory gate resolve <runId> approve-merge --json '{"decision":"merge","headSha":"<40 hex>"}'
 ```
 
+One owner signature can also answer many merge gates at once: see
+[owner-signed proofs](/guides/factory#owner-signed-proofs). A gate whose head moved or whose PR
+closed is skipped.
+
 | Gate | Opens when | Payload |
 | --- | --- | --- |
 | `approve-merge` | one of the [four reasons](#routing) | `{"decision":"merge"\|"abandon","headSha":"…"}` |
@@ -602,7 +901,7 @@ gates: only `MRG-AU-RV` merges without the owner.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
-a replay finds it instead of posting again. It carries a one-line summary and a JSON record:
+a replay finds it instead of posting again. It leads with a readable summary: a one-line outcome (merged, gated or refused, with the reason and the short head sha), a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record follows inside a collapsed `Machine evidence` block, unchanged:
 the run id, repo, pull request, head, base, GitHub's test-merge sha, each check run with its
 app id and conclusion, a reference to the reviewer's verdict (session id, record offsets and a hash of the full locator, with no path, host or source id), the reviewer's identity, and
 the decision with its rule and reason. On an allow, the same record is stored with the
@@ -626,6 +925,25 @@ step posts the evidence comment. With no `review` key, no checkout for the repo,
 refused dispatch, the phase records `none` with the reason, and the
 [route table](#routing) sends the head to a fresh reviewer until 3 rounds have failed.
 
+The reviewer reads the head from a `git archive` extract under `<data dir>/checkouts/reviews`.
+On basement, its brief tells it never to install dependencies there, and to run targeted tests
+with `basement-suite <repo> <branch> --agent <name> -- <paths>` instead. Each extract then stays
+around 3k inodes. A titan-platform install added about 99k more, and several parallel reviews
+filled a disk. Three fixes were weighed:
+
+- **Defer the install until a check runs.** Most reviews run targeted tests, so most would still
+  install.
+- **Hardlink or reflink `node_modules` from a shared store.** pnpm already hardlinks files from
+  its store, and the extract still gets its own directory and symlink tree. pnpm 9 has no global
+  virtual store.
+- **Reuse a tree that already exists for checks.** basement-suite gives each run its own
+  worktree, caps how many run at once by its slots, and removes the tree on exit. No reviewer
+  shares a mutable tree with an implementer or another reviewer.
+
+Shepherd uses the third. It changes one rule in the brief, and it adds no tree to keep warm. The reviewer checks that the `head=` line basement-suite prints is the head it
+reviews, since basement-suite fetches the branch tip. Off basement, a reviewer still installs in
+its extract to run targeted tests.
+
 These limits remain:
 
 - **The freeze exemption is not a security boundary.** `register` accepts any
@@ -641,7 +959,7 @@ These limits remain:
 | `error: Invalid arguments: pr: needs a pr or a branch` | `owner/repo` without `--branch` |
 | `error: Invalid arguments: policy: Unrecognized key: "…"` | an unknown `--policy` key |
 | `error: owner/repo#123 has head <a>, not <b>` | `--branch` is not the pull request's head |
-| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge` or `timeline` on an unknown pull request |
+| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge`, `review` or `timeline` on an unknown pull request |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference |
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
 | a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |

@@ -1,5 +1,18 @@
 # @titan-design/retrieval-eval
 
+## 0.0.5
+
+### Patch Changes
+
+- 0b84d77: Take the `--active-root` and `--graph` defaults from `@titan-design/app-paths`, so they follow `ACTIVE_ROOT` and resolve off macOS. `defaultActiveRoot` and `defaultGraphPath` are removed; use `activeWorkRoot` and `activeWorkGraphPath` from `@titan-design/app-paths`.
+- 82531b5: Reject unknown `--arm`, `--candidates` and `--variants` values with an error naming the allowed ones, and pass the already-read transcript heads to `mineSpawnArm`.
+- Updated dependencies [cb137e3]
+- Updated dependencies [5fe09ab]
+- Updated dependencies [1f7de27]
+  - @titan-design/app-paths@0.1.0
+  - @titan-design/retrieval@0.3.1
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.0.4
 
 ### Patch Changes

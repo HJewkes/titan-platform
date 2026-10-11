@@ -16,6 +16,6 @@ describe("envelopes on the wire", () => {
   });
 
   it("keeps the sysexits numbers that CLIs and clients already branch on", () => {
-    expect(EXIT).toEqual({ OK: 0, GENERIC: 1, USAGE: 64, DATAERR: 65, NOINPUT: 66, UNAVAILABLE: 69, SOFTWARE: 70, CONFIG: 78 });
+    expect(EXIT).toEqual({ OK: 0, GENERIC: 1, USAGE: 64, DATAERR: 65, NOINPUT: 66, UNAVAILABLE: 69, SOFTWARE: 70, TEMPFAIL: 75, NOPERM: 77, CONFIG: 78 });
   });
 });

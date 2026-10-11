@@ -1,4 +1,5 @@
 import { caseNamed } from "./case-script.js";
+import type { Split } from "./parse-error.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Words of `unsure` readings one line may walk; classifying costs about 50 ms per KiB, ten times that for a dynamic command word. */
@@ -9,6 +10,15 @@ export class ReadingLimitError extends Error {
   constructor() {
     super("too many readings of dynamic wrapper words to check");
     this.name = "ReadingLimitError";
+  }
+}
+
+/** A line that evaluates arithmetic and stores code behind a bracket the walk cannot finish; the hook denies it unchecked, as past the reading budget. */
+export class ValueWalkError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a value the line may evaluate as arithmetic cannot be walked to its end";
+    this.name = "ValueWalkError";
   }
 }
 
@@ -43,6 +53,24 @@ export class ScriptBudgetError extends ReadingLimitError {
     super();
     this.message = "too much script text to check";
     this.name = "ScriptBudgetError";
+  }
+}
+
+/** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
+export class SplitReadingError extends ReadingLimitError {
+  constructor(readonly split: Split) {
+    super();
+    this.message = "a line bash 5 and bash 3.2 read differently";
+    this.name = "SplitReadingError";
+  }
+}
+
+/** A line whose expansions nest past `MAX_NESTING`; the hook denies it unchecked rather than recurse past its stack. */
+export class NestingReadingError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "expansions nested too deep to check";
+    this.name = "NestingReadingError";
   }
 }
 

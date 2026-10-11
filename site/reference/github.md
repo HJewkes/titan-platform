@@ -72,7 +72,7 @@ Reading a PR's changes and leaving one evidence comment, on the fake wire:
 
 ```ts
 fake.prFiles.set(pr.number, [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]);
-await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed" }]
+await port.listPrFiles("o/r", pr.number);        // [{ path: "new/a.ts", previousPath: "old/a.ts", status: "renamed", additions: 3, deletions: 1 }]
 await port.compareFiles("o/r", "main", "feat/x"); // { mergeBaseSha, files: [], truncated: false }
 
 const marker = "<!-- shepherd:evidence -->";
@@ -84,6 +84,23 @@ await port.listReviewComments("o/r", pr.number); // every inline comment, with i
 
 fake.forcePushes.set(pr.number, [{ before: "<replaced head sha>", after: pr.headSha }]);
 await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest first; more than 100 throws ForcePushesTruncated
+```
+
+Squash commit messages come from `formatSquashMessage`, or from the `titan-squash-message`
+bin with the same input as JSON on stdin:
+
+```ts
+import { formatSquashMessage } from "@titan-design/github";
+
+const { subject, body } = formatSquashMessage({
+  title: "Add the widget",
+  body: "Adds the widget.",
+  prNumber: 42,
+  taskIds: ["TP-1"],
+  commits: [{ subject: "Add the widget core", body: "Holds no I/O,\nso tests need no fakes." }],
+});
+// subject: "Add the widget (TP-1) (#42)"
+// body: "## Summary\n\nAdds the widget.\n\n## Changes\n\n- **Add the widget core.** Holds no I/O, so tests need no fakes.\n\nRefs: TP-1, #42"
 ```
 
 ## What it deliberately does not do
@@ -134,6 +151,9 @@ await port.listForcePushes("o/r", pr.number); // [{ before, after }], oldest fir
 - GitHub silently caps `pulls/{n}/commits` at the first 250 commits (`PR_COMMITS_CAP`).
   `listPrCommits` returns the shas oldest first and does not detect the cap; a caller checks
   that the last sha is the PR's head and treats any other list as short.
+- `listDefaultBranchCommits(repo, since)` returns `{ sha, message }` for every commit on the
+  default branch committed at or after `since`, newest first, all pages. A wide `since` on a busy
+  repo is many pages; keep it to the window you need.
 - `listForcePushes` reads one GraphQL page of `FORCE_PUSHES_CAP` (100) head force-pushes and
   throws `ForcePushesTruncated` when GitHub says there are more. Treat that as "cannot decide",
   never as the whole list. `before` is null when GitHub no longer has the replaced commit.

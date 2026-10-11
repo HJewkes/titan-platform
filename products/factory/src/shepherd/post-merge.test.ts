@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep } from "../workflows/land.js";
 import type { CleanupPorts } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
 import type { MainRedWiring } from "./main-red.js";
@@ -13,7 +12,9 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import type { MAIN_CI_ROUTES } from "./route-table.js";
 import { shepherdStoreRef } from "./store.js";
+import type { Waiting } from "./waiting.js";
 import { expectBrief } from "../test-support/brief.js";
+import { callCommand } from "../test-support/shepherd.js";
 import { OWNER } from "../test-support/resolver.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 
@@ -362,14 +363,11 @@ function shepherdWorld(mergeRuns: () => ReturnType<typeof successRun>[], cleanup
   let clock = 0;
   const store = shepherdStoreRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), cleanup, mainRed });
+  const routes = factoryRoutesFor({ port, store, freeze, now: () => clock, sleep: async (ms, signal) => (signal?.throwIfAborted(), void (clock += ms)), cleanup, mainRed });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, store, freezes: () => freeze.get() };
+  return { host, fake, store, routes, freezes: () => freeze.get() };
 }
-
-/** A queued run waits out every recheck: hundreds of 1 ms sleeps, which a loaded CI runner stretches past waitFor's 1 s default. */
-const QUEUED_WAIT_TIMEOUT_MS = 4_000;
 
 async function runToMerge(w: ReturnType<typeof shepherdWorld>, params: Record<string, string> = {}): Promise<string> {
   const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), ...params });
@@ -489,11 +487,25 @@ describe("shepherd-pr after land", () => {
     expect(main?.data).toMatchObject({ result: { verdict: "none" } });
   });
 
+  it("lists the main-ci-timeout gate in shepherd waiting with no head verdict, since it names the merge, not the PR head", async () => {
+    const w = shepherdWorld(() => []);
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H1 }, OWNER);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
+
+    const envelope = await callCommand<Waiting>(w.host, w.routes, "shepherd.waiting", {});
+
+    expect(w.host.gates.get(gateId(runId, "main-ci-timeout"))?.prompt).toContain(`at merge ${w.fake.pr(1).mergeSha}`);
+    expect(envelope).toMatchObject({ ok: true, data: { owner: [{ gateId: gateId(runId, "main-ci-timeout"), head: H1, headIsCurrent: null }] } });
+  });
+
   it("asks once with main-ci-timeout, never main-red, and says no completed run contains the merge, when a run stays queued", async () => {
     const w = shepherdWorld(() => [{ ...successRun("validate", 1), status: "queued", conclusion: null }]);
     const runId = await runToMerge(w);
 
-    await gateOpened(w.host, gateId(runId, "main-ci-timeout"), QUEUED_WAIT_TIMEOUT_MS);
+    await gateOpened(w.host, gateId(runId, "main-ci-timeout"));
 
     const sha = w.fake.pr(1).mergeSha!;
     expect(JSON.stringify(w.host.gates.get(gateId(runId, "main-ci-timeout")))).toContain(`no completed main run containing ${sha} within 240 min`);

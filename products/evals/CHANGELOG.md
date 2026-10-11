@@ -1,5 +1,58 @@
 # @titan-design/evals
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/review-panel@0.5.1
+  - @titan-design/session-analytics@0.13.2
+
+## 0.2.3
+
+### Patch Changes
+
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+- Updated dependencies [3d3cc58]
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/review-panel@0.5.0
+  - @titan-design/session-read@0.12.2
+
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [1add3c6]
+  - @titan-design/review-panel@0.4.0
+
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.2.0
+
+### Minor Changes
+
+- 19fa0ef: Add the review outcome corpus: `titan-evals corpus` and `buildCorpus` write one row per reviewed head from the factory database, opened read-only, and git history, with the revert, main-red, later-fix, owner-override and fixer-changed-cited-paths labels and a derived escaped, caught, false-block, clean, pending or unresolved label.
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [d7102a6]
+- Updated dependencies [73683d7]
+- Updated dependencies [7d52415]
+- Updated dependencies [446c60a]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/review-panel@0.3.0
+
 ## 0.1.1
 
 ### Patch Changes

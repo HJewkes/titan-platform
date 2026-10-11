@@ -758,7 +758,9 @@ metrics are recomputed on every index and never carried forward under reuse.
 
 Ported in TP-133, strictly as codewatch had it. `linkTestsToSources` pairs each test file
 with non-test files in two passes. Pass 1 uses path conventions: it strips a `.test` or `.spec`
-infix and collapses a `__tests__/`, `test/` or `tests/` segment. Pass 2 gives a test that
+infix and collapses a `__tests__/`, `test/` or `tests/` segment. A pytest file named
+`test_<name>.py` or `<name>_test.py` that no path rewrite pairs goes to the one non-test
+`<name>.py` in the tree, and to none when several share the name (TP-2170). Pass 2 gives a test that
 pass 1 left unpaired its strongest co-edited non-test partner, with at least 2 shared commits.
 
 `indexPaths` writes `linked_test_count` on each linked source, with or without git. With git
@@ -766,6 +768,45 @@ history on it also writes `test_bus_factor_{w}` and `test_top_author_share_{w}` 
 primary window. These summarize churn authorship across all tests linked to a source, so a
 file can be well spread in production code and a single-author silo in its tests. All three
 are recomputed on every index and never carried forward.
+
+### Test kinds (Python)
+
+Added in TP-2170 (`analysis/test-kinds.ts`). These are facts about code. Which code kinds
+need which test kinds is policy, and it belongs to the consumer (codewatch's audit rules).
+Every value is 0 or 1 unless it is a count.
+
+- On each function outside a test file, written from the file's own bytes and carried
+  forward under reuse: `symbol_kind_parser`, `symbol_kind_io`, `symbol_output_signal`
+  (prints, writes stdout, argparse, a click, typer, Flask or FastAPI decorator, or a call in
+  the file's `__main__` guard), `symbol_state_writes` (module state, `self`, `cls` or a
+  parameter) and `symbol_unlisted_calls` (calls the purity allow-list does not cover).
+- On each pytest test function, also carried forward: `test_kind_snapshot`,
+  `test_kind_exact_output`, `test_kind_loose_output` (every output assertion is `in`,
+  `startswith`, a length, a shape or truthiness), `test_kind_error_path`,
+  `test_kind_property` and `test_kind_roundtrip`. An exit status of 0 is neither output nor
+  an error path.
+- Recomputed over the whole graph on every index: `symbol_kind_output_boundary` (the
+  output signal, a `pyproject.toml` console script, or a module-level call in a
+  `__main__.py`), and `symbol_kind_pure`, which means no parser and no I/O, output or
+  global write in the function or anything it reaches through `calls` edges.
+- For each source function some test reaches: `symbol_tests_snapshot`,
+  `symbol_tests_exact_output`, `symbol_tests_loose_output_only`, `symbol_tests_error_path`,
+  `symbol_tests_property` and `symbol_tests_roundtrip`. A test reaches what its `calls`
+  edges reach. A click `CliRunner`'s `runner.invoke(cmd, ...)` counts as a call to `cmd` when
+  the receiver is a `CliRunner()` or a name bound to or annotated as one; `invoke(cli, ["sub"])`
+  credits the group `cli` only, and a target the test rebinds locally credits nothing. A test is credited
+  only to what it reaches. Reach is one pass over the call graph's strongly connected
+  components, with a bitset of tests flowing to callees.
+- `symbol_kind_pure` needs every unlisted call resolved to a source function that is itself
+  pure. An unresolved call (an external library, `input()`, `module.func()`) means not pure.
+  Methods `str` shares with stateful types (`replace`, `copy`, `join`, `keys`) clear only on a
+  receiver proven to be a str, list or dict value, so `Path.replace` and `s3.copy` do not.
+  A local is a proven value only when every binding of it is a plain `name = expr` from a
+  value: a for target, `with`/`except ... as`, unpacking, walrus, augmented assignment,
+  match capture, import, `del`, `global` or `nonlocal` disqualifies it. Only value-typed
+  builtins (`str`, `len`, `sorted`, `dict` and the like) yield a value; `getattr`, `max` and
+  `next` do not. A function handed to `map`, `filter`, `functools.reduce` or `key=` counts as
+  a call to it. A runner shadowed by a parameter or local of the same name is no runner.
 
 `computeTestCoverageOwnership` lives in the `history-metrics.ts` adapter, not in
 `src/history/`. It needs test links, and the seam forbids history from importing them.

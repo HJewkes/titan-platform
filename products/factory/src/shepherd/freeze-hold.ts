@@ -2,8 +2,9 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
-import { codeRoute, step, type FailingCheck } from "../workflows/land.js";
+import { codeRoute, step, type FailingCheck, type LandOutcome } from "../workflows/land.js";
 import { UpdateResultResult } from "../workflows/land-steps.js";
+import { UPDATE_RESENDS } from "../workflows/land-update.js";
 import { FREEZE_RECHECK_MS, failingAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
 import type { PrTarget } from "./gates.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -38,24 +39,29 @@ interface WaitInput extends PrTarget {
 /**
  * True when the PR's red head only repeats a frozen main's failures: the hold is recorded, the run waits out the thaw
  * or a new head, and the caller lands the next round so CI is read afresh. No repair is spent and nobody is woken.
+ * A stopped outcome ends the run.
  */
-export async function heldByFrozenMain(ctx: WorkflowContext, target: PrTarget, red: { headSha: string; failing: FailingCheck[] }, n: number): Promise<boolean> {
+export async function heldByFrozenMain(ctx: WorkflowContext, target: PrTarget, red: { headSha: string; failing: FailingCheck[] }, n: number): Promise<boolean | LandOutcome> {
   const input: HoldInput = { ...target, headSha: red.headSha, failing: red.failing.map((check) => check.name) };
   const held = await step(ctx, `${FREEZE_HOLD_STEP}:${n}`, input, HoldResult);
   if (!held.hold || held.episode === null) return false;
   const waited = await step(ctx, `${FREEZE_WAIT_STEP}:${n}`, { ...target, headSha: red.headSha, episode: held.episode, baseRef: held.baseRef } satisfies WaitInput, WaitResult);
-  if (waited.thawed && waited.headSha === red.headSha) await refreshRedHead(ctx, target, red, n);
+  if (waited.thawed && waited.headSha === red.headSha) return (await refreshRedHead(ctx, target, red, n)) ?? true;
   return true;
 }
 
 /**
  * After the thaw this head's CI still shows main's old failures, and a repo that does not require up-to-date heads never
  * reads it as behind, so the next round would spend a repair on it. Main moved past its base: update it. Main did not: rerun.
+ * An update GitHub accepted but never applied stops the run as `land` does: the update step already re-sent it, and
+ * the next round would read the same red head and spend a repair on main's old failures.
  */
-async function refreshRedHead(ctx: WorkflowContext, target: PrTarget, red: { headSha: string; failing: FailingCheck[] }, n: number): Promise<void> {
+async function refreshRedHead(ctx: WorkflowContext, target: PrTarget, red: { headSha: string; failing: FailingCheck[] }, n: number): Promise<LandOutcome | undefined> {
   const update = await step(ctx, `update-branch:${FREEZE_HOLD_STEP}:${n}`, { ...target, expectedHeadSha: red.headSha }, UpdateResultResult);
-  if (update.skipped !== "up-to-date") return;
+  if (update.unmoved) return { kind: "stopped", reason: "update-branch-unmoved", headSha: red.headSha, detail: `update-branch after the thaw: head still ${red.headSha} after ${UPDATE_RESENDS} re-sends` };
+  if (update.skipped !== "up-to-date") return undefined;
   await step(ctx, `rerun:${FREEZE_HOLD_STEP}:${n}`, { ...target, headSha: red.headSha, failing: red.failing }, z.looseObject({}));
+  return undefined;
 }
 
 const pass = (reason: string): Hold => ({ hold: false, reason, episode: null });

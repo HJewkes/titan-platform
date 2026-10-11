@@ -6,6 +6,11 @@ export interface ShellWord {
 
 /** Splits a raw command into simple commands on `&&`, `||`, `;`, `|`, `&` and newlines, honouring quotes and heredocs. */
 export function splitCommands(raw: string): ShellWord[][] {
+  return splitPipelines(raw).flat();
+}
+
+/** The same simple commands, grouped into pipelines: the stages a `|` joins stay together, in order. */
+export function splitPipelines(raw: string): ShellWord[][][] {
   return new Scanner(raw).run();
 }
 
@@ -20,7 +25,8 @@ function operatorAt(src: string, i: number, word: string): string | null {
 }
 
 class Scanner {
-  private readonly segments: ShellWord[][] = [];
+  private readonly pipelines: ShellWord[][][] = [];
+  private stages: ShellWord[][] = [];
   private words: ShellWord[] = [];
   private text = "";
   private quoted = false;
@@ -30,10 +36,11 @@ class Scanner {
 
   constructor(private readonly src: string) {}
 
-  run(): ShellWord[][] {
+  run(): ShellWord[][][] {
     while (this.i < this.src.length) this.step();
     this.endSegment();
-    return this.segments;
+    this.endPipeline();
+    return this.pipelines;
   }
 
   private step(): void {
@@ -111,6 +118,7 @@ class Scanner {
 
   private separator(op: string): void {
     this.endSegment();
+    if (op !== "|") this.endPipeline();
     this.i += op.length;
     if (op === "\n") this.skipHeredocBodies();
   }
@@ -147,7 +155,12 @@ class Scanner {
 
   private endSegment(): void {
     this.endWord();
-    if (this.words.length > 0) this.segments.push(this.words);
+    if (this.words.length > 0) this.stages.push(this.words);
     this.words = [];
+  }
+
+  private endPipeline(): void {
+    if (this.stages.length > 0) this.pipelines.push(this.stages);
+    this.stages = [];
   }
 }

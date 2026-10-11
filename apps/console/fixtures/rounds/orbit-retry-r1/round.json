@@ -1,0 +1,33 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "orbit-retry",
+  "round": 1,
+  "storybookUrl": "http://localhost:6006",
+  "widths": [1280],
+  "variants": [],
+  "recommendations": "shown",
+  "sections": [
+    {
+      "id": "backoff",
+      "title": "Handshake backoff",
+      "deciding": "Whether the retry backoff ships as written.",
+      "changed": "A dropped handshake now retries with capped exponential backoff.",
+      "context": "The routing table is unchanged.",
+      "parts": [{ "id": "backoff-cap", "label": "Backoff cap", "current": "maxDelayMs: 1000", "proposed": "maxDelayMs: 8000", "lang": "ts" }],
+      "questionIds": ["ship-backoff"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "ship-backoff",
+      "kind": "pick-one",
+      "prompt": "Ship the capped backoff?",
+      "options": ["Ship", "Don't ship"],
+      "required": true,
+      "page": "example/orbit-relay#12",
+      "signsOff": "backoff-cap",
+      "merge": { "repo": "example/orbit-relay", "pr": 12, "headSha": "0123456789abcdef0123456789abcdef01234567", "ship": ["Ship"] },
+      "recommendation": { "answer": "Ship", "rationale": "The cap keeps a flapping station from stalling the queue.", "confidence": 0.9, "by": "fixture-agent" }
+    }
+  ]
+}

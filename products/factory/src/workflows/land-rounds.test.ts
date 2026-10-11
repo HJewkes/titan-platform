@@ -84,7 +84,7 @@ describe("land rounds", () => {
 
     expect(run.status).toBe("completed");
     expect(outcomes.map((outcome) => [outcome.kind, outcome.headSha])).toEqual([["ci-failed", H1], ["merged", H2]]);
-    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "ci-wait:r1:1", "merge:r1:0"]);
+    expect(stepIds(host, run.id)).toEqual(["land-rules", "ci-wait:0", "land-rules:r1", "ci-wait:r1:0", "merge-policy:r1:0", "ci-wait:r1:1", "base-check:r1:0", "merge:r1:0"]);
   });
 
   it("asks afresh in a later round instead of replaying the earlier round's approve-merge answer", async () => {

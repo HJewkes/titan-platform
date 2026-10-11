@@ -24,7 +24,15 @@ beforeEach(() => {
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
   vi.stubEnv("HOME", home);
+  installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
+
+/** agent-dispatch refuses a spawn unless `~/.agent-chat/profiles/<profile>.json` says headless. */
+function installHeadlessProfiles(root: string, profiles: string[]): void {
+  const profilesDir = join(root, ".agent-chat", "profiles");
+  mkdirSync(profilesDir, { recursive: true });
+  for (const profile of profiles) writeFileSync(join(profilesDir, `${profile}.json`), JSON.stringify({ surface: "headless" }));
+}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -76,20 +84,20 @@ describe("expandHome", () => {
 });
 
 describe("agentChatReviewerDispatch roster", () => {
-  const row = { name: "rv-demo-7", agentId: "agent-1", state: "exited", presence: "exited", status: "finished", profile: PROFILE, cwd: "/srv/demo", sessionId: "session-1" };
+  const row = { name: "rv-demo-7", agentId: "agent-1", state: "exited", presence: "exited", status: "finished", profile: PROFILE, surface: "headless", cwd: "/srv/demo", sessionId: "session-1", generation: 1 };
 
   const rosterOf = (rows: readonly unknown[]) => {
     writeFileSync(join(dir, "roster.json"), JSON.stringify(rows));
     return dispatchOver(`cat "${dir}/roster.json"\n`).roster();
   };
 
-  it("reads `agent ls --json` and keeps the identity, presence, spawner and transcript of each row, and nothing else", async () => {
-    const full = { ...row, surface: "headless", model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
+  it("reads `agent ls --json` and keeps the identity, presence, spawner, profile and transcript of each row, and nothing else", async () => {
+    const full = { ...row, model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
 
     const roster = await rosterOf([full]);
 
     expect(roster).toStrictEqual([
-      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true },
+      { name: "rv-demo-7", agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: "coord", transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, profile: PROFILE },
     ]);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
   });
@@ -107,11 +115,17 @@ describe("agentChatReviewerDispatch roster", () => {
   it("reports no spawner and no transcript for a row that carries neither", async () => {
     const roster = await rosterOf([row, { ...row, name: "rv-demo-8", spawnedBy: 7, transcriptPath: 7, transcriptExists: "yes" }]);
 
-    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false };
+    const bare = { agentId: "agent-1", sessionId: "session-1", presence: "exited", spawnedBy: null, transcriptPath: null, transcriptExists: false, profile: PROFILE };
     expect(roster).toStrictEqual([
       { name: "rv-demo-7", ...bare },
       { name: "rv-demo-8", ...bare },
     ]);
+  });
+
+  it("reports no profile for a row whose profile is empty", async () => {
+    const [found] = await rosterOf([{ ...row, profile: "" }]);
+
+    expect(found).not.toHaveProperty("profile");
   });
 
   it("reports an unreachable broker as broker-down, so the caller asks again", async () => {

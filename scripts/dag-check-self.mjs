@@ -9,13 +9,12 @@ import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectReport, writeReport } from "./codewatch-report.mjs";
-import { DEFAULT_LOCK_DIR, acquire, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
+import { BUSY_EXIT_CODE, DEFAULT_LOCK_DIR, LockTimeoutError, acquire, lockWaitMs, cleanupOnSignal, release, runCappedWorker, runCleanups } from "./dag-check-lock.mjs";
 
 const SCRIPT = fileURLToPath(import.meta.url);
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const CONFIG = path.join(ROOT, ".codewatch/check.json");
 const ENTRY = path.join(ROOT, "packages/code-graph/dist/index.js");
-const LOCK_TIMEOUT_MS = Number(process.env.DAG_CHECK_LOCK_TIMEOUT_MS ?? 30 * 60 * 1000);
 // The indexer's live heap peaks near 460 MB; uncapped, V8 lets garbage grow the process to about 3 GB.
 const HEAP_CAP_MB = 1024;
 const WORKER_FLAG = "--locked-worker";
@@ -189,7 +188,13 @@ async function supervise() {
   const dbPath = keptDbPath(process.argv.slice(2));
   const cleanups = [];
   cleanupOnSignal(cleanups);
-  await acquire({ timeoutMs: LOCK_TIMEOUT_MS, log: (m) => console.error(m) });
+  try {
+    await acquire({ timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
+  } catch (err) {
+    if (!(err instanceof LockTimeoutError)) throw err;
+    console.error(err.message);
+    return BUSY_EXIT_CODE;
+  }
   cleanups.push(() => release(DEFAULT_LOCK_DIR), clearWorkDir);
   try {
     return await indexUnderLock(cleanups, dbPath);

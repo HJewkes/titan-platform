@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, readFileSync } from "node:fs";
+import { isIP } from "node:net";
+import path from "node:path";
 import { z } from "zod";
 import { createRegistry, defineCommand, type BaseContext, type CommandRegistry } from "@titan-design/registry";
 import type { Surface } from "./surface.js";
@@ -38,4 +42,21 @@ export function createTestRegistry(): CommandRegistry<TestContext> {
   );
 
   return registry;
+}
+
+export interface SelfSignedPair {
+  certFile: string;
+  keyFile: string;
+  /** The PEM certificate, for a client's `ca` option. */
+  cert: string;
+}
+
+/** A one-day self-signed pair in `dir`, covering each DNS name and IP; the key is mode 0600. */
+export function writeSelfSignedCert(dir: string, names: readonly string[], { prefix = "remote", days = 1 } = {}): SelfSignedPair {
+  const certFile = path.join(dir, `${prefix}.crt`);
+  const keyFile = path.join(dir, `${prefix}.key`);
+  const san = names.map((name) => (isIP(name) ? `IP:${name}` : `DNS:${name}`)).join(",");
+  execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes", "-keyout", keyFile, "-out", certFile, "-days", String(days), "-subj", `/CN=${names[0]}`, "-addext", `subjectAltName=${san}`], { stdio: "ignore" });
+  chmodSync(keyFile, 0o600);
+  return { certFile, keyFile, cert: readFileSync(certFile, "utf8") };
 }

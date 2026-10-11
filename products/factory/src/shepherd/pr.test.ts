@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { BrokerUnavailableError, DispatchError } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { openDatabase } from "@titan-design/store-sqlite";
+import type { RoutedStepInput } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
 import { sleep, step } from "../workflows/land.js";
@@ -15,10 +18,12 @@ import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
+import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
+import type { FlakyChecks } from "../workflows/land-flaky.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
@@ -52,20 +57,21 @@ interface World {
   fake: FakeGitHub;
   ref: ShepherdStoreRef;
   store: ShepherdStore;
+  services: NonNullable<ReturnType<typeof factoryRoutesFor>["shepherd"]>;
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)]);
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot, flakyChecks?: Record<string, FlakyChecks>): World {
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)].map((run) => (run.conclusion === "failure" ? outsideActions(run) : run)));
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
-  return { host, fake, ref, store: ref.get() };
+  return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
 }
 
 const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
@@ -77,6 +83,29 @@ function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectiveP
   w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: registered });
   return runId;
 }
+
+function transcriptLocator(): SourceTextLocator {
+  return {
+    source: {
+      sourceId: "transcript-1",
+      harness: "claude-code",
+      format: "jsonl",
+      formatVersion: null,
+      path: "/transcripts/transcript-1.jsonl",
+      namespace: "test",
+      conversation: { harness: "claude-code", namespace: "test", nativeId: "session-rv-1" },
+      provenance: { kind: "native", name: "test" },
+    },
+    evidence: {
+      line: { sourceId: "transcript-1", byteOffset: 0, byteLength: 1, contentHash: "0".repeat(64), lineNumber: 1, nativeOrdinal: null },
+      subrecord: { index: 0, path: [] },
+    },
+    selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
+  };
+}
+
+const CiWaitResult = z.object({ result: z.object({ verdict: z.string() }) });
+const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
 
 function stepResult(host: FactoryHost, runId: string, stepId: string): unknown {
   return Object.values(host.runtime.status(runId)!.stepResults).find((result) => result.stepId === stepId)?.data;
@@ -161,7 +190,7 @@ describe("shepherd-pr", () => {
 
   function lastCiVerdict(w: World, runId: string): string | undefined {
     const reads = stepIds(w.host, runId).filter((stepId) => stepId.startsWith("ci-wait:"));
-    return reads.map((stepId) => (stepResult(w.host, runId, stepId) as { result: { verdict: string } }).result.verdict).at(-1);
+    return reads.map((stepId) => CiWaitResult.parse(stepResult(w.host, runId, stepId)).result.verdict).at(-1);
   }
 
   function landedSteps(w: World, runId: string): string[] {
@@ -436,7 +465,7 @@ describe("a pull request whose base moved into a conflict while approve-merge wa
 
 describe("the route table in a run", () => {
   const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-  const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+  const locator = transcriptLocator();
   const merges = (ctx: Parameters<ShepherdPhases["review"]>[0], request: ReviewRequest) =>
     mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
 
@@ -595,6 +624,63 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  /** A no-progress gate at H2 under an auto policy, superseded by a head the run then sends back `sendBacks` times before a fixer's push gets a MERGE. */
+  async function noProgressSuperseded(sendBacks: number, movedBehind = false) {
+    const late: { w?: World } = {};
+    const moved = fakeSha("moved");
+    const final = fakeSha(`fix-${sendBacks + 1}`);
+    let wakes = 0;
+    const w = autoWorld(
+      async (ctx, request) => {
+        if (movedBehind ? ![H1, H2, moved].includes(request.headSha) : request.headSha === final) return merges(ctx, request);
+        const closerNo = request.headSha === H1 || request.headSha === H2 || (movedBehind && request.headSha === moved);
+        return { kind: "FIX_FIRST", headSha: request.headSha, text: "again", ...(closerNo && { closer: "no" as const }) };
+      },
+      async () => (late.w!.fake.pushHead(1, ++wakes === 1 ? H2 : fakeSha(`fix-${wakes}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const greenRuns = w.fake.onGetPr!;
+    w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), movedBehind && pr.headSha !== moved && (pr.mergeableState = "clean"));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H2} into main? CI is green. Policy shepherd-route/no-progress`);
+    w.fake.pushHead(1, moved);
+    if (movedBehind) Object.assign(w.fake.pr(1), { mergeableState: "behind", behind: true });
+    await supersedeMovedGates(w.host, w.services);
+    return { w, runId, final };
+  }
+
+  it.each([1, 2])("asks the owner again at the head a fixer pushes after %i send-back(s) of a superseded no-progress head, and never merges it", async (sendBacks) => {
+    const { w, runId, final } = await noProgressSuperseded(sendBacks);
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${final} into main? CI is green. Policy shepherd-route/no-progress`);
+    expect(prompt).toContain("review at this head: MERGE");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("asks the owner again at the updated head when the moved head is behind and itself escalated no-progress", async () => {
+    const { w, runId } = await noProgressSuperseded(1, true);
+
+    await vi.waitFor(() => expect(w.host.gates.get(gateId(runId, "approve-merge", 1))?.status).toBe("pending"));
+
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${w.fake.pr(1).headSha} into main? CI is green. Policy shepherd-route/no-progress`);
+    expect(w.fake.effects.updateBranch).toBe(1);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("merges that head once the owner answers the carried gate, which consumes the escalation", async () => {
+    const { w, runId, final } = await noProgressSuperseded(1);
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+
+    w.host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: final }, OWNER);
+
+    await vi.waitFor(() => expect(w.fake.effects.merge).toBe(1));
+  });
+
   it("labels an owner-gate seat's approve-merge as a policy that did not allow the merge", async () => {
     const w = autoWorld(async (ctx, request) => merges(ctx, request));
     const runId = shepherdPr1(w);
@@ -655,6 +741,66 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/conflict: a merge conflict survived one fixer attempt");
     expect(done.status).toBe("completed");
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  describe("names why each review was dispatched", () => {
+    it("names a silent reviewer's fresh review a timeout retry", async () => {
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => (asked.push(request), request.fresh ? merges(ctx, request) : { kind: "none", cause: "timeout" }));
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      await w.host.runtime.wait(runId);
+
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "retry", reason: "timeout" }]);
+    });
+
+    it("names the review of a head pushed during the last review superseded", async () => {
+      const late: { w?: World } = {};
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => {
+        asked.push(request);
+        if (request.headSha === H1) late.w!.fake.pushHead(1, H2);
+        return merges(ctx, request);
+      });
+      late.w = w;
+      const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+      await w.host.runtime.wait(runId);
+
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "superseded" }]);
+    });
+
+    it("names the review of the head a FIX_FIRST's fixer pushed a fix round", async () => {
+      const fake = fakeGitHub();
+      const { phases, reviews } = fakePhases({ review: (request) => (request.headSha === H1 ? { kind: "FIX_FIRST", headSha: H1, text: "rename" } : { kind: "MERGE", headSha: H2, evidence: {} }), wake: pushes(fake, H2) });
+      const w = world(phases, undefined, fake);
+      w.fake.addPr({ headSha: H1 });
+      const runId = shepherdPr1(w);
+
+      await approveAndFinish(w.host, runId, H2);
+
+      expect(reviews.map((review) => review.cause)).toEqual([{ cause: "first" }, { cause: "fix-round" }]);
+    });
+
+    it("names the review of a security PR's update-branch head a kind that does not carry", async () => {
+      const late: { w?: World } = {};
+      const asked: ReviewRequest[] = [];
+      const w = autoWorld(async (ctx, request) => {
+        asked.push(request);
+        if (request.headSha === H1) Object.assign(late.w!.fake.pr(1), { mergeableState: "behind", behind: true });
+        return merges(ctx, request);
+      });
+      late.w = w;
+      const greenRuns = w.fake.onGetPr!;
+      w.fake.onGetPr = (pr, reads) => (greenRuns(pr, reads), pr.headSha !== H1 && (pr.mergeableState = "clean"));
+      const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
+      w.store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "security" });
+
+      await w.host.runtime.wait(runId);
+
+      expect(w.fake.effects.updateBranch).toBe(1);
+      expect(asked.map((request) => request.cause)).toEqual([{ cause: "first" }, { cause: "kind-no-carry", reason: "security" }]);
+    });
   });
 });
 
@@ -773,7 +919,7 @@ describe("the Version Packages PR", () => {
 
   it("defers another PR's merge while the Version Packages PR is ready, then re-reads CI and merges once it lands", async () => {
     const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const locator = transcriptLocator();
     const merges: ShepherdPhases["review"] = (ctx, request) =>
       mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
     const w = world({ review: merges, wake: async () => UNHANDLED });
@@ -901,7 +1047,7 @@ describe("the effective merge policy", () => {
 
   it("under auto, merges on MRG-AU-RV with no hitl gate and stores the evidence record in merge-policy", async () => {
     const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
-    const locator = { sourceId: "transcript-1" } as unknown as SourceTextLocator;
+    const locator = transcriptLocator();
     const phases: ShepherdPhases = {
       wake: async () => UNHANDLED,
       review: async (ctx, request) =>
@@ -942,9 +1088,9 @@ describe("the merge hold", () => {
     const fake = fakeGitHub();
     fake.addPr({ headSha: H1 });
     const merge = factoryRoutesFor({ port: githubPort(fake.wire), store: shepherdStoreRef() }).find((route) => route.match === "merge")!;
-    const input = { prompt: JSON.stringify({ repo: REPO, pr: 1, sha: H1, method: "squash" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "merge:0" };
+    const input: RoutedStepInput = { runId: "run-1", workflowName: "shepherd-pr", iteration: 0, prompt: JSON.stringify({ repo: REPO, pr: 1, sha: H1, method: "squash" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: "merge:0" };
 
-    const outcome = await merge.runner.run(input as never);
+    const outcome = await merge.runner.run(input);
 
     expect(outcome).toMatchObject({ ok: false, error: expect.stringMatching(/not bound/) });
     expect(fake.effects.merge).toBe(0);
@@ -1073,6 +1219,7 @@ describe("a fixer that exits without pushing a new head", () => {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => EXITED });
     const w = world(phases, () => (healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), fake);
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, healsOnRerun && fake.effects.rerunFailedJobs > 0 ? "success" : "failure"), successRun("dag-check", 2)]);
     fake.addPr({ headSha: H1 });
     fake.jobLogs.set(1, `RUN  v3\n FAIL  ${FLAKE_FILE} > lints 7k distinct ids in bounded time\nAssertionError: expected 202.30 to be less than 200`);
     fake.prFiles.set(1, changed.map((path) => ({ path, status: "modified" })));
@@ -1080,24 +1227,24 @@ describe("a fixer that exits without pushing a new head", () => {
     return { w, wakes };
   }
 
-  it("reruns the failed jobs once at the same head when the failing test file is outside the PR's diff, with no second wake", async () => {
+  it("reruns the failed jobs once at the same head before any wake, so a failure that heals wakes no one", async () => {
     const { w, wakes } = redOnFlake(["products/factory/src/shepherd/wake.ts"], true);
     const runId = shepherdPr1(w);
 
     await approve(w.host, runId, H1);
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
+    expect(wakes).toEqual([]);
     expect(stepIds(w.host, runId)).not.toContain("sh-sent-back");
   });
 
-  it("opens the sent-back gate naming the fixer's exit, with no rerun, when the failing test file is in the PR's diff", async () => {
-    const { w } = redOnFlake([FLAKE_FILE], true);
+  it("opens the sent-back gate naming the fixer's exit, with no second rerun, when the failing test file is in the PR's diff", async () => {
+    const { w } = redOnFlake([FLAKE_FILE], false);
     const runId = shepherdPr1(w);
 
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
-    expect(w.fake.effects.rerunFailedJobs).toBe(0);
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt)).toContain("impl-a exited without pushing a new head");
   });
 
@@ -1108,7 +1255,7 @@ describe("a fixer that exits without pushing a new head", () => {
     await gateOpened(w.host, gateId(runId, "sh-sent-back"));
 
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
-    expect(wakes).toHaveLength(2);
+    expect(wakes).toHaveLength(1);
   });
 });
 
@@ -1262,5 +1409,149 @@ describe("the round after a wake's await-new-head", () => {
     expect(wakes.map((wake) => wake.headSha)).toEqual([RUN_HEAD]);
     expect(stepIds(w.host, runId).filter((id) => id === "sh-repair")).toHaveLength(1);
     expect(String(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt)).toContain(BRANCH_HEAD);
+  });
+});
+
+describe("owner override of a MERGE verdict", () => {
+  const mergeAt = (headSha: string) => ({ review: () => ({ kind: "MERGE" as const, headSha, evidence: {} }) });
+  const recordedOverride = (w: World, runId: string) => stepResult(w.host, runId, `sh-override:${H1}`);
+
+  it("records an owner-answer override when the owner abandons at a head the reviewer said MERGE at", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(recordedOverride(w, runId)).toMatchObject({ result: { ownerOverride: { trigger: "owner-answer", head: H1, shepherd: "MERGE", other: "abandon", at: expect.any(Number) } } });
+  });
+
+  it("records nothing when the owner merges after the reviewer's MERGE", async () => {
+    const w = world(fakePhases(mergeAt(H1)).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await approveAndFinish(w.host, runId, H1);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+
+  it("records nothing when the owner abandons without a reviewer MERGE at the head", async () => {
+    const w = world(fakePhases({}).phases);
+    w.fake.addPr({ headSha: H1 });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    w.host.runtime.signal(runId, "approve-merge", { decision: "abandon", headSha: H1 }, OWNER);
+    await w.host.runtime.wait(runId);
+
+    expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-override"))).toEqual([]);
+  });
+});
+
+describe("a failed required check at a pull request head", () => {
+  /** `validate` fails on H1's first run; a rerun posts a new run that passes or fails again. */
+  function flaky(rerunPasses: boolean, dbPath = ":memory:", landFlaky?: Record<string, FlakyChecks>) {
+    const fake = fakeGitHub();
+    const { phases, wakes } = fakePhases({ wake: () => ({ kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head" }) });
+    const w = world(phases, () => "success", fake, undefined, undefined, dbPath, undefined, landFlaky);
+    fake.onGetPr = (pr) => {
+      const attempt = fake.effects.rerunFailedJobs;
+      const conclusion = attempt > 0 && rerunPasses ? "success" : "failure";
+      fake.setRuns(pr.headSha, [successRun("validate", 1 + attempt * 10, undefined, conclusion), successRun("dag-check", 2)]);
+    };
+    fake.addPr({ headSha: H1 });
+    return { w, wakes, fake };
+  }
+
+  it("never wakes the implementer when the rerun passes", async () => {
+    const { w, wakes } = flaky(true);
+    const runId = shepherdPr1(w);
+
+    await approve(w.host, runId, H1);
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toEqual([]);
+  });
+
+  it("wakes the implementer once, naming the second run, when the rerun fails too", async () => {
+    const { w, wakes } = flaky(false);
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBe(1);
+    expect(wakes).toHaveLength(1);
+    expect(JSON.stringify(wakes[0]!.payload)).toContain("/actions/runs/1011/");
+  });
+
+  it("wakes the implementer once the land rerun budget is spent on a head that fails again", async () => {
+    const { w, wakes } = flaky(false, ":memory:", { [REPO.toLowerCase()]: { checks: ["validate"], waitSeconds: 90 } });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBeGreaterThanOrEqual(1);
+    expect(wakes).toHaveLength(1);
+  });
+
+  it("wakes the implementer, with the run not failed, when GitHub answers 403 that the run cannot be retried", async () => {
+    const { w, wakes, fake } = flaky(false);
+    fake.rerunFaults = [{ error: Object.assign(new Error("gh api -i -X POST failed (1): gh: This workflow run cannot be retried (HTTP 403)"), { status: 403 }) }];
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(wakes).toHaveLength(1);
+    expect(stepResult(w.host, runId, "rerun:0")).toMatchObject({ result: { reruns: [{ done: false, skipped: "not-rerunnable" }] } });
+    expect(w.host.runtime.status(runId)?.status).not.toBe("failed");
+  });
+
+  it("reruns a head at most once, even when the run is replayed after a restart", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp2228-")), "factory.db");
+    const first = flaky(false, dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+
+    const second = flaky(false, dbPath);
+    second.fake.effects.rerunFailedJobs = 1;
+    await second.w.host.resume();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(second.fake.effects.rerunFailedJobs).toBe(1);
+  });
+
+  /** Rewrites a stored run to an earlier deploy's record: the steps before the hold check, `withHeldCheck` or not, then the repair spend. */
+  function recordedBeforeRerun(dbPath: string, runId: string, withHeldCheck: boolean): void {
+    const db = openDatabase(dbPath);
+    const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
+    const entries = Object.entries(StoredStepResults.parse(JSON.parse(row.step_results)));
+    const heldAt = entries.findIndex(([, result]) => result.stepId === "sh-held-check");
+    const repair = entries.find(([, result]) => result.stepId === "sh-repair")!;
+    const old = [...entries.slice(0, withHeldCheck ? heldAt + 1 : heldAt), repair];
+    db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(old)), runId);
+    db.close();
+  }
+
+  it.each([
+    ["before the hold check shipped", false],
+    ["with the hold check but before the rerun shipped", true],
+  ])("sends no rerun when replaying a run recorded %s", async (_shape, withHeldCheck) => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp2246-")), "factory.db");
+    const first = flaky(false, dbPath);
+    const runId = shepherdPr1(first.w);
+    await gateOpened(first.w.host, gateId(runId, "sh-sent-back"));
+    first.w.host.close();
+    recordedBeforeRerun(dbPath, runId, withHeldCheck);
+
+    const second = flaky(false, dbPath);
+    await second.w.host.resume();
+    await vi.waitFor(() => expect(second.wakes).toHaveLength(1));
+
+    expect(second.fake.effects.rerunFailedJobs).toBe(0);
+    expect(stepIds(second.w.host, runId).filter((id) => id.startsWith("rerun:"))).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@ Tier 0 of the titan-platform DAG. May import only packages in the same tier or
 below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI. Its one titan
 dependency is `@titan-design/authority`, also tier 0, which owns the decision table.
 
-Status: private and unpublished while TP-403 lands in slices. `classify` covers all five
+Status: public on npm. The owner publishes the first version by hand. `classify` covers all five
 families, secret, config, merge, release and egress, so it turns an event into the guarded
 actions it would take (a merge, a release, a credential read, a permission-config edit, data
 sent off the host allowlist). `decide`, the PreToolUse hook and the
@@ -133,8 +133,9 @@ An agent never runs these steps. After the package is published:
 2. Run `node ~/.claude/hooks/authority-guard/node_modules/@titan-design/tool-guard/dist/bin.js print-settings`
    and paste its output as a second element of `hooks.PreToolUse` in `~/.claude/settings.json`,
    after any existing entry.
-3. Check that every other profile's `settings.json` is a symlink to it (`ls -l`), or add the
-   same entry there.
+3. Check each other profile's `settings.json` with `ls -l`. Profile files can be separate
+   regular files rather than symlinks; add the same entry to every one that is not a symlink,
+   and find whatever syncs them first so a later sync neither drops nor duplicates it.
 4. From your own terminal, pipe a Read event for `$HOME/.npmrc` into `<bin> hook`; expect a
    deny and one log line.
 

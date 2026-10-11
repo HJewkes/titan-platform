@@ -48,6 +48,43 @@ describe("rate budget", () => {
     expect(slept).toEqual([100_000]);
   });
 
+  it("paces a GraphQL call against GraphQL headers, apart from core", async () => {
+    const { budget, slept } = clockedBudget();
+    budget.observe(rate(10, "graphql"));
+
+    await budget.acquire("core");
+    await budget.acquire("graphql");
+
+    expect(slept).toEqual([Math.ceil(100_000 / 10)]);
+    expect(budget.remaining).toBeNull();
+  });
+
+  it("slows listReviewComments when the GraphQL answer reports low remaining", async () => {
+    const { budget, slept } = clockedBudget();
+    const head = `HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 20\r\nX-Ratelimit-Reset: ${NOW / 1000 + 100}\r\nX-Ratelimit-Resource: graphql\r\n\r\n`;
+    const page = { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] };
+    const body = JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: page } } } });
+    const exec: GhExec = async () => ({ code: 0, stdout: `${head}${body}`, stderr: "" });
+    const port = ghCliWire(exec, { budget });
+
+    await port.listReviewComments("o/r", 7);
+    await port.listReviewComments("o/r", 7);
+
+    expect(slept).toEqual([Math.ceil(100_000 / 20)]);
+  });
+
+  it("gives a GraphQL call a timeout and lets its rejection through", async () => {
+    const { budget } = clockedBudget();
+    const timeouts: (number | undefined)[] = [];
+    const exec: GhExec = async (_args, _input, options) => {
+      timeouts.push(options?.timeoutMs);
+      throw new Error("gh api -i timed out after 30000 ms");
+    };
+
+    await expect(ghCliWire(exec, { budget }).listReviewComments("o/r", 7)).rejects.toThrow(/timed out/);
+    expect(timeouts).toEqual([30_000]);
+  });
+
   it("ignores rate headers from another resource", async () => {
     const { budget, slept } = clockedBudget();
     budget.observe(rate(1, "search"));

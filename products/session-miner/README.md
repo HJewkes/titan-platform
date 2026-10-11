@@ -24,6 +24,7 @@ titan-miner playbook status
 titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
+titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -88,6 +89,8 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 | Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
+| Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
+| Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship | none |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -123,6 +126,30 @@ A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row,
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
 
+Q9 reads each Bash call in the window back from its transcript, since the graph keeps no command
+text; a call whose `command_heads` signal names none of our CLIs is never read. It keeps every
+pipeline whose head is `active-work`, `agent-chat`, `titan-factory`, `basement-suite`, `gh`, or
+`sqlite3` on one of our databases (also behind `ssh <host>`), and groups them by head and by the pipe
+tail normalised to programs and flag names, such as `| grep -E | head` or `| python3 -c json`.
+Each pattern's `patternId` is `pf-` plus 12 hex characters of the tail's SHA-256, so it is stable
+across runs; `postFilters` and `patternId` are exported for later questions. A pattern is
+EXISTS-UNUSED when `<head> --help` names a flag that does a stage's job (`--limit` for `head`,
+`--jq` or `--fields` for `jq`, `--prefix` or `--state` for `grep`, and so on) that not every call
+already passes, NEW when it names none, and UNKNOWN when the help cannot be run. Output is the tool
+result characters of the calls. It refuses `--role`. Q9 is registered from `TRANSCRIPT_QUESTIONS`,
+and its tests inject the transcript reader and the help runner.
+
+Q10 tracks the flags and verbs listed in `src/insights/adoption-registry.ts`. Each entry names the
+task and merged PR, the merge time, the old head with the Q9 patterns the new form replaces, and the
+new head with the flags of which any one marks the new form (none when the verb itself is new). It
+reads Bash calls back like Q9, from `--since` or else the earliest ship, and counts a pipeline as the
+new form when it passes one of those flags, piped on or not, and as the old one when its normalised
+tail is one of the patterns. Uses before an entry's ship are ignored. Rows give weekly new/old counts
+from ship to `--until` (or now), and the old patterns with their Q9 `patternId`. Two weeks after
+ship an entry is flagged `unadopted` while the old patterns outnumber the new form in the uses since
+then, and `unused` while nobody ran the new form; before that it is `watching`. It refuses `--role`.
+To track a new opportunity, add an entry with the patterns Q9 reported for it.
+
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a
 synthetic-fixture test. Then add one `defineInsight({...})` to
@@ -156,12 +183,54 @@ index stays valid with the playbook ignored, and a test asserts the row counts d
 
 A dashboard (waits on TP-10's UI split), vector search over the spans (the `embed`
 dependency is wired but no vector index is built yet), per-tool partitions for Drain (the
-fact table does not carry tool names for results yet), and a scheduler for periodic
-refreshes (the daemon serves; a supervisor drives `refresh`).
+fact table does not carry tool names for results yet).
 
 The playbook has no semantic recall yet: `memory` supports a vector index, but the miner
 does not build one, so recall is keyword-only.
 
+
+## Scheduled refresh (TP-2073)
+
+`titan-miner graph-refresh -- <command...>` is one scheduled pass over a graph. It is built
+for a graph another owner writes, such as active-work's, so it indexes nothing itself: it
+runs that owner's incremental refresh and then proves the file is whole.
+
+1. It takes `--lock <file>` (default `<state>/graph-refresh.lock`) without waiting. If
+   another live run holds it, it logs the holder's pid and exits 75. A lock whose pid is
+   gone was left by a killed run and is taken over.
+2. It runs the command with inherited stdio. The command must write the graph only inside
+   SQLite transactions, which both active-work's and the miner's own `refresh` do, so a pass
+   killed mid-write rolls back and the rows from before it stay.
+3. It opens the graph read-only and runs `PRAGMA quick_check`, then logs the session count
+   and the newest session's start time. The open is plain SQLite, so an owner's graph at an
+   older session-graph migration is still checked.
+
+Every failure is one stderr line starting `graph-refresh: FAILED:`, and the exit code is 70.
+Stdout carries one JSON line: `outcome` (`ok`, `locked`, `refresh-failed` or `corrupt`),
+`health` and `exitCode`.
+
+`ops/systemd/session-miner-refresh.{service,timer}` run it hourly on a Linux host over
+active-work's graph, with `active-work miner refresh` as the command. That command walks
+every Claude config dir (`~/.claude/projects` and `~/.claude-profiles/*/projects`) and
+skips a transcript whose watermark is current; it shares active-work's own refresh lock with
+the active-work daemon, so the two never write at once. The units assume this checkout at
+`~/projects/titan-platform`, built, and `active-work` in `~/.local/bin`. The service reads
+`ACTIVE_ROOT` and `TITAN_MINER_GRAPH` from `~/.config/titan-session-miner/refresh.env`, which
+it requires, so a host without that file fails instead of checking the wrong graph. To install
+(an owner step), with `<root>` for the active-work root:
+
+```sh
+pnpm -C ~/projects/titan-platform --filter @titan-design/session-miner... build
+mkdir -p ~/.config/titan-session-miner
+printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\n' > ~/.config/titan-session-miner/refresh.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-refresh.service ~/projects/titan-platform/ops/systemd/session-miner-refresh.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-refresh.timer
+```
+
+Then `systemctl --user start session-miner-refresh.service` runs a pass at once,
+`journalctl --user -u session-miner-refresh` shows its log, and a failed pass leaves the
+unit in `systemctl --user --failed`.
 
 ## Codex sessions
 

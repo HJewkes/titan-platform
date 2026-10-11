@@ -1,5 +1,6 @@
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
+import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
 import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
@@ -91,8 +92,32 @@ describe("classifyPr", () => {
     expect(classifyPr(over)).toEqual({ class: "g10", touches: ["large"] });
   });
 
+  it("leaves generated registry files out of the changed-line count", () => {
+    const changedFiles = [file("packages/a/src/a.ts", 20, 1), file("CAPABILITIES.md", 200, 80), file("site/reference/a.md", 60, 0), file("site/.vitepress/reference-sidebar.json", 20, 0), file("site/guides/capabilities.md", 10, 0), file(".codewatch/check.json", 10, 0)];
+    expect(changedLineCount(changedFiles)).toBe(21);
+    expect(classifyPr({ ...facts([]), changedFiles }).touches).not.toContain("large");
+  });
+
+  it("counts no lines when any file lacks them, generated or not", () => {
+    const bare = partialFake<ChangedFile>({ path: "docs/a.md" });
+    const bareGenerated = partialFake<ChangedFile>({ path: "CAPABILITIES.md" });
+    expect(changedLineCount([file("docs/b.md"), bare])).toBeUndefined();
+    expect(changedLineCount([file("docs/b.md"), bareGenerated])).toBeUndefined();
+  });
+
+  it("counts every line once generated files alone pass the large limit", () => {
+    const changedFiles = [file("packages/a/src/a.ts", 10, 0), file("site/reference/a.md", 5000, 0)];
+    expect(changedLineCount(changedFiles)).toBe(5010);
+    expect(classifyPr({ ...facts([]), changedFiles }).touches).toContain("large");
+  });
+
+  it("counts a rename into a generated path against the path it left", () => {
+    const renamed = { ...file("site/reference/a.md", 0, 450), previousPath: "packages/a/src/a.ts" };
+    expect(changedLineCount([renamed])).toBe(450);
+  });
+
   it("falls back to file count when line counts are absent", () => {
-    const bare = (n: number) => Array.from({ length: n }, (_, i) => ({ path: `docs/${i}.md` }) as unknown as ChangedFile);
+    const bare = (n: number) => Array.from({ length: n }, (_, i) => partialFake<ChangedFile>({ path: `docs/${i}.md` }));
     expect(classifyPr({ ...facts([]), changedFiles: bare(12) }).touches).toEqual([]);
     expect(classifyPr({ ...facts([]), changedFiles: bare(13) }).touches).toEqual(["large"]);
   });

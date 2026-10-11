@@ -1,7 +1,8 @@
 # @titan-design/egress-scan
 
 Finds text that must not leave the machine for a public repo: absolute home paths, paths
-into the active-work data directory, and terms from a private list kept outside any repo.
+into the active-work data directory, terms from a private list kept outside any repo, and
+credential tokens.
 A finding names its location and rule id and nothing else, so a report is safe to print
 in public CI logs.
 
@@ -12,7 +13,7 @@ bin does that work for a pre-push hook and a CI job. Tracked by TP-405.
 ## Command line
 
 ```sh
-titan-egress-scan pre-push <remote>     # the commits a push sends; reads git's pre-push stdin
+titan-egress-scan pre-push <remote> [<url>]  # the commits a push sends; reads git's pre-push stdin
 titan-egress-scan range <base> <head>   # every commit in base..head, for CI
 titan-egress-scan tree                  # every tracked file at HEAD, once per repo at rollout
 titan-egress-scan text [--file <path>]  # free text from stdin or a file: PR title, body, branch name
@@ -22,15 +23,22 @@ titan-egress-scan install-hook          # write the pre-push hook
 Exit codes: 0 clean, 1 findings, 2 usage or configuration error. Findings go to stdout,
 notices and errors to stderr.
 
-- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch,
+- **Ranges.** `pre-push` skips ref deletions, scans `remote..local` for an existing branch minus the commits the remote itself advertises (`git ls-remote` of the push URL git passes as the second argument; local tracking refs are never trusted, and if that URL is missing or does not answer within 20 seconds the plain `remote..local` is scanned),
   and for a new branch scans only the commits no ref of that remote has. `range` with an
   all-zero base scans the head commit alone. A merge commit is diffed against each parent
   in turn (`--diff-merges=separate`), because git's combined diff ignores `--text`; a path
-  both diffs name is reported once. The message is read with `--encoding=UTF-8`, so
+  both diffs name is reported once. In `pre-push`, with the push URL listed, a two-parent
+  merge is instead diffed against a re-merge of its parents (`--diff-merges=remerge`, which
+  honors `--text`), so only what the resolution added is scanned, not the other side's
+  already-pushed commits; each parent's own commits are scanned as commits. When anything a
+  parent reaches is neither advertised by the push URL nor in the scanned range (a commit only
+  a local tracking ref holds), or the merge has more than two parents, the per-parent diffs apply. `remerge` needs git 2.36 or newer; on an older git the
+  `git show` fails, so the scan exits 2 and every push of a merge commit is blocked.
+  The message is read with `--encoding=UTF-8`, so
   `i18n.logOutputEncoding` cannot re-encode it past the rules.
 - **Text.** `text` scans free text (a PR title, body or branch name) with the generic rules and
   the private term list, for the CC-269 and CC-270 callers. It reads stdin, or `--file <path>`
-  (never both); an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>]`, never
+  (never both); an unreadable file exits 2. A finding is `<line>:<col> <rule>[ #<term>][ <kind>]`, never
   the matched text; `\r\n` counts as one line break, and a column counts UTF-16 units from 1.
   Input over the 128 MiB limit exits 2. It needs no git repo and applies no allow file, since
   prose has no path to allow. Exit codes match `range` and `pre-push`.
@@ -108,6 +116,14 @@ only the range endpoints: a leak added and then removed is still in the pushed h
 - `private-term`: one per line of the term list. `#` comments and blank lines are skipped.
   A plain term matches case-insensitively on word boundaries; a `re:` line is a regex
   compiled with `iu`. A term that matches the empty string is rejected. A finding carries `termIndex`, the term's line in the file.
+- `credential-token`: a credential shape, and the finding's `kind` names which: `github`
+  (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`), `anthropic` (`sk-ant-`),
+  `aws-access-key` (`AKIA`/`ASIA` plus 16), `slack` (`xox[abprs]-`) and `private-key` (a PEM
+  private-key header). Each shape checks its length and charset and must stand alone, so a bare
+  prefix, a truncated token, a git sha or a base64 run does not match. `/`, `_`, a `\n`-style
+  escape and a `%XX` escape count as separators, so a token in a URL path, a variable name or
+  a JSON log line still matches. Each kind is reported
+  once per line. Build test fixtures at runtime (`"ghp_" + "A".repeat(36)`).
 
 ## Allow file
 
@@ -116,7 +132,7 @@ such as `TP-405`, and the glob must name at least one literal path segment.
 Braces expand (`docs/{a,b}.md`), and every alternative must name a literal segment. A glob
 that expands past 256 alternatives is malformed. A backslash is not an escape; it matches a
 literal backslash.
-`private-term` is never allowable. `parseAllow` throws `AllowFileError`
+`private-term` and `credential-token` are never allowable. `parseAllow` throws `AllowFileError`
 on any malformed line; a caller must fail the scan on it, never fall back to an empty list.
 
 ## Safety

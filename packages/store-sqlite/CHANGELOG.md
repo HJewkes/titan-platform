@@ -1,5 +1,11 @@
 # @titan-design/store-sqlite
 
+## 0.4.0
+
+### Minor Changes
+
+- 1f7de27: `WatermarkTable.advance`, `rewind` and `markStatus` now return `boolean`: `true` when a row matched, `false` (with nothing written) for a source key that was never `ensure`d. They still do not throw. The docs now describe the entity table as current state with soft expiry rather than interval bi-temporal, and document `SpanFtsTables.search`'s `scope` argument and `SpanScope`.
+
 ## 0.3.3
 
 ### Patch Changes

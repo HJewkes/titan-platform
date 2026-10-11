@@ -36,8 +36,10 @@ const BY_ITEM_KIND: Record<string, Pick<OwnerItem, "kind" | "lens">> = {
   "ready-to-merge": { kind: "approve", lens: "blocking-merge" },
 };
 
+/** A one-way row stays an approval whatever its meta says, so nothing reshapes it into a decision the decider could take. */
 function shapeOf(row: QueueRow): Shape {
   const base = BY_BROKER_KIND[row.kind] ?? FYI;
+  if (base.door === "one-way") return base;
   const itemKind = row.meta["kind"];
   return itemKind && BY_ITEM_KIND[itemKind] ? { ...base, ...BY_ITEM_KIND[itemKind] } : base;
 }

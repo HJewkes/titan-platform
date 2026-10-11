@@ -1,5 +1,6 @@
 import type { GateRecord, GateStore } from "@titan-design/hitl";
 import type { ClosedStatus, OwnerItem, QueueSource, ResolveResult } from "@titan-design/owner-queue";
+import { resolveCommand } from "../registry.js";
 import { pollTail } from "./poll-tail.js";
 import { summaryOf } from "./queue-read-error.js";
 
@@ -19,6 +20,8 @@ const CLOSED_AS: Record<GateRecord["status"], ClosedStatus> = {
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; a bare id names no run. */
 const runOf = (gateId: string): string | undefined => (gateId.includes("/") ? gateId.slice(0, gateId.indexOf("/")) : undefined);
+
+const stepOf = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
 
 /** A single question becomes the item's options; several stay in the context, where the gate's schema governs them. */
 function choicesOf(gate: GateRecord): Pick<OwnerItem, "options" | "recommended"> {
@@ -47,6 +50,7 @@ function gateToOwnerItem(gate: GateRecord): OwnerItem {
     door: "one-way",
     summary: gate.summary ?? summaryOf(gate.prompt, `gate ${gate.id}`),
     context: contextOf(gate),
+    ...(runId && { command: resolveCommand(runId, stepOf(gate.id)) }),
     ...choicesOf(gate),
     ...(gate.evidenceRef && { evidenceRef: gate.evidenceRef }),
     keys: [`gate:${gate.id}`, ...(runId ? [`run:${runId}`] : [])],

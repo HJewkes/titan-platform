@@ -83,7 +83,7 @@ async function waitingForHead(host: FactoryHost, runId: string): Promise<void> {
 function seen({ host, store }: World, runId: string) {
   const run = host.runtime.status(runId)!;
   const wakeStep = Object.values(run.stepResults).find((result) => result.stepId.startsWith(WAKE_STEP))!;
-  const entry = timelineEntries(run, []).find((item) => item.stepId === wakeStep.stepId);
+  const entry = timelineEntries(run, []).find((item) => "stepId" in item && item.stepId === wakeStep.stepId);
   return { record: (wakeStep.data as { result: unknown }).result, entry, nextAction: watchRow({ registration: store.get().byRun(runId)!, run }).nextAction };
 }
 
@@ -117,9 +117,9 @@ describe("what the watch view shows after a wake no fixer took", () => {
     expect(nextAction).not.toContain("the seat was told");
   });
 
-  it("records no hold for a ci-red wake, and shows none once the owner awaits a fix", async () => {
+  it("records no hold for a ci-red wake, and shows none once the owner awaits a fix after the seat notice failed", async () => {
     const fake = fakeGitHub();
-    const w = world(fake, "failure", seat(false));
+    const w = world(fake, "failure", seat(true));
     fake.addPr({ headSha: H1 });
     const runId = start(w);
     await gateOpened(w.host, gateId(runId, "ci-failed"));

@@ -20,6 +20,8 @@ export interface CiSnapshot {
   verdict: CiVerdict;
   headSha: string;
   mergeableState: string;
+  /** The base the read saw; absent on a ci-wait recorded before the field. */
+  baseRef?: string;
   mergeSha?: string | null;
   failing?: FailingCheck[];
   waitingOn?: string[];
@@ -87,7 +89,7 @@ export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts
 async function readCiFrom(port: GitHubPort, input: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
   const reads = judgedReads(port, input, snapshotReads, options);
   const pr = await reads.getPr(input.repo, input.pr);
-  const base = { headSha: pr.headSha, mergeableState: pr.mergeableState };
+  const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
   if (pr.merged) return { ...base, verdict: "merged", mergeSha: pr.mergeSha };
   if (pr.state === "closed") return { ...base, verdict: "closed" };
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => findingsAt(input, pr.headSha, all).every((finding) => finding.kind === "failed"));
@@ -108,7 +110,7 @@ function awaitsSecondRead(input: CiInput, options: CiReadOptions, headSha: strin
 }
 
 /** An update restarts CI, so a behind head is updated only once its own checks settled: one base move costs one run, not one per move. */
-function behindVerdict(base: Pick<CiSnapshot, "headSha" | "mergeableState">, findings: CheckFinding[], draft: boolean, missingSettled: boolean): CiSnapshot {
+function behindVerdict(base: Pick<CiSnapshot, "headSha" | "mergeableState" | "baseRef">, findings: CheckFinding[], draft: boolean, missingSettled: boolean): CiSnapshot {
   const running = findings.filter((finding) => finding.kind !== "failed" && !(missingSettled && finding.kind === "missing"));
   if (running.length > 0) return { ...base, verdict: "pending", waitingOn: running.map(findingName), ...backlogFlag(running) };
   return { ...base, verdict: "behind", ...(findings.length === 0 && !draft && { checksGreen: true }) };

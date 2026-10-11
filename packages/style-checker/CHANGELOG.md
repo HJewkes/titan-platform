@@ -1,5 +1,15 @@
 # @titan-design/style-checker
 
+## 0.4.4
+
+### Patch Changes
+
+- 36746f4: Name the ESLint and ruff temp directories after style-checker instead of codewatch, and share one excerpt helper (with a named 500-character limit) across failure messages and the unified formatter.
+- Updated dependencies [b2b440c]
+- Updated dependencies [5b07edd]
+  - @titan-design/style-analyzer@0.1.5
+  - @titan-design/style-profile@0.4.1
+
 ## 0.4.3
 
 ### Patch Changes

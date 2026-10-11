@@ -9,8 +9,8 @@ import {
   type BrokerEvent,
   type SeatPrefix,
 } from "@titan-design/chat-protocol/agents";
-import { defineCommand } from "@titan-design/registry";
 import { BROKER_HISTORY_LIMIT, MESSAGE_KINDS, readMessageRows, type BrokerReader, type BrokerSnapshot, type EventRow, type MessageQuery } from "./broker.js";
+import { readCommand } from "./owner-guard.js";
 
 export interface AgentsSource {
   broker: BrokerReader;
@@ -49,12 +49,14 @@ const agentMessages = z.object({
 });
 type AgentMessages = z.infer<typeof agentMessages>;
 
-const messagesArgs = z.object({
-  agent: z.string().min(1).describe("The agent-chat agent name whose sent and received messages to list"),
-  peer: z.string().min(1).optional().describe("Only messages between agent and this peer"),
-  before: z.number().int().positive().optional().describe("Id cursor: only messages older than this events.db row, from nextCursor"),
-  limit: z.number().int().positive().max(BROKER_HISTORY_LIMIT).default(DEFAULT_PAGE),
-});
+const messagesArgs = z
+  .object({
+    agent: z.string().min(1).optional().describe("The agent-chat agent name whose sent and received messages to list; every agent's when absent"),
+    peer: z.string().min(1).optional().describe("Only messages between agent and this peer"),
+    before: z.number().int().positive().optional().describe("Id cursor: only messages older than this events.db row, from nextCursor"),
+    limit: z.number().int().positive().max(BROKER_HISTORY_LIMIT).default(DEFAULT_PAGE),
+  })
+  .refine((args) => args.peer === undefined || args.agent !== undefined, { message: "peer needs agent", path: ["peer"] });
 
 /** Queue kinds a person answers, in the order the queue shows them. */
 const QUEUE_ORDER = ["question", "endorse_request", "approval_request", "message", "notice"];
@@ -87,14 +89,14 @@ export function agentsCommands(source: AgentsSource) {
   const roster = (snapshot: BrokerSnapshot, at: number) =>
     foldRoster({ ...snapshot, historyLimit: BROKER_HISTORY_LIMIT, now: at, seatPrefixes: source.seatPrefixes });
   return {
-    "agents.roster": defineCommand({
+    "agents.roster": readCommand({
       name: "agents.roster",
       description: "Every agent the agent-chat broker knows: live presence, then exited and retired agents from its history",
       args: z.object({}),
       result: agentRosterSnapshot,
       run: async () => roster(await source.broker.read(), now()),
     }),
-    "agents.graph": defineCommand({
+    "agents.graph": readCommand({
       name: "agents.graph",
       description: "The agent spawn tree with spawned-by and message edges, counted over the broker's history window",
       args: z.object({}),
@@ -111,14 +113,14 @@ export function agentsCommands(source: AgentsSource) {
 
 function conversationCommands(source: AgentsSource, now: () => number) {
   return {
-    "agents.messages": defineCommand({
+    "agents.messages": readCommand({
       name: "agents.messages",
-      description: "An agent's messages, or a pair's, newest first and paged by id from events.db; the broker's history window when events.db will not open",
+      description: "Every agent's messages, one agent's, or a pair's, newest first and paged by id from events.db; the broker's history window when events.db will not open",
       args: messagesArgs,
       result: agentMessages,
       run: (query) => readMessages(source, query),
     }),
-    "agents.queue": defineCommand({
+    "agents.queue": readCommand({
       name: "agents.queue",
       description: "Open items waiting on the human, questions first, with asker and age; broker-generated notices are counted, not listed",
       args: z.object({ include_system: z.boolean().optional().describe("List the broker's own exit and lifecycle notices too") }),
@@ -146,6 +148,7 @@ function inConversation({ agent, peer }: MessageQuery): (event: BrokerEvent) => 
   const kinds: readonly string[] = MESSAGE_KINDS;
   return (event) => {
     const to = event.meta["target"];
+    if (agent === undefined) return kinds.includes(event.kind);
     const party = peer === undefined ? event.from === agent || to === agent : (event.from === agent && to === peer) || (event.from === peer && to === agent);
     return party && kinds.includes(event.kind);
   };

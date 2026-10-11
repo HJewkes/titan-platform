@@ -2,8 +2,12 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
+import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
+import { OWNER_GATE_REASONS } from "./policy.js";
+import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
@@ -36,6 +40,16 @@ export const WatchRowSchema = z.object({
   stalled: z.object({ reason: z.string() }).nullable(),
   /** How the run ended: `merged`, or `stopped` with the land reason; null while it runs and for runs older than the record. */
   outcome: z.object({ kind: z.enum(["merged", "stopped"]), reason: z.string().nullable() }).nullable(),
+  /** The stage a live run is in and the whole minutes it has spent there; absent for a finished run and in rows older than the field. */
+  stage: z.object({ name: z.enum(STAGES), minutes: z.number().int() }).nullable().optional(),
+  /** Why an owner-gate run asks the owner; absent for other policies and for runs registered before the field. */
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
+  /** Whole minutes from the run's registration to its end, or to now while it runs. */
+  totalMinutes: z.number().int().optional(),
+  /** The registration's implementer; null when it names none. Absent in rows older than the field. */
+  implementer: z.string().nullable().optional(),
+  /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
+  reviewer: z.string().nullable().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -79,6 +93,14 @@ export const TimelineEntrySchema = z.discriminatedUnion("kind", [
     createdAt: z.string(),
     resolvedAt: z.string().nullable(),
     resolvedBy: z.string().nullable(),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    event: z.enum(EVENT_KINDS),
+    reason: z.string().nullable(),
+    actor: z.string().nullable(),
+    at: z.string(),
+    headSha: z.string().nullable(),
   }),
 ]);
 export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
@@ -154,6 +176,15 @@ function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | 
   return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
 
+const BaseCheckData = z.object({ result: z.object({ allowed: z.literal(false), reason: z.string() }) });
+
+/** While an approved head waits for its PR to be retargeted, the refused base is the next action. */
+function baseWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (run.currentStep === null || !stepIdMatches("base-wait", run.currentStep)) return undefined;
+  const check = BaseCheckData.safeParse(steps.filter((result) => stepIdMatches("base-check", result.stepId)).at(-1)?.data);
+  return check.success ? check.data.result.reason : undefined;
+}
+
 const FreezeHoldData = z.object({ result: z.object({ hold: z.literal(true), reason: z.string() }) });
 
 function lastIndexWhere<T>(items: readonly T[], match: (item: T) => boolean): number {
@@ -206,15 +237,6 @@ export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
 }
 
-/** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
-export const MAX_NOT_STARTED_REVIEWS = 3;
-
-/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
-function notStartedStreak(steps: readonly StepResult[]): number {
-  const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
-  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
-}
-
 const MINUTE = 60_000;
 
 /** Longest a run may sit in a phase before it reads as stalled; phases that wait on a person or an agent by design have no limit. */
@@ -237,6 +259,14 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phas
   const streak = notStartedStreak(steps);
   if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
   return holding ? undefined : overstayReason(phase, since, now);
+}
+
+/** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
+function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, holding: boolean, now: Date): WatchRow["stage"] {
+  if (TERMINAL_PHASE[run.status]) return null;
+  const open = stageSpans(steps, run.startedAt, { phase, at: now.getTime() }).find((span) => span.open);
+  if (open === undefined) return null;
+  return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
@@ -262,26 +292,32 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     branch: registration.branch ?? run.params.branch ?? "",
     runId: run.id,
     task: registration.task,
+    ...(registration.policy.ownerGateReason !== undefined && { ownerGateReason: registration.policy.ownerGateReason }),
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
     pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
+    stage: liveStage(run, steps, phase, holding, now),
+    totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    implementer: registration.implementer || null,
+    reviewer: reviewerName(steps),
   };
 }
 
-/** Step entries in completion order, a running step last, and every gate the run opened at its creation time. */
-export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[]): TimelineEntry[] {
+/** Step entries in completion order, a running step last, every gate the run opened at its creation time, and every hold, release, freeze and thaw at its time. */
+export function timelineEntries(run: WorkflowRun, gates: readonly GateRecord[], events: readonly ShepherdEvent[] = []): TimelineEntry[] {
   const done = completedSteps(run).map((result) => ({ at: result.completedAt, entry: stepEntry(result) }));
   const running = Object.values(run.activeSteps).map((active) => ({
     at: active.startedAt,
     entry: { kind: "step", stepId: active.stepId, iteration: 0, startedAt: active.startedAt, completedAt: null, signal: null, status: "running" } satisfies TimelineEntry,
   }));
   const opened = gates.map((gate) => ({ at: gate.createdAt, entry: gateEntry(gate) }));
-  return [...done, ...running, ...opened].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
+  const changes = events.map((event) => ({ at: event.at, entry: eventEntry(event) }));
+  return [...done, ...running, ...opened, ...changes].sort((a, b) => a.at.localeCompare(b.at)).map(({ entry }) => entry);
 }
 
 function stepEntry(result: StepResult): TimelineEntry {
@@ -340,6 +376,10 @@ function wakeEntry(stepId: string, payload: unknown): TimelineEntry | undefined 
   const unhandled = { kind: "wake", stepId, request: null, outcome: "unhandled", agent: null, mode: null, sessionId: null } as const;
   if (parsed.data.kind === "unhandled") return parsed.data.held === undefined || parsed.data.reason === undefined ? unhandled : { ...unhandled, held: parsed.data.reason };
   return { ...unhandled, outcome: "woken", agent: parsed.data.agent, mode: parsed.data.mode ?? null, sessionId: parsed.data.sessionId ?? null };
+}
+
+function eventEntry({ kind, reason, actor, at, headSha }: ShepherdEvent): TimelineEntry {
+  return { kind: "event", event: kind, reason, actor, at, headSha };
 }
 
 function gateEntry(gate: GateRecord): TimelineEntry {

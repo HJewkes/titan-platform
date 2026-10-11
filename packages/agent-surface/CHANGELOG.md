@@ -1,5 +1,11 @@
 # @titan-design/agent-surface
 
+## 0.3.1
+
+### Patch Changes
+
+- bedc96f: State the launch check's rule for a pane whose tty stays empty: it counts as absent once the deadline passes. The header comment and the reference page's Gotchas now say so, and a regression test pins it. No behaviour change.
+
 ## 0.3.0
 
 ### Minor Changes

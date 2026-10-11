@@ -56,6 +56,8 @@ const MESSAGE_FLAGS = ["--no-patch", "--encoding=UTF-8", "--format=%an%x00%ae%x0
 const IDENT_FIELDS = ["author.name", "author.email", "committer.name", "committer.email"];
 // A combined diff ignores `--text`, so a merge is diffed against each parent in turn instead.
 const COMMIT_PATCH_FLAGS = ["--diff-merges=separate", "--format=", ...PATCH_FLAGS];
+// A merge's diff against a fresh re-merge of its parents, which honors `--text` unlike a combined diff.
+const REMERGE_PATCH_FLAGS = ["--diff-merges=remerge", "--format=", ...PATCH_FLAGS];
 const MAX_BUFFER = 1024 * 1024 * 1024;
 // Every revision argument follows this, so a value that starts with a dash cannot become an option.
 const END_OF_OPTIONS = "--end-of-options";
@@ -143,17 +145,72 @@ function hasCommit(cwd: string, sha: string): boolean {
   return spawnSync("git", ["cat-file", "-e", END_OF_OPTIONS, `${sha}^{commit}`], { cwd }).status === 0;
 }
 
+/** How the remote is listed: the URL git pushes to (the pre-push hook's second argument), and test seams. */
+interface ListOptions {
+  readonly pushUrl?: string | undefined;
+  /** Tips already listed from the push URL, so a push lists the remote once. */
+  readonly tips?: readonly string[] | undefined;
+  readonly timeoutMs?: number;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
+/** A slow remote must not hang a push, so listing it is cut off after this long. */
+const LIST_TIMEOUT_MS = 20_000;
+
 /** The commits one pushed ref update sends that the remote lacks, oldest first. */
-export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate): string[] {
+export function commitsForUpdate(cwd: string, remote: string, update: PushUpdate, list: ListOptions = {}): string[] {
   if (isZeroSha(update.localSha)) return [];
   if (!isFullSha(update.localSha) || !isFullSha(update.remoteSha)) throw new ConfigError("push update is not a full sha");
   if (!isRemoteName(remote)) throw new ConfigError("remote is not a remote name");
   const known = !isZeroSha(update.remoteSha) && hasCommit(cwd, update.remoteSha);
   // The second `--not` flips back, so the local sha after it counts as included.
-  const range = known
-    ? [END_OF_OPTIONS, `${update.remoteSha}..${update.localSha}`]
-    : ["--not", `--remotes=${remote}`, "--not", END_OF_OPTIONS, update.localSha];
+  const excluded = known ? knownExclusions(cwd, update.remoteSha, list) : [`--remotes=${remote}`];
+  const range = ["--not", ...excluded, "--not", END_OF_OPTIONS, update.localSha];
   return lines(git(cwd, ["rev-list", "--reverse", ...range]));
+}
+
+function listPushUrl(cwd: string, list: ListOptions): string | undefined {
+  const { pushUrl } = list;
+  if (pushUrl === undefined || !isRemoteName(pushUrl)) return undefined;
+  const listed = spawnSync("git", ["ls-remote", "--", pushUrl], {
+    cwd,
+    encoding: "utf-8",
+    maxBuffer: MAX_BUFFER,
+    timeout: list.timeoutMs ?? LIST_TIMEOUT_MS,
+    env: { ...(list.env ?? process.env), GIT_TERMINAL_PROMPT: "0" },
+  });
+  return listed.error || listed.status !== 0 ? undefined : listed.stdout;
+}
+
+/**
+ * The tips the push URL advertises that this clone has, or undefined when it cannot be listed.
+ * The tips are read from the URL git pushes to, not the fetch URL, which can name a different repository.
+ * Local tracking refs prove nothing, since anyone can write them.
+ */
+export function listRemoteTips(cwd: string, list: ListOptions): string[] | undefined {
+  const listing = listPushUrl(cwd, list);
+  if (listing === undefined) return undefined;
+  const tips = lines(listing)
+    .map((line) => line.split("\t")[0] ?? "")
+    .filter((sha) => isFullSha(sha) && hasCommit(cwd, sha));
+  return [...new Set(tips)];
+}
+
+/**
+ * What an existing branch's range leaves out. A branch that merged main also carries main commits the
+ * remote already has, so the remote's advertised tips are excluded along with the branch's old tip.
+ * When the push URL is missing or the remote cannot be listed in time, the range is the plain
+ * `remote..local`, which scans more and never less.
+ */
+function knownExclusions(cwd: string, remoteSha: string, list: ListOptions): string[] {
+  const tips = list.tips ?? listRemoteTips(cwd, list);
+  if (tips === undefined) {
+    process.stderr.write(
+      `titan-egress-scan: could not list the push URL; scanning the full ${remoteSha.slice(0, 7)}..local range\n`
+    );
+    return [remoteSha];
+  }
+  return [remoteSha, ...tips];
 }
 
 /** The commits in `base..head`, oldest first; an all-zero base means `head` alone. */
@@ -188,14 +245,54 @@ function splitHeader(text: string): { idents: IdentField[]; message: string[] } 
   return { idents, message };
 }
 
+function parentsOf(cwd: string, sha: string): string[] {
+  return lines(git(cwd, ["rev-list", "--parents", "-n", "1", END_OF_OPTIONS, sha]))[0]?.split(" ").slice(1) ?? [];
+}
+
+/** True when everything `sha` reaches that the remote's `tips` lack is among the `scanned` commits. */
+function isCoveredBy(cwd: string, sha: string, tips: readonly string[], scanned: ReadonlySet<string>): boolean {
+  const notOnRemote = lines(git(cwd, ["rev-list", sha, ...(tips.length > 0 ? ["--not", ...tips] : []), END_OF_OPTIONS]));
+  return notOnRemote.every((reached) => scanned.has(reached));
+}
+
+/**
+ * The patch text a commit is scanned by. A merge is diffed against each parent in turn, which blames it
+ * for everything the other side brought in, including commits the remote already has. With the remote's
+ * `tips`, a two-parent merge is instead diffed against a fresh re-merge of its parents: that is exactly
+ * what the resolution added beyond them. That is only sound when each parent's whole ancestry is scanned
+ * elsewhere: the remote advertises it, or it is among the `scanned` commits. When anything a parent
+ * reaches is neither (a commit only a local tracking ref holds), or the merge has more than two parents,
+ * the per-parent diffs apply.
+ */
+function commitPatchText(
+  cwd: string,
+  sha: string,
+  tips: readonly string[] | undefined,
+  scanned: ReadonlySet<string>,
+  maxBytes: number,
+): string {
+  const parents = tips === undefined ? [] : parentsOf(cwd, sha);
+  if (tips === undefined || parents.length !== 2) return showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxBytes);
+  const covered = parents.every((parent) => isCoveredBy(cwd, parent, tips, scanned));
+  return showCommit(cwd, sha, covered ? REMERGE_PATCH_FLAGS : COMMIT_PATCH_FLAGS, maxBytes);
+}
+
 /**
  * One commit's idents, message and patch, read by separate calls so a merge's per-parent copies of
  * the message never land inside its patch. Throws `PatchTooLargeError` when either is over `maxPatchBytes`.
+ * `tips` are the remote's advertised tips and `scanned` the commits scanned alongside this one; without
+ * tips every merge parent is diffed.
  */
-export function readCommit(cwd: string, sha: string, maxPatchBytes = MAX_PATCH_BYTES): ScanSource {
+export function readCommit(
+  cwd: string,
+  sha: string,
+  maxPatchBytes = MAX_PATCH_BYTES,
+  tips?: readonly string[],
+  scanned: ReadonlySet<string> = new Set(),
+): ScanSource {
   requireRevision(sha, "commit");
   const { idents, message } = splitHeader(showCommit(cwd, sha, MESSAGE_FLAGS, maxPatchBytes));
-  const patch = parseDiff(showCommit(cwd, sha, COMMIT_PATCH_FLAGS, maxPatchBytes));
+  const patch = parseDiff(commitPatchText(cwd, sha, tips, scanned, maxPatchBytes));
   return requireAllText({ ...patch, sha, message, idents }, `commit ${sha.slice(0, 7)}`);
 }
 

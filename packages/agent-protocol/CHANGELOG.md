@@ -1,5 +1,26 @@
 # @titan-design/agent-protocol
 
+## 0.6.0
+
+### Minor Changes
+
+- f4b073d: Key the trace redaction digest. `RedactTraceOptions` now takes a required `key`, and
+  `redactTraceRecord` digests with HMAC-SHA-256 via Web Crypto instead of a bare SHA-256, so a
+  redacted low-entropy field (a PR number, a line number, a repo name) can no longer be
+  recovered by hashing guesses. A missing or empty key rejects. Digests now carry the
+  `hmac-sha256:` prefix instead of `sha256:`, so an old unkeyed digest can't be mistaken for a
+  new keyed one. Equal values still join within an export; exports join only when they share
+  a key.
+
+  Breaking for callers of `redactTraceRecord`, released as a minor under pre-1.0 rules.
+  `git grep -l redactTraceRecord` finds 0 callers outside this package in titan-platform,
+  active-work, agent-chat, codewatch, relay and brain.
+
+### Patch Changes
+
+- 7345a13: Keep a requested cancellation across a recovery: `observe_running` after `recovery_required` now returns phase `cancel_requested` instead of `running` when a cancellation was recorded.
+- ff6ff86: Document that exports made with the old unkeyed `sha256:` digests do not join keyed `hmac-sha256:` ones. Docs only.
+
 ## 0.5.0
 
 ### Minor Changes

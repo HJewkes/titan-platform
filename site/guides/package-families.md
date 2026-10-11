@@ -25,6 +25,8 @@ config, cache and log directories, and active-work's data root.
   tool list, and an HTTP route.
 - [`daemon`](/reference/daemon): hosts a registry on a loopback port with `/rpc`, `/mcp`,
   SSE events, a health route, and a pid file.
+- [`health`](/reference/health): the health/v1 report a health route answers with, a
+  reader that also takes legacy `ok` payloads, and the sample row a probe stores.
 
 [Case study: adopting registry and daemon](/guides/adopting-a-package) shows the two
 replacing a product's hand-written server.
@@ -52,6 +54,9 @@ composes all three.
   fenced ownership, for supervisors that must survive a restart.
 - [`agent`](/reference/agent): headless Claude Code and Codex runs with an environment
   scrub, required budgets, a failure taxonomy, and a durable dispatcher.
+- [`anthropic-account`](/reference/anthropic-account): a Claude Code account's state with no
+  token in it: usage readings in the status-line shape, login state and its expiry, account
+  labels, and secret redaction.
 - [`agent-dispatch`](/reference/agent-dispatch): a client for the `agent-chat` CLI. It starts
   an agent under a named profile with the brief on stdin, resumes an ended session, and reads
   the roster. Use `agent` instead to run one headless turn in process.
@@ -75,9 +80,10 @@ paths share these types.
 typed events with locators. [`session-graph`](/reference/session-graph) folds them into an
 incrementally maintained graph. [`session-analytics`](/reference/session-analytics) prices
 requests, classifies sessions and roles, cuts episodes, and renders the cost report over
-that graph. [`memory`](/reference/memory) keeps a decaying rule playbook that such mining
-can feed. [Case study: the session miner](/guides/session-miner) runs the first two end to
-end.
+that graph. [`throughput`](/reference/throughput) turns per-task actuals into per-class
+quantiles of agent-hours and cost. [`memory`](/reference/memory) keeps a decaying rule
+playbook that such mining can feed. [Case study: the session miner](/guides/session-miner)
+runs the first two end to end.
 
 ## Code audit
 
@@ -96,6 +102,8 @@ end.
   shown and quote them exactly, and scores planted controls.
 - [`eslint-plugin`](/reference/eslint-plugin): ESLint rules for the code-quality limits,
   such as functions of at most 30 lines and TODOs that name a task.
+- [`test-kit`](/reference/test-kit): typed test doubles, such as `partialFake<T>()` for a
+  fake that sets only the fields a test reads, without a double cast.
 
 ## Landing a change
 

@@ -13,6 +13,10 @@ export type {
   CharterPolicyResult,
   HardStopClass,
 } from "./charter-policy.js";
+export { HARD_STOPS, hardStopsIn } from "./hard-stops.js";
+export type { HardStop } from "./hard-stops.js";
+export { resolveSeatPolicy } from "./resolve-policy.js";
+export type { ResolvedSeatPolicy } from "./resolve-policy.js";
 export {
   seatConcurrencySchema,
   seatConfigSchema,
@@ -38,3 +42,22 @@ export {
   seatStateSchema,
 } from "./seat-state.js";
 export type { SeatFoldError, SeatFoldOptions, SeatState } from "./seat-state.js";
+export {
+  checkCoordinatorConfig,
+  coordinatorConfigErrorSchema,
+  coordinatorConfigSchema,
+  coordinatorOwnerSchema,
+  coordinatorPolicySchema,
+  coordinatorSeatSchema,
+} from "./coordinator-config.js";
+export type {
+  CoordinatorConfig,
+  CoordinatorConfigError,
+  CoordinatorConfigResult,
+  CoordinatorOwner,
+  CoordinatorPolicy,
+  CoordinatorSeat,
+} from "./coordinator-config.js";
+export { importAutonomyTree, renderSeatBook } from "./import-autonomy.js";
+export { projectSeatGeneration, sessionFactsPrSchema, sessionFactsSchema } from "./session-facts.js";
+export type { PrefixScopes, SeatGenerationActivity, SessionFacts } from "./session-facts.js";

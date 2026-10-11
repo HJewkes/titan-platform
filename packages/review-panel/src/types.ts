@@ -2,6 +2,8 @@ import type { ReviewTarget } from "./ports.js";
 
 export interface ChangedFile {
   path: string;
+  /** The path a renamed file came from. */
+  previousPath?: string;
   additions: number;
   deletions: number;
 }

@@ -51,7 +51,7 @@ export type { NoteSourceOptions } from "./notes.js";
 export { DECIDABLE_CATEGORIES, UNLOCK_CATEGORIES, checkUnlock, unlockTableRow } from "./unlock.js";
 export type { UnlockCheck } from "./unlock.js";
 export { ASK_RULES, lintAsk, lintMorningList, lintOwnerQuestions } from "./ask-lint.js";
-export type { AskFinding, AskItemFindings, AskOption, AskQuestion, AskRule } from "./ask-lint.js";
+export type { AskFinding, AskLintStats, AskItemFindings, AskOption, AskQuestion, AskRule } from "./ask-lint.js";
 export { PR_SECTION_RULES, lintPrSection } from "./pr-section-lint.js";
 export type { PrSectionFinding, PrSectionRule } from "./pr-section-lint.js";
 export {

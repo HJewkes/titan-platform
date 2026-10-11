@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { silentLogger } from "@titan-design/daemon";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { StepRoute, WorkflowRun } from "@titan-design/workflow";
@@ -248,6 +248,21 @@ function approveThenMerge(): WorkflowDefinition {
   });
 }
 
+/** A merge step that recorded no landing, as a held merge leaves, and then the owner's approve-merge gate. */
+function unlandedMergeThenGate(): WorkflowDefinition {
+  return defineWorkflow({
+    name: SHEPHERD_WORKFLOW,
+    steps: [
+      { id: "merge", kind: "dispatch" },
+      { id: "approve-merge", kind: "assisted" },
+    ],
+    run: async (ctx) => {
+      await step(ctx, "merge:r1:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
+      await ctx.assisted("approve-merge", "merge this head?", { brief: TEST_BRIEF });
+    },
+  });
+}
+
 describe("resyncShepherd when superseding moved gates throws", () => {
   it("still reports the runs it ended and the error class, never its text", async () => {
     const w = world();
@@ -352,6 +367,25 @@ describe("resyncShepherd", () => {
     expect(w.seed.gates.get(gateId(runId, "main-red"))?.status).toBe("pending");
   });
 
+  it("ends a held run parked on an approve-merge gate whose recorded merge step landed nothing once its PR is merged by hand (tp#844)", async () => {
+    const w = world({ workflows: [unlandedMergeThenGate()] });
+    w.fake.addPr({ headSha: HEAD });
+    merge(w.fake, 1);
+    const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.routes.shepherd!.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    w.routes.shepherd!.store.get().hold(runId, "g10-adversary: two independent MERGEs needed");
+    await gateOpened(w.seed, gateId(runId, "approve-merge"));
+    const recorded = Object.entries(w.seed.runtime.status(runId)!.stepResults).filter(([key]) => key.startsWith("merge:"));
+    expect(recorded.map(([, result]) => result.data?.result)).toEqual([expect.objectContaining({ done: false })]);
+
+    const report = await resyncShepherd(w.seed, w.routes.shepherd!);
+
+    const reason = `${LANDED_ELSEWHERE}${REPO}#1 was merged outside Shepherd`;
+    expect(report.ended).toEqual([{ runId, reason }]);
+    expect(w.seed.runtime.status(runId)?.error).toBe(reason);
+    expect(w.seed.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
+  });
+
   it("cancels a pending gate of a failed run as orphaned", async () => {
     const w = world();
     w.fake.addPr({ headSha: HEAD });
@@ -366,6 +400,28 @@ describe("resyncShepherd", () => {
     expect(w.seed.gates.get(gateId(runId, "sh-sent-back"))).toMatchObject({ status: "cancelled" });
     expect(w.seed.pendingGates()).toEqual([]);
     expect(ORPHANED).toMatch(/^orphaned: /);
+  });
+
+  it("skips an orphaned gate another host settled after the sweep listed it, and cancels the rest", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: HEAD });
+    const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
+    await w.seed.runtime.wait(runId);
+    const raced = gateId(runId, "sh-sent-back");
+    const rest = gateId(runId, "approve-merge");
+    w.seed.gates.create({ id: raced, prompt: "sent back at an old head", ...TEST_BRIEF });
+    w.seed.gates.create({ id: rest, prompt: "approve at an old head", ...TEST_BRIEF });
+    const cancel = w.seed.gates.cancel.bind(w.seed.gates);
+    vi.spyOn(w.seed.gates, "cancel").mockImplementation((id, reason) => {
+      if (id === raced) cancel(raced, "settled elsewhere");
+      return cancel(id, reason);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(resyncShepherd(w.seed, w.routes.shepherd!)).resolves.toMatchObject({ orphanGates: expect.arrayContaining([raced, rest]) });
+
+    expect(w.seed.gates.get(rest)?.status).toBe("cancelled");
+    expect(w.seed.gates.get(raced)).toMatchObject({ status: "cancelled", reason: "settled elsewhere" });
   });
 
   it("a dry run reports what it would end and cancel, and writes nothing", async () => {
@@ -542,9 +598,11 @@ function evidenceAt(head: string, unmet: object): object {
   return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
 }
 
-async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[]): Promise<FactoryHost> {
+async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number): Promise<FactoryHost> {
   const server = await startFactoryServer({
+    goneSweepMs,
     dbPath: ":memory:",
+    stateDir: dirname(dbFile()),
     workflows,
     routes,
     gatePollMs: 5,
@@ -565,8 +623,17 @@ interface AuthorityRun {
   reviewed: string[];
 }
 
+interface AuthorityOptions {
+  serve?: boolean;
+  unmetReviews?: number;
+  wokenAgent?: boolean;
+  goneSweepMs?: number;
+  /** getPr rejects while `value` is set. */
+  unreadable?: { value: boolean };
+}
+
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false } = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
@@ -575,8 +642,11 @@ async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, 
     review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
   };
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
-  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)]) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  const port = githubPort(fake.wire);
+  const getPr = port.getPr.bind(port);
+  const flaky = { ...port, getPr: async (repo: string, pr: number) => (unreadable?.value ? Promise.reject(new Error("rate limited")) : getPr(repo, pr)) };
+  const routes = factoryRoutesFor({ port: flaky, store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)], goneSweepMs) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   if (!serve) cleanups.push(() => host.close());
   fake.addPr({ headSha: REVIEWED });
   const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
@@ -792,6 +862,22 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("a thaw whose PR head read fails while serving keeps the repo queued, and a later sweep tick supersedes its gate", async () => {
+    const unreadable = { value: false };
+    const { host, fake, services, runId } = await authorityGated({ repoFrozen: true }, { serve: true, goneSweepMs: 20, unreadable });
+    const freezes = services.freeze!.get();
+    freezes.freeze(REPO, fakeSha("red-main"));
+    unreadable.value = true;
+
+    freezes.unfreeze(REPO, fakeSha("green-main"));
+    await sleep(60, new AbortController().signal);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+    unreadable.value = false;
+
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
   });
 
   it("a thaw of another repo while serving leaves the gate with the owner", async () => {

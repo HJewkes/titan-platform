@@ -12,7 +12,7 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { isFactoryRepo, redeploy, REDEPLOY_LOG, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
+import { deployUnitName, isFactoryRepo, redeploy, REDEPLOY_LOG, SYSTEMD_RUN, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
 
 const OWN_REPO = FACTORY_REPO!;
@@ -118,27 +118,32 @@ describe("sh-redeploy after main CI", () => {
   });
 });
 
-/** Ports that record each effect; `failing` names the one that throws. */
-function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append") {
+/** Ports that record each effect; `failing` names the one that throws, `refusedFile` a program whose spawn throws. */
+function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append", refusedFile?: string) {
   const calls: { file: string; args: readonly string[]; options: Record<string, unknown> }[] = [];
   const effects: string[] = [];
-  const errorHandlers: ((error: Error) => void)[] = [];
+  const lines: string[] = [];
+  const handlers: Record<string, ((value: unknown) => void)[]>[] = [];
   const fail = (port: string) => {
     if (port === failing) throw new Error(`${port} refused`);
   };
   const ports: DeployerPorts = {
     spawn: (file, args, options) => {
       fail("spawn");
+      if (file === refusedFile) throw new Error(`${file} refused`);
       calls.push({ file, args, options: options as Record<string, unknown> });
-      const on = (_event: string, handler: (error: Error) => void) => void errorHandlers.push(handler);
-      return { pid: 777, unref: () => void effects.push("unref"), on: on as never };
+      const own: Record<string, ((value: unknown) => void)[]> = {};
+      handlers.push(own);
+      const on = (event: string, handler: (value: unknown) => void) => void (own[event] ??= []).push(handler);
+      return { pid: 776 + calls.length, unref: () => void effects.push("unref"), on: on as never };
     },
     mkdir: (dir) => (fail("mkdir"), void effects.push(`mkdir ${dir}`)),
-    append: (path) => (fail("append"), void effects.push(`append ${path}`)),
+    append: (path, text) => (fail("append"), effects.push(`append ${path}`), void lines.push(text)),
     openAppend: (path) => (fail("openAppend"), effects.push(`open ${path}`), 9),
     close: (fd) => void effects.push(`close ${fd}`),
   };
-  return { ports, calls, effects, errorHandlers };
+  const emit = (spawned: number, event: string, value: unknown) => handlers[spawned]?.[event]?.forEach((handler) => handler(value));
+  return { ports, calls, effects, lines, emit, errorHandlers: () => handlers.flatMap((own) => own.error ?? []) };
 }
 
 const stepIdsOf = (w: ReturnType<typeof world>, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
@@ -197,29 +202,103 @@ describe("redeploy", () => {
   });
 });
 
-describe("systemDeployer", () => {
+const SHA = "b".repeat(40);
+const LOG = join("/state", REDEPLOY_LOG);
+const DEPLOY_ARGS = ["/factory/dist/bin.js", "service", "deploy", "--expect", SHA];
+const AT = new Date("2026-10-10T12:00:00.000Z");
+const deployerOn = (platform: NodeJS.Platform, ports: DeployerPorts, at = AT) => systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform, now: () => at }, ports);
+const setsidCall = { file: "/bin/node", args: DEPLOY_ARGS, options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } };
+
+describe("systemDeployer on darwin", () => {
   it("starts service deploy detached in its own session, logging to the state dir, and lets the service exit without it", () => {
     const fake = fakePorts();
-    const deployer = systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports);
 
-    const started = deployer.spawn("b".repeat(40));
+    const started = deployerOn("darwin", fake.ports).spawn(SHA);
 
-    const log = join("/state", REDEPLOY_LOG);
-    expect(started).toEqual({ pid: 777, log });
-    expect(fake.calls).toEqual([
-      { file: "/bin/node", args: ["/factory/dist/bin.js", "service", "deploy", "--expect", "b".repeat(40)], options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } },
-    ]);
-    expect(fake.effects).toEqual(["mkdir /state", `append ${log}`, `open ${log}`, "unref", "close 9"]);
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([setsidCall]);
+    expect(fake.effects).toEqual(["mkdir /state", `append ${LOG}`, `open ${LOG}`, "unref", "close 9"]);
   });
 
   it("swallows a log append that throws while reporting a late spawn error, so the service does not crash", () => {
     const fake = fakePorts();
-    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports).spawn("b".repeat(40));
+    deployerOn("darwin", fake.ports).spawn(SHA);
     fake.ports.append = () => {
       throw new Error("disk full");
     };
 
-    expect(() => fake.errorHandlers.forEach((handler) => handler(new Error("ENOENT")))).not.toThrow();
-    expect(fake.errorHandlers).toHaveLength(1);
+    expect(() => fake.emit(0, "error", new Error("ENOENT"))).not.toThrow();
+    expect(fake.errorHandlers()).toHaveLength(1);
+  });
+});
+
+describe("systemDeployer on systemd", () => {
+  it("starts service deploy in its own transient user unit, outside the service's cgroup, logging to the state dir", () => {
+    const fake = fakePorts();
+
+    const started = deployerOn("linux", fake.ports).spawn(SHA);
+
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([
+      {
+        file: SYSTEMD_RUN,
+        args: ["--user", "--collect", "--quiet", "--unit", deployUnitName(SHA, AT), "--working-directory=/state", "--setenv=PATH", `--property=StandardOutput=append:${LOG}`, `--property=StandardError=append:${LOG}`, "--", "/bin/node", ...DEPLOY_ARGS],
+        options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] },
+      },
+    ]);
+    expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
+  });
+
+  it("names each deploy's unit after the sha and the time, so a redeploy of the same sha gets a fresh unit", () => {
+    const first = deployUnitName(SHA, AT);
+    const again = deployUnitName(SHA, new Date(AT.getTime() + 1000));
+
+    expect(first).toMatch(/^titan-factory-deploy-bbbbbbbb-[0-9a-z]+$/);
+    expect(again).not.toBe(first);
+  });
+
+  it("starts nothing more when systemd-run exits cleanly", () => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+
+    fake.emit(0, "exit", 0);
+
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["is missing", "error", new Error("spawn systemd-run ENOENT"), "spawn systemd-run ENOENT"],
+    ["refuses the unit", "exit", 1, "exit 1"],
+  ])("falls back to a setsid deployer and logs why when systemd-run %s", (_case, event, value, why) => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+
+    fake.emit(0, event, value);
+    fake.emit(0, "exit", 1);
+
+    expect(fake.calls.slice(1)).toEqual([setsidCall]);
+    expect(fake.lines.slice(1)).toEqual([`${SYSTEMD_RUN} did not start the deployer (${why}); starting it in its own session instead\n`]);
+  });
+
+  it("falls back to a setsid deployer when spawning systemd-run throws", () => {
+    const fake = fakePorts(undefined, SYSTEMD_RUN);
+
+    const started = deployerOn("linux", fake.ports).spawn(SHA);
+
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([setsidCall]);
+    expect(fake.lines.slice(1)).toEqual([`${SYSTEMD_RUN} did not start the deployer (Error); starting it in its own session instead\n`]);
+  });
+
+  it("logs that the deployer did not start when the fallback cannot spawn either", () => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+    fake.ports.spawn = () => {
+      throw new Error("EAGAIN");
+    };
+
+    fake.emit(0, "exit", 1);
+
+    expect(fake.lines.at(-1)).toBe("deployer did not start: Error\n");
   });
 });

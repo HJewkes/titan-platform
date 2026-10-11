@@ -221,6 +221,27 @@ describe("a holder whose own merge must wait", () => {
     expect(w.train.get().holder(REPO)).toBeUndefined();
   });
 
+  it("gives the train up while its approved head waits for a retarget, and merges second once retargeted", async () => {
+    const repo = twoPrRepo();
+    const ci: { update?: string } = {};
+    const { w, first, second } = await firstHoldsSecondWaits(repo, ci);
+
+    repo.fake.pr(1).baseRef = "feat/x";
+    ci.update = "success";
+    await w.host.runtime.wait(second);
+    const firstStep = w.host.runtime.status(first)?.currentStep;
+    const holderWhileWaiting = w.train.get().holder(REPO);
+    repo.fake.pr(1).baseRef = "main";
+    await w.host.runtime.wait(first);
+
+    expect(firstStep).toMatch(/^base-wait/);
+    expect(holderWhileWaiting).toBeUndefined();
+    expect([first, second].map((runId) => w.host.runtime.status(runId)?.status)).toEqual(["completed", "completed"]);
+    expect(repo.merged).toEqual([2, 1]);
+    expect(repo.refused).toEqual([]);
+    expect(w.train.get().holder(REPO)).toBeUndefined();
+  });
+
   it("gives the train to the fix task's PR when the repo freezes under the holder", async () => {
     const repo = twoPrRepo();
     const { w, first, second } = await firstHoldsSecondWaits(repo, {});
