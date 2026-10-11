@@ -269,7 +269,11 @@ source is a list, and that source yields nothing.
 open task. `orientationEnd(brief)` returns where the assignment starts: 0 when there is no
 orientation, null when there is one whose end cannot be found. Such a brief links nothing
 rather than guess. The block's format is owned by agent-chat, and the tests pin today's
-headings and truncation marker. Every search reads a bounded window, so a 100 KB brief costs
+headings and truncation marker. When agent-chat recorded the block's length (`agent_spawned`
+meta `briefing_chars`), pass it as `orientationEnd(brief, briefingChars)` or as
+`briefingChars` to `assignedTaskIds`: the assignment then starts at the first non-blank line
+after that offset, whatever the headings say. An out-of-range value falls back to the
+heading rules. Every search reads a bounded window, so a 100 KB brief costs
 the same as a short one.
 
 ## Where it came from

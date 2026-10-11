@@ -3054,11 +3054,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/gate-route.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "products/factory/src/shepherd/gone-elsewhere.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1

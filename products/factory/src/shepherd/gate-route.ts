@@ -34,7 +34,8 @@ const NEXT: Record<SeatNotice, string> = {
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
 type SeatNoticeInput = z.infer<typeof SeatNoticeInput>;
 
-const SeatNoticeResult = z.looseObject({ sent: z.boolean(), detail: z.string(), seat: z.string().optional() });
+/** `gate` and `headSha` let the seat digest see a told seat's fix round; records older than them carry neither. */
+const SeatNoticeResult = z.looseObject({ sent: z.boolean(), detail: z.string(), seat: z.string().optional(), gate: z.enum(SEAT_NOTICES).optional(), headSha: z.string().optional() });
 type SeatNoticeResult = z.infer<typeof SeatNoticeResult>;
 
 function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): string {
@@ -55,7 +56,7 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
     seat = addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
     await ports.send(seat, seatNoticeText(input));
-    return { sent: true, seat, detail: `told ${seat}` };
+    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
   } catch (error) {
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
   }

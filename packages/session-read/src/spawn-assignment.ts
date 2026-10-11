@@ -16,6 +16,8 @@ export interface AssignmentInput {
   readonly brief: string;
   /** True when the id is a task file in the active-work store, archived or not. */
   readonly isKnown: (taskId: string) => boolean;
+  /** Length of the injected orientation block, from agent-chat's `agent_spawned` meta `briefing_chars`. */
+  readonly briefingChars?: number;
 }
 
 export interface Assignment {
@@ -119,14 +121,27 @@ function firstAnchorAfter(brief: string, heading: Line): number | null {
   return null;
 }
 
+/** The first non-blank line at or after the recorded block length, or null when it is out of range. */
+function afterBriefing(brief: string, briefingChars: number | undefined): number | null {
+  if (briefingChars === undefined || !Number.isInteger(briefingChars)) return null;
+  if (briefingChars <= 0 || briefingChars > brief.length) return null;
+  for (const line of linesOf(brief, briefingChars, brief.length)) {
+    if (lineText(brief, line).trim() !== "") return line.start;
+  }
+  return brief.length;
+}
+
 /**
  * Where the assignment starts in a spawn brief: 0 when the brief has no orientation block,
  * null when it has one whose end cannot be found (such a brief yields no ids).
+ * A recorded `briefingChars` wins over the heading rules, which break when agent-chat renames a heading.
  */
-export function orientationEnd(brief: string): number | null {
+export function orientationEnd(brief: string, briefingChars?: number): number | null {
   const head = brief.slice(0, ORIENTATION_WINDOW);
   const headerStart = head.length - head.trimStart().length;
   if (!brief.startsWith(ORIENTATION_HEADER, headerStart)) return 0;
+  const recorded = afterBriefing(brief, briefingChars);
+  if (recorded !== null) return recorded;
   const heading = lastHeading(brief, headerStart);
   const headingText = brief.slice(heading.start, heading.start + RELATED_HEADING.length);
   if (headingText === RELATED_HEADING) return afterRelatedList(brief, heading);
@@ -196,8 +211,8 @@ function paragraphTaskId(brief: string, regionStart: number, anchor: Line | null
   return null;
 }
 
-function briefTaskIds(brief: string, isKnown: AssignmentInput["isKnown"]): Assignment {
-  const regionStart = orientationEnd(brief);
+function briefTaskIds({ brief, isKnown, briefingChars }: AssignmentInput): Assignment {
+  const regionStart = orientationEnd(brief, briefingChars);
   if (regionStart === null) return NONE;
   const anchor = findAnchor(brief, regionStart);
   const anchored = anchor ? anchorTaskIds(anchor.text, isKnown) : [];
@@ -207,9 +222,9 @@ function briefTaskIds(brief: string, isKnown: AssignmentInput["isKnown"]): Assig
 }
 
 /** The task ids a spawned session was assigned, and which rule found them. */
-export function assignedTaskIds({ agentName, brief, isKnown }: AssignmentInput): Assignment {
-  const named = nameTaskIds(agentName, isKnown);
-  const fromBrief = briefTaskIds(brief, isKnown);
+export function assignedTaskIds(input: AssignmentInput): Assignment {
+  const named = nameTaskIds(input.agentName, input.isKnown);
+  const fromBrief = briefTaskIds(input);
   if (named.length === 0) return fromBrief;
   const agrees = fromBrief.taskIds.length === 0 || fromBrief.taskIds.some((id) => named.includes(id));
   return { taskIds: named, source: agrees ? "name" : "name-over-brief" };
