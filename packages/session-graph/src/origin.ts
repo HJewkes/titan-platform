@@ -35,6 +35,13 @@ export interface ResolvedOrigin {
   taskIds?: readonly string[] | null;
   /** How the ids were found. Stored as `none` when `taskIds` is given but empty. */
   taskSource?: TaskLinkSource | null;
+  /** The experiment this session is an arm of, as its launcher recorded it at spawn. */
+  experimentId?: string | null;
+  experimentArm?: string | null;
+  /** The agent this session succeeds, from the launcher's spawn record. */
+  predecessor?: string | null;
+  /** How many follow-ups of each kind (`fix`, `rebase`, `extension`, `review`) the session received. */
+  followupKinds?: Readonly<Record<string, number>> | null;
 }
 
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
@@ -94,6 +101,7 @@ const SESSIONS_NEEDING_ORIGIN = `
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
   "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
+  "experiment_id", "experiment_arm", "predecessor", "followup_kinds",
 ] as const;
 
 /** A null `task_source` means the resolver did not look for tasks, so the stored link stands; `none` clears it. */
@@ -104,10 +112,12 @@ const TASK_LINK_UPDATE = `task_source = COALESCE(excluded.task_source, task_sour
 const UPSERT_ORIGIN = `
   INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
-    brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at)
+    brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at,
+    experiment_id, experiment_arm, predecessor, followup_kinds)
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
-    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt)
+    @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt,
+    @experimentId, @experimentArm, @predecessor, @followupKinds)
   ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
     ${TASK_LINK_UPDATE}`;
 
@@ -171,6 +181,8 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     depth: o.depth ?? null, originKind: o.originKind ?? null, configDir: o.configDir ?? null, spawnCwd: o.spawnCwd ?? null,
     spawnedAt: o.spawnedAt ?? null, briefChars: o.briefChars ?? null, briefExcerpt: o.briefExcerpt ?? null,
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
+    experimentId: o.experimentId ?? null, experimentArm: o.experimentArm ?? null, predecessor: o.predecessor ?? null,
+    followupKinds: o.followupKinds ? JSON.stringify(o.followupKinds) : null,
     ...taskLinkColumns(o),
   };
 }

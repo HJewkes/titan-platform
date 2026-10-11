@@ -11,7 +11,7 @@ export type TurnSince = (row: AgentRow, since: number) => Promise<boolean>;
 /** Reads the transcript tail the roster names; a missing or unreadable transcript shows no turn. */
 export function transcriptTurnSince(readWarmth: (transcriptPath: string) => Promise<Warmth | undefined>): TurnSince {
   return async (row, since) => {
-    if (!row.transcriptExists || row.transcriptPath === null || row.sessionId === "") return false;
+    if (!row.transcriptExists || typeof row.transcriptPath !== "string" || row.sessionId === "") return false;
     const warmth = await readWarmth(row.transcriptPath);
     return warmth !== undefined && warmth.lastEventAt > since;
   };
