@@ -89,6 +89,8 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
   is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
   nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
   code as JSON, and that sets a Secure, HttpOnly, SameSite=Strict cookie that lasts 30 days.
+  The cookie is the whole session, signed with the token file, so it survives a daemon
+  restart. The phone flow is in [docs/lan.md](docs/lan.md#on-a-phone).
 - **`token rotate`** writes a fresh secret by rename. The running daemon re-reads the file,
   so every session and outstanding link ends with no restart. This is how to revoke a lost
   device.
