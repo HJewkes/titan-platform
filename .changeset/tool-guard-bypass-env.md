@@ -2,4 +2,4 @@
 "@titan-design/tool-guard": minor
 ---
 
-Honour `TITAN_TOOL_GUARD_BYPASS=1` only for a session the owner started at a terminal: the hook reads its ancestors from `ps`, and the bypass counts only when exactly one is `claude` and that one has a controlling terminal. A `claude` that any command of an agent starts, however the variable was spelled, keeps agent authority, and so does one detached with `setsid` or `systemd-run`. One started inside a detached pseudo-terminal (`tmux new -d`) is not caught. Breaking: `observeActor` takes a third argument, the ancestry reader (`readAncestry`, now exported), and `HookPort` and `CliIo` need an `ancestry` member.
+Remove the owner bypass: the hook now evaluates every call as an agent and ignores `TITAN_TOOL_GUARD_BYPASS`. The hook runs as the same OS user as the agent, so an agent could give any `claude` it started that variable, and whatever name, parent or terminal a check might demand. Breaking: `BYPASS_VAR` is no longer exported, `ActorObservation` loses `bypass`, and the log no longer writes `bypass` lines. Take a guarded action from a terminal outside Claude Code.

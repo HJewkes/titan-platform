@@ -55,26 +55,22 @@ titan-tool-guard report          # deny counts per UTC day and rule, from the lo
 No code path is meant to write a settings file, a hooks directory, a profile or an rc file. The
 only write is the hook's append of its log line, and the log path is checked first (see Log).
 
-**Actor.** With no bypass, every call is evaluated for `coordinator`, `worker` and `headless`
+**Actor.** Every call is evaluated for `coordinator`, `worker` and `headless`
 together and the strictest verdict wins (owner decision D2). A gate verdict denies too, since
 the hook cannot check a resolved gate yet, and the reason names the gate rule.
 
-**Bypass.** `TITAN_TOOL_GUARD_BYPASS=1 claude` starts a session with owner authority: calls are
-evaluated as `owner-terminal` and each guarded one is logged as `bypass` (owner decision D3).
-Only the hook's own environment at launch counts; `TITAN_TOOL_GUARD_BYPASS=1 gh pr merge 3`
-typed by the model still denies. The session must also run at the owner's terminal: the hook
-reads its ancestors from `ps` and honours the variable only when exactly one is `claude` and that
-one has a controlling terminal. So a `claude` started by any command an agent runs, however it
-spells the variable (a script it just wrote, an interpreter, `env`), runs with agent authority,
-and so does one detached with `setsid`. A `claude` started inside a new detached pseudo-terminal
-(`tmux new -d`) is not told apart from the owner's. Never export it from a shell rc file.
+**No owner bypass.** The hook never grants owner authority. `TITAN_TOOL_GUARD_BYPASS=1` used to
+(owner decision D3), but the hook runs as the same OS user as the agent, so any variable, file,
+process name, parent or terminal it could check is one the agent can produce for a `claude` it
+starts. The variable is now ignored. The owner takes a guarded action from a terminal outside
+Claude Code, where the hook does not run.
 
 **Log.** `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`, mode 0600 in a 0700
 directory. Before each append the path is refused when, as typed or with its deepest existing
 ancestor resolved through symlinks, it names a guarded path or lands in a `~/.claude*` tree; the
 final file is opened with `O_NOFOLLOW`. The check runs just before the open, so a link swapped
-in between the two is not caught. One tab-separated line per deny, bypass or error:
+in between the two is not caught. One tab-separated line per deny or error:
 
 ```
 ts  kind  rule  action  spelling  actor  actor_id  session  tool  tool_use  subject

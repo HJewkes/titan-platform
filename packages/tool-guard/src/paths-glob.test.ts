@@ -16,7 +16,7 @@ const line = (word: string) => `git push origin HEAD:main; cat '${word}'`;
 const port: HookPort = {
   context: nodeContext(HOME, { realpath: (p) => p, readHead: () => "feat/x", isFile: () => false }),
   now: () => new Date("2026-01-02T03:04:05.000Z"),
-  loadDecide: async () => decide, ancestry: () => [],
+  loadDecide: async () => decide,
 };
 
 function event(command: string) {

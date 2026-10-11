@@ -26,7 +26,7 @@ function classifyCommand(command: string): string[] {
 
 /** The hook's own verdict, which is what the agent meets: a ParseError denies. */
 async function hookDenies(command: string): Promise<boolean> {
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
   const result = await handle(input, { PATH: "/usr/bin" }, port);
   return result.stdout !== "";
@@ -164,7 +164,7 @@ describe("a line bash 5 reads differently because a substitution left a heredoc 
   });
 
   it("the hook names the open heredoc when it refuses the line", async () => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const command = "cat <(cat <<EOF)\nbody\nEOF\nls";
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
     expect((await handle(input, { PATH: "/usr/bin" }, port)).stdout).toContain("close the heredoc inside the substitution");
@@ -232,7 +232,7 @@ describe("a pending heredoc in a followed script", () => {
   async function verdict(command: string, script: string): Promise<boolean> {
     writeFileSync(join(dir, "s.sh"), script);
     const readScript = (path: string) => (path === join(dir, "s.sh") ? readFileSync(path, "utf8") : null);
-    const port: HookPort = { context: { ...context, readHead: () => "main", readScript }, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context: { ...context, readHead: () => "main", readScript }, now: () => new Date(0), loadDecide: async () => decide };
     const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: dir, tool_input: { command } });
     return (await handle(input, { PATH: "/usr/bin" }, port)).stdout !== "";
   }

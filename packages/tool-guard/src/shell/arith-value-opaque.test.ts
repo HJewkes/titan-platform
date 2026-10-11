@@ -10,7 +10,7 @@ const SECRET = `X='a[$(${PUSH})]'`;
 const port: HookPort = {
   context: nodeContext("/home/you", { realpath: (p) => p, readHead: () => { throw new Error("ENOENT"); }, isFile: () => false }),
   now: () => new Date("2026-01-02T03:04:05.000Z"),
-  loadDecide: async () => decide, ancestry: () => [],
+  loadDecide: async () => decide,
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {

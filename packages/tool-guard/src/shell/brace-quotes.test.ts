@@ -26,7 +26,7 @@ function event(command: string, cwd = REPO): string {
 }
 
 async function hookDenies(command: string): Promise<boolean> {
-  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   return (await handle(event(command), { PATH: "/usr/bin" }, port)).stdout !== "";
 }
 
@@ -81,7 +81,7 @@ describe("a } that bash reads as quoted inside ${…}", () => {
   });
 
   it("the hook refuses a } inside a process substitution, which bash 3.2 reads as the end", async () => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`: \${x:-<(echo })}\n${PUSH}\n#)`), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("move the process substitution out of the parameter");
   });
@@ -95,7 +95,7 @@ describe("a } that bash reads as quoted inside ${…}", () => {
   });
 
   it("the hook names an unclosed substitution in a single-quoted operand", async () => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`: \${x:-'$('}\n${PUSH}`), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("close the substitution or move it out of the parameter");
   });
@@ -183,7 +183,7 @@ describe("a heredoc in a $( ) inside ${…}, which bash 3.2 ends at the first )"
   });
 
   it("the hook names the substitution bash 3.2 ends elsewhere", async () => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(command("ls")), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("move the command substitution out of the expansion");
   });
@@ -218,7 +218,7 @@ describe("an expansion the reader cannot close where bash runs the next command"
   });
 
   it("the hook names the expansion it could not close", async () => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`: $((\${))\n${PUSH}`), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("close the expansion or move it into a variable");
   });

@@ -1,6 +1,5 @@
 import * as path from "node:path";
 import type { Readable } from "node:stream";
-import type { Ancestor } from "./ancestry.js";
 import { handle } from "./hook.js";
 import type { DecideFn } from "./hook.js";
 import { logPath } from "./log.js";
@@ -21,8 +20,6 @@ export interface CliIo {
   realpath(p: string): string;
   now(): Date;
   loadDecide(): Promise<DecideFn>;
-  /** The hook's ancestor processes, nearest first. */
-  ancestry(): readonly Ancestor[];
   out(line: string): void;
   err(line: string): void;
 }
@@ -61,7 +58,7 @@ async function runHook(io: CliIo): Promise<number> {
   try {
     const input = await io.readStdin(STDIN_TIMEOUT_MS);
     if (input === null) return 0;
-    const result = await handle(input, io.env, { context: io.context, now: io.now, loadDecide: io.loadDecide, ancestry: io.ancestry });
+    const result = await handle(input, io.env, { context: io.context, now: io.now, loadDecide: io.loadDecide });
     if (result.stdout !== "") io.out(result.stdout);
     if (result.log.length > 0) appendQuietly(io, result.log);
   } catch {

@@ -1,6 +1,5 @@
 import { observeActor } from "./actor.js";
 import type { ActorObservation } from "./actor.js";
-import type { Ancestor } from "./ancestry.js";
 import { classify } from "./classify.js";
 import type { GuardDecision, Matched } from "./decide.js";
 import { parseHookEvent } from "./event.js";
@@ -22,8 +21,6 @@ export interface HookPort {
   now(): Date;
   /** Loads the authority table lazily, so a broken table fails closed only for events that classify. */
   loadDecide(): Promise<DecideFn>;
-  /** The hook's ancestor processes, nearest first; read only to check a bypass. */
-  ancestry(): readonly Ancestor[];
 }
 
 /** What the bin prints on stdout (empty, or one deny answer) and the lines it appends to the log. */
@@ -97,7 +94,7 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   const event = parseInput(input);
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
-  const actor = observeActor(env, event.sessionId, port.ancestry);
+  const actor = observeActor(env, event.sessionId);
   if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);
   const result = classifyEvent(event, port.context);
   if (!result.ok && result.limit) return oversized(event, actor, result.limit, port);
@@ -146,7 +143,6 @@ function scriptsReason(o: ScriptOverrun): string {
  */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
   const error = () => logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
-  if (actor.bypass) return error();
   if (event.kind === "bash") return unclassified(event, actor, "unparsed", UNREADABLE_REASON, port);
   if (!namesGuarded(event.path)) return error();
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
@@ -154,7 +150,6 @@ function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: Ho
 
 /** Too large to check: an 8 KiB command, or one with more dynamic wrapper readings than classify walks. */
 function oversized(event: Event, actor: ActorObservation, reason: string, port: HookPort): HookResult {
-  if (actor.bypass) return logged(formatErrorLine({ ts: port.now(), cls: "oversize", tool: event.toolName, session: event.sessionId }));
   return unclassified(event, actor, "oversize", reason, port);
 }
 
@@ -171,7 +166,6 @@ async function decided(event: Event, actor: ActorObservation, actions: Classifie
     return tableFailure(event, actor, actions, port);
   }
   if (decision.outcome === "deny") return { stdout: denyAnswer(decision.reason), log: [decisionLine(event, actor, decision, "deny", port)] };
-  if (actor.bypass && decision.matched) return logged(decisionLine(event, actor, decision.matched, "bypass", port));
   return PASS;
 }
 
@@ -182,7 +176,7 @@ function tableFailure(event: Event, actor: ActorObservation, actions: Classified
   return { stdout: denyAnswer(TABLE_REASON), log: [error, decisionLine(event, actor, matched, "deny", port)] };
 }
 
-function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny" | "bypass", port: HookPort): string {
+function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny", port: HookPort): string {
   return formatDecisionLine({
     ts: port.now(),
     kind,

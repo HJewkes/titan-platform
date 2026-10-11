@@ -4,7 +4,7 @@ import type { ActorObservation } from "./actor.js";
 import type { SpellingId } from "./spellings.js";
 import type { ClassifiedAction, GuardedAction } from "./types.js";
 
-/** The action, spelling and rule behind a decision; logged on a deny or a bypass. */
+/** The action, spelling and rule behind a decision; logged on a deny. */
 export interface Matched {
   ruleId: string | null;
   action: GuardedAction;
@@ -12,7 +12,7 @@ export interface Matched {
   subject: Record<string, string>;
 }
 
-/** Pass carries the strictest match when anything was classified, so a bypass can be logged. */
+/** Pass carries the strictest match when anything was classified, so a caller acting for an owner class can record it. */
 export type GuardDecision = { outcome: "pass"; matched: Matched | null } | ({ outcome: "deny"; reason: string } & Matched);
 
 interface Verdict {

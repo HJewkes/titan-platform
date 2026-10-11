@@ -41,7 +41,7 @@ const DEEP: Array<[string, string]> = [
 
 describe("expansions nested past the reading limit", () => {
   it.each(DEEP)("the hook denies a push after %s", async (_name, line) => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(`${line}\n${PUSH}`), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("nested more than");
   });
@@ -72,7 +72,7 @@ describe("a stored value nested past the reading limit", () => {
     ["150 deep, push on the next line", `${storedDeep(150)}\n${PUSH}`],
     ["101 deep, push after a semicolon", `${storedDeep(MAX_NESTING + 1)}; ${PUSH}`],
   ])("the hook denies %s", async (_name, command) => {
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
+    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
     const result = await handle(event(command), { PATH: "/usr/bin" }, port);
     expect(result.stdout).toContain("nested more than");
   });

@@ -32,7 +32,7 @@ function fakeIo(stdin: string | null, files: Record<string, string> = {}): Recor
     readFile: (file) => files[file] ?? null,
     realpath: (p) => p,
     now: () => new Date("2026-01-02T03:04:05.000Z"),
-    loadDecide: async () => decide, ancestry: () => [],
+    loadDecide: async () => decide,
     out: (line) => out.push(line),
     err: (line) => err.push(line),
   };

@@ -2,7 +2,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readAncestry } from "./ancestry.js";
 import { readWithin, runCli } from "./cli.js";
 import { nodeContext } from "./context.js";
 
@@ -38,7 +37,6 @@ process.exitCode = await runCli(process.argv.slice(2), {
   realpath: (p) => fs.realpathSync.native(p),
   now: () => new Date(),
   loadDecide: async () => (await import("./decide.js")).decide,
-  ancestry: readAncestry,
   out: (line) => process.stdout.write(`${line}\n`),
   err: (line) => process.stderr.write(`${line}\n`),
 });
