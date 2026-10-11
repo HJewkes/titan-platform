@@ -32,7 +32,7 @@ export interface Rest {
 }
 
 /** A GraphQL query that has not answered by now is dead; the caller gets a rejection, not a hang. */
-export const GRAPHQL_TIMEOUT_MS = 30_000;
+const GRAPHQL_TIMEOUT_MS = 30_000;
 
 const API_ORIGIN = "https://api.github.com/";
 
