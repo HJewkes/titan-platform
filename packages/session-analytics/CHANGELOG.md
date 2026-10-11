@@ -1,5 +1,11 @@
 # @titan-design/session-analytics
 
+## 0.13.1
+
+### Patch Changes
+
+- 3873ce6: Count each inbound once when a session is held in two transcripts: `humanTurnCount`, `inboundKinds` and episode inbounds now keep only the first copy (`INBOUND_COPY_RANK`, the inbound twin of `SIGNAL_COPY_RANK`).
+
 ## 0.13.0
 
 ### Minor Changes
