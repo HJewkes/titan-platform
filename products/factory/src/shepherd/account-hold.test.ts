@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, accountWithHeadroom, type AccountsView } from "./account-hold.js";
 import { RECHECK_AFTER_MS } from "./account-limit.js";
 import { AccountLimitStore, accountLimitMigration, type AccountLimitStoreRef } from "./account-store.js";
@@ -18,7 +19,7 @@ const HELD = `account-exhausted: ${ACCOUNT} until 2026-10-11T00:00:00.000Z; TP-1
 
 function migrated(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), accountLimitMigration(17)]);
   return db;
 }
 

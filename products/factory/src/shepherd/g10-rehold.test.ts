@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { z } from "zod";
 import { G10_REHOLD_STEP, g10ReholdRoutes } from "./g10-rehold.js";
@@ -39,7 +40,7 @@ function scriptedGit(shape: Shape, during: () => void = () => undefined): Git {
 /** A run whose seat released a g10-adversary hold at REVIEWED, with the PR now at `head`. */
 function rig(shape: Shape, head = MOVED, during: (store: ShepherdStore) => void = () => undefined) {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   const store = ref.get();
@@ -50,8 +51,8 @@ function rig(shape: Shape, head = MOVED, during: (store: ShepherdStore) => void 
   store.release("run-1", { headSha: REVIEWED });
   const deps = { port: githubPort(fake.wire), store: ref, now: () => 0 };
   const [route] = g10ReholdRoutes(deps, { git: scriptedGit(shape, () => during(store)) });
-  const run = async (input: { head: string; cleared?: string[] }) => {
-    const prompt = JSON.stringify({ runId: "run-1", repo: REPO, pr, cleared: [], ...input });
+  const run = async (input: { head: string }) => {
+    const prompt = JSON.stringify({ runId: "run-1", repo: REPO, pr, ...input });
     const result = await route!.runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: G10_REHOLD_STEP, iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });
     if (!result.ok) throw new Error(result.error);
     return Outcome.parse(JSON.parse(result.output)).result;
@@ -81,15 +82,17 @@ describe("a g10-adversary hold the seat released", () => {
   it("stays released across a clean merge-up whose tree is the merge-tree of its parents", async () => {
     const { store, run } = rig("clean");
 
-    expect(await run({ head: MOVED })).toEqual({ reheld: false, clear: true });
+    expect(await run({ head: MOVED })).toEqual({ reheld: false });
     expect(store.byRun("run-1")?.held).toBe(false);
+    expect(store.vouchedLine("run-1", REVIEWED)).toEqual(new Set([REVIEWED, MOVED]));
   });
 
   it("stays released at the head it was released at, and at a head already shown clean", async () => {
     const { store, run } = rig("fix-push", REVIEWED);
 
     expect(await run({ head: REVIEWED })).toEqual({ reheld: false });
-    expect(await run({ head: MOVED, cleared: [MOVED] })).toEqual({ reheld: false });
+    store.vouch("run-1", REVIEWED, MOVED);
+    expect(await run({ head: MOVED })).toEqual({ reheld: false });
     expect(store.byRun("run-1")?.held).toBe(false);
   });
 
@@ -138,16 +141,25 @@ describe("a g10-adversary hold the seat released", () => {
     expect(store.byRun("run-1")?.held).toBe(false);
   });
 
-  it("keeps a re-hold in force when a hold of another class is placed over it", async () => {
+  it("keeps a re-hold in force under a hold of another class, which gates with its reviewer once the re-hold is released", async () => {
     const { store, run } = rig("fix-push");
     await run({ head: MOVED });
     const reheld = store.byRun("run-1")?.holdReason;
-    const events = store.eventsOf("run-1").length;
 
     store.hold("run-1", "stalled: no progress; TP-1", "stall-reviewer");
+    const gating = store.byRun("run-1");
+    store.release("run-1", { headSha: MOVED });
 
-    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: reheld, holdReviewer: null });
-    expect(store.eventsOf("run-1")).toHaveLength(events);
+    expect(gating).toMatchObject({ held: true, holdReason: reheld });
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: "stalled: no progress; TP-1", holdReviewer: "stall-reviewer" });
+  });
+
+  it("still reports its own re-hold after a hold of another class was parked under it", async () => {
+    const { store, run } = rig("fix-push");
+    await run({ head: MOVED });
+    store.hold("run-1", "stalled: no progress; TP-1");
+
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true, seat: "trusted-seat" });
   });
 
   it("is re-held, failing closed, when the PR cannot be read for the probe", async () => {

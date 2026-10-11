@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { adversaryGuard } from "./adversary-guard.js";
 import { shepherdEventMigration } from "./events.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
@@ -29,7 +30,7 @@ interface Rig {
 /** A run whose seat released a g10-adversary hold at REVIEWED, then held and lifted a stall at MOVED, where the PR now is. */
 function rig(probe: () => Promise<CarryResult>, head = MOVED): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   fake.addPr({ headSha: head });
@@ -102,9 +103,28 @@ describe("the merge guard after a seat released a g10-adversary hold", () => {
     expect(r.store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
   });
 
+  it("lets the second of two consecutive clean merge-ups of the released head merge", async () => {
+    const second = fakeSha("second-merge-up");
+    const r = rig(async ({ head }) => (head === MOVED ? CLEAN_MERGE_UP : { ...CLEAN_MERGE_UP, firstParent: MOVED }), second);
+
+    const first = await r.guard.reason(githubPort(r.fake.wire), REPO, 1, "main", MOVED);
+    await r.merge();
+
+    expect(first).toBeUndefined();
+    expect(r.fake.pr(1).merged).toBe(true);
+    expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("refuses a merge-up whose first parent is a head nobody proved, even when its tree is clean", async () => {
+    const r = rig(async () => ({ ...CLEAN_MERGE_UP, firstParent: fakeSha("unproven") }));
+
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
   it("passes a run that never had a g10-adversary release", async () => {
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
     const store = new ShepherdStore(db);
     store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
     store.hold("run-1", STALL);
