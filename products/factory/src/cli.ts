@@ -2,8 +2,7 @@ import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
-import { userInfo } from "node:os";
-import { parsePort, parsePositiveInt, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
+import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
@@ -24,7 +23,6 @@ import { registerNeeds } from "./needs/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
@@ -235,21 +233,10 @@ function registerShepherd(program: Command, verbs: Verbs): void {
   }
 }
 
-/** The seat agent-chat launched this shell for, else the OS user: the owner at their own terminal. */
-function callerOf(env: NodeJS.ProcessEnv): string {
-  return env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || userInfo().username;
-}
-
 const PR_VERBS = [
   ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
   ["review", "ask for Shepherd's own fresh review of owner/repo#N at its current head; a repeat at the same head asks nothing"],
 ] as const;
-
-function parseTarget(target: string): { repo: string; pr?: number } {
-  if (target.includes("#")) return parsePrRef(target);
-  if (!isRepo(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
-  return { repo: target };
-}
 
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
