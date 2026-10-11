@@ -1,8 +1,9 @@
 const MS_PER_HOUR = 3_600_000;
 
-export type ShepherdStage = "queued" | "ci" | "review" | "re-review" | "hold" | "land";
-export type StageMinutes = Partial<Record<ShepherdStage, number>>;
-export type MergePath = "shepherd" | "outside";
+const STAGES = ["queued", "ci", "review", "re-review", "hold", "land"] as const;
+type ShepherdStage = (typeof STAGES)[number];
+type StageMinutes = Partial<Record<ShepherdStage, number>>;
+type MergePath = "shepherd" | "outside";
 
 /** One Shepherd run as `titan-factory shepherd stats --per-run --json` prints it. */
 export interface ShepherdRunRecord {
@@ -24,7 +25,7 @@ export interface ShepherdRunRecord {
 }
 
 /** What a row needs from `taskActuals` to join Shepherd runs onto it. */
-export interface ShepherdJoinRow {
+interface ShepherdJoinRow {
   taskId: string;
   firstImplAt: string | null;
   prs: readonly { prRef: string; mergedAt: string | null }[];
@@ -80,8 +81,9 @@ function mergePathOf(joined: readonly ShepherdRunRecord[], row: ShepherdJoinRow)
 function sumStages(runs: readonly ShepherdRunRecord[]): StageMinutes {
   const totals: StageMinutes = {};
   for (const run of runs) {
-    for (const [stage, minutes] of Object.entries(run.stageMinutes) as [ShepherdStage, number][]) {
-      totals[stage] = Math.round(((totals[stage] ?? 0) + minutes) * 100) / 100;
+    for (const stage of STAGES) {
+      const minutes = run.stageMinutes[stage];
+      if (minutes !== undefined) totals[stage] = Math.round(((totals[stage] ?? 0) + minutes) * 100) / 100;
     }
   }
   return totals;
