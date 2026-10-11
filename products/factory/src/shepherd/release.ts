@@ -29,10 +29,10 @@ export function releaseTask(repo: RepoSlug): string {
  * `missing` when npm answers 404, `trusted` when its latest version was published by a trusted publisher, `untrusted`
  * otherwise; any other answer throws. Only a trusted publisher shows that release.yml can publish the next version.
  */
-export type NpmPresence = "missing" | "untrusted" | "trusted";
+type NpmPresence = "missing" | "untrusted" | "trusted";
 export type PackageRegistry = (name: string) => Promise<NpmPresence>;
 
-export const REGISTRY_TIMEOUT_MS = 10_000;
+const REGISTRY_TIMEOUT_MS = 10_000;
 
 const LatestVersion = z.looseObject({
   _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional(),
