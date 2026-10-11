@@ -28,4 +28,24 @@ export {
   type Watermark,
 } from "./class-table.js";
 export { sizeBand, type CappedHoursLike, type SizeBand, type TaskClassFacts, type ThroughputRow } from "./rows.js";
+export {
+  DEFAULT_FORECAST_DRAWS,
+  forecastSet,
+  type ForecastSetOptions,
+  type SetForecast,
+  type SetTask,
+  type TaskForecast,
+  type UnclassifiableTask,
+} from "./forecast-set.js";
+export {
+  closureFor,
+  closureRates,
+  DEFAULT_WEEK_MIN_TASKS,
+  weekEffects,
+  type ClosureLookup,
+  type ClosureRates,
+  type ClosureStats,
+  type WeekEffect,
+  type WeekEffectOptions,
+} from "./set-inputs.js";
 export { type Quantiles } from "./weighted-quantiles.js";
