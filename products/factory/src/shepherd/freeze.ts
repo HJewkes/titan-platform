@@ -122,6 +122,11 @@ export class FreezeStore {
     return freeze?.episode === episode ? freeze : undefined;
   }
 
+  /** Every repo's live freeze, so a caller can tell which fixers still have a red main to fix. */
+  activeFreezes(): Freeze[] {
+    return (this.db.prepare("SELECT * FROM shepherd_freeze WHERE thawed_at IS NULL").all() as Row[]).map(fromRow);
+  }
+
   isFrozen(repo: RepoSlug): boolean {
     return this.active(repo) !== undefined;
   }
