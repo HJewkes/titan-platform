@@ -1,4 +1,5 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { OwnerBrief } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -52,7 +53,7 @@ export interface ReviewRequest extends PhaseTarget {
 export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
 
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string }
+  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };

@@ -119,6 +119,8 @@ export const ServiceConfigSchema = z.strictObject({
   deployCheckout: absolutePath.optional(),
   /** What deploy clones the checkout from when it is absent; absent means the origin of the checkout the CLI runs from. */
   deployRemote: noNul.min(1).optional(),
+  /** How long `service deploy` watches a restarted build before it counts as deployed; absent means 2 minutes. */
+  deployWatchMs: z.number().int().min(0).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;

@@ -2,7 +2,10 @@ import { join } from "node:path";
 import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
 import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
-import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
+import type { DeployIncident } from "./deploy-incident.js";
+import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
+import { describePause, readDeployPause, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
 import { redactCredentials } from "./redact.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
@@ -19,6 +22,8 @@ export interface DeployPorts extends ServicePorts, LockPorts {
   listDirs: (dir: string) => readonly string[];
   copyTree: (from: string, to: string) => void;
   removeTree: (path: string) => void;
+  /** Tells the hub seat and the owner queue about a rollback that paused deploys; absent means only stderr carries it. */
+  incident?: (incident: DeployIncident) => Promise<void>;
 }
 
 export interface DeployOptions {
@@ -33,6 +38,8 @@ export interface DeployOptions {
   /** The sha to deploy; defaults to origin/main after the fetch. */
   expect?: string;
   drain: RestartDrain;
+  /** How long a restarted build is watched after its sha checks out; absent keys keep `DEFAULT_WATCH_WINDOW`. */
+  watch?: Partial<WatchWindow>;
 }
 
 /** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
@@ -80,7 +87,6 @@ const SHA_PROBE_TIMEOUT_MS = 5_000;
 const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
-const lockPath = (stateDir: string): string => join(stateDir, "deploy.lock");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
 /** Redacted before the cut, so a cut can never leave a token without the prefix that marks it. */
 function tail(name: string, text: string): string[] {
@@ -104,7 +110,7 @@ export function parseDeployRecord(text: string | undefined): DeployRecord | unde
 /** Fast-forward, build and restart the service checkout to `expect` or origin/main; never resets, so a rollback restores `dist` only. */
 export async function deployService(ports: DeployPorts, io: ServiceIo, options: DeployOptions): Promise<number> {
   ports.mkdir(options.stateDir);
-  const lock = lockPath(options.stateDir);
+  const lock = deployLockPath(options.stateDir);
   const held = takeLock(ports, lock);
   if (held !== undefined) {
     io.stderr(`error: ${held}\n`);
@@ -112,7 +118,7 @@ export async function deployService(ports: DeployPorts, io: ServiceIo, options: 
   }
   try {
     const deploy = { ports, io, options };
-    const plan = await planDeploy(deploy);
+    const plan = pauseHold(deploy) ?? (await planDeploy(deploy));
     return plan.kind === "go" ? await execute(deploy, plan.go) : stop(deploy, plan);
   } finally {
     releaseLock(ports, lock);
@@ -127,6 +133,12 @@ function stop({ ports, io, options }: Deploy, plan: Stop): number {
 
 function record(deploy: Deploy, fields: Omit<DeployRecord, "at">): DeployRecord {
   return { ...fields, at: new Date(deploy.ports.now()).toISOString() };
+}
+
+/** Read under the lock and before any sha is resolved, so no target, however new, gets past a pause. */
+function pauseHold({ ports, options }: Deploy): Stop | undefined {
+  const state = readDeployPause(ports, options.stateDir);
+  return state.paused ? { kind: "stop", code: FAILURE, message: `deploy held: ${describePause(state)}; clear with titan-factory service pause --clear` } : undefined;
 }
 
 function refuse(why: string): Stop {
@@ -177,25 +189,21 @@ async function isAncestor(ports: DeployPorts, ancestor: string, of: string): Pro
   return (await ports.git(["merge-base", "--is-ancestor", ancestor, of])).code === 0;
 }
 
-function buildShaOf(health: Record<string, unknown> | null): string | undefined {
-  const build = health?.build;
-  const sha = typeof build === "object" && build !== null ? (build as Record<string, unknown>).sha : undefined;
-  return typeof sha === "string" ? sha : undefined;
-}
-
 async function runningBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
   return buildShaOf(await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS));
 }
 
-/** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer in the whole poll. */
-async function answeredBuild(ports: DeployPorts, port: number): Promise<string | undefined> {
+/** A slow or missing answer under load is not a wrong sha, so poll; undefined means no answer with a sha in the whole poll. */
+async function answeredHealth(ports: DeployPorts, port: number): Promise<Record<string, unknown> | undefined> {
   for (let poll = 0; poll < SHA_POLLS; poll++) {
-    const sha = await runningBuild(ports, port);
-    if (sha !== undefined) return sha;
+    const health = await ports.healthWithin(port, SHA_PROBE_TIMEOUT_MS);
+    if (buildShaOf(health) !== undefined) return health ?? undefined;
     await ports.sleep(SHA_POLL_MS);
   }
   return undefined;
 }
+
+const answeredBuild = async (ports: DeployPorts, port: number): Promise<string | undefined> => buildShaOf(await answeredHealth(ports, port));
 
 /** A dirty or unknown build has no commit to diff from, so it neither no-ops nor skips. */
 const cleanSha = (sha: string | undefined): string | undefined => (sha === undefined || sha === UNKNOWN || sha.endsWith(DIRTY_SUFFIX) ? undefined : sha);
@@ -260,9 +268,9 @@ async function execute(deploy: Deploy, go: Go): Promise<number> {
   deploy.io.stdout(`deploying ${go.target} over build ${go.running ?? UNKNOWN}; ${go.touched.length} changed path(s) reach the factory build\n`);
   const backup = snapshot(deploy, go);
   const built = await installAndBuild(deploy.ports);
-  if (built !== undefined) return rollback(deploy, go, backup, built, "running");
+  if (built !== undefined) return rollBackBuild(deploy, go, backup, built);
   const why = await restartAndConfirm(deploy, go.target);
-  return why === undefined ? finish(deploy, go, "deployed") : rollback(deploy, go, backup, why, "restarted");
+  return why === undefined ? finish(deploy, go, "deployed") : rollBackRestart(deploy, go, backup, why);
 }
 
 /** No service runs from this checkout yet, so there is no backup to restore and no restart to confirm: build, then `service install` points the service at it. */
@@ -315,29 +323,65 @@ async function installAndBuild(ports: DeployPorts): Promise<string | undefined> 
   return undefined;
 }
 
-/** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering. */
+/** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors. */
 async function restartAndConfirm({ ports, io, options }: Deploy, target: string): Promise<string | undefined> {
   if ((await restartService(ports, io, options.port, options.logDir, options.drain)) !== 0) return "the restarted service did not come up healthy";
-  const sha = await answeredBuild(ports, options.port);
-  if (sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
-  return sha === target ? undefined : `/health reports build ${sha}, not ${target}`;
+  const health = await answeredHealth(ports, options.port);
+  const sha = buildShaOf(health);
+  if (health === undefined || sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
+  if (sha !== target) return `/health reports build ${sha}, not ${target}`;
+  const probe = () => ports.healthWithin(options.port, SHA_PROBE_TIMEOUT_MS);
+  return watchServe({ probe, sleep: ports.sleep }, health, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
 }
 
-/** Whether the old process still runs (`running`) or the new build already replaced it (`restarted`). */
-type ServiceState = "running" | "restarted";
-
-/** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it; only a replaced process is kickstarted. */
-async function rollback(deploy: Deploy, go: Go, backup: string, why: string, state: ServiceState): Promise<number> {
+/** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */
+async function rollBackBuild(deploy: Deploy, go: Go, backup: string, why: string): Promise<number> {
   deploy.io.stderr(`error: ${why}; restoring the factory build from ${backup}\n`);
   restore(deploy, go, backup);
-  const back = state === "restarted" ? await restartRestored(deploy, go) : await stillServing(deploy, go);
+  const back = await stillServing(deploy, go);
   return finish(deploy, go, "rolled-back", back ? why : `${why}; the restored build did not answer /health as ${go.running ?? "before"}`);
 }
 
-async function restartRestored(deploy: Deploy, go: Go): Promise<boolean> {
+/**
+ * The pause is written before anything is restored, so a deployer killed mid-rollback still holds every deploy.
+ * One restore, one restart, one notice: a failed rollback is reported and left paused, never retried.
+ */
+async function rollBackRestart(deploy: Deploy, go: Go, backup: string, why: string): Promise<number> {
+  const pauseFailure = pause(deploy, go, why, "pending");
+  deploy.io.stderr(`error: ${why}; restoring the factory build from ${backup}\n`);
+  const unverified = await restoreAndVerify(deploy, go, backup);
+  const kind = unverified === undefined ? "rolled-back" : "rollback-failed";
+  const lost = pause(deploy, go, why, unverified === undefined ? "verified" : "failed") ?? pauseFailure;
+  const told = `${why}${unverified === undefined ? "" : `; ${unverified}`}${lost === undefined ? "" : `; the deploy pause could not be written: ${lost}`}`;
+  if (unverified !== undefined || lost !== undefined) deploy.io.stderr(`ALERT: the rollback of ${go.target} needs a person: ${told}\n`);
+  await announce(deploy, { kind, target: go.target, from: go.running ?? UNKNOWN, why: told, at: new Date(deploy.ports.now()).toISOString() });
+  return finish(deploy, go, "rolled-back", told);
+}
+
+const pause = ({ ports, options }: Deploy, go: Go, why: string, rollback: DeployPause["rollback"]): string | undefined =>
+  writeDeployPause(ports, options.stateDir, { pausedAt: new Date(ports.now()).toISOString(), target: go.target, from: go.running ?? UNKNOWN, why, rollback });
+
+/** Undefined only when the restored build answers `/health` as the sha that ran before; an unknown old sha cannot be verified. */
+async function restoreAndVerify(deploy: Deploy, go: Go, backup: string): Promise<string | undefined> {
   const { ports, io, options } = deploy;
-  if ((await restartService(ports, io, options.port, options.logDir, { ...options.drain, wait: false })) !== 0) return false;
-  return stillServing(deploy, go);
+  try {
+    restore(deploy, go, backup);
+    if ((await restartService(ports, io, options.port, options.logDir, { ...options.drain, wait: false })) !== 0) return "the restored build did not come up healthy";
+  } catch (error) {
+    return `restoring the old build threw: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (go.running === undefined || go.running === UNKNOWN) return "the build before the deploy is unknown, so the restored build cannot be verified";
+  const sha = await answeredBuild(ports, options.port);
+  return sha === go.running ? undefined : `the restored build answered /health as ${sha ?? "nothing"}, not ${go.running}`;
+}
+
+async function announce({ ports, io }: Deploy, incident: DeployIncident): Promise<void> {
+  if (!ports.incident) return io.stderr("error: no incident notice is wired, so only this log carries the rollback\n");
+  try {
+    await ports.incident(incident);
+  } catch (error) {
+    io.stderr(`error: the incident notice failed: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
 }
 
 /** After a failed build the old process has its code loaded already, so it should still answer as the running build. */

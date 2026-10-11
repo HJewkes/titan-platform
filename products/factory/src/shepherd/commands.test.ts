@@ -195,6 +195,25 @@ describe("shepherd.register kind", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
     expect((await registered(w, pr1)).registration.kind).toBe("correctness");
   });
+
+  it("a new registration with no kind stores correctness", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, pr1);
+
+    expect(registration.kind).toBe("correctness");
+  });
+
+  it("a kindless repeat of a feature run keeps feature and is not refused", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, kind: "feature" });
+
+    const envelope = await w.call<Registered>("shepherd.register", pr1);
+
+    expect(envelope).toMatchObject({ ok: true, data: { created: false, registration: { kind: "feature" } } });
+  });
 });
 
 describe("shepherd.register kind on a failed run", () => {
