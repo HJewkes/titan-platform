@@ -183,6 +183,17 @@ that sent it, per model. An approve counts as an error when the same PR later go
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
 
+### costPerOutcome
+
+`costPerOutcome(db, assignments, { since, until })` costs generic assignment records
+(`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
+`byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
+count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
+split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
+reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
+tables with the list-price caveat.
+
 ### taskActuals
 
 `taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The

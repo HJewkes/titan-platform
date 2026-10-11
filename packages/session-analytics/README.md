@@ -296,6 +296,19 @@ that sent it, per model, and an approve counts as an error when the same PR late
 `unfilled`. It takes an open graph connection, never a path, and does not call `gh`.
 `reviewFillSchema` is its zod schema.
 
+## Cost per outcome
+
+`costPerOutcome(db, assignments, { since, until, mergedOutcomes?, doneOutcomes? })` answers what
+a merged or done outcome cost, per seat, kind, initiative and value tag. Each assignment
+(`assignmentSchema`: seat, agent, task, kind, initiative, outcome, value, pr, ts) is a generic
+record; parsing a seat log into them is the caller's adapter. An agent's sessions are those whose
+`session_origin.agent_name` is the agent, else those whose `task_ids` name one of its tasks, else
+the agent is listed in `unmatchedAgents`; `joinSource` counts assignments by route. The agent's
+`request_cost` in the window is split evenly over its assignments, so a fix round does not cost it
+twice. `usdPerMerged` is a bucket's whole cost, parked tries included, over its merged count, and
+null at zero. A seat's own sessions go to `seatCostUsd`, never a bucket. `costPerOutcomeSchema` is
+its zod schema and `renderCostPerOutcomeText(report)` prints it with the list-price caveat.
+
 ## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.
