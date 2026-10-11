@@ -48,6 +48,8 @@ export const WatchRowSchema = z.object({
   totalMinutes: z.number().int().optional(),
   /** The registration's implementer; null when it names none. Absent in rows older than the field. */
   implementer: z.string().nullable().optional(),
+  /** The registration's slice label; null for a whole-task run, which alone closes the task on landing. Absent in rows older than the field. */
+  slice: z.string().nullable().optional(),
   /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
   reviewer: z.string().nullable().optional(),
 });
@@ -304,6 +306,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
     implementer: registration.implementer || null,
+    slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
   };
 }
