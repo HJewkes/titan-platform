@@ -37,8 +37,32 @@ export interface WakeFacts {
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
-async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
-  const failing = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun[]> {
+  return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+}
+
+/**
+ * The script behind each CI job, so the implementer reruns the failing one before a push spends a CI cycle.
+ * Only these fixed keys reach `reason`: a check run's name is outside text (a branch can rename a job, any app can post a run), so it stays in the fenced log.
+ * Each entry names scripts, not commands; the appended test rule decides where and how they run.
+ */
+const LOCAL_REPRO: Readonly<Record<string, string>> = {
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  "lint-types": "the `lint:types` script",
+  "dag-check": "the `dag:check` and `dead:check` scripts",
+  "egress-scan": "the `egress:scan` script over the PR's commit range",
+};
+
+function failingJobsLine(failing: readonly CheckRun[]): string {
+  if (failing.length === 0) return "";
+  const names = new Set(failing.map((run) => run.name));
+  const known = Object.keys(LOCAL_REPRO).filter((job) => names.has(job));
+  const repro = known.map((job) => `${job}: ${LOCAL_REPRO[job]}`).join("; ");
+  const listed = known.length === 0 ? "" : ` Rerun the failing job's checks before you push, run as your test rule below says: ${repro}.`;
+  return ` ${failing.length} failing check run(s), named in the log below.${listed}`;
+}
+
+async function ciLogs(port: GitHubPort, input: WakeFacts, failing: readonly CheckRun[]): Promise<string> {
   if (failing.length === 0) return "No failing check run was found at this head.";
   const budget = Math.floor((LOG_BUDGET_BYTES - (failing.length - 1)) / failing.length);
   const sections = await Promise.all(failing.map((run) => logSection(port, input.repo, run, budget)));
@@ -218,8 +242,10 @@ export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullR
 async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
   const head = input.headSha;
   switch (input.kind) {
-    case "ci-red":
-      return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
+    case "ci-red": {
+      const failing = await failingRuns(port, input);
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+    }
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {
