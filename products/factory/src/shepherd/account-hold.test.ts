@@ -256,6 +256,30 @@ describe("sh-account-wait", () => {
     expect(s.store().byRun("run-1")?.held).toBe(true);
   });
 
+  it("drops its own hold when the PR closes during the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.fake.pr(1).state = "closed";
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "head-moved" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: false, holdReason: null });
+    expect(s.limits().holdsRun("run-1")).toBe(false);
+    expect(s.db.prepare("SELECT run_id FROM shepherd_account_hold").all()).toEqual([]);
+  });
+
+  it("leaves an owner's hold standing when the PR closes during the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "owner: wait");
+    s.fake.pr(1).state = "closed";
+
+    expect(await s.wait("run-1", true)).toEqual({ resumed: "released" });
+    expect(await s.wait("run-1", false)).toEqual({ resumed: "head-moved" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: "owner: wait" });
+  });
+
   it("keeps waiting while the store cannot be read, failing closed", async () => {
     const s = scene();
     s.register("run-1", 1);

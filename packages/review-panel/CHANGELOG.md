@@ -1,5 +1,13 @@
 # @titan-design/review-panel
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/fix-proof@0.4.0
+
 ## 0.5.1
 
 ### Patch Changes

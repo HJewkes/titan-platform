@@ -1,5 +1,11 @@
 # @titan-design/code-graph
 
+## 0.17.1
+
+### Patch Changes
+
+- 18875c7: TP-747 b: `indexPaths` parses, signs, extracts, digests and deletes each file's syntax tree before parsing the next, so at most one web-tree-sitter tree is alive at a time instead of every changed file's tree until metrics. Snapshots are unchanged.
+
 ## 0.17.0
 
 ### Minor Changes
