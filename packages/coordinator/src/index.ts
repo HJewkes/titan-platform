@@ -15,6 +15,8 @@ export type {
 } from "./charter-policy.js";
 export { HARD_STOPS, hardStopsIn } from "./hard-stops.js";
 export type { HardStop } from "./hard-stops.js";
+export { resolveSeatPolicy } from "./resolve-policy.js";
+export type { ResolvedSeatPolicy } from "./resolve-policy.js";
 export {
   seatConcurrencySchema,
   seatConfigSchema,

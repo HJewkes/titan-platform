@@ -21,7 +21,7 @@ import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
-import { FINISHED_RUN_STATUSES } from "./run-status.js";
+import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
@@ -103,32 +103,6 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
   }
-}
-
-/** The registration of another PR that holds `branch` under a run that has finished, if any. */
-function finishedBranchHolder(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return undefined;
-  return FINISHED_RUN_STATUSES.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed") ? byBranch : undefined;
-}
-
-/**
- * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
- * PR's run is live; a finished run gives the branch up (see `releaseFinishedBranch`). Reads only.
- */
-function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
-  if (byPr) return byPr;
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
-  if (finishedBranchHolder(ctx, store, repo, pr, branch)) return undefined;
-  throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
-}
-
-/** The changesets branch is reused by every release, so a finished run's hold on it is dropped once a lookup finds nothing. */
-function releaseFinishedBranch(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): void {
-  const holder = finishedBranchHolder(ctx, store, repo, pr, branch);
-  if (holder) store.releaseBranch(holder.runId);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */

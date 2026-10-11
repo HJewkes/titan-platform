@@ -1,5 +1,11 @@
 # @titan-design/session-read
 
+## 0.12.2
+
+### Patch Changes
+
+- 3d3cc58: Keep a Claude record's `isApiErrorMessage`, `error`, `apiErrorStatus` and `quotaLimits` fields as native metadata entries, so a reader can tell a record the client wrote (such as the usage-limit notice) from one the model wrote.
+
 ## 0.12.1
 
 ### Patch Changes

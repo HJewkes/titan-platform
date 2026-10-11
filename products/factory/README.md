@@ -713,6 +713,18 @@ The land core talks to GitHub through `@titan-design/github` (`githubPort` over 
 and `fakeGitHub` in tests). Its README documents the check-then-act writes and the argument
 validation.
 
+## Writing a gate brief
+
+Every owner gate carries a `GateBrief` built in `src/gate-brief.ts`; build one there, never inline.
+
+- `summary` is one line of at most 280 characters. Fixed words are never cut; `summarize` shrinks only the free-text `detail`.
+- `evidenceRef` is one line of at most 500 characters: a PR link, a failing check's URL, or a command. `brief()` cuts it with `oneLine`, so a long CI URL cannot make `snapshotBrief` throw.
+- Pass free text through `oneLine` before it reaches a field; control characters and line breaks are refused.
+- `questions` come from `decisionGate`, which builds the menu and the answer schema from one option list. Mark `recommended` only when the facts support it, and pin the head (`headSha: z.literal(...)`) so an answer cannot cover another head.
+- A MERGE carried from another head says so (`carriedFrom`); the summary never claims the reviewer saw the head asked about.
+
+Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBrief`.
+
 ## Land core: `src/workflows/land.ts`
 
 `land(ctx, { repo, pr }, { policy })` runs these steps, all code, all routed `repeat`:

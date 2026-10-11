@@ -1,7 +1,7 @@
 import { EPISODE_TABLE, SIGNAL_COPY_RANK, replaceEpisodes, type EpisodeRow, type SessionGraph } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import { classifySession, type SessionClass } from "./classify-session.js";
-import { FIRST_COPY, readSessionContexts } from "./cost-report-queries.js";
+import { FIRST_COPY, INBOUND_COPY_RANK, readSessionContexts } from "./cost-report-queries.js";
 
 /** Two rule sets on purpose (design section 18): workers segment by assignment, coordinators by work phase. */
 export type Heuristic = "worker-v1" | "coordinator-v1";
@@ -286,11 +286,16 @@ const EPISODE_SIGNALS_SQL = `
     FROM session_signal WHERE ${IN_SESSION})
   WHERE copy_rank = 1`;
 
+/** One row per inbound, by the same first-copy rule as the signals above. */
+const EPISODE_INBOUNDS_SQL = `
+  SELECT offset, ts, transcriptId, cause FROM (
+    SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, cause, ${INBOUND_COPY_RANK} AS copy_rank
+    FROM inbound WHERE ${IN_SESSION})
+  WHERE copy_rank = 1`;
+
 export function readEpisodeInput(db: Db, sessionId: string, spawned: boolean): EpisodeInput {
   const requests = db.prepare(EPISODE_REQUESTS_SQL).all({ sessionId }) as EpisodeRequest[];
-  const inbounds = db
-    .prepare(`SELECT byte_offset AS offset, ts, transcript_id AS transcriptId, cause FROM inbound WHERE ${IN_SESSION}`)
-    .all(sessionId) as EpisodeInbound[];
+  const inbounds = db.prepare(EPISODE_INBOUNDS_SQL).all(sessionId) as EpisodeInbound[];
   const signals = db.prepare(EPISODE_SIGNALS_SQL).all(sessionId) as EpisodeSignal[];
   return { requests, inbounds, signals, spawned };
 }
