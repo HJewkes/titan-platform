@@ -34,6 +34,25 @@ export async function openHead(services: ShepherdServices, runId: string, onUnre
   return pr?.state === "open" ? pr.headSha : undefined;
 }
 
+/**
+ * The open PR's head when it moved off `asked`; undefined while it is still `asked`, cannot be read, or is merged or closed.
+ * A snapshot row still at `asked` costs no PR read. Any other row is confirmed through the port, since the list may be a
+ * tick stale and a stale row must not cancel a gate at the live head.
+ */
+async function movedHead(services: ShepherdServices, runId: string, asked: string): Promise<string | undefined> {
+  const registration = services.store.get().byRun(runId);
+  if (!registration || registration.pr === null) return undefined;
+  const { repo, pr: number } = registration;
+  try {
+    const row = (await services.snapshot?.openPrs(repo))?.find((pr) => pr.number === number);
+    if (row?.headSha === asked) return undefined;
+    const pr = await services.port.getPr(repo, number);
+    return pr.state === "open" && pr.headSha !== asked ? pr.headSha : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface RecordedDecision {
   result?: { outcome?: string; headSha?: string; reason?: string; rule?: { table?: string; rowId?: string } };
 }
@@ -159,10 +178,10 @@ export async function supersedeMovedGates(host: FactoryHost, services: ShepherdS
     const asked = supersedableHead(host, pending);
     return asked ? [{ ...pending, asked }] : [];
   });
-  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId));
+  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId, asked }) => movedHead(services, runId, asked));
   for (const [index, { runId, gate, asked }] of asking.entries()) {
     const head = settledValue(heads[index]!);
-    if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
+    if (!head || host.gates.get(gate.id)?.status !== "pending") continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`)) continue;
     superseded.push({ runId, gateId: gate.id, from: asked, to: head, condition: "head-moved" });
   }

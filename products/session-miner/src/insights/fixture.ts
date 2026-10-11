@@ -29,8 +29,8 @@ function insertRequest(db: Db, r: Request): void {
 }
 
 /** One request with default usage, so a day counts as covered by the graph. */
-export function seedRequest(db: Db, sessionId: string, ts: string): void {
-  insertRequest(db, { sessionId, ts });
+export function seedRequest(db: Db, sessionId: string, ts: string, model?: string): void {
+  insertRequest(db, { sessionId, ts, ...(model === undefined ? {} : { model }) });
 }
 
 function insertSession(db: Db, sessionId: string, profile: string, agentName: string): void {

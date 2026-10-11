@@ -205,6 +205,22 @@ describe("reconcilePrices", () => {
     expect(models).toEqual(["claude-fable-5", "claude-fable-5-1", "claude-opus-5", "claude-opus-5-5"]);
   });
 
+  it("stores a long-prompt tier added to an existing row as an update", () => {
+    const tiered: PriceInput = { ...OPUS, longPrompt: { abovePromptTokens: 100_000, input: 25, cacheRead: 2.5, cacheWrite5m: 31.25, cacheWrite1h: 50, output: 125 } };
+
+    const result = reconcilePrices(graph, [tiered], { tableVersion: 1 });
+
+    expect(result.updated).toBe(1);
+    expect(graph.db.prepare(
+      `SELECT long_prompt_above_tokens, long_input_usd_mtok, long_cache_read_usd_mtok, long_cache_write_5m_usd_mtok,
+         long_cache_write_1h_usd_mtok, long_output_usd_mtok FROM price WHERE model = 'claude-opus-5'`,
+    ).get()).toEqual({
+      long_prompt_above_tokens: 100_000, long_input_usd_mtok: 25, long_cache_read_usd_mtok: 2.5,
+      long_cache_write_5m_usd_mtok: 31.25, long_cache_write_1h_usd_mtok: 50, long_output_usd_mtok: 125,
+    });
+    expect(reconcilePrices(graph, [tiered], { tableVersion: 1 }).updated).toBe(0);
+  });
+
   it("writes nothing when the graph already matches the table", () => {
     reconcilePrices(graph, [OPUS, FABLE, FABLE_BASE], { tableVersion: 1 });
 

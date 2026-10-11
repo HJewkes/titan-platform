@@ -1,7 +1,12 @@
-import { O as OwnerItem, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './deposit.js';
-export { D as DEPOSIT_LENS, b as DOORS, c as ITEM_KINDS, d as ITEM_STATUSES, L as LENSES, e as OwnerItemDeposit, R as ROUTE_TARGETS, f as SOURCE_SYSTEMS, g as depositItemId, h as fromDeposit, o as ownerItemDepositSchema, i as ownerItemSchema, s as sourceRefSchema } from './deposit.js';
+import { O as OwnerItem, A as Audience, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './deposit.js';
+export { b as AUDIENCES, D as DEPOSIT_LENS, c as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as OwnerItemDeposit, R as ROUTE_TARGETS, g as SOURCE_SYSTEMS, h as depositItemId, i as fromDeposit, o as ownerItemDepositSchema, j as ownerItemSchema, s as sourceRefSchema } from './deposit.js';
 import { ManifestInput, FeedbackSchema } from '@titan-design/review-schema';
 import { z } from 'zod';
+
+/** Items filed before `audience` existed carry none and stay owner items. */
+declare function audienceOf(item: Pick<OwnerItem, "audience">): Audience;
+/** Keeps the items for `audience`, in input order. */
+declare function forAudience<T extends Pick<OwnerItem, "audience">>(items: readonly T[], audience: Audience): T[];
 
 /**
  * Why A likely changes B: `base` (A is on B's base PR), `pr-decision` (A decides on B's PR),
@@ -336,7 +341,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, OwnerAnswer, OwnerItem, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, answeredFromFeedback, askKey, buildOwnerRounds, componentKey, consolidate, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, OwnerAnswer, OwnerItem, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, type Principle, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type WithdrawnItem, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, prKey, rank, recheck, relationKind, roundAskKey, roundItemId, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -346,6 +351,7 @@ declare const ITEM_KINDS: readonly ["decide", "approve", "do", "review", "know"]
 declare const DOORS: readonly ["one-way", "two-way"];
 declare const LENSES: readonly ["blocking-agent", "blocking-merge", "stuck", "planning", "fyi"];
 declare const ROUTE_TARGETS: readonly ["owner-now", "owner-queue", "decider"];
+declare const AUDIENCES: readonly ["owner", "operator"];
 declare const ITEM_STATUSES: readonly ["open", "answered", "decided", "expired", "gone-elsewhere", "withdrawn"];
 declare const sourceRefSchema: z.ZodObject<{
     system: z.ZodEnum<{
@@ -433,6 +439,10 @@ declare const ownerItemSchema: z.ZodObject<{
     }>;
     stuckKind: z.ZodOptional<z.ZodString>;
     unblocks: z.ZodArray<z.ZodString>;
+    audience: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        operator: "operator";
+    }>>;
     route: z.ZodOptional<z.ZodObject<{
         target: z.ZodEnum<{
             "owner-now": "owner-now";
@@ -480,6 +490,7 @@ type SourceRef = z.infer<typeof sourceRefSchema>;
 type OwnerItem = z.infer<typeof ownerItemSchema>;
 type OwnerAnswer = z.infer<typeof answerSchema>;
 type ItemStatus = (typeof ITEM_STATUSES)[number];
+type Audience = (typeof AUDIENCES)[number];
 
 /**
  * What an agent may file into the owner inbox. Strict at every level, so a deposit that tries
@@ -521,6 +532,10 @@ declare const ownerItemDepositSchema: z.ZodObject<{
     initiative: z.ZodOptional<z.ZodString>;
     personal: z.ZodDefault<z.ZodBoolean>;
     unblocks: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    audience: z.ZodOptional<z.ZodEnum<{
+        owner: "owner";
+        operator: "operator";
+    }>>;
     expiresAt: z.ZodOptional<z.ZodISODateTime>;
 }, z.core.$strict>;
 type OwnerItemDeposit = z.input<typeof ownerItemDepositSchema>;
@@ -537,4 +552,4 @@ declare function depositItemId(asker: string, depositId: string): string;
 /** Parses an untrusted deposit and returns the open OwnerItem it files; throws on a refused deposit. */
 declare function fromDeposit(deposit: OwnerItemDeposit, now: Date): OwnerItem;
 
-export { DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, DOORS as b, ITEM_KINDS as c, ITEM_STATUSES as d, type OwnerItemDeposit as e, SOURCE_SYSTEMS as f, depositItemId as g, fromDeposit as h, ownerItemSchema as i, ownerItemDepositSchema as o, sourceRefSchema as s };
+export { type Audience as A, DEPOSIT_LENS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, DOORS as c, ITEM_KINDS as d, ITEM_STATUSES as e, type OwnerItemDeposit as f, SOURCE_SYSTEMS as g, depositItemId as h, fromDeposit as i, ownerItemSchema as j, ownerItemDepositSchema as o, sourceRefSchema as s };

@@ -165,14 +165,27 @@ teleport lines of the same log.
 
 ### events.db readers
 
-`readVerdicts`, `readSpawns` and `readLastPrompts` read agent-chat's `events.db` through a
+`readVerdicts`, `readSpawns`, `readLastPrompts` and `readHandoffs` read agent-chat's `events.db` through a
 connection the caller opened read-only; the package never opens the file or checks it exists.
-Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the
+Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`, `HANDOFFS_SQL`), and the
 matching `*_SOURCES` command is `eventsDbCommand(sql)` over that same constant, so the printed
 re-read runs the reader's own query. `eventsDbCommand` binds each `@name` parameter with
 sqlite3's `.parameter set` to an epoch-millisecond placeholder such as `<asOf epoch ms>`.
 `EVENTS_TABLE_DDL` is agent-chat's events table as the readers expect it; a test fixture
 creates it with this rather than a copy.
+
+### seatGenerations
+
+`seatGenerations({ handoffs, broker, agentSessions, seat, since })` lists the agent processes
+that held one seat's name, in start order: `{ generation, agentId, agentName, sessionIds,
+start, end, endedBy }`. A committed `agent_handoff` row (`readHandoffs(db)`) or a
+`teleport_completed` broker line ends a generation and starts its successor; the row wins when
+both record the same handover. An `agent_exited` line ends one with `exit`, an `agent_spawned`
+line starts one, and a generation with neither end is `open`. An aborted handoff, one the
+predecessor never stood down after, ends nothing. `since` drops generations that ended before it
+and keeps the one running at it, so read handoffs without a bound. `sessionIds` comes from
+`readAgentSessions(db)` over the session graph and is empty, not dropped, when the graph has no
+session for the agent. `start` is null when the spawn line has rotated out of the broker log.
 
 ### reviewFillReport
 
