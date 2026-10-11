@@ -180,11 +180,6 @@
       "count": 4
     }
   },
-  "apps/console/src/pages/StatusPage.tsx": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
   "apps/console/src/sessions.test.tsx": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
@@ -3190,7 +3185,7 @@
   },
   "products/factory/src/shepherd/release.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "products/factory/src/shepherd/release.ts": {

@@ -1,5 +1,13 @@
 # @titan-design/titan
 
+## 0.3.0
+
+### Minor Changes
+
+- 6de2539: `titan host doctor` adds an `inventory` row group: a stat-only presence row for every path in
+  the coordination design's section 2 inventory on the current platform, so secrets are checked
+  without being read.
+
 ## 0.2.0
 
 ### Minor Changes

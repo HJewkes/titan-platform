@@ -86,7 +86,7 @@ function world(options: { behind?: boolean; env?: NodeJS.ProcessEnv } = {}): Wor
   const store = shepherdStoreRef();
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
-  const deps: Routed = { port: recordingPort(fake, writes), store, now: () => clock, sleep: tick, registry: async () => true };
+  const deps: Routed = { port: recordingPort(fake, writes), store, now: () => clock, sleep: tick, registry: async () => "trusted" as const };
   const routes = options.env ? configuredRoutes(options.env, deps) : factoryRoutesFor({ ...deps, advisory: (repo) => flag.advisory && repo === REPO });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }) }), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);

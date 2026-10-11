@@ -3,7 +3,7 @@ import { registerAudit } from "./audit/command.js";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { userInfo } from "node:os";
-import { parsePort, parsePositiveInt } from "./cli-options.js";
+import { parsePort, parsePositiveInt, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
@@ -173,7 +173,7 @@ function registerLand(program: Command, verbs: Verbs): void {
     .action((ref: string, opts: { task?: string; port: number }) => landVerb(verbs, ref, opts));
 }
 
-interface ShepherdOpts extends TimelineView {
+interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;
   json?: boolean;
   offline?: boolean;
@@ -202,7 +202,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
-  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line")
+  withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line"))
     .option("--deploy", "with --json, print { rows, deploy } so the deploy block rides along; without it --json stays the bare row array")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
   verb("list", "the watch list")
@@ -287,8 +287,8 @@ function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvel
     io.stderr(`error: ${envelope.error}\n`);
     return exitOf(envelope.code);
   }
-  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data, opts)}${deploy ? deploySummary(deploy) : ""}`);
-  else io.stdout(`${JSON.stringify(jsonOf(name, envelope.data, opts, deploy), null, 2)}\n`);
+  if (!opts.json) io.stdout(`${formatShepherd(name, statusRows(name, envelope.data, opts), opts)}${deploy ? deploySummary(deploy) : ""}`);
+  else io.stdout(`${JSON.stringify(jsonOf(name, statusRows(name, envelope.data, opts), opts, deploy), null, 2)}\n`);
   return name === "shepherd.waiting" && overdueOwnerGates(WaitingSchema.parse(envelope.data)).length > 0 ? EXIT.FAILURE : EXIT.OK;
 }
 

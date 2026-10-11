@@ -21,8 +21,9 @@ import { ShepherdStore, holdReviewerMigration, shepherdMigration, sliceMigration
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("version-packages-head");
-const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
-const onNpm = (...names: string[]): PackageRegistry => async (name) => names.includes(name);
+const MERGE_ON_GREEN: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
+const AUTO: EffectivePolicy = { ...MERGE_ON_GREEN, release: "grant" };
+const onNpm = (...names: string[]): PackageRegistry => async (name) => (names.includes(name) ? "trusted" : "missing");
 
 const BASE = fakeSha("base");
 const WIDGET = { name: "@demo/widget", version: "1.1.0", scripts: { build: "tsc" }, dependencies: { zod: "^4.0.0" } };
@@ -94,6 +95,14 @@ describe("releasePreflight", () => {
     expect(result.unpublished).toEqual(["@demo/widget"]);
   });
 
+  it("blocks a package whose latest version no trusted publisher published, so the owner is asked before release.yml tries", async () => {
+    const result = await preflight(versionPackagesPr(), async () => "untrusted");
+
+    expect(result.blockers).toEqual(["@demo/widget's latest version on registry.npmjs.org has no trusted publisher; the owner confirms one is saved (CLAUDE.md, Releasing)"]);
+    expect([result.unpublished, result.untrusted]).toEqual([[], ["@demo/widget"]]);
+    expect(decideRelease(AUTO, HEAD, result)).toMatchObject({ outcome: "gate", rule: { rowId: "preflight-blocked" } });
+  });
+
   it("throws when the registry cannot be read, so no blocked result exists for a head npm never answered for", async () => {
     await expect(preflight(versionPackagesPr(), async () => Promise.reject(new Error("HTTP 503")))).rejects.toThrow("HTTP 503");
   });
@@ -150,7 +159,8 @@ describe("decideRelease", () => {
     ["a preflight at another head", AUTO, HEAD, { ...passed, head: fakeSha("other") }, "gate", "no-preflight"],
     ["a blocked preflight", AUTO, HEAD, { ...passed, blockers: ["@demo/widget is not on registry.npmjs.org yet"] }, "gate", "preflight-blocked"],
     ["an owner-gate seat", OWNER_GATE_POLICY, HEAD, passed, "gate", "owner-gate"],
-    ["a passed preflight under an auto seat", AUTO, HEAD, passed, "allow", "version-packages"],
+    ["a passed preflight under an auto seat without the release-merge grant", MERGE_ON_GREEN, HEAD, passed, "gate", "no-release-grant"],
+    ["a passed preflight under an auto seat with the release-merge grant", AUTO, HEAD, passed, "allow", "version-packages"],
   ])("decides %s as %s by shepherd-release/%s", (_name, policy, head, found, outcome, rowId) => {
     expect(decideRelease(policy, head, found)).toMatchObject({ outcome, rule: { table: "shepherd-release", rowId } });
   });
@@ -211,14 +221,36 @@ describe("releaseGuard", () => {
 });
 
 describe("npmRegistry", () => {
-  const answering = (status: number) => async (url: string | URL | Request) => (requested.push(String(url)), new Response(null, { status }));
-  const requested: string[] = [];
+  const requested: { url: string; signal: AbortSignal | null | undefined }[] = [];
+  const answering = (status: number, latest?: object) => async (url: string | URL | Request, init?: RequestInit) => {
+    requested.push({ url: String(url), signal: init?.signal });
+    return new Response(latest === undefined ? null : JSON.stringify(latest), { status });
+  };
+  const read = (status: number, latest?: object) => npmRegistry(answering(status, latest) as typeof fetch)("@demo/widget");
+  const HAND = { version: "0.0.0", _npmUser: { name: "owner", email: "owner@example.com" }, dist: {} };
 
-  it("reads a scoped package by its escaped name: 200 exists, 404 does not, anything else throws", async () => {
-    expect(await npmRegistry(answering(200) as typeof fetch)("@demo/widget")).toBe(true);
-    expect(await npmRegistry(answering(404) as typeof fetch)("@demo/widget")).toBe(false);
-    await expect(npmRegistry(answering(500) as typeof fetch)("@demo/widget")).rejects.toThrow(/answered 500/);
-    expect(requested[0]).toBe("https://registry.npmjs.org/@demo%2fwidget");
+  it("reads a scoped package's latest version by its escaped name, under a timeout", async () => {
+    await read(200, HAND);
+
+    expect(requested.at(-1)?.url).toBe("https://registry.npmjs.org/@demo%2fwidget/latest");
+    expect(requested.at(-1)?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each<[string, string, object]>([
+    ["a trusted publisher on its latest version", "trusted", { ...HAND, _npmUser: { name: "GitHub Actions", trustedPublisher: { id: "github", oidcConfigId: "config-1" } } }],
+    ["a hand publish with no trusted publisher", "untrusted", HAND],
+    ["a null trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: null } }],
+    ["a false trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: false } }],
+    ["an empty trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: {} } }],
+    ["a token publish with provenance attestations only", "untrusted", { ...HAND, dist: { attestations: { url: "https://registry.npmjs.org/-/npm/v1/attestations/x", provenance: { predicateType: "https://slsa.dev/provenance/v1" } } } }],
+  ])("reads %s as %s", async (_name, presence, latest) => {
+    expect(await read(200, latest)).toBe(presence);
+  });
+
+  it("reads a 404 as missing, and throws on any other failure or an unreadable body", async () => {
+    expect(await read(404)).toBe("missing");
+    await expect(read(500)).rejects.toThrow(/answered 500/);
+    await expect(read(200)).rejects.toThrow();
   });
 });
 
@@ -230,7 +262,7 @@ describe("retryingRegistry", () => {
     const registry: PackageRegistry = async () => {
       reads += 1;
       if (reads <= failures) throw new Error(`HTTP 503 on read ${reads}`);
-      return true;
+      return "trusted";
     };
     const sleep = async (ms: number) => void waits.push(ms);
     return { retrying: retryingRegistry(registry, sleep, new AbortController().signal), waits, reads: () => reads };
@@ -239,7 +271,7 @@ describe("retryingRegistry", () => {
   it("reads again after each backoff and answers once the registry recovers", async () => {
     const { retrying, waits } = flaky(2);
 
-    expect(await retrying("@demo/widget")).toBe(true);
+    expect(await retrying("@demo/widget")).toBe("trusted");
     expect(waits).toEqual(REGISTRY_BACKOFF_MS.slice(0, 2));
   });
 
@@ -254,7 +286,7 @@ describe("retryingRegistry", () => {
     const waits: number[] = [];
     const retrying = retryingRegistry(onNpm(), async (ms) => void waits.push(ms), new AbortController().signal);
 
-    expect([await retrying("@demo/widget"), waits]).toEqual([false, []]);
+    expect([await retrying("@demo/widget"), waits]).toEqual(["missing", []]);
   });
 });
 
