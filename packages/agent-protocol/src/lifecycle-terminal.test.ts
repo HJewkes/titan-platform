@@ -60,9 +60,10 @@ describe("failed terminal usage", () => {
   });
 
   it("rejects usage that is not a list of measurements", () => {
-    const malformed: unknown = { outcome: "failed", reason: "output_invalid: schema", retryable: false, usage: "x" };
+    const terminal: ExecutionTerminal<string> = { outcome: "failed", reason: "output_invalid: schema", retryable: false };
+    Reflect.set(terminal, "usage", "x");
 
-    expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal: malformed as ExecutionTerminal<string> })), "invalid_transition");
+    expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal })), "invalid_transition");
   });
 });
 
