@@ -28,20 +28,20 @@ interface WeekDiff {
   adoption: AdoptionChange[];
 }
 
-interface GapThreshold {
+export interface GapThreshold {
   minCalls: number;
   minSessions: number;
 }
 
-const DEFAULT_GAP_THRESHOLD: GapThreshold = { minCalls: 50, minSessions: 10 };
+export const DEFAULT_GAP_THRESHOLD: GapThreshold = { minCalls: 50, minSessions: 10 };
 
 /** An open active-work task, as far as dedupe needs it. */
-interface OpenTask {
+export interface OpenTask {
   id: string;
   tags: readonly string[];
 }
 
-type TaskAction =
+export type TaskAction =
   | { kind: "add"; patternId: string; title: string; tags: string[]; body: string }
   | { kind: "note"; patternId: string; taskId: string; text: string };
 

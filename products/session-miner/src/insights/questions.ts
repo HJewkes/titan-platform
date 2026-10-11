@@ -25,6 +25,7 @@ import { fetchPulls, readDenials, readJournal, readPullSnapshot, withEventsDb } 
 import { dataQuality } from "./data-quality.js";
 import { defineInsight, isoTime, refuseSessionScope, utc, type AnyInsight } from "./define.js";
 import { readBrokerLog } from "./liveness-sources.js";
+import { priceCheck } from "./price-check.js";
 import { probes } from "./probes.js";
 import { roundTrips } from "./round-trips.js";
 import { toolAdoption } from "./tool-adoption.js";
@@ -183,7 +184,7 @@ export const liveness = defineInsight<{ seat?: string[]; brokerLog?: string }, L
 });
 
 /** Every insight question, in plan order; a new question is one definition added here. */
-export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow, dataQuality];
+export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [priceCheck, spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow, dataQuality];
 
 /** Questions that read only agent-chat's files; insights.test.ts runs every INSIGHT_QUESTIONS entry but blocked-flow against the graph. */
 export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [roundTrips, liveness];

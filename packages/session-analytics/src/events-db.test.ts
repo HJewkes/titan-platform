@@ -1,7 +1,7 @@
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BLOCKED_FLOW_SOURCES } from "./blocked-flow.js";
-import { EVENTS_TABLE_DDL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
+import { EVENTS_TABLE_DDL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readHandoffs, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
 import { LIVENESS_SOURCES } from "./liveness.js";
 
 interface EventFixture {
@@ -128,5 +128,23 @@ describe("readLastPrompts", () => {
       ["rev-1", null],
       ["rev-2", null],
     ]);
+  });
+});
+
+describe("readHandoffs", () => {
+  it("reads each handoff's seat, predecessor and successor, marking one the predecessor never stood down after as uncommitted", () => {
+    seed([
+      { ts: "2026-10-01T00:00:00Z", kind: "agent_handoff", actor: "coord-a", ref: "g0", meta: { successor: "g1" } },
+      { ts: "2026-10-01T01:00:00Z", kind: "agent_handoff", actor: "coord-a", ref: "g1", meta: { successor: "g2" } },
+      { ts: "2026-10-01T01:00:05Z", kind: "agent_stood_down", actor: "coord-a", ref: "g1" },
+      { ts: "2026-10-01T02:00:00Z", kind: "agent_handoff", actor: "coord-b", ref: "h1", meta: "not json" },
+      { ts: "2026-10-01T02:00:00Z", kind: "message", actor: "coord-a", ref: "g1" },
+    ]);
+
+    expect(readHandoffs(db, "2026-10-01T00:30:00Z")).toEqual([
+      { eventId: 2, at: "2026-10-01T01:00:00.000Z", seat: "coord-a", predecessorId: "g1", successorId: "g2", committed: true },
+      { eventId: 4, at: "2026-10-01T02:00:00.000Z", seat: "coord-b", predecessorId: "h1", successorId: null, committed: false },
+    ]);
+    expect(readHandoffs(db).map((h) => h.eventId)).toEqual([1, 2, 4]);
   });
 });

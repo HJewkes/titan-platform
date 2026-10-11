@@ -11,7 +11,34 @@ export interface PriceInput {
   cacheWrite5m: number;
   cacheWrite1h: number;
   output: number;
+  /** Rates for the whole request, output included, once its prompt (`context_tokens`) is strictly above `abovePromptTokens`. */
+  longPrompt?: LongPromptPrice;
 }
+
+export interface LongPromptPrice {
+  abovePromptTokens: number;
+  input: number;
+  cacheRead: number;
+  cacheWrite5m: number;
+  cacheWrite1h: number;
+  output: number;
+}
+
+const RATE_COLUMNS = ["input_usd_mtok", "cache_read_usd_mtok", "cache_write_5m_usd_mtok", "cache_write_1h_usd_mtok", "output_usd_mtok",
+  "long_prompt_above_tokens", "long_input_usd_mtok", "long_cache_read_usd_mtok", "long_cache_write_5m_usd_mtok",
+  "long_cache_write_1h_usd_mtok", "long_output_usd_mtok"] as const;
+const INSERT_PRICE = `INSERT INTO price (model, effective_from, table_version, source, ${RATE_COLUMNS.join(", ")})
+     VALUES (${Array(4 + RATE_COLUMNS.length).fill("?").join(", ")})`;
+
+/** In `RATE_COLUMNS` order; a row with no tier stores NULL long columns. */
+function rates(r: PriceInput): (number | null)[] {
+  const l = r.longPrompt;
+  return [r.input, r.cacheRead, r.cacheWrite5m, r.cacheWrite1h, r.output,
+    l?.abovePromptTokens ?? null, l?.input ?? null, l?.cacheRead ?? null, l?.cacheWrite5m ?? null, l?.cacheWrite1h ?? null, l?.output ?? null];
+}
+
+const priceValues = (r: PriceInput, tableVersion: number, source: string | null) =>
+  [r.modelPrefix, r.effectiveFrom, tableVersion, source, ...rates(r)];
 
 export interface SyncPricesOptions {
   /** Stamped on every row so a report can name the table it priced with. */
@@ -21,16 +48,12 @@ export interface SyncPricesOptions {
 
 /** Replace every `price` row with `rows` in one transaction, so `request_cost` never reads a half-written table. */
 export function syncPrices(graph: SessionGraph, rows: readonly PriceInput[], options: SyncPricesOptions): number {
-  const insert = graph.db.prepare(
-    `INSERT INTO price (model, effective_from, table_version, input_usd_mtok, cache_read_usd_mtok,
-       cache_write_5m_usd_mtok, cache_write_1h_usd_mtok, output_usd_mtok, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
+  const insert = graph.db.prepare(INSERT_PRICE);
   const source = options.source ?? null;
   graph.db.transaction(() => {
     graph.db.exec("DELETE FROM price");
     for (const r of rows) {
-      insert.run(r.modelPrefix, r.effectiveFrom, options.tableVersion, r.input, r.cacheRead, r.cacheWrite5m, r.cacheWrite1h, r.output, source);
+      insert.run(...priceValues(r, options.tableVersion, source));
     }
   })();
   return rows.length;
@@ -45,9 +68,9 @@ export interface ReconcileResult {
 type StoredPrice = Record<string, number | string | null>;
 
 function matchesRow(stored: StoredPrice, r: PriceInput, version: number, source: string | null): boolean {
+  const expected = rates(r);
   return stored.table_version === version && stored.source === source
-    && [stored.input_usd_mtok, stored.cache_read_usd_mtok, stored.cache_write_5m_usd_mtok, stored.cache_write_1h_usd_mtok, stored.output_usd_mtok]
-      .every((v, i) => v === [r.input, r.cacheRead, r.cacheWrite5m, r.cacheWrite1h, r.output][i]);
+    && RATE_COLUMNS.every((column, i) => stored[column] === expected[i]);
 }
 
 /**
@@ -58,13 +81,9 @@ function matchesRow(stored: StoredPrice, r: PriceInput, version: number, source:
 export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[], options: SyncPricesOptions): ReconcileResult {
   const find = graph.db.prepare("SELECT * FROM price WHERE model = ? AND effective_from = ?");
   const upsert = graph.db.prepare(
-    `INSERT INTO price (model, effective_from, table_version, input_usd_mtok, cache_read_usd_mtok,
-       cache_write_5m_usd_mtok, cache_write_1h_usd_mtok, output_usd_mtok, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (model, effective_from) DO UPDATE SET table_version = excluded.table_version,
-       input_usd_mtok = excluded.input_usd_mtok, cache_read_usd_mtok = excluded.cache_read_usd_mtok,
-       cache_write_5m_usd_mtok = excluded.cache_write_5m_usd_mtok, cache_write_1h_usd_mtok = excluded.cache_write_1h_usd_mtok,
-       output_usd_mtok = excluded.output_usd_mtok, source = excluded.source`,
+    `${INSERT_PRICE}
+     ON CONFLICT (model, effective_from) DO UPDATE SET table_version = excluded.table_version, source = excluded.source,
+       ${RATE_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")}`,
   );
   const source = options.source ?? null;
   const result: ReconcileResult = { added: 0, updated: 0, pruned: 0 };
@@ -73,7 +92,7 @@ export function reconcilePrices(graph: SessionGraph, rows: readonly PriceInput[]
       const stored = find.get(r.modelPrefix, r.effectiveFrom) as StoredPrice | undefined;
       if (stored && (stored.table_version as number) > options.tableVersion) continue;
       if (stored && matchesRow(stored, r, options.tableVersion, source)) continue;
-      upsert.run(r.modelPrefix, r.effectiveFrom, options.tableVersion, r.input, r.cacheRead, r.cacheWrite5m, r.cacheWrite1h, r.output, source);
+      upsert.run(...priceValues(r, options.tableVersion, source));
       if (stored) result.updated++;
       else result.added++;
     }
