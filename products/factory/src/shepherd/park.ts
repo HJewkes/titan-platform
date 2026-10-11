@@ -133,9 +133,12 @@ export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, inpu
 /** The serve process's one retry, so a restart's replay re-arms what the step before it armed. */
 let rearm: ((runId: string, agent: string) => void) | undefined;
 
-export const parkRoutes = (deps: ShepherdDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name)): readonly StepRoute[] => {
+function rosterRetry(deps: ShepherdDeps, park: ParkPort): LiveRetry {
   const roster = deps.roster ?? agentChatRoster(deps.agentChatBin);
-  const retry = liveRetry({ attempt: (name) => asAttempt(attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
+  return liveRetry({ attempt: (name) => asAttempt(attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
+}
+
+export const parkRoutes = (deps: ShepherdDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
   const wiring: ParkWiring = { park, notice: deps.exitNotice, retry };
   rearm = (runId, agent) => armRetry(deps.store, wiring, runId, agent);
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
