@@ -1,0 +1,52 @@
+name: fix-proof
+
+# pull_request only, never pull_request_target: the PR's code runs here with a read-only token and no secrets.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fix-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The PR head, not GitHub's synthetic merge commit; full history so the merge base is reachable.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Find the merge base
+        id: merge-base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "sha=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
+      # The runner is built from the merge base, so a PR cannot change the code that judges it.
+      - name: Build the runner at the merge base
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          TURBO_TELEMETRY_DISABLED: 1
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/runner" "$MERGE_BASE"
+          cd "$RUNNER_TEMP/runner"
+          pnpm install --frozen-lockfile
+          pnpm --filter @titan-design/fix-proof... run build
+      # The verdict is the printed fix-proof/v1 line; the runner always exits 0, so this step passes whatever it says.
+      - name: Prove the fix
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TURBO_TELEMETRY_DISABLED: 1
+        run: node "$RUNNER_TEMP/runner/packages/fix-proof/dist/bin.js" run --base "$MERGE_BASE" --head "$HEAD_SHA"
