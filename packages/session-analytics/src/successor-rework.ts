@@ -9,6 +9,8 @@ export const DEFAULT_BOOT_REQUESTS = 30;
 const HAS_FILE_READ = `SELECT EXISTS (SELECT 1 FROM session_signal WHERE signal = 'file_read') AS present`;
 /** Only `file_read`: a file the predecessor wrote but never read is not something the successor re-learns. */
 const SESSION_READS = `SELECT DISTINCT detail FROM session_signal WHERE session_id = @sessionId AND signal = 'file_read' AND detail IS NOT NULL`;
+const presentRow = z.object({ present: z.number() });
+const readRows = z.array(z.object({ detail: z.string() }));
 
 export interface SuccessorReworkOptions {
   /** How many of the successor's first main-thread requests count as its boot. */
@@ -65,7 +67,7 @@ interface PairRework {
  */
 export function successorReworkReport(db: Db, window: ReportWindow, options: SuccessorReworkOptions = {}): SuccessorReworkReport {
   const bootRequests = options.bootRequests ?? DEFAULT_BOOT_REQUESTS;
-  const fileReadData = (db.prepare(HAS_FILE_READ).get() as { present: number }).present === 1;
+  const fileReadData = presentRow.parse(db.prepare(HAS_FILE_READ).get()).present === 1;
   const pairs = pairSessions(db, readSpans(db)).filter((pair) => inWindow(pair.successor.first, window));
   if (pairs.length === 0) return { window, bootRequests, fileReadData, rows: [] };
   const calls = readRequestToolCalls(db, { since: window.since, until: null });
@@ -113,7 +115,7 @@ function inWindow(ts: string, window: ReportWindow): boolean {
 }
 
 function pairRework(db: Db, pair: Pair, bootRequests: number, calls: ReturnType<typeof readRequestToolCalls>): PairRework {
-  const predecessorReads = new Set((db.prepare(SESSION_READS).all({ sessionId: pair.predecessor.sessionId }) as { detail: string }[]).map((row) => row.detail));
+  const predecessorReads = new Set(readRows.parse(db.prepare(SESSION_READS).all({ sessionId: pair.predecessor.sessionId })).map((row) => row.detail));
   const bootReads = new Set<string>();
   const rereads = new Set<string>();
   let rereadCostUsd = 0;
