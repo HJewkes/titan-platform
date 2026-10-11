@@ -4,7 +4,6 @@ import { classKey, isEligible, normalizeKind, sizeBand, type TaskClassFacts, typ
 
 const MS_PER_DAY = 86_400_000;
 const GLOBAL_KEY = "*";
-const METRICS: readonly BacktestMetric[] = ["implAgentHours", "reviewAgentHours", "usd"];
 export const DEFAULT_WEEK_MIN_TASKS = 8;
 
 export interface ClosureStats {
@@ -166,5 +165,8 @@ export function weekEffects(actuals: readonly ThroughputRow[], table: ClassTable
   const byWeek = groupBy(sorted.map(({ row }) => row), isoWeek);
   const weeks = [...byWeek.keys()].filter((week) => byWeek.get(week)!.length >= minTasks).sort();
   const multipliersOf = (metric: BacktestMetric): number[] => normaliseToMeanOne(weeks.map((week) => weekRatio(byWeek.get(week)!, table, metric)));
-  return { weeks, multipliers: Object.fromEntries(METRICS.map((metric) => [metric, multipliersOf(metric)])) as Record<BacktestMetric, number[]> };
+  return {
+    weeks,
+    multipliers: { implAgentHours: multipliersOf("implAgentHours"), reviewAgentHours: multipliersOf("reviewAgentHours"), usd: multipliersOf("usd") },
+  };
 }
