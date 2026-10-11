@@ -67,3 +67,47 @@ describe("titan-gh ci-wait", () => {
     expect(result.err[0]).toMatch(/^usage: titan-gh ci-wait/);
   });
 });
+
+async function titanGhPr(args: string[]) {
+  const fake = fakeGitHub();
+  fake.addPr({ headSha: SHA });
+  fake.setRuns(SHA, [successRun("validate", 1), successRun("dag-check", 2)]);
+  fake.squashSources.set(1, { title: "Add the widget", body: "Adds the widget.", commits: [] });
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runTitanGh(args, { port: githubPort(fake.wire), out: (line) => out.push(line), err: (line) => err.push(line), now: () => 0, sleep: async () => {} });
+  return { code, out, err, fake };
+}
+
+describe("titan-gh pr verbs", () => {
+  it("prints pr-status as one JSON object with --json", async () => {
+    const result = await titanGhPr(["pr-status", "o/r#1", "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out.join("\n"))).toMatchObject({ repo: "o/r", number: 1, state: "open", ready: true, checks: [{ name: "validate", state: "success" }, { name: "dag-check", state: "success" }] });
+  });
+
+  it("dispatches pr-context", async () => {
+    const result = await titanGhPr(["pr-context", "o/r#1"]);
+
+    expect(result.code).toBe(0);
+    expect(result.out.join("\n").split("\n")[0]).toBe("o/r#1 Add the widget");
+  });
+
+  it("names the pr verbs and an example in the usage for an unknown verb", async () => {
+    const result = await titanGhPr(["pr-merge", "o/r#1"]);
+
+    expect(result.code).toBe(64);
+    expect(result.out).toEqual([]);
+    expect(result.err.join("\n")).toContain("titan-gh pr-status <owner/repo#N> [--json]");
+    expect(result.err.join("\n")).toContain("example: titan-gh pr-status");
+  });
+
+  it.each(["o/r", "o/r#0", "o/r#x", "o#1", "o/r/x#1", "https://github.com/o/r/pull/1"])("exits 64 before any GitHub read for the malformed ref %s", async (ref) => {
+    const result = await titanGhPr(["pr-status", ref]);
+
+    expect(result.code).toBe(64);
+    expect(result.err[0]).toMatch(/^usage: titan-gh/);
+    expect(result.fake.calls).toEqual([]);
+  });
+});

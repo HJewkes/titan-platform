@@ -124,6 +124,20 @@ judges them. An unpinned one counts only from GitHub Actions or a commit status.
 required contexts every run and status must pass, and a sha with statuses but no check-run
 stays pending, because statuses can land before the check suites exist.
 
+PR state for a shell or an agent comes from the `titan-gh` bin, over the caller's `gh` login:
+
+```sh
+titan-gh pr-status octo/widgets#42
+# octo/widgets#42 open 1a2b3c4 clean checks 1/2 validate:failure blocked: check-failed
+titan-gh pr-status octo/widgets#42 --json   # { repo, number, state, headSha, baseRef, mergeableState, checks, ready, blockers }
+titan-gh pr-context octo/widgets#42         # title, base, head sha, changed files, then the body
+```
+
+`pr-status` judges the head with `mergeReadiness` against the base's required checks (rulesets,
+or classic protection when the rulesets require none) and drops the `unapproved` blocker, since
+approval lives in Shepherd. `pr-context` lists no files past GitHub's 3,000-file cap and gives
+the count instead. A bad verb or ref prints usage and exits 64.
+
 ## What it deliberately does not do
 
 - No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every
