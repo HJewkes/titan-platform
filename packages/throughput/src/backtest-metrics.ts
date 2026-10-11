@@ -2,19 +2,19 @@ import { type Interval, wilson } from "@titan-design/evidence/stats";
 import { weightedQuantiles } from "./weighted-quantiles.js";
 
 /** One scored test row: the realised value and the interval predicted for it. */
-export interface IntervalForecast {
+interface IntervalForecast {
   actual: number;
   p10: number;
   p50: number;
   p90: number;
 }
 
-export interface PointForecast {
+interface PointForecast {
   actual: number;
   predicted: number;
 }
 
-export interface Coverage {
+interface Coverage {
   hits: number;
   n: number;
   /** Wilson interval on the hit rate; null when there is nothing to score. */
@@ -22,8 +22,8 @@ export interface Coverage {
 }
 
 /** One minute in hours, so zero-hour actuals and zero-width intervals stay finite. */
-export const ONE_MINUTE_HOURS = 1 / 60;
-export const CONTEXT_LINE_TOKENS = 150_000;
+const ONE_MINUTE_HOURS = 1 / 60;
+const CONTEXT_LINE_TOKENS = 150_000;
 
 /** Share of rows whose actual lies inside [p10, p90], with a Wilson interval. */
 export function intervalCoverage(rows: readonly IntervalForecast[], options: { confidence?: number } = {}): Coverage {
@@ -54,8 +54,8 @@ export function medianAbsLogError(rows: readonly PointForecast[]): number | null
 function median(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? (sorted[mid] as number) : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
+  const middle = sorted.slice(Math.floor((sorted.length - 1) / 2), Math.floor(sorted.length / 2) + 1);
+  return middle.reduce((sum, value) => sum + value, 0) / middle.length;
 }
 
 /** 1-based ranks, ties sharing the average of the ranks they span. */
@@ -67,7 +67,7 @@ export function averageRanks(values: readonly number[]): number[] {
     let end = start;
     while (end + 1 < order.length && order[end + 1]?.value === order[start]?.value) end += 1;
     const rank = (start + end) / 2 + 1;
-    for (let i = start; i <= end; i += 1) ranks[(order[i] as { index: number }).index] = rank;
+    for (const { index } of order.slice(start, end + 1)) ranks[index] = rank;
     start = end + 1;
   }
   return ranks;
@@ -83,16 +83,12 @@ export function spearman(xs: readonly number[], ys: readonly number[]): number |
 function pearson(xs: readonly number[], ys: readonly number[]): number | null {
   const meanX = xs.reduce((sum, x) => sum + x, 0) / xs.length;
   const meanY = ys.reduce((sum, y) => sum + y, 0) / ys.length;
-  let covariance = 0;
-  let varianceX = 0;
-  let varianceY = 0;
-  xs.forEach((x, i) => {
-    const dx = x - meanX;
-    const dy = (ys[i] as number) - meanY;
-    covariance += dx * dy;
-    varianceX += dx * dx;
-    varianceY += dy * dy;
-  });
+  const dxs = xs.map((x) => x - meanX);
+  const dys = ys.map((y) => y - meanY);
+  const dot = (a: readonly number[], b: readonly number[]): number => a.reduce((sum, value, i) => sum + value * (b[i] ?? Number.NaN), 0);
+  const covariance = dot(dxs, dys);
+  const varianceX = dot(dxs, dxs);
+  const varianceY = dot(dys, dys);
   if (varianceX === 0 || varianceY === 0) return null;
   return covariance / Math.sqrt(varianceX * varianceY);
 }
@@ -103,12 +99,12 @@ export function predictsOverContextLine(trainPeaks: readonly number[]): boolean 
   return over * 2 > trainPeaks.length;
 }
 
-export interface ContextLineRow {
+interface ContextLineRow {
   predictedOver: boolean;
   peakContextTokens: number;
 }
 
-export interface ContextLineScore {
+interface ContextLineScore {
   n: number;
   truePositives: number;
   falsePositives: number;
