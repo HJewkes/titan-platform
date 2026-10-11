@@ -3,6 +3,7 @@ import type { FactoryHost } from "../host.js";
 import { registerVersionPackages, type ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
 import { openOnBranch } from "./snapshot-reads.js";
+import { cancelUnlessSettled } from "./stale-gates.js";
 import { VERSION_PACKAGES_BRANCH, blockedOnlyByNpm, npmRegistry, publishedSince, type PackageRegistry } from "./release.js";
 
 /** How often `titan-factory serve` looks for a Version Packages PR in each shepherded repo. */
@@ -64,7 +65,7 @@ async function unblockPublished(host: FactoryHost, services: ShepherdServices, r
   const pending = run && host.pendingGates().find((gate) => gate.runId === run.id && gate.stepId === "approve-merge");
   const preflight = pending && blockedOnlyByNpm(run.stepResults, pending.gate.prompt);
   if (!preflight || !(await publishedSince(registry, preflight))) return undefined;
-  host.gates.cancel(pending.gate.id, `${preflight.unpublished.join(", ")} is on registry.npmjs.org now; a new run reads the release again`);
+  if (!cancelUnlessSettled(host.gates, pending.gate.id, `${preflight.unpublished.join(", ")} is on registry.npmjs.org now; a new run reads the release again`)) return undefined;
   await host.runtime.wait(run.id);
   return pending.gate.id;
 }
