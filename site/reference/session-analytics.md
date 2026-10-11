@@ -214,6 +214,21 @@ linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or i
 `unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
 and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
 
+### seatContext
+
+`seatContext(db, { window, sessions })` measures how full each standing seat's context runs.
+The caller names each seat and passes its session ids (`{ name, sessionIds }`); the function
+does not detect seats. Per seat it returns `requests`, `p50`, `p90` and `max` of the context
+per call, and `compactions: { auto, manual }` from the `compaction` table of those sessions alone.
+
+A call's context is input plus cache read plus cache write tokens. Sidechain requests and
+`<synthetic>` records are left out, and a request copied into a second transcript counts once.
+A percentile is `v[floor(n * q)]` of the sorted values, the method of the `ctx.py` script it
+replaces, so its p90 is the upper of two neighbours rather than an interpolation.
+The miner exposes it as `titan-miner seat-context --since 7d --seat name=id,id [--p90-max N]
+[--auto-max N]`, which prints one line per seat ending in `PASS` or `FAIL <reason>` and exits 1
+on any failure.
+
 ## What it deliberately does not do
 
 It does not open a transcript, a log or the network, it never writes the graph, and it does
