@@ -64,6 +64,36 @@ describe("mapItems", () => {
     expect(out.skipped.map((s) => s.key)).toEqual(LETTERS.slice(3));
   });
 
+  it("stops a budgeted run with cost_unknown once a finished item reports unpriced usage", async () => {
+    const run = vi.fn(async () => ({ ok: true as const, output: "ok", usage: { costUsd: 0, costUnknown: true as const } }));
+
+    const out = await runOnce({ run }, LETTERS, { ...byLetter, budgetUsd: 10 });
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(out.stoppedBy).toBe("cost_unknown");
+    expect(out.results.map((r) => r.key)).toEqual(["a"]);
+    expect(out.skipped.map((s) => s.key)).toEqual(LETTERS.slice(1));
+  });
+
+  it("stops a budgeted run with cost_unknown once a failed item reports unpriced usage", async () => {
+    const run = vi.fn(async () => ({ ok: false as const, error: "flaky", retryable: true, usage: { costUsd: 0, costUnknown: true as const } }));
+
+    const out = await runOnce({ run }, LETTERS, { ...byLetter, budgetUsd: 10 });
+
+    expect(out.stoppedBy).toBe("cost_unknown");
+    expect(out.failed.map((f) => f.key)).toEqual(["a"]);
+    expect(out.skipped.map((s) => s.key)).toEqual(LETTERS.slice(1));
+  });
+
+  it("runs every item when unpriced usage arrives without a budget", async () => {
+    const run = vi.fn(async () => ({ ok: true as const, output: "ok", usage: { costUsd: 0, costUnknown: true as const } }));
+
+    const out = await runOnce({ run }, LETTERS, byLetter);
+
+    expect(out.stoppedBy).toBeNull();
+    expect(out.results).toHaveLength(LETTERS.length);
+  });
+
   it("stops launching after a non-retryable step failure and reports the failure", async () => {
     const runner = inlineRunner((input) => {
       if (input.stepId === "judge/c") throw new Error("reader refused");

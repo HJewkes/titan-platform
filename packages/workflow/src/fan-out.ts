@@ -10,6 +10,7 @@ export interface MapOptions<T> {
   /**
    * Stop launching items once finished items have spent this much. In-flight
    * items are not counted, so a run can overshoot by up to `concurrency - 1` items.
+   * An item whose usage is `costUnknown` also stops launches, with `stoppedBy: "cost_unknown"`.
    */
   budgetUsd?: number;
   /** Retryable item failures tolerated before launches stop. Defaults to 3. A non-retryable failure always stops launches. */
@@ -42,7 +43,8 @@ export interface MapResult<T> {
   skipped: { key: string; item: T }[];
   /** Cost reported by finished and failed items. */
   spentUsd: number;
-  stoppedBy: "budget" | "failure" | null;
+  /** `cost_unknown`: with `budgetUsd` set, an item reported unpriced usage, so spend can no longer be checked. */
+  stoppedBy: "budget" | "failure" | "cost_unknown" | null;
 }
 
 interface Keyed<T> {
@@ -97,7 +99,7 @@ async function runLane<T>(
     const entry = keyed[state.next++]!;
     try {
       const result = await fn(entry.item, `${stepId}/${entry.key}`, ctx);
-      state.spentUsd += result.usage?.costUsd ?? 0;
+      recordSpend(result.usage, options, state);
       state.results.set(entry.key, result);
     } catch (error) {
       if (error instanceof StepFailedError) recordFailure(entry, error, options, state);
@@ -108,9 +110,14 @@ async function runLane<T>(
 
 function recordFailure<T>(entry: Keyed<T>, error: StepFailedError, options: MapOptions<T>, state: FanOutState<T>): void {
   state.failed.push({ ...entry, error: error.reason, retryable: error.retryable, ...(error.usage ? { usage: error.usage } : {}) });
-  state.spentUsd += error.usage?.costUsd ?? 0;
+  recordSpend(error.usage, options, state);
   const tooMany = state.failed.length > (options.maxFailures ?? DEFAULT_MAX_FAILURES);
   if (!error.retryable || tooMany) state.stoppedBy ??= "failure";
+}
+
+function recordSpend<T>(usage: StepUsage | undefined, options: MapOptions<T>, state: FanOutState<T>): void {
+  state.spentUsd += usage?.costUsd ?? 0;
+  if (options.budgetUsd !== undefined && usage?.costUnknown) state.stoppedBy ??= "cost_unknown";
 }
 
 function keyItems<T>(items: readonly T[], key: (item: T) => string): Keyed<T>[] {

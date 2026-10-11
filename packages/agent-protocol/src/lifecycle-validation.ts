@@ -43,10 +43,13 @@ export function validateTerminal(terminal: ExecutionTerminal<unknown>): void {
   }
   if (terminal.outcome === "ended") return validateEnded(terminal);
   nonempty("terminal.reason", terminal.reason);
-  if (terminal.outcome === "failed" && typeof terminal.retryable !== "boolean") {
-    fail("invalid_transition", "terminal.retryable must be boolean");
-  }
+  if (terminal.outcome === "failed") validateFailed(terminal);
   if (terminal.outcome === "cancellation_unknown") nonempty("terminal.evidence", terminal.evidence);
+}
+
+function validateFailed(terminal: Extract<ExecutionTerminal<unknown>, { outcome: "failed" }>): void {
+  if (typeof terminal.retryable !== "boolean") fail("invalid_transition", "terminal.retryable must be boolean");
+  if (terminal.usage !== undefined && !Array.isArray(terminal.usage)) fail("invalid_transition", "terminal.usage must be an array");
 }
 
 function validateEnded(terminal: Extract<ExecutionTerminal<unknown>, { outcome: "ended" }>): void {
