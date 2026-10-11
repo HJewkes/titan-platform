@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentChatAgents } from "./agents.js";
 import { fixersOver } from "./main-red.js";
 import { ReviewerBrokerBusy } from "./review.js";
@@ -244,8 +244,17 @@ describe("spawnGate review priority", () => {
 
 describe("every factory-started agent passes the one gate", () => {
   let dir: string;
-  beforeEach(() => void (dir = mkdtempSync(join(tmpdir(), "titan-spawn-gate-"))));
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "titan-spawn-gate-"));
+    // agent-dispatch reads ~/.agent-chat/profiles before a spawn; keep it off the real home.
+    vi.stubEnv("HOME", dir);
+    mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
+    writeFileSync(join(dir, ".agent-chat", "profiles", "rv.json"), JSON.stringify({ surface: "headless" }));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   const bin = () => {
     const path = join(dir, "agent-chat");

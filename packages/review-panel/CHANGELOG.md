@@ -1,5 +1,12 @@
 # @titan-design/review-panel
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+
 ## 0.5.0
 
 ### Minor Changes

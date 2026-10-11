@@ -20,10 +20,19 @@ dispatchToAgentChat(
 ```
 
 - `dispatchToAgentChat(req, timeoutMs, allowedProfiles)` refuses a profile outside the
-  caller's allowlist and a peer name outside agent-chat's name shape, then runs
+  caller's allowlist and a peer name outside agent-chat's name shape, then refuses a
+  profile whose installed file is not headless (`assertInstalledHeadless`), then runs
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit throws
-  `DispatchError` carrying the CLI's stdout reason, else its stderr.
+  `DispatchError` carrying the CLI's stdout reason, else its stderr; a CLI that hangs
+  throws `DispatchTimeoutError`, since the spawn may still have happened.
+- `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
+  `installedProfilesDir()`, `$HOME/.agent-chat/profiles`) and throws `DispatchError` unless
+  it says `"surface": "headless"`: an interactive surface puts the brief in `claude`'s argv.
+  A missing, unreadable or non-JSON file is refused too. The refusal names the profile and
+  path, never the file's contents. `dispatchToAgentChat` takes `profilesDir` to point it
+  elsewhere. The broker re-reads the file after this check, so a write in between is still
+  possible until agent-chat's surface lock closes that window.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
 - `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
@@ -45,7 +54,9 @@ dispatchToAgentChat(
 - `resumeArgs(sessionId, message)` returns `claude` argv; run it with `execSafe`. The
   message is in argv here, so callers decide what may go in it.
 - `listAgents(bin, timeoutMs)` reads `agent-chat agent ls --json` and returns typed
-  `AgentRow`s, skipping a row that lacks a field it relies on. `retire(bin, name,
+  `AgentRow`s, skipping a row whose required field is missing or mistyped and dropping an
+  optional field (`model`, `transcriptPath`, `transcriptExists`, `spawnedBy`, `account`,
+  `teleportFrom`) that has the wrong type. `retire(bin, name,
   timeoutMs, { force })` frees a name and returns the broker's caveats. Both throw
   `DispatchError`, or `DispatchTimeoutError` when the CLI hangs, since a hung retire may
   still have happened.

@@ -1,5 +1,18 @@
 # @titan-design/session-graph
 
+## 0.16.0
+
+### Minor Changes
+
+- aeedb5d: `session_origin` stores an experiment arm and follow-up counts: `ResolvedOrigin` gains `experimentId`, `experimentArm`, `predecessor` and `followupKinds`, written to new columns by the `origin experiment arm` migration (`ORIGIN_EXPERIMENT_MIGRATION_NAME`). An arm table for one experiment is one query over `session_origin`.
+
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+
 ## 0.15.0
 
 ### Minor Changes

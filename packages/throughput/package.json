@@ -30,6 +30,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@titan-design/evidence": "workspace:^"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
