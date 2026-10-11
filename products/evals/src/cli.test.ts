@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -80,6 +80,20 @@ describe("titan-evals", () => {
     expect(await runCli(["help"])).toBe(0);
     expect(await runCli(["help", "validate"])).toBe(0);
     expect(await runCli(["validate", "--help"])).toBe(0);
+  });
+
+  it("refuses a review-pr cases --out inside a git work tree and writes nothing there", async () => {
+    scratch = mkdtempSync(join(tmpdir(), "titan-evals-"));
+    writeFileSync(join(scratch, "corpus.jsonl"), "");
+    const insideRepo = join(FIXTURE_ROOT, "..", "review-pr-private-out");
+    const errors: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void errors.push(line));
+
+    const code = await runCli(["review-pr", "cases", "--corpus", join(scratch, "corpus.jsonl"), "--active-work-root", scratch, "--out", insideRepo]);
+
+    expect(code).toBe(1);
+    expect(errors.join("\n")).toMatch(/inside a git work tree/);
+    expect(existsSync(insideRepo)).toBe(false);
   });
 
   it("exits 1 and marks the spec stale when a prompt file was edited", async () => {

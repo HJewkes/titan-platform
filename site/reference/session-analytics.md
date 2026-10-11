@@ -194,6 +194,15 @@ split over its assignments, so it is costed once however many rounds it ran. Sea
 reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
 tables with the list-price caveat.
 
+### scorecardJournalRows
+
+`scorecardJournalRows({ eventsDb, dispatchRecords, since, now })` returns the scorecard rows read
+from `events.db` verdicts and seat `dispatch.jsonl` journals: first-pass FIX_FIRST share,
+mechanical first-blocker share, coordinator spawns for milestone tasks and cost per merged PR.
+`readDispatchJournal(dir)` reads the journals. An absent or empty source gives `value: null`,
+which `scorecardRowText` prints as `not measured`; the cost row also stays unmeasured below the
+0.8 `usd_est` coverage floor (`MIN_COST_COVERAGE`). Baselines and targets are the caller's.
+
 ### taskActuals
 
 `taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The

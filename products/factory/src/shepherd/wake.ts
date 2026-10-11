@@ -364,12 +364,26 @@ async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promis
  */
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
-  const woke = await step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
-  if (woke.kind === "woken") return awaitFixerHead(ctx, request, woke);
-  if (woke.held === undefined) return { kind: "unhandled", reason: woke.reason };
-  const heldWake: HeldWake = { kind: "unhandled", reason: woke.reason, held: woke.held };
-  return heldWake;
+  const woke = await wakeStep(ctx, request, fixFirst);
+  return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);
 };
+
+function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): WakeOutcome | HeldWake {
+  return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : { kind: "unhandled", reason: woke.reason, held: woke.held };
+}
+
+const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) => step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
+
+/**
+ * A live agent can end its turn before it reads a chat-sent wake, so the wake is asked once more after its exit: the
+ * agent is resumed, or a successor started, with the wake as its prompt. Resume and successor wakes, and a live wake
+ * its resume fallback delivered, were the prompt already, and a second exit takes the exit route. The step is called directly so FIX_FIRST is not counted twice.
+ */
+async function redeliverAfterLiveExit(ctx: WorkflowContext, request: WakeRequest, outcome: WakeOutcome, woke: WakeEvidence, fixFirst: number | undefined): Promise<WakeOutcome> {
+  if (outcome.kind !== "unhandled" || outcome.exited !== true || woke.mode !== "live" || woke.fallback === "resume") return outcome;
+  const again = await wakeStep(ctx, request, fixFirst);
+  return again.kind === "woken" ? awaitFixerHead(ctx, request, again) : notWoken(again);
+}
 
 /** The wait after a wake an agent took; only a ci-red wake can end on its own head turning green. */
 export async function awaitFixerHead(ctx: WorkflowContext, request: WakeRequest, woke: WakeEvidence): Promise<WakeOutcome> {

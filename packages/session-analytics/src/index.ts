@@ -149,3 +149,5 @@ export type { CoordDutyTable, DutyTableOptions } from "./coord-duty/table.js";
 export { coordDutyTableSchema, dutyTable } from "./coord-duty/table.js";
 export { seatOf } from "./coord-duty/transcript.js";
 export type { Outcome, Trigger } from "./coord-duty/turn-signals.js";
+export type { DispatchRecord, ScorecardJournalInput, ScorecardJournalRowId, ScorecardRow } from "./scorecard-rows.js";
+export { MIN_COST_COVERAGE, NOT_MEASURED, readDispatchJournal, scorecardJournalRows, scorecardRowText } from "./scorecard-rows.js";
