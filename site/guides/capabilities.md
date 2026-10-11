@@ -698,10 +698,10 @@ Key exports:
 
 - `charter-policy`: `charterDefaultsSchema`, `charterPolicyErrorSchema`, `charterPolicySchema`, `hardStopClassSchema`, `parseCharterPolicy`
 - `hard-stops`: `hardStopsIn`
+- `resolve-policy`: `resolveSeatPolicy`
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
-- `seat-state`: `emptySeatState`
-- +44 more in the [reference page](/reference/coordinator)
+- +46 more in the [reference page](/reference/coordinator)
 
 <a id="cap-decider"></a>
 
