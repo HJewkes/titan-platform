@@ -1,4 +1,5 @@
 import type { Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { parseVerdict, type VerdictRecord } from "./blocked-flow-merge.js";
 import type { SpawnRecord } from "./liveness-exits.js";
 import type { LastEventRecord } from "./liveness-prompts.js";
@@ -82,16 +83,22 @@ export const HANDOFFS_SQL = [
   `FROM events h WHERE h.kind = 'agent_handoff' AND h.ref IS NOT NULL AND h.ts >= @since ORDER BY h.id`,
 ].join(" ");
 
-interface HandoffRow extends Omit<HandoffRecord, "at" | "committed"> {
-  ts: number;
-  committed: number;
-}
+const handoffRowsSchema = z.array(
+  z.object({
+    eventId: z.number(),
+    ts: z.number(),
+    seat: z.string(),
+    predecessorId: z.string(),
+    successorId: z.unknown().transform((value) => (typeof value === "string" ? value : null)),
+    committed: z.number(),
+  }),
+);
 
 /**
  * `agent_handoff` rows at or after `since` (ISO), oldest first. To resolve seat generations, omit
  * `since`: the generation live at a window's start began with a handoff written before it.
  */
 export function readHandoffs(db: Db, since?: string): HandoffRecord[] {
-  const rows = db.prepare(HANDOFFS_SQL).all({ since: since ? Date.parse(since) : 0 }) as HandoffRow[];
+  const rows = handoffRowsSchema.parse(db.prepare(HANDOFFS_SQL).all({ since: since ? Date.parse(since) : 0 }));
   return rows.map(({ ts, committed, ...row }) => ({ ...row, at: new Date(ts).toISOString(), committed: committed === 1 }));
 }
