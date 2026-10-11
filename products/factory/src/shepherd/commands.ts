@@ -16,7 +16,7 @@ import {
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
-import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
+import { HOLD_CLASSES, HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { restartFor } from "./restart.js";
@@ -324,16 +324,18 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   },
 });
 
-const releaseCommand = defineCommand<PrRefArgs & { actor: string; head: string }, HoldResult, FactoryContext>({
+const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: z.enum(HOLD_CLASSES).optional() });
+
+const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release a hold on owner/repo#pr at the head the seat reviewed (--head); refused when the PR's head is another sha",
-  args: PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg }),
+  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha",
+  args: ReleaseArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, head, actor }, ctx) {
+  async run({ repo, pr, head, actor, holdClass }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor });
-    return { runId, held: null };
+    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) });
+    return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
 });
 

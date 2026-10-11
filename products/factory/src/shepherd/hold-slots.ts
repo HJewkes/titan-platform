@@ -27,3 +27,27 @@ export function afterHold({ top, parked }: HoldSlots, hold: SlotHold): HoldSlots
 
 /** A release lifts the hold that gates; a parked one then gates in its place. */
 export const afterRelease = ({ parked }: HoldSlots): HoldSlots => ({ top: parked, parked: null });
+
+/** The slots a release leaves, and the reason of the hold it lifted, which its event records. */
+export interface Lift {
+  slots: HoldSlots;
+  reason: string | null;
+}
+
+export const liftTop = (slots: HoldSlots): Lift => ({ slots: afterRelease(slots), reason: slots.top?.reason ?? null });
+
+/** The text before a reason's first colon, or the whole reason when it has none. */
+const classOf = (reason: string): string => (reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : reason);
+
+/**
+ * Lifts the hold of `holdClass`, gating or parked, or the run's only hold when no class is named. Undefined when no such
+ * hold is in force, or when none is named and two are: a release that named no class must never lift a `g10-adversary`
+ * hold that sits over the hold its caller meant.
+ */
+export function liftClass(slots: HoldSlots, holdClass: string | undefined): Lift | undefined {
+  const { top, parked } = slots;
+  if (top === null) return undefined;
+  if (holdClass === undefined) return parked === null ? liftTop(slots) : undefined;
+  if (classOf(top.reason) === holdClass) return liftTop(slots);
+  return parked !== null && classOf(parked.reason) === holdClass ? { slots: { top, parked: null }, reason: parked.reason } : undefined;
+}

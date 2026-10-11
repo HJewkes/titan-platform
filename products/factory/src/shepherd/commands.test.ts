@@ -564,6 +564,56 @@ describe("shepherd.merge", () => {
   });
 });
 
+describe("shepherd.release with a g10-adversary hold over another", () => {
+  const STALL = "stalled: no step progress; TP-2";
+  const ADVERSARY = "g10-adversary: trust rule; TP-1";
+
+  async function heldTwice(): Promise<{ w: World; runId: string }> {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: STALL, actor: "owner" });
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: ADVERSARY, actor: "seat" });
+    return { w, runId };
+  }
+
+  it("refuses two releases that name no class, so neither lifts the adversary hold for the stall and the PR stays held", async () => {
+    const { w, runId } = await heldTwice();
+    const store = w.routes.shepherd!.store.get();
+
+    const first = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "owner" });
+    const second = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "owner" });
+
+    expect([first, second]).toMatchObject([{ ok: false, error: expect.stringContaining("--class") }, { ok: false }]);
+    expect(store.heldReason(REPO, 1)).toBe(ADVERSARY);
+    expect(store.eventsOf(runId).map((event) => event.kind)).toEqual(["hold", "hold"]);
+  });
+
+  it("lifts only the named class, records its reason, and reports the hold still in force", async () => {
+    const { w, runId } = await heldTwice();
+    const store = w.routes.shepherd!.store.get();
+
+    const stall = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "stalled", actor: "owner" });
+    const adversary = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "seat" });
+
+    expect(stall).toEqual({ ok: true, data: { runId, held: { reason: ADVERSARY } } });
+    expect(adversary).toEqual({ ok: true, data: { runId, held: null } });
+    expect(store.eventsOf(runId).filter((event) => event.kind === "release").map((event) => [event.reason, event.actor])).toEqual([
+      [STALL, "owner"],
+      [ADVERSARY, "seat"],
+    ]);
+  });
+
+  it("refuses a class the run holds no hold of, and records no event", async () => {
+    const { w, runId } = await heldTwice();
+
+    const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "visual-gate2" });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("no visual-gate2 hold") });
+    expect(w.routes.shepherd!.store.get().eventsOf(runId)).toHaveLength(2);
+  });
+});
+
 describe("shepherd.hold reason classes", () => {
   const LEGACY = "seat merges by the interim procedure";
   const TYPED = "run-failed: land-rules refuses; TP-2";

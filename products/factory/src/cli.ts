@@ -206,9 +206,11 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
     .action((ref: string, opts: ShepherdOpts & { reason: string; reviewer?: string }) =>
       runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer, actor: callerOf(verbs.io.env) }), opts));
-  verb("release <ref>", "release the hold on owner/repo#N at the head the seat reviewed; refused when the PR has moved past it")
+  verb("release <ref>", "release one hold on owner/repo#N at the head the seat reviewed; refused when the PR has moved past it")
     .requiredOption("--head <sha>", "the 40-character head sha the hold was reviewed at")
-    .action((ref: string, opts: ShepherdOpts & { head: string }) => runShepherd(verbs, "shepherd.release", () => ({ ...parsePrRef(ref), head: opts.head, actor: callerOf(verbs.io.env) }), opts));
+    .option("--class <class>", "the class of the hold to lift; needed only while a g10-adversary hold sits over another")
+    .action((ref: string, opts: ShepherdOpts & { head: string; class?: string }) =>
+      runShepherd(verbs, "shepherd.release", () => ({ ...parsePrRef(ref), head: opts.head, holdClass: opts.class, actor: callerOf(verbs.io.env) }), opts));
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));

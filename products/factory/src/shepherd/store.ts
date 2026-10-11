@@ -3,7 +3,7 @@ import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
-import { afterHold, afterRelease, type HoldSlots, type SlotHold } from "./hold-slots.js";
+import { afterHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -214,10 +214,7 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(newRunId)!;
   }
 
-  /**
-   * A hold or a release clears any satisfaction, so a re-hold waits for its own reviewer again. A hold of another class
-   * placed while a `g10-adversary` hold is in force waits under it (`afterHold`), so releasing either never drops the other.
-   */
+  /** A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`). */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
     this.db.transaction(() => this.placeHold(runId, { reason, reviewer: reviewer ?? null }, by))();
     return this.byRun(runId)!;
@@ -225,19 +222,18 @@ export class ShepherdStore implements HoldLookup {
 
   /** Lifts the hold that gates, and records its reason; a hold parked under it gates in its place. */
   release(runId: string, by: EventContext = {}): Registration {
-    const lift = (slots: HoldSlots) => this.writeSlots(runId, afterRelease(slots), { kind: "release", reason: slots.top?.reason ?? null }, by);
-    this.db.transaction(() => lift(readSlots(this.db, runId)))();
+    this.lift(runId, liftTop, by);
     return this.byRun(runId)!;
   }
 
   /** Compare-and-swap: releases only while the run's gating hold is exactly `reason`; false when a release or another hold got there first. */
   releaseIfHeld(runId: string, reason: string, by: EventContext = {}): boolean {
-    return this.db.transaction(() => {
-      const slots = readSlots(this.db, runId);
-      if (slots.top?.reason !== reason) return false;
-      this.writeSlots(runId, afterRelease(slots), { kind: "release", reason }, by);
-      return true;
-    })();
+    return this.lift(runId, (slots) => (slots.top?.reason === reason ? liftTop(slots) : undefined), by);
+  }
+
+  /** Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none. */
+  releaseClass(runId: string, holdClass: string | undefined, by: EventContext = {}): boolean {
+    return this.lift(runId, (slots) => liftClass(slots, holdClass), by);
   }
 
   /** The id of the run's latest hold or release event, 0 when it has none; a reader keeps it to learn, at its write, whether any change landed since. */
@@ -332,6 +328,14 @@ export class ShepherdStore implements HoldLookup {
 
   private placeHold(runId: string, hold: SlotHold, by: EventContext): void {
     this.writeSlots(runId, afterHold(readSlots(this.db, runId), hold), { kind: "hold", reason: hold.reason }, by);
+  }
+
+  private lift(runId: string, pick: (slots: HoldSlots) => Lift | undefined, by: EventContext): boolean {
+    return this.db.transaction(() => {
+      const next = pick(readSlots(this.db, runId));
+      if (next) this.writeSlots(runId, next.slots, { kind: "release", reason: next.reason }, by);
+      return next !== undefined;
+    })();
   }
 
   private writeSlots(runId: string, slots: HoldSlots, change: { kind: EventKind; reason: string | null }, by: EventContext): void {

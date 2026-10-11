@@ -683,6 +683,7 @@ merges only into the default branch.
 titan-factory shepherd hold owner/repo#123 --reason "stalled: no step progress for 70 minutes; TP-123"
 titan-factory shepherd hold owner/repo#123 --reason "g10-adversary: merge-policy change" --reviewer sec-audit-review
 titan-factory shepherd release owner/repo#123 --head <sha>
+titan-factory shepherd release owner/repo#123 --head <sha> --class stalled
 ```
 
 ```
@@ -761,9 +762,13 @@ stall is not an adversary review.
 
 A run keeps two holds at once: the `g10-adversary` hold and one hold of any other class. Each
 `shepherd hold` replaces only the hold of its own kind, and both are recorded. While both are in
-force, the `g10-adversary` hold gates and shows; a `release` lifts it, and the other hold, with its
-`--reviewer`, then gates until it is released in turn. So an owner's or another seat's hold survives
-the seat's adversary release, and an adversary hold placed over another hold never drops it. A
+force, the `g10-adversary` hold gates and shows, and a `release` must name the hold it lifts with
+`--class <class>`: one that names none is refused, so lifting a stall can never count as the seat's
+adversary release. `--class g10-adversary` lifts the adversary hold, and the other hold, with its
+`--reviewer`, then gates until it is released in turn; `--class stalled` lifts the stall and leaves
+the adversary hold in place. A run with one hold releases it with no `--class`, as before. The
+release reports the hold still in force. So an owner's or another seat's hold survives the seat's
+adversary release, and an adversary hold placed over another hold never drops it. A
 `g10-adversary` release with no head (made before `--head` was required) vouches for no head, so
 the next merge check re-holds and the seat releases again with `--head`.
 

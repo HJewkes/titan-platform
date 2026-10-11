@@ -223,7 +223,8 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
     need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
 
-  Any other class waits for `shepherd release <pr> --head <sha>`.
+  Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
+  hold of another class, `release` must name the hold it lifts with `--class <class>`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 
