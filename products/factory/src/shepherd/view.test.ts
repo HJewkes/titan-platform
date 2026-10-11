@@ -423,7 +423,7 @@ describe("a held run whose wait saw a pushed head", () => {
     run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
     run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
 
-    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null } as Registration, run });
+    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
 
     expect(row).toMatchObject({ phase: "ci", headSha: H2 });
     expect(row.nextAction).toContain(H2.slice(0, 7));
