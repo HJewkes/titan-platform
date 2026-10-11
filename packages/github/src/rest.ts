@@ -1,4 +1,4 @@
-import type { RateBudget } from "./budget.js";
+import type { BudgetResource, RateBudget } from "./budget.js";
 import { GhError, type GhExec, type GhResult } from "./exec.js";
 import { redact, redactStreams } from "./redact.js";
 
@@ -30,6 +30,9 @@ export interface Rest {
   text(path: string): Promise<string>;
   send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
 }
+
+/** A GraphQL query that has not answered by now is dead; the caller gets a rejection, not a hang. */
+export const GRAPHQL_TIMEOUT_MS = 30_000;
 
 const API_ORIGIN = "https://api.github.com/";
 
@@ -78,7 +81,7 @@ export function restCaller(exec: GhExec, budget: RateBudget, cacheSize: number, 
     text: retried(async (path: string) => (await run(getArgs(path, {}))).body),
     send: async <T>(method: string, path: string, fields: Fields = {}, input?: string) => {
       const args = ["-X", method, path, ...fieldArgs(fields), ...(input === undefined ? [] : ["--input", "-"])];
-      return json<T>((await run(args, input)).body);
+      return json<T>((await run(args, input, path === "graphql" ? "graphql" : "core")).body);
     },
   };
 }
@@ -107,14 +110,14 @@ export function isTransient(error: unknown): boolean {
   return CONNECTION_FAILURE.test(error.result.stderr);
 }
 
-type Run = (args: readonly string[], input?: string) => Promise<HttpResponse>;
+type Run = (args: readonly string[], input?: string, resource?: BudgetResource) => Promise<HttpResponse>;
 
 /** A 304 is not an error here even though `gh` exits 1 on it. */
 function runner(exec: GhExec, budget: RateBudget): Run {
-  return async (args, input) => {
-    await budget.acquire();
+  return async (args, input, resource = "core") => {
+    await budget.acquire(resource);
     const full = ["api", "-i", ...args];
-    const result = await exec(full, input);
+    const result = await exec(full, input, resource === "graphql" ? { timeoutMs: GRAPHQL_TIMEOUT_MS } : undefined);
     const response = parseIncluded(result.stdout);
     if (response) budget.observe(response.headers);
     if (response?.status === 304) return response;
