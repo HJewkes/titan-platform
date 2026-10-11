@@ -31,7 +31,7 @@ describe("formatReport", () => {
   });
 
   it("summarises found and allowed counts per rule, skipped binaries and the term list", () => {
-    expect(report).toContain("egress-scan: 2 findings (home-path 1, aw-data-path 0, private-term 1)");
+    expect(report).toContain("egress-scan: 2 findings (home-path 1, aw-data-path 0, private-term 1, credential-token 0)");
     expect(report).toContain("allowed: home-path 0, aw-data-path 0");
     expect(report).toContain("binary files skipped: 0");
     expect(report).toContain("private term list: loaded");
@@ -39,7 +39,7 @@ describe("formatReport", () => {
 
   it("says when only the generic rules ran", () => {
     const lines = formatReport([], { ...result, termsLoaded: false });
-    expect(lines).toContain("egress-scan: 0 findings (home-path 0, aw-data-path 0, private-term 0)");
+    expect(lines).toContain("egress-scan: 0 findings (home-path 0, aw-data-path 0, private-term 0, credential-token 0)");
     expect(lines).toContain("private term list: not loaded, generic rules only");
   });
 });

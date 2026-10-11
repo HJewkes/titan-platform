@@ -48,7 +48,7 @@ function behindPr(): FakeGitHub {
 function host(fake: FakeGitHub, store: ShepherdStoreRef, dbPath: string, atH1: () => NoVerdictCause): FactoryHost {
   let clock = 0;
   const base = githubPort(fake.wire);
-  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), base.checkRuns(repo, sha)) };
+  const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), base.checkRuns(repo, sha)) };
   const routes = factoryRoutesFor({ port, store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
   const opened = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases(atH1))], routes, gatePollMs: 5 });
   hosts.push(opened);

@@ -2,13 +2,17 @@
 // Every writer of a dag-check graph.db holds it, so a reader that takes it never sees a half-written snapshot.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 // Per-user and independent of TMPDIR, which Claude sandboxes override per session.
 export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform", "dag-check.lock");
+
+// basement-suite reads 75 as "busy, retry later".
+export const BUSY_EXIT_CODE = 75;
+const DEFAULT_WAIT_MS = 8 * 60 * 1000;
 
 const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
 
@@ -86,22 +90,69 @@ export function release(lockDir) {
   if (readHolder(lockDir) === process.pid) rmSync(lockDir, { recursive: true, force: true });
 }
 
-/** Wait for the lock, logging the holder on the first wait and every logEveryMs after. */
+/** The wait bound in ms: eight minutes by default, so a waiter fails before an agent's ten-minute tool limit. */
+export function lockWaitMs(env = process.env) {
+  const wait = Number(env.DAG_CHECK_LOCK_WAIT_MS ?? env.DAG_CHECK_LOCK_TIMEOUT_MS ?? DEFAULT_WAIT_MS);
+  return Number.isFinite(wait) && wait >= 0 ? wait : DEFAULT_WAIT_MS;
+}
+
+function queueDirFor(lockDir) {
+  return `${lockDir}.queue`;
+}
+
+/** Join the queue: a file named for arrival time and pid, so a sort by name is arrival order. */
+function takeTicket(lockDir) {
+  const queueDir = queueDirFor(lockDir);
+  mkdirSync(queueDir, { recursive: true });
+  const name = `${String(Date.now()).padStart(15, "0")}-${String(process.pid).padStart(10, "0")}-${Math.random().toString(36).slice(2, 8)}`;
+  writeFileSync(path.join(queueDir, name), "");
+  return name;
+}
+
+function ticketPid(name) {
+  return Number.parseInt(name.split("-")[1], 10);
+}
+
+/** The live tickets in arrival order; tickets whose process is gone are deleted. */
+function liveTickets(lockDir) {
+  const queueDir = queueDirFor(lockDir);
+  const live = [];
+  for (const name of readdirSync(queueDir).sort()) {
+    if (isAlive(ticketPid(name))) live.push(name);
+    else rmSync(path.join(queueDir, name), { force: true });
+  }
+  return live;
+}
+
+function dropTicket(lockDir, name) {
+  rmSync(path.join(queueDirFor(lockDir), name), { force: true });
+}
+
+/**
+ * Wait for the lock in arrival order. Logs the holder and queue position on the first wait and every logEveryMs after,
+ * and throws LockTimeoutError once timeoutMs has passed.
+ */
 export async function acquire({ lockDir = DEFAULT_LOCK_DIR, timeoutMs, pollMs = 2000, logEveryMs = 30000, log }) {
   const start = Date.now();
+  const ticket = takeTicket(lockDir);
   let lastLog = -Infinity;
-  for (;;) {
-    const holder = tryAcquire(lockDir);
-    if (holder === null) return;
-    const waited = Date.now() - start;
-    if (waited >= timeoutMs) {
-      throw new LockTimeoutError(`gave up after ${Math.round(waited / 1000)} s waiting for dag-check lock held by ${holder} (${lockDir})`);
+  try {
+    for (;;) {
+      const ahead = liveTickets(lockDir).indexOf(ticket);
+      const holder = ahead === 0 ? tryAcquire(lockDir) : (readHolder(lockDir) ?? "unknown");
+      if (ahead === 0 && holder === null) return;
+      const waited = Date.now() - start;
+      if (waited >= timeoutMs) {
+        throw new LockTimeoutError(`dag-check lock busy (held by ${holder}, ${ahead} ahead of you); retry later`);
+      }
+      if (waited - lastLog >= logEveryMs) {
+        log(`waiting for dag-check lock held by ${holder}, ${ahead} ahead of you`);
+        lastLog = waited;
+      }
+      await delay(pollMs);
     }
-    if (waited - lastLog >= logEveryMs) {
-      log(`waiting for dag-check lock held by ${holder}`);
-      lastLog = waited;
-    }
-    await delay(pollMs);
+  } finally {
+    dropTicket(lockDir, ticket);
   }
 }
 

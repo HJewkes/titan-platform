@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -19,7 +19,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 function scenario(fix: (fake: FakeGitHub, request: WakeRequest) => void, review: (headSha: string) => Verdict = () => ({ kind: "none" })) {
   const fake = fakeGitHub();
   let fixed = false;
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, fixed ? "success" : "failure"), successRun("dag-check", 2)]);
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, fixed ? "success" : "failure")), successRun("dag-check", 2)]);
   const wakes: WakeRequest[] = [];
   const phases: ShepherdPhases = {
     wake: async (ctx, request) => (wakes.push(request), (fixed = true), fix(fake, request), awaitFixerHead(ctx, request, { agent: "impl-a" })),
@@ -29,7 +29,7 @@ function scenario(fix: (fake: FakeGitHub, request: WakeRequest) => void, review:
   const store = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
-  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
+  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
   const routes = factoryRoutesFor({ port: mainGreen, store, now: () => clock, sleep: tick });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);

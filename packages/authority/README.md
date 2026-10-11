@@ -3,7 +3,7 @@
 The owner-approved authority decision table as data, with its zod schema and a pure
 evaluator. For every action class (merge, release, secret read, spawn, hardware actuation
 and more) and every actor class (owner at a terminal, owner remote, coordinator, worker,
-headless run, automation) the table names exactly one verdict: `allow`, `gate` or `deny`.
+headless run, automation, decider) the table names exactly one verdict: `allow`, `gate` or `deny`.
 
 Tier 0 of the titan-platform DAG. No titan dependencies, no Node built-ins; `zod` is a peer
 dependency.
@@ -20,8 +20,13 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 93 rules: 43 allow, 6 gate and 44 deny.
-- A rule with `when` (MRG-AU-RV, MRG-AU-RC and MRG-AU-RM today) applies only when every condition holds on
+- The table holds 116 rules: 44 allow, 6 gate and 66 deny.
+- The `decider` actor class may only `answer-question`, and only through ANS-DC-QA: the
+  gate's rule kind is exactly `question` and its category's mode is exactly `auto`
+  (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a
+  tainted request is refused by ANS-DC. Every other action by `decider`, and `answer-question`
+  by every other actor, is denied. `decider` is never in `RESOLVER_CLASSES`.
+- A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM and ANS-DC-QA today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
@@ -36,7 +41,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   A non-canonical or non-ASCII changed path, or one with a segment ending in a space or a
   dot, counts as protected.
   `allowedApps` is caller-supplied; Shepherd must pin GitHub Actions (app id 15368) itself.
-- `canResolve(table, ruleId, resolver)`: false for any agent or automation class and for
+- `canResolve(table, ruleId, resolver)`: false for any agent, decider or automation class and for
   any tainted resolver.
 - `policyTableSchema`: rejects a table that misses or repeats the unconditional rule for
   an action by actor pair, or names anyone but `owner-terminal` or `owner-remote` as a

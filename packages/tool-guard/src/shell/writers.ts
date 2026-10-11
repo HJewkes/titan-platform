@@ -1,5 +1,6 @@
 import type { Token, WordToken } from "./lexer.js";
 import type { Assignment, Vars } from "./vars.js";
+import { nameOperandEvaluates, wordsEvaluateArithmetic } from "./arith-words.js";
 
 export const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** A target may carry a subscript: bash writes one element, so the whole variable is no longer what it was. */
@@ -96,6 +97,27 @@ function integerValues(words: string[]): string[] {
   const at = words.findIndex((w) => DECLARATION_RE.test(w));
   if (at < 0 || !words.slice(at + 1).some((w) => INTEGER_OPTION_RE.test(w))) return [];
   return words.slice(at + 1).flatMap((w) => VALUE_RE.exec(w)?.[1] ?? []);
+}
+
+const COMPARISON_RE = /^-(?:eq|ne|lt|le|gt|ge)$/;
+const TEST_COMMANDS = new Set(["[", "test"]);
+
+/**
+ * Whether the command an operator ends, or the `(( ))` it opens, makes bash evaluate arithmetic: a `$(( ))`, a
+ * `(( ))`, `let`, a subscript, a numeric `[[` comparison, and `unset` or a `-v` test, which evaluate the subscript of
+ * a name. A `[[` may reach the lexer in pieces (`&&` and `(` split it), so a numeric comparison counts wherever it
+ * sits; `head` is the index of the command word, after any prefix assignments, or -1. `[` and `test` compare numbers
+ * without arithmetic.
+ */
+export function evaluatesArithmetic(op: Token | null, words: WordToken[], head: number): boolean {
+  if (op !== null && (compounds.has(op) || expansions.has(op))) return true;
+  const values = words.map((w) => w.value);
+  const command = head < 0 ? [] : values.slice(head);
+  const name = command[0] ?? "";
+  if (name === "let" || name === "unset" || ((name === "[[" || TEST_COMMANDS.has(name)) && command.includes("-v"))) return true;
+  const numeric = !TEST_COMMANDS.has(name) && command.some((v) => COMPARISON_RE.test(v));
+  if (numeric || values.some((v) => expansionBodies(v).length > 0)) return true;
+  return wordsEvaluateArithmetic(words) || (head >= 0 && nameOperandEvaluates(words.slice(head)));
 }
 
 /** What the command an operator ends writes in the current shell, and the `(( ))` the operator opens, each value unknown. */

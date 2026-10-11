@@ -1,5 +1,5 @@
-import type { ConditionFacts, MergeFacts } from "./conditions.js";
-import { plainMergeFacts, unmetMergeConditions } from "./conditions.js";
+import type { ConditionFacts } from "./conditions.js";
+import { plainFacts, unmetPlainConditions } from "./conditions.js";
 import type { PolicyTable, Rule } from "./schema.js";
 import type { ActionClass, ActorClass, ResolverClass } from "./vocabulary.js";
 import { ACTOR_CLASSES, RESOLVER_CLASSES } from "./vocabulary.js";
@@ -30,7 +30,7 @@ interface RequestSnapshot {
   actor: unknown;
   tainted: unknown;
   ownUntainted: boolean;
-  merge: MergeFacts | undefined;
+  facts: ConditionFacts | undefined;
 }
 
 function ownActorClass(actor: unknown): unknown {
@@ -46,7 +46,7 @@ function snapshotOf(request: AuthorityRequest): RequestSnapshot {
     actor: ownActorClass(request.actor),
     tainted,
     ownUntainted: Object.hasOwn(request, "tainted") && tainted === false,
-    merge: plainMergeFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
+    facts: plainFacts(() => (Object.hasOwn(request, "facts") ? request.facts : undefined)),
   };
 }
 
@@ -62,7 +62,7 @@ function findRule(table: PolicyTable, snapshot: RequestSnapshot): RuleMatch {
       unmet.push(`${rule.id} skipped: tainted is not false`);
       continue;
     }
-    const failed = unmetMergeConditions(rule.when ?? [], snapshot.merge);
+    const failed = unmetPlainConditions(rule.when ?? [], snapshot.facts);
     if (failed.length === 0) return { rule, unmet: [] };
     unmet.push(`${rule.id} unmet: ${failed.join(", ")}`);
   }

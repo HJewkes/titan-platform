@@ -50,10 +50,11 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "owner-remote", tainted: false }); 
 
 Actor classes, classified by the process that performs the action, never by what a model
 claims: `owner-terminal` (OT), `owner-remote` (OR, a verified phone, voice or Matrix
-channel), `coordinator` (CO), `worker` (WK), `headless` (HD, a daemon-dispatched run) and
-`automation` (AU, CI and other non-agent processes).
+channel), `coordinator` (CO), `worker` (WK), `headless` (HD, a daemon-dispatched run),
+`automation` (AU, CI and other non-agent processes) and `decider` (DC, the session that
+answers routed questions on the owner's behalf).
 
-`RESOLVER_CLASSES` lists the owner classes that may resolve a gate. `DELEGATE_RESOLVER_CLASSES`
+`RESOLVER_CLASSES` lists the owner classes that may resolve a gate; `decider` is never one. `DELEGATE_RESOLVER_CLASSES`
 (`coordinator` only) lists the classes a gate's rule may name as a delegate resolver. A hitl
 store admits a delegate only when it has `authorize` and `authorize` allows it.
 
@@ -65,28 +66,29 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-43 allow, 6 gate and 44 deny rows: one unconditional row per pair, plus the three conditional
-allow rows MRG-AU-RV, MRG-AU-RC and MRG-AU-RM described below. Each rule also carries an optional `condition` that
+44 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the four conditional
+allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
-| Action | OT | OR | CO | WK | HD | AU |
-|---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC or MRG-AU-RM |
-| `release` | allow | deny | gate (OT) | deny | deny | allow |
-| `secret-read` | allow | deny | deny | deny | deny | allow |
-| `untrusted-ingest` | allow | allow | allow | allow | allow | allow |
-| `private-to-public` | allow | deny | deny | deny | deny | deny |
-| `private-egress` | allow | allow | deny T | deny | deny | allow |
-| `hardware-actuate` | allow | deny | gate (OT) | deny | deny | deny |
-| `hardware-stop` | allow | allow | allow | allow | allow | allow |
-| `destructive-remote` | allow | deny | deny | deny | deny | deny |
-| `destructive-local` | allow | deny | allow | allow | allow | allow |
-| `destructive-foreign` | allow | deny | deny | deny | deny | deny |
-| `spawn` | allow | allow | allow T | deny | deny | allow |
-| `spend-over-cap` | allow | deny | allow | allow | allow | allow |
-| `authority-config` | allow | deny | deny | deny | deny | deny |
-| `human-verb` | allow | gate (OR) | deny | deny | deny | deny |
+| Action | OT | OR | CO | WK | HD | AU | DC |
+|---|---|---|---|---|---|---|---|
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC or MRG-AU-RM | deny |
+| `release` | allow | deny | gate (OT) | deny | deny | allow | deny |
+| `secret-read` | allow | deny | deny | deny | deny | allow | deny |
+| `untrusted-ingest` | allow | allow | allow | allow | allow | allow | deny |
+| `private-to-public` | allow | deny | deny | deny | deny | deny | deny |
+| `private-egress` | allow | allow | deny T | deny | deny | allow | deny |
+| `hardware-actuate` | allow | deny | gate (OT) | deny | deny | deny | deny |
+| `hardware-stop` | allow | allow | allow | allow | allow | allow | deny |
+| `destructive-remote` | allow | deny | deny | deny | deny | deny | deny |
+| `destructive-local` | allow | deny | allow | allow | allow | allow | deny |
+| `destructive-foreign` | allow | deny | deny | deny | deny | deny | deny |
+| `spawn` | allow | allow | allow T | deny | deny | allow | deny |
+| `spend-over-cap` | allow | deny | allow | allow | allow | allow | deny |
+| `authority-config` | allow | deny | deny | deny | deny | deny | deny |
+| `human-verb` | allow | gate (OR) | deny | deny | deny | deny | deny |
+| `answer-question` | deny | deny | deny | deny | deny | deny | deny; allow by ANS-DC-QA |
 
 ### Conditional rows
 
@@ -134,6 +136,14 @@ remerge-diff or the remerge's conflicts touch) listed in `generatedPaths` and no
 protected path. The caller's remerge probe fills both lists; `generatedPaths` holds the paths it
 matched to the repo's declared generated files, so the declaration stays data on the caller's
 side. It is a separate row so that deleting it revokes the remerge carry alone.
+
+ANS-DC-QA allows the decider to answer a question gate. It reads `facts.question` and checks
+`gate-rule-is-question` (`ruleKind` is exactly `question`) and `category-mode-auto` (`mode` is
+exactly `auto`). An unknown, missing or differently cased kind or mode fails closed, and ANS-DC
+denies. The owner answers a question gate by resolving it in hitl, so `answer-question` is
+denied for both owner classes and for every agent class; the decider is denied every other
+action, including `hardware-stop`. A question gate is not an authority gate: the row lets the
+decider act, and `canResolve` still refuses it on every rule.
 
 A request with no `facts` fails every condition, and a conditional row matches only when
 `tainted` is an own property set to exactly `false`; an inherited `false`, or any other value (`true`, missing, `null`, `0`, `""`) is
@@ -184,6 +194,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, and MRG-AU-RM in TP-1907. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.

@@ -229,6 +229,11 @@ new evidence, but never blindly resubmits an uncertain execution.
 dispatch step of a run no runtime holds, so the next `hydrate()` replays that answer
 instead of dispatching the step again. It returns false for a run a live runtime drives.
 
+`runtime.annotate(runId, stepId, data)` records `data` as step `stepId` of a run that already
+completed, failed or was cancelled, for a fact learnt after it ended. It never rewrites a step
+the run has, and returns false for that or for an unfinished run. `WorkflowRunStore.annotate`
+is the same write by key.
+
 A replay runs the workflow function again, so code that changed since the run was recorded
 can take a different path through old results. `ctx.historyNext()` names the step recorded
 right after the call just answered from the record, and is undefined once the run is live;

@@ -47,9 +47,10 @@ any short, upper-case or over-long head are refused. A `FIX_FIRST` block may add
 ## Review verdicts and assigned tasks
 
 `parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
-verdicts. `assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned
-session was given, and `orientationEnd(brief)` returns where the assignment starts in the
-brief. Signatures and examples are in the
+verdicts. `assignedTaskIds({ agentName, brief, isKnown, briefingChars? })` reads which task a spawned
+session was given, and `orientationEnd(brief, briefingChars?)` returns where the assignment
+starts in the brief. Pass `briefingChars` (agent-chat's `agent_spawned` meta `briefing_chars`)
+when it was recorded: it locates the end of the orientation block without relying on heading text. Signatures and examples are in the
 [reference page](https://hjewkes.github.io/titan-platform/reference/session-read.html).
 
 ## Audit events
@@ -94,6 +95,31 @@ low-sensitivity, never as redacted.
 The classifiers are exported for reuse: `classifyInbound`, `toolFamily`, `toolUseSignals`,
 `bashSignals`, `sourceForCause`, and the shared `INJECTED_MARKERS` list.
 
+## Transcripts mirrored from another host
+
+`claudeTranscriptRoots` reads `CLAUDE_TRANSCRIPT_MIRRORS` as well as this machine's own
+config dirs. Each entry is `<host>=<dir>`, and entries are joined by the path delimiter
+(`:`). Every `<dir>/<account>` with a `projects` dir becomes a root whose `account` is the
+directory name and whose `host` is the label, so a mirror laid out as
+`<dir>/<account>/projects/...` needs one entry for all its accounts:
+
+```sh
+CLAUDE_TRANSCRIPT_MIRRORS="mac=~/mac-transcripts"
+```
+
+`discoverAllTranscripts` stamps each mirrored transcript with that `host`; a transcript from
+this machine has no `host` at all. A missing mirror dir adds no roots, and an entry without
+a valid `<host>=` label throws. Mirrors are appended whether or not `CLAUDE_CONFIG_DIRS` is
+set.
+
+Do not add a mirror to `CLAUDE_CONFIG_DIRS`. That variable also names the accounts
+anthropic-account polls for credentials and usage, and a mirror is a copy of transcripts, not
+a config dir anyone can run Claude Code with. A caller that turns a root back into a config
+dir should skip any root with a `host`.
+
+A mirrored session usually exists on this machine too, under the same session id. The
+graph treats both files as transcripts of that one session; see session-graph.
+
 ## Folding
 
 `EventFolder` merges a chunk's events into a `TranscriptDelta` with rules chosen so chunk
@@ -117,7 +143,9 @@ unreadable directory, rejects the discovery call rather than returning a short c
 
 Files and branches are attributed to the nearest `.git` ancestor of the path or the
 command's effective cwd (`cd …` and `git -C …` are honored), named from the origin remote.
-Anything outside a working tree stays unattributed rather than guessed.
+Anything outside a working tree stays unattributed rather than guessed. A path under a
+removed `.worktrees/<name>/` resolves as if the worktree still existed, and `parseFileRef`
+reads a `file:` ref back into `(repo, path)`.
 
 ## Multi-harness contracts
 
@@ -191,6 +219,15 @@ resume boundary. They do not establish execution liveness.
 separate bounded filesystem window. It reports byte/turn truncation, malformed
 complete records, and unknown model/branch/error fields when the evidence is outside
 that window. It never runs the replay-prefix reader behind a purported tail read.
+
+### Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` is a sync generator over raw Claude JSONL lines that yields
+`tool_call` and `tool_result` records (`callId`, `name`, `input`, `output`, `isError`,
+`timestamp`, `sessionId`, `lineIndex`). It needs no source descriptor, skips blank and
+malformed lines, ignores session identity (forked and concatenated transcripts decode), and
+yields a repeated call id every time. Joining results to calls and dedup stay with the
+caller. A block without a call id is skipped.
 
 ### Reading back what an agent said
 

@@ -10,6 +10,9 @@ export { isRepo as isRepoKey } from "@titan-design/github";
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 
+/** Lets a run merge into a base other than the repo's default branch, as a stacked PR's is; only a seat can grant it. */
+export const FEATURE_BASE_GRANT = "merge-into-feature-base";
+
 /** Every repo reference is canonicalised here, so denies and lookups compare one form. */
 const RemoteSchema = z
   .string()
@@ -36,7 +39,7 @@ export interface RepoPath {
 }
 
 const PATH_PREFIXES = ["~/", "$HOME/", "${HOME}/", "/"] as const;
-const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
+export const HOME_PREFIXES: readonly string[] = ["~/", "$HOME/", "${HOME}/"];
 const PATH_SEGMENT = /^[A-Za-z0-9._-]+(?: +[A-Za-z0-9._-]+)*$/;
 
 /** An allowlist: a known prefix then plain segments (inner spaces alias nothing); any other spelling is refused, since it could only miss a deny. */

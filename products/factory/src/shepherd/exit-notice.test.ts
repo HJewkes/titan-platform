@@ -14,6 +14,7 @@ import type { ShepherdPhases, Verdict, WakeEvidence, WakeOutcome } from "./phase
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { shepherdStoreRef, type ShepherdStore } from "./store.js";
+import type { HeldWake } from "./held-wake.js";
 
 const H2 = fakeSha("head2");
 const ASKED_AT = Date.parse("2026-10-08T11:38:40Z");
@@ -61,7 +62,7 @@ function world(ports: ExitNoticePorts, fake: FakeGitHub, dbPath = ":memory:", ph
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   let clock = 0;
   const port = githubPort(fake.wire);
-  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(repo, sha)) };
+  const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const ref = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, exitNotice: ports });
@@ -176,6 +177,45 @@ describe("a woken fixer that exits with no push", () => {
     expect(sends).toHaveLength(1);
     expect(fake.effects.merge).toBe(1);
     expect(host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
+  });
+});
+
+describe("a held send-back, whose successor agent-chat refused", () => {
+  const REFUSAL = "agent-chat refused to start the successor impl-a-s1: DispatchError";
+
+  function heldFixer(): ShepherdPhases {
+    const held: HeldWake = { kind: "unhandled", reason: REFUSAL, held: { agent: "impl-a-s1" } };
+    return { ...exitedFixer(), wake: async () => held };
+  }
+
+  it("tells the seat why no fixer started, and waits for a new head with no sent-back gate", async () => {
+    const { sends, ports } = seat();
+    const fake = fakeGitHub();
+    const w = world(ports, fake, ":memory:", heldFixer());
+    fake.addPr({ headSha: H1 });
+    const runId = start(w);
+
+    await waitingForHead(w.host, runId);
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]!.text).toContain(`no fixer took the review wake at head ${H1}`);
+    expect(sends[0]!.text).toContain(REFUSAL);
+    expect(sends[0]!.text).not.toContain("Last report");
+    expect(w.host.gates.get(gateId(runId, "sh-sent-back"))).toBeUndefined();
+  });
+
+  it("opens the sent-back gate naming the refusal when the seat notice fails", async () => {
+    const { ports } = seat({ fails: true });
+    const fake = fakeGitHub();
+    const w = world(ports, fake, ":memory:", heldFixer());
+    fake.addPr({ headSha: H1 });
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    const prompt = String(w.host.gates.get(gateId(runId, "sh-sent-back"))?.prompt);
+    expect(prompt).toContain(REFUSAL);
+    expect(prompt).toContain("held: the seat notice failed");
   });
 });
 

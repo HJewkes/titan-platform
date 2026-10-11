@@ -6,6 +6,7 @@ import { computeCallMetrics } from "./analysis/call-metrics.js";
 import { computeGrowthRiskMetrics } from "./analysis/growth-risk.js";
 import { fileId } from "./extractors/ids.js";
 import { linkTestsToSources, testCoverageCountMetrics } from "./analysis/test-linker.js";
+import { computeTestKindMetrics } from "./analysis/test-kinds.js";
 import { computeChangeCoupling, type ChurnEntry } from "./history/index.js";
 import {
   collectFileIds,
@@ -25,6 +26,8 @@ export interface IndexerMetricsInput {
   idRoot: string;
   /** Git-history metrics (churn, recency, ownership); omitted means none. */
   history?: HistoryMetricsOptions;
+  /** Python console-script targets (`pkg.cli:main`) that make their function an output boundary. */
+  entryPoints?: readonly string[];
 }
 
 /**
@@ -67,20 +70,21 @@ export interface AssembledIndexerMetrics {
 /** {@link buildIndexerMetrics} plus the history warnings it would otherwise drop. */
 export function assembleIndexerMetrics(input: IndexerMetricsInput): AssembledIndexerMetrics {
   const nodeList = [...input.nodes.values()];
+  const edgeList = [...input.edges.values()];
   const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
+  const sourceMetrics = [
+    ...computeSourceMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p), symbolNamesByFile(nodeList)),
+    ...input.reusedSourceMetrics,
+  ];
   const metrics = [
-    ...computeMetrics(nodeList, [...input.edges.values()]),
-    ...computeCallMetrics(nodeList, input.edges.values()),
-    ...computeSourceMetrics(
-      input.parsedFiles,
-      (p) => fileId(input.idRoot, p),
-      symbolNamesByFile(nodeList),
-    ),
+    ...computeMetrics(nodeList, edgeList),
+    ...computeCallMetrics(nodeList, edgeList),
+    ...sourceMetrics,
     ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
     ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
-    ...input.reusedSourceMetrics,
     ...(history?.metrics ?? []),
     ...computeTestCoverage(nodeList, history?.primaryEntries ?? null, input.history?.churnWindowDays),
+    ...computeTestKindMetrics({ edges: edgeList, sourceMetrics, entryPoints: input.entryPoints }),
   ];
   return { metrics, warnings: history?.warnings ?? [] };
 }

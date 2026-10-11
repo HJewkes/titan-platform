@@ -1,6 +1,8 @@
-export type RuleId = "home-path" | "aw-data-path" | "private-term";
+import { locateTokens, type TokenKind } from "./tokens.js";
 
-export const RULE_IDS: readonly RuleId[] = ["home-path", "aw-data-path", "private-term"];
+export type RuleId = "home-path" | "aw-data-path" | "private-term" | "credential-token";
+
+export const RULE_IDS: readonly RuleId[] = ["home-path", "aw-data-path", "private-term", "credential-token"];
 
 /** A compiled private term. It exposes its line number, never its text or pattern. */
 export interface TermRule {
@@ -13,6 +15,7 @@ export interface TermRule {
 export interface RuleHit {
   readonly rule: RuleId;
   readonly termIndex?: number;
+  readonly kind?: TokenKind;
 }
 
 /** Home-directory segments that are placeholders, not people. Compared case-insensitively. */
@@ -80,6 +83,7 @@ export function locateRules(text: string, terms: readonly TermRule[] = []): (Rul
   for (const term of terms) {
     if (term.matches(text)) hits.push({ rule: "private-term", termIndex: term.index, offset: Math.max(term.search?.(text) ?? 0, 0) });
   }
+  for (const { kind, offset } of locateTokens(text)) hits.push({ rule: "credential-token", kind, offset });
   return hits;
 }
 
@@ -90,5 +94,6 @@ export function matchRules(text: string, terms: readonly TermRule[] = []): RuleH
   for (const term of terms) {
     if (term.matches(text)) hits.push({ rule: "private-term", termIndex: term.index });
   }
+  for (const { kind } of locateTokens(text)) hits.push({ rule: "credential-token", kind });
   return hits;
 }

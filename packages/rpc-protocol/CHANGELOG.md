@@ -1,5 +1,12 @@
 # @titan-design/rpc-protocol
 
+## 0.3.0
+
+### Minor Changes
+
+- 37c2689: Add `EXIT.NOPERM` (77) and `RPC_STATUS.FORBIDDEN`. `rpcFailureStatus` maps a command that refuses its caller with `NOPERM` to 403, so `POST /rpc/:name` answers 403 for it instead of 500.
+- 3c5b114: Add `EXIT.TEMPFAIL` (75) and `RPC_STATUS.TOO_MANY_REQUESTS`. `rpcFailureStatus` maps a command that refuses a caller over its limit with `TEMPFAIL` to 429, so `POST /rpc/:name` answers 429 for it instead of 500.
+
 ## 0.2.0
 
 ### Minor Changes

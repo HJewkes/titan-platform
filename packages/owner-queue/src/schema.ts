@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SOURCE_SYSTEMS = ["agent-chat", "hitl", "morning", "active-work", "round", "plan"] as const;
+export const SOURCE_SYSTEMS = ["agent-chat", "hitl", "morning", "active-work", "round", "plan", "deposit"] as const;
 export const ITEM_KINDS = ["decide", "approve", "do", "review", "know"] as const;
 export const DOORS = ["one-way", "two-way"] as const;
 export const LENSES = ["blocking-agent", "blocking-merge", "stuck", "planning", "fyi"] as const;
@@ -31,7 +31,12 @@ const recommendationSchema = z.object({
 
 const answerSchema = z.object({
   optionId: z.string().min(1).optional(),
+  /** A pick-many answer's offered options, in the order picked. */
+  optionIds: z.array(z.string().min(1)).min(1).optional(),
   text: z.string().optional(),
+  /** The owner asked for changes rather than choosing; an open change request blocks a ship. */
+  changeRequested: z.literal(true).optional(),
+  variantComments: z.array(z.object({ key: z.string().min(1), comment: z.string().min(1) })).min(1).optional(),
   by: z.object({ class: z.string().min(1), id: z.string().min(1), channel: z.string().min(1) }),
   at: timestamp,
   covers: z.number().int().positive().optional(),

@@ -28,7 +28,7 @@ export function toolNameToCommandName(toolName: string, naming: ToolNaming): str
 const ROOT_KEYS_TO_STRIP = new Set(["$schema", "definitions"]);
 
 /** Build an MCP tool descriptor from a command's zod args via zod 4's native JSON Schema export. */
-export function commandToTool(cmd: AnyCommand, naming: ToolNaming): McpToolDescriptor {
+export function commandToTool(cmd: AnyCommand<never>, naming: ToolNaming): McpToolDescriptor {
   const raw = toJSONSchema(cmd.args) as Record<string, unknown>;
   const inputSchema = Object.fromEntries(Object.entries(raw).filter(([key]) => !ROOT_KEYS_TO_STRIP.has(key)));
   if (inputSchema.type !== "object") inputSchema.type = "object";

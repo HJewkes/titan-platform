@@ -1,0 +1,112 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "measurement-audit",
+  "version": "2.0.0",
+  "title": "Audit a system's measurement",
+  "description": "Propose the metrics a system should record and rank the capture gaps that block them, as a titan.measurement-audit/v1 report. Metrics match the gold by name; scored by gap F1 and metric F1 against a gold audit, plus the run's recorded cost.",
+  "input": {
+    "type": "object",
+    "required": [
+      "area"
+    ],
+    "properties": {
+      "area": {
+        "type": "string"
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": [
+      "schema",
+      "metrics",
+      "gaps"
+    ],
+    "properties": {
+      "schema": {
+        "const": "titan.measurement-audit/v1"
+      },
+      "metrics": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id",
+            "title"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "gaps": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "rank",
+            "metric",
+            "slice"
+          ],
+          "properties": {
+            "rank": {
+              "type": "integer"
+            },
+            "metric": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "slice": {
+              "type": "object",
+              "required": [
+                "title"
+              ],
+              "properties": {
+                "title": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "objective": {
+    "constraints": [
+      {
+        "metric": "metric-f1",
+        "min": 0.7
+      },
+      {
+        "metric": "cost_usd",
+        "max": 5
+      }
+    ],
+    "noCriticalFailures": true,
+    "primary": {
+      "name": "gap-f1",
+      "direction": "maximize"
+    }
+  },
+  "acceptance": {
+    "levels": [
+      {
+        "level": 1,
+        "minCases": 1
+      },
+      {
+        "level": 2,
+        "successLowerBound": 0.7
+      }
+    ]
+  },
+  "visibility": "public"
+}

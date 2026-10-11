@@ -5,7 +5,8 @@ an agent under a named profile with the brief on stdin (never in argv, which `ps
 every local process), builds the argv that resumes an ended agent's Claude Code session
 with one more message, and runs binaries by absolute path with a minimal environment.
 
-Tier 1 of the titan-platform DAG, with no dependencies. Ported unchanged from relay's
+Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency of
+the `./limits` subpath). Ported unchanged from relay's
 `daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460.
 
 ```ts
@@ -19,10 +20,19 @@ dispatchToAgentChat(
 ```
 
 - `dispatchToAgentChat(req, timeoutMs, allowedProfiles)` refuses a profile outside the
-  caller's allowlist and a peer name outside agent-chat's name shape, then runs
+  caller's allowlist and a peer name outside agent-chat's name shape, then refuses a
+  profile whose installed file is not headless (`assertInstalledHeadless`), then runs
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit throws
-  `DispatchError` carrying the CLI's stdout reason, else its stderr.
+  `DispatchError` carrying the CLI's stdout reason, else its stderr; a CLI that hangs
+  throws `DispatchTimeoutError`, since the spawn may still have happened.
+- `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
+  `installedProfilesDir()`, `$HOME/.agent-chat/profiles`) and throws `DispatchError` unless
+  it says `"surface": "headless"`: an interactive surface puts the brief in `claude`'s argv.
+  A missing, unreadable or non-JSON file is refused too. The refusal names the profile and
+  path, never the file's contents. `dispatchToAgentChat` takes `profilesDir` to point it
+  elsewhere. The broker re-reads the file after this check, so a write in between is still
+  possible until agent-chat's surface lock closes that window.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
 - `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
@@ -44,7 +54,9 @@ dispatchToAgentChat(
 - `resumeArgs(sessionId, message)` returns `claude` argv; run it with `execSafe`. The
   message is in argv here, so callers decide what may go in it.
 - `listAgents(bin, timeoutMs)` reads `agent-chat agent ls --json` and returns typed
-  `AgentRow`s, skipping a row that lacks a field it relies on. `retire(bin, name,
+  `AgentRow`s, skipping a row whose required field is missing or mistyped and dropping an
+  optional field (`model`, `transcriptPath`, `transcriptExists`, `spawnedBy`, `account`,
+  `teleportFrom`) that has the wrong type. `retire(bin, name,
   timeoutMs, { force })` frees a name and returns the broker's caveats. Both throw
   `DispatchError`, or `DispatchTimeoutError` when the CLI hangs, since a hung retire may
   still have happened.
@@ -53,3 +65,21 @@ dispatchToAgentChat(
 
 Profile names, peer-name derivation and profile installation are the caller's policy and
 are not in this package.
+
+## Limits (`./limits`, `./limits/node`)
+
+The per-pool and per-profile spend limits the budget gate reads: one versioned `limits`
+block with `defaults`, `pools`, `funds`, `profiles`, `seats` and time-boxed `overrides`.
+
+- `limitsSchema` validates a whole block; `parseLimits(raw)` splits it by scope so a
+  malformed pool, profile or seat closes only itself and a malformed override is ignored.
+  An unusable envelope throws `LimitsConfigError`.
+- `resolveLimits(parsed, { pool, profile?, seat?, now, grants?, answeredQuestions?,
+  fiveHourResetsAt? })` folds code defaults, `defaults`, the pool, the profile, the
+  profile × pool entry, active overrides and answered grants, field by field, then clamps.
+  It returns the source layer of every field. A seat cap only tightens.
+- `checkLimits(parsed, { now, knownConfigDirs?, knownProfiles? })` reports expired
+  overrides, closed scopes, unknown pools, profiles and config dirs, and clamps.
+- `liftQuestion` and `grantFromAnswer` are the pure halves of the owner's time-boxed lift.
+- `loadLimits(path, { key? })` and `readGrants(path)` from `./limits/node` read files the
+  caller names; the package owns no path.

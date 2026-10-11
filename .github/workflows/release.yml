@@ -58,10 +58,10 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm >= 11.5.1; Node 22 ships an older npm. Pinned to 11.x:
+      # Trusted publishing needs npm >= 11.5.1. Pinned to 11.x whatever npm .node-version bundles:
       # changesets passes pnpm's --git-checks to npm publish, which npm 12 rejects outright.
       - run: npm install -g npm@11 && npm --version
       # No build here: `pnpm release` builds before `changeset publish`, and

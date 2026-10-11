@@ -1,13 +1,14 @@
 # review-panel
 
-**Tier 2 · domain.** Depends on [`session-read`](/reference/session-read).
+**Tier 2 · domain.** Depends on [`evidence`](/reference/evidence) and [`session-read`](/reference/session-read).
 
 ```sh
 npm install @titan-design/review-panel
 ```
 
-Status: types, ports and the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`). The planner, briefs, verdict acceptor and
-aggregate land in later slices of TP-1916.
+Status: types, ports, the classifier (`classifyPr`, `DEFAULT_CLASS_RULES`), the planner (`planPanel`,
+`DEFAULT_PANEL_POLICY`, `DEFAULT_PANEL_TABLE`), the reviewer briefs, the verdict acceptor (`acceptVerdict`) and
+the aggregate (`aggregate`).
 
 ## The problem it solves
 
@@ -23,14 +24,51 @@ every caller plans, briefs and aggregates the same way:
   files with line counts). Classification reads nothing else.
 - `PrClass`: the class (`g10` or `standard`) and the touch flags that choose the panel's
   shapes.
+- `changedLineCount(files, rules?)`: additions plus deletions with the `generated` globs
+  (CAPABILITIES.md, site reference pages, the reference sidebar, the capabilities guide,
+  `.codewatch/check.json`) left out; undefined when any file has no line counts. A rename
+  counts as generated only when it came from a generated path too, and generated lines that
+  alone pass `largeLines` (400) count in full, since that is a hand edit. A PR is large past
+  `largeLines` of it. Shepherd sizes its reviewer the same way, and an unread size there
+  takes the g10 class.
 - `PanelPlan`: the members (one per `ReviewShape`), each with its profile, brief id, and
   whether it blocks or was degraded to sonnet, plus a spend estimate.
+- `planPanel(cls, policy, headroom)`: the pure planner. The correctness member always
+  runs, at the policy's `roles` profile for the class. A `panel` table adds shapes by
+  class and touch, in priority order; with no table the plan is correctness alone, which
+  is how Shepherd routes its single reviewer today. At most 3 members and 1 opus member;
+  a later opus member is planned at its sonnet profile. `headroom.opus === false` plans
+  every opus member at its sonnet profile with `degraded: true`.
 - `PanelVerdict`: the panel's outcome in Shepherd's vocabulary (`MERGE`, `FIX_FIRST`,
   `no-verdict`, `timeout`), the labelled findings, the dissenting members, and
   `satisfiesG10`.
 - The ports `ReviewerDispatch` (roster, spawn, resume), `ReviewerReader` (a reviewer's
   assistant messages) and their rows `ReviewerAgent` and `ReviewerMessage`, with
-  `ReviewTarget` naming the head under review.
+  `ReviewTarget` naming the head under review. `ReviewerMessage.synthetic` is set only from
+  a client-written record's own fields.
+- `acceptVerdict(input, messages)`: the pure acceptor. It takes only the final message of
+  the dispatched agent and session, written after dispatch, whose `Verdict:` block names
+  the PR at this head (`namesTarget`; repo case is ignored). A refused or misaimed block
+  is `none` with a `malformed` record (`readMalformed`, `MALFORMED_REFUSALS`); a MERGE or
+  FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
+  with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
+  by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
+  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
+  message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
+  `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
+- `aggregate(plan, results, input)`: the pure panel verdict from the members' results
+  (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
+  a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other
+  value is a missing member. Any blocking FIX_FIRST makes it `FIX_FIRST` and
+  lists that member in `dissent`; `MERGE` needs every blocking member's MERGE. A blocking
+  member with no verdict is `no-verdict` (`timeout` when every such member timed out), and
+  a plan with no blocking member is `no-verdict`. Advisory members never block; their
+  FIX_FIRST findings ride along with `blocking: false`, and each finding that cites no
+  `path:line` existing in `input.source` (checked with `evidence`) is dropped. A blocking
+  finding is kept whatever it cites. Findings are in shape order, each member bounded to an
+  equal share of 16,000 characters. `satisfiesG10` needs a g10 class, a MERGE, no degraded
+  member, the correctness member at an opus profile (a key of `sonnetFor`) and the
+  adversary's MERGE.
 
 ## When to reach for it
 
@@ -60,6 +98,33 @@ const reader: ReviewerReader = {
 };
 ```
 
+```ts
+import { classifyPr, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel } from "@titan-design/review-panel";
+
+const cls = classifyPr({
+  repo: "acme/app",
+  pr: 7,
+  head: "abc123",
+  base: "def456",
+  kind: "feature",
+  changedFiles: [{ path: ".github/workflows/ci.yml", additions: 4, deletions: 1 }],
+});
+const plan = planPanel(cls, { ...DEFAULT_PANEL_POLICY, panel: DEFAULT_PANEL_TABLE }, { opus: true });
+// plan.members: correctness at bd-reviewer, adversary at reviewer; both blocking
+```
+
+```ts
+import { SHAPE_BRIEFS, shapeBrief } from "@titan-design/review-panel";
+
+const brief = shapeBrief("adversary", {
+  repo: "acme/app",
+  pr: 7,
+  head: "0123456789abcdef0123456789abcdef01234567",
+  checkoutRoot: "/srv/reviews",
+});
+// the adversary overlay, then the base reviewer brief; SHAPE_BRIEFS.adversary.hash names this variant
+```
+
 ## What it deliberately does not do
 
 - It runs nothing. Every side effect (starting an agent, reading a transcript, the clock,
@@ -74,10 +139,26 @@ const reader: ReviewerReader = {
 - `ReviewerAgent.predecessor` and `fillTokens` absent mean unknown, and Shepherd never
   resumes such an agent. Report them when your roster knows them.
 - `ReviewerReader.read` returns messages oldest first; the last one is the final message.
-- `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap.
+- `PanelPlan.spendEstimate` is an estimate in agent-chat points, never a cap. The default
+  weights (`DEFAULT_MEMBER_POINTS`) are placeholders until the scorecard measures spend.
+- A profile counts as opus only when `sonnetFor` maps it to a sonnet profile; an opus
+  profile missing from that map is never degraded or capped.
+- A shape brief's `hash` changes with any edit to its overlay; record the hash with each
+  verdict so evals compare variants, not ids.
+- The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
+  that does not parse, or names another head, is ignored.
+- `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
+  `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
+  member, that seat counts as missing, so the panel never says MERGE.
+- `aggregate` reads `sonnetFor` from its input, not the plan. Pass the same table you gave
+  `planPanel`, or `satisfiesG10` stays false for a custom opus profile.
 
 ## Where it came from
 
 Slice 1 of TP-1916. The ports moved from Shepherd's `review.ts` in the factory product,
 unchanged, so its `reviewer-dispatch.ts` and `reviewer-reader.ts` adapters satisfy them as
-they are. The factory now imports them from here.
+they are. The factory now imports them from here. Slice 3 moved `acceptVerdict`, the
+owner-brief parser, the Malformed refusals, `namesTarget` and the depth floor out of
+Shepherd's `await-verdict.ts`, `review-schemas.ts`, `verdict-target.ts` and
+`depth-floor.ts`, unchanged; a differential test runs a frozen copy of the old acceptor
+against recorded messages to prove it.

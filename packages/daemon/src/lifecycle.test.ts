@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -70,8 +71,14 @@ describe("process probes", () => {
     expect(isProcessAlive(-1)).toBe(false);
   });
 
-  it("names the command running at this pid", () => {
-    expect(getProcessCommand(process.pid)).toContain("node");
+  // A child, not this process: Node 24 on Linux names its main thread MainThread, which ps reports as the command.
+  it("names the command running at a pid", () => {
+    const child = spawn("sleep", ["30"]);
+    try {
+      expect(getProcessCommand(child.pid ?? -1)).toContain("sleep");
+    } finally {
+      child.kill();
+    }
     expect(getProcessCommand(-1)).toBeNull();
   });
 

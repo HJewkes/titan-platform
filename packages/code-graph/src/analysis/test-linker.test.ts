@@ -22,6 +22,25 @@ function link(testId: string, sourceId: string): Omit<TestSourceLink, "method"> 
 }
 
 describe("linkTestsToSources — pass 1 (path heuristics)", () => {
+  it("pairs pytest's tests/test_cli.py and cli_test.py with the one cli.py in a src layout", () => {
+    const links = linkTestsToSources(
+      [file("tests/test_cli.py", "test"), file("tests/cli_test.py", "test"), file("src/pkg/cli.py", "source")],
+      [],
+    );
+    expect(links.map((l) => [l.testId, l.sourceId, l.method])).toEqual([
+      ["tests/test_cli.py", "src/pkg/cli.py", "path"],
+      ["tests/cli_test.py", "src/pkg/cli.py", "path"],
+    ]);
+  });
+
+  it("leaves a pytest file unpaired when several sources share its name", () => {
+    const links = linkTestsToSources(
+      [file("tests/test_util.py", "test"), file("a/util.py", "source"), file("b/util.py", "source")],
+      [],
+    );
+    expect(links).toEqual([]);
+  });
+
   it("pairs a co-located *.test.ts with its sibling source", () => {
     const links = linkTestsToSources(
       [file("src/foo.test.ts", "test"), file("src/foo.ts", "source")],

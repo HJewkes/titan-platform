@@ -25,9 +25,14 @@ export interface Command<Args = unknown, Result = unknown, Ctx extends BaseConte
   args: ZodType<Args>;
   result: ZodType<Result>;
   cli?: CliMeta;
-  run(args: Args, ctx: Ctx): Promise<Result>;
+  /**
+   * A property, not a method: method parameters are bivariant, so a command whose `run` needs a
+   * narrower context than `Ctx` would typecheck as a `Command<…, Ctx>` and run without its fields.
+   */
+  run: (args: Args, ctx: Ctx) => Promise<Result>;
 }
 
+/** `AnyCommand<never>` accepts a command of any context, for code that reads it but never calls `run`. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyCommand<Ctx extends BaseContext = BaseContext> = Command<any, any, Ctx>;
 

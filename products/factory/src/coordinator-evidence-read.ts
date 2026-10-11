@@ -1,4 +1,4 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
@@ -22,8 +22,9 @@ import type { FactoryHost } from "./host.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
 import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
+import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
 import { gatedRule } from "./shepherd/head-moved.js";
-import { EffectivePolicySchema, OWNER_GATE_POLICY, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
+import { runPolicyCeiling, stricterPolicy, type EffectivePolicy } from "./shepherd/policy.js";
 
 /** Where the fresh reads come from: GitHub through the port, and the factory's own registration and freeze rows. */
 export interface EvidenceSources {
@@ -87,14 +88,13 @@ function runFacts(sources: EvidenceSources, run: WorkflowRun, gate: GateRecord, 
 }
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
-  const raw = run.params.policy;
-  return raw === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(raw));
+  return runPolicyCeiling(run.params.policy);
 }
 
 const VerdictRecord = z.looseObject({ kind: z.literal("verdict"), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
 
 /** The reviewer's verdict recorded at exactly this head; a correction or retry at the head must agree, or there is none. */
-function verdictAt(run: WorkflowRun, head: string): { step: string; verdict: string; head: string; reviewer: string } | undefined {
+export function verdictAt(run: WorkflowRun, head: string): { step: string; verdict: string; head: string; reviewer: string } | undefined {
   const step = `sh-await-verdict:${head}`;
   const results = Object.values(run.stepResults).filter((result) => result.stepId === step || result.stepId.startsWith(`${step}:`));
   const records = results.map((result) => VerdictRecord.safeParse(result.data?.result));
@@ -115,7 +115,20 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
 }
 
-/** The base branch's tip, when it contains the merge sha and every Actions run on it passed. */
+type ChecksState = "green" | "failing" | "pending" | "unreadable";
+
+/** What the required checks of the base say about the head, for a human to read; a failing run outranks a pending one. */
+export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, head: string): Promise<{ state: ChecksState; failing: string[] }> {
+  const read = await readRequiredChecks(port, repo, base);
+  if (!read.readable || read.checks.contexts.length === 0) return { state: "unreadable", failing: [] };
+  const runs = await port.checkRuns(repo, head);
+  const findings = headCheckFindings({ headSha: head, contexts: read.checks.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const failing = [...new Set(findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run.name] : [])))];
+  if (failing.length > 0) return { state: "failing", failing };
+  return { state: findings.length > 0 ? "pending" : "green", failing: [] };
+}
+
+/** The base branch's tip, when it contains the merge sha and every check that judges main passed (the required contexts when the base has them, else every Actions run). */
 async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promise<CoordinatorEvidence | undefined> {
   const main = mainGate(gate);
   if (!main) return undefined;
@@ -124,8 +137,11 @@ async function readMainGreen(sources: EvidenceSources, gate: GateRecord): Promis
   const tip = pull.merged && pull.mergeSha === main.mergeSha ? await port.getHeadSha(main.repo, pull.baseRef) : null;
   if (!tip) return undefined;
   const mergeBaseSha = tip === main.mergeSha ? tip : (await port.compareFiles(main.repo, main.mergeSha, tip)).mergeBaseSha;
-  const runs = withoutSupersededCancels(actionsRunsAt(await port.checkRuns(main.repo, tip), tip));
-  if (mergeBaseSha !== main.mergeSha || runs.length === 0 || !runs.every(isPassing)) return undefined;
+  const all = await port.checkRuns(main.repo, tip);
+  const { rules } = await readMainRules(port, main.repo, pull.baseRef);
+  const judged = judgeMain(tip, all, rules);
+  if (mergeBaseSha !== main.mergeSha || judged.counted === 0 || judged.findings.length > 0) return undefined;
+  const runs = withoutSupersededCancels(actionsRunsAt(all, tip)).filter((run) => rules === undefined || rules.contexts.includes(run.name));
   return { kind: "main-green", gateId: gate.id, ...main, base: pull.baseRef, greenSha: tip, mergeBaseSha, runs: runs.map(runFact), readAt: readAt(sources) };
 }
 
@@ -134,13 +150,10 @@ async function readPrGone(sources: EvidenceSources, gate: GateRecord, run: Workf
   const registration = sources.registration(run.id);
   const runPr = run.params.pr === undefined ? registration?.pr : Number(run.params.pr);
   if (!target || !offersAbandon(gate) || run.params.repo !== target.repo || runPr !== target.pr) return undefined;
-  const land = stepOf(gate.id) === MERGE_GATE ? landGate(gate) : undefined;
-  const facts = land && runFacts(sources, run, gate, land);
-  if (stepOf(gate.id) === MERGE_GATE && !facts) return undefined;
   const pull = await sources.port.getPr(target.repo, target.pr);
   const state = pull.merged ? "merged" : pull.state === "closed" ? "closed" : undefined;
   if (!state) return undefined;
-  return { kind: "pr-gone", gateId: gate.id, ...target, state, ...(facts && { run: facts }), readAt: readAt(sources) };
+  return { kind: "pr-gone", gateId: gate.id, ...target, state, readAt: readAt(sources) };
 }
 
 function runFact({ id, name, conclusion, headSha }: CheckRun): CheckRunFact {

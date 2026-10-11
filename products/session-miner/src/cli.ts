@@ -1,3 +1,4 @@
+import path from "node:path";
 import { Command, CommanderError } from "commander";
 import {
   EXIT,
@@ -13,6 +14,7 @@ import {
 } from "@titan-design/registry";
 import { resolveConfig, type ConfigOverrides } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
+import { runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
 import { MINER_VERSION, createMinerRegistry } from "./registry.js";
 import { runMinerMcpStdio, serveMinerUntilSignal } from "./serve.js";
 
@@ -47,6 +49,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));
   attachLongRunning(program, io);
+  attachGraphRefresh(program, io, (code) => (exitCode = code));
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (err) {
@@ -116,4 +119,29 @@ function attachLongRunning(program: Command, io: CliIo): void {
     .option("--port <n>", "port (default 7400)")
     .action(async (opts: { port?: string }) => serveMinerUntilSignal(config(), { port: opts.port === undefined ? undefined : Number(opts.port) }));
   program.command("mcp").description("Serve MCP over stdio").action(() => runMinerMcpStdio(config()));
+}
+
+function attachGraphRefresh(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  program
+    .command("graph-refresh")
+    .description("Scheduled refresh: run the graph owner's refresh under a lock, then quick_check the graph")
+    .argument("<refresh...>", "the owner's refresh command, after --")
+    .option("--lock <file>", "lock file (default <state>/graph-refresh.lock)")
+    .action(async (argv: string[], opts: { lock?: string }) => {
+      const root = program.opts() as RootOptions;
+      // An unset variable in a unit's `--graph "${VAR}"` arrives empty, which would otherwise check the miner's own index.
+      if (root.graph === "") {
+        io.stderr("error: --graph is empty\n");
+        return onExit(EXIT.USAGE);
+      }
+      const resolved = resolveConfig(configOverrides(root), io.env);
+      const result = await runGraphRefresh({
+        dbPath: resolved.dbPath,
+        lockPath: opts.lock ?? path.join(resolved.stateDir, "graph-refresh.lock"),
+        refresh: spawnRefresh(argv),
+        log: (line) => io.stderr(`${line}\n`),
+      });
+      io.stdout(`${JSON.stringify(result)}\n`);
+      onExit(result.exitCode);
+    });
 }

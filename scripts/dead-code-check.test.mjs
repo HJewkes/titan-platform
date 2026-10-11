@@ -252,7 +252,7 @@ describe("the script header", () => {
   it("documents the exit codes the script really returns", () => {
     expect(header).not.toContain("always exits 0");
     expect(header).toContain("Exits 1 on a new dead export, or 0 under --report-only");
-    expect(header).toContain("Exits 2 on an index failure, a lock timeout, a BASE_REF that names no commit, an unknown flag,");
+    expect(header).toContain("Exits 75 when the dag-check lock stays busy past the wait bound (DAG_CHECK_LOCK_WAIT_MS, 8 minutes), and 2 on an index failure, a BASE_REF that names no commit, an unknown flag,");
     expect(header).toContain('a --db path that does not exist or holds no "head" snapshot, or an out-of-memory abort');
   });
 });
@@ -363,6 +363,16 @@ describe("the report", () => {
     const report = formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true, grew: true });
     expect(report).toContain("the baseline grew — failed.");
     expect(report).not.toContain("not failing");
+  });
+
+  it("prints the NEW lines after every CARRY line, directly before the status line", () => {
+    const fresh = ["x", "y"].map((name) => ({ id: `a.ts#${name}`, name, file: "a.ts" }));
+    const carried = ["p", "q", "r"].map((name) => ({ id: `b.ts#${name}` }));
+
+    const lines = formatReport({ fresh, carried, fixed: [] }, { reportOnly: false }).split("\n");
+
+    expect(lines.map((line) => line.trim().split(/\s+/)[0])).toEqual(["CARRY", "CARRY", "CARRY", "NEW", "NEW", "2"]);
+    expect(lines.at(-1)).toBe("2 new, 3 baselined dead export(s) — failed.");
   });
 
   it("says a report-only run does not fail", () => {

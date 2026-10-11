@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { charterDefaultsSchema } from "./charter-policy.js";
 
 const count = z.number().int().nonnegative();
 
@@ -61,6 +62,7 @@ export const seatConfigSchema = z.looseObject({
   excluded_tags: z.array(z.string()).optional(),
   excluded_title_patterns: z.array(z.string()).optional(),
   extra_hard_stops: z.array(z.string()).optional(),
+  defaults: charterDefaultsSchema.partial().optional(),
   grants_extra: z.array(z.string()).optional(),
   log: z.string().optional(),
   queue: z.string().optional(),

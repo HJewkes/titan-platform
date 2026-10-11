@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/messaging",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Runtime-neutral messaging transport: contract, BlueBubbles iMessage and Telegram Bot API adapters, mock, inbound validators, liveness",
   "type": "module",
   "main": "./dist/index.js",

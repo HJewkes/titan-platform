@@ -1,5 +1,6 @@
-export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, WriteResult } from "./port.js";
+export type { CheckRun, Commit, CompareResult, GitHubPort, GitHubWire, HeadRef, IssueComment, LoggedCommit, MergeMessage, MergeMethod, PrFile, PullRequest, PutFileRequest, RepoFile, RepoSlug, RequiredChecks, SkipReason, SquashSource, WriteResult } from "./port.js";
 export { COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, FileListTruncatedError, GitHubConflictError, PR_COMMITS_CAP, PR_FILES_CAP, githubPort, type GitHubPortOptions } from "./port.js";
+export { WriteRetriesExhaustedError } from "./write-read-back.js";
 export type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 export type { ReviewComment } from "./review-comment.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
@@ -20,3 +21,5 @@ export { ghCliWire } from "./gh-cli.js";
 export { GitHubInputError, isRepo } from "./validate.js";
 export type { FakeEffects, FakeGitHub } from "./fake.js";
 export { FAKE_APP_ID, FakeHttpError, fakeGitHub, fakeSha, successRun } from "./fake.js";
+export type { SquashCommit, SquashInput, SquashMessage } from "./squash-message.js";
+export { formatSquashMessage } from "./squash-message.js";

@@ -35,9 +35,9 @@ function renderConsole(hash: string, snapshot: Snapshot): RenderResult {
 }
 
 describe("the shell", () => {
-  it("offers every planned view in the nav and marks the current one", () => {
+  it("shows the rail and marks the current one", () => {
     renderConsole("#/sessions", healthy());
-    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(VIEWS.map((view) => view.label));
+    expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual(["Home", "Work", "Tasks", "Sessions", "Agents", "Notes", "Rounds"]);
     // react-ui's NavItem sets no aria-selected on the web, so its accent bar is the only mark of the active item.
     expect(within(screen.getByRole("tab", { name: "Sessions" })).getByTestId("nav-item-accent")).toBeTruthy();
     expect(screen.getAllByTestId("nav-item-accent")).toHaveLength(1);
@@ -47,34 +47,22 @@ describe("the shell", () => {
     renderConsole("#/", healthy());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
-    expect(await screen.findByText(/agent topology and agent-to-agent chat/)).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Roster" })).toBeTruthy();
   });
 });
 
-describe("a planned view", () => {
-  it.each(VIEWS.filter((view) => view.planned))("shows a placeholder for $key that names its task", (view) => {
+const planned = VIEWS.filter((view) => view.planned);
+
+// Every view is built once the last placeholder is replaced; an empty it.each would fail the suite.
+describe.skipIf(planned.length === 0)("a planned view", () => {
+  it.each(planned)("shows a placeholder for $key that names its task", (view) => {
     renderConsole(`#/${view.key}`, healthy());
     expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();
   });
-});
 
-describe("the status view", () => {
-  it("lists the three upstreams with their reachability", async () => {
-    renderConsole("#/", healthy());
-    expect(await screen.findByText("active-work daemon")).toBeTruthy();
-    expect(screen.getByText("http://127.0.0.1:7600: No answer from /health")).toBeTruthy();
-    expect(screen.getByText("~/data/graph.sqlite3: 2.0 KiB on disk, not opened")).toBeTruthy();
-    expect(screen.getAllByText("reachable")).toHaveLength(2);
-    expect(screen.getAllByText("unreachable")).toHaveLength(1);
-  });
-
-  it("shows a loading state before the first answer", () => {
-    renderConsole("#/", healthy());
-    expect(screen.getByLabelText("Loading upstream health")).toBeTruthy();
-  });
-
-  it("says so when the health command fails", async () => {
-    renderConsole("#/", snapshotOf({}));
-    expect(await screen.findByText(/Could not load upstream health/)).toBeTruthy();
+  it.each(planned)("shows the same placeholder on a $key detail route and keeps its rail entry active", (view) => {
+    renderConsole(`#/${view.key}/some-record?tab=graph`, healthy());
+    expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();
+    expect(within(screen.getByRole("tab", { name: view.label })).getByTestId("nav-item-accent")).toBeTruthy();
   });
 });

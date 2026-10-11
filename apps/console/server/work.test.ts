@@ -3,13 +3,14 @@ import { EXIT } from "@titan-design/registry";
 import { snapshotKey } from "@titan-design/rpc-client";
 import { activeWorkClient } from "./active-work.js";
 import { brokerReader } from "./broker.js";
-import { fixtureAnswer, type FixtureOptions } from "./fixtures.js";
+import { fixtureActiveWork, fixtureAnswer, type FixtureOptions } from "./fixtures.js";
 import { createConsoleRegistry, recordFirstPaint } from "./registry.js";
 import { closedPort, startFakeDaemon, type FakeDaemon } from "./test-support.js";
-import { readInitiative, readPortfolio, type Portfolio } from "./work.js";
+import { readInitiative, readNotes, readPortfolio, readRecord, searchRecords, type Portfolio } from "./work.js";
 
 /** The export records no agents call, so this broker is never read. */
-const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), seatPrefixes: [] };
+const NO_AGENTS = { broker: brokerReader({ port: 1, tokenPath: "/nonexistent/ui.token" }), eventsDbPath: "/nonexistent/events.db", seatPrefixes: [] };
+const NO_SESSIONS = { graphPath: "/nonexistent/graph.sqlite3" };
 
 let daemon: FakeDaemon | undefined;
 let calls: string[] = [];
@@ -46,6 +47,26 @@ describe("the portfolio", () => {
       sessions: 2,
       newestActivity: "2031-03-04T16:20:00.000Z",
     });
+  });
+
+  it("carries each brief's task prefix, and none for a brief that names none", async () => {
+    const { initiatives } = await readPortfolio(await fakeActiveWork());
+    expect(Object.fromEntries(initiatives.map((row) => [row.slug, row.taskPrefix]))).toEqual({
+      "orbit-relay": "OR",
+      "lantern-docs": "LD",
+      "kiln-tools": "KT",
+      "garden-plan": "GP",
+      "atlas-archive": undefined,
+    });
+  });
+
+  it("leaves the prefix out when a brief cannot be read, and still lists the initiative", async () => {
+    daemon = await startFakeDaemon({ ok: true }, (command, args) => {
+      if (command === "source.read" && args.slug === "kiln-tools") throw new Error("no brief");
+      return fixtureAnswer(command, args);
+    });
+    const { initiatives } = await readPortfolio(activeWorkClient(daemon.port));
+    expect(initiatives.find((row) => row.slug === "kiln-tools")).not.toHaveProperty("taskPrefix");
   });
 
   it("flags a personal initiative and still shows it", async () => {
@@ -106,9 +127,66 @@ describe("an initiative", () => {
   });
 });
 
+describe("the knowledge reads", () => {
+  it("lists notes and top-level sources across initiatives, each by its ref, newest change first", async () => {
+    const { records } = await readNotes(await fakeActiveWork());
+    expect(records.map((row) => row.ref)).toEqual([
+      "note:orbit-relay/2031-03-03-backoff-ceiling.md",
+      "note:lantern-docs/2031-02-28-chapter-order.md",
+      "note:orbit-relay/2031-02-27-station-clock-skew.md",
+      "source:orbit-relay/pr-41-handshake.md",
+      "source:orbit-relay/deepdive-routing-table.md",
+      "source:kiln-tools/deepdive-cone-chart.md",
+      "note:garden-plan/2031-01-19-seed-list.md",
+    ]);
+    expect(records[1]).toMatchObject({ kind: "note", slug: "lantern-docs", type: "plan", changed: "2031-02-28" });
+  });
+
+  it("leaves personal records out when personal initiatives are excluded", async () => {
+    const { records } = await readNotes(await fakeActiveWork(), { excludePersonal: true });
+    expect(records.map((row) => row.slug)).not.toContain("garden-plan");
+    expect(records).toHaveLength(6);
+  });
+
+  it("reads a note by ref with its frontmatter fields and body", async () => {
+    const record = await readRecord(await fakeActiveWork(), "note:orbit-relay/2031-03-03-backoff-ceiling.md");
+    expect(record).toMatchObject({ kind: "note", slug: "orbit-relay", file: "2031-03-03-backoff-ceiling.md", title: "Cap the backoff at thirty seconds", type: "decision", truncated: false });
+    expect(record.body).toContain("stop growing at thirty seconds");
+  });
+
+  it("reads a source by ref under the initiative's sources directory, titled by its first heading", async () => {
+    const record = await readRecord(await fakeActiveWork(), "source:orbit-relay/pr-41-handshake.md");
+    expect(record).toMatchObject({ kind: "source", title: "Handshake rewrite", type: null, created: null });
+    expect(record.body.startsWith("# Handshake rewrite")).toBe(true);
+  });
+
+  it("answers no-input for a record active-work cannot find", async () => {
+    await expect(readRecord(fixtureActiveWork(), "note:orbit-relay/missing.md")).rejects.toMatchObject({ code: EXIT.NOINPUT });
+  });
+
+  it("refuses a ref that steps out of the sources directory before reading any file", async () => {
+    await expect(readRecord(await fakeActiveWork(), "source:orbit-relay/../brief.md")).rejects.toMatchObject({ code: EXIT.DATAERR });
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses a personal record before reading it when personal initiatives are excluded", async () => {
+    await expect(readRecord(await fakeActiveWork(), "note:garden-plan/2031-01-19-seed-list.md", { excludePersonal: true })).rejects.toMatchObject({ code: EXIT.NOINPUT });
+    expect(calls).not.toContain("note.read");
+  });
+
+  it("returns search hits by ref, without personal ones when those are excluded", async () => {
+    const activeWork = await fakeActiveWork();
+    const all = await searchRecords(activeWork, "s");
+    const kept = await searchRecords(activeWork, "s", { excludePersonal: true });
+    expect(all.hits.map((hit) => hit.initiative)).toContain("garden-plan");
+    expect(kept.hits.map((hit) => hit.initiative)).not.toContain("garden-plan");
+    expect(kept.hits[0]).toEqual({ ref: expect.stringMatching(/^(note|source):/), class: expect.any(String), initiative: expect.any(String), title: expect.any(String), excerpt: expect.any(String) });
+  });
+});
+
 describe("an export", () => {
   const exported = async (options: FixtureOptions = {}) =>
-    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
+    createConsoleRegistry({ upstreams: [], agents: NO_AGENTS, sessions: NO_SESSIONS, inbox: { dir: "/nonexistent/inbox" }, rounds: { dir: "/nonexistent/rounds" }, activeWork: await fakeActiveWork(options), work: { excludePersonal: true } });
 
   it("records the portfolio without the personal initiative", async () => {
     const snapshot = await recordFirstPaint(await exported());

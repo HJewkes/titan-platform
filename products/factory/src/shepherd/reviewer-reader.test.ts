@@ -4,7 +4,7 @@ import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./depth-floor.js";
+import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "@titan-design/review-panel";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -252,6 +252,38 @@ describe("transcriptReviewerReader", () => {
   });
 });
 
+describe("a usage-limit line, by who wrote it", () => {
+  const NOTICE = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+  const RESETS_AT_S = 1_791_676_800;
+  /** Claude Code's own record: its placeholder model, the API error and the quota it was refused under. */
+  const clientNotice = (sessionId: string): Json => ({
+    ...assistant(sessionId, [NOTICE]),
+    message: { id: "msg-limit", role: "assistant", model: "<synthetic>", content: [text(NOTICE)] },
+    isApiErrorMessage: true,
+    error: "rate_limit",
+    apiErrorStatus: 429,
+    quotaLimits: { status: "rejected", resetsAt: RESETS_AT_S, rateLimitType: "seven_day" },
+  });
+
+  it("marks Claude Code's own limit record with its error and reset, which reads as a usage limit", async () => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), clientNotice(SESSION)]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.at(-1)).toMatchObject({ text: NOTICE, synthetic: { apiError: "rate_limit", resetsAt: RESETS_AT_S * 1000 } });
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", resetsAt: RESETS_AT_S * 1000 });
+  });
+
+  it("leaves the same words written by the reviewer unmarked, so they read as a malformed verdict", async () => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), clientNotice(SESSION), assistant(SESSION, [NOTICE])]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.at(-1)).not.toHaveProperty("synthetic");
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
+  });
+});
+
 describe("reviewerMessages", () => {
   const observed = async (records: readonly Json[]): Promise<NormalizedSessionObservation[]> => {
     const observations: NormalizedSessionObservation[] = [];
@@ -309,7 +341,7 @@ describe("a seat reviewer that sends its verdict with chat_send", () => {
     const rows = [{ ...seat, presence: "live" as const, transcriptExists: false, transcriptPath: null }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
 
-    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, { repo: "octo/demo", pr: 4, head: FIXTURE_HEAD })).toMatchObject({ kind: "clear" });
   });
 
   describe("a seat reviewer's transcript read by presence", () => {
@@ -439,7 +471,7 @@ describe("a seat reviewer's transcript read once per roster change", () => {
     const transcript = writeTranscript(SESSION, reviewed());
     const rows = [{ ...seat, transcriptPath: transcript }];
     const reader = transcriptReviewerReader({ roster: async () => rows, namespace: NAMESPACE });
-    expect(await seatFixFirst(async () => rows, reader, target)).toEqual({ kind: "clear" });
+    expect(await seatFixFirst(async () => rows, reader, target)).toMatchObject({ kind: "clear" });
 
     const later = assistant(SESSION, [BLOCK.replace("MERGE", "FIX_FIRST")], "2026-09-30T10:09:00Z");
     appendFileSync(transcript, `${JSON.stringify(later)}\n`, "utf8");
@@ -586,5 +618,51 @@ describe("isInvestigativeCall", () => {
     const counted = (await Promise.all(calls.map((call) => observed(call)))).flat();
 
     expect(counted).toEqual([false, false, false, false]);
+  });
+
+  const bashCommand = async (command: string) => (await observed({ type: "tool_use", id: "x", name: "Bash", input: { command } }))[0];
+
+  it.each([
+    "cd /tmp/review-1-x && grep -rn foo src",
+    "dir=/tmp/r1 && git fetch origin && git -C \"$dir\" diff main",
+    "pnpm exec vitest run src/a.test.ts",
+    "cd /tmp/r && FOO=1 pnpm vitest run",
+    "git fetch origin; head -3 README.md",
+    "cd /tmp/r\ngit diff main",
+    "grep -rn foo src | head -5",
+    "cd x && npm run verify",
+    "npm test",
+    "node --test a.test.js",
+    "git -C /tmp/r log --oneline",
+    "git -C /tmp/r merge-tree a b",
+    "git -C /tmp/r ls-files",
+    "wc -l a && tail -n 3 a",
+    "gh pr comment 1 --body-file - <<EOF\nbody\nEOF\ngrep -rn foo src",
+    "echo 'a && b' && grep 'x && y' f",
+  ])("counts the reviewer shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(true);
+  });
+
+  it.each([
+    "cd /tmp/review-1-x",
+    "echo hello",
+    "git fetch origin",
+    "rm -rf /tmp/review-1-x",
+    "cd /tmp/r && mkdir -p out && echo done",
+    "git worktree add /tmp/r origin/main && git fetch",
+    "echo 'x && grep y'",
+    "echo \"a ; cat b\"",
+    "git fetch origin abc 2>&1 | tail -2",
+    "git worktree add /tmp/x sha 2>&1 | tail -1",
+    "echo hi | head -1",
+    "git status | wc -l",
+    "mkdir -p /tmp/x && ls",
+    "mkdir -p /tmp/x && ls -la /tmp/x",
+    "ls /",
+    "true && find . -name x",
+    "gh pr comment 1 --body-file - <<'EOF'\nfind nothing here\nEOF",
+    "agent-chat gh-write -- pr review 1 --body-file - <<'EOF'\nhead looks good\ngrep found no other callers\nit's fine\nEOF",
+  ])("does not count the session-setup shape %s", async (command) => {
+    expect(await bashCommand(command)).toBe(false);
   });
 });

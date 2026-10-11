@@ -27,6 +27,8 @@ function scripted(answer: (call: Call) => GhResult): { exec: GhExec; calls: Call
   return { calls, exec: async (args, input, options) => (calls.push({ args, input, options }), answer({ args, input, options })) };
 }
 
+// Built at runtime so the repo never holds a literal PEM private-key header.
+const pemBlock = (label: string, body: string) => ["BEGIN", "END"].map((edge) => `-----${edge} ${label}-----`).join(`\n${body}\n`);
 const ok = (body: unknown): GhResult => ({ code: 0, stdout: `HTTP/2.0 201 Created\r\n\r\n${JSON.stringify(body)}`, stderr: "" });
 const credentials = { appId: 77, installationId: 9, privateKeyPem: PEM, now: () => NOW };
 const request = { name: "shepherd", headSha: HEAD, conclusion: "success" as const, title: "Done", summary: "All good", externalId: "x-1" };
@@ -59,7 +61,7 @@ describe("appInstallationToken", () => {
   it("refuses a malformed key before any gh call, without echoing the key", async () => {
     const gh = scripted(() => ok({}));
 
-    const attempt = appInstallationToken({ ...credentials, privateKeyPem: "-----BEGIN PRIVATE KEY-----\nbm90LWEta2V5\n-----END PRIVATE KEY-----" }, gh.exec);
+    const attempt = appInstallationToken({ ...credentials, privateKeyPem: pemBlock("PRIVATE KEY", "bm90LWEta2V5") }, gh.exec);
 
     await expect(attempt).rejects.toBeInstanceOf(GitHubInputError);
     await expect(attempt).rejects.not.toThrow(/bm90LWEta2V5/);

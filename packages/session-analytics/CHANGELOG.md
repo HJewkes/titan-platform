@@ -1,5 +1,96 @@
 # @titan-design/session-analytics
 
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-graph@0.15.1
+
+## 0.13.1
+
+### Patch Changes
+
+- 3873ce6: Count each inbound once when a session is held in two transcripts: `humanTurnCount`, `inboundKinds` and episode inbounds now keep only the first copy (`INBOUND_COPY_RANK`, the inbound twin of `SIGNAL_COPY_RANK`).
+
+## 0.13.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [3d3cc58]
+  - @titan-design/session-read@0.12.2
+
+## 0.12.0
+
+### Minor Changes
+
+- be6e34c: Add the coordinator duty meter core. `mergeCopies` meters seat transcript lines into duty-classified, priced calls and turns, with copy dedupe, per-pool window starts, rebuilt triggers and outcomes, and the `TP1550_RULES` and `V3_RULES` rule sets. `dutyTable` totals them into the `titan.coord-duty/v1` duty table, and `seatOf` names a transcript's seat.
+
+## 0.11.0
+
+### Minor Changes
+
+- 5c659a3: Add `taskActuals(minerDb, tasks, options)`: one row per done task with implementer and reviewer agent-hours (request gaps capped at 15 minutes, with the 5 and 60 minute values alongside), list-price cost, implementer session count and first and last request, linked PRs with merge time, and the flags `no-impl-session`, `weak-link`, `multi-task`, `reopened` and `unpriced`. Initiatives come from an allowlist option. A session's role comes from its spawn profile (`fable-implementer` and `fable-reviewer` included); a linked session that counts toward neither total is reported in `unmappedSessions` and raises `unmapped-role`.
+
+### Patch Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+- dcf8e04: Read task-actuals query rows through type guards instead of type assertions.
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+
+## 0.10.0
+
+### Minor Changes
+
+- c10cfe0: `parseVerdict` now reads verdicts with session-read's `parseVerdictBlock` and matches heads exactly, so a short or prefix head no longer counts. `blockedFlowReport` gains `refusedVerdicts` (and an optional `unparsedVerdicts` input) for verdicts the merge gate would refuse; they stay out of `verdictToMerge` and `openHoldingMerge`.
+- ae161ab: A scoped `staleEpisodeSessions` call and `readSessionContexts` no longer read `request_dedup`. They keep each request's earliest `(ts, transcript_id)` copy with a `NOT EXISTS` check over `idx_request_id`, so a call for a few sessions stops ranking every request in the graph. Results are unchanged. `staleEpisodeSessions` with no ids still reads the view.
+- bf95d64: Add the agent-chat events.db readers `readVerdicts(db, window, seats)`, `readSpawns(db)` and `readLastPrompts(db, asOf)`, which take a connection the caller opened read-only. Each runs an exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the `verdicts`, `spawns` and `prompts` commands in `BLOCKED_FLOW_SOURCES` and `LIVENESS_SOURCES` are now `eventsDbCommand(sql)` over that same constant, so a printed re-read runs the reader's own query, with `.parameter set` lines for its epoch-millisecond parameters. The verdicts command now selects the reviewer (`actor`) and the window bounds, and the spawns command the `msg_id IS NOT NULL` filter and JSON guard it lacked. The prompts source no longer claims a `broker_started` skip that events.db cannot show: that skip comes from broker.log, so the `registrations` grep now includes `broker_started` and `stalePrompts` cites `registrations`. `EVENTS_TABLE_DDL` exports agent-chat's events table for test fixtures.
+
+### Patch Changes
+
+- ce6cfdc: Add a parity test that runs every context and gap band boundary and a split-less cache write through the `request_cost` view and through `contextBand`, `gapBand` and `priceRequest`, so the TypeScript and SQL copies cannot drift apart unnoticed. `bands.ts` and `price-request.ts` now name their SQL twin.
+- a8f0d75: Correct the docs: the default rules classify `gh api PUT pulls/merge` as `merge`, and the cost report field is `unpricedModels`.
+- 00c9a6f: Order coordinator episode signal ownership by timestamp, transcript id, then byte offset, so a merge or wrap signal on an exact-millisecond tie across resumed transcripts lands on the right turn. Bumps the coordinator-v1 heuristic version so stored episodes are recomputed.
+- Updated dependencies [7345a13]
+- Updated dependencies [f4b073d]
+- Updated dependencies [d31b4fe]
+- Updated dependencies [e4700f5]
+- Updated dependencies [5b59475]
+- Updated dependencies [a5cfd4c]
+- Updated dependencies [f34ae27]
+- Updated dependencies [f34ae27]
+- Updated dependencies [495e6f8]
+- Updated dependencies [74f9f51]
+- Updated dependencies [a8faac4]
+- Updated dependencies [1aed39d]
+- Updated dependencies [1fd9652]
+- Updated dependencies [deb35d0]
+- Updated dependencies [295acf8]
+- Updated dependencies [1f7de27]
+- Updated dependencies [388d791]
+- Updated dependencies [59ba612]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [c466784]
+  - @titan-design/agent-protocol@0.6.0
+  - @titan-design/session-graph@0.14.0
+  - @titan-design/session-read@0.11.0
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.9.0
 
 ### Minor Changes

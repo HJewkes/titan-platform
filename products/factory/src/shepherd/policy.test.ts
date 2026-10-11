@@ -69,6 +69,24 @@ describe("resolveEffectivePolicy", () => {
   });
 });
 
+describe("a feature base", () => {
+  const STACKED: Seat = { name: "stacked-seat", remotes: ["acme/stacks"], paths: {}, grants: ["merge-into-feature-base"] };
+  const stacked = (requested?: unknown) => resolveEffectivePolicy(lookupSeat({ seats: [STACKED], denied: [] }, "acme/stacks"), requested);
+
+  it("comes only from a seat's grant, and the land options read it from the policy", () => {
+    expect(effective("acme/gizmos")).not.toHaveProperty("featureBase");
+    expect(stacked().featureBase).toBe(true);
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(stacked())))).toEqual(stacked());
+    expect(shepherdLandOptions(() => effective("acme/gizmos")).featureBase?.()).toBe(false);
+    expect(shepherdLandOptions(() => stacked()).featureBase?.()).toBe(true);
+  });
+
+  it("refuses a registration that asks for it, so an implementer cannot widen its seat", () => {
+    expect(() => effective("acme/gizmos", { featureBase: true })).toThrow(RegistrationRefused);
+    expect(() => stacked({ featureBase: false })).toThrow(/featureBase/);
+  });
+});
+
 describe("shepherdGatePolicy", () => {
   it("denies a merge under never, gates it under owner-gate, and gates auto with no merge facts", () => {
     const decide = (repo: string, merge?: "never") => shepherdGatePolicy(effective(repo, merge && { merge })).decide("merge", { headSha: "a".repeat(40) });
@@ -95,6 +113,41 @@ describe("shepherdGatePolicy", () => {
   });
 });
 
+describe("an owner-gate request's reason", () => {
+  it("refuses owner-gate with no reason and names the four reasons", () => {
+    expect(() => effective("acme/widgets", { merge: "owner-gate" })).toThrow(RegistrationRefused);
+    expect(() => effective("acme/widgets", { merge: "owner-gate" })).toThrow(/gate-2-visual, g10-security, proof-fixture, owner-asked/);
+  });
+
+  it("refuses a reason outside the closed set", () => {
+    expect(() => effective("acme/widgets", { merge: "owner-gate", ownerGateReason: "because" })).toThrow(RegistrationRefused);
+  });
+
+  it("refuses a reason unless the merge is owner-gate", () => {
+    expect(() => effective("acme/gizmos", { merge: "auto", ownerGateReason: "proof-fixture" })).toThrow(/applies only with merge owner-gate/);
+    expect(() => effective("acme/gizmos", { ownerGateReason: "proof-fixture" })).toThrow(RegistrationRefused);
+  });
+
+  it("accepts a reason and stores it in the effective policy", () => {
+    expect(effective("acme/widgets", { merge: "owner-gate", ownerGateReason: "g10-security" })).toMatchObject({ merge: "owner-gate", ownerGateReason: "g10-security" });
+  });
+
+  it("appends the reason to the gate prompt", () => {
+    const policy = shepherdGatePolicy(effective("acme/widgets", { merge: "owner-gate", ownerGateReason: "gate-2-visual" }));
+
+    expect(policy.decide("merge", { headSha: "a".repeat(40) }).reason).toContain("policy owner-gate (gate-2-visual) waits for the owner");
+  });
+
+  it("replays a legacy owner-gate policy with no reason", () => {
+    const legacy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "gated-seat" };
+
+    const parsed = EffectivePolicySchema.parse(legacy);
+
+    expect(parsed.ownerGateReason).toBeUndefined();
+    expect(shepherdGatePolicy(parsed).decide("merge", { headSha: "a".repeat(40) }).reason).toContain("policy owner-gate waits for the owner");
+  });
+});
+
 describe("stricterPolicy", () => {
   const policy = (merge: EffectivePolicy["merge"], seat: string, fixer = true): EffectivePolicy => ({ merge, mergeMethod: "rebase", fixer, seat });
 
@@ -105,6 +158,14 @@ describe("stricterPolicy", () => {
     ["auto", "never", "never"],
   ] as const)("narrows %s by %s to %s", (trusted, other, merge) => {
     expect(stricterPolicy(policy(trusted, "t"), policy(other, "o")).merge).toBe(merge);
+  });
+
+  it("keeps a feature base only when both policies allow one", () => {
+    const featureBase = { ...policy("auto", "t"), featureBase: true as const };
+
+    expect(stricterPolicy(featureBase, featureBase).featureBase).toBe(true);
+    expect(stricterPolicy(featureBase, policy("auto", "o"))).not.toHaveProperty("featureBase");
+    expect(stricterPolicy(policy("auto", "t"), featureBase)).not.toHaveProperty("featureBase");
   });
 
   it("names the seat whose mode won, and keeps a fixer only when both allow one", () => {
@@ -175,10 +236,28 @@ describe("shepherdGatePolicy under merge:auto", () => {
 
   it("never asks authority under owner-gate or never, so the table cannot lift the seat ceiling", () => {
     for (const merge of ["owner-gate", "never"] as const) {
-      shepherdGatePolicy(effective("acme/gizmos", { merge }), reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD });
+      shepherdGatePolicy(effective("acme/gizmos", merge === "owner-gate" ? { merge, ownerGateReason: "owner-asked" } : { merge }), reviewed(evidenceAt(HEAD))).decide("merge", { headSha: HEAD });
     }
 
     expect(evaluate).not.toHaveBeenCalled();
+  });
+
+  it("gates a head the policy would allow when an escalation was carried to it, naming the carried gate and the review", () => {
+    vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
+    const carried = { escalation: "fix-first-runaway", detail: "the last at old", carriedFrom: "d".repeat(40) } as const;
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidenceAt(HEAD)), () => carried);
+
+    const decision = options.policy.decide("merge", { headSha: HEAD });
+
+    expect(decision).toMatchObject({ outcome: "gate", rule: { table: "shepherd-route", rowId: "fix-first-runaway" } });
+    expect(decision.reason).toContain(`carried from the gate at head ${carried.carriedFrom}; review at this head: MERGE`);
+  });
+
+  it("still allows a head the policy allows when its escalation was not carried", () => {
+    vi.mocked(evaluate).mockReturnValue({ verdict: "allow", ruleId: "MRG-AU-RV" });
+    const options = shepherdLandOptions(() => effective("acme/gizmos"), reviewed(evidenceAt(HEAD)), () => ({ escalation: "fix-first-runaway", detail: "x" }));
+
+    expect(options.policy.decide("merge", { headSha: HEAD }).outcome).toBe("allow");
   });
 
   it("hands land the evidence record on an allow", () => {
@@ -241,7 +320,7 @@ describe("a seat with visual paths", () => {
   });
 
   it("still gates a non-visual PR whose registration asked for owner-gate", () => {
-    expect(decideAt(HEAD, ["scripts/a.ts"], { merge: "owner-gate" }).outcome).toBe("gate");
+    expect(decideAt(HEAD, ["scripts/a.ts"], { merge: "owner-gate", ownerGateReason: "owner-asked" }).outcome).toBe("gate");
     expect(evaluate).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,948 @@
+{
+  "schema": "titan.measurement-audit/v1",
+  "system": "shepherd",
+  "mode": "initial",
+  "at": "2026-10-09T12:00:00Z",
+  "codeRev": "0000000000000000000000000000000000000000",
+  "inputs": {
+    "system": "shepherd",
+    "codeRoots": [
+      "products/factory/src/shepherd"
+    ],
+    "stores": [
+      {
+        "id": "factory-db",
+        "kind": "sqlite",
+        "path": "factory.db",
+        "readonly": true
+      }
+    ],
+    "surfaces": [
+      {
+        "kind": "cli",
+        "ref": "titan-factory shepherd stats"
+      }
+    ],
+    "owner": "hjewkes",
+    "mode": "initial"
+  },
+  "inventory": {
+    "data": {
+      "stores": []
+    },
+    "emitters": {
+      "emitters": []
+    }
+  },
+  "purpose": "Merge pull requests without the owner",
+  "users": [
+    "owner"
+  ],
+  "questions": [
+    {
+      "id": 1,
+      "text": "What is waiting on me?",
+      "answerable": "partly"
+    }
+  ],
+  "metrics": [
+    {
+      "id": "shepherd.m1",
+      "family": "availability",
+      "title": "Share of time the service is up",
+      "definition": "Share of time the service is up",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m2",
+      "family": "availability",
+      "title": "How far the build lags main",
+      "definition": "How far the build lags main",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m3",
+      "family": "availability",
+      "title": "Unclean daemon restarts",
+      "definition": "Unclean daemon restarts",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m4",
+      "family": "availability",
+      "title": "Runs stuck or stalled",
+      "definition": "Runs stuck or stalled",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m5",
+      "family": "availability",
+      "title": "Run failures by class",
+      "definition": "Run failures by class",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m6",
+      "family": "availability",
+      "title": "Health of the GitHub API",
+      "definition": "Health of the GitHub API",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m7",
+      "family": "availability",
+      "title": "Deferred reviewer spawns",
+      "definition": "Deferred reviewer spawns",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m8",
+      "family": "availability",
+      "title": "Main freeze episode length",
+      "definition": "Main freeze episode length",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m9",
+      "family": "flow",
+      "title": "Queue time before first review",
+      "definition": "Queue time before first review",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m10",
+      "family": "flow",
+      "title": "Review duration per PR",
+      "definition": "Review duration per PR",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m11",
+      "family": "flow",
+      "title": "CI time for each head",
+      "definition": "CI time for each head",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m12",
+      "family": "flow",
+      "title": "Re-review count by cause",
+      "definition": "Re-review count by cause",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m13",
+      "family": "flow",
+      "title": "Time PRs spend on hold",
+      "definition": "Time PRs spend on hold",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m14",
+      "family": "flow",
+      "title": "Owner wait at the merge gate",
+      "definition": "Owner wait at the merge gate",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m15",
+      "family": "flow",
+      "title": "Latency from MERGE verdict to merged",
+      "definition": "Latency from MERGE verdict to merged",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m16",
+      "family": "flow",
+      "title": "Registered to merged cycle time",
+      "definition": "Registered to merged cycle time",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m17",
+      "family": "flow",
+      "title": "Merges done outside Shepherd",
+      "definition": "Merges done outside Shepherd",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m18",
+      "family": "flow",
+      "title": "CI flake rate",
+      "definition": "CI flake rate",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m19",
+      "family": "flow",
+      "title": "Merge-ups for each run",
+      "definition": "Merge-ups for each run",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m20",
+      "family": "flow",
+      "title": "Carried review hit rate",
+      "definition": "Carried review hit rate",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m21",
+      "family": "quality",
+      "title": "Share of FIX_FIRST verdicts",
+      "definition": "Share of FIX_FIRST verdicts",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m22",
+      "family": "quality",
+      "title": "Defects escaping to main",
+      "definition": "Defects escaping to main",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m23",
+      "family": "quality",
+      "title": "Reverted Shepherd merges",
+      "definition": "Reverted Shepherd merges",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m24",
+      "family": "quality",
+      "title": "Agreement between owner and reviewer",
+      "definition": "Agreement between owner and reviewer",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m25",
+      "family": "quality",
+      "title": "Reviews with no verdict",
+      "definition": "Reviews with no verdict",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m26",
+      "family": "quality",
+      "title": "Fix rounds needed before MERGE",
+      "definition": "Fix rounds needed before MERGE",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m27",
+      "family": "owner-load",
+      "title": "Gates waiting on the owner",
+      "definition": "Gates waiting on the owner",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m28",
+      "family": "owner-load",
+      "title": "Owner touches each day",
+      "definition": "Owner touches each day",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m29",
+      "family": "owner-load",
+      "title": "Gate wait time by kind",
+      "definition": "Gate wait time by kind",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m30",
+      "family": "owner-load",
+      "title": "Gates superseded by a head move",
+      "definition": "Gates superseded by a head move",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m31",
+      "family": "owner-load",
+      "title": "Share of gates delegated",
+      "definition": "Share of gates delegated",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m32",
+      "family": "cost",
+      "title": "Reviewer dollar cost per merge",
+      "definition": "Reviewer dollar cost per merge",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m33",
+      "family": "cost",
+      "title": "Reviewer tokens per merged PR",
+      "definition": "Reviewer tokens per merged PR",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m34",
+      "family": "cost",
+      "title": "Reviews needed per merged PR",
+      "definition": "Reviews needed per merged PR",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m35",
+      "family": "cost",
+      "title": "Reviews wasted on superseded heads",
+      "definition": "Reviews wasted on superseded heads",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m36",
+      "family": "cost",
+      "title": "Cost of fixer spawns",
+      "definition": "Cost of fixer spawns",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m37",
+      "family": "business",
+      "title": "Shepherd merges each day",
+      "definition": "Shepherd merges each day",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m38",
+      "family": "business",
+      "title": "Shepherd share of merges",
+      "definition": "Shepherd share of merges",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m39",
+      "family": "business",
+      "title": "Cycle time from task to merge",
+      "definition": "Cycle time from task to merge",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m40",
+      "family": "business",
+      "title": "Throughput against slot capacity",
+      "definition": "Throughput against slot capacity",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m41",
+      "family": "business",
+      "title": "Depth of the review queue",
+      "definition": "Depth of the review queue",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m42",
+      "family": "business",
+      "title": "Tasks closed on landing",
+      "definition": "Tasks closed on landing",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m43",
+      "family": "business",
+      "title": "Latency of Version Packages",
+      "definition": "Latency of Version Packages",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    },
+    {
+      "id": "shepherd.m44",
+      "family": "business",
+      "title": "Runs merged with no owner touch",
+      "definition": "Runs merged with no owner touch",
+      "unit": "count",
+      "source": {
+        "anchor": "store.ts:1",
+        "store": "factory-db",
+        "captured": "P"
+      },
+      "cadence": "1d",
+      "surfaces": [
+        "stats"
+      ],
+      "answers": []
+    }
+  ],
+  "counts": {
+    "proposed": 44,
+    "Y": 0,
+    "P": 44,
+    "N": 0,
+    "slices": 12
+  },
+  "gaps": [
+    {
+      "rank": 1,
+      "metric": [
+        "shepherd.m11"
+      ],
+      "slice": {
+        "title": "Record step start times and per-stage latency",
+        "done_when": "Record step start times and per-stage latency is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 2,
+      "metric": [
+        "shepherd.m27",
+        "shepherd.m29"
+      ],
+      "slice": {
+        "title": "Add a waiting-on-owner command",
+        "done_when": "Add a waiting-on-owner command is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 3,
+      "metric": [
+        "shepherd.m12",
+        "shepherd.m20",
+        "shepherd.m35"
+      ],
+      "slice": {
+        "title": "Record why each re-review was dispatched",
+        "done_when": "Record why each re-review was dispatched is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 4,
+      "metric": [
+        "shepherd.m13",
+        "shepherd.m8"
+      ],
+      "slice": {
+        "title": "Append-only hold and freeze event table",
+        "done_when": "Append-only hold and freeze event table is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 5,
+      "metric": [
+        "shepherd.m1",
+        "shepherd.m3"
+      ],
+      "slice": {
+        "title": "Timestamp serve log lines and expose startedAt",
+        "done_when": "Timestamp serve log lines and expose startedAt is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 6,
+      "metric": [
+        "shepherd.m32",
+        "shepherd.m33",
+        "shepherd.m36"
+      ],
+      "slice": {
+        "title": "Join reviewer sessions to priced cost",
+        "done_when": "Join reviewer sessions to priced cost is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 7,
+      "metric": [
+        "shepherd.m22",
+        "shepherd.m23"
+      ],
+      "slice": {
+        "title": "Report red-after-merge and reverts",
+        "done_when": "Report red-after-merge and reverts is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 8,
+      "metric": [
+        "shepherd.m24"
+      ],
+      "slice": {
+        "title": "Record owner overrides of MERGE verdicts",
+        "done_when": "Record owner overrides of MERGE verdicts is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 9,
+      "metric": [
+        "shepherd.m5"
+      ],
+      "slice": {
+        "title": "Closed failureClass prefix on run errors",
+        "done_when": "Closed failureClass prefix on run errors is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 10,
+      "metric": [
+        "shepherd.m39",
+        "shepherd.m40"
+      ],
+      "slice": {
+        "title": "Join tasks and broker capacity in the digest",
+        "done_when": "Join tasks and broker capacity in the digest is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 11,
+      "metric": [
+        "shepherd.m32"
+      ],
+      "slice": {
+        "title": "Record reviewerProfile on the verdict step",
+        "done_when": "Record reviewerProfile on the verdict step is recorded and queryable",
+        "estimate": 2
+      }
+    },
+    {
+      "rank": 12,
+      "metric": [],
+      "slice": {
+        "title": "metrics/shepherd.yml registry entry",
+        "done_when": "metrics/shepherd.yml holds every metric of this audit and passes validateEntry",
+        "estimate": 2
+      }
+    }
+  ],
+  "reports": [],
+  "extra": {}
+}

@@ -9,6 +9,7 @@ import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 import { describeMetric } from "./catalogue/describe.js";
 import { METRIC_CATALOGUE } from "./catalogue/entries.js";
+import { TEST_KINDS_PROJECT } from "./analysis/test-kinds.fixture.js";
 
 const CORE = `import { helper } from "./util";
 import { z } from "zod";
@@ -47,6 +48,7 @@ const FIXTURE: Record<string, string> = {
   "py/mod.py":
     "def walk(rows):\n    for r in rows:\n        for c in r:\n            print(c)\n\n\n" +
     "def main():\n    walk([])\n    walk([])\n",
+  ...TEST_KINDS_PROJECT,
 };
 
 async function buildFixture(repo: TestRepo): Promise<void> {

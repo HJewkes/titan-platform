@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DELIVERABLE_STATUSES } from "@titan-design/pm";
 import { EXIT } from "@titan-design/registry";
 import { liveSource } from "@titan-design/rpc-client";
 
@@ -21,7 +22,33 @@ const task = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).optional(),
   estimate: z.number().optional(),
   tags: z.array(z.string()).optional(),
+  // Edge and deliverable fields arrive from active-work 0.23 on; an older daemon carries edges as tags only.
+  parent: z.string().optional(),
+  dep: z.array(z.string()).optional(),
+  deliverables: z.array(z.string()).optional(),
+  status: z.enum(["open", "done"]),
+  notes: z.string().optional(),
+  done_when: z.string().optional(),
   updated: z.string(),
+});
+
+const artifactBranch = z.object({ repo: z.string(), name: z.string(), note: z.string().optional() });
+
+const artifactWorktree = z.object({ path: z.string(), repo: z.string(), branch: z.string().optional(), holding: z.string().optional(), note: z.string().optional() });
+
+const prInfo = z.object({ number: z.number(), state: z.string(), title: z.string(), url: z.string(), checks: z.string().optional() });
+
+const reference = z.object({ slug: z.string(), source: z.enum(["task", "session", "artifacts"]), file: z.string(), field: z.string(), text: z.string() });
+
+/** A `deliverable.list` row: the registry record's summary fields and its joined tasks' open and done counts. */
+const deliverable = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.enum(DELIVERABLE_STATUSES),
+  target: z.string().nullable(),
+  owner_seat: z.string(),
+  tags: z.array(z.string()),
+  tasks: z.object({ open: z.number(), done: z.number() }),
 });
 
 const inventoryInitiative = z.object({
@@ -46,9 +73,17 @@ const loop = z.object({
   opened_at: z.string(),
 });
 
-const note = z.object({ id: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
+const note = z.object({ id: z.string(), slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), mtime: z.string().nullable() });
 
-const source = z.object({ id: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
+const source = z.object({ id: z.string(), slug: z.string(), filename: z.string(), type: z.string(), title: z.string(), mtime: z.string().nullable() });
+
+const searchHit = z.object({
+  ref: z.string(),
+  class: z.string(),
+  initiative: z.string().nullable(),
+  title: z.string().nullable(),
+  excerpt: z.string().nullable(),
+});
 
 /** The active-work reads the console may call, with the part of each answer it uses. There is no write in this list. */
 const READS = {
@@ -61,14 +96,27 @@ const READS = {
   "session.list": z.object({ sessions: z.array(session) }),
   loops: z.object({ open: z.array(loop) }),
   "note.list": z.object({ notes: z.array(note) }),
+  "note.read": z.object({ slug: z.string(), filename: z.string(), kind: z.string(), title: z.string(), created: z.string(), body: z.string(), truncated: z.boolean() }),
   "source.list": z.object({ sources: z.array(source) }),
   "source.read": z.object({ content: z.string(), truncated: z.boolean() }),
+  /** A retriever that failed is named in `degraded`; the hits it would have added are missing. */
+  search: z.object({ query: z.string(), hits: z.array(searchHit), degraded: z.array(z.object({ retriever: z.string(), message: z.string() })) }),
+  "artifact.list": z.object({ items: z.array(z.object({ slug: z.string(), artifacts: z.object({ branches: z.array(artifactBranch), worktrees: z.array(artifactWorktree) }) })) }),
+  /** Runs `gh` once per registered branch, so only a one-task read may call it. */
+  "artifact.status": z.object({
+    branches: z.array(artifactBranch.extend({ present: z.boolean(), pr: prInfo.nullable() })),
+    worktrees: z.array(artifactWorktree.extend({ branch: z.string().nullable(), present: z.boolean(), pr: z.number().optional() })),
+  }),
+  "context.graph": z.object({ references: z.array(reference) }),
+  /** The platform-wide deliverables registry; a daemon older than active-work 0.23 has no such command. */
+  "deliverable.list": z.array(deliverable),
 };
 
 export type ReadName = keyof typeof READS;
 export type ReadResult<K extends ReadName> = z.infer<(typeof READS)[K]>;
 export type WireInitiative = z.infer<typeof initiativeItem>;
 export type WireTask = z.infer<typeof task>;
+export type WireDeliverable = z.infer<typeof deliverable>;
 export type WireInventoryInitiative = z.infer<typeof inventoryInitiative>;
 
 export interface ActiveWork {
@@ -82,6 +130,11 @@ export function failure(message: string, code: number): Error {
   return Object.assign(new Error(message), { code });
 }
 
+/** Schema drift in an upstream answer: every upstream client reports it with this message shape and EXIT.SOFTWARE. */
+export function unexpectedShape(upstream: string): Error {
+  return failure(`${upstream} answered an unexpected shape`, EXIT.SOFTWARE);
+}
+
 /** Calls the active-work daemon's `/rpc` on loopback. It never starts the daemon. */
 export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_MS): ActiveWork {
   const source = liveSource({
@@ -93,7 +146,7 @@ export function activeWorkClient(port: number, timeoutMs: number = READ_TIMEOUT_
       const envelope = await source.call(command, args);
       if (!envelope.ok) throw failure(`active-work ${command}: ${envelope.error}`, envelope.code);
       const parsed = READS[command].safeParse(envelope.data);
-      if (!parsed.success) throw failure(`active-work ${command} answered an unexpected shape`, EXIT.SOFTWARE);
+      if (!parsed.success) throw unexpectedShape(`active-work ${command}`);
       return parsed.data as ReadResult<typeof command>;
     },
   };

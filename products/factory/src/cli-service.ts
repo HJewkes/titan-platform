@@ -1,10 +1,14 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options.js";
 import type { CliIo, Verbs } from "./cli.js";
-import { factoryStateDir } from "./config.js";
+import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
+import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
 import { deployService } from "./deploy.js";
-import { systemDeployPorts } from "./deploy-ports.js";
+import { originOf, systemDeployPorts } from "./deploy-ports.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
 import { servicePath, stableNodePath, type PlistOptions } from "./service.js";
@@ -20,7 +24,7 @@ import {
   type RestartDrain,
   type ServicePorts,
 } from "./service-control.js";
-import { systemServicePorts } from "./service-ports.js";
+import { systemCheckPorts, systemServicePorts } from "./service-ports.js";
 
 interface PlistFlags {
   port?: number;
@@ -31,13 +35,27 @@ const collectDir = (value: string, previous: string[]): string[] => [...previous
 
 const NODE_FLAG = "absolute node binary the service runs; default is this node, mapped off a Homebrew Cellar path";
 
+/** An unreadable config reads as empty here: the service verbs refuse on it through `ports.configError`. */
+function serviceConfig(env: NodeJS.ProcessEnv): NonNullable<FactoryConfig["service"]> {
+  try {
+    return loadConfig(configPath(env)).service ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** The dedicated deploy checkout, which the unit runs serve from and `service deploy` fast-forwards. */
+export const deployCheckoutFor = (env: NodeJS.ProcessEnv, where: { home: string; platform: NodeJS.Platform } = { home: homedir(), platform: process.platform }): string =>
+  deployCheckoutPath({ env, home: where.home, platform: where.platform }, serviceConfig(env).deployCheckout);
+
 /** The plist, and the binaries its PATH cannot cover; each of those gets a warning line. */
 function plistOptions(io: CliIo, opts: PlistFlags, ports: ServicePorts): { plist: PlistOptions; missing: string[] } {
-  const binPath = fileURLToPath(new URL("./bin.js", import.meta.url));
+  const checkout = deployCheckoutFor(io.env, ports);
+  const binPath = deployedBinPath(checkout);
   const nodePath = opts.node ?? stableNodePath(process.execPath);
   const { path, missing } = servicePath(ports.which, nodePath);
   for (const binary of missing) io.stderr(`warning: ${binary} is not on PATH, so the service will not find it\n`);
-  return { plist: { binPath, nodePath, logDir: factoryStateDir(io.env), port: opts.port, path }, missing };
+  return { plist: { binPath, nodePath, logDir: factoryStateDir(io.env), port: opts.port, path, workingDirectory: checkout }, missing };
 }
 
 export function registerService(program: Command, verbs: Verbs): void {
@@ -49,6 +67,7 @@ export function registerService(program: Command, verbs: Verbs): void {
     .option("--node <path>", NODE_FLAG, parseNodePath)
     .action((opts: PlistFlags) => {
       const ports = verbs.deps.service ?? systemServicePorts();
+      if (ports.configError !== undefined) verbs.io.stderr(`warning: printing the default label, because ${ports.configError}\n`);
       verbs.io.stdout(renderServiceFile(ports, plistOptions(verbs.io, opts, ports).plist));
     });
   registerServiceControl(service, verbs);
@@ -85,7 +104,7 @@ function registerServiceControl(service: Command, { io, deps, setExit }: Verbs):
     .description("loaded or not, the pid, and a /health summary; exits 0 only when /health answers and its GitHub check is ok")
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) => run("status", (ports) => serviceStatus(ports, io, opts.port)));
-  registerServiceCheck(service, io, deps.check, setExit);
+  registerServiceCheck(service, io, () => deps.check ?? systemCheckPorts(deployCheckoutFor(io.env)), setExit);
   withRestartFlags(service.command("restart").description("wait until /health lists no busy run, kill and restart the loaded job, then wait for /health")).action(
     (opts: RestartFlags) => run("restart", (ports) => restartService(ports, io, opts.port, logDir, drainOf(opts))),
   );
@@ -114,11 +133,13 @@ export const ownCheckout = (): string => fileURLToPath(new URL("../../../", impo
 function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
   const deploy = service
     .command("deploy")
-    .description("fast-forward this checkout's main to a sha, rebuild the factory closure and restart drained; restores dist when the new build fails")
+    .description("fast-forward the dedicated deploy checkout's main to a sha (cloning it first when absent), rebuild the factory closure and restart drained; restores dist when the new build fails")
     .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha);
   withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
-    const ports = deps.deploy ?? systemDeployPorts(ownCheckout());
-    const options = { checkout: ownCheckout(), stateDir: factoryStateDir(io.env), logDir: factoryStateDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
+    const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
+    const ports = deps.deploy ?? systemDeployPorts(checkout);
+    const remote = serviceConfig(io.env).deployRemote ?? (deps.deploy === undefined && !existsSync(join(checkout, ".git")) ? await originOf(ownCheckout()) : undefined);
+    const options = { checkout, remote, stateDir: factoryStateDir(io.env), logDir: factoryStateDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
     setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS));
   });
 }

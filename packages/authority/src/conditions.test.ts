@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MergeFacts } from "./conditions.js";
-import { unmetMergeConditions } from "./conditions.js";
+import { unmetConditions } from "./conditions.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -30,7 +30,7 @@ function facts(patch: Partial<MergeFacts> = {}): MergeFacts {
   };
 }
 
-const unmet = (merge: MergeFacts) => unmetMergeConditions(["required-contexts-green", "no-non-green-run"], merge);
+const unmet = (merge: MergeFacts) => unmetConditions(["required-contexts-green", "no-non-green-run"], { merge });
 
 describe("per-context check apps", () => {
   it("counts shepherd/review from the Shepherd App and validate from GitHub Actions", () => {

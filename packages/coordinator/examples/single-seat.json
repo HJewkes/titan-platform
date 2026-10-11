@@ -1,0 +1,40 @@
+{
+  "$schema": "titan-coordinator/v1",
+  "owner": {
+    "seat": "operator",
+    "timezone": "UTC",
+    "day_starts_at": "07:00",
+    "digest_at": ["08:00", "18:00"],
+    "channels": ["console"],
+    "decider": { "enabled": false, "question_age_minutes": 720 }
+  },
+  "state_dir": null,
+  "service": { "label_prefix": "dev.example." },
+  "task_sources": { "active-work": { "kind": "active-work" } },
+  "repos": {
+    "app": { "path": "~/src/app", "remote": "your-org/app", "default": "main", "public": false }
+  },
+  "seats": {
+    "operator": {
+      "prefix": "op",
+      "role": "communicator",
+      "attended": true,
+      "pool": "main",
+      "repos": ["app"],
+      "concurrency": { "implementers": 0, "reviewers": 0, "planners": 1 },
+      "spend": { "per_run_points": 10, "per_day_points": 20 }
+    }
+  },
+  "limits": {
+    "version": 1,
+    "pools": {
+      "main": { "config_dir": "~/.claude", "ceiling_five_hour": 90, "reserve_seven_day": 20 }
+    },
+    "funds": { "default": ["main"] }
+  },
+  "policy": {
+    "hard_stops": ["force-push", "npm-publish", "deploy", "spend-money", "config-edit"],
+    "human_only_tag": "human-only",
+    "defaults": {}
+  }
+}

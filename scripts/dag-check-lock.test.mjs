@@ -1,10 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { afterEach, describe, expect, it } from "vitest";
-import { LockTimeoutError, acquire, readHolder, release, runCappedWorker, tryAcquire, workerExitCode } from "./dag-check-lock.mjs";
+import { LockTimeoutError, acquire, lockWaitMs, readHolder, release, runCappedWorker, tryAcquire, workerExitCode } from "./dag-check-lock.mjs";
 
 const MODULE = new URL("./dag-check-lock.mjs", import.meta.url).href;
 const roots = [];
@@ -59,7 +59,7 @@ describe("dag-check lock", () => {
     release(lockDir);
     await waiting;
 
-    expect(lines).toEqual([`waiting for dag-check lock held by ${process.pid}`]);
+    expect(lines).toEqual([`waiting for dag-check lock held by ${process.pid}, 0 ahead of you`]);
     expect(readHolder(lockDir)).toBe(process.pid);
   });
 
@@ -80,6 +80,76 @@ describe("dag-check lock", () => {
     const attempt = acquire({ lockDir, timeoutMs: 50, pollMs: 10, log: () => {} });
 
     await expect(attempt).rejects.toBeInstanceOf(LockTimeoutError);
+  });
+
+  it("fails with the busy message naming the holder and the queue ahead once the bound passes", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+
+    const attempt = acquire({ lockDir, timeoutMs: 50, pollMs: 10, log: () => {} });
+
+    await expect(attempt).rejects.toThrow(`dag-check lock busy (held by ${process.pid}, 0 ahead of you); retry later`);
+  });
+
+  it("hands the lock to three staggered waiters in arrival order", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    const order = [];
+    const waiters = [];
+    for (const name of ["first", "second", "third"]) {
+      waiters.push(
+        acquire({ lockDir, timeoutMs: 5000, pollMs: 5, log: () => {} }).then(() => {
+          order.push(name);
+          release(lockDir);
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    release(lockDir);
+    await Promise.all(waiters);
+
+    expect(order).toEqual(["first", "second", "third"]);
+  });
+
+  it("reports its place in the queue to a waiter behind another", async () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    const lines = [];
+    const ahead = acquire({ lockDir, timeoutMs: 5000, pollMs: 5, log: () => {} }).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const behind = acquire({ lockDir, timeoutMs: 60, pollMs: 5, log: (m) => lines.push(m) }).catch(() => {});
+    await behind;
+
+    expect(lines[0]).toBe(`waiting for dag-check lock held by ${process.pid}, 1 ahead of you`);
+    release(lockDir);
+    await ahead;
+  });
+
+  it("skips a ticket whose pid is dead", async () => {
+    const lockDir = lockPath();
+    mkdirSync(`${lockDir}.queue`, { recursive: true });
+    const stale = `${String(1).padStart(15, "0")}-${String(deadPid()).padStart(10, "0")}-abc123`;
+    writeFileSync(join(`${lockDir}.queue`, stale), "");
+
+    await acquire({ lockDir, timeoutMs: 1000, pollMs: 5, log: () => {} });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+    expect(existsSync(join(`${lockDir}.queue`, stale))).toBe(false);
+  });
+
+  it("leaves no ticket behind after acquiring", async () => {
+    const lockDir = lockPath();
+
+    await acquire({ lockDir, timeoutMs: 1000, pollMs: 5, log: () => {} });
+
+    expect(readdirSync(`${lockDir}.queue`)).toEqual([]);
+  });
+
+  it("reads the wait bound from DAG_CHECK_LOCK_WAIT_MS and defaults to eight minutes", () => {
+    expect(lockWaitMs({})).toBe(480000);
+    expect(lockWaitMs({ DAG_CHECK_LOCK_WAIT_MS: "1500" })).toBe(1500);
   });
 
   it("releases the lock when the holding process gets SIGTERM", async () => {

@@ -1,25 +1,31 @@
 /**
- * Daemon lifecycle: bind the hono app on loopback, splice in `/mcp`, watch a tree, and
- * own a pid file until shutdown.
+ * Daemon lifecycle: bind the hono app on loopback, splice in `/mcp`, optionally open a second,
+ * HTTPS-only, authenticated listener on one remote address, watch a tree, and own a pid file
+ * until shutdown.
  *
  * `startDaemon` returns a handle so tests and embedders can close it; only
  * `runDaemonUntilSignal` waits on signals. Neither calls `process.exit` — the caller
  * decides how the process terminates.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { serve, type ServerType } from "@hono/node-server";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Hono } from "hono";
-import { EXIT, errorEnvelope, type BaseContext } from "@titan-design/registry";
+import type { BaseContext } from "@titan-design/registry";
 import { isLoopbackHost, NonLoopbackBindError } from "./bind-guard.js";
 import { EventHub } from "./events.js";
 import { watchTree, type TreeWatcher } from "./file-watch.js";
-import { CLIENT_HEADER, DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuard, type RequestGuardOptions } from "./guards.js";
-import { buildHttpApp, type HttpAppOptions } from "./http.js";
+import { DEFAULT_ALLOWED_HOSTS, createRequestGuard, type RequestGuardOptions } from "./guards.js";
+import { buildHttpApp, type EventLimits, type HttpAppOptions, type RpcBodyLimit } from "./http.js";
 import { DEFAULT_DAEMON_PORT, daemonPaths, getProcessStartTime, isProcessAlive, pidFileModifiedAt, probeHealth, readPidFile, removePidFile, writePidFile, type DaemonPaths, type PidFileContents } from "./lifecycle.js";
 import { consoleLogger, type Logger } from "./logger.js";
-import { createMcpServer, type McpServerOptions } from "./mcp.js";
+import type { McpServerOptions } from "./mcp.js";
+import { handleMcpRequest, spliceMcpRoute } from "./mcp-http.js";
 import type { SurfaceOptions } from "./surface.js";
+import { DEFAULT_TLS_RELOAD_MS, remoteGuardOptions, remoteListener, type RemoteListener, type RemoteListenerOptions } from "./remote-listener.js";
+import { reloadTlsOnChange, tlsServerOptions } from "./tls-files.js";
+
+export type { RemoteListenerOptions };
 
 export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
   /** Reported by `/health`, `/version`, and the pid metadata. */
@@ -34,6 +40,8 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   host?: string;
   /** The daemon has no auth: setting this exposes every route to the network the host is on. */
   allowUnauthenticatedNonLoopback?: boolean;
+  /** A second listener, behind authentication, on one non-loopback address and the same port. */
+  remote?: RemoteListenerOptions;
   /** When set, `/mcp` serves MCP over streamable HTTP with this tool-name prefix. */
   toolPrefix?: string;
   /** MCP handshake identity; defaults to `titan-daemon`. */
@@ -42,10 +50,14 @@ export interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> exten
   watchRoot?: string;
   /** Product state merged into the `/health` payload. */
   health?: () => Record<string, unknown>;
+  /** Bounds on `/events` subscribers; the subscriber cap counts both listeners together. */
+  eventLimits?: Partial<EventLimits>;
   /** Hook for product-owned routes. */
   mountRoutes?: (app: Hono) => void;
   /** Host/Origin allowlists and the JSON body gate, shared by the hono routes and `/mcp`. */
   guards?: RequestGuardOptions;
+  /** The byte cap on a `/rpc` body on every listener; defaults to 1 MiB for every command. */
+  rpcBodyLimit?: RpcBodyLimit;
   /** Grace given to in-flight requests before lingering sockets are destroyed. Defaults to 2000. */
   shutdownGraceMs?: number;
   logger?: Logger;
@@ -56,7 +68,7 @@ export interface DaemonHandle {
   port: number;
   /** Broadcast to connected `/events` clients. */
   hub: EventHub;
-  /** Stop the watcher, close the socket, and release the pid file. Idempotent. */
+  /** Stop the watcher, close every listener, and release the pid file. Idempotent. */
   close(): Promise<void>;
 }
 
@@ -81,15 +93,18 @@ export class DaemonPortInUseError extends Error {
 export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<DaemonHandle> {
   const log = options.logger ?? consoleLogger;
   assertBindAllowed(options);
+  const remote = remoteListener(options.remote, options.host ?? DEFAULT_HOST);
   const paths = daemonPaths(options.stateDir);
   await assertNotAlreadyRunning(paths, options.processStartTime ?? getProcessStartTime, log);
+  const graceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
 
   const hub = new EventHub();
   let boundPort = options.port ?? DEFAULT_DAEMON_PORT;
   let ready = false;
-  const app = buildHttpApp({ ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready });
-  const server = await listen(app, options.host ?? DEFAULT_HOST, boundPort, mcpHandler(options, () => boundPort));
+  const shared = { ...toHttpOptions(options), hub, port: () => boundPort, ready: () => ready };
+  const server = await listenLoopback(buildHttpApp(shared), options.host ?? DEFAULT_HOST, boundPort, mcpHandler(options, () => boundPort));
   boundPort = boundPortOf(server, boundPort);
+  const servers = [server, ...(await listenRemoteOrClose({ remote, shared, port: boundPort, loopback: server, graceMs, log }))];
 
   const watcher = startWatcher(options, hub, log);
   await writePidFile(paths, process.pid, { port: boundPort, version: options.version, started: new Date().toISOString() });
@@ -98,8 +113,7 @@ export async function startDaemon<Ctx extends BaseContext>(options: StartDaemonO
   ready = true;
   log.info({ pid: process.pid, port: boundPort }, "daemon started");
 
-  const graceMs = options.shutdownGraceMs ?? DEFAULT_SHUTDOWN_GRACE_MS;
-  return { port: boundPort, hub, close: onceAsync(() => shutdown({ server, watcher, paths, log, graceMs })) };
+  return { port: boundPort, hub, close: onceAsync(() => shutdown({ servers, watcher, paths, log, graceMs })) };
 }
 
 /** Start, then run until SIGTERM/SIGINT, then close. Resolves after shutdown completes. */
@@ -125,8 +139,10 @@ function toHttpOptions<Ctx extends BaseContext>(
     formatError: options.formatError,
     version: options.version,
     health: options.health,
+    eventLimits: options.eventLimits,
     mountRoutes: options.mountRoutes,
     guards: guardOptions(options),
+    rpcBodyLimit: options.rpcBodyLimit,
   };
 }
 
@@ -140,6 +156,27 @@ function guardOptions<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>)
 function assertBindAllowed<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): void {
   const host = options.host ?? DEFAULT_HOST;
   if (options.allowUnauthenticatedNonLoopback !== true && !isLoopbackHost(host)) throw new NonLoopbackBindError(host);
+}
+
+interface RemoteBind<Ctx extends BaseContext> {
+  remote: RemoteListener | null;
+  shared: HttpAppOptions<Ctx>;
+  port: number;
+  loopback: ServerType;
+  graceMs: number;
+  log: Logger;
+}
+
+/** Both listeners or neither: a remote bind failure closes loopback before the pid file exists. */
+async function listenRemoteOrClose<Ctx extends BaseContext>({ remote, shared, port, loopback, graceMs, log }: RemoteBind<Ctx>): Promise<ServerType[]> {
+  if (!remote) return [];
+  const app = buildHttpApp({ ...shared, guards: remoteGuardOptions(remote.options), gate: remote.gate });
+  try {
+    return [await listenRemote(app, remote, port, log)];
+  } catch (err) {
+    await closeServer(loopback, graceMs).catch((closeErr: unknown) => log.error({ err: closeErr }, "error closing loopback after a failed remote bind"));
+    throw err;
+  }
 }
 
 async function assertNotAlreadyRunning(paths: DaemonPaths, startTimeOf: (pid: number) => Date | null, log: Logger): Promise<void> {
@@ -201,81 +238,33 @@ function mcpHandler<Ctx extends BaseContext>(
   return (req, res) => handleMcpRequest(mcpOptions, guard, req, res);
 }
 
-/**
- * Serve one `/mcp` request from a fresh server + transport.
- *
- * This bypasses hono because `StreamableHTTPServerTransport` takes ownership of the raw
- * Node response object. `sessionIdGenerator: undefined` keeps it stateless: every request
- * is self-contained, so no session state outlives the response.
- */
-async function handleMcpRequest<Ctx extends BaseContext>(
-  options: McpServerOptions<Ctx>,
-  guard: RequestGuard,
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
-  const refusal = guard({
-    method: req.method ?? "GET",
-    host: req.headers.host,
-    origin: req.headers.origin,
-    client: headerValue(req.headers[CLIENT_HEADER]),
-    contentType: req.headers["content-type"],
-  });
-  if (refusal) return respondJson(res, refusal.status, refusal.message);
-
-  let body: unknown;
-  if (req.method === "POST") {
-    try {
-      body = await readJsonBody(req);
-    } catch {
-      return respondJson(res, 400, "Invalid JSON body");
-    }
-  }
-  const server = createMcpServer(options);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => {
-    void transport.close();
-    void server.close();
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res, body);
-}
-
-function headerValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value.join(",") : value;
-}
-
-function respondJson(res: ServerResponse, status: number, error: string, code: number = EXIT.USAGE): void {
-  res.statusCode = status;
-  res.setHeader("content-type", "application/json");
-  res.end(JSON.stringify(errorEnvelope(error, code)));
-}
-
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c: Buffer) => chunks.push(c));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
-      if (raw.length === 0) return resolve(undefined);
-      try {
-        resolve(JSON.parse(raw));
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function listen(
+function listenLoopback(
   app: Hono,
   hostname: string,
   port: number,
   mcp: ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | null,
 ): Promise<ServerType> {
-  return new Promise((resolve, reject) => {
-    const server = serve({ fetch: app.fetch, hostname, port }, () => {
+  const { server, bound } = bind(app, hostname, port);
+  if (mcp) spliceMcpRoute(server, mcp);
+  return bound;
+}
+
+/**
+ * Takes no MCP handler: `/mcp` is spliced ahead of hono, so the auth gate would never see it.
+ * The server is `https` alone, so a plain-HTTP request fails the handshake and gets no reply.
+ */
+async function listenRemote(app: Hono, remote: RemoteListener, port: number, log: Logger): Promise<ServerType> {
+  const server = await bind(app, remote.options.host, port, { createServer: createHttpsServer, serverOptions: tlsServerOptions(remote.tls.current()) }).bound;
+  reloadTlsOnChange(server as HttpsServer, remote.tls, { intervalMs: remote.options.tlsReloadMs ?? DEFAULT_TLS_RELOAD_MS, log });
+  return server;
+}
+
+type ServerFactory = Pick<Parameters<typeof serve>[0], "createServer" | "serverOptions">;
+
+function bind(app: Hono, hostname: string, port: number, factory: ServerFactory = {}): { server: ServerType; bound: Promise<ServerType> } {
+  let server!: ServerType;
+  const bound = new Promise<ServerType>((resolve, reject) => {
+    server = serve({ fetch: app.fetch, hostname, port, ...factory } as Parameters<typeof serve>[0], () => {
       server.off("error", onBindError);
       resolve(server);
     });
@@ -285,30 +274,8 @@ function listen(
       reject(err.code === "EADDRINUSE" ? new DaemonPortInUseError(port, hostname, { cause: err }) : err);
     };
     server.on("error", onBindError);
-    if (mcp) spliceMcpRoute(server, mcp);
   });
-}
-
-/** Route `/mcp` to the transport ahead of hono, falling through for everything else. */
-function spliceMcpRoute(server: ServerType, mcp: (req: IncomingMessage, res: ServerResponse) => Promise<void>): void {
-  const honoHandler = server.listeners("request")[0] as ((req: IncomingMessage, res: ServerResponse) => void) | undefined;
-  server.removeAllListeners("request");
-  server.on("request", (req: IncomingMessage, res: ServerResponse) => {
-    const url = req.url ?? "";
-    if (url === "/mcp" || url.startsWith("/mcp?") || url.startsWith("/mcp/")) {
-      void mcp(req, res).catch((err) => failRequest(res, err));
-      return;
-    }
-    honoHandler?.(req, res);
-  });
-}
-
-function failRequest(res: ServerResponse, err: unknown): void {
-  if (res.headersSent) {
-    res.destroy();
-    return;
-  }
-  respondJson(res, 500, String(err), EXIT.SOFTWARE);
+  return { server, bound };
 }
 
 function boundPortOf(server: ServerType, requested: number): number {
@@ -317,23 +284,22 @@ function boundPortOf(server: ServerType, requested: number): number {
 }
 
 interface ShutdownParts {
-  server: ServerType;
+  servers: ServerType[];
   watcher: TreeWatcher | null;
   paths: DaemonPaths;
   log: Logger;
   graceMs: number;
 }
 
-async function shutdown({ server, watcher, paths, log, graceMs }: ShutdownParts): Promise<void> {
+async function shutdown({ servers, watcher, paths, log, graceMs }: ShutdownParts): Promise<void> {
   try {
     watcher?.close();
   } catch (err) {
     log.error({ err }, "error closing file watcher");
   }
-  try {
-    await closeServer(server, graceMs);
-  } catch (err) {
-    log.error({ err }, "error closing server");
+  const closed = await Promise.allSettled(servers.map((server) => closeServer(server, graceMs)));
+  for (const result of closed) {
+    if (result.status === "rejected") log.error({ err: result.reason }, "error closing server");
   }
   try {
     // Only ours: a supervised successor may already own the pid file.

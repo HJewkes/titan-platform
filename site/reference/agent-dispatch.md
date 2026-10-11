@@ -14,7 +14,9 @@ to it safely has three traps: `PATH` is not what a launchd job expects, `process
 into the child, and a brief passed in argv is readable by every local process through `ps`.
 
 This package is the one client that handles all three. `dispatchToAgentChat` sends the
-brief on stdin under `--brief-stdin`, so no brief text ever reaches argv. `execSafe` runs
+brief on stdin under `--brief-stdin`, so no brief text ever reaches argv, and first
+refuses any profile whose installed file is not `"surface": "headless"`, because
+agent-chat puts an interactive agent's brief in `claude`'s argv. `execSafe` runs
 an absolute path with a minimal environment and no shell.
 
 ## When to reach for it
@@ -29,7 +31,7 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 Verified against 0.0.0.
 
 ```ts
-import { BrokerUnavailableError, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
+import { BrokerUnavailableError, assertInstalledHeadless, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire } from "@titan-design/agent-dispatch";
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
@@ -46,6 +48,8 @@ dispatchToAgentChat(
   profiles,
 );
 // { peerName: "item-42" } once the broker accepts the spawn
+
+assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless ~/.agent-chat/profiles/headless-reviewer.json is headless
 
 const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
 retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
@@ -64,15 +68,68 @@ const claude = resolveBinaryPath("/opt/homebrew/bin/claude", "claude");
 const turn = execSafe(claude, resumeArgs(sessionId, "CI is red; see the log"), minimalEnv(), 600_000, worktree);
 ```
 
+## Limits
+
+The `./limits` subpath holds the spend limits a budget gate reads, as data rather than
+charter prose or constants. One versioned block keys pools by name, one per Claude account,
+and adds per-profile, per-seat and time-boxed layers:
+
+```ts
+import { checkLimits, liftQuestion, resolveLimits } from "@titan-design/agent-dispatch/limits";
+import { loadLimits, readGrants } from "@titan-design/agent-dispatch/limits/node";
+
+const parsed = loadLimits("/path/to/host-config.json", { key: "limits" });
+const { grants } = readGrants("/path/to/limits-grants.json");
+const result = resolveLimits(parsed, {
+  pool: "agents",
+  profile: "bd-implementer",
+  now: new Date(),
+  grants,
+  answeredQuestions: new Set(ownerAnswerIds),
+  fiveHourResetsAt: reading.resetsAt,
+});
+if (!result.open) refuse(result.reason); // a malformed or unknown pool fails closed
+// result.limits: { ceiling_five_hour: 95, reserve_seven_day: 14, sonnet_band_points: 0, ...,
+//   sources: { ceiling_five_hour: "pool", ... }, applied: ["override:<decision>"] }
+
+checkLimits(parsed, { now: new Date() }); // [{ kind: "expired_override", message: "..." }, ...]
+```
+
+Each field resolves independently, the later layer winning: `LIMIT_DEFAULTS`, then
+`defaults`, the pool, the profile on every pool, the profile × pool entry, active
+`overrides[]` (later entry wins; `null` per-day lifts the cap), and answered grants. Then
+the ceiling is clamped to 0-100, the reserve to 0-100 and every margin to 0 or more.
+
+- An override carries an `until`. Past it the override stops applying and `checkLimits`
+  reports it, so a standing value comes back with no edit.
+- A malformed pool closes that pool, a malformed profile closes spawns of that profile, a
+  malformed seat closes that seat, and a malformed override or grant is ignored. Only a bad
+  envelope (wrong `version`, not an object) throws `LimitsConfigError`.
+- Seat caps are a separate stop: `per_run_points` is added and `per_day_points` only ever
+  lowers the pool's.
+- `liftQuestion` asks once per pool per five-hour window when a pool with a `lift` reaches
+  its ceiling. `grantFromAnswer` turns a yes into a grant until that window resets. The
+  resolver accepts a grant only if its question id is in `answeredQuestions`, it ends by
+  `fiveHourResetsAt`, and it clamps the grant to the pool's `lift`.
+
 ## What it deliberately does not do
 
 It holds no profile names, derives no peer names and installs no profile files: those are
-product policy, so the allowlist is an argument. It does not wait for the agent's work,
+product policy, so the allowlist is an argument. The limits subpath owns no file path, reads
+no usage, writes no grant and posts no question: the product passes paths, readings and
+owner answers in. It does not wait for the agent's work,
 decide whether an agent is live before a resume, or talk to the broker's socket directly.
 
 ## Gotchas
 
 - A zero exit from `dispatchToAgentChat` means "started", not "done".
+- `dispatchToAgentChat` reads `$HOME/.agent-chat/profiles/<profile>.json` before the
+  spawn (or `profilesDir` when given) and refuses one that is missing or not headless.
+  Tests that spawn through a fake binary must install that file. The broker re-reads the
+  profile afterwards, so a write in between still reaches it until agent-chat's surface
+  lock lands.
+- A spawn that hangs throws `DispatchTimeoutError`, not plain `DispatchError`: the broker
+  may already have started the agent, so read the roster before re-dispatching.
 - A failed spawn throws `DispatchError` with the CLI's stdout reason (broker refusals,
   including a name held by a live agent) or else its stderr (usage errors, such as an
   agent-chat too old to know `--brief-stdin`).
@@ -80,7 +137,8 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
   timeout, because a timed-out child may already have acted, and `ExecError` when the
   binary cannot start.
 - `listAgents` needs an agent-chat with `agent ls --json`; an older one fails with its
-  usage error. A row missing a required field is skipped, not guessed at.
+  usage error. A row missing a required field is skipped, not guessed at; an optional
+  field with the wrong type is dropped from its row.
 - `retire` throws `DispatchTimeoutError` (a `DispatchError`) when the CLI hangs: the broker
   may already have retired the agent, so read the roster before retrying.
 - `parkAgent` throws `DispatchError` when the broker refuses a live, dirty, unpushed or
@@ -105,4 +163,7 @@ Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resum
 builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
 its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
-brief) by TP-518, `parkAgent` by TP-548, and `messageAgent` by TP-728.
+brief) by TP-518, `parkAgent` by TP-548, `messageAgent` by TP-728, and
+`assertInstalledHeadless` (ported from relay's `daemon/src/profile-guard.ts`, PR #59) by
+TP-470. The `./limits`
+subpath (TP-2067) replaces the `pools:` and `funds:` blocks of a coordinator charter.

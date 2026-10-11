@@ -1,7 +1,18 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
+import type * as AuthModule from "./auth.js";
+import { createDaemonAuth, ensureTokenFile, getRequestAuth, type DaemonAuth } from "./auth.js";
+import { EventHub } from "./events.js";
 import { buildHttpApp, type HttpAppOptions } from "./http.js";
 import { createTestContext, createTestRegistry, type TestContext } from "./test-fixtures.js";
+
+vi.mock("./auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof AuthModule>();
+  return { ...actual, getRequestAuth: vi.fn(actual.getRequestAuth) };
+});
 
 function buildApp(overrides: Partial<HttpAppOptions<TestContext>> = {}): Hono {
   return buildHttpApp<TestContext>({
@@ -89,6 +100,15 @@ describe("POST /rpc/:name", () => {
     expect(await res.json()).toEqual({ ok: false, error: "kaboom", code: 78 });
   });
 
+  it("answers 403 when a command refuses its caller with NOPERM", async () => {
+    const app = buildApp({ formatError: () => ({ message: "not for you", code: 77 }) });
+
+    const res = await postRpc(app, "boom", "{}");
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ ok: false, error: "not for you", code: 77 });
+  });
+
   it("treats a missing body as no arguments", async () => {
     const res = await postRpc(buildApp(), "boom");
 
@@ -102,6 +122,78 @@ describe("POST /rpc/:name", () => {
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ ok: false, error: "redacted", code: 70 });
+  });
+});
+
+describe("POST /rpc/:name body limit", () => {
+  const CHUNK = 16 * 1024;
+
+  /** A chunked body with no Content-Length, which records how many chunks the server pulled. */
+  function streamedBody(chunks: number): { body: ReadableStream<Uint8Array>; pulled: () => number } {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulled === chunks) return controller.close();
+        pulled += 1;
+        controller.enqueue(new Uint8Array(CHUNK).fill(0x20));
+      },
+    });
+    return { body, pulled: () => pulled };
+  }
+
+  it("answers 413 to a streamed body past the cap without reading the rest of it", async () => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 4 * CHUNK } });
+    const stream = streamedBody(256);
+
+    const res = await postRpc(app, "greet", undefined, { body: stream.body, duplex: "half" } as RequestInit);
+
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ ok: false, error: "Request body is too large", code: 64 });
+    expect(stream.pulled()).toBeLessThan(16);
+  });
+
+  it("answers 413 from a Content-Length past the cap", async () => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "x".repeat(64) }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it.each(["abc", "NaN", "12abc"])("answers 413 to a Content-Length of %j, which is no number to compare", async (length) => {
+    const app = buildApp({ rpcBodyLimit: { maxBytes: 32 } });
+
+    const res = await postRpc(app, "greet", JSON.stringify({ name: "x" }), { headers: { "content-length": length } });
+
+    expect(res.status).toBe(413);
+  });
+
+  it("caps every command at 1 MiB by default", async () => {
+    const res = await postRpc(buildApp(), "greet", JSON.stringify({ name: "x".repeat(1024 * 1024) }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it("applies a per-command cap to that command alone", async () => {
+    const app = buildApp({ rpcBodyLimit: { perCommand: { greet: 32 } } });
+    const body = JSON.stringify({ name: "x".repeat(64) });
+
+    expect((await postRpc(app, "greet", body)).status).toBe(413);
+    expect((await postRpc(app, "boom", body)).status).toBe(500);
+  });
+
+  it("runs a command whose streamed body is under the cap", async () => {
+    const encoded = new TextEncoder().encode(JSON.stringify({ name: "world" }));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoded);
+        controller.close();
+      },
+    });
+
+    const res = await postRpc(buildApp(), "greet", undefined, { body, duplex: "half" } as RequestInit);
+
+    expect(res.status).toBe(200);
   });
 });
 
@@ -229,5 +321,111 @@ describe("mountRoutes", () => {
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("dashboard");
+  });
+});
+
+describe("gate", () => {
+  let dir: string;
+  let auth: DaemonAuth;
+  let secret: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(tmpdir(), "daemon-gate-"));
+    const tokenFile = path.join(dir, "lan.token");
+    secret = ensureTokenFile(tokenFile);
+    auth = createDaemonAuth({ tokenFile });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const gatedApp = (overrides: Partial<HttpAppOptions<TestContext>> = {}) => buildApp({ gate: auth, ...overrides });
+
+  it.each(["/health", "/version", "/events"])("answers 401 on GET %s without credentials", async (route) => {
+    const res = await gatedApp().request(route);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("answers 401 on /rpc without credentials and never builds a context", async () => {
+    const createContext = vi.fn(createTestContext);
+
+    const res = await postRpc(gatedApp({ createContext }), "greet", JSON.stringify({ name: "x" }));
+
+    expect(res.status).toBe(401);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 on a product route", async () => {
+    const app = gatedApp({ mountRoutes: (a) => a.get("/ui", (c) => c.text("dashboard")) });
+
+    expect((await app.request("/ui")).status).toBe(401);
+  });
+
+  it("serves the built-ins to a bearer", async () => {
+    const app = gatedApp();
+    const bearer = { authorization: `Bearer ${secret}` };
+
+    expect((await app.request("/health", { headers: bearer })).status).toBe(200);
+    expect((await postRpc(app, "greet", JSON.stringify({ name: "x" }), { headers: bearer })).status).toBe(200);
+  });
+
+  it("runs after the Host guard, so a foreign Host gets 403 even on the login path", async () => {
+    const app = gatedApp();
+    const evil = { host: "evil.example" };
+
+    expect((await app.request("/health", { headers: evil })).status).toBe(403);
+    expect((await app.request("/auth/login", { headers: evil })).status).toBe(403);
+  });
+
+  it("treats a request the gate left no record on as unauthenticated", async () => {
+    const createContext = vi.fn(createTestContext);
+    vi.mocked(getRequestAuth).mockReturnValueOnce(undefined);
+
+    const res = await postRpc(gatedApp({ createContext }), "greet", JSON.stringify({ name: "x" }), {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+
+    expect(res.status).toBe(401);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
+  it("leaves an ungated app's /health open", async () => {
+    expect((await buildApp().request("/health")).status).toBe(200);
+  });
+});
+
+describe("/events bounds", () => {
+  async function readToEnd(res: Response): Promise<string> {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) text += decoder.decode(chunk.value, { stream: true });
+    return text;
+  }
+
+  it("answers 503 to one subscriber past the cap, and admits one again after a stream closes", async () => {
+    const hub = new EventHub();
+    const app = buildApp({ hub, eventLimits: { maxSubscribers: 1 } });
+
+    const first = await app.request("/events");
+    const refused = await app.request("/events");
+    await first.body!.cancel();
+    const after = await app.request("/events");
+
+    expect([first.status, refused.status, after.status]).toEqual([200, 503, 200]);
+    expect(hub.size).toBe(1);
+    await after.body!.cancel();
+  });
+
+  it("disconnects a subscriber whose unread backlog passes maxQueued, and drops it from the hub", async () => {
+    const hub = new EventHub();
+    const app = buildApp({ hub, eventLimits: { maxQueued: 2 } });
+    const res = await app.request("/events");
+
+    for (let i = 0; i < 10; i++) hub.broadcast({ event: "change", data: String(i) });
+    const text = await readToEnd(res);
+
+    expect(hub.size).toBe(0);
+    expect(text.match(/event: change/g)?.length ?? 0).toBeLessThan(10);
   });
 });

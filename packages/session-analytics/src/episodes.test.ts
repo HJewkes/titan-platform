@@ -420,6 +420,36 @@ describe("readEpisodeInput", () => {
     expect(inputRows("original").map((r) => r.transcriptId)).toEqual([1, 3]);
   });
 
+  it("episode input reads a signal once when two transcripts of the session hold a copy", () => {
+    const db = fixture.graph.db;
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 2, offset: 900, ts: at(3), signal: "commit", toolUseId: "tu-1" });
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 1, offset: 40, ts: at(3), signal: "commit", toolUseId: "tu-1" });
+    insertSignal(db, { sessionId: "mirrored", transcriptId: 2, offset: 950, ts: at(4), signal: "commit", toolUseId: "tu-2" });
+
+    const signals = readEpisodeInput(db, "mirrored", false).signals;
+
+    expect([...signals].sort((a, b) => a.ts.localeCompare(b.ts))).toEqual([
+      { offset: 40, ts: at(3), transcriptId: 1, signal: "commit" },
+      { offset: 950, ts: at(4), transcriptId: 2, signal: "commit" },
+    ]);
+  });
+
+  it("a session mirrored into two transcripts counts each inbound once, as one file would", () => {
+    const db = fixture.graph.db;
+    insertInbound(db, { sessionId: "mirrored", ts: at(1), cause: "human_typed", transcriptId: 2 });
+    insertInbound(db, { sessionId: "mirrored", ts: at(1), cause: "human_typed", transcriptId: 1 });
+    insertInbound(db, { sessionId: "mirrored", ts: at(5), cause: "human_typed", transcriptId: 2 });
+
+    const humanTurnCount = readSessionContexts(db, ["mirrored"]).get("mirrored")!.facts.humanTurnCount;
+    const inbounds = readEpisodeInput(db, "mirrored", false).inbounds;
+
+    expect(humanTurnCount).toBe(2);
+    expect([...inbounds].sort((a, b) => a.ts.localeCompare(b.ts)).map(({ ts, transcriptId }) => ({ ts, transcriptId }))).toEqual([
+      { ts: at(1), transcriptId: 1 },
+      { ts: at(5), transcriptId: 2 },
+    ]);
+  });
+
   it("episode input for one session does not scan every request", () => {
     const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
     const details = plan.map((row) => row.detail);

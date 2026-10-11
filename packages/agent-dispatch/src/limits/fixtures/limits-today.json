@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "defaults": {
+    "human_uses": false,
+    "sonnet_band_points": 10,
+    "dispatch_seven_day_points": 2,
+    "dispatch_five_hour_points": 10,
+    "pick_margin_five_hour": 0,
+    "present_ceiling_five_hour": 70,
+    "present_within_minutes": 15
+  },
+  "pools": {
+    "owner": {
+      "config_dir": "/srv/claude/owner",
+      "ceiling_five_hour": 100,
+      "reserve_seven_day": 14,
+      "per_day_points": 30
+    },
+    "agents": {
+      "config_dir": "/srv/claude/profiles/agents",
+      "ceiling_five_hour": 95,
+      "reserve_seven_day": 14,
+      "per_day_points": 30,
+      "sonnet_band_points": 0,
+      "lift": { "ceiling_five_hour": 100, "ask": "owner" }
+    },
+    "spare": {
+      "config_dir": "/srv/claude/profiles/spare",
+      "ceiling_five_hour": 100,
+      "reserve_seven_day": 14,
+      "per_day_points": 45
+    },
+    "server": {
+      "config_dir": "/srv/claude/profiles/server",
+      "ceiling_five_hour": 95,
+      "reserve_seven_day": 14,
+      "per_day_points": 45,
+      "sonnet_band_points": 0,
+      "lift": { "ceiling_five_hour": 100, "ask": "owner" }
+    }
+  },
+  "funds": {
+    "default": ["owner", "agents", "spare", "server"],
+    "private-initiative": ["spare"]
+  },
+  "profiles": {
+    "bd-reviewer": { "band_fallback": "reviewer" }
+  },
+  "seats": {
+    "coord-a": { "pool": "agents", "per_run_points": 8, "per_day_points": 20 }
+  },
+  "overrides": [
+    {
+      "pools": ["owner", "spare"],
+      "reserve_seven_day": 0,
+      "sonnet_band_points": 0,
+      "until": "2026-10-10T18:00:00Z",
+      "decision": "reserve-0-grant"
+    },
+    {
+      "pools": ["agents"],
+      "reserve_seven_day": 0,
+      "sonnet_band_points": 0,
+      "until": "2026-10-11T00:00:00Z",
+      "decision": "reserve-0-grant"
+    }
+  ]
+}

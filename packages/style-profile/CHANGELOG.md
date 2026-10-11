@@ -1,5 +1,11 @@
 # @titan-design/style-profile
 
+## 0.4.1
+
+### Patch Changes
+
+- 5b07edd: The `.editorconfig` exporter now leaves out formatting rules whose confidence is below `severityThresholds.info`, like the other exporters.
+
 ## 0.4.0
 
 ### Minor Changes

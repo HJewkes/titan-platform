@@ -6,7 +6,7 @@ import { briefFields } from "./gate-brief.js";
 import { assistedGateId, cancelOwnPending, gateIdFor, gateIsPending, memoKey, otherKeyShape, recordedAfter } from "./gate-ids.js";
 import type { CompletedStep, ContextDeps, Memo, RecoveredStep } from "./context-deps.js";
 import { buildStepVars } from "./prompt.js";
-import { isRecoverable, runLegacyStep } from "./recovery.js";
+import { announceRecovery, isRecoverable, parkForRecovery, runLegacyStep } from "./recovery.js";
 import { messageOf } from "./runtime-values.js";
 import { reportingStepFailure } from "./step-failure.js";
 import { parseStepOutput } from "./step-output.js";
@@ -324,10 +324,9 @@ export class RunContext implements WorkflowContext {
   }
 
   private holdForRecovery(stepId: string, evidence: string, gateId?: string): never {
-    this.run.status = "recovery_required";
-    this.run.error = evidence;
+    parkForRecovery(this.run, evidence);
     this.persist();
-    this.deps.emit({ type: "workflow_recovery_required", runId: this.runId, stepId, evidence, ...(gateId ? { gateId } : {}) });
+    announceRecovery(this.deps.emit, this.runId, stepId, evidence, gateId);
     throw new WorkflowRecoveryRequiredError(this.runId, stepId, evidence);
   }
 

@@ -1,6 +1,8 @@
-import { promises as fs, readdirSync, statSync, type Dirent } from 'node:fs';
+import { promises as fs, lstatSync, readdirSync, statSync, type Dirent } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { AccountProfile } from '@titan-design/anthropic-account';
+import { CONFIG_DIRS_ENV, discoverProfiles } from '@titan-design/anthropic-account/node';
 import { isMissing } from './absent.js';
 import { expandHome } from './expand-home.js';
 
@@ -24,16 +26,27 @@ export interface DiscoveredTranscript {
   subagentId: string | null;
   /** `"default"` for `~/.claude`, the profile directory name otherwise; `null` from `discoverTranscripts(root)` called directly. */
   account: string | null;
+  /** The other machine a mirrored transcript was copied from; absent for this machine's own. */
+  host?: string;
 }
 
 export interface TranscriptRoot {
   root: string;
   account: string;
+  /** Set only for a root under a `CLAUDE_TRANSCRIPT_MIRRORS` dir; such a root is a copy, not a config dir to run Claude Code with. */
+  host?: string;
 }
 
+/**
+ * `<host>=<dir>` entries, joined by the path delimiter. Each `<dir>/<account>/projects` is a
+ * transcript root labelled with that host. A separate variable rather than an entry in
+ * `CLAUDE_CONFIG_DIRS`, which also names the accounts whose credentials and usage get polled.
+ */
+export const TRANSCRIPT_MIRRORS_ENV = 'CLAUDE_TRANSCRIPT_MIRRORS';
+
+const HOST_LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 const DEFAULT_ACCOUNT = 'default';
-const PROFILES_DIR_NAME = '.claude-profiles';
-const CONFIG_DIRS_ENV = 'CLAUDE_CONFIG_DIRS';
 
 const SUBAGENT_DIR = 'subagents';
 const SUBAGENT_PREFIX = 'agent-';
@@ -143,13 +156,8 @@ export async function discoverTranscripts(
   return found;
 }
 
-function accountFor(configDir: string): string {
-  const name = path.basename(configDir);
-  return name === '.claude' ? DEFAULT_ACCOUNT : name;
-}
-
-function rootFor(configDir: string): TranscriptRoot {
-  return { root: path.join(configDir, 'projects'), account: accountFor(configDir) };
+function rootFor({ configDir, label }: AccountProfile): TranscriptRoot {
+  return { root: path.join(configDir, 'projects'), account: label };
 }
 
 function hasProjectsDir(configDir: string): boolean {
@@ -161,35 +169,57 @@ function hasProjectsDir(configDir: string): boolean {
   }
 }
 
-/** ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides. */
-export function claudeTranscriptRoots(env: NodeJS.ProcessEnv = process.env): TranscriptRoot[] {
-  const override = env[CONFIG_DIRS_ENV];
-  if (override) {
-    return override
-      .split(path.delimiter)
-      .filter((dir) => dir.length > 0)
-      .map(rootFor);
+function parseMirror(entry: string): { host: string; dir: string } {
+  const split = entry.indexOf('=');
+  const host = entry.slice(0, Math.max(split, 0));
+  if (!HOST_LABEL.test(host) || split === entry.length - 1) {
+    throw new Error(`${TRANSCRIPT_MIRRORS_ENV}: expected <host>=<dir>, got "${entry}"`);
   }
+  return { host, dir: expandHome(entry.slice(split + 1)) };
+}
 
-  const home = os.homedir();
-  const roots: TranscriptRoot[] = [{ root: transcriptsRoot(), account: DEFAULT_ACCOUNT }];
-
-  let profiles: string[];
+function isRealDir(dir: string): boolean {
   try {
-    profiles = readdirSync(path.join(home, PROFILES_DIR_NAME), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
+    return lstatSync(dir).isDirectory();
   } catch (error) {
-    if (isMissing(error)) return roots;
+    if (isMissing(error)) return false;
     throw error;
   }
+}
 
-  for (const profile of profiles) {
-    const configDir = path.join(home, PROFILES_DIR_NAME, profile);
-    if (hasProjectsDir(configDir)) roots.push(rootFor(configDir));
-  }
-  return roots;
+/** A symlinked account dir is skipped, as the profile scan skips one, so a planted link cannot widen the read. */
+function mirrorRoots({ host, dir }: { host: string; dir: string }): TranscriptRoot[] {
+  if (!isRealDir(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && hasProjectsDir(path.join(dir, entry.name)))
+    .map((entry) => entry.name)
+    .sort()
+    .map((account) => ({ root: path.join(dir, account, 'projects'), account, host }));
+}
+
+function transcriptMirrorRoots(env: NodeJS.ProcessEnv): TranscriptRoot[] {
+  const entries = (env[TRANSCRIPT_MIRRORS_ENV] ?? '').split(path.delimiter).filter((entry) => entry.length > 0);
+  return entries.map(parseMirror).flatMap(mirrorRoots);
+}
+
+/**
+ * ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides.
+ * Mirrored accounts from `CLAUDE_TRANSCRIPT_MIRRORS` follow either way.
+ */
+export function claudeTranscriptRoots(env: NodeJS.ProcessEnv = process.env): TranscriptRoot[] {
+  return [...localTranscriptRoots(env), ...transcriptMirrorRoots(env)];
+}
+
+function localTranscriptRoots(env: NodeJS.ProcessEnv): TranscriptRoot[] {
+  const profiles = discoverProfiles({ env });
+  if (env[CONFIG_DIRS_ENV]) return profiles.map(rootFor);
+
+  // The default root is listed even when ~/.claude is missing, so a fresh machine still has it.
+  const defaultDir = path.join(os.homedir(), '.claude');
+  const others = profiles.filter(
+    (profile) => profile.configDir !== defaultDir && hasProjectsDir(profile.configDir),
+  );
+  return [{ root: transcriptsRoot(), account: DEFAULT_ACCOUNT }, ...others.map(rootFor)];
 }
 
 /**
@@ -200,9 +230,9 @@ export async function discoverAllTranscripts(
   roots: TranscriptRoot[] = claudeTranscriptRoots(),
 ): Promise<DiscoveredTranscript[]> {
   const found: DiscoveredTranscript[] = [];
-  for (const { root, account } of roots) {
+  for (const { root, account, host } of roots) {
     const transcripts = await discoverTranscripts(root);
-    found.push(...transcripts.map((transcript) => ({ ...transcript, account })));
+    found.push(...transcripts.map((transcript) => ({ ...transcript, account, ...(host ? { host } : {}) })));
   }
   return found;
 }

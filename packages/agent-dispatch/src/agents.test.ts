@@ -4,12 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  DispatchTimeoutError,
-  listAgents,
-  retire,
-} from "./agents.js";
-import { DispatchError } from "./dispatch.js";
+import { listAgents, retire } from "./agents.js";
+import { DispatchError, DispatchTimeoutError } from "./dispatch.js";
 import { installExecutable } from "./test-support.js";
 
 let dir: string;
@@ -71,6 +67,34 @@ describe("listAgents", () => {
 
     expect(await listAgents(bin, 10_000)).toEqual(rows);
     expect(recordedArgv()).toEqual(["agent", "ls", "--json"]);
+  });
+
+  it.each([
+    ["surface", 1],
+    ["surface", undefined],
+    ["generation", "1"],
+    ["generation", 1.5],
+    ["generation", undefined],
+    ["sessionId", null],
+  ])("skips a row whose %s is %j, a field every consumer relies on", async (field, value) => {
+    const bin = printing([row(), row({ name: "bad-row", [field]: value })]);
+    expect((await listAgents(bin, 10_000)).map((agent) => agent.name)).toEqual(["item-42"]);
+  });
+
+  it.each([
+    ["model", 7],
+    ["transcriptPath", 7],
+    ["transcriptExists", "yes"],
+    ["spawnedBy", false],
+    ["account", 1],
+    ["teleportFrom", {}],
+  ])("keeps a row whose optional %s is %j but drops that field", async (field, value) => {
+    const bin = printing([row({ [field]: value })]);
+
+    const [kept] = await listAgents(bin, 10_000);
+
+    expect(kept).toEqual(row({ [field]: undefined }));
+    expect(kept).not.toHaveProperty(field);
   });
 
   it("skips a row missing a field it relies on, rather than guessing its status", async () => {

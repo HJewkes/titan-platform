@@ -84,7 +84,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
     const rewound = point.state === "rewritten" || delta.restartedFromZero;
     // After extraction, never before: a parse failure quarantines the transcript,
     // and purging first would destroy rows we could then no longer rebuild.
-    if (rewound) purgeTranscript(graph, row.sourceId);
+    const handedOff = rewound ? purgeTranscript(graph, row.sourceId) : [];
     applyDelta(graph, row.sourceId, delta, { account: transcript.account, indexSdkPrompts: options.indexSdkPrompts });
     advanceFacet(graph.db, row.sourceId, rewound ? 0 : point.start, delta.lastByteOffset);
     const stat = await fs.stat(transcript.absolutePath);
@@ -95,7 +95,7 @@ export async function indexTranscript(graph: SessionGraph, transcript: Discovere
       fileMtime: stat.mtime.toISOString(),
       contentHash: options.withContentHash ? await contentHash(transcript.absolutePath) : null,
     });
-    const sessionIds = delta.sessions.map((s) => s.sessionId);
+    const sessionIds = [...handedOff, ...delta.sessions.map((s) => s.sessionId)];
     const taskIds = delta.tasks.map((t) => t.taskId);
     const tasks = taskIds.length > 0 ? await enrichTasks(graph, options.resolveTasks, taskIds) : NO_ENRICHMENT;
     return { ...base, sessionIds, tasks, status: rewound ? "rewound" : "indexed", facts: delta.facts.length };

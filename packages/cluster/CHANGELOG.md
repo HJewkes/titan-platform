@@ -1,5 +1,15 @@
 # @titan-design/cluster
 
+## 0.2.0
+
+### Minor Changes
+
+- 20b2ae2: Make signature anchor rules frozen data keyed by partition. `AnchorConfigs` and `DEFAULT_ANCHOR_CONFIGS` are exported; `ClustererOptions.anchors` and an optional third argument to `extractSignature` and `hasErrorSignal` let a consumer map its own partitions (for example `Bash`) onto the `test` or `git` rules. The defaults keep today's behavior for `test`, `git` and every other partition.
+
+### Patch Changes
+
+- fa2fb83: The generic `SHA` mask now requires a hex letter and a digit, so long decimal numbers resolve to `<NUM>` and all-letter hex words such as "defaced" stay unmasked. Template ids for lines containing either may change. Comments are rewritten in package terms, `toolType` parameters are renamed `partition`, and the unused `options` field on `Clusterer` is gone.
+
 ## 0.1.3
 
 ### Patch Changes

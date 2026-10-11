@@ -63,6 +63,30 @@ tool_input / tool_result), `session` (descriptive fields and turn/commit/push de
 `task`, `subagent`, `subagent_transcript`, `artifact`, and `edge` (`session:… touched
 file:…` and friends; vocabulary in `RELATIONS`).
 
+## File refs and code ids
+
+A `touched` edge points at `fileRef(repo, path)`: `file:<repo>/<path>`, or `file:<abs path>`
+when the file is outside any working tree. Two functions turn either form back into a
+`(repo, path)` pair, and that path is the code-graph file id:
+
+- `toRepoRelative(absPath): { repo, path }` resolves an absolute path by its nearest `.git`,
+  in posix form. A path under a removed `.worktrees/<name>/` resolves to the same path a live
+  worktree gives, so one file gets one ref. A path outside any repo keeps its absolute form
+  with a null repo.
+- `parseFileRef(ref): { repo, path } | null` is the inverse of `fileRef`. It splits at the
+  first `/` and strips a `.worktrees/<name>/` prefix that an older ingest stored. A null
+  repo means plain text, with no code link. A ref that is not `file:` returns null.
+
+```ts
+import { parseFileRef } from "@titan-design/session-read";
+
+parseFileRef("file:demo/.worktrees/feature-b/src/app.ts"); // { repo: "demo", path: "src/app.ts" }
+parseFileRef("file:/srv/notes.md");                         // { repo: null, path: "/srv/notes.md" }
+```
+
+Only the default `.worktrees` base is recognised. Refs stored before 0.11 keep their
+leaked prefix in the graph; `parseFileRef` normalises them at read time.
+
 ## Review verdicts
 
 `parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
@@ -178,6 +202,31 @@ chunk boundaries cannot change the answer: timestamps min/max, counters sum, `gi
 `seedPrompt` first-wins, `aiTitle` / `cwd` / `cliVersion` last-wins, `startType` from the
 earliest line carrying an entrypoint, ref-keyed rows deduplicated.
 
+## Transcripts mirrored from another host
+
+`claudeTranscriptRoots` reads `CLAUDE_TRANSCRIPT_MIRRORS` as well as this machine's own
+config dirs. Each entry is `<host>=<dir>`, and entries are joined by the path delimiter
+(`:`). Every `<dir>/<account>` with a `projects` dir becomes a root whose `account` is the
+directory name and whose `host` is the label, so a mirror laid out as
+`<dir>/<account>/projects/...` needs one entry for all its accounts:
+
+```sh
+CLAUDE_TRANSCRIPT_MIRRORS="mac=~/mac-transcripts"
+```
+
+`discoverAllTranscripts` stamps each mirrored transcript with that `host`; a transcript from
+this machine has no `host` at all. A missing mirror dir adds no roots, and an entry without
+a valid `<host>=` label throws. Mirrors are appended whether or not `CLAUDE_CONFIG_DIRS` is
+set.
+
+Do not add a mirror to `CLAUDE_CONFIG_DIRS`. That variable also names the accounts
+anthropic-account polls for credentials and usage, and a mirror is a copy of transcripts, not
+a config dir anyone can run Claude Code with. A caller that turns a root back into a config
+dir should skip any root with a `host`.
+
+A mirrored session usually exists on this machine too, under the same session id. The
+graph treats both files as transcripts of that one session; see session-graph.
+
 ## Gotchas
 
 **Pass `subagentId` when reading a sidechain.** Lines in
@@ -220,7 +269,11 @@ source is a list, and that source yields nothing.
 open task. `orientationEnd(brief)` returns where the assignment starts: 0 when there is no
 orientation, null when there is one whose end cannot be found. Such a brief links nothing
 rather than guess. The block's format is owned by agent-chat, and the tests pin today's
-headings and truncation marker. Every search reads a bounded window, so a 100 KB brief costs
+headings and truncation marker. When agent-chat recorded the block's length (`agent_spawned`
+meta `briefing_chars`), pass it as `orientationEnd(brief, briefingChars)` or as
+`briefingChars` to `assignedTaskIds`: the assignment then starts at the first non-blank line
+after that offset, whatever the headings say. An out-of-range value falls back to the
+heading rules. Every search reads a bounded window, so a 100 KB brief costs
 the same as a short one.
 
 ## Where it came from
@@ -247,6 +300,23 @@ separate absence from failure. A missing directory yields no sources, and a stal
 as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
 `discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
 `readSessionSourceText`.
+
+## Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` decodes raw Claude transcript lines synchronously, with no
+source descriptor. It skips blank and malformed lines, ignores session identity and does
+not dedupe a repeated call id; a block without a call id is skipped.
+
+```ts
+import { decodeClaudeToolLines } from "@titan-design/session-read";
+
+const results = new Map<string, unknown>();
+const calls = [];
+for (const line of decodeClaudeToolLines(rawLines)) {
+  if (line.kind === "tool_result") results.set(line.callId, line.output);
+  else calls.push(line);
+}
+```
 
 ## Graph-free consumer views
 

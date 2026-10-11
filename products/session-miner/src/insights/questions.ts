@@ -26,6 +26,8 @@ import { z } from "zod";
 import { fetchPulls, readDenials, readJournal, readPullSnapshot, withEventsDb } from "./blocked-flow-sources.js";
 import { defineInsight, isoTime, utc, type AnyInsight } from "./define.js";
 import { readBrokerLog } from "./liveness-sources.js";
+import { toolAdoption } from "./tool-adoption.js";
+import { toolGaps } from "./tool-gaps.js";
 
 const reportFrame = { window: true, priceTableVersion: true, totals: true, coverage: true } as const;
 
@@ -189,3 +191,6 @@ export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [spendByAction, handoffT
 
 /** Questions that read only agent-chat's files; insights.test.ts runs every INSIGHT_QUESTIONS entry but blocked-flow against the graph. */
 export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [liveness];
+
+/** Questions that read Bash commands back from transcripts; their own tests cover them with injected ports. */
+export const TRANSCRIPT_QUESTIONS: readonly AnyInsight[] = [toolGaps, toolAdoption];

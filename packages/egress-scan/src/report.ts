@@ -9,7 +9,8 @@ export interface ReportSummary {
 
 function formatFinding(finding: Finding): string {
   const term = finding.termIndex === undefined ? "" : ` #${finding.termIndex}`;
-  return `${finding.location} ${finding.rule}${term}`;
+  const kind = finding.kind === undefined ? "" : ` ${finding.kind}`;
+  return `${finding.location} ${finding.rule}${term}${kind}`;
 }
 
 function formatCounts(counts: RuleCounts, rules: readonly string[]): string {
@@ -17,7 +18,7 @@ function formatCounts(counts: RuleCounts, rules: readonly string[]): string {
 }
 
 /**
- * Formats findings as `<location> <rule>[ #<termIndex>]` lines plus a summary. It takes no
+ * Formats findings as `<location> <rule>[ #<termIndex>][ <kind>]` lines plus a summary. It takes no
  * scanned text, so it cannot echo a matched line, path fragment or term.
  */
 export function formatReport(findings: readonly Finding[], summary: ReportSummary): string[] {

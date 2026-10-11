@@ -1,5 +1,20 @@
 # @titan-design/memory
 
+## 0.2.0
+
+### Minor Changes
+
+- df3e9c3: Add the auto-memory core: `parseMemoryFile` and `parseMemoryIndex` read Claude Code auto-memory fact files and `MEMORY.md` indexes, `dedupeFacts` merges exact and same-polarity near-duplicate facts across projects, `groupFacts` groups them by topic, and `proposeDestination` proposes where each group should live. All are pure and deterministic, with no filesystem or model access.
+
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [5fe09ab]
+- Updated dependencies [1f7de27]
+  - @titan-design/retrieval@0.3.1
+  - @titan-design/store-sqlite@0.4.0
+
 ## 0.1.3
 
 ### Patch Changes

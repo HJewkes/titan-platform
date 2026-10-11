@@ -1,0 +1,170 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import type { StepRoute } from "@titan-design/workflow";
+import { EXIT, runCli, type CliDeps } from "./cli.js";
+import { defineWorkflow } from "./definition.js";
+import { openFactoryHost } from "./host.js";
+import type * as Host from "./host.js";
+
+vi.mock("./host.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof Host>();
+  return { ...actual, openFactoryHost: vi.fn(actual.openFactoryHost) };
+});
+
+const REMOTE = "http://127.0.0.1:7410";
+const dirs: string[] = [];
+afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+beforeEach(() => void vi.mocked(openFactoryHost).mockClear());
+
+const routes: StepRoute[] = [{ match: "ship", onRestart: "repeat", runner: { run: async () => ({ ok: true, output: "shipped" }) } }];
+const approval = defineWorkflow({
+  name: "approval",
+  steps: [
+    { id: "approve-publish", kind: "assisted" },
+    { id: "ship", kind: "dispatch" },
+  ],
+  run: async (ctx) => {
+    await ctx.assisted("approve-publish", "Publish the draft?", { schema: z.object({ approve: z.literal(true) }), brief: { summary: "Publish the draft?", evidenceRef: "$ git log -1" } });
+    await ctx.dispatch("ship", "ship");
+  },
+});
+const deps: CliDeps = { workflows: [approval], routes, host: { gatePollMs: 10 }, presence: async () => undefined };
+
+/** A home whose config file holds `config`; the database path is returned and never created by the test. */
+function home(config: object): { env: NodeJS.ProcessEnv; dbPath: string } {
+  const dir = mkdtempSync(join(tmpdir(), "factory-remote-"));
+  dirs.push(dir);
+  mkdirSync(join(dir, "config", "titan-factory"), { recursive: true });
+  writeFileSync(join(dir, "config", "titan-factory", "config.json"), JSON.stringify(config));
+  return { env: { XDG_CONFIG_HOME: join(dir, "config"), XDG_STATE_HOME: join(dir, "state") }, dbPath: join(dir, "state", "factory.sqlite3") };
+}
+
+async function cli(env: NodeJS.ProcessEnv, ...argv: string[]): Promise<{ code: number; out: string; err: string }> {
+  let out = "";
+  let err = "";
+  // An already-stopped serve returns at once instead of hanging the test if the refusal is missing.
+  const code = await runCli(argv, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), env }, { ...deps, stop: AbortSignal.abort() });
+  return { code, out, err };
+}
+
+async function pausedRun(dbPath: string): Promise<string> {
+  const host = openFactoryHost({ dbPath, workflows: [approval], routes, gatePollMs: 10 });
+  const runId = host.runtime.start("approval");
+  await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
+  host.close();
+  vi.mocked(openFactoryHost).mockClear();
+  return runId;
+}
+
+async function deadPort(): Promise<string> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as { port: number };
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return String(port);
+}
+
+/** A loopback server that answers /health and every /rpc call with success, counting the requests it gets. */
+async function answeringServe(): Promise<{ port: string; requests: () => number }> {
+  let requests = 0;
+  const server = createHttpServer((req, res) => {
+    requests += 1;
+    res.setHeader("content-type", "application/json");
+    res.end(req.url === "/health" ? "{}" : JSON.stringify({ ok: true, data: { runId: "run-1", held: null } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  return { port: String((server.address() as { port: number }).port), requests: () => requests };
+}
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+describe("a host whose config names a remoteFactory", () => {
+  it("refuses a local resolve when remoteFactory is set", async () => {
+    const { env } = home({ remoteFactory: REMOTE });
+
+    const { code, err } = await cli(env, "gate", "resolve", "run-1", "approve-publish", "--json", '{"approve":true}');
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain(REMOTE);
+    expect(err).toContain("this host's database is frozen");
+  });
+
+  it("refuses a resolve aimed at an explicit --db too", async () => {
+    const { env, dbPath } = home({ remoteFactory: REMOTE });
+
+    const { code } = await cli(env, "--db", dbPath, "gate", "resolve", "run-1", "approve-publish", "--json", '{"approve":true}');
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it.each([
+    ["gate resolve", async () => ["gate", "resolve", "run-1", "approve-publish", "--json", '{"approve":true}']],
+    ["resume", async () => ["resume"]],
+    ["land with no serve answering", async () => ["land", "acme/web#1", "--port", await deadPort()]],
+    ["shepherd resync with no serve answering", async () => ["shepherd", "resync", "--port", await deadPort()]],
+    ["serve", async () => ["serve", "--port", await deadPort()]],
+    ["shepherd hold with no serve answering", async () => ["shepherd", "hold", "acme/web#1", "--reason", "wait", "--port", await deadPort()]],
+    ["shepherd register --offline", async () => ["shepherd", "register", "acme/web#1", "--task", "demo/T-1", "--implementer", "impl", "--offline", "--port", await deadPort()]],
+    ["shepherd merge with no serve answering", async () => ["shepherd", "merge", "acme/web#1", "--port", await deadPort()]],
+    ["shepherd status with no serve answering", async () => ["shepherd", "status", "--port", await deadPort()]],
+    ["queue-counts", async () => ["queue-counts"]],
+  ])("opens no database when it refuses %s", async (_verb, argv) => {
+    const { env, dbPath } = home({ remoteFactory: REMOTE });
+
+    const { code, err } = await cli(env, ...(await argv()));
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain("this host's database is frozen");
+    expect(openFactoryHost).not.toHaveBeenCalled();
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it.each([
+    ["land", ["land", "acme/web#1"]],
+    ["shepherd register", ["shepherd", "register", "acme/web#1", "--task", "demo/T-1", "--implementer", "impl"]],
+    ["shepherd hold", ["shepherd", "hold", "acme/web#1", "--reason", "wait"]],
+    ["shepherd release", ["shepherd", "release", "acme/web#1"]],
+    ["shepherd resync", ["shepherd", "resync"]],
+  ])("refuses %s even when a serve answers on --port, and sends it nothing", async (_verb, argv) => {
+    const { env, dbPath } = home({ remoteFactory: REMOTE });
+    const serve = await answeringServe();
+
+    const { code, err } = await cli(env, ...argv, "--port", serve.port);
+
+    expect(code).toBe(EXIT.USAGE);
+    expect(err).toContain("this host's database is frozen");
+    expect(serve.requests()).toBe(0);
+    expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it("still reads shepherd status from a serve that answers", async () => {
+    const { env } = home({ remoteFactory: REMOTE });
+    const serve = await answeringServe();
+
+    const { code } = await cli(env, "shepherd", "status", "--json", "--port", serve.port);
+
+    expect(code).toBe(EXIT.OK);
+    expect(serve.requests()).toBeGreaterThan(0);
+  });
+
+  it("resolves locally when remoteFactory is unset", async () => {
+    const { env, dbPath } = home({});
+    const runId = await pausedRun(dbPath);
+
+    const { code, out } = await cli(env, "--db", dbPath, "gate", "resolve", runId, "approve-publish", "--json", '{"approve":true}');
+
+    expect(code).toBe(EXIT.OK);
+    expect(out).toBe(`resolved ${runId}/approve-publish\n`);
+    expect(openFactoryHost).toHaveBeenCalledTimes(1);
+  });
+});

@@ -5,18 +5,22 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
+import { spendRepair } from "./repair.js";
+import { MAX_REPAIRS } from "./route-table.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
+import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
+import { WAKE_ASK_MS } from "./wake-wait.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -135,11 +139,19 @@ describe("sh-wake-implementer: who is woken", () => {
     const rows = JSON.stringify([row("impl-a")]);
     writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
     chmodSync(bin, 0o755);
-    const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
+    // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
+    mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
+    writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
+    vi.stubEnv("HOME", SCRATCH);
+    try {
+      const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
-    await run("review", fixFirst("fix the parser"));
+      await run("review", fixFirst("fix the parser"));
 
-    expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
+      expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("resumes a parked implementer on FIX_FIRST though its tree is gone, since resuming re-creates it at the same path", async () => {
@@ -466,14 +478,109 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
   });
 
-  it("returns unhandled with the refusal class, and the step itself succeeds", async () => {
+  it("fails the wake within 5 minutes when every resume of an exited implementer times out, as a parked tree's did", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => Promise.reject(new DispatchTimeoutError(LEAKY_MESSAGE));
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 5 minutes: agent-chat timed out" });
+    expect(scene.clock.now - T0).toBeGreaterThanOrEqual(WAKE_ASK_MS);
+    expect(scene.clock.now - T0).toBeLessThan(WAKE_ASK_MS + 2_000);
+  });
+
+  it("fails the wake within 5 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => Promise.reject(new SpawnDeferred(LEAKY_MESSAGE));
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 5 minutes: the spawn gate deferred it" });
+    expectNoLeak(result);
+  });
+
+  it("stays woken when a resume that timed out shows the agent live on the next roster read", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => {
+      scene.agents.rows[0] = row("impl-a", { presence: "live" });
+      throw new DispatchTimeoutError("agent-chat did not answer");
+    };
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
+  });
+
+  it("counts a fallback resume the spawn gate defers past 5 minutes as failed", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, turnSince: () => false });
+    const resume = scene.agents.resume;
+    let resumes = 0;
+    scene.agents.resume = async (...args) => (++resumes > 1 ? Promise.reject(new SpawnDeferred("load5 40 is past the limit 28")) : resume(...args));
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn after the wake, and the resume fallback failed: SpawnDeferred" });
+    expect(resumes).toBeGreaterThan(2);
+  });
+
+  it("holds with the refusal named when agent-chat refuses the successor, and the step itself succeeds", async () => {
     const scene = wakeStep();
     scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn: the name impl-a-s1 is held")];
 
     const { outcome, result } = await scene.run("review", fixFirst("fix it"));
 
     expect(outcome.ok).toBe(true);
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+  });
+
+  it("spawns a successor for a retired implementer at a FIX_FIRST, though its transcript is warm", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { status: "retired" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.fail.resume = [new DispatchError("agent-chat refused the resume: impl-a is retired")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(scene.agents.asked.map((ask) => [ask.verb, ask.name])).toEqual([["spawn", "impl-a-s1"]]);
+  });
+
+  it("spawns a successor when agent-chat refuses to resume the implementer, as for a model its pool no longer runs", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.fail.resume = [new DispatchError("agent-chat refused the resume")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a-s1", mode: "successor", askedAt: expect.any(Number) });
+    expect(scene.clock.sleeps).toEqual([]);
+  });
+
+  it("holds when agent-chat refuses both the resume and the successor", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.fail.resume = [new DispatchError("agent-chat refused the resume")];
+    scene.agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+  });
+
+  it("keeps a resume that fails with anything but a refusal unhandled, and starts no successor", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.fail.resume = [new Error("agent-chat printed no JSON")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "the wake was refused: Error" });
+    expect(scene.agents.asked).toEqual([]);
+  });
+
+  it("keeps a refused message to a live implementer a refusal, so no successor races it", async () => {
+    const scene = wakeStep({ rows: [row("impl-a", { presence: "live" })] });
+    scene.agents.fail.message = [new DispatchError("agent-chat refused the message")];
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
     expect(result).toEqual({ kind: "unhandled", reason: "the wake was refused: DispatchError" });
+    expect(scene.agents.asked).toEqual([]);
   });
 
   it("returns unhandled when the seat grants no fixer, and reads no roster", async () => {
@@ -656,10 +763,13 @@ describe("sh-wake-implementer: what the woken agent reads", () => {
     expect(agents.asked[0]!.message).toContain(`\`\`\`review findings\n${withClass}\n\`\`\``);
   });
 
-  it("returns unhandled when a review wake carries no findings", async () => {
-    const { result } = await wakeStep({ warmth: warm }).run("review", { kind: "FIX_FIRST" });
+  it("tells the fixer a review wake carries no findings and where the verdict is recorded", async () => {
+    const { agents, run } = wakeStep({ warmth: warm });
 
-    expect(result?.kind).toBe("unhandled");
+    await run("review", { kind: "FIX_FIRST" });
+
+    expect(agents.asked[0]!.message).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
+    expect(agents.asked[0]!.message).toContain(`step sh-await-verdict:${H1} of run run-1`);
   });
 });
 
@@ -674,12 +784,12 @@ describe("wakePhase", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1)) {
+  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review") {
     const store = shepherdStoreRef();
     let clock = T0;
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
-    const request: WakeRequest = { kind: "review", repo: REPO, pr: 1, round: 0, headSha: H1, payload: fixFirst("fix it") };
+    const request: WakeRequest = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload: kind === "review" ? fixFirst("fix it") : {} };
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
     const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
@@ -687,8 +797,9 @@ describe("wakePhase", () => {
     const runId = host.runtime.start("wake-test");
     store.get().register({ ...registration, runId });
     await host.runtime.wait(runId);
-    const stepIds = Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
-    return { outcome: outcomes[0], stepIds };
+    const recorded = Object.values(host.runtime.status(runId)!.stepResults);
+    const results = Object.fromEntries(recorded.map((result) => [result.stepId, (result.data as { result: unknown }).result]));
+    return { outcome: outcomes[0], stepIds: recorded.map((result) => result.stepId), results };
   }
 
   it("is woken only after the resumed agent pushed a head other than the one it was woken for", async () => {
@@ -728,6 +839,33 @@ describe("wakePhase", () => {
     expect(outcome).toEqual({ kind: "unhandled", reason: `octo/demo#1 closed at head ${H1} before a new head` });
   });
 
+  it("returns a held outcome without waiting on the head when agent-chat refused the successor of a send-back", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    const { outcome, stepIds } = await runPhase(agents, fake, async () => undefined);
+
+    expect(outcome).toEqual({ kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError", held: { agent: "impl-a-s1" } });
+    expect(isHeld(outcome!)).toBe(true);
+    expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0"]);
+  });
+
+  it.each(["ci-red", "conflict"] as const)("keeps a %s wake whose successor agent-chat refused unhandled, so its own route decides", async (kind) => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    agents.fail.spawn = [new DispatchError("agent-chat refused the spawn")];
+
+    const { outcome, stepIds, results } = await runPhase(agents, fake, async () => undefined, kind);
+
+    const unheld = { kind: "unhandled", reason: "agent-chat refused to start the successor impl-a-s1: DispatchError" };
+    expect(outcome).toEqual(unheld);
+    expect(results["sh-wake-implementer:0"]).toEqual(unheld);
+    expect(stepIds).toEqual(["sh-wake-implementer:0"]);
+  });
+
   it("skips the head wait when no agent took the wake", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: H1 });
@@ -737,5 +875,44 @@ describe("wakePhase", () => {
 
     expect(outcome?.kind).toBe("unhandled");
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0"]);
+  });
+});
+
+describe("a held wake and the repair budget", () => {
+  const hosts: FactoryHost[] = [];
+  afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+
+  it("spends one repair per held wake, and stops waking once the budget is spent", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    let refusals = 0;
+    agents.spawn = async () => Promise.reject(new DispatchError(`refusal ${++refusals}`));
+    let pushed = 0;
+    fake.onGetPr = (pr) => void (refusals > pushed && (pr.headSha = fakeSha(`by-hand-${++pushed}`)));
+    const store = shepherdStoreRef();
+    let clock = T0;
+    const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
+    const outcomes: WakeOutcome[] = [];
+    const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
+      for (let round = 0; ; round++) {
+        const headSha = fake.pr(1).headSha;
+        if (!(await spendRepair(ctx, { repo: REPO, pr: 1 }, "review", headSha))) return;
+        outcomes.push(await wakePhase(ctx, { kind: "review", repo: REPO, pr: 1, round, headSha, payload: { kind: "FIX_FIRST", headSha, text: "fix it" } }));
+      }
+    };
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth: async () => undefined, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "budget-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("budget-test");
+    store.get().register({ ...registration, runId });
+
+    await host.runtime.wait(runId);
+
+    const stepIds = Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+    expect(outcomes).toHaveLength(MAX_REPAIRS);
+    expect(outcomes.every(isHeld)).toBe(true);
+    expect(stepIds.filter((id) => id === "sh-repair")).toHaveLength(MAX_REPAIRS);
+    expect(refusals).toBe(MAX_REPAIRS);
   });
 });

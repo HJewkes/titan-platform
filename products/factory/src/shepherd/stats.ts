@@ -3,7 +3,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 /** A merge that waited longer than this between the reviewer's MERGE and the merge itself is slow. */
 const SLOW_WAIT_MS = 60 * 60_000;
 
-interface StatsRange {
+export interface StatsRange {
   /** Inclusive `YYYY-MM-DD`, UTC. */
   from?: string;
   /** Inclusive `YYYY-MM-DD`, UTC. */
@@ -21,11 +21,11 @@ export interface StatsRow {
 }
 
 /** A dispatch step's answer sits under `data.result` in the ledger. */
-const payloadOf = (result: StepResult): Record<string, unknown> => {
+export const payloadOf = (result: StepResult): Record<string, unknown> => {
   const wrapped = result.data?.result;
   return typeof wrapped === "object" && wrapped !== null ? (wrapped as Record<string, unknown>) : {};
 };
-const stepName = (key: string): string => key.split(":")[0]!;
+export const stepName = (key: string): string => key.split(":")[0]!;
 const MS_PER_DAY = 86_400_000;
 
 /** The ISO 8601 week of a UTC instant: the week belongs to the year of its Thursday. */
@@ -38,7 +38,7 @@ export function isoWeek(at: number): string {
 }
 
 /** When Shepherd's own `merge` step landed the PR, or undefined if the run did not merge it. */
-function mergedAt(run: WorkflowRun): number | undefined {
+export function mergedAt(run: WorkflowRun): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "merge" && payloadOf(result).done === true)
     .map(([, result]) => Date.parse(result.completedAt));
@@ -46,7 +46,7 @@ function mergedAt(run: WorkflowRun): number | undefined {
 }
 
 /** The latest MERGE verdict the reviewer gave before the merge. */
-function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
+export function mergeVerdictAt(run: WorkflowRun, before: number): number | undefined {
   const times = Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "sh-await-verdict" && payloadOf(result).kind === "verdict" && payloadOf(result).verdict === "MERGE")
     .map(([, result]) => Date.parse(result.completedAt))
@@ -79,7 +79,7 @@ function eventOf(run: WorkflowRun): Event | undefined {
   return outside === undefined ? undefined : { repo, at: outside, outside: true };
 }
 
-function inRange(at: number, { from, to }: StatsRange): boolean {
+export function inRange(at: number, { from, to }: StatsRange): boolean {
   if (from !== undefined && at < Date.parse(`${from}T00:00:00Z`)) return false;
   return to === undefined || at < Date.parse(`${to}T00:00:00Z`) + MS_PER_DAY;
 }

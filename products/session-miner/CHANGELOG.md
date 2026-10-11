@@ -1,5 +1,151 @@
 # @titan-design/session-miner
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+  - @titan-design/session-analytics@0.13.3
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-analytics@0.13.2
+  - @titan-design/session-graph@0.15.1
+
+## 0.6.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/session-read@0.12.2
+
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [df3e9c3]
+  - @titan-design/memory@0.2.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [c0701a9]
+- Updated dependencies [91eea82]
+- Updated dependencies [e4dd79b]
+- Updated dependencies [845a0cf]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/github@0.7.0
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [948d6de]
+- Updated dependencies [875eee0]
+- Updated dependencies [1893149]
+- Updated dependencies [718eda8]
+- Updated dependencies [84bd62f]
+  - @titan-design/daemon@0.6.0
+  - @titan-design/registry@0.4.0
+  - @titan-design/session-read@0.11.1
+
+## 0.5.0
+
+### Minor Changes
+
+- 93a341b: Add `titan-miner graph-refresh`, a scheduled refresh of a graph another owner writes: it takes a non-blocking lock (exit 75 when held), runs the owner's incremental refresh, then runs a read-only `quick_check` and logs the newest session. Ship hourly systemd user units for it under `ops/systemd`.
+- 87126ff: Add insights question Q10, `tool-adoption`: for each flag or verb in the new adoption registry, weekly uses of the new form against the Q9 patterns it replaces since ship, flagged `unadopted` or `unused` two weeks after ship. Export `ourPipelines`, which keeps unpiped pipelines too.
+- deb35d0: Add insights question Q9, `tool-gaps`: Bash pipelines headed by our CLIs, grouped by normalised post-filter with a stable `patternId`, counts, distinct sessions and agents and output size, each marked NEW or EXISTS-UNUSED against the CLI's `--help`. Export `postFilters` and `patternId` for later questions.
+
+### Patch Changes
+
+- eeae364: Blocked-flow now reads PR states through the github package's port (`getPr`) instead of a raw `gh api` call; a PR GitHub cannot find is still reported as unknown.
+- bf95d64: Read agent-chat's events.db through session-analytics' `readVerdicts`, `readSpawns` and `readLastPrompts` and delete the miner's copies of those queries. The miner still checks the file exists, naming `TITAN_MINER_EVENTS_DB` with a data error, and opens it read-only; liveness now opens it once for both reads. Test fixtures create the events table from `EVENTS_TABLE_DDL` instead of a copy of agent-chat's schema.
+- a5cfd4c: Read the normalized tables through session-graph's readers instead of inline SQL. `session show` now counts a Codex conversation's tool calls in one query rather than one per turn; command output is unchanged.
+- 2c08723: Read `MINER_VERSION` from package.json, so `--version`, the daemon's `/health` and the MCP server report the package version instead of a stale `0.1.0`.
+- Updated dependencies [c10cfe0]
+- Updated dependencies [20b2ae2]
+- Updated dependencies [fa2fb83]
+- Updated dependencies [f88ac00]
+- Updated dependencies [f320219]
+- Updated dependencies [490489b]
+- Updated dependencies [944ef91]
+- Updated dependencies [5facf32]
+- Updated dependencies [7f4e467]
+- Updated dependencies [501b7c2]
+- Updated dependencies [b97a26d]
+- Updated dependencies [116dd59]
+- Updated dependencies [484fadc]
+- Updated dependencies [45f05b1]
+- Updated dependencies [5fe09ab]
+- Updated dependencies [ae161ab]
+- Updated dependencies [ce6cfdc]
+- Updated dependencies [a8f0d75]
+- Updated dependencies [00c9a6f]
+- Updated dependencies [bf95d64]
+- Updated dependencies [d31b4fe]
+- Updated dependencies [e4700f5]
+- Updated dependencies [5b59475]
+- Updated dependencies [a5cfd4c]
+- Updated dependencies [f34ae27]
+- Updated dependencies [f34ae27]
+- Updated dependencies [495e6f8]
+- Updated dependencies [74f9f51]
+- Updated dependencies [a8faac4]
+- Updated dependencies [1aed39d]
+- Updated dependencies [1fd9652]
+- Updated dependencies [deb35d0]
+- Updated dependencies [295acf8]
+- Updated dependencies [1f7de27]
+- Updated dependencies [388d791]
+- Updated dependencies [59ba612]
+- Updated dependencies [d4db9bc]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [ff6ff86]
+- Updated dependencies [f8b7be1]
+- Updated dependencies [bf5cd2a]
+- Updated dependencies [37c2689]
+- Updated dependencies [3c5b114]
+- Updated dependencies [c466784]
+- Updated dependencies [d4ef157]
+- Updated dependencies [d186dfb]
+  - @titan-design/session-analytics@0.10.0
+  - @titan-design/cluster@0.2.0
+  - @titan-design/daemon@0.5.0
+  - @titan-design/github@0.6.0
+  - @titan-design/registry@0.3.3
+  - @titan-design/retrieval@0.3.1
+  - @titan-design/session-graph@0.14.0
+  - @titan-design/session-read@0.11.0
+  - @titan-design/store-sqlite@0.4.0
+  - @titan-design/memory@0.1.4
+
 ## 0.4.3
 
 ### Patch Changes

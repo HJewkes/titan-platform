@@ -3,10 +3,48 @@ import { describe, expect, it } from "vitest";
 import {
   WorkflowOwnershipLostError,
   WorkflowRunStore,
+  WorkflowStoreSchemaOutdated,
   newRun,
+  workflowDefinitionVersionMigration,
   workflowMigration,
   workflowOwnershipMigration,
 } from "./store.js";
+
+const PRE_VERSION_DDL = `CREATE TABLE workflow_run (
+  id TEXT PRIMARY KEY, workflow_name TEXT NOT NULL, params TEXT NOT NULL, status TEXT NOT NULL,
+  current_step TEXT, step_results TEXT NOT NULL DEFAULT '{}', active_steps TEXT NOT NULL DEFAULT '{}',
+  started_at TEXT NOT NULL, completed_at TEXT, error TEXT, revision INTEGER NOT NULL DEFAULT 0,
+  owner_generation INTEGER NOT NULL DEFAULT 0, owner_runtime_id TEXT, owner_lease_until TEXT
+)`;
+
+describe("WorkflowRunStore definition version", () => {
+  it("adds the definition_version column to an existing table, and a second run is a no-op", () => {
+    const db = openDatabase(":memory:");
+    db.exec(PRE_VERSION_DDL);
+    const migration = workflowDefinitionVersionMigration(1);
+
+    migration.up(db);
+    migration.up(db);
+
+    expect(hasColumn(db, "workflow_run", "definition_version")).toBe(true);
+    const store = new WorkflowRunStore(db);
+    store.create(newRun("run-1", "demo", {}, "v1"));
+    expect(store.get("run-1")?.definitionVersion).toBe("v1");
+  });
+
+  it("round-trips an unpinned run without the column and refuses a pinned one", () => {
+    const db = openDatabase(":memory:");
+    db.exec(PRE_VERSION_DDL);
+    const store = new WorkflowRunStore(db);
+
+    store.create(newRun("unpinned", "demo", {}));
+
+    expect(store.get("unpinned")).toMatchObject({ id: "unpinned", status: "running" });
+    expect(store.get("unpinned")?.definitionVersion).toBeUndefined();
+    expect(() => store.create(newRun("pinned", "demo", {}, "v1"))).toThrow(WorkflowStoreSchemaOutdated);
+    expect(store.get("pinned")).toBeUndefined();
+  });
+});
 
 describe("WorkflowRunStore ownership", () => {
   it("upgrades an existing table without requiring it to be recreated", () => {
@@ -94,3 +132,31 @@ describe("WorkflowRunStore ownership", () => {
 function iso(milliseconds: number): string {
   return new Date(milliseconds).toISOString();
 }
+
+describe("WorkflowRunStore annotate", () => {
+  const fact = (data: Record<string, unknown>) => ({ stepId: "later", iteration: 0, agentId: null, signal: null, completedAt: iso(0), data });
+
+  function storeWith(status: "running" | "completed"): WorkflowRunStore {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1), workflowOwnershipMigration(2)]);
+    const store = new WorkflowRunStore(db);
+    store.create({ ...newRun("run-1", "demo", {}), status });
+    return store;
+  }
+
+  it("adds a later fact to a finished run once, and never rewrites it", () => {
+    const store = storeWith("completed");
+
+    expect(store.annotate("run-1", "later", fact({ n: 1 }))).toBe(true);
+    expect(store.annotate("run-1", "later", fact({ n: 2 }))).toBe(false);
+
+    expect(store.get("run-1")!.stepResults.later?.data).toEqual({ n: 1 });
+  });
+
+  it("leaves a run that has not finished alone", () => {
+    const store = storeWith("running");
+
+    expect(store.annotate("run-1", "later", fact({ n: 1 }))).toBe(false);
+    expect(store.get("run-1")!.stepResults).toEqual({});
+  });
+});

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/daemon",
-  "version": "0.4.1",
+  "version": "0.6.0",
   "description": "hono host: /rpc + /mcp + SSE events, file watch, and process lifecycle",
   "type": "module",
   "main": "./dist/index.js",

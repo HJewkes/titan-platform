@@ -103,7 +103,7 @@ function RecordsRow({ row }: { row: Row }): ReactNode {
     <TableRow testID={`initiative-row-${row.slug}`}>
       <TableCell>
         <HStack gap={2} align="center">
-          <Link color="primary" onPress={() => open({ view: "initiatives", slug: row.slug })}>
+          <Link color="primary" onPress={() => open({ view: "initiatives", id: row.slug })}>
             {row.slug}
           </Link>
           {row.personal ? <PersonalBadge /> : null}

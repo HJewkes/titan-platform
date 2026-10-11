@@ -1,0 +1,31 @@
+{
+  "schema": "titan-review/round@2",
+  "unit": "kiln-schedule",
+  "round": 1,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "widths": [1280],
+  "variants": [],
+  "recommendations": "after-answer",
+  "sections": [
+    {
+      "id": "units",
+      "title": "Temperature units",
+      "deciding": "Which unit the calculator starts in.",
+      "changed": "The unit toggle moved into the header.",
+      "context": "Conversion rounding is out of scope.",
+      "parts": [{ "id": "unit-default", "label": "Starting unit", "proposed": "unit: \"celsius\"", "lang": "ts" }],
+      "questionIds": ["unit-start"]
+    }
+  ],
+  "questions": [
+    {
+      "id": "unit-start",
+      "kind": "pick-one",
+      "prompt": "Which unit should the calculator start in?",
+      "options": ["Celsius", "Fahrenheit"],
+      "required": true,
+      "signsOff": "unit-default",
+      "recommendation": { "answer": "Celsius", "rationale": "The cone table is printed in Celsius.", "confidence": 0.8, "by": "fixture-agent" }
+    }
+  ]
+}

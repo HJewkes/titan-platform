@@ -7,19 +7,33 @@ import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-fa
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import { MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
+import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
 export type MergeMode = (typeof MERGE_ORDER)[number];
 
-/** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused. */
-export const RequestedPolicySchema = z.strictObject({
+export const OWNER_GATE_REASONS = ["gate-2-visual", "g10-security", "proof-fixture", "owner-asked"] as const;
+
+type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
+
+/** The request's fields alone, so an argument parser accepts a request that `resolveEffectivePolicy` then refuses as a registration. */
+export const RequestedPolicyFields = z.strictObject({
   merge: z.enum(MERGE_ORDER).optional(),
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   mergeMethod: z.enum(["merge", "squash", "rebase"] satisfies MergeMethod[]).optional(),
   reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean().optional(),
+});
+
+/** What a registration asks for; each field can only narrow what the seat allows. Unknown keys are refused, and owner-gate must say why. */
+const RequestedPolicySchema = RequestedPolicyFields.superRefine((request, ctx) => {
+  const path = ["ownerGateReason"];
+  if (request.merge === "owner-gate" && request.ownerGateReason === undefined) {
+    ctx.addIssue({ code: "custom", path, message: `owner-gate needs ownerGateReason, one of ${OWNER_GATE_REASONS.join(", ")}` });
+  }
+  if (request.merge !== "owner-gate" && request.ownerGateReason !== undefined) ctx.addIssue({ code: "custom", path, message: "ownerGateReason applies only with merge owner-gate" });
 });
 
 export type RequestedPolicy = z.infer<typeof RequestedPolicySchema>;
@@ -30,10 +44,14 @@ export interface EffectivePolicy {
   reviewer?: string;
   priority?: number;
   fixer: boolean;
+  /** Why the owner is asked; absent on an owner-gate run registered before the field, which reads as legacy. */
+  ownerGateReason?: OwnerGateReason;
   /** The seat that set the ceiling, or `none` for a repo no seat lists. */
   seat: string;
   /** Under `auto`, a head whose changed files match one of these globs still waits for the owner. */
   visualPaths?: string[];
+  /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
+  featureBase?: true;
 }
 
 /** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
@@ -43,18 +61,25 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   reviewer: z.string().optional(),
   priority: z.number().int().optional(),
   fixer: z.boolean(),
+  ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
+  featureBase: z.literal(true).optional(),
 });
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
 export const OWNER_GATE_POLICY: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" };
 
+/** The ceiling a run carries in its `policy` param; a run with none gets the owner gate. */
+export function runPolicyCeiling(rawPolicy: string | undefined): EffectivePolicy {
+  return rawPolicy === undefined ? OWNER_GATE_POLICY : EffectivePolicySchema.parse(JSON.parse(rawPolicy));
+}
+
 export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }
 
-export { MERGE_ON_GREEN_GRANT };
+export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
@@ -63,7 +88,8 @@ function narrower(a: MergeMode, b: MergeMode): MergeMode {
 
 /**
  * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
- * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one.
+ * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one. Only a seat's
+ * grant allows a feature base; no request key does.
  */
 export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}): EffectivePolicy {
   if (lookup.kind === "denied") throw new RegistrationRefused(lookup.reason);
@@ -76,16 +102,28 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     ...(requested.reviewer !== undefined && { reviewer: requested.reviewer }),
     ...(requested.priority !== undefined && { priority: requested.priority }),
     fixer: seat !== undefined && requested.fixer !== false,
+    ...(requested.ownerGateReason !== undefined && { ownerGateReason: requested.ownerGateReason }),
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
+    ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode or add visual paths, never loosen either. */
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base, never loosen any. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
-  return { ...trusted, merge, fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
+  const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
+  if (!other.featureBase) delete stricter.featureBase;
+  return stricter;
+}
+
+/** A repeat registration narrows the stored policy, but the first owner-gate reason stands: a repeat cannot relabel why the owner is asked. */
+export function repeatedPolicy(repeat: EffectivePolicy, stored: EffectivePolicy): EffectivePolicy {
+  const narrowed = stricterPolicy(repeat, stored);
+  const ownerGateReason = stored.ownerGateReason ?? narrowed.ownerGateReason;
+  return { ...narrowed, ...(ownerGateReason && { ownerGateReason }) };
 }
 
 function parseRequest(request: unknown): RequestedPolicy {
@@ -105,7 +143,7 @@ export function shepherdGatePolicy(effective: EffectivePolicy, verdictFor: (head
     decide: (action, target): GateDecision => {
       if (effective.merge === "never") return { outcome: "deny", rule, reason: `seat ${effective.seat} policy never allows ${action}` };
       if (effective.merge === "auto" && action === "merge" && target?.headSha !== undefined) return decideAutoMerge(target.headSha, mergeEvidenceAt(target.headSha, verdictFor), effective.visualPaths);
-      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
+      return { outcome: "gate", rule, reason: `seat ${effective.seat} policy ${effective.merge}${reasonNote(effective)} waits for the owner on ${action}${reviewNote(target?.headSha, verdictFor)}` };
     },
   };
 }
@@ -132,12 +170,19 @@ export function shepherdLandOptions(
   };
   const decide = (action: string, target?: { headSha?: string }): GateDecision => {
     const decision = shepherdGatePolicy(effective(), current).decide(action, target);
-    if (decision.outcome !== "gate") return decision;
+    if (decision.outcome === "deny") return decision;
     const escalated = target?.headSha === undefined ? undefined : escalationAt(target.headSha);
-    if (escalated !== undefined) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalationReason(escalated.escalation, escalated.detail) };
+    // A carried escalation gates even a head the policy would allow: the owner's question must be asked again, never resolved for them.
+    if (escalated !== undefined && (decision.outcome === "gate" || escalated.carriedFrom !== undefined)) return { outcome: "gate", rule: routeRule(escalated.escalation), reason: escalatedReason(escalated, target?.headSha, current) };
+    if (decision.outcome !== "gate") return decision;
     return { ...decision, reason: escalationReason("policy-denial", decision.reason) };
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh } };
+  return { policy: { decide }, allowEvidence: (merge) => ({ ...mergeEvidenceAt(merge.headSha, current)?.record }), unsettled: { transient: isUnsettledGate, refresh }, featureBase: () => effective().featureBase === true };
+}
+
+function escalatedReason(escalated: Escalated, headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
+  const reason = escalationReason(escalated.escalation, escalated.detail);
+  return escalated.carriedFrom === undefined ? reason : `${reason}; carried from the gate at head ${escalated.carriedFrom}${reviewNote(headSha, verdictFor)}`;
 }
 
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
@@ -161,4 +206,8 @@ function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdi
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
   const verdict = headSha === undefined ? undefined : verdictFor(headSha);
   return verdict ? `; review at this head: ${verdict.kind}` : "";
+}
+
+function reasonNote(effective: EffectivePolicy): string {
+  return effective.merge === "owner-gate" && effective.ownerGateReason ? ` (${effective.ownerGateReason})` : "";
 }

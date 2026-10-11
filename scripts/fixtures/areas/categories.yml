@@ -1,0 +1,18 @@
+# A registry with an area section between other keys, to prove --write touches only that block.
+kind:
+  - epic
+  - feature   # inline comment kept
+status:
+  - { id: open, closed: false, dispatchable: true }
+  - { id: done, closed: true, dispatchable: false }
+  - { id: wont-do, closed: true, dispatchable: false }
+  - { id: icebox, closed: false, dispatchable: false }
+area:
+  - id: stale-area
+    tier: 0
+  - { id: other, tier: product }
+
+# introduces cos
+cos:
+  - standard
+  - fixed

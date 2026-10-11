@@ -36,6 +36,33 @@ function pathCandidates(testId: string): string[] {
   return [...out];
 }
 
+const PY_TEST_NAME_RE = /^test_(.+\.py)$|^(.+)_test\.py$/;
+
+const basename = (id: string): string => id.slice(id.lastIndexOf("/") + 1);
+
+/**
+ * pytest's `tests/test_cli.py` sits in a tree apart from `src/pkg/cli.py`, so no
+ * path rewrite reaches it: pair it with the one non-test `cli.py`, and with none
+ * when several share that name.
+ */
+function pythonCandidate(testId: string, nonTestByBasename: ReadonlyMap<string, readonly string[]>): string[] {
+  const m = PY_TEST_NAME_RE.exec(basename(testId));
+  const target = m ? (m[1] ?? `${m[2]}.py`) : null;
+  const matches = target ? (nonTestByBasename.get(target) ?? []) : [];
+  return matches.length === 1 ? [...matches] : [];
+}
+
+function groupByBasename(ids: Iterable<string>): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const id of ids) {
+    const name = basename(id);
+    const list = out.get(name);
+    if (list) list.push(id);
+    else out.set(name, [id]);
+  }
+  return out;
+}
+
 function splitFileIds(nodes: readonly GraphNode[]): { testIds: string[]; nonTestIds: Set<string> } {
   const testIds: string[] = [];
   const nonTestIds = new Set<string>();
@@ -49,7 +76,8 @@ function splitFileIds(nodes: readonly GraphNode[]): { testIds: string[]; nonTest
 
 /**
  * Two-pass test↔source linker. Pass 1 pairs each test file with non-test files
- * matching its path conventions (high confidence). Pass 2 supplements tests
+ * matching its path conventions, pytest's `test_<name>.py` included (high
+ * confidence). Pass 2 supplements tests
  * left unpaired by pass 1 with their strongest co-edited non-test partner from
  * change-coupling. Handles orphan tests (no pairing), orphan/untested sources
  * (no incoming link), and one-to-many pairings (a test matching several
@@ -62,9 +90,11 @@ export function linkTestsToSources(
 ): TestSourceLink[] {
   const minCount = options.minCoEditCount ?? DEFAULT_MIN_CO_EDIT_COUNT;
   const { testIds, nonTestIds } = splitFileIds(nodes);
+  const nonTestByBasename = groupByBasename(nonTestIds);
   const links: TestSourceLink[] = [];
   for (const testId of testIds) {
-    const matched = pathCandidates(testId).filter((c) => nonTestIds.has(c));
+    const byPath = pathCandidates(testId).filter((c) => nonTestIds.has(c));
+    const matched = byPath.length > 0 ? byPath : pythonCandidate(testId, nonTestByBasename);
     if (matched.length > 0) {
       for (const sourceId of matched) {
         links.push({ testId, sourceId, method: "path" });

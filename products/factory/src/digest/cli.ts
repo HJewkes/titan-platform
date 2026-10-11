@@ -11,6 +11,7 @@ export interface DigestVerbs {
   io: DigestIo;
   withHost: (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number) => Promise<void>;
   setExit: (code: number) => void;
+  dbPath: () => string;
 }
 
 export type FactoryRpc = (port: number, name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
@@ -28,10 +29,10 @@ export function registerDigest(program: Command, verbs: DigestVerbs, rpc: Factor
     .option("--port <n>", "port titan-factory serve listens on", parsePort, FACTORY_PORT)
     .action(async (opts: { since?: number; dryRun?: boolean; full?: boolean; port: number }) => {
       const flags: DigestFlags = { sinceMinutes: opts.since, dryRun: opts.dryRun, full: opts.full };
-      if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => rpc(opts.port, name, args), flags));
+      if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => rpc(opts.port, name, args), flags, { dbPath: verbs.dbPath() }));
       await verbs.withHost((host, routes) => {
         const call: FactoryCall = async (name, args) => (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
-        return runDigestVerb(verbs.io, call, flags);
+        return runDigestVerb(verbs.io, call, flags, { dbPath: verbs.dbPath() });
       });
     });
 }

@@ -72,7 +72,7 @@ function landingPort(repo: Repo): GitHubPort {
   const mergeShas = () => [1, 2].map((pr) => repo.fake.pr(pr).mergeSha);
   return {
     ...port,
-    checkRuns: async (slug, sha) => (mergeShas().includes(sha) && repo.fake.setRuns(sha, [successRun("validate", 9)]), port.checkRuns(slug, sha)),
+    checkRuns: async (slug, sha) => (mergeShas().includes(sha) && repo.fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)),
   };
 }
 
@@ -215,6 +215,27 @@ describe("a holder whose own merge must wait", () => {
 
     expect(firstWhileHeld).toBe("running");
     expect(mergedWhileHeld).toEqual([2]);
+    expect([first, second].map((runId) => w.host.runtime.status(runId)?.status)).toEqual(["completed", "completed"]);
+    expect(repo.merged).toEqual([2, 1]);
+    expect(repo.refused).toEqual([]);
+    expect(w.train.get().holder(REPO)).toBeUndefined();
+  });
+
+  it("gives the train up while its approved head waits for a retarget, and merges second once retargeted", async () => {
+    const repo = twoPrRepo();
+    const ci: { update?: string } = {};
+    const { w, first, second } = await firstHoldsSecondWaits(repo, ci);
+
+    repo.fake.pr(1).baseRef = "feat/x";
+    ci.update = "success";
+    await w.host.runtime.wait(second);
+    const firstStep = w.host.runtime.status(first)?.currentStep;
+    const holderWhileWaiting = w.train.get().holder(REPO);
+    repo.fake.pr(1).baseRef = "main";
+    await w.host.runtime.wait(first);
+
+    expect(firstStep).toMatch(/^base-wait/);
+    expect(holderWhileWaiting).toBeUndefined();
     expect([first, second].map((runId) => w.host.runtime.status(runId)?.status)).toEqual(["completed", "completed"]);
     expect(repo.merged).toEqual([2, 1]);
     expect(repo.refused).toEqual([]);

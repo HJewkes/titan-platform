@@ -7,6 +7,7 @@ import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
 import { EXIT_NOTICE_STEPS, exitNoticeRoute, noticeSeat, type ExitNoticePorts } from "./exit-notice.js";
+import { seatOrGate } from "./gate-route.js";
 
 const FLAKE_CHECK_STEP = "sh-flake-check";
 /** The steps `afterFixerExit` records: the flake check, then the seat notice. */
@@ -57,7 +58,23 @@ const FailingPayload = z.object({ failing: z.array(z.object({ name: z.string(), 
 
 type ExitRun = GateRun & { state: { round: number; reruns: number } };
 
-/** Heads rerun after a fixer's exit, per run; a head gets one, and a replay of the run's steps rebuilds the set. */
+const headsRerun = (run: ExitRun): Set<string> => rerunHeads.get(run.ctx) ?? rerunHeads.set(run.ctx, new Set()).get(run.ctx)!;
+
+/**
+ * True when a ci-red head had its failed Actions jobs rerun before any fixer is woken, so the caller lands the next
+ * round and reads CI afresh; a head that fails again is woken as usual. A head is rerun once, by this or by a fixer's exit.
+ */
+export async function rerunFlakyHead(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  const red = kind === "ci-red" ? FailingPayload.safeParse(payload) : undefined;
+  if (!red?.success || red.data.failing.length === 0 || red.data.failing.some((check) => check.workflowRunId === null)) return false;
+  const reran = headsRerun(run);
+  if (reran.has(headSha)) return false;
+  reran.add(headSha);
+  await rerun(run.ctx, run.target, { kind: "ci-failed", headSha, failing: red.data.failing }, run.state);
+  return true;
+}
+
+/** Heads rerun, per run, whether before the wake or after a fixer's exit; a head gets one, and a replay of the run's steps rebuilds the set. */
 const rerunHeads = new WeakMap<object, Set<string>>();
 
 /**
@@ -67,7 +84,7 @@ const rerunHeads = new WeakMap<object, Set<string>>();
  * the error that ends it.
  */
 export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], headSha: string, payload: unknown, exit: { reason: string; wake?: WakeEvidence }, leave: (outcome?: LandOutcome) => Error): Promise<true> {
-  const reran = rerunHeads.get(run.ctx) ?? rerunHeads.set(run.ctx, new Set()).get(run.ctx)!;
+  const reran = headsRerun(run);
   const red = kind === "ci-red" && !reran.has(headSha) ? FailingPayload.safeParse(payload) : undefined;
   if (red?.success) {
     const check = await step(run.ctx, `${FLAKE_CHECK_STEP}:${run.state.round}`, { ...run.target, headSha, failing: red.data.failing }, FlakeCheckResult);
@@ -77,9 +94,21 @@ export async function afterFixerExit(run: ExitRun, kind: WakeRequest["kind"], he
       return true;
     }
   }
-  const notice = await noticeSeat(run, kind, headSha, exit.wake);
-  if (notice?.sent === true) throw leave(await awaitNewHead(run, headSha));
-  const why = notice === undefined ? "" : ` (${notice.cause}: ${notice.detail})`;
-  const prompt = `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${why}. Await a new head or abandon?`;
-  throw leave(await sentBackGate(run, headSha, prompt, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`));
+  throw await noticeOrGate(run, kind, headSha, exit, `a human abandoned the PR after the fixer exited without a push at a ${kind} wake`, leave);
+}
+
+/** A send-back whose successor agent-chat refused takes the same route as an exit with no push: the seat, else the owner. */
+export async function afterHeldWake(run: ExitRun, kind: WakeRequest["kind"], headSha: string, held: { reason: string; held: { agent: string } }, leave: (outcome?: LandOutcome) => Error): Promise<never> {
+  const exit = { reason: held.reason, wake: { agent: held.held.agent }, held: held.reason };
+  throw await noticeOrGate(run, kind, headSha, exit, `a human abandoned the PR after no fixer could start at a ${kind} wake`, leave);
+}
+
+/** The run waits for a new head with no gate only once the seat was told; otherwise the sent-back gate names why. */
+async function noticeOrGate(run: ExitRun, kind: WakeRequest["kind"], headSha: string, exit: { reason: string; wake?: WakeEvidence; held?: string }, abandoned: string, leave: (outcome?: LandOutcome) => Error): Promise<Error> {
+  const tell = async () => {
+    const notice = await noticeSeat(run, kind, headSha, exit.wake, exit.held);
+    return notice && { sent: notice.sent, detail: `${notice.cause}: ${notice.detail}` };
+  };
+  const prompt = (unsent: string) => `The ${kind} wake of PR #${run.target.pr} in ${run.target.repo} at head ${headSha} ended: ${exit.reason}${unsent}. Await a new head or abandon?`;
+  return seatOrGate(tell, async () => leave(await awaitNewHead(run, headSha)), async (unsent) => leave(await sentBackGate(run, headSha, prompt(unsent), abandoned)));
 }

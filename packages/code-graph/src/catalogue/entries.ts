@@ -276,5 +276,47 @@ const TESTS: readonly MetricDescriptor[] = [
   },
 ];
 
+const kindFlag = (name: string, description: string, absent: "zero" | "exclude" = "exclude"): MetricDescriptor => ({
+  name, unit: "count", appliesTo: SYMBOL, rollup: "sum", direction: "neutral", absent, source: "test-kinds", description,
+});
+
+const testCount = (name: string, direction: "lower-worse" | "higher-worse" | "neutral", description: string): MetricDescriptor => ({
+  name, unit: "count", appliesTo: SYMBOL, rollup: "none", direction, absent: "zero", source: "test-kinds",
+  description: `${description} Counts test functions reaching the symbol through calls edges (a click CliRunner's invoke(cmd, ...) counts as a call to cmd, the group alone for a group); written only where a test reaches it.`,
+});
+
+/**
+ * Python code kinds and test kinds (`test-kinds.ts`, TP-2170). Facts only: which kinds need which tests is a
+ * consumer's policy. Each `symbol_kind_*` is 0 or 1 on a function outside a test file, and each `test_kind_*`
+ * 0 or 1 on a pytest test function.
+ */
+const TEST_KINDS: readonly MetricDescriptor[] = [
+  kindFlag("symbol_kind_parser", "1 when the function's own name (a method's too) says parse, decode, deserialize, tokenize, lex or loads, or it calls json, yaml, toml, csv, ast.literal_eval or struct.unpack decoding."),
+  kindFlag("symbol_kind_io", "1 when the function itself calls open; a method only paths and files have (read_text, write_text, mkdir, unlink, open and the like) on any receiver; a method str or other types share (replace, rename, glob, read) on a proven Path (a Path(...) call, a name bound to one, or a Path-annotated parameter); os (path arithmetic aside), subprocess, socket, shutil, requests, httpx or urllib.request."),
+  kindFlag("symbol_output_signal", "1 when the function itself prints, writes sys.stdout, echoes through click or typer, builds an argparse parser, carries a click, typer, Flask or FastAPI command or route decorator, or is called in its file's __main__ guard."),
+  kindFlag("symbol_state_writes", "1 when the function declares global or nonlocal, or assigns into or mutates (append, update and the like) state it does not own: a module-level name it does not rebind, self, cls or a parameter."),
+  {
+    name: "symbol_unlisted_calls", unit: "count", appliesTo: SYMBOL, rollup: "sum", direction: "neutral",
+    absent: "exclude", source: "test-kinds",
+    description: "Calls in the function the purity allow-list does not cover: pure builtins, math, re, json.dumps and the like, methods only str has on any receiver, and methods str, list or dict share with stateful types (replace, copy, join, keys, get) or mutators only on a local proven to hold such a value (every binding of it a plain assignment from a literal, a value-typed builtin such as str or sorted, or another value). A function handed to map, filter, functools.reduce or a key= argument counts as a call to it. symbol_kind_pure needs a resolved calls edge for every one.",
+  },
+  kindFlag("symbol_kind_output_boundary", "1 when symbol_output_signal is, or a pyproject console script or a module-level call in a __main__.py starts the function."),
+  kindFlag("symbol_kind_pure", "1 when the function is no parser, and neither it nor any function it reaches through calls edges does I/O, writes state it does not own, is an output boundary, or makes a call that is neither on the allow-list nor resolved to a source function. An unresolved call means not pure."),
+  kindFlag("test_kind_snapshot", "1 when the test takes a syrupy or pytest-regressions fixture, calls approvaltests verify, or compares with == against snapshot, or compares one file read with another (a golden file). A file read compared with a literal or a variable is exact output."),
+  kindFlag("test_kind_exact_output", "1 when the test asserts == on a value (not a length, shape, exit status, snapshot or round trip), or calls a unittest assertEqual family method."),
+  kindFlag("test_kind_loose_output", "1 when the test's output assertions are all loose (in, startswith, a length or shape, a comparison or truthiness) and none is exact, snapshot or round trip."),
+  kindFlag("test_kind_error_path", "1 when the test uses pytest.raises or assertRaises, or asserts a non-zero exit_code, returncode or .code attribute, or an HTTP error status_code."),
+  kindFlag("test_kind_property", "1 when the test is decorated with hypothesis @given."),
+  kindFlag("test_kind_roundtrip", "1 when the test asserts f(g(x)) == x."),
+  testCount("symbol_tests_snapshot", "lower-worse", "Snapshot, approval or golden-file tests (test_kind_snapshot) reaching the symbol."),
+  testCount("symbol_tests_exact_output", "lower-worse", "Exact-output tests (test_kind_exact_output) reaching the symbol."),
+  testCount("symbol_tests_loose_output_only", "higher-worse", "Tests whose output assertions are all loose (test_kind_loose_output) reaching the symbol."),
+  testCount("symbol_tests_error_path", "lower-worse", "Error-path tests (test_kind_error_path) reaching the symbol."),
+  testCount("symbol_tests_property", "neutral", "Property tests (test_kind_property) reaching the symbol."),
+  testCount("symbol_tests_roundtrip", "lower-worse", "Round-trip tests (test_kind_roundtrip) reaching the symbol."),
+];
+
 /** Every metric name code-graph writes, with windowed names as `{w}` templates. */
-export const METRIC_CATALOGUE: readonly MetricDescriptor[] = [...DEGREE, ...SOURCE, ...SMELLS, ...HISTORY, ...TESTS];
+export const METRIC_CATALOGUE: readonly MetricDescriptor[] = [
+  ...DEGREE, ...SOURCE, ...SMELLS, ...HISTORY, ...TESTS, ...TEST_KINDS,
+];

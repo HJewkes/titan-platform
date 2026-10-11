@@ -87,3 +87,28 @@ into proposed deltas; the loop feeds the growing playbook and prior deltas back 
 three iterations, stops on nothing new or at 50 deltas, validates every item, then curates
 with the session's provenance and advances the watermark. Invalid output is reported in
 `rejected`, never thrown.
+
+## Auto-memory (`parseMemoryFile`, `dedupeFacts`, `groupFacts`, `proposeDestination`)
+
+Pure functions over Claude Code auto-memory fact files (`<config>/projects/<project>/memory/*.md`),
+so a caller can show the owner what agents have remembered and where each fact should live. No
+filesystem access and no model call; the caller reads the files.
+
+- `parseMemoryFile(raw, ref)` accepts the three frontmatter shapes in use: a top-level `type`, a
+  nested `metadata.type`, and a `metadata` block with no type (type `unknown`). It never throws: a
+  missing closing `---` or invalid YAML comes back as `{ ok: false, error }` naming the file.
+  `contentHash` is `contentKey(description + "\n" + body)`.
+- `parseMemoryIndex(raw)` returns the `- [Title](file.md)` pointer lines of a `MEMORY.md` with
+  their 1-based line numbers.
+- `dedupeFacts(facts, { nearDup = 0.85 })` merges equal content keys, then near-duplicates at
+  that Jaccard, but only when both have the same polarity (`Always X` never merges with
+  `Never X`). The representative is the longest body, ties broken by path.
+- `groupFacts(deduped, { threshold = 0.3 })` is single-link grouping over the Jaccard of each
+  fact's name and description tokens minus a stop list, labelled by its three commonest tokens.
+- `proposeDestination(group, skills, { now, staleDays = 30 })` takes the first rule that fits: a
+  skill whose description reaches Jaccard 0.25 (`skill:<name>`), coordination feedback
+  (`charter`), feedback or user facts across two or more projects (`claude-md:global`), project
+  facts untouched for `staleDays` (`delete`), feedback or user facts from one project
+  (`claude-md:<project>`), otherwise `new-skill:<label>`.
+
+Every output is sorted, so the same files give the same groups in any input order.

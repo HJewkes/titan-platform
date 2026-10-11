@@ -10,3 +10,5 @@ export { scan } from "./scan.js";
 export type { ReportSummary } from "./report.js";
 export { formatReport } from "./report.js";
 export { scanText } from "./text.js";
+export type { TokenHit, TokenKind } from "./tokens.js";
+export { locateTokens } from "./tokens.js";

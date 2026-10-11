@@ -21,6 +21,7 @@ import {
 } from "./incremental.js";
 import { computeDeltaAffected } from "./reuse-delta.js";
 import { assembleIndexerMetrics } from "./index-metrics.js";
+import { loadEntryPoints } from "./analysis/test-kinds.js";
 import type { HistoryMetricsOptions } from "./history-metrics.js";
 import { mergeFragments, type ExtractAccumulator } from "./merge.js";
 import { predatesQualifiedSymbols, qualifiedSymbolAliases } from "./symbol-aliases.js";
@@ -31,7 +32,7 @@ import type { GraphMetric, IdAlias } from "./types.js";
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-export const INDEX_VERSION = "0.26.0";
+export const INDEX_VERSION = "0.27.0";
 
 /** The languages walked and extracted. `typescript` covers `.ts` and `.tsx`. */
 const LANGUAGES = ["typescript", "python"] as const;
@@ -215,6 +216,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
             : [],
           idRoot,
           history: options.computeChurn === false ? undefined : historyOptions(options, source),
+          entryPoints: loadEntryPoints([idRoot, ...rootDirs], source),
         });
 
   // A revision's indexed dirs may be gone from disk, so its git calls run at the repo root.

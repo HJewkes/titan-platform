@@ -63,6 +63,8 @@ snapshot format, `titan-snapshot@1`, is defined in [`rpc-client`](/reference/rpc
 
 - `rpcFailureStatus` maps only `EXIT.DATAERR` to 400. A command that throws with
   `EXIT.USAGE` answers 500; the only 400 with `USAGE` is an unparseable JSON body.
+- A command that refuses its caller throws with `EXIT.NOPERM` (77), which answers 403.
+- A command that refuses a caller over its limit throws with `EXIT.TEMPFAIL` (75), which answers 429.
 - `successEnvelope` omits `warnings` when the list is empty, so a client must treat a
   missing key and an empty list the same.
 - `ping` frames carry the server's `Date.now()` as their data, not a sequence number, and

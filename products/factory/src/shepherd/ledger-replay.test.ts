@@ -103,16 +103,18 @@ function answerReview(replay: Replay, request: ReviewRequest): ReviewAnswer | un
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
 /**
- * The tree probe's git, answering from the fixture: a head scripted `treeEqual` has the tree of its parent merged onto
- * main, any other head has a tree of its own. Heads are told apart by the order the run first read them.
+ * The tree probe's git, answering from the fixture: every head is the reviewed head merged with main, and a head scripted
+ * `treeEqual` has the tree of that clean merge, any other head a tree of its own. Heads are told apart by the order the run
+ * first read them.
  */
 function scriptedGit(replay: Replay): Git {
   let head = "";
+  let reviewed = "";
   let merged = "";
   return async (_dir, args) => {
     const [command, flag] = args;
-    if (command === "fetch") head = args[6] ?? "";
-    if (command === "rev-list") return ok(`${head} ${fakeSha("reviewed-parent")} ${fakeSha("main-base")}`);
+    if (command === "fetch") [reviewed = "", head = ""] = args.slice(5, 7);
+    if (command === "rev-list") return ok(`${head} ${reviewed} ${fakeSha("main-base")}`);
     if (command === "merge-tree") return ok(`${(merged = `merged-${args[4]}`)}\n`);
     if (command !== "rev-parse" || flag === undefined) return ok();
     const script = headOf(replay, head);
@@ -149,11 +151,11 @@ const MAIN_RUNS: Record<MainScript, ReturnType<typeof successRun>> = {
 function mainCi(fake: FakeGitHub, main: MainScript): GitHubPort {
   const port = githubPort(fake.wire);
   const atMerge = (sha: string): void => {
-    fake.setRuns(sha, [MAIN_RUNS[main]]);
+    fake.setRuns(sha, [MAIN_RUNS[main], successRun("dag-check", 11)]);
     if (main !== "cancelled-superseded") return;
     fake.refs.set("main", NEWER_MAIN);
     fake.compares.set(`${sha}...${NEWER_MAIN}`, { mergeBaseSha: sha, files: [] });
-    fake.setRuns(NEWER_MAIN, [successRun("validate", 10)]);
+    fake.setRuns(NEWER_MAIN, [successRun("validate", 10), successRun("dag-check", 12)]);
   };
   return { ...port, checkRuns: async (repo, sha) => (fake.pr(1).merged && sha === fake.pr(1).mergeSha && atMerge(sha), port.checkRuns(repo, sha)) };
 }

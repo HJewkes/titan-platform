@@ -1,4 +1,6 @@
 import type { RecoveredStep } from "./context-deps.js";
+import { toDurableOutcome } from "./runners.js";
+import { messageOf } from "./runtime-values.js";
 import type {
   ActiveStep,
   DurableStepOutcome,
@@ -82,7 +84,7 @@ async function reconcileLegacy(
     options,
   );
   if (outcome?.ok) {
-    return { kind: "completion", step, completion: Promise.resolve({ kind: "succeeded", output: outcome.output, usage: outcome.usage }) };
+    return { kind: "completion", step, completion: Promise.resolve(toDurableOutcome(outcome)) };
   }
   const evidence = outcome ? `legacy attach failed: ${outcome.error}` : "runner cannot reconcile work after restart";
   markStepRecovery(step, "legacy_unrecoverable", evidence, options.now());
@@ -120,9 +122,18 @@ function markRecovery(
   options: ReconcileOptions,
 ): void {
   markStepRecovery(step, kind, evidence, options.now());
+  parkForRecovery(run, evidence);
+  announceRecovery(options.emit, run.id, step.stepId, evidence);
+}
+
+/** The one place a run enters `recovery_required`: a human must look before it moves again. */
+export function parkForRecovery(run: WorkflowRun, evidence: string): void {
   run.status = "recovery_required";
   run.error = evidence;
-  options.emit({ type: "workflow_recovery_required", runId: run.id, stepId: step.stepId, evidence });
+}
+
+export function announceRecovery(emit: (event: WorkflowEvent) => void, runId: string, stepId: string, evidence: string, gateId?: string): void {
+  emit({ type: "workflow_recovery_required", runId, stepId, evidence, ...(gateId ? { gateId } : {}) });
 }
 
 async function withTimeout<T>(
@@ -151,10 +162,6 @@ export function isRecoverable(runner: StepRunner): runner is RecoverableStepRunn
   return "dispatch" in runner && "reconcile" in runner;
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 class ReconcileTimeout extends Error {
   constructor(milliseconds: number) {
     super(`reconciliation timed out after ${milliseconds}ms`);
@@ -165,7 +172,6 @@ class ReconcileTimeout extends Error {
 /** Runs a legacy step once and maps its outcome onto the durable shape, adopting the runner ref on success. */
 export async function runLegacyStep(runner: LegacyStepRunner, step: ActiveStep, input: StepRunInput): Promise<DurableStepOutcome> {
   const outcome = await runner.run(input);
-  if (!outcome.ok) return { kind: "failed", error: outcome.error, retryable: outcome.retryable, code: outcome.code, usage: outcome.usage };
-  if (outcome.runnerRef) step.runnerRef = outcome.runnerRef;
-  return { kind: "succeeded", output: outcome.output, usage: outcome.usage };
+  if (outcome.ok && outcome.runnerRef) step.runnerRef = outcome.runnerRef;
+  return toDurableOutcome(outcome);
 }

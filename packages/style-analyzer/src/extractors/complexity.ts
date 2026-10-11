@@ -1,4 +1,9 @@
 import type { Node } from "web-tree-sitter";
+import {
+  PY_FUNCTION_TYPES,
+  TS_FUNCTION_DECLARATION,
+  TS_METHOD_DEFINITION,
+} from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 interface FunctionInfo {
@@ -9,14 +14,8 @@ interface FunctionInfo {
   line: number;
 }
 
-const TS_FUNCTION_TYPES = new Set([
-  "function_declaration",
-  "method_definition",
-]);
-
-const PY_FUNCTION_TYPES = new Set([
-  "function_definition",
-]);
+// Generators are left out on purpose: the complexity metric has always counted only these two.
+const TS_FUNCTION_TYPES: ReadonlySet<string> = new Set([TS_FUNCTION_DECLARATION, TS_METHOD_DEFINITION]);
 
 const TS_NESTING_TYPES = new Set([
   "if_statement",
@@ -101,13 +100,13 @@ export class ComplexityExtractor implements StyleExtractor {
     }));
   }
 
-  private getFunctionTypes(language: string): Set<string> {
+  private getFunctionTypes(language: string): ReadonlySet<string> {
     return language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_TYPES;
   }
 
   private findFunctions(
     root: Node,
-    functionTypes: Set<string>,
+    functionTypes: ReadonlySet<string>,
     language: string,
   ): FunctionInfo[] {
     const functions: FunctionInfo[] = [];

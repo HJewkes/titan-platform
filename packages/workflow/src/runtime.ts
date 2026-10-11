@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { cancelGate, type GateResolver } from "@titan-design/hitl";
+import type { GateResolver } from "@titan-design/hitl";
+import { parkOnDefinitionDrift, registration, type Registration } from "./definition-version.js";
+import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
-import { markStepRecovery, reconcileActiveSteps } from "./recovery.js";
+import { announceRecovery, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
 import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
-import { WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
+import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import {
   WorkflowCancelledError,
   WorkflowNotOwnedError,
@@ -26,7 +28,7 @@ interface Live {
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 export class WorkflowRuntime {
-  private readonly workflows = new Map<string, WorkflowFn>();
+  private readonly workflows = new Map<string, Registration>();
   private readonly live = new Map<string, Live>();
   private readonly store: WorkflowRunStore;
   private readonly runtimeId: string;
@@ -55,9 +57,10 @@ export class WorkflowRuntime {
     };
   }
 
-  register(name: string, fn: WorkflowFn): void {
+  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+  register(name: string, fn: WorkflowFn, options: { version?: string } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, fn);
+    this.workflows.set(name, registration(name, fn, options.version));
   }
 
   registered(): string[] {
@@ -65,9 +68,9 @@ export class WorkflowRuntime {
   }
   /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
   start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
-    const fn = this.workflows.get(name);
-    if (!fn) throw new Error(`unknown workflow: ${name}`);
-    const run = newRun(randomUUID(), name, params);
+    const workflow = this.workflows.get(name);
+    if (!workflow) throw new Error(`unknown workflow: ${name}`);
+    const run = newRun(randomUUID(), name, params, workflow.version);
     const insert = this.options.db.transaction((): WorkflowRun => {
       this.store.create(run);
       const claimed = this.claim(run.id);
@@ -75,23 +78,25 @@ export class WorkflowRuntime {
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), fn, new Map());
+    this.launch(insert.immediate(), workflow.fn, new Map());
     return run.id;
   }
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    const candidates = this.store.listByStatus(["running", "paused", "cancelling", "recovery_required"]).filter((run) => !options.exclude?.has(run.id));
+    const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
 
   private async hydrateOne(snapshot: WorkflowRun): Promise<string | null> {
     if (this.live.has(snapshot.id)) return null;
-    const fn = this.workflows.get(snapshot.workflowName);
-    if (!fn) return null;
+    const workflow = this.workflows.get(snapshot.workflowName);
+    if (!workflow) return null;
     const run = this.claim(snapshot.id);
     if (!run) return null;
+    const hooks = { emit: this.baseDeps.emit, save: (value: WorkflowRun) => this.save(value), park: (value: WorkflowRun) => this.park(value) };
+    if (parkOnDefinitionDrift(run, workflow.version, hooks)) return null;
     const controller = new AbortController();
     const renewTimer = this.startRenewal(run, controller);
     if (run.status === "cancelling") controller.abort(new WorkflowCancelledError(run.id, run.error ?? "cancelled"));
@@ -102,7 +107,7 @@ export class WorkflowRuntime {
         this.release(run);
         return null;
       }
-      this.launch(run, fn, recovered, controller, renewTimer);
+      this.launch(run, workflow.fn, recovered, controller, renewTimer);
       return run.id;
     } catch (error) {
       clearInterval(renewTimer);
@@ -126,9 +131,8 @@ export class WorkflowRuntime {
 
   private markRecovery(run: WorkflowRun, step: ActiveStep, kind: NonNullable<ActiveStep["recovery"]>["kind"], evidence: string): true {
     markStepRecovery(step, kind, evidence, this.isoNow());
-    run.status = "recovery_required";
-    run.error = evidence;
-    this.baseDeps.emit({ type: "workflow_recovery_required", runId: run.id, stepId: step.stepId, evidence });
+    parkForRecovery(run, evidence);
+    announceRecovery(this.baseDeps.emit, run.id, step.stepId, evidence);
     return true;
   }
 
@@ -217,7 +221,7 @@ export class WorkflowRuntime {
   status(runId: string): WorkflowRun | undefined {
     return this.live.get(runId)?.ctx.run ?? this.store.get(runId);
   }
-  list(statuses: WorkflowRun["status"][] = ["running", "paused", "cancelling", "recovery_required"]): WorkflowRun[] {
+  list(statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
     return this.store.listByStatus(statuses);
   }
 
@@ -251,6 +255,11 @@ export class WorkflowRuntime {
     else this.release(run);
   }
 
+  /** Records `data` as step `stepId` of a finished run, a fact learnt after it ended; false when the run is unfinished or already has it. */
+  annotate(runId: string, stepId: string, data: Record<string, unknown>): boolean {
+    return this.store.annotate(runId, stepId, { stepId, iteration: 0, agentId: null, signal: null, completedAt: this.isoNow(), data });
+  }
+
   /**
    * Records `output` as the answer of a run's active dispatch step, so the run's replay reads it instead of dispatching
    * the step again. Only a run no runtime holds can be answered this way; false when the run is held or has no such step.
@@ -273,9 +282,7 @@ export class WorkflowRuntime {
   }
 
   private cancelGates(runId: string, reason: string): void {
-    for (const gate of this.options.gates.listPending()) {
-      if (gate.id.startsWith(`${runId}/`)) cancelGate(this.options.gates, gate.id, reason);
-    }
+    cancelOwnPending(this.options.gates, runId, reason, () => true);
   }
 
   private startRenewal(run: WorkflowRun, controller: AbortController): ReturnType<typeof setInterval> {
@@ -345,8 +352,7 @@ export class WorkflowRuntime {
     if (!originalFence || !authoritative?.owner || !sameFence(authoritative.owner, originalFence)) return;
     if (step) this.markRecovery(authoritative, step, "unknown", failure.message);
     else {
-      authoritative.status = "recovery_required";
-      authoritative.error = failure.message;
+      parkForRecovery(authoritative, failure.message);
     }
     try {
       const lease = this.leaseWindow();
@@ -372,5 +378,5 @@ export class WorkflowRuntime {
 }
 
 function isTerminal(status: WorkflowRun["status"]): boolean {
-  return status === "completed" || status === "failed" || status === "cancelled";
+  return !ACTIVE_STATUSES.includes(status);
 }

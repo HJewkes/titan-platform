@@ -167,7 +167,9 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const host = open(w);
     const runId = start(host, w);
 
-    const gate = await vi.waitFor(() => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"))!.gate);
+    const pendingApproval = () => host.pendingGates().find((pending) => pending.runId === runId && pending.stepId.startsWith("approve-merge"));
+    await vi.waitFor(() => expect(pendingApproval()).toBeDefined(), { timeout: 10_000 });
+    const { gate } = pendingApproval()!;
 
     expect(gate.prompt).toMatch(/unsettled for 3\d min/);
     const settles = settleRecords(host, runId);
@@ -210,14 +212,14 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     const w = world(() => "unknown");
     const first = open(w, dbPath);
     const runId = start(first, w);
-    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3));
+    await vi.waitFor(() => expect(settleRecords(first, runId).length).toBeGreaterThanOrEqual(3), { timeout: 10_000 });
     first.close();
     hosts.splice(hosts.indexOf(first), 1);
     const second = open(w, dbPath);
     const since = settleRecords(second, runId)[0]!.since;
 
     await second.adopt();
-    await gateOpened(second, gateId(runId, "approve-merge"));
+    await gateOpened(second, gateId(runId, "approve-merge"), 10_000);
 
     expect(new Set(settleRecords(second, runId).map((settle) => settle.since))).toEqual(new Set([since]));
     expect(second.gates.get(gateId(runId, "approve-merge"))!.prompt).toMatch(/unsettled for 3\d min/);

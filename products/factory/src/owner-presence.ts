@@ -17,10 +17,10 @@ const NAMED: Record<string, string> = { "\t": "\\t", "\r": "\\r", "\\": "\\\\" }
 /** The helper's v4 UUID: anything else on stdout is not a proof, however the helper exited. */
 const PROOF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-const S_IFMT = 0o170000
-const S_IFREG = 0o100000
-const S_IFLNK = 0o120000
-const GROUP_OR_OTHER_WRITE = 0o022
+export const S_IFMT = 0o170000
+export const S_IFREG = 0o100000
+export const S_IFLNK = 0o120000
+export const GROUP_OR_OTHER_WRITE = 0o022
 
 /**
  * Built by `pnpm factory:install` into native/build, outside dist, because tsup's clean wipes dist on every build.
@@ -41,7 +41,7 @@ const errorCode = (error: unknown): string => {
   return typeof code === "string" ? code : "UNKNOWN"
 }
 
-const defaultStat: StatPort = (path) => {
+export const defaultStat: StatPort = (path) => {
   try {
     return lstatSync(path, { throwIfNoEntry: false })
   } catch (error) {
@@ -56,7 +56,7 @@ const defaultRunner: HelperRunner = (file, args) =>
   })
 
 /** The path and every parent up to /, helper first. */
-function pathComponents(path: string): string[] {
+export function pathComponents(path: string): string[] {
   const components = [path]
   for (let parent = dirname(path); parent !== components.at(-1); parent = dirname(parent)) components.push(parent)
   return components
