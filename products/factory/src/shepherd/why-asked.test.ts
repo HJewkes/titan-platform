@@ -64,11 +64,11 @@ describe("whyAsked for Shepherd's own rows", () => {
     expect(whyAsked({ table: "shepherd-merge-guard", rowId }, "x").gateClass).toBe(gateClass);
   });
 
-  it.each(Object.keys(ESCALATIONS).filter((row) => row !== "policy-denial"))("calls route escalation %s accidental with its count", (rowId) => {
+  it.each(Object.entries(ESCALATIONS).filter(([row]) => row !== "policy-denial"))("calls route escalation %s accidental with its count", (rowId, words) => {
     const why = whyAsked({ table: "shepherd-route", rowId }, "detail");
 
     expect(why.gateClass).toBe("accidental");
-    expect(why.sentence).toContain(ESCALATIONS[rowId as keyof typeof ESCALATIONS]);
+    expect(why.sentence).toContain(words);
   });
 
   it("labels a rule it does not know unclassified rather than guessing", () => {
