@@ -152,6 +152,24 @@ The link is `https://<fqdn>:7500/auth/login?code=...`. It works once and for ten
 it on a tailnet device, press the sign-in button, and repeat with a fresh link on the next
 device. A restart of the daemon after minting voids an outstanding link.
 
+### On a phone
+
+1. Join the phone to the tailnet and turn tailscale on.
+2. Mint a link with `login-link` on the console machine as above, and move it to the phone over a private channel.
+   Mint it last, after any `systemctl --user restart titan-console`, because a restart voids a
+   link that has not been used yet.
+3. Open the link in the browser you will use the console from, and press **Sign in** within ten
+   minutes. A web app added to the home screen keeps its own cookies, so sign in from inside it.
+   A link preview in a chat app only fetches the inert page, so it does not spend the code.
+4. The browser is signed in for 30 days. The session lives in its cookie and is signed with
+   `lan.token` in the state directory, so it survives `systemctl --user restart titan-console`
+   and a reboot. It ends at 30 days, on logout in that browser, or on `token rotate`.
+
+If the page says the link is invalid, expired, or already used, mint a fresh one. If a
+signed-in phone gets "Not signed in" after a restart, check whether `lan.token` changed (its
+mtime, never its contents): a new token file, or one under a different `TITAN_CONSOLE_STATE`
+or `TITAN_CONSOLE_TOKEN`, ends every session.
+
 ## Rotate
 
 ```sh
