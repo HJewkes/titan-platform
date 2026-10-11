@@ -1,0 +1,56 @@
+{
+  "schema": "titan.unit/v1",
+  "id": "review-pr",
+  "version": "1.0.0",
+  "title": "Review a pull request head",
+  "description": "Read one pull request head from a review bundle (head tree, base tree, diff) and return MERGE or FIX_FIRST with every blocking finding. The trial brief is the live reviewer brief with its checkout lines replaced by bundle paths; gh and the code host are denied.",
+  "input": {
+    "type": "object",
+    "required": ["repo", "pr", "head", "base"],
+    "properties": {
+      "repo": { "type": "string" },
+      "pr": { "type": "integer", "minimum": 1 },
+      "head": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+      "base": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+      "title": { "type": "string" },
+      "body": { "type": "string" }
+    }
+  },
+  "output": {
+    "type": "object",
+    "required": ["verdict", "blocking"],
+    "properties": {
+      "verdict": { "enum": ["MERGE", "FIX_FIRST"] },
+      "blocking": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["path", "description"],
+          "properties": {
+            "path": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 },
+            "description": { "type": "string" }
+          }
+        }
+      },
+      "defectClass": { "type": "string" }
+    }
+  },
+  "objective": {
+    "constraints": [
+      { "metric": "contract-failures", "max": 0 },
+      { "metric": "false-block-rate", "max": 0.2 }
+    ],
+    "noCriticalFailures": true,
+    "primary": { "name": "known-defect-catch-rate", "direction": "maximize" }
+  },
+  "acceptance": {
+    "levels": [
+      { "level": 1, "minCases": 30 },
+      { "level": 2, "successLowerBound": 0.7 },
+      { "level": 3, "successLowerBound": 0.85 },
+      { "level": 4, "holdDays": 14 }
+    ]
+  },
+  "visibility": "public"
+}

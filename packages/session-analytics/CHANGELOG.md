@@ -1,5 +1,17 @@
 # @titan-design/session-analytics
 
+## 0.14.0
+
+### Minor Changes
+
+- 11df74d: `taskActuals` accepts optional `shepherdRuns` (the records `titan-factory shepherd stats --per-run --json` prints) and `shepherdSince`. When passed, each row gains `reviewRounds`, `stageMinutes`, `serviceWallHours` (first implementer request to the earliest merge) and `mergePath` (`shepherd`, `outside` when a merged PR has no run, else null), joined by task id and then by `repo#pr`. A row merged before `shepherdSince` gets null Shepherd facts.
+- b924847: Add `successorReworkReport` and `successorReworkSchema`: per role, how many files a successor session re-reads in its first boot requests (default 30) that its same-named predecessor already read, from `file_read` signals only, with the cost of those boot requests counted once each. Overlapping same-name sessions are never paired, and `fileReadData` is false when the graph holds no `file_read` signal.
+
+### Patch Changes
+
+- Updated dependencies [662f42b]
+  - @titan-design/session-read@0.13.1
+
 ## 0.13.3
 
 ### Patch Changes
