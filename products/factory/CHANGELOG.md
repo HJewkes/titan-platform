@@ -1,5 +1,11 @@
 # @titan-design/factory
 
+## 0.13.2
+
+### Patch Changes
+
+- 0247ca2: Shepherd resync now ends a run whose PR was merged outside Shepherd even when the run recorded a merge step that landed nothing, such as one a g10 hold refused.
+
 ## 0.13.1
 
 ### Patch Changes
