@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
+import type { DeployIncident } from "./deploy-incident.js";
+import { clearDeployPause, deployPausePath, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
 import type { CommandResult } from "./service-control.js";
 
@@ -49,8 +51,10 @@ interface MachineInit {
   alive?: number[];
   /** After each kickstart, this many `healthWithin` probes time out before one answers. */
   silentProbes?: number;
-  /** After a kickstart, `healthWithin` reports this build sha instead of the one loaded. */
+  /** After a kickstart onto a build other than the starting one, `healthWithin` reports this build sha instead of the one loaded. */
   misreports?: string;
+  /** After a kickstart onto a build other than the starting one, this many probes answer before `runs.failed` goes up by one. */
+  failsRunAfter?: number;
   /** pnpm-lock.yaml per commit; others get the base lockfile. */
   lockfiles?: Record<string, string>;
   /** The deploy checkout does not exist yet, so deploy must clone it. */
@@ -111,11 +115,15 @@ function fakeMachine(init: MachineInit = {}) {
   let job = { pid: OLD_PID, serving: running, restarted: false };
   let silent = 0;
   let probes = 0;
+  let probesSinceStart = 0;
+  const incidents: DeployIncident[] = [];
+  const replaced = () => job.restarted && job.serving !== running;
   const git = fakeGit(state, init);
   const kickstart = (): CommandResult => {
     const sha = trees.get(FACTORY_DIST)?.replace("build:", "") ?? null;
     job = { pid: job.pid + 1, serving: sha !== null && !init.crashes?.includes(sha) ? sha : null, restarted: true };
     silent = init.silentProbes ?? 0;
+    probesSinceStart = 0;
     return ok();
   };
   const pnpm = (args: readonly string[]): CommandResult => {
@@ -160,7 +168,7 @@ function fakeMachine(init: MachineInit = {}) {
     claude: async () => undefined,
     isDirectory: () => false,
     which: (binary) => `/opt/tools/bin/${binary}`,
-    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: [] }),
+    health: async () => (job.serving === null ? null : { ok: true, pid: job.pid, github: "ok", build: { sha: job.serving, behindMain: 0 }, busy: [], runs: { failed: 2 } }),
     healthWithin: async (port) => {
       probes += 1;
       if (silent > 0) {
@@ -168,8 +176,12 @@ function fakeMachine(init: MachineInit = {}) {
         return null;
       }
       const answer = await ports.health(port);
-      return answer && job.restarted && init.misreports ? { ...answer, build: { sha: init.misreports } } : answer;
+      probesSinceStart += 1;
+      if (!answer || !replaced()) return answer;
+      if (init.misreports) return { ...answer, build: { sha: init.misreports } };
+      return init.failsRunAfter !== undefined && probesSinceStart > init.failsRunAfter ? { ...answer, runs: { failed: 3 } } : answer;
     },
+    incident: async (incident) => void incidents.push(incident),
     mkdir: () => undefined,
     writeFile: (path, text) => void files.set(path, text),
     readFile: (path) => files.get(path),
@@ -192,7 +204,8 @@ function fakeMachine(init: MachineInit = {}) {
   };
   const record = () => parseDeployRecord(files.get(RECORD));
   const mutations = () => calls.filter((call) => /^(git (merge --|reset)|pnpm|launchctl)/.test(call));
-  return { ports, calls, files, trees, state, record, mutations, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
+  const pause = () => readDeployPause(ports, STATE);
+  return { ports, calls, files, trees, state, record, mutations, incidents, pause, serving: () => job.serving, probes: () => probes, elapsed: () => clock };
 }
 
 const REMOTE = "https://example.test/org/titan-platform.git";
@@ -545,6 +558,194 @@ describe("titan-factory service deploy", () => {
   });
 });
 
+describe("service deploy rollback pause", () => {
+  const PAUSE = deployPausePath(STATE);
+  const kickstarts = (machine: ReturnType<typeof fakeMachine>) => machine.mutations().filter((call) => call.startsWith("launchctl kickstart"));
+
+  it("rolls back a build whose /health names the wrong sha, confirms the old sha serves, pauses deploys and files one incident", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { target: TIP, from: BASE, rollback: "verified" } });
+    expect(machine.incidents).toEqual([expect.objectContaining({ kind: "rolled-back", target: TIP, from: BASE, why: expect.stringContaining(`/health reports build ${STRAY}`) })]);
+  });
+
+  it("rolls back and pauses when runs start failing inside the watch window after the sha checked out", async () => {
+    const machine = fakeMachine({ failsRunAfter: 3 });
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(BASE);
+    expect(kickstarts(machine)).toHaveLength(2);
+    expect(machine.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("1 more run(s) failed or need recovery during the 120 s watch") });
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+    expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rolled-back"]);
+  });
+
+  it("rolls back and pauses when serve stops answering inside the watch window", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered > 2 ? null : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.record()?.why).toContain("serve stopped answering /health (3 probes in a row)");
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+  });
+
+  it("rolls back when serve answers through the window and then misses its last probes, instead of deploying on an open miss", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered > 11 ? null : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("serve stopped answering /health (3 probes in a row)") });
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+  });
+
+  it("deploys when a miss near the window's end is followed by an answer", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && [12, 13].includes(++answered) ? null : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+  });
+
+  it("deploys a build that stays healthy through the whole watch window without pausing or filing an incident", async () => {
+    const machine = fakeMachine();
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.elapsed()).toBeGreaterThanOrEqual(120_000);
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(machine.incidents).toEqual([]);
+  });
+
+  it("raises one alert, stays paused and never retries when the restored build does not come back", async () => {
+    const machine = fakeMachine({ crashes: [TIP, BASE] });
+
+    const first = await deploy(machine);
+    const second = await deploy(machine);
+
+    expect(first.code).toBe(1);
+    expect(first.err).toContain(`ALERT: the rollback of ${TIP} needs a person`);
+    expect(kickstarts(machine)).toHaveLength(2);
+    expect(machine.incidents.map((incident) => incident.kind)).toEqual(["rollback-failed"]);
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "failed" } });
+    expect(second.code).toBe(1);
+    expect(second.err).toContain("deploy held: deploys are paused");
+    expect(machine.incidents).toHaveLength(1);
+  });
+
+  it("does not report a verified rollback when the build before the deploy was unknown", async () => {
+    const machine = fakeMachine({ running: null, crashes: [TIP] });
+
+    await deploy(machine);
+
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "failed" } });
+    expect(machine.incidents[0]).toMatchObject({ kind: "rollback-failed", why: expect.stringContaining("cannot be verified") });
+  });
+
+  it("writes the pause before restoring, so a deployer killed mid-rollback leaves deploys paused", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+    const removeTree = machine.ports.removeTree;
+    let pausedAtRestore: unknown;
+    machine.ports.removeTree = (path) => {
+      if (path === FACTORY_DIST) pausedAtRestore ??= machine.pause();
+      removeTree(path);
+    };
+
+    await deploy(machine);
+
+    expect(pausedAtRestore).toMatchObject({ paused: true, pause: { rollback: "pending" } });
+  });
+
+  it("alerts and stays paused when restoring the old build throws", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+    const copyTree = machine.ports.copyTree;
+    machine.ports.copyTree = (from, to) => {
+      if (to === FACTORY_DIST) throw new Error("ENOSPC: no space left on device");
+      copyTree(from, to);
+    };
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("ALERT");
+    expect(machine.incidents[0]).toMatchObject({ kind: "rollback-failed", why: expect.stringContaining("ENOSPC") });
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "failed" } });
+  });
+
+  it("alerts when the pause cannot be written, and still restores the old build", async () => {
+    const machine = fakeMachine({ misreports: STRAY });
+    const writeFile = machine.ports.writeFile;
+    machine.ports.writeFile = (path, text) => {
+      if (path === PAUSE) throw new Error("EROFS: read-only file system");
+      writeFile(path, text);
+    };
+
+    const { err } = await deploy(machine);
+
+    expect(machine.serving()).toBe(BASE);
+    expect(err).toContain("ALERT");
+    expect(machine.incidents[0]?.why).toContain("the deploy pause could not be written: EROFS");
+  });
+
+  it("refuses a newer sha while paused, touching nothing", async () => {
+    const pause = { pausedAt: "2026-10-02T00:00:00.000Z", target: CORE, from: BASE, why: "watch failed", rollback: "verified" };
+    const machine = fakeMachine({ files: { [PAUSE]: JSON.stringify(pause) } });
+
+    const { code, err } = await deploy(machine, TIP);
+
+    expect(code).toBe(1);
+    expect(err).toContain(`deploy held: deploys are paused since ${pause.pausedAt}: ${CORE}`);
+    expect(machine.mutations()).toEqual([]);
+    expect(machine.record()).toBeUndefined();
+  });
+
+  it("stays paused when the pause file does not parse", async () => {
+    const machine = fakeMachine({ files: { [PAUSE]: "{\"pausedAt\": \"2026-" } });
+
+    const { code, err } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(err).toContain("does not parse");
+    expect(machine.mutations()).toEqual([]);
+  });
+
+  it("keeps the pause while a live deployer holds the lock, and deploys once it is cleared", async () => {
+    const pause = { pausedAt: "2026-10-02T00:00:00.000Z", target: CORE, from: BASE, why: "watch failed", rollback: "verified" };
+    const machine = fakeMachine({ files: { [PAUSE]: JSON.stringify(pause), [`${STATE}/deploy.lock`]: "777" }, alive: [777] });
+
+    const refused = clearDeployPause(machine.ports, STATE);
+    machine.files.delete(`${STATE}/deploy.lock`);
+    const cleared = clearDeployPause(machine.ports, STATE);
+    const { code } = await deploy(machine);
+
+    expect(refused).toContain("another deploy is running");
+    expect(cleared).toBeUndefined();
+    expect(machine.pause()).toEqual({ paused: false });
+    expect(code).toBe(0);
+  });
+});
+
 describe("deploy lock", () => {
   function lockMachine(files: Record<string, string>, beforeRename?: (files: Map<string, string>) => void): LockPorts & { files: Map<string, string> } {
     const map = new Map(Object.entries(files));
@@ -629,6 +830,22 @@ describe("titan-factory service deploy verb", () => {
     await cliIn(env, machine);
 
     expect(machine.calls[0]).toBe("git clone https://example.test/org/titan-platform.git /srv/elsewhere/tree");
+  });
+
+  it("shows the deploy pause and clears it with service pause --clear", async () => {
+    const pause = { pausedAt: "2026-10-02T00:00:00.000Z", target: CORE, from: BASE, why: "watch failed", rollback: "failed" };
+    const machine = fakeMachine({ files: { [deployPausePath(STATE)]: JSON.stringify(pause) } });
+    let out = "";
+    const io = { stdout: (t: string) => void (out += t), stderr: () => undefined, env: { XDG_STATE_HOME: "/xdg/state" } };
+    const deps = { workflows: [], routes: [], deploy: machine.ports };
+
+    const shown = await runCli(["service", "pause"], io, deps);
+    const cleared = await runCli(["service", "pause", "--clear"], io, deps);
+
+    expect([shown, cleared]).toEqual([0, 0]);
+    expect(out).toContain(`deploys are paused since ${pause.pausedAt}: ${CORE} over ${BASE} rolled back (rollback failed)`);
+    expect(out).toContain("cleared the deploy pause");
+    expect(machine.pause()).toEqual({ paused: false });
   });
 
   it("rejects an --expect value that is not a hex sha", async () => {
