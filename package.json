@@ -37,6 +37,7 @@
     "version-packages": "changeset version && node scripts/gen-capabilities.mjs --catalog-only",
     "release": "pnpm -r run build && changeset publish",
     "smoke:codex": "node scripts/smoke-codex.mjs",
+    "smoke:reviewer": "node scripts/smoke-reviewer.mjs",
     "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
     "prepare": "pnpm --silent --filter @titan-design/egress-scan... run build && node packages/egress-scan/dist/bin.js install-hook || echo \"egress-scan: pre-push hook not installed; run pnpm build, then pnpm run prepare\""
   },
