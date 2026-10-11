@@ -1,5 +1,21 @@
 # @titan-design/session-graph
 
+## 0.16.2
+
+### Patch Changes
+
+- 7b9335c: session-read keeps an agent-chat channel tag's `broadcast="true"` attribute as `Inbound.broadcast` (false for a direct message, null without a channel tag) and bumps `EXTRACT_VERSION` to 8, so `backfillFacets` re-extracts stored inbound rows. session-graph adds `inbound.broadcast` in migration 12 and writes it. session-analytics wake episodes read the flag for the `broadcast` sender kind, so a direct message a forked session copied is no longer a broadcast; msg_id fan-out remains the fallback for rows extracted before version 8.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/session-read@0.13.2
+
 ## 0.16.0
 
 ### Minor Changes

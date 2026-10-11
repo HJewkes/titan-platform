@@ -234,6 +234,21 @@ describe("the adoption registry", () => {
     }
   });
 
+  it("names the build task of each baseline filed from the 10-08 mining", () => {
+    const expected = {
+      "basement-suite-summary": "TP-2315",
+      "titan-gh-pr-status": "TP-2316",
+      "shepherd-status-filters": "TP-2317",
+      "shepherd-register-infer": "TP-2318",
+      "ci-failures-digest": "TP-2319",
+      "shepherd-timeline-last": "TP-2320",
+    };
+
+    const tasks = Object.fromEntries(ADOPTION_OPPORTUNITIES.filter((o) => o.id in expected).map((o) => [o.id, o.task]));
+
+    expect(tasks).toEqual(expected);
+  });
+
   it("writes old patterns as Q9 tails, and notes every entry whose old or new form Q10 cannot count", () => {
     for (const o of ADOPTION_OPPORTUNITIES) {
       expect(o.old.patterns.every((p) => p.startsWith("| "))).toBe(true);

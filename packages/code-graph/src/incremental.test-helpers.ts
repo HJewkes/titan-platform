@@ -52,8 +52,8 @@ export async function disposeProject(project: Project): Promise<void> {
   await fs.rm(project.rootDir, { recursive: true, force: true });
 }
 
-// Skips parsing the default lib on every fresh program; reuse checks compare incremental to full under one config.
-const FIXTURE_TSCONFIG = fileURLToPath(new URL("./incremental.test-tsconfig.json", import.meta.url));
+// Skips parsing the default lib and @types on every fresh program, which is what made indexPaths tests slow under load.
+export const FIXTURE_TSCONFIG = fileURLToPath(new URL("./incremental.test-tsconfig.json", import.meta.url));
 
 export function runIndex(
   store: CodeGraphStore,

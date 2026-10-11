@@ -1,4 +1,21 @@
 export {
+  backtest,
+  type BacktestMetric,
+  type BacktestOptions,
+  type BacktestResult,
+  type Censoring,
+  type ClassScore,
+  type ContextLineScore,
+  type Coverage,
+  type GroupScore,
+  type IntervalScore,
+  type OpenTask,
+  type OriginResult,
+  type PointScore,
+  type ScoredOrigin,
+  type SkippedOrigin,
+} from "./backtest.js";
+export {
   classFor,
   classTable,
   DEFAULT_HALF_LIFE_DAYS,

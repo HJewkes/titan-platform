@@ -131,6 +131,10 @@ export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js"
 export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
+export type { Assignment, CostPerOutcomeOptions, CostPerOutcomeReport, OutcomeBucket } from "./cost-per-outcome.js";
+export { assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
+export type { SuccessorReworkOptions, SuccessorReworkReport } from "./successor-rework.js";
+export { DEFAULT_BOOT_REQUESTS, successorReworkReport, successorReworkSchema } from "./successor-rework.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
@@ -145,3 +149,5 @@ export type { CoordDutyTable, DutyTableOptions } from "./coord-duty/table.js";
 export { coordDutyTableSchema, dutyTable } from "./coord-duty/table.js";
 export { seatOf } from "./coord-duty/transcript.js";
 export type { Outcome, Trigger } from "./coord-duty/turn-signals.js";
+export type { DispatchRecord, ScorecardJournalInput, ScorecardJournalRowId, ScorecardRow } from "./scorecard-rows.js";
+export { MIN_COST_COVERAGE, NOT_MEASURED, readDispatchJournal, scorecardJournalRows, scorecardRowText } from "./scorecard-rows.js";

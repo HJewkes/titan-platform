@@ -1,5 +1,50 @@
 # @titan-design/evals
 
+## 0.4.0
+
+### Minor Changes
+
+- 913bb9a: TP-691b: add `titan-evals review-pr cases`, the private case builder for the `review-pr` unit. It turns outcome-corpus rows into private cases, with caught heads as FIX_FIRST plus the defect path and each PR's final clean head as MERGE. It plants six seeded controls (a deleted assertion, an inverted condition, a test that no longer bites) as tree fixtures with a gold path and line. It writes the cases, a suite with the review-pr checks, and a manifest to an empty out dir outside any git work tree, and the private exclusion runs before anything is written.
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [b60d484]
+- Updated dependencies [7b9335c]
+  - @titan-design/review-panel@0.5.3
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-analytics@0.15.1
+
+## 0.3.0
+
+### Minor Changes
+
+- 84faee5: TP-691a: ship the `review-pr` unit and its `live-brief` variant under `units/review-pr/`, plus three building blocks for the private case builder. `reviewPrBrief` renders the live `reviewerBrief` with only its checkout lines swapped for bundle paths. `materializeBundle` writes `head/`, `base/` (via `git archive`, no `.git`) and `diff.patch` from a local clone through a git-only port. `private/exclusion` ports F6's three-layer private exclusion (allowlist, markers read from an active-work root, final assertion) with a self-test.
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-read@0.13.2
+
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
 ## 0.2.4
 
 ### Patch Changes

@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { INDEX_VERSION, indexPaths } from "./indexer.js";
 import { loadReuseBasis } from "./incremental.js";
+import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 import { predatesQualifiedSymbols } from "./symbol-aliases.js";
 
@@ -53,7 +54,14 @@ describe("index version upgrades", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  const index = () => indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, computeChurn: false });
+  const index = () =>
+    indexPaths(store, {
+      paths: [root],
+      ref: "wd",
+      detectRenames: false,
+      computeChurn: false,
+      tsConfig: FIXTURE_TSCONFIG,
+    });
   const setIndexVersion = (snapshotId: number, version: string) =>
     store.db.prepare("UPDATE snapshot SET index_version = ? WHERE id = ?").run(version, snapshotId);
 

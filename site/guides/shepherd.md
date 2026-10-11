@@ -494,7 +494,7 @@ GitHub call:
 | `merge-up-not-carried` | Shepherd's update-branch moved a head with a `MERGE`, and the carry refused. `reason` is `not-one-merge`, `base-off-branch`, `remerge-touched`, `seat`, `base-unknown` or `probe-failed`. |
 | `kind-no-carry` | The `MERGE` could not carry because of the registration's kind. `reason` is that kind, or `unregistered`. |
 | `seat-push` | A push Shepherd did not make moved the head; after a `MERGE`, `reason` says why it did not carry. |
-| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
+| `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed`, `not-started` or `machine-stop`. |
 | `hold` | The hold's reviewer is read again. |
 | `owner-request` | A resync asked for the review again. |
 | `seat-request` | A seat's `shepherd review` asked for Shepherd's own review at a head the run already had a verdict at. |

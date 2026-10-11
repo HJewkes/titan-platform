@@ -1,5 +1,85 @@
 # @titan-design/factory
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.19.0
+
+### Minor Changes
+
+- 22a2d7b: Add the deploy pacer core: a wanted-deploy record and a pure pace decision that coalesce green factory merges into one deploy after a 15 min quiet window, capped at 90 min. Nothing calls it yet.
+- 2239ef0: Shepherd runs a `sh-fix-proof` step before `sh-review` at every head. For a correctness or security run, or a `fix/` head branch, it waits for the head's `fix-proof` check run from GitHub Actions and reads the last `fix-proof/v1` line naming the head. A vacuous or test-less proof ends the review as `NO_REPRO` before any reviewer starts; a reproduced or unproven line reaches the reviewer brief. A missing check, a read error or another kind proceeds to review with the reason recorded.
+
+### Patch Changes
+
+- de97421: Re-deliver a Shepherd wake that was chat-sent to a live implementer once that agent exits without pushing a new head: the wake step runs once more in the same round, so the exited agent is resumed (or a successor started) with the wake as its prompt and the new head is awaited again. Resume and successor wakes are not re-delivered, a second exit takes the existing exit route, and FIX_FIRST is not counted twice.
+- 2f90885: The restart drain treats an unanswered `/health` poll as unknown rather than idle: it keeps draining, and restarts a silent serve only after two minutes of consecutive no-answers (`NO_ANSWER_PROCEED_MS`). `wait: false` keeps its single check.
+- Updated dependencies [b60d484]
+- Updated dependencies [c54c098]
+- Updated dependencies [7b9335c]
+  - @titan-design/review-panel@0.5.3
+  - @titan-design/agent@0.5.0
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-analytics@0.15.1
+  - @titan-design/workflow@0.12.2
+
+## 0.18.3
+
+### Patch Changes
+
+- 60d8aa5: `service deploy` no longer rebuilds or restarts for a merge whose changes inside the factory closure are only test files, markdown, or version-only `package.json` bumps (a Version Packages merge); it records `skipped` instead.
+- 0891776: Shepherd's resync reads each run's PR with up to six reads in flight (`RESYNC_CONCURRENCY`) instead of one at a time, so a restart with dozens of live runs starts adopting in seconds. The gone-elsewhere sweep, moved-gate, stale-review and stale-merge supersedes read first, then act one run at a time in input order, re-reading each run or gate before acting as before; an unreadable PR still leaves its run held. `ResyncReport` gains `phaseMs`, the wall time of each phase.
+- Updated dependencies [3977860]
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/workflow@0.12.1
+  - @titan-design/fix-proof@0.4.0
+  - @titan-design/review-panel@0.5.2
+
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [ea3d34c]
+- Updated dependencies [790401a]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/agent@0.4.7
+  - @titan-design/workflow@0.12.0
+  - @titan-design/session-read@0.13.2
+
+## 0.18.1
+
+### Patch Changes
+
+- 5b9d9f5: Wire Shepherd's machine-stop watch in production. `configuredRoutes` builds one watch over the factory's machine reading and spawn limits; the spawn gate notes every machine-stop breach it reads (not a pace or build-limit deferral), the reviewer dispatch notes every broker `machine_hold` refusal, and the review wiring carries the watch, so a reviewer that goes silent while the stop held is retried as a throttled round.
+- d6e85ba: `shepherd status --json` rows carry the registration's `slice` (null for a whole-task run), and the `shepherd timeline` header line names the run's task and, when set, its slice, so a seat can confirm a sliced registration without reading `factory.sqlite3`.
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.18.0
+
+### Minor Changes
+
+- 97e40c3: `titan-factory shepherd stats --per-run --json` prints `{ perRun: [...] }`, one record per shepherd-pr run started in range: task, repo, pr, kind (from the registration, else `unknown`), status, start and completion, minutes per stage summed from the stage spans, review rounds as distinct verdict heads, and the merge time with its path (`shepherd`, `outside` or null). `--per-run` without `--json` exits 2.
+
+### Patch Changes
+
+- 34c1d15: End a Shepherd wake whose asks are only waited out (agent-chat timing out, the spawn gate deferring, the broker down) once `WAKE_ASK_MS`, 5 minutes, passes with the roster showing no effect, so the seat hears of it instead of the run waiting on an implementer that never resumes. A resume fallback the spawn gate defers past the same deadline fails too.
+- 9e5af93: Retry a Shepherd review whose reviewer went silent while the machine stop held. A dispatched reviewer that times out now runs `sh-review-stop`, which asks the wired machine-stop watch whether a stop applied during the round or applies now, and waits for it to lift. A lifted stop records the round as `throttled`: the same head is reviewed again by a fresh reviewer and the round is not counted. Only the first throttled round at a run is exempt (`MAX_THROTTLED_ROUNDS`); later ones count as failed rounds, so a machine that never settles still reaches approve-merge. With no watch wired, or on a healthy machine, a silent reviewer is a timeout as before.
+- 7c32fa8: Add the toolchain fanout core. It reads titan-platform's canonical `.node-version`, `packageManager` and `engines.node`, plans one adoption edit per consumer repo, and prints dry-run lines. An `actions/setup-node` literal `node-version:` becomes `node-version-file: .node-version`; matrix values, expressions and reusable-workflow inputs are left alone and listed. Nothing calls it yet; the serve sweep and CLI follow.
+- Updated dependencies [dda3272]
+  - @titan-design/workflow@0.11.0
+
 ## 0.17.1
 
 ### Patch Changes
