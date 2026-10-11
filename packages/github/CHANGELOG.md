@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.10.0
+
+### Minor Changes
+
+- 61511e7: Add `pr-status` and `pr-context` verbs to the `titan-gh` bin: `pr-status <owner/repo#N>` prints one line of PR state, required checks and merge readiness, and `pr-context` prints title, base, head, changed files and body; `--json` prints either as an object.
+
 ## 0.9.0
 
 ### Minor Changes

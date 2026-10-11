@@ -12,6 +12,8 @@ export type { CiWaitOptions, CiWaitOutcome, CiWaitResult } from "./ci-wait.js";
 export { ciWait } from "./ci-wait.js";
 export type { CheckFinding, HeadChecksInput, MergeBlocker, MergeBlockReason, MergeReadiness, MergeReadinessInput } from "./readiness.js";
 export { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness } from "./readiness.js";
+export type { ApprovedHeadWalk, ApprovedHeadWalkInput, CleanMergeTree } from "./approved-head-walk.js";
+export { MAX_BASE_MERGES, approvedHeadWalk } from "./approved-head-walk.js";
 export type { RateBudget, RateBudgetOptions } from "./budget.js";
 export { RATE_FLOOR, backoffMs, rateBudget, sharedRateBudget } from "./budget.js";
 export type { AppCredentials, InstallationToken } from "./app-token.js";

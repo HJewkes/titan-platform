@@ -1,5 +1,21 @@
 # @titan-design/factory
 
+## 0.22.0
+
+### Minor Changes
+
+- 7a37aa8: `titan-factory shepherd status` takes `--active`, `--phase a,b`, `--branch-prefix p` and `--task id` filters, applied in the CLI so an older serve still filters.
+
+### Patch Changes
+
+- df69aad: Merge a Version Packages pull request only for a seat whose grants include `release-merge`. A seat with `merge-on-green-approve` alone now gates the release as `shepherd-release/no-release-grant`, because that merge publishes to npm. A seat without the grant no longer freezes the repo's other merges while its release waits.
+
+  The release preflight also needs each package's latest npm version to name a trusted publisher (`_npmUser.trustedPublisher` with an `id`); provenance attestations alone do not count. A hand-published latest version blocks the release for the owner, because release.yml cannot publish without one. Registry reads now time out after 10 seconds.
+
+- 9c426dd: `shepherd status` and the seat digest name a pending gate's own step (`approve-merge`) instead of an older `sh-fix-proof:<sha>` step the run's current step still pointed at, so the printed `gate resolve` command is stable and correct.
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
 ## 0.21.0
 
 ### Minor Changes
