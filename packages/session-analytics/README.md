@@ -309,6 +309,22 @@ twice. `usdPerMerged` is a bucket's whole cost, parked tries included, over its 
 null at zero. A seat's own sessions go to `seatCostUsd`, never a bucket. `costPerOutcomeSchema` is
 its zod schema and `renderCostPerOutcomeText(report)` prints it with the list-price caveat.
 
+## Scorecard rows
+
+`scorecardJournalRows({ eventsDb, dispatchRecords, since, now })` returns four W41 scorecard
+rows, ported from agent-chat's `scripts/seat/scorecard` with its values and wording: `rework`
+(first-pass FIX_FIRST share: the first verdict other than WAIT per PR in the window), `mechanical`
+(the share of FIX_FIRST rounds, deduped by reviewer, PR and head, whose `Class:` line is neither
+`defect*` nor `test*`), `autonomy` (coordinator-seat share of milestone dispatches) and `cost`
+(retired `usd_est` per task merged in the window, summed over every seat and any earlier
+window). `eventsDb` is an `events.db` connection the caller opened read-only, or null when the
+file is absent. `readDispatchJournal(dir)` reads every `<dir>/<seat>/dispatch.jsonl` record, taking
+the seat from the directory; an absent directory reads as none. A row whose source is absent or
+empty has `value: null` and `measured: false`, never 0, and `scorecardRowText(row)` prints it as
+`not measured`. The cost row stays unmeasured below `MIN_COST_COVERAGE` (0.8) of merged tasks
+carrying a `usd_est`, and its `coverage` field says how many did. Baselines and targets are
+program data and stay with the caller.
+
 ## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.
