@@ -203,6 +203,29 @@ options and flags, the schema, and an `answer` that calls the analysis and its r
 Append it to `INSIGHT_QUESTIONS`. The shared tests then cover its envelope, its caveat,
 every filter, and its presence on all three surfaces.
 
+### Verifying findings (TP-499)
+
+An analyst reading these answers writes each finding as `findingSchema` (exported from
+`src/insights/citations.ts`): `{ id, claim, citations, falsifier }`. A finding with no citation
+or an empty `falsifier` fails the schema. Each citation is
+`{ question, args, field, value, tolerance? }`: `question` is an insight name such as
+`spend-by-action`, `args` its flags as an object (`--agent-prefix`, `agent-prefix` and
+`agentPrefix` are the same key), and `field` a JSON pointer into the answer, such as
+`/totals/sessions`.
+
+```json
+[{ "id": "F1", "claim": "reviewers ran one session", "falsifier": "a second reviewer session in the window",
+   "citations": [{ "question": "spend-by-action", "args": { "since": "2026-09-10", "agent-prefix": "rev-" },
+                   "field": "/totals/sessions", "value": 1 }] }]
+```
+
+`titan-miner insights verify-citations --findings <file>` re-runs each cited question once per
+distinct question and args, and gives every citation a status: `ok`, `mismatch` (with the
+`actual` value), `missing-field`, `unknown-question`, or `error` (the run failed, such as invalid
+args or a missing events db). A number matches within `tolerance` relative to the cited value,
+0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
+failures when any citation is not ok. `--findings` is accepted only on the CLI.
+
 ## The playbook (TP-19)
 
 `playbook add` is the default path and costs nothing: the agent that just learned
