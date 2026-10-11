@@ -95,7 +95,7 @@ export function sliceMigration(version = 8): Migration {
 export { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, reviewRequestMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
-export { AUTHOR_ROLES, type Author, type AuthorInput, type AuthorRole } from "./author-types.js";
+export type { Author, AuthorInput } from "./author-types.js";
 
 interface Row {
   repo: string;

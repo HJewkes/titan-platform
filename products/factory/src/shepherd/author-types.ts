@@ -1,8 +1,6 @@
 // Types of the run's recorded authors, kept apart so store.ts stays under the file-size cap.
 
-export const AUTHOR_ROLES = ["implementer", "successor"] as const;
-
-export type AuthorRole = (typeof AUTHOR_ROLES)[number];
+type AuthorRole = "implementer" | "successor";
 
 /** An agent that wrote a run's code: the implementer, or a successor that took the work over from `predecessor`. */
 export interface AuthorInput {
