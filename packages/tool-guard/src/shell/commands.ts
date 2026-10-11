@@ -3,6 +3,7 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
+import { catOperands, knownOutputs, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -210,13 +211,6 @@ function passesThrough(cmd: Unwrapped): boolean {
   return operands.length === 0 || operands.includes("-");
 }
 
-function catOperands(values: string[]): string[] {
-  const end = values.indexOf("--");
-  const options = end < 0 ? values : values.slice(0, end);
-  const operands = options.filter((v) => v === "-" || !v.startsWith("-"));
-  return end < 0 ? operands : [...operands, ...values.slice(end + 1)];
-}
-
 function nestedLists(token: Token): Token[][] {
   if (token.type === "redirect") return [...(token.target?.subs ?? []), ...token.subs];
   return token.type === "op" ? [] : token.subs;
@@ -336,14 +330,17 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
   return env;
 }
 
-/** The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. */
+/**
+ * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
+ * text also counts what its substitutions print, when that is literal on the line.
+ */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: caseScripts(cmd.args), wrap: "eval" };
+  if (cmd.name === "eval") return { texts: [...caseScripts(cmd.args), ...knownOutputs(cmd.args)], wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? caseScripts([positional]) : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? [...caseScripts([positional]), ...knownOutputs([positional])] : stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
@@ -360,12 +357,6 @@ function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToke
     else return { hasC, positional: args[i] as WordToken };
   }
   return { hasC, positional: null };
-}
-
-function stdinScript(redirects: RedirectToken[]): string | null {
-  const feed = [...redirects].reverse().find((r) => r.body !== null || r.op === "<<<");
-  if (!feed) return null;
-  return feed.body ?? feed.target?.value ?? null;
 }
 
 function changeDir(dir: string | null, word: WordToken | undefined, home: string | null): string | null {
