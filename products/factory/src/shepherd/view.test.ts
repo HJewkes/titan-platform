@@ -1,10 +1,13 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { resolveCommand } from "../registry.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+
+const gateRecord = (id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
@@ -254,12 +257,24 @@ describe("shepherd view stalls", () => {
 
     it("does not stall a run parked on approve-merge for three days, and names the owner", () => {
       const run = pausedAt("approve-merge");
-      const gate = { id: "run-1/approve-merge", createdAt: "2026-01-01T00:00:00.000Z" } as never;
+      const gate = gateRecord("run-1/approve-merge");
 
-      const row = watchRow({ registration, run, pending: { gate, stepId: "approve-merge" }, now: new Date(started + minutes(3 * 24 * 60)) });
+      const row = watchRow({ registration, run, pending: { gate }, now: new Date(started + minutes(3 * 24 * 60)) });
 
       expect(row.stalled).toBeNull();
       expect(row.nextAction).toBe("owner: resolve approve-merge");
+    });
+
+    it("names the gate's own step when the run's current step is an older sh-fix-proof", () => {
+      const run = pausedAt("sh-fix-proof:abc1234");
+      run.stepResults["sh-fix-proof:def5678#0"] = { stepId: "sh-fix-proof:def5678", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: {} };
+      const gate = gateRecord("run-1/approve-merge:5");
+
+      const row = watchRow({ registration, run, pending: { gate } });
+
+      expect(row.pendingGate).toMatchObject({ gateId: "run-1/approve-merge:5", stepId: "approve-merge" });
+      expect(row.nextAction).toBe("owner: resolve approve-merge");
+      expect(resolveCommand(row.runId, row.pendingGate!.stepId)).toContain(" approve-merge ");
     });
 
     it("keeps a malformed sh-wake step as a plain step entry instead of throwing", () => {

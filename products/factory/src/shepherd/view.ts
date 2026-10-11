@@ -1,6 +1,7 @@
 import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
@@ -117,10 +118,8 @@ function completedSteps(run: WorkflowRun): StepResult[] {
 }
 
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
-  const terminal = TERMINAL_PHASE[run.status];
-  if (terminal) return terminal;
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current);
+  return TERMINAL_PHASE[run.status] ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -220,8 +219,8 @@ function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | un
 export interface RowInput {
   registration: Registration;
   run: WorkflowRun;
-  /** The gate the run waits on now, with the step it belongs to. */
-  pending?: { gate: GateRecord; stepId: string };
+  /** The gate the run waits on now; its step is read from the gate id, because the run's current step can name an older step. */
+  pending?: { gate: GateRecord };
   /** The run holding the repo's merge train, if any. */
   train?: TrainHolder;
   /** The clock the stall limits read; defaults to the wall clock. */
@@ -297,8 +296,8 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
-    pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),

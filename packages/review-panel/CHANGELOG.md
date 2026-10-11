@@ -1,5 +1,11 @@
 # @titan-design/review-panel
 
+## 0.5.4
+
+### Patch Changes
+
+- 5985f32: The reviewer brief now names the final message as the verdict channel and says the reviewer needs no chat_send; it no longer says "send your verdict".
+
 ## 0.5.3
 
 ### Patch Changes

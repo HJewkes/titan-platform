@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,11 +39,30 @@ describe("fix-proof-run.sh", () => {
     expect(parseResultLine(result.stdout.trim()).ok).toBe(true);
   });
 
+  it("passes when the runner directory itself is missing", () => {
+    rmSync(runner, { recursive: true });
+
+    const result = run();
+
+    expect(result.status).toBe(0);
+    expect(parseResultLine(result.stdout.trim()).ok).toBe(true);
+  });
+
   it("runs the merge-base bin with the base and head when it exists", () => {
     writeFileSync(path.join(runner, "packages/fix-proof/dist/bin.js"), "console.log(process.argv.slice(2).join(' '));\n");
 
     const result = run();
 
     expect(result.stdout.trim()).toBe(`run --base ${base} --head ${head}`);
+  });
+});
+
+describe("fix-proof workflow", () => {
+  const workflow = readFileSync(path.join(import.meta.dirname, "../.github/workflows/fix-proof.yml"), "utf8");
+
+  it("runs the script from the workflow's own commit, not from the PR head checkout", () => {
+    expect(workflow).toContain("ref: ${{ github.sha }}");
+    expect(workflow).toMatch(/bash \.fix-proof-workflow\/scripts\/fix-proof-run\.sh /);
+    expect(workflow).not.toMatch(/bash scripts\/fix-proof-run\.sh/);
   });
 });
