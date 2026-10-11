@@ -2,7 +2,8 @@ import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
-import { g10ReholdRoutes } from "./g10-rehold.js";
+import { z } from "zod";
+import { G10_REHOLD_STEP, g10ReholdRoutes } from "./g10-rehold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
@@ -13,6 +14,8 @@ const MOVED = fakeSha("moved");
 const MAIN = fakeSha("main-tip");
 const MERGED_TREE = fakeSha("merge-tree");
 const ADVERSARY = "g10-adversary: trust rule (security); TP-1";
+
+const Outcome = z.object({ result: z.object({ reheld: z.boolean(), reason: z.string().optional(), seat: z.string().optional(), clear: z.boolean().optional() }) });
 
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
@@ -44,9 +47,10 @@ function rig(shape: Shape, head = MOVED) {
   const deps = { port: githubPort(fake.wire), store: ref, now: () => 0 };
   const [route] = g10ReholdRoutes(deps, { git: scriptedGit(shape) });
   const run = async (input: { head: string; cleared?: string[] }) => {
-    const result = await route!.runner.run({ prompt: JSON.stringify({ runId: "run-1", repo: REPO, pr, cleared: [], ...input }), signal: new AbortController().signal } as never);
+    const prompt = JSON.stringify({ runId: "run-1", repo: REPO, pr, cleared: [], ...input });
+    const result = await route!.runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: G10_REHOLD_STEP, iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });
     if (!result.ok) throw new Error(result.error);
-    return (JSON.parse(result.output) as { result: { reheld: boolean; reason?: string; seat?: string; clear?: boolean } }).result;
+    return Outcome.parse(JSON.parse(result.output)).result;
   };
   return { store, run };
 }

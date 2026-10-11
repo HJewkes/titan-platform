@@ -1,4 +1,3 @@
-import type { RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
@@ -42,7 +41,7 @@ export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now
       const store = deps.store.get();
       const released = releasedAdversaryAt(store.eventsOf(input.runId));
       if (!released || released.head === input.head || input.cleared.includes(input.head)) return { reheld: false };
-      const { baseRef } = await deps.port.getPr(input.repo as RepoSlug, input.pr);
+      const { baseRef } = await deps.port.getPr(input.repo, input.pr);
       const result = await carry({ repo: input.repo, baseRef, fromHead: released.head, head: input.head }, { ...probe, signal });
       if (isCleanMergeUpOf(result, new Set([released.head, ...input.cleared]))) return { reheld: false, clear: true };
       const reason = reholdReason(released.head, input.head);
