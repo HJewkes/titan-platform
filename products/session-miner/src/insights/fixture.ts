@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { EVENTS_TABLE_DDL } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 
@@ -95,10 +96,43 @@ export function seedBashCall(db: Db, call: FixtureBashCall): void {
   if (call.heads) insertAt(db, "session_signal", { signal: "command_heads", detail: call.heads }, call);
 }
 
-function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall): void {
-  const row = { transcript_id: 1, byte_offset: offset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
+function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall, byteOffset = offset): void {
+  const row = { transcript_id: 1, byte_offset: byteOffset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
   const names = Object.keys(row);
   db.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map((n) => `@${n}`).join(", ")})`).run(row);
+}
+
+export interface FixtureToolResult {
+  toolUseId: string;
+  sessionId: string;
+  ts: string;
+  tool: string;
+  isError: boolean;
+  text: string;
+}
+
+/** Writes each call and its result as transcript lines at `file`, and indexes them at their real byte ranges as transcript 1. */
+export function seedToolResults(db: Db, file: string, results: readonly FixtureToolResult[]): void {
+  db.prepare("INSERT INTO transcript (source_id, source_key) VALUES (1, ?)").run(file);
+  const lines: string[] = [];
+  let at = 0;
+  const append = (entry: unknown) => {
+    const line = JSON.stringify(entry);
+    const span = { start: at, length: Buffer.byteLength(line) };
+    lines.push(line);
+    at += span.length + 1;
+    return span;
+  };
+  for (const r of results) {
+    const call = append({ timestamp: r.ts, message: { content: [{ type: "tool_use", id: r.toolUseId, name: r.tool, input: {} }] } });
+    const result = append({ timestamp: r.ts, message: { content: [{ type: "tool_result", tool_use_id: r.toolUseId, is_error: r.isError, content: [{ type: "text", text: r.text }] }] } });
+    const located = { ...r, outputChars: 0, command: null };
+    insertAt(db, "tool_call", { name: r.tool, family: r.tool.startsWith("mcp__") ? "mcp" : "builtin", input_chars: 1 }, located, call.start);
+    db.prepare(`INSERT INTO fact (transcript_id, byte_offset, byte_length, event_type, ts, seq, session_id, tool_use_id) VALUES (1, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(result.start, result.length, r.isError ? "tool_result_error" : "tool_result", r.ts, result.start, r.sessionId, r.toolUseId);
+    insertAt(db, "inbound", { cause: "tool_result", delivery: "tool_result", is_error: r.isError ? 1 : 0, content_hash: "h", chars: 1 }, located, result.start);
+  }
+  writeFileSync(file, lines.join("\n") + "\n");
 }
 
 export interface FixtureMessage {

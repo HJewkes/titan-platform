@@ -90,6 +90,12 @@ export function utc(time: string | undefined): string | undefined {
   return new Date(zoned).toISOString();
 }
 
+/** The `YYYY-MM-DD` this machine's clock showed at an ISO time or epoch-millisecond instant; daily questions bucket by it. */
+export function localDay(at: string | number): string {
+  const date = new Date(at);
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+}
+
 function refuseCliOnly(question: AnyInsight, options: Record<string, unknown>, ctx: MinerContext): void {
   const given = (question.cliOnly ?? []).filter((key: string) => options[key] !== undefined);
   if (given.length > 0 && ctx.surface !== "cli") throw Object.assign(new Error(`${given.join(", ")} is accepted only on the CLI`), { code: EXIT.DATAERR });

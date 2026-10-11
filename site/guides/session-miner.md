@@ -81,6 +81,7 @@ list-price caveat. Each question is also an MCP tool, `miner__insights__<questio
 | `handoff-threshold` | when each role should hand over: boot cost, fill growth, best context threshold K | `--k`, `--reviewer-prs`, `--broker-log` |
 | `cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | `wake-economics` | what wakes a coordinator, and the requests and cost of each wake episode | `--episode-role <role>` |
+| `tool-errors` | error tool results and classifier denials per local day, by error class and by tool | `--transcript` |
 | `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
 | `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
 | `tool-gaps` | post-filters piped after our CLIs, by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top` |
@@ -94,6 +95,7 @@ and `--until` and narrow with `--seat`. Options that name a local file (`--broke
 `--transcript`, `--journal`, `--pulls`) are accepted only on the CLI. `tool-gaps` reads each
 Bash command back from its transcript and runs `<cli> --help`; it takes every shared filter but `--role`.
 `tool-adoption` reads Bash commands back the same way and takes the same filters.
+`tool-errors` reads each error tool result back from its transcript to class it, and takes the same filters.
 
 ### Where state lives
 
