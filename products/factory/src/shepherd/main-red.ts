@@ -8,6 +8,7 @@ import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
+import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
@@ -17,8 +18,6 @@ import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
-/** Where a fix task goes when the merged PR's registration names no `<initiative>/<id>` task. */
-export const DEFAULT_FIX_INITIATIVE = "titan-platform";
 
 export interface FixTaskFields {
   title: string;
@@ -139,12 +138,6 @@ export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string)
     return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header) - 1));
   }));
   return { failing, log: sections.join("\n") };
-}
-
-/** `<initiative>/<id>` of the merged PR's registration; anything else files into the default initiative. */
-function initiativeOf(task: string | undefined): string | undefined {
-  const initiative = task?.split("/")[0];
-  return task !== undefined && task.includes("/") && /^[a-z0-9][a-z0-9-]*$/i.test(initiative ?? "") ? initiative : undefined;
 }
 
 async function fixTaskFields(deps: ShepherdDeps, input: RedInput, key: string, fallback: boolean): Promise<FixTaskFields> {

@@ -2,6 +2,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { registerHealth } from "./health/cli-health.js";
+import { registerHost } from "./host/cli-host.js";
+import { realHostPorts, type HostPorts } from "./host/ports.js";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -11,6 +13,8 @@ export interface CliIo {
   platform?: NodeJS.Platform;
   /** The titan bin's absolute path; `bin.ts` passes its own. */
   titanBin?: string;
+  /** Process and file access for `titan host`; tests inject fakes. */
+  hostPorts?: HostPorts;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t) };
@@ -23,15 +27,16 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   let exitCode = 0;
   const program = new Command().name("titan").description("The titan host CLI").exitOverride();
   program.configureOutput({ writeOut: io.stdout, writeErr: io.stderr });
-  registerHealth(program, {
+  const env = io.env ?? process.env;
+  const shared = {
     stdout: io.stdout,
-    stderr: io.stderr,
-    env: io.env ?? process.env,
+    env,
     home: io.home ?? homedir(),
     platform: io.platform ?? process.platform,
-    titanBin: io.titanBin ?? resolve(process.argv[1] ?? "titan"),
-    setExitCode: (code) => (exitCode = code),
-  });
+    setExitCode: (code: number) => (exitCode = code),
+  };
+  registerHealth(program, { ...shared, stderr: io.stderr, titanBin: io.titanBin ?? resolve(process.argv[1] ?? "titan") });
+  registerHost(program, { ...shared, ports: io.hostPorts ?? realHostPorts(env) });
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (err) {

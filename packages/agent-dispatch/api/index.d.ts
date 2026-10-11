@@ -81,15 +81,15 @@ interface SafeExecResult {
  * `input` is stdin for the child, and exists for exactly one reason: argv is
  * world-readable via `ps`, so anything relay did not author itself — an item
  * body captured by voice — must not travel that way (R-68). It is the same
- * one-call-site rule as `cwd`; a caller with nothing to hide passes nothing.
+ * opt-in rule as `cwd`; a caller with nothing to hide passes nothing.
  */
 declare function execSafe(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, cwd?: string, input?: string): SafeExecResult;
 /**
  * `execSafe` without blocking the event loop: same timeout, no-shell and
  * error mapping, for callers (a long-lived server) that cannot afford to
- * stall while a slow child answers.
+ * stall while a slow child answers. `input` follows `execSafe`'s rule.
  */
-declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number): Promise<SafeExecResult>;
+declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string): Promise<SafeExecResult>;
 
 /**
  * R-61: hand a claimed item to agent-chat's own agent machinery instead of
@@ -376,4 +376,40 @@ declare function retire(agentChatBinPath: string, name: string, timeoutMs: numbe
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
 
-export { type AgentRow, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, agentChatEnv, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, parkAgent, parseAgentRows, resolveBinaryPath, resumeAgent, resumeArgs, retire };
+/** The label shape agent-chat's broker accepts, checked before a call is spent on it. */
+declare const ASK_LABEL_PATTERN: RegExp;
+interface AskRequest {
+    /** The service label answers are read back under. */
+    as: string;
+    text: string;
+    /** The task or gate the question is about; the owner's queue groups by it. */
+    task?: string;
+    /** Answers to offer the owner. */
+    options?: string[];
+    recommended?: string;
+}
+/** One answer or dismissal to an ask, as agent-chat's `answers --json` prints it. */
+interface ServiceAnswer {
+    msgId: string;
+    /** The msg_id `askHuman` returned for the ask this settles. */
+    questionId: string;
+    outcome: "answered" | "dismissed";
+    text: string;
+    by: "human";
+    /** Where the owner answered from, when agent-chat knows. */
+    channel?: string;
+    at: number;
+}
+/** Pass `next` back as `since` to read only what is new. */
+interface AnswersPage {
+    answers: ServiceAnswer[];
+    next?: string;
+}
+/** Files the question and returns its msg_id, the id its answer is read back by. */
+declare function askHuman(agentChatBinPath: string, req: AskRequest, timeoutMs: number): Promise<string>;
+/** Answers and dismissals to `label`'s asks after `since`, oldest first. */
+declare function readAnswers(agentChatBinPath: string, label: string, since: string | undefined, timeoutMs: number): Promise<AnswersPage>;
+/** Withdraws an ask nobody needs answered any more. A refusal means it is already closed. */
+declare function dismissAsk(agentChatBinPath: string, msgId: string, timeoutMs: number): Promise<void>;
+
+export { ASK_LABEL_PATTERN, type AgentRow, type AnswersPage, type AskRequest, BrokerUnavailableError, DEFAULT_PARK_TIMEOUT_MS, DispatchError, type DispatchRequest, type DispatchResult, DispatchTimeoutError, ExecError, ExecTimeoutError, PEER_NAME_PATTERN, type ParkResult, type ResumeAgentResult, ResumeError, type RetireResult, type SafeExecResult, type ServiceAnswer, agentChatEnv, askHuman, assertInstalledHeadless, buildListAgentsArgs, buildMessageArgs, buildParkArgs, buildResumeAgentArgs, buildRetireArgs, buildSpawnArgs, dataFence, dismissAsk, dispatchToAgentChat, execSafe, execSafeAsync, installedProfilesDir, listAgents, messageAgent, minimalEnv, parkAgent, parseAgentRows, readAnswers, resolveBinaryPath, resumeAgent, resumeArgs, retire };
