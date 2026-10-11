@@ -283,8 +283,7 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
 const PrRefArgs = z.object({ repo: RepoArg, pr: PrArg });
 
 /** The seat or owner behind a hold or release, sent by the CLI because serve cannot read the caller's environment; a client that sends none is recorded as unknown. */
-const ActorArg = z.string().min(1).max(100).optional();
-const UNKNOWN_ACTOR = "unknown";
+const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
@@ -341,7 +340,7 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   async run({ repo, pr, reason, reviewer, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason, reviewer, { actor: actor ?? UNKNOWN_ACTOR });
+    const held = services.store.get().hold(runId, reason, reviewer, { actor });
     return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
@@ -356,7 +355,7 @@ const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, Fa
   async run({ repo, pr, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    services.store.get().release(runId, { actor: actor ?? UNKNOWN_ACTOR });
+    services.store.get().release(runId, { actor });
     return { runId, held: null };
   },
 });
