@@ -1,0 +1,16 @@
+{
+  "tests": [
+    "{packages,products,apps}/*/src/**/*.test.{ts,tsx}",
+    "apps/*/{scripts,server}/**/*.test.ts",
+    "scripts/**/*.test.mjs"
+  ],
+  "carry": [
+    "**/fixtures/**",
+    "**/__fixtures__/**",
+    "**/test-support/**",
+    "**/testdata/**",
+    "**/*.test-helpers.ts",
+    "**/*.fixture.ts"
+  ],
+  "build": "pnpm build"
+}
