@@ -1,5 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
+import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
@@ -154,11 +155,13 @@ function supersedableHead(host: FactoryHost, pending: PendingGate): string | und
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
-  for (const pending of host.pendingGates()) {
-    const { runId, gate } = pending;
+  const asking = host.pendingGates().flatMap((pending) => {
     const asked = supersedableHead(host, pending);
-    if (!asked) continue;
-    const head = await openHead(services, runId);
+    return asked ? [{ ...pending, asked }] : [];
+  });
+  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId));
+  for (const [index, { runId, gate, asked }] of asking.entries()) {
+    const head = settledValue(heads[index]!);
     if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
     if (!dryRun && !cancelUnlessSettled(host.gates, gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`)) continue;
     superseded.push({ runId, gateId: gate.id, from: asked, to: head, condition: "head-moved" });

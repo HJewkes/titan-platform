@@ -22,6 +22,11 @@ export function predatesQualifiedSymbols(indexVersion: string): boolean {
   return false;
 }
 
+/** A parsed file, or its precomputed qualified-name map when the tree is already gone (TP-747). */
+type QualifiedNameSource =
+  | { fileId: string; file: ParsedFile }
+  | { fileId: string; qualifiedByName: ReadonlyMap<string, ReadonlySet<string>> };
+
 /**
  * Aliases from the bare-name symbol ids older index versions wrote (`f.ts#run`)
  * to the qualified ids that replaced them (`f.ts#Job.run`). Written only where
@@ -29,13 +34,12 @@ export function predatesQualifiedSymbols(indexVersion: string): boolean {
  * from the bare name, and the bare id is not itself still a node. Where two
  * classes both define `run`, the old node merged them and no alias is recorded.
  */
-export function qualifiedSymbolAliases(
-  files: Iterable<{ fileId: string; file: ParsedFile }>,
-  nodeIds: ReadonlySet<string>,
-): IdAlias[] {
+export function qualifiedSymbolAliases(files: Iterable<QualifiedNameSource>, nodeIds: ReadonlySet<string>): IdAlias[] {
   const out: IdAlias[] = [];
-  for (const { fileId, file } of files) {
-    for (const [name, qualified] of qualifiedByName(file)) {
+  for (const source of files) {
+    const { fileId } = source;
+    const names = "file" in source ? qualifiedByName(source.file) : source.qualifiedByName;
+    for (const [name, qualified] of names) {
       const oldId = symbolId(fileId, name);
       if (qualified.size !== 1 || nodeIds.has(oldId)) continue;
       const newId = symbolId(fileId, [...qualified][0]!);
@@ -45,7 +49,8 @@ export function qualifiedSymbolAliases(
   return out;
 }
 
-function qualifiedByName(file: ParsedFile): Map<string, Set<string>> {
+/** Each bare declared name in the file mapped to the qualified names that share it. */
+export function qualifiedByName(file: ParsedFile): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
   for (const d of collectDeclarations(file)) {
     const bucket = out.get(d.name);

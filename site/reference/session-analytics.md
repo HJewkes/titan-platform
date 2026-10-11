@@ -183,6 +183,17 @@ that sent it, per model. An approve counts as an error when the same PR later go
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
 
+### costPerOutcome
+
+`costPerOutcome(db, assignments, { since, until })` costs generic assignment records
+(`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
+`byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
+count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
+split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
+reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
+tables with the list-price caveat.
+
 ### taskActuals
 
 `taskActuals(minerDb, tasks, options)` returns what each done task cost in agent time. The
@@ -197,6 +208,10 @@ capped, so a first request adds nothing. `usd` is `request_cost` at list price. 
 linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
 task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
 implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+`peakContext` is the largest main-thread `context_tokens` over the implementer sessions.
+`contextAtFirstDeliverable` is the context of the first implementer request at or after the
+earliest `status_report` or `pr_create` signal, in that signal's session. Reviewer sessions count
+toward neither, and each is null when there is nothing to read.
 
 | Flag | Meaning |
 |---|---|
