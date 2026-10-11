@@ -13,7 +13,7 @@ export const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
 /** Above the fix-proof job's own 20-minute timeout, so a job that runs to its limit is still read. */
-export const DEFAULT_FIX_PROOF_WAIT_MS = 25 * 60_000;
+const DEFAULT_FIX_PROOF_WAIT_MS = 25 * 60_000;
 const DEFAULT_POLL_MS = 30_000;
 const LOG_TAIL_LINES = 200;
 const GATED_KINDS: ReadonlySet<string> = new Set(["correctness", "security"]);
@@ -21,7 +21,7 @@ const FIX_BRANCH_PREFIX = "fix/";
 const NO_REPRO_VERDICTS: ReadonlySet<string> = new Set(["vacuous", "no-tests"]);
 const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
 
-export type FixProofRead = { kind: "result"; line: string; verdict: FixProofResult["verdict"] } | { kind: "skipped" | "missing" | "error"; reason: string };
+type FixProofRead = { kind: "result"; line: string; verdict: FixProofResult["verdict"] } | { kind: "skipped" | "missing" | "error"; reason: string };
 
 /** The step output as replayed; only a `result` line is ever parsed again, so the rest is checked loosely. */
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
