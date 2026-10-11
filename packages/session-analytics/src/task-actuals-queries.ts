@@ -88,6 +88,40 @@ export function readSessionStats(db: Db, sessionIds: readonly string[], capsMinu
   }));
 }
 
+function nullableNum(row: Row | undefined, key: string): number | null {
+  const value = row?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+// A sidechain's context is its subagent's window, not the session's.
+const MAIN_THREAD = `${IN_SESSIONS} AND is_sidechain = 0`;
+
+/** The largest main-thread context across the sessions, or null when they have no requests. */
+export function readPeakContext(db: Db, sessionIds: readonly string[]): number | null {
+  const rows = db.prepare(`SELECT MAX(context_tokens) AS peak FROM request_cost WHERE ${MAIN_THREAD}`).all({ ids: JSON.stringify(sessionIds) });
+  return nullableNum(asRows(rows)[0], "peak");
+}
+
+/** The first deliverable is the first DONE report or `gh pr create` (TP-2150 §7). */
+const FIRST_DELIVERABLE_SIGNALS = "('status_report', 'pr_create')";
+
+/**
+ * Context of the first main-thread request at or after the earliest deliverable signal across the
+ * sessions, in that signal's session; null when there is no such signal or request.
+ */
+export function readContextAtFirstDeliverable(db: Db, sessionIds: readonly string[]): number | null {
+  const rows = db
+    .prepare(
+      `WITH first AS (
+         SELECT session_id, ts FROM session_signal WHERE ${IN_SESSIONS} AND signal IN ${FIRST_DELIVERABLE_SIGNALS}
+         ORDER BY ts, byte_offset LIMIT 1)
+       SELECT r.context_tokens AS context FROM request_cost r JOIN first f ON r.session_id = f.session_id
+       WHERE r.is_sidechain = 0 AND r.ts >= f.ts ORDER BY r.ts LIMIT 1`,
+    )
+    .all({ ids: JSON.stringify(sessionIds) });
+  return nullableNum(asRows(rows)[0], "context");
+}
+
 interface SessionPr {
   sessionId: string;
   prRef: string;

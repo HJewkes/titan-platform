@@ -1,5 +1,18 @@
 # @titan-design/evals
 
+## 0.3.0
+
+### Minor Changes
+
+- 84faee5: TP-691a: ship the `review-pr` unit and its `live-brief` variant under `units/review-pr/`, plus three building blocks for the private case builder. `reviewPrBrief` renders the live `reviewerBrief` with only its checkout lines swapped for bundle paths. `materializeBundle` writes `head/`, `base/` (via `git archive`, no `.git`) and `diff.patch` from a local clone through a git-only port. `private/exclusion` ports F6's three-layer private exclusion (allowlist, markers read from an active-work root, final assertion) with a self-test.
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-read@0.13.2
+
 ## 0.2.5
 
 ### Patch Changes
