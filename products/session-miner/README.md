@@ -86,6 +86,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 
 | Question | Command | Answers | Own options |
 | --- | --- | --- | --- |
+| Q0 | `insights prices` | the price table as data, the models in the window no row prices, and every model in a published price file the table prices differently or not at all; no cost claim until that list is empty | `--published <file>` (CLI only): JSON `[{ model, input, cacheRead, cacheWrite5m, cacheWrite1h, output }]` in USD per million tokens |
 | Q1 | `insights spend-by-action` | each role's spend by turn action, and the mechanical share | `--mechanical <class>` |
 | Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
@@ -103,7 +104,7 @@ Every question takes the same filters, which combine with AND: `--session <id>` 
 `--since` (inclusive) and `--until` (exclusive) on request time. Roles are the cost
 report's `byRole` names, such as `coordinator` or `worker:reviewer`. Compactions and
 coverage stay window-wide. Dates must parse and are compared in UTC, so an offset timestamp
-works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it reads a local file.
+works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` and `published` because they read a local file.
 
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
