@@ -213,13 +213,22 @@ function addOrigins(db: Db, ids: string, contexts: Map<string, SessionContext>):
 }
 
 function addInbounds(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
-  const sql = `SELECT session_id AS sessionId, cause, SUM(delivery = 'turn_start') AS turnStarts FROM inbound WHERE ${IN_SESSIONS} GROUP BY session_id, cause`;
+  const sql = `SELECT session_id AS sessionId, cause, SUM(delivery = 'turn_start') AS turnStarts
+    FROM (SELECT *, ${INBOUND_COPY_RANK} AS copy_rank FROM inbound WHERE ${IN_SESSIONS})
+    WHERE copy_rank = 1 GROUP BY session_id, cause`;
   for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; cause: string; turnStarts: number }[]) {
     const facts = contexts.get(row.sessionId)!.facts;
     facts.inboundKinds = [...(facts.inboundKinds ?? []), row.cause];
     if (row.cause === "human_typed") facts.humanTurnCount = row.turnStarts;
   }
 }
+
+/**
+ * The inbound twin of session-graph's `SIGNAL_COPY_RANK`: a session held in two transcripts (a
+ * mirror, a resumed history) carries each inbound line in both, and only the first copy counts.
+ */
+export const INBOUND_COPY_RANK =
+  "ROW_NUMBER() OVER (PARTITION BY session_id, ts, block_index, cause, delivery, content_hash ORDER BY transcript_id, byte_offset)";
 
 function addSignals(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT DISTINCT session_id AS sessionId, signal FROM session_signal WHERE ${IN_SESSIONS}`;
