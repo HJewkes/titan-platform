@@ -57,6 +57,8 @@ export interface ChannelTag {
   readonly from: string | null;
   readonly msgId: string | null;
   readonly isSystem: boolean;
+  /** agent-chat writes `broadcast="true"` on a broadcast and omits it on a DM. */
+  readonly broadcast: boolean;
 }
 
 const CHANNEL_TAG = /<channel\s+source="([^"]+)"([^>]*)>/;
@@ -72,5 +74,6 @@ export function parseChannelTag(text: string): ChannelTag | null {
     from: ATTRIBUTE("from").exec(attributes)?.[1] || null,
     msgId: ATTRIBUTE("msg_id").exec(attributes)?.[1] || null,
     isSystem: ATTRIBUTE("system").exec(attributes)?.[1] === "true",
+    broadcast: ATTRIBUTE("broadcast").exec(attributes)?.[1] === "true",
   };
 }
