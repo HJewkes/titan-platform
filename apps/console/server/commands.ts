@@ -9,7 +9,7 @@ import { roundsCommands, type RoundsSource } from "./rounds.js";
 import { sessionsCommands, type SessionsSource } from "./sessions.js";
 import { tasksCommands } from "./tasks.js";
 import { UPSTREAM_IDS, probeUpstreams, type Upstream } from "./upstreams.js";
-import { initiativeResult, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
+import { initiativeResult, knowledgeCommands, portfolioResult, readInitiative, readPortfolio, type WorkOptions } from "./work.js";
 
 const upstreamHealth = z.object({
   id: z.enum(UPSTREAM_IDS),
@@ -50,6 +50,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...sessionsCommands(sessions),
     ...tasksCommands({ activeWork, sessions, work }),
     ...graphCommands({ activeWork, sessions }),
+    ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
     "work.portfolio": readCommand({

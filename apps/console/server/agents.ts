@@ -49,12 +49,14 @@ const agentMessages = z.object({
 });
 type AgentMessages = z.infer<typeof agentMessages>;
 
-const messagesArgs = z.object({
-  agent: z.string().min(1).describe("The agent-chat agent name whose sent and received messages to list"),
-  peer: z.string().min(1).optional().describe("Only messages between agent and this peer"),
-  before: z.number().int().positive().optional().describe("Id cursor: only messages older than this events.db row, from nextCursor"),
-  limit: z.number().int().positive().max(BROKER_HISTORY_LIMIT).default(DEFAULT_PAGE),
-});
+const messagesArgs = z
+  .object({
+    agent: z.string().min(1).optional().describe("The agent-chat agent name whose sent and received messages to list; every agent's when absent"),
+    peer: z.string().min(1).optional().describe("Only messages between agent and this peer"),
+    before: z.number().int().positive().optional().describe("Id cursor: only messages older than this events.db row, from nextCursor"),
+    limit: z.number().int().positive().max(BROKER_HISTORY_LIMIT).default(DEFAULT_PAGE),
+  })
+  .refine((args) => args.peer === undefined || args.agent !== undefined, { message: "peer needs agent", path: ["peer"] });
 
 /** Queue kinds a person answers, in the order the queue shows them. */
 const QUEUE_ORDER = ["question", "endorse_request", "approval_request", "message", "notice"];
@@ -113,7 +115,7 @@ function conversationCommands(source: AgentsSource, now: () => number) {
   return {
     "agents.messages": readCommand({
       name: "agents.messages",
-      description: "An agent's messages, or a pair's, newest first and paged by id from events.db; the broker's history window when events.db will not open",
+      description: "Every agent's messages, one agent's, or a pair's, newest first and paged by id from events.db; the broker's history window when events.db will not open",
       args: messagesArgs,
       result: agentMessages,
       run: (query) => readMessages(source, query),
@@ -146,6 +148,7 @@ function inConversation({ agent, peer }: MessageQuery): (event: BrokerEvent) => 
   const kinds: readonly string[] = MESSAGE_KINDS;
   return (event) => {
     const to = event.meta["target"];
+    if (agent === undefined) return kinds.includes(event.kind);
     const party = peer === undefined ? event.from === agent || to === agent : (event.from === agent && to === peer) || (event.from === peer && to === agent);
     return party && kinds.includes(event.kind);
   };
