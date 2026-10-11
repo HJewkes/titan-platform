@@ -86,6 +86,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 
 | Question | Command | Answers | Own options |
 | --- | --- | --- | --- |
+| Q0 | `insights prices` | the price table as data, the models in the window no row prices, and every model in a published price file the table prices differently or not at all; no cost claim until that list is empty | `--published <file>` (CLI only): JSON `[{ model, input, cacheRead, cacheWrite5m, cacheWrite1h, output }]` in USD per million tokens |
 | Q1 | `insights spend-by-action` | each role's spend by turn action, and the mechanical share | `--mechanical <class>` |
 | Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
@@ -103,7 +104,7 @@ Every question takes the same filters, which combine with AND: `--session <id>` 
 `--since` (inclusive) and `--until` (exclusive) on request time. Roles are the cost
 report's `byRole` names, such as `coordinator` or `worker:reviewer`. Compactions and
 coverage stay window-wide. Dates must parse and are compared in UTC, so an offset timestamp
-works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it reads a local file.
+works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` and `published` because they read a local file.
 
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
@@ -203,6 +204,29 @@ synthetic-fixture test. Then add one `defineInsight({...})` to
 options and flags, the schema, and an `answer` that calls the analysis and its renderer.
 Append it to `INSIGHT_QUESTIONS`. The shared tests then cover its envelope, its caveat,
 every filter, and its presence on all three surfaces.
+
+### Verifying findings (TP-499)
+
+An analyst reading these answers writes each finding as `findingSchema` (exported from
+`src/insights/citations.ts`): `{ id, claim, citations, falsifier }`. A finding with no citation
+or an empty `falsifier` fails the schema. Each citation is
+`{ question, args, field, value, tolerance? }`: `question` is an insight name such as
+`spend-by-action`, `args` its flags as an object (`--agent-prefix`, `agent-prefix` and
+`agentPrefix` are the same key), and `field` a JSON pointer into the answer, such as
+`/totals/sessions`.
+
+```json
+[{ "id": "F1", "claim": "reviewers ran one session", "falsifier": "a second reviewer session in the window",
+   "citations": [{ "question": "spend-by-action", "args": { "since": "2026-09-10", "agent-prefix": "rev-" },
+                   "field": "/totals/sessions", "value": 1 }] }]
+```
+
+`titan-miner insights verify-citations --findings <file>` re-runs each cited question once per
+distinct question and args, and gives every citation a status: `ok`, `mismatch` (with the
+`actual` value), `missing-field`, `unknown-question`, or `error` (the run failed, such as invalid
+args or a missing events db). A number matches within `tolerance` relative to the cited value,
+0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
+failures when any citation is not ok. `--findings` is accepted only on the CLI.
 
 ## The playbook (TP-19)
 

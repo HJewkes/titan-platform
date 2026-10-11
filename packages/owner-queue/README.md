@@ -13,10 +13,14 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and requires `asker` and `depositId`. `fromDeposit(deposit, now)` parses one and returns the
   open item it files, with source `deposit:<asker>/<depositId>` and a lens taken from
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
+- `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent
+  means owner. It only selects a reader and grants no authority. `forAudience(items, audience)`
+  keeps the matching items in input order and `audienceOf(item)` reads the default.
 - `@titan-design/owner-queue/spool` is the only part of the package that touches the
   filesystem; the root export stays I/O-free. `writeDeposit(dir, deposit)` files a deposit
   once as `<asker>-<depositId>.json` (0600, temp file then a no-clobber link, 64 KB cap),
-  `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects, and
+  `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects (`{ audience }`
+  keeps one audience's items, absent counted as owner, and every reject), and
   `writeAnswer`/`readAnswer` keep `<id>.answer.json` beside them. File names percent-encode
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.
