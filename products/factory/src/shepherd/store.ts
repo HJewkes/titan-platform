@@ -2,6 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
+import { readSlots, recordVouch, vouchedLine, writeSlotRow } from "./hold-slot-rows.js";
 import { afterHold, afterRelease, type HoldSlots, type SlotHold } from "./hold-slots.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
@@ -112,8 +113,6 @@ interface Row {
   held: number;
   hold_reason: string | null;
   hold_reviewer?: string | null;
-  parked_reason?: string | null;
-  parked_reviewer?: string | null;
   release_ready_head?: string | null;
   release_ready_at?: string | null;
   hold_satisfied_head?: string | null;
@@ -225,14 +224,14 @@ export class ShepherdStore implements HoldLookup {
 
   /** Lifts the hold that gates; a hold parked under it gates in its place. */
   release(runId: string, by: EventContext = {}): Registration {
-    this.db.transaction(() => this.writeSlots(runId, afterRelease(this.slotsOf(runId)), { kind: "release", reason: null }, by))();
+    this.db.transaction(() => this.writeSlots(runId, afterRelease(readSlots(this.db, runId)), { kind: "release", reason: null }, by))();
     return this.byRun(runId)!;
   }
 
   /** Compare-and-swap: releases only while the run's gating hold is exactly `reason`; false when a release or another hold got there first. */
   releaseIfHeld(runId: string, reason: string, by: EventContext = {}): boolean {
     return this.db.transaction(() => {
-      const slots = this.slotsOf(runId);
+      const slots = readSlots(this.db, runId);
       if (slots.top?.reason !== reason) return false;
       this.writeSlots(runId, afterRelease(slots), { kind: "release", reason }, by);
       return true;
@@ -251,13 +250,12 @@ export class ShepherdStore implements HoldLookup {
 
   /** Records that a probe proved `head` a clean merge-up carrying `fromHead`'s tree; a repeat changes nothing. */
   vouch(runId: string, fromHead: string, head: string): void {
-    this.db.prepare("INSERT INTO shepherd_vouch (run_id, from_head, head, at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").run(runId, fromHead, head, this.stamp());
+    recordVouch(this.db, runId, fromHead, head, this.stamp());
   }
 
   /** `fromHead` and every head recorded as a clean merge-up of it for the run. */
   vouchedLine(runId: string, fromHead: string): Set<string> {
-    const rows = this.db.prepare("SELECT head FROM shepherd_vouch WHERE run_id = ? AND from_head = ?").all(runId, fromHead) as { head: string }[];
-    return new Set([fromHead, ...rows.map((row) => row.head)]);
+    return vouchedLine(this.db, runId, fromHead);
   }
 
   /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
@@ -331,24 +329,12 @@ export class ShepherdStore implements HoldLookup {
   }
 
   private placeHold(runId: string, hold: SlotHold, by: EventContext): void {
-    this.writeSlots(runId, afterHold(this.slotsOf(runId), hold), { kind: "hold", reason: hold.reason }, by);
+    this.writeSlots(runId, afterHold(readSlots(this.db, runId), hold), { kind: "hold", reason: hold.reason }, by);
   }
 
-  private slotsOf(runId: string): HoldSlots {
-    const row = this.db.prepare("SELECT * FROM shepherd_registration WHERE run_id = ?").get(runId) as Row | undefined;
-    const top = row?.held === 1 ? { reason: row.hold_reason ?? "", reviewer: row.hold_reviewer ?? null } : null;
-    return { top, parked: row?.parked_reason ? { reason: row.parked_reason, reviewer: row.parked_reviewer ?? null } : null };
-  }
-
-  private writeSlots(runId: string, { top, parked }: HoldSlots, change: { kind: EventKind; reason: string | null }, by: EventContext): void {
+  private writeSlots(runId: string, slots: HoldSlots, change: { kind: EventKind; reason: string | null }, by: EventContext): void {
     const at = this.stamp();
-    const changed = this.db
-      .prepare(
-        `UPDATE shepherd_registration SET held = ?, hold_reason = ?, hold_reviewer = ?, parked_reason = ?, parked_reviewer = ?,
-         hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?`,
-      )
-      .run(top ? 1 : 0, top?.reason ?? null, top?.reviewer ?? null, parked?.reason ?? null, parked?.reviewer ?? null, at, runId).changes;
-    if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+    if (writeSlotRow(this.db, runId, slots, at) === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
     this.record(runId, change.kind, change.reason, at, by);
   }
 
