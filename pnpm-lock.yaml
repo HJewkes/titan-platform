@@ -762,7 +762,11 @@ importers:
 
   packages/test-kit: {}
 
-  packages/throughput: {}
+  packages/throughput:
+    dependencies:
+      '@titan-design/evidence':
+        specifier: workspace:^
+        version: link:../evidence
 
   packages/tool-guard:
     dependencies:
