@@ -1,7 +1,7 @@
 /** A name is set by whoever threw, so only an identifier-shaped one is echoed. */
 const ERROR_CLASS_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 /** A GitHub token, a JWT head or a long hex run can still be identifier-shaped, so these never pass as a class name. */
-const CREDENTIAL_SHAPE = /^(?:gh[pousr]_|github_pat_|eyJ)|[0-9A-Fa-f]{32,}/;
+const CREDENTIAL_SHAPE = /^eyJ|gh[pousr]_|github_pat_|npm_|[0-9A-Fa-f]{32,}/i;
 
 /** Only the error's class name, so a reason that reaches a public PR comment carries nothing from the error's text. */
 export function errorClass(error: unknown): string {
@@ -31,7 +31,7 @@ export function failureOf(error: unknown): string {
 /** The error's text for the local console only, never a stored reason; a throwing getter reads as its class instead of failing the caller. */
 export function consoleTextOf(error: unknown): string {
   try {
-    return error instanceof Error ? error.message : String(error);
+    return String(error instanceof Error ? error.message : error);
   } catch {
     return `(unreadable ${errorClass(error)})`;
   }

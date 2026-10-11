@@ -1,3 +1,4 @@
+import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { awaitLateVerdict, awaitVerdict, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
@@ -124,6 +125,19 @@ describe("awaitVerdict after a restart", () => {
     const result = await awaitVerdict(reader, input, clock.timing, signal, rosterOf(() => (clock.timing.now() < back ? "detached" : "live")));
 
     expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+  });
+});
+
+describe("awaitVerdict on a usage-limit notice", () => {
+  it("ends the wait at the notice, without waiting for the live reviewer to exit", async () => {
+    const clock = restartedAt(0);
+    const notice = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+    const reader = { read: async () => [{ ...verdictMessage(DISPATCHED_AT + 1), text: notice, synthetic: { apiError: "rate_limit", resetsAt: null } }] } satisfies ReviewerReader;
+
+    const result = await awaitVerdict(reader, input, clock.timing, signal, rosterOf(() => "live"));
+
+    expect(result).toEqual({ kind: "none", reason: USAGE_LIMIT_REASON, notice });
+    expect(clock.elapsed()).toBe(0);
   });
 });
 

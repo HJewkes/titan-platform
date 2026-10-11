@@ -24,12 +24,23 @@ describe("errorClass", () => {
     ["ghs_", "ghs_FAKE0000NOTAREALTOKEN0000"],
     ["gho_", "gho_FAKE0000NOTAREALTOKEN0000"],
     ["github_pat_", "github_pat_FAKE0000NOTAREAL_0000"],
+    ["a prefix inside the name (Xghp_)", "Xghp_FAKE0000NOTAREALTOKEN0000"],
+    ["a prefix inside the name (MyGhp_)", "MyGhp_FAKE0000NOTAREALTOKEN0000"],
+    ["an upper-case prefix", "GHP_FAKE0000NOTAREALTOKEN0000"],
+    ["an upper-case github_pat_", "XGITHUB_PAT_FAKE0000"],
+    ["npm_", "npm_FAKE0000NOTAREALTOKEN0000"],
     ["a JWT head", "eyJhbGciOiJub25lIn0"],
     ["32 hex characters", "Fault0123456789abcdef0123456789abcdef"],
   ])("falls back to Error for an identifier-shaped name that looks like a credential (%s)", (_shape, name) => {
     const error = new Error("x");
     error.name = name;
     expect(errorClass(error)).toBe("Error");
+  });
+
+  it("keeps a benign class name that merely contains gh", () => {
+    const error = new Error("x");
+    error.name = "HighRightsError";
+    expect(errorClass(error)).toBe("HighRightsError");
   });
 
   it("keeps a class name with a short hex run", () => {
@@ -79,6 +90,11 @@ describe("consoleTextOf", () => {
   it("gives the message of an error and the text of a thrown value", () => {
     expect(consoleTextOf(new StorageFault("disk full"))).toBe("disk full");
     expect(consoleTextOf("plain")).toBe("plain");
+  });
+
+  it("gives a string even when the message is not one", () => {
+    const error = Object.assign(new Error("x"), { message: 42 });
+    expect(consoleTextOf(error)).toBe("42");
   });
 
   it("names the class instead of throwing when the message getter throws", () => {

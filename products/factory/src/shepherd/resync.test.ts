@@ -402,6 +402,28 @@ describe("resyncShepherd", () => {
     expect(ORPHANED).toMatch(/^orphaned: /);
   });
 
+  it("skips an orphaned gate another host settled after the sweep listed it, and cancels the rest", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: HEAD });
+    const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY), after: "not json" });
+    await w.seed.runtime.wait(runId);
+    const raced = gateId(runId, "sh-sent-back");
+    const rest = gateId(runId, "approve-merge");
+    w.seed.gates.create({ id: raced, prompt: "sent back at an old head", ...TEST_BRIEF });
+    w.seed.gates.create({ id: rest, prompt: "approve at an old head", ...TEST_BRIEF });
+    const cancel = w.seed.gates.cancel.bind(w.seed.gates);
+    vi.spyOn(w.seed.gates, "cancel").mockImplementation((id, reason) => {
+      if (id === raced) cancel(raced, "settled elsewhere");
+      return cancel(id, reason);
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(resyncShepherd(w.seed, w.routes.shepherd!)).resolves.toMatchObject({ orphanGates: expect.arrayContaining([raced, rest]) });
+
+    expect(w.seed.gates.get(rest)?.status).toBe("cancelled");
+    expect(w.seed.gates.get(raced)).toMatchObject({ status: "cancelled", reason: "settled elsewhere" });
+  });
+
   it("a dry run reports what it would end and cancel, and writes nothing", async () => {
     const w = world();
     const runId = await gatedRun(w, 1);

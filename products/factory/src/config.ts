@@ -30,6 +30,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
   g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
   /** Repos whose CI uploads a `codewatch-report` artifact; their reviewer briefs get its questions. */
