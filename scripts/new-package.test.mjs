@@ -1,9 +1,9 @@
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseArgs, registerLayer, stampPackageDir, stampReferencePage } from "./new-package.mjs";
+import { parseArgs, regenerateCapabilities, registerLayer, stampPackageDir, stampReferencePage } from "./new-package.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -132,5 +132,21 @@ describe("stamping the package directory", () => {
     const capability = readFileSync(join(dest, "CAPABILITY.md"), "utf8");
     expect(capability).toContain("# beacon: use this when");
     expect(capability).not.toMatch(/__[A-Z]+__/);
+  });
+});
+
+describe("regenerating the capability catalog for a package that has never been built", () => {
+  it("writes the catalog listing the package and leaves its API snapshot for the first build", () => {
+    const root = mkdtempSync(join(tmpdir(), "new-package-"));
+    cpSync(join(REPO, "scripts"), join(root, "scripts"), { recursive: true });
+    cpSync(join(REPO, "templates", "package"), join(root, "templates", "package"), { recursive: true });
+    for (const dir of ["products", "apps", ".codewatch", join("site", "guides")]) mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(join(root, ".codewatch", "check.json"), registerLayer(baseCheck, "packages/beacon", "1"));
+    const { dest } = stampPackageDir(root, { name: "beacon", tier: "1", description: "signals a thing", task: "TP-99" });
+
+    regenerateCapabilities(root);
+
+    expect(readFileSync(join(root, "CAPABILITIES.md"), "utf8")).toContain("beacon");
+    expect(existsSync(join(dest, "api"))).toBe(false);
   });
 });
