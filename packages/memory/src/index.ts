@@ -45,3 +45,23 @@ export type { MemoryVectorsOptions } from "./vectors.js";
 export { MemoryVectors } from "./vectors.js";
 export type { ReflectDeps, ReflectInput, ReflectOptions, ReflectSessionInput, ReflectionResult, RejectedDelta, Reflector } from "./reflect.js";
 export { parseDeltas, reflectSession } from "./reflect.js";
+export type {
+  DedupedFact,
+  DestinationProposal,
+  FactGroup,
+  MemoryDestination,
+  MemoryFactType,
+  MemoryIndexPointer,
+  MemorySourceRef,
+  ParseFailure,
+  ParsedFact,
+  SkillSummary,
+} from "./auto-memory/types.js";
+export { MEMORY_FACT_TYPES } from "./auto-memory/types.js";
+export { parseMemoryFile, parseMemoryIndex } from "./auto-memory/parse.js";
+export type { DedupeOptions } from "./auto-memory/dedupe.js";
+export { dedupeFacts } from "./auto-memory/dedupe.js";
+export type { GroupOptions } from "./auto-memory/group.js";
+export { groupFacts, topicTokens } from "./auto-memory/group.js";
+export type { ProposeOptions } from "./auto-memory/propose.js";
+export { proposeDestination } from "./auto-memory/propose.js";
