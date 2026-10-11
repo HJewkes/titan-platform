@@ -1,5 +1,13 @@
 # @titan-design/factory
 
+## 0.14.3
+
+### Patch Changes
+
+- bd74657: Gate sweeps skip a gate another host settled between listing and cancelling instead of throwing partway through.
+- Updated dependencies [bd74657]
+  - @titan-design/workflow@0.10.1
+
 ## 0.14.2
 
 ### Patch Changes

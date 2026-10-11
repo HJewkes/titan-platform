@@ -944,7 +944,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.10.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.10.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
