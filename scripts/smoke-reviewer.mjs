@@ -6,6 +6,9 @@ import { parseArgs } from "node:util";
 import { dispatchToAgentChat, listAgents } from "../packages/agent-dispatch/dist/index.js";
 import { appDirs } from "../packages/app-paths/dist/index.js";
 import { reviewerBrief } from "../packages/review-panel/dist/index.js";
+// Shepherd's own host check and rule text, loaded through Node's type stripping (the factory package does not export them),
+// so the smoke brief tells the reviewer to run exactly the commands a Shepherd reviewer on this host runs.
+import { localBasementSuite, suiteRules } from "../products/factory/src/shepherd/suite-host.ts";
 import { checkReviewerTranscript } from "./reviewer-smoke-check.mjs";
 
 // The two profiles Shepherd spawns (DEFAULT_CLASS_ROLES): bd-reviewer for g10, reviewer otherwise.
@@ -15,15 +18,15 @@ const SPAWN_TIMEOUT_MS = 60_000;
 // `agent ls --json` takes about 6.5 s on the Mac.
 const ROSTER_TIMEOUT_MS = 30_000;
 
-const USAGE = "usage: pnpm smoke:reviewer --repo <owner/name> --pr <n> --head <40-hex sha> --profile <reviewer|bd-reviewer> [--cwd <repo checkout>] [--timeout-min 20] [--agent-chat <path>] [--run]";
+const USAGE = "usage: pnpm smoke:reviewer --repo <owner/name> --pr <n> --head <40-hex sha> --profile <reviewer|bd-reviewer> [--cwd <repo checkout, required with --run>] [--timeout-min 20] [--agent-chat <path>] [--run]";
 
 function options() {
   const { values } = parseArgs({ options: {
     repo: { type: "string" }, pr: { type: "string" }, head: { type: "string" }, profile: { type: "string", default: "reviewer" },
-    cwd: { type: "string", default: process.cwd() }, "timeout-min": { type: "string", default: "20" }, "agent-chat": { type: "string" }, run: { type: "boolean", default: false },
+    cwd: { type: "string" }, "timeout-min": { type: "string", default: "20" }, "agent-chat": { type: "string" }, run: { type: "boolean", default: false },
   } });
   const pr = Number(values.pr);
-  const valid = /^[\w.-]+\/[\w.-]+$/.test(values.repo ?? "") && Number.isSafeInteger(pr) && pr > 0 && /^[0-9a-f]{40}$/.test(values.head ?? "") && PROFILES.includes(values.profile);
+  const valid = /^[\w.-]+\/[\w.-]+$/.test(values.repo ?? "") && Number.isSafeInteger(pr) && pr > 0 && /^[0-9a-f]{40}$/.test(values.head ?? "") && PROFILES.includes(values.profile) && (!values.run || values.cwd !== undefined);
   if (!valid) throw new Error(USAGE);
   return { ...values, pr, timeoutMs: Number(values["timeout-min"]) * 60_000, agentChat: values["agent-chat"] ?? onPath("agent-chat") };
 }
@@ -46,8 +49,10 @@ function checkoutRoot() {
 
 function plan(opts) {
   const name = `rv-smoke-${opts.pr}-${opts.profile}-${randomBytes(2).toString("hex")}`;
-  const brief = reviewerBrief({ repo: opts.repo, pr: opts.pr, head: opts.head, checkoutRoot: checkoutRoot() });
-  return { name, profile: opts.profile, cwd: opts.cwd, agentChat: opts.agentChat, timeoutMs: opts.timeoutMs, brief };
+  const onBasement = localBasementSuite();
+  const testRule = suiteRules(onBasement).reviewer;
+  const brief = reviewerBrief({ repo: opts.repo, pr: opts.pr, head: opts.head, checkoutRoot: checkoutRoot(), testRule });
+  return { name, profile: opts.profile, host: onBasement ? "basement" : "mac", cwd: opts.cwd ?? null, agentChat: opts.agentChat, timeoutMs: opts.timeoutMs, brief };
 }
 
 async function awaitExit(agentChat, name, timeoutMs) {

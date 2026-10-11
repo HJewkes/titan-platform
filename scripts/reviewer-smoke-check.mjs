@@ -37,8 +37,11 @@ function writtenMessage(part) {
   return null;
 }
 
+/** Only user and assistant records are conversation; summaries, system notes and snapshots are bookkeeping. */
 function blocksOf(record) {
-  const content = record?.message?.content;
+  if (record?.type !== "user" && record?.type !== "assistant") return [];
+  const content = record.message?.content;
+  if (typeof content === "string") return [{ type: "text", text: content }];
   return Array.isArray(content) ? content.filter((part) => part && typeof part === "object") : [];
 }
 
@@ -54,10 +57,17 @@ function verdictIn(message, target) {
   return { verdict: block.ok ? block.verdict : "WAIT", via: message.via };
 }
 
+/**
+ * Mirrors Shepherd's `finishedTurnMessages` (reviewer-reader.ts): its messages count only when the
+ * conversation ends on assistant text, so any later part (a tool call such as the post-verdict
+ * `rm -rf`, a chat_send, a tool result, thinking or a user message) leaves `finished` false.
+ * Claude Code transcripts never carry copied history (session-read sets `historyOrigin` null), so there is none to skip.
+ */
 function scan(lines) {
   const calls = new Map();
   const written = [];
   const results = [];
+  let finished = false;
   for (const line of lines) {
     const record = parseRecord(line);
     for (const part of blocksOf(record)) {
@@ -65,9 +75,10 @@ function scan(lines) {
       if (part.type === "tool_result" && part.is_error === true) results.push(part);
       const message = record.type === "assistant" ? writtenMessage(part) : null;
       if (message) written.push(message);
+      finished = message?.via === "text";
     }
   }
-  return { calls, written, results };
+  return { calls, written: finished ? written : [], finished, results };
 }
 
 function failedCall(result, calls) {
@@ -81,10 +92,10 @@ function failedCall(result, calls) {
  * tool call that was refused or prompted. `ok` is the smoke's pass condition.
  */
 export function checkReviewerTranscript(lines, target) {
-  const { calls, written, results } = scan(lines);
+  const { calls, written, finished, results } = scan(lines);
   const verdict = written.map((message) => verdictIn(message, target)).filter(Boolean).at(-1) ?? null;
   const failed = results.map((result) => failedCall(result, calls));
   const refusals = failed.filter((call) => call.kind !== null);
   const errors = failed.filter((call) => call.kind === null).map(({ kind: _kind, ...call }) => call);
-  return { ok: verdict !== null && refusals.length === 0, verdict, refusals, errors };
+  return { ok: verdict !== null && refusals.length === 0, finishedTurn: finished, verdict, refusals, errors };
 }

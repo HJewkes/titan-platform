@@ -3,7 +3,8 @@ import { checkReviewerTranscript, refusalKind } from "./reviewer-smoke-check.mjs
 
 const HEAD = "702e4c8f".padEnd(40, "0");
 const TARGET = { repo: "HJewkes/titan-platform", pr: 343, head: HEAD };
-const BLOCK = `Looks right.\n\nVerdict: MERGE\nPR: HJewkes/titan-platform#343\nHead: ${HEAD}`;
+const SEND = "mcp__plugin_agent-chat_agent-chat__chat_send";
+const BLOCK =`Looks right.\n\nVerdict: MERGE\nPR: HJewkes/titan-platform#343\nHead: ${HEAD}`;
 
 const assistant = (...content) => JSON.stringify({ type: "assistant", message: { role: "assistant", content } });
 const user = (...content) => JSON.stringify({ type: "user", message: { role: "user", content } });
@@ -19,10 +20,32 @@ describe("checkReviewerTranscript", () => {
     expect(report).toMatchObject({ ok: true, verdict: { verdict: "MERGE", via: "text" }, refusals: [] });
   });
 
-  it("finds the verdict a reviewer sent with chat_send", () => {
-    const lines = [assistant(call("t1", "mcp__plugin_agent-chat_agent-chat__chat_send", { to: "shepherd", text: BLOCK }))];
+  it("finds the verdict a reviewer sent with chat_send when its turn then ends on text", () => {
+    const lines = [assistant(call("t1", SEND, { to: "shepherd", text: BLOCK })), user({ type: "tool_result", tool_use_id: "t1", content: "Delivered" }), assistant(text("Sent."))];
 
     expect(checkReviewerTranscript(lines, TARGET).verdict).toEqual({ verdict: "MERGE", via: "chat_send" });
+  });
+
+  it("reports no verdict when the turn ends on the chat_send call", () => {
+    expect(checkReviewerTranscript([assistant(call("t1", SEND, { to: "shepherd", text: BLOCK }))], TARGET).verdict).toBeNull();
+  });
+
+  it("reports no verdict when a tool call follows the verdict, as Shepherd's reader does", () => {
+    const lines = [assistant(text(BLOCK)), bash("t1", 'rm -rf "/checkouts/review-343"')];
+
+    expect(checkReviewerTranscript(lines, TARGET)).toMatchObject({ ok: false, finishedTurn: false, verdict: null });
+  });
+
+  it("reports no verdict when a thinking-only record follows the verdict", () => {
+    const lines = [assistant(text(BLOCK)), assistant({ type: "thinking", thinking: "done" })];
+
+    expect(checkReviewerTranscript(lines, TARGET).verdict).toBeNull();
+  });
+
+  it("ignores bookkeeping records after the final text", () => {
+    const lines = [assistant(text(BLOCK)), JSON.stringify({ type: "system", subtype: "turn_duration" }), JSON.stringify({ type: "summary", summary: "Review" })];
+
+    expect(checkReviewerTranscript(lines, TARGET)).toMatchObject({ ok: true, finishedTurn: true });
   });
 
   it("reports no verdict when the block names another head", () => {
