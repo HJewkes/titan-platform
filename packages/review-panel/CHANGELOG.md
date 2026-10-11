@@ -1,5 +1,13 @@
 # @titan-design/review-panel
 
+## 0.5.3
+
+### Patch Changes
+
+- b60d484: `aggregate` fails closed on fix-proof input it cannot read. A `fix-proof/v1` line is parsed with fix-proof's `parseResultLine`, and it makes the tests member blocking when its verdict is `vacuous` or `no-tests`, when it names another head, or when it does not parse. Any other unrecognised non-empty `fixProof` also makes the tests member blocking.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+
 ## 0.5.2
 
 ### Patch Changes

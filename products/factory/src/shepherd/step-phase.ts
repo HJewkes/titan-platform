@@ -24,6 +24,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "await-new-head": "fixing",
   "sh-await-new-head": "fixing",
   "sh-park": "review",
+  "sh-fix-proof": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-review-request": "review",
