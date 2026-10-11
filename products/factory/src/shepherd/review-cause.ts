@@ -37,6 +37,8 @@ export interface CauseFacts {
   last?: LastReview;
   /** A resync cancelled a gate at this head and asked for its review again. */
   ownerAsked: boolean;
+  /** A seat's `shepherd review` asked for Shepherd's own review at this head. */
+  seatAsked?: boolean;
   /** The latest wake since the last review. */
   woken?: WakeRequest["kind"];
   /** Heads Shepherd's own update-branch pushed. */
@@ -82,8 +84,10 @@ function retryReason({ outcome, verdict }: LastReview): RetryReason {
 
 const RETRIED: ReadonlySet<ReviewOutcome> = new Set(["no-verdict", "timeout", "not-started"]);
 
-function sameHeadCause(last: LastReview, ownerAsked: boolean): ReviewCause {
+/** A retry of a seat's asked review is still a retry; only the review that answers the ask is named for it. */
+function sameHeadCause(last: LastReview, ownerAsked: boolean, seatAsked: boolean): ReviewCause {
   if (ownerAsked) return { cause: "owner-request" };
+  if (seatAsked && !RETRIED.has(last.outcome)) return { cause: "seat-request" };
   if (last.outcome === "external-hold") return { cause: "hold" };
   return RETRIED.has(last.outcome) ? { cause: "retry", reason: retryReason(last) } : { cause: "unknown" };
 }
@@ -106,7 +110,7 @@ function movedHeadCause(facts: CauseFacts, last: LastReview): ReviewCause {
 export function reviewCause(facts: CauseFacts): ReviewCause {
   const { last } = facts;
   if (!last) return { cause: "first" };
-  return last.headSha === facts.headSha ? sameHeadCause(last, facts.ownerAsked) : movedHeadCause(facts, last);
+  return last.headSha === facts.headSha ? sameHeadCause(last, facts.ownerAsked, facts.seatAsked === true) : movedHeadCause(facts, last);
 }
 
 /** What a run notes between reviews to name the next one's cause; replay rebuilds it like the rest of the run state. */
@@ -115,14 +119,16 @@ export interface CauseTrail {
   woken?: WakeRequest["kind"];
   updated: Set<string>;
   ownerAsked: Set<string>;
+  /** Heads whose verdict a seat's ask set aside; kept after the review, so a retry there never carries an older MERGE either. */
+  seatAsked: Set<string>;
 }
 
-export const newCauseTrail = (): CauseTrail => ({ updated: new Set(), ownerAsked: new Set() });
+export const newCauseTrail = (): CauseTrail => ({ updated: new Set(), ownerAsked: new Set(), seatAsked: new Set() });
 
 /** The cause of the review about to be dispatched at `headSha`; the wake and the owner's ask it explains are spent. */
 export function takeCause(trail: CauseTrail, headSha: string, probe: CarryProbe): ReviewCause {
   const carried = "kind" in probe ? { carry: probe } : {};
-  const cause = reviewCause({ headSha, ownerAsked: trail.ownerAsked.has(headSha), updated: trail.updated, ...(trail.last && { last: trail.last }), ...(trail.woken && { woken: trail.woken }), ...carried });
+  const cause = reviewCause({ headSha, ownerAsked: trail.ownerAsked.has(headSha), seatAsked: trail.seatAsked.has(headSha), updated: trail.updated, ...(trail.last && { last: trail.last }), ...(trail.woken && { woken: trail.woken }), ...carried });
   trail.woken = undefined;
   trail.ownerAsked.delete(headSha);
   return cause;

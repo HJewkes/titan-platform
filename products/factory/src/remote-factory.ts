@@ -13,6 +13,7 @@ export const FROZEN_HOST_WRITE_VERBS: ReadonlySet<string> = new Set([
   "shepherd register",
   "shepherd hold",
   "shepherd release",
+  "shepherd review",
   "shepherd resync",
 ]);
 

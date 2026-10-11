@@ -47,13 +47,14 @@ describe("the shell", () => {
     renderConsole("#/", healthy());
     fireEvent.click(screen.getByRole("tab", { name: "Agents" }));
     await waitFor(() => expect(window.location.hash).toBe("#/agents"));
-    expect(await screen.findByText(/spawn tree and message feed/)).toBeTruthy();
+    expect(await screen.findByRole("tab", { name: "Roster" })).toBeTruthy();
   });
 });
 
-describe("a planned view", () => {
-  const planned = VIEWS.filter((view) => view.planned);
+const planned = VIEWS.filter((view) => view.planned);
 
+// Every view is built once the last placeholder is replaced; an empty it.each would fail the suite.
+describe.skipIf(planned.length === 0)("a planned view", () => {
   it.each(planned)("shows a placeholder for $key that names its task", (view) => {
     renderConsole(`#/${view.key}`, healthy());
     expect(screen.getByText(`${view.planned!.summary} Planned in ${view.planned!.tasks}.`)).toBeTruthy();

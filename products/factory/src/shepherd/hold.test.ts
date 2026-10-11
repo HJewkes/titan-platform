@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
+import type { StepRoute } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
@@ -218,6 +219,31 @@ describe("a hold that names a reviewer", () => {
     expect(result.ok).toBe(true);
     expect(ran).toBe(false);
     expect(r.store.heldReason(REPO, r.pr, undefined, H1)).toBeUndefined();
+  });
+});
+
+describe("a seat's ask for Shepherd's own review at the head being merged", () => {
+  /** Runs the wrapped merge step at H1 once, unheld, with `asked` as the ask read. */
+  async function unheldMerge(asked: boolean): Promise<{ ran: boolean; output?: string }> {
+    const r = rig();
+    r.store.release("run-1");
+    let ran = false;
+    const route: StepRoute = { match: "merge", onRestart: "repeat", runner: { run: async () => ((ran = true), { ok: true, output: "{}" }) } };
+    const waiting = waitWhileHeld(route, heldCheck(r.port, () => r.store), { sleep: async () => undefined, now: () => 0 }, openHeadRead(r.port), () => asked);
+    const prompt = JSON.stringify({ repo: REPO, pr: r.pr, sha: H1 });
+    const result = await waiting.runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: "merge", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "merge" });
+    return { ran, ...(result.ok && { output: result.output }) };
+  }
+
+  it("ends an unheld PR's merge step with no merge, so the run reads CI and reviews the head first", async () => {
+    const merge = await unheldMerge(true);
+
+    expect(merge.ran).toBe(false);
+    expect(JSON.parse(merge.output ?? "{}")).toMatchObject({ result: { done: false, skipped: "held" } });
+  });
+
+  it("merges an unheld PR as before when no ask stands at the head", async () => {
+    expect((await unheldMerge(false)).ran).toBe(true);
   });
 });
 

@@ -1,8 +1,10 @@
 import { createElement, type ReactNode } from "react";
 import type { Route, ViewKey } from "../router.js";
+import { AgentsRoute } from "./AgentsPage.js";
 import { HomePage } from "./HomePage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
+import { KnowledgePage } from "./KnowledgePage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
@@ -20,5 +22,7 @@ export const PAGES: Partial<Record<ViewKey, PageComponent>> = {
   initiatives: WorkPage,
   tasks: ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query })),
   sessions: SessionsRoute,
+  knowledge: KnowledgePage,
+  agents: AgentsRoute,
   rounds: RoundsView,
 };

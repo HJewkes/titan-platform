@@ -213,6 +213,7 @@ const PR_VERBS = [
   ["timeline", "every step and gate the run for owner/repo#N recorded"],
   ["release", "release the hold on owner/repo#N"],
   ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
+  ["review", "ask for Shepherd's own fresh review of owner/repo#N at its current head; a repeat at the same head asks nothing"],
 ] as const;
 
 function parseTarget(target: string): { repo: string; pr?: number } {

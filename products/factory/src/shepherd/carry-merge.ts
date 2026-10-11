@@ -34,11 +34,16 @@ export interface CarryTarget {
   pr: number;
 }
 
-const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable() });
+/** `askedHead` is the head of the run's `shepherd review` ask, taken or not; a scope recorded before asks existed reads none. */
+const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable(), askedHead: z.string().nullable().optional() });
 
-/** The base branch a carry probes against, or undefined when the run's kind does not carry or the base is unknown. */
-export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string): Promise<string | undefined> {
+/**
+ * The base branch a carry probes against, or undefined when the run's kind does not carry, the base is unknown, or a seat
+ * asked for Shepherd's own review at one of `vouched`, the heads the carried MERGE would stand for.
+ */
+export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[] = []): Promise<string | undefined> {
   const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${read}`, { ...target, runId: ctx.runId }, ScopeResult);
+  if (scope.askedHead && vouched.includes(scope.askedHead)) return undefined;
   return scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
 }
 
@@ -46,6 +51,7 @@ export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, re
 function carryScopeRoute(deps: Pick<ShepherdDeps, "port" | "store" | "now">): StepRoute {
   return codeRoute(CARRY_SCOPE_STEP, deps.now, async (input: CarryTarget & { runId: string }) => ({
     kind: registeredKind(deps.store, input.runId).kind ?? null,
+    askedHead: deps.store.get().byRun(input.runId)?.reviewRequest?.head ?? null,
     baseRef: (await deps.port.getPr(input.repo, input.pr)).baseRef,
   }));
 }
@@ -163,6 +169,12 @@ export function carriedSource(reviews: ReadonlyMap<string, Verdict>, headSha: st
   return evidence.success && evidence.data.merge.head === latest.headSha ? evidence.data : undefined;
 }
 
+/** The reviewed head, the new head, and every head the run already carried that same MERGE to: an ask at any of them refuses the carry. */
+function vouchedHeads(reviews: ReadonlyMap<string, Verdict>, fromHead: string, headSha: string): string[] {
+  const carriedTo = [...reviews].flatMap(([head, verdict]) => (verdict.kind === "MERGE" && Evidence.safeParse(verdict.evidence).data?.merge.verdict.head === fromHead ? [head] : []));
+  return [fromHead, headSha, ...carriedTo];
+}
+
 /** What the evidence step records about a carry: both heads, the tree probe's answer, the rule that carried, and the remerge answer behind a remerge rule. */
 interface CarryEvidence {
   fromHead: string;
@@ -188,9 +200,9 @@ async function carryRule(ctx: WorkflowContext, input: CarryInput, reviews: Reado
 export async function carriedVerdict(ctx: WorkflowContext, target: CarryTarget, reviews: ReadonlyMap<string, Verdict>, headSha: string, scopeRead: number): Promise<Verdict | undefined> {
   const source = carriedSource(reviews, headSha);
   if (!source) return undefined;
-  const baseRef = await carryingBase(ctx, target, String(scopeRead));
-  if (baseRef === undefined) return undefined;
   const fromHead = source.merge.verdict.head;
+  const baseRef = await carryingBase(ctx, target, String(scopeRead), vouchedHeads(reviews, fromHead, headSha));
+  if (baseRef === undefined) return undefined;
   const carry = await carryRule(ctx, { repo: target.repo, baseRef, fromHead, head: headSha }, reviews);
   if (!carry) return undefined;
   const heads = [...new Set([fromHead, ...reviews.keys(), headSha])];

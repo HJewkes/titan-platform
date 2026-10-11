@@ -3,7 +3,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { z } from "zod";
 
 /** Why a review was dispatched at a head; a run recorded before causes existed reads as `unknown`. */
-const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "unknown"] as const;
+const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "seat-request", "unknown"] as const;
 export type ReviewCauseKind = (typeof REVIEW_CAUSES)[number];
 
 /** `reason` is a carry refusal, a retry reason, or the registered kind that does not carry. */
