@@ -79,9 +79,9 @@ export async function readCanonical(port: GitHubPort): Promise<CanonicalToolchai
   const versionFile = await port.getFile(CANONICAL_REPO, ".node-version", ref);
   const pkgFile = await port.getFile(CANONICAL_REPO, "package.json", ref);
   if (versionFile === null || pkgFile === null) throw new Error(`${CANONICAL_REPO}@${ref} has no .node-version or package.json`);
-  const pkg = JSON.parse(pkgFile.content) as PackageJson;
+  const pkg = parsePackageJson(pkgFile);
   if (typeof pkg.packageManager !== "string") throw new Error(`${CANONICAL_REPO}@${ref} package.json has no packageManager`);
-  return { nodeVersion: normalizeVersion(versionFile.content), packageManager: pkg.packageManager, enginesNode: pkg.engines?.node ?? null };
+  return { nodeVersion: normalizeVersion(versionFile.content), packageManager: pkg.packageManager, enginesNode: enginesNodeOf(pkg) };
 }
 
 export async function readConsumer(port: GitHubPort, consumer: ToolchainConsumer): Promise<ConsumerFiles> {
@@ -132,9 +132,25 @@ export function dryRunLines(plans: readonly AdoptionPlan[]): string[] {
   });
 }
 
-interface PackageJson {
-  packageManager?: unknown;
-  engines?: { node?: string };
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePackageJson(file: { path: string; content: string }): JsonObject {
+  const parsed: unknown = JSON.parse(file.content);
+  if (!isJsonObject(parsed)) throw new Error(`${file.path} is not a JSON object`);
+  return parsed;
+}
+
+function enginesOf(pkg: JsonObject): JsonObject {
+  return isJsonObject(pkg.engines) ? pkg.engines : {};
+}
+
+function enginesNodeOf(pkg: JsonObject): string | null {
+  const node = enginesOf(pkg).node;
+  return typeof node === "string" ? node : null;
 }
 
 function normalizeVersion(content: string): string {
@@ -152,15 +168,15 @@ function managerName(packageManager: string): string {
 
 /** A repo on another package manager (npm) keeps its own `packageManager`; only `engines.node` is aligned there. */
 function packageJsonEdit(canonical: CanonicalToolchain, file: FetchedFile): FileEdit | null {
-  const pkg = JSON.parse(file.content) as Record<string, unknown> & PackageJson;
+  const pkg = parsePackageJson(file);
   let changed = false;
   const current = typeof pkg.packageManager === "string" ? pkg.packageManager : null;
   if (current !== null && managerName(current) === managerName(canonical.packageManager) && current !== canonical.packageManager) {
     pkg.packageManager = canonical.packageManager;
     changed = true;
   }
-  if (canonical.enginesNode !== null && pkg.engines?.node !== canonical.enginesNode) {
-    pkg.engines = { ...pkg.engines, node: canonical.enginesNode };
+  if (canonical.enginesNode !== null && enginesNodeOf(pkg) !== canonical.enginesNode) {
+    pkg.engines = { ...enginesOf(pkg), node: canonical.enginesNode };
     changed = true;
   }
   if (!changed) return null;

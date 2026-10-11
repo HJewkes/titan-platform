@@ -112,10 +112,10 @@ describe("adoption plan", () => {
   it("gives an npm repo no packageManager but still aligns its engines.node", () => {
     const npmRepo = consumer({ packageJson: file("package.json", pkg({ engines: { node: ">=20" } })) });
 
-    const edited = JSON.parse(adoptionPlan(CANONICAL, npmRepo)!.files[0]!.content) as Record<string, unknown>;
+    const edited: unknown = JSON.parse(adoptionPlan(CANONICAL, npmRepo)!.files[0]!.content);
 
     expect(edited).not.toHaveProperty("packageManager");
-    expect(edited.engines).toEqual({ node: ">=24 <25" });
+    expect(edited).toHaveProperty("engines", { node: ">=24 <25" });
   });
 
   it("leaves a matrix node-version and a reusable workflow's with: node-version unchanged and lists them", () => {
