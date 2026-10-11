@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
+import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
 import { configPath, loadConfig } from "../config.js";
@@ -11,7 +11,6 @@ import { FIXER_EXIT_STEPS, fixerExitRoutes } from "./flake-check.js";
 import { agentChatAgents, type AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeRequest } from "./phases.js";
 import { failureOf } from "./error-class.js";
-import { SpawnDeferred } from "./spawn-gate.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { loadSeatBook, lookupSeat } from "./seats.js";
@@ -20,6 +19,7 @@ import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } 
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
+import { WAKE_ASK_MS, expiredWait, rosterWhileBrokerDown, waitAPoll, waitOf, whileDeferred, type Wait, type Waiting } from "./wake-wait.js";
 import { DEFAULT_WARMTH_LIMITS, isWarm, readWarmth, type Warmth, type WarmthLimits } from "./warmth.js";
 
 export const WAKE_STEP = "sh-wake-implementer";
@@ -35,8 +35,6 @@ export const WAKE_STEPS: readonly StepDeclaration[] = [
 /** The agent-chat profile Shepherd's fixers and successors start under; the profile is their tool grant. It is headless because no one watches a pane for them, and the builtin `implementer` opens one. */
 export const FACTORY_IMPLEMENTER_PROFILE = "bd-implementer";
 const DEFAULT_POLL_MS = 30_000;
-/** How long one wake's asks may only be waited out, from its first ask, before the wake fails and its seat is told. */
-export const WAKE_ASK_MS = 5 * 60_000;
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
 /** The spellings git refuses in a ref name, among the characters `BRANCH` lets through. */
@@ -105,19 +103,6 @@ export type WakeStepResult = { kind: "woken"; agent: string; mode: Mode; session
 const unhandled = (reason: string): WakeStepResult => ({ kind: "unhandled", reason });
 const held = (agent: string, error: unknown): WakeStepResult => ({ kind: "unhandled", reason: `agent-chat refused to start the successor ${agent}: ${failureOf(error)}`, held: { agent } });
 
-/** Waited out: nothing was asked of the broker, or what was asked is checked on the next roster read. */
-const brokerDown = (error: unknown): boolean => error instanceof BrokerUnavailableError || error instanceof DispatchTimeoutError;
-
-/** Why an ask was waited out instead of answered. */
-type Wait = "timeout" | "deferred" | "broker-down";
-/** Fixed words, never the error's text, since the reason reaches the seat and a PR comment. */
-const WAIT_WORDS: Record<Wait, string> = { timeout: "agent-chat timed out", deferred: "the spawn gate deferred it", "broker-down": "the broker was unavailable" };
-
-function waitOf(error: unknown): Wait | undefined {
-  if (error instanceof SpawnDeferred) return "deferred";
-  if (error instanceof DispatchTimeoutError) return "timeout";
-  return error instanceof BrokerUnavailableError ? "broker-down" : undefined;
-}
 
 interface WakeTask {
   input: WakeInput;
@@ -236,18 +221,6 @@ async function confirmTurn(deps: ShepherdDeps, wiring: WakeWiring, agents: Imple
   return unhandled(`${asked.choice.agent} started no turn within ${(wiring.turnStartMs ?? TURN_START_MS) / 60_000} minutes of the wake or of the ${fallback} fallback`);
 }
 
-/** A spawn gate that defers the resume is waited out on the poll, as a broker that is down is, until `deadlineMs` passes. */
-async function whileDeferred(deps: ShepherdDeps, deadlineMs: number, signal: AbortSignal, ask: () => Promise<void>): Promise<void> {
-  const until = deps.now() + deadlineMs;
-  for (;;) {
-    try {
-      return await ask();
-    } catch (error) {
-      if (!(error instanceof SpawnDeferred) || deps.now() >= until) throw error;
-    }
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
-  }
-}
 
 function turnWatch(deps: ShepherdDeps, wiring: WakeWiring, agents: ImplementerAgents, task: WakeTask, name: string, signal: AbortSignal) {
   return {
@@ -267,37 +240,16 @@ interface Asked {
   at: number;
 }
 
-/** The asks of one wake that were only waited out: since the first ask, and why the latest one was. */
-interface Waiting {
-  since: number;
-  wait: Wait;
-}
-
-async function waitAPoll(deps: ShepherdDeps, waiting: Waiting, signal: AbortSignal): Promise<Waiting> {
-  await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
-  return waiting;
-}
 
 const ASK_VERB: Record<Mode, string> = { resume: "resume", successor: "spawn", live: "message" };
 
 /** An ask that never lands, as a resume of a parked tree that times out each time, fails the wake once the deadline passes. */
 function askExpired(deps: ShepherdDeps, wiring: WakeWiring, asked: Asked | undefined, waiting: Waiting | undefined): WakeStepResult | undefined {
-  const deadlineMs = wiring.askDeadlineMs ?? WAKE_ASK_MS;
-  if (asked === undefined || waiting === undefined || deps.now() - waiting.since < deadlineMs) return undefined;
-  return unhandled(`${asked.choice.agent}'s ${ASK_VERB[asked.choice.mode]} took no effect within ${deadlineMs / 60_000} minutes: ${WAIT_WORDS[waiting.wait]}`);
+  if (asked === undefined || waiting === undefined) return undefined;
+  const within = expiredWait(deps, wiring.askDeadlineMs ?? WAKE_ASK_MS, waiting);
+  return within === undefined ? undefined : unhandled(`${asked.choice.agent}'s ${ASK_VERB[asked.choice.mode]} took no effect within ${within}`);
 }
 
-async function rosterWhileBrokerDown(deps: ShepherdDeps, agents: ImplementerAgents, signal: AbortSignal): Promise<readonly AgentRow[]> {
-  for (;;) {
-    signal.throwIfAborted();
-    try {
-      return await agents.roster();
-    } catch (error) {
-      if (!brokerDown(error)) throw error;
-    }
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
-  }
-}
 
 async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
   const pr = await port.getPr(input.repo, input.pr).catch(() => undefined);
