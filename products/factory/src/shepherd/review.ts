@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { DEPTH_FLOOR_REASON, isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -17,7 +17,7 @@ import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Awaited, Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS, evidenceOrGate } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
-import type { NoVerdictCause, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
+import type { ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
@@ -29,6 +29,8 @@ import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
+import type { MachineStopWatch } from "./machine-stop.js";
+import { REVIEW_STOP_STEPS, dispatchedNone, reviewStopRoute } from "./review-stop.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
@@ -45,6 +47,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...PUBLISH_REVIEW_STEPS,
   ...ACCOUNT_STEPS,
   ...REVIEW_REQUEST_STEPS,
+  ...REVIEW_STOP_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -54,7 +57,6 @@ export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** A standing reviewer holding this much context or more is not resumed. */
 export const MAX_RESUME_FILL_TOKENS = 300_000;
 const DEFAULT_POLL_MS = 30_000;
-export { provablyIndependent } from "./lineage.js";
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
 export { FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, acceptVerdict } from "@titan-design/review-panel";
@@ -176,6 +178,8 @@ export interface ReviewWiring {
   carry?: Omit<CarryOptions, "signal">;
   /** The reviewer accounts in failover order; absent means no account is checked before a spawn, and a limit holds the one default account. */
   accounts?: ReviewAccounts;
+  /** The stops the spawn gate and the broker saw; absent means a silent reviewer is a timeout whatever the machine did. */
+  machineStop?: MachineStopWatch;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -311,6 +315,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     publishReviewRoute(deps),
     ...accountRoutes(deps, wiring?.accounts),
     reviewRequestRoute(deps),
+    reviewStopRoute(deps, wiring?.machineStop),
   ];
 };
 
@@ -362,9 +367,6 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 
-/** A dispatched reviewer that wrote a verdict below the floor gave no verdict; any other silence is a timeout. */
-const dispatchedNoVerdictCause = (reason: unknown): NoVerdictCause => (reason === DEPTH_FLOOR_REASON ? "no-verdict" : "timeout");
-
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
  * reviewer that missed the wait is read once more, so a late MERGE is a MERGE, not a no-facts gate, and a malformed final
@@ -377,7 +379,7 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
-  if (awaited.kind !== "verdict") return { kind: "none", cause: dispatchedReviewer ? dispatchedNoVerdictCause(awaited.reason) : "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
+  if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
   return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
