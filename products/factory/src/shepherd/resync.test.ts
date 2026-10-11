@@ -1011,3 +1011,51 @@ describe("resyncShepherd on an active review step", () => {
     expect(activeIn(host, moved)).toEqual([`sh-review:${HEAD}`]);
   });
 });
+
+describe("resyncShepherd over many runs", () => {
+  /** Holds every PR read until the test releases them, counting how many wait at once. */
+  function heldReads(services: NonNullable<FactoryRoutes["shepherd"]>): { services: NonNullable<FactoryRoutes["shepherd"]>; peak: () => number; release: () => void } {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let inFlight = 0;
+    let peak = 0;
+    const getPr = async (repo: string, pr: number) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      try {
+        await released;
+        return await services.port.getPr(repo, pr);
+      } finally {
+        inFlight--;
+      }
+    };
+    return { services: { ...services, port: { ...services.port, getPr } }, peak: () => peak, release };
+  }
+
+  it("reads PRs concurrently and ends the same runs, in input order", async () => {
+    const w = world();
+    const runs: string[] = [];
+    for (let pr = 1; pr <= 12; pr++) runs.push(await gatedRun(w, pr));
+    [3, 7, 11].forEach((pr) => merge(w.fake, pr));
+    const reads = heldReads(w.routes.shepherd!);
+
+    const resyncing = resyncShepherd(w.seed, reads.services);
+    await vi.waitFor(() => expect(reads.peak()).toBeGreaterThanOrEqual(2));
+    reads.release();
+    const report = await resyncing;
+
+    expect(reads.peak()).toBeLessThanOrEqual(6);
+    expect(report.ended).toEqual([3, 7, 11].map((pr) => ({ runId: runs[pr - 1], reason: `${LANDED_ELSEWHERE}${REPO}#${pr} was merged outside Shepherd` })));
+    expect(report.held).toEqual([]);
+  });
+
+  it("the report carries phase timings", async () => {
+    const w = world();
+    await gatedRun(w, 1);
+    let clock = 0;
+
+    const report = await resyncShepherd(w.seed, w.routes.shepherd!, { dryRun: true, now: () => (clock += 1_000) });
+
+    expect(report.phaseMs).toEqual({ ended: 1_000, reverts: 1_000, superseded: 1_000, supersededReviews: 1_000, supersededMerges: 1_000 });
+  });
+});

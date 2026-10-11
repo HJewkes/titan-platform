@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as path from "node:path";
 import { gitTreeSource } from "./git-tree-source.js";
+import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
 import { indexPaths, type IndexOptions } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 import { daysAgo, makeTestRepo, type TestRepo } from "./history/test-repo.js";
@@ -20,7 +21,7 @@ describe("indexPaths with git-history metrics", () => {
   });
 
   async function indexMetrics(options: Partial<IndexOptions> = {}) {
-    const result = await indexPaths(store, { paths: [repo.dir], ref: "head", ...options });
+    const result = await indexPaths(store, { paths: [repo.dir], ref: "head", tsConfig: FIXTURE_TSCONFIG, ...options });
     const all = store.listMetrics(result.snapshotId);
     const byKey = (id: string, name: string) => all.find((m) => m.nodeId === id && m.name === name)?.value;
     return { all, byKey, names: new Set(all.map((m) => m.name)) };

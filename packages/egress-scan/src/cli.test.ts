@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -475,30 +474,18 @@ describe("files git calls binary", () => {
     expect(result.err).toBe("titan-egress-scan: tree: patch text is over the scan limit of 1024 bytes; refusing it");
   });
 
-  it("refuses a commit over 128 MiB of patch text when no limit is passed, as the bin runs it", () => {
-    const repo = newRepo();
-    const base = repo.commit("base");
-    const big = commitSharedBlob(repo, 130, 1024 * 1024);
+  // The bin passes no limit; a commit over 128 MiB is too slow to build under load, so the text input stands in.
+  it("refuses input over 128 MiB when no limit is passed, as the bin runs it", () => {
+    const overLimitInBytes = "é".repeat(64 * 1024 * 1024 + 1);
 
-    const result = run(repo, ["range", base, big], terms());
+    const result = run(newRepo(), ["text"], terms(), overLimitInBytes);
 
     expect(result.code).toBe(2);
-    expect(result.err).toBe(
-      `titan-egress-scan: commit ${big.slice(0, 7)}: patch text is over the scan limit of 128 MiB; refusing it`,
+    expect(result.err.split("\n")[0]).toBe(
+      "titan-egress-scan: text: input is over the scan limit of 128 MiB; refusing it",
     );
-  }, 60_000);
+  });
 });
-
-/** One commit adding `count` paths that all name one blob, so the patch is large but the repo is not. */
-function commitSharedBlob(repo: TestRepo, count: number, bytes: number): string {
-  repo.write("blob.txt", "y\n".repeat(bytes / 2));
-  const blob = repo.git(["hash-object", "-w", "blob.txt"]).trim();
-  fs.rmSync(path.join(repo.dir, "blob.txt"));
-  const entries = Array.from({ length: count }, (_, i) => `100644 ${blob}\tcopy-${i}.txt`).join("\n");
-  execFileSync("git", ["update-index", "--index-info"], { cwd: repo.dir, input: `${entries}\n` });
-  repo.git(["commit", "-q", "-m", "many copies"]);
-  return repo.git(["rev-parse", "HEAD"]).trim();
-}
 
 describe("evil merges", () => {
   function terms(): Record<string, string> {

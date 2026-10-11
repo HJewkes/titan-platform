@@ -279,6 +279,21 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
+  it("a gate the owner resolves while its head read is in flight is not cancelled", async () => {
+    const { host, fake, services, runId } = await gatedAtSecondHead();
+    fake.pushHead(1, MOVED);
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const slow = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (await released, services.port.getPr(repo, pr)) } };
+
+    const sweeping = supersedeMovedGates(host, slow);
+    host.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: GATED }, OWNER);
+    release();
+
+    expect(await sweeping).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).not.toBe("cancelled");
+  });
+
   it("leaves a gate alone when GitHub cannot be read", async () => {
     const { host, fake, services, runId } = await gatedAtSecondHead();
     fake.pushHead(1, MOVED);
