@@ -37,8 +37,6 @@ export interface BaselineOpportunity extends OpportunityShape {
 
 export type AdoptionOpportunity = ShippedOpportunity | BaselineOpportunity;
 
-const NOT_OUR_CLI = "titan-gh is not one of Q9's OUR_CLIS, so the new form reads 0 until it is added there.";
-
 /** The 10-08 top 15 and the build tasks filed from them; Q9 `tool-gaps` names the patterns worth adding. */
 export const ADOPTION_OPPORTUNITIES: readonly AdoptionOpportunity[] = [
   {
@@ -56,7 +54,7 @@ export const ADOPTION_OPPORTUNITIES: readonly AdoptionOpportunity[] = [
     id: "basement-suite-summary",
     row: 2,
     status: "baseline",
-    task: null,
+    task: "TP-2315",
     old: { head: "basement-suite", patterns: ["| tail"] },
     new: { head: "basement-suite", flags: ["--summary"] },
   },
@@ -106,10 +104,9 @@ export const ADOPTION_OPPORTUNITIES: readonly AdoptionOpportunity[] = [
     id: "titan-gh-pr-status",
     row: 7,
     status: "baseline",
-    task: null,
+    task: "TP-2316",
     old: { head: "gh pr view", patterns: ["| head", "| jq -r", "| python3 -c json"] },
     new: { head: "titan-gh pr-status", flags: [] },
-    note: NOT_OUR_CLI,
   },
   {
     id: "task-add-quiet",
@@ -155,15 +152,15 @@ export const ADOPTION_OPPORTUNITIES: readonly AdoptionOpportunity[] = [
     id: "shepherd-status-filters",
     row: 9,
     status: "baseline",
-    task: null,
+    task: "TP-2317",
     old: { head: "titan-factory shepherd status", patterns: ["| python3 -c json", "| python3 -c json | head", "| python3 -I -c json", "| jq -r", "| jq -c", "| grep -E"] },
-    new: { head: "titan-factory shepherd status", flags: ["--active", "--phase", "--branch-prefix"] },
+    new: { head: "titan-factory shepherd status", flags: ["--active", "--phase", "--branch-prefix", "--task"] },
   },
   {
     id: "shepherd-register-infer",
     row: 10,
     status: "baseline",
-    task: null,
+    task: "TP-2318",
     old: { head: "titan-factory shepherd register", patterns: ["| tail"] },
     new: { head: "titan-factory shepherd register", flags: [] },
     note: "The new form drops flags rather than adding one, so only the old tail is counted.",
@@ -203,16 +200,15 @@ export const ADOPTION_OPPORTUNITIES: readonly AdoptionOpportunity[] = [
     id: "ci-failures-digest",
     row: 14,
     status: "baseline",
-    task: null,
+    task: "TP-2319",
     old: { head: "gh run view", patterns: ["| grep -E", "| sed | grep -E", "| grep"] },
     new: { head: "titan-gh ci-failures", flags: [] },
-    note: NOT_OUR_CLI,
   },
   {
     id: "shepherd-timeline-last",
     row: 15,
     status: "baseline",
-    task: null,
+    task: "TP-2320",
     old: { head: "titan-factory shepherd timeline", patterns: ["| tail", "| tail | cut -c"] },
     new: { head: "titan-factory shepherd timeline", flags: ["--last"] },
   },

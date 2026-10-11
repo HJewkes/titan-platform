@@ -155,7 +155,7 @@ rather than regexes over tool input, so the default action rules and a seat's ow
 decide it the same way they decide `byAction`.
 
 **From.** Each episode has a sender kind. `broker` is agent-chat itself, the sender of the
-lifecycle notice. `broadcast` is a message whose `msg_id` reached more than one session. `seat`
+lifecycle notice. `broadcast` is a message whose channel tag carries `broadcast="true"`. `seat`
 is a name carried by a top-level session or by a session spawned with a coordinator profile.
 `agent` is any other named sender, and `none` is an arrival with no sender. `pairs` is the
 sender-by-receiver matrix. A seat sender is named, and every other sender collapses to its kind,
@@ -296,6 +296,19 @@ that sent it, per model, and an approve counts as an error when the same PR late
 `unfilled`. It takes an open graph connection, never a path, and does not call `gh`.
 `reviewFillSchema` is its zod schema.
 
+## Cost per outcome
+
+`costPerOutcome(db, assignments, { since, until, mergedOutcomes?, doneOutcomes? })` answers what
+a merged or done outcome cost, per seat, kind, initiative and value tag. Each assignment
+(`assignmentSchema`: seat, agent, task, kind, initiative, outcome, value, pr, ts) is a generic
+record; parsing a seat log into them is the caller's adapter. An agent's sessions are those whose
+`session_origin.agent_name` is the agent, else those whose `task_ids` name one of its tasks, else
+the agent is listed in `unmatchedAgents`; `joinSource` counts assignments by route. The agent's
+`request_cost` in the window is split evenly over its assignments, so a fix round does not cost it
+twice. `usdPerMerged` is a bucket's whole cost, parked tries included, over its merged count, and
+null at zero. A seat's own sessions go to `seatCostUsd`, never a bucket. `costPerOutcomeSchema` is
+its zod schema and `renderCostPerOutcomeText(report)` prints it with the list-price caveat.
+
 ## Things that will bite you
 
 Fable's cache read is **0.025** of its input rate, not the 0.1 every other model uses.
@@ -323,9 +336,12 @@ default rules classify that head as `merge`. Other `gh api` heads stay `other`, 
 A tool call belongs to the latest request at or before it in its transcript, the request that
 issued it. The `context_contribution` view maps the other way, to the request a block feeds.
 
-session-read keeps `from` and `msg_id` from a channel tag but not its `broadcast` attribute, so
-a broadcast is inferred from its `msg_id` reaching more than one session. A multicast to named
-recipients counts as a broadcast too.
+session-read keeps `from`, `msg_id` and `broadcast` from a channel tag, and session-graph stores
+the flag in `inbound.broadcast`. A tag without the attribute is a direct message, even when a
+forked or resumed session copied it into a second transcript. Rows extracted before session-read's
+`EXTRACT_VERSION` 8 hold NULL there; for those a broadcast is still inferred from the `msg_id`
+reaching more than one session, which miscounts a copied direct message, until session-graph's
+`backfillFacets` re-extracts them.
 
 Coordinator seats spawned with the `opus-coordinator` profile report as `worker:coordinator`.
 Before that profile was mapped they fell into `worker:unknown`, and the `coordinator` role held

@@ -38,8 +38,8 @@ const INSERTS = {
   toolCalls: `INSERT INTO tool_call (transcript_id, byte_offset, block_index, session_id, ts, tool_use_id, name, family, mcp_server, input_chars)
     VALUES (@transcriptId, @byteOffset, @blockIndex, @sessionId, @ts, @toolUseId, @name, @family, @mcpServer, @inputChars)
     ON CONFLICT DO NOTHING`,
-  inbound: `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, detail, origin_server, from_name, msg_id, tool_use_id, is_error, content_hash, chars)
-    VALUES (@transcriptId, @byteOffset, @blockIndex, @sessionId, @ts, @cause, @delivery, @detail, @originServer, @fromName, @msgId, @toolUseId, @isError, @contentHash, @chars)
+  inbound: `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, detail, origin_server, from_name, msg_id, broadcast, tool_use_id, is_error, content_hash, chars)
+    VALUES (@transcriptId, @byteOffset, @blockIndex, @sessionId, @ts, @cause, @delivery, @detail, @originServer, @fromName, @msgId, @broadcast, @toolUseId, @isError, @contentHash, @chars)
     ON CONFLICT DO NOTHING`,
   contextBlocks: `INSERT INTO context_block (transcript_id, byte_offset, block_index, session_id, ts, source, tool_use_id, attachment_type, chars, is_media)
     VALUES (@transcriptId, @byteOffset, @blockIndex, @sessionId, @ts, @source, @toolUseId, @attachmentType, @chars, @isMedia)

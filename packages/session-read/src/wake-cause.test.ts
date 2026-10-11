@@ -128,6 +128,20 @@ describe("classifyInbound", () => {
     });
   });
 
+  it("a channel tag with broadcast=\"true\" marks the arrival a broadcast, a DM marks it false, a non-channel arrival null", () => {
+    const broadcastTag = '<channel source="plugin:agent-chat:agent-chat" from="peer-name" msg_id="0f2cc8a2" broadcast="true">';
+    const queued: Json = {
+      type: "attachment",
+      timestamp: "2026-09-20T00:00:00.000Z",
+      attachment: { type: "queued_command", prompt: `${broadcastTag}\n[message body redacted]\n</channel>`, origin: { kind: "channel", server: "plugin:agent-chat:agent-chat" }, isMeta: true },
+    };
+
+    expect(classifyInbound(textRecord(`${broadcastTag}\n[message body redacted]\n</channel>`, { isMeta: true })).broadcast).toBe(true);
+    expect(classifyInbound(queued)).toMatchObject({ delivery: "mid_loop", broadcast: true });
+    expect(classifyInbound(textRecord(`${CHANNEL_TAG}\n[message body redacted]\n</channel>`, { isMeta: true })).broadcast).toBe(false);
+    expect(classifyInbound(textRecord("[typed prompt redacted]")).broadcast).toBeNull();
+  });
+
   it.each([
     ["sdk", textRecord("[headless prompt redacted]", { promptSource: "sdk" })],
     ["typed", textRecord("[typed prompt redacted]", { promptSource: "typed" })],

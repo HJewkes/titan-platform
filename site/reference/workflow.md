@@ -156,13 +156,15 @@ import { mapItems } from "@titan-design/workflow";
 
 const review = await mapItems(ctx, "review", files, (file, itemStepId, c) =>
   c.dispatch(itemStepId, `Review ${file}.`), { key: (file) => file, concurrency: 4, budgetUsd: 2 });
-// review.results in input order; review.stoppedBy is "budget", "failure" or null
+// review.results in input order; review.stoppedBy is "budget", "failure", "cost_unknown" or null
 ```
 
 `budgetUsd` is checked before each launch against the cost items reported in
 `StepResult.usage` (a `StepUsage` of `costUsd` plus optional token counts) or on their
 failure. Items still in flight are not counted, so a run can overshoot by up to
-`concurrency - 1` items.
+`concurrency - 1` items. An item whose usage is marked `costUnknown` (an unpriced
+measurement, such as a Codex subscription run) stops launches with `stoppedBy: "cost_unknown"`
+when `budgetUsd` is set, rather than counting the unpriced spend as zero.
 
 A failed item lands in `failed` with its error, its `retryable` flag and the usage of its
 failed attempts, and the other items keep launching. A non-retryable failure stops new

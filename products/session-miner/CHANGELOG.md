@@ -1,5 +1,41 @@
 # @titan-design/session-miner
 
+## 0.8.0
+
+### Minor Changes
+
+- a1a3638: Add `titan-miner memory scan` and `titan-miner memory report`. They read every Claude Code auto-memory directory, then dedupe, group and propose a destination per group. The report is written as `report.md` and `decisions.yml`, mode 0600, and the envelope carries counts and paths only.
+
+### Patch Changes
+
+- a260d28: Add the pure core of the weekly tool-gap workflow: `diffWeeks` compares two weeks of Q9 `tool-gaps` and Q10 `tool-adoption`, `planTaskActions` plans at most one task add or note per pattern id (deduped by the `tool-gap:<patternId>` tag) for patterns above a calls and sessions threshold that the adoption registry does not already track, and `renderDigest` writes one owner notice listing new gaps, task actions, adoption results and removal candidates.
+
+## 0.7.3
+
+### Patch Changes
+
+- ad09028: Name the build tasks TP-2315..2320 on their adoption-registry baselines, add `--task` to the shepherd status filters, and count `titan-gh` as one of Q9's CLIs.
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
 ## 0.7.0
 
 ### Minor Changes

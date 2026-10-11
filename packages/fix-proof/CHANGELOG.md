@@ -1,5 +1,15 @@
 # @titan-design/fix-proof
 
+## 0.4.0
+
+### Minor Changes
+
+- 8bc0f25: Add the `fix-proof run` bin and `run()`: overlay the head's tests and carried files on a merge-base worktree, build, run vitest JSON on base (again once when vacuous) and head under a budget, and print one `fix-proof/v1` line, always exiting 0.
+
+### Patch Changes
+
+- ef240c0: `formatResultLine` drops non-reproducing tests before reproducing ones when trimming a result line to 4 KB.
+
 ## 0.3.0
 
 ### Minor Changes

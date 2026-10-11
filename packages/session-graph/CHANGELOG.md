@@ -1,5 +1,13 @@
 # @titan-design/session-graph
 
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/session-read@0.13.2
+
 ## 0.16.0
 
 ### Minor Changes

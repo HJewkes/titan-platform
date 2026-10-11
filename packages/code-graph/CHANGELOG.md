@@ -1,5 +1,17 @@
 # @titan-design/code-graph
 
+## 0.17.1
+
+### Patch Changes
+
+- 18875c7: TP-747 b: `indexPaths` parses, signs, extracts, digests and deletes each file's syntax tree before parsing the next, so at most one web-tree-sitter tree is alive at a time instead of every changed file's tree until metrics. Snapshots are unchanged.
+
+## 0.17.0
+
+### Minor Changes
+
+- 334b3d3: TP-747 a: add a per-file digest of tree-derived facts (source, dead-code and growth-risk metrics, qualified names). `assembleIndexerMetrics` and `buildIndexerMetrics` accept optional `fileDigests` in place of `parsedFiles` (now optional), keeping symbol metrics only for symbols in the final node map, and `qualifiedSymbolAliases` accepts precomputed qualified-name maps. Groundwork for deleting each tree as soon as its file is indexed.
+
 ## 0.16.0
 
 ### Minor Changes

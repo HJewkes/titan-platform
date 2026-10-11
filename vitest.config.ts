@@ -7,8 +7,10 @@ const needsProcess = [
   "packages/code-graph/src/extractors/ts-morph-extractor-type-roots.test.ts",
   "packages/session-read/src/discover-roots.test.ts",
   "products/factory/src/shepherd/reviewer-dispatch.test.ts",
+  "products/session-miner/src/commands/memory.test.ts",
   "products/session-miner/src/insights/blocked-flow.test.ts",
   "products/session-miner/src/insights/define.test.ts",
+  "products/session-miner/src/memory/discover.test.ts",
 ];
 
 // A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
