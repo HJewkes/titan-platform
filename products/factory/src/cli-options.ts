@@ -26,3 +26,8 @@ export function parseDuration(value: string): number {
   if (!match) throw new InvalidArgumentError("expected a duration such as 45m, 90s or 1h");
   return Number(match[1]) * DURATION_UNIT_MS[match[2]!]!;
 }
+
+export function parsePositiveInt(value: string): number {
+  if (!/^[1-9][0-9]*$/.test(value)) throw new InvalidArgumentError("expected a positive whole number");
+  return Number(value);
+}

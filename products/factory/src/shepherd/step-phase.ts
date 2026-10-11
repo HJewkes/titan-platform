@@ -7,6 +7,9 @@ const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "m
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
 
+/** The phases a run ends in: nothing moves it on from one. */
+export const FINISHED_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
+
 /** A step family to its phase, matched the way `stepIdMatches` matches declarations; an undeclared id reads as `ci` so a new step never breaks a view. */
 const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-await-pr": "awaiting-pr",
@@ -63,6 +66,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-train-leave": "merging",
   "sh-landed": "post-merge",
   "sh-main-ci": "post-merge",
+  "sh-release-follow": "post-merge",
   "sh-redeploy": "post-merge",
   "main-red": "post-merge",
   "main-ci-timeout": "post-merge",

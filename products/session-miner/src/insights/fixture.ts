@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { EVENTS_TABLE_DDL } from "@titan-design/session-analytics";
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
 
@@ -25,6 +26,11 @@ function insertRequest(db: Db, r: Request): void {
        cache_creation_tokens, cache_creation_5m, cache_creation_1h, output_tokens, context_tokens, gap_ms, wake_cause, wake_delivery, is_sidechain)
      VALUES (1, @requestId, @offset, @sessionId, @ts, @model, 10, @cacheRead, @cacheWrite1h, 0, @cacheWrite1h, @output, @context, @gapMs, @wakeCause, 'turn_start', 0)`,
   ).run({ ...row, requestId: `req-${offset}`, offset, context: 10 + row.cacheRead + row.cacheWrite1h });
+}
+
+/** One request with default usage, so a day counts as covered by the graph. */
+export function seedRequest(db: Db, sessionId: string, ts: string): void {
+  insertRequest(db, { sessionId, ts });
 }
 
 function insertSession(db: Db, sessionId: string, profile: string, agentName: string): void {
@@ -95,10 +101,43 @@ export function seedBashCall(db: Db, call: FixtureBashCall): void {
   if (call.heads) insertAt(db, "session_signal", { signal: "command_heads", detail: call.heads }, call);
 }
 
-function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall): void {
-  const row = { transcript_id: 1, byte_offset: offset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
+function insertAt(db: Db, table: string, columns: Record<string, string | number>, call: FixtureBashCall, byteOffset = offset): void {
+  const row = { transcript_id: 1, byte_offset: byteOffset, block_index: 0, session_id: call.sessionId, ts: call.ts, tool_use_id: call.toolUseId, ...columns };
   const names = Object.keys(row);
   db.prepare(`INSERT INTO ${table} (${names.join(", ")}) VALUES (${names.map((n) => `@${n}`).join(", ")})`).run(row);
+}
+
+export interface FixtureToolResult {
+  toolUseId: string;
+  sessionId: string;
+  ts: string;
+  tool: string;
+  isError: boolean;
+  text: string;
+}
+
+/** Writes each call and its result as transcript lines at `file`, and indexes them at their real byte ranges as transcript 1. */
+export function seedToolResults(db: Db, file: string, results: readonly FixtureToolResult[]): void {
+  db.prepare("INSERT INTO transcript (source_id, source_key) VALUES (1, ?)").run(file);
+  const lines: string[] = [];
+  let at = 0;
+  const append = (entry: unknown) => {
+    const line = JSON.stringify(entry);
+    const span = { start: at, length: Buffer.byteLength(line) };
+    lines.push(line);
+    at += span.length + 1;
+    return span;
+  };
+  for (const r of results) {
+    const call = append({ timestamp: r.ts, message: { content: [{ type: "tool_use", id: r.toolUseId, name: r.tool, input: {} }] } });
+    const result = append({ timestamp: r.ts, message: { content: [{ type: "tool_result", tool_use_id: r.toolUseId, is_error: r.isError, content: [{ type: "text", text: r.text }] }] } });
+    const located = { ...r, outputChars: 0, command: null };
+    insertAt(db, "tool_call", { name: r.tool, family: r.tool.startsWith("mcp__") ? "mcp" : "builtin", input_chars: 1 }, located, call.start);
+    db.prepare(`INSERT INTO fact (transcript_id, byte_offset, byte_length, event_type, ts, seq, session_id, tool_use_id) VALUES (1, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(result.start, result.length, r.isError ? "tool_result_error" : "tool_result", r.ts, result.start, r.sessionId, r.toolUseId);
+    insertAt(db, "inbound", { cause: "tool_result", delivery: "tool_result", is_error: r.isError ? 1 : 0, content_hash: "h", chars: 1 }, located, result.start);
+  }
+  writeFileSync(file, lines.join("\n") + "\n");
 }
 
 export interface FixtureMessage {
@@ -106,14 +145,16 @@ export interface FixtureMessage {
   actor: string;
   target: string;
   body: string;
+  /** Defaults to `message`; `agent_spawned` records `actor` spawning `target`. */
+  kind?: string;
 }
 
 /** An agent-chat events table holding these messages; returns its path. */
 export function seedEventsDb(file: string, messages: readonly FixtureMessage[]): string {
   const db = openDatabase(file);
   db.exec(EVENTS_TABLE_DDL);
-  const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, 'message', ?, ?, ?)");
-  for (const m of messages) insert.run(Date.parse(m.ts), m.actor, m.target, m.body);
+  const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, ?, ?, ?, ?)");
+  for (const m of messages) insert.run(Date.parse(m.ts), m.kind ?? "message", m.actor, m.target, m.body);
   db.close();
   return file;
 }

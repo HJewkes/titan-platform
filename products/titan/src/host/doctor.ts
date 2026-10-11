@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { inventoryRows } from "./inventory.js";
 import { isEnoent, type ExecResult, type HostPorts } from "./ports.js";
 
 const hostDoctorRowSchema = z.object({
@@ -46,16 +47,22 @@ const TOOLS = ["claude", "chezmoi", "gh", "git", "node", "pnpm"];
 interface HostDoctorOptions {
   host: string;
   platform: NodeJS.Platform;
+  /** The home directory the inventory's `~` paths resolve against. */
+  home: string;
   /** Where the product checkouts live (`~/projects` unless overridden). */
   projectsRoot: string;
 }
 
 export async function hostDoctor(ports: HostPorts, options: HostDoctorOptions): Promise<HostDoctorReport> {
-  const rows = await Promise.all([
-    ...PRODUCTS.map((product) => productDoctorRow(product, ports)),
-    ...PRODUCTS.map((product) => cliRow(product.bin, ports, join(options.projectsRoot, ...product.checkout))),
-    ...TOOLS.map((tool) => cliRow(tool, ports)),
+  const [toolRows, inventory] = await Promise.all([
+    Promise.all([
+      ...PRODUCTS.map((product) => productDoctorRow(product, ports)),
+      ...PRODUCTS.map((product) => cliRow(product.bin, ports, join(options.projectsRoot, ...product.checkout))),
+      ...TOOLS.map((tool) => cliRow(tool, ports)),
+    ]),
+    inventoryRows(ports, options.home, options.platform),
   ]);
+  const rows = [...toolRows, ...inventory];
   return { host: options.host, platform: options.platform, ok: rows.every(isPassing), rows };
 }
 

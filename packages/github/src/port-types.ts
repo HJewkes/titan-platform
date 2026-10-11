@@ -7,6 +7,13 @@ export interface Commit {
   committedAt?: string;
 }
 
+/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
+export interface CommitStatus {
+  context: string;
+  /** `success`, `pending`, `failure` or `error`. */
+  state: string;
+}
+
 /** A commit on the default branch with its full message, subject line first. */
 export interface LoggedCommit {
   sha: string;
