@@ -54,6 +54,22 @@ describe("approve-merge", () => {
   });
 });
 
+describe("brief bounds and carried wording", () => {
+  it("cuts an evidence link over 500 characters so the brief still validates", () => {
+    const url = `https://ci.example.com/run/${"x".repeat(600)}`;
+    const { brief } = ciFailedDecision({ ...pr, failing: [{ name: "build", url }] as never });
+
+    expect(brief.evidenceRef.length).toBe(500);
+    expect(() => snapshotBrief("g", brief, true)).not.toThrow();
+  });
+
+  it("says a carried MERGE was carried from a tree-equal head", () => {
+    const { brief } = approveMergeDecision({ ...pr, reason: "policy", reviewedMerge: true, carriedFrom: OTHER });
+
+    expect(brief.summary).toContain(`MERGE at ${OTHER}, carried from a tree-equal head`);
+  });
+});
+
 describe("evidence builders", () => {
   it("link the PR, the first failing check, and main's runs from facts already read", () => {
     expect(prEvidence("octo/demo", 7)).toBe("https://github.com/octo/demo/pull/7");
