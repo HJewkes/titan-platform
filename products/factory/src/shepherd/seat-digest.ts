@@ -8,7 +8,7 @@ import type { WatchRow } from "./view.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
 export const SEAT_DIGEST_MS = 60_000;
-export const SEAT_DIGEST_FILE = "seat-digest.json";
+const SEAT_DIGEST_FILE = "seat-digest.json";
 
 /** Where a digest goes: the seat book read once per sweep, naming the one seat that owns a repo, and the send. A repo no single seat owns gets no digest. */
 export interface SeatDigestPorts {
@@ -17,7 +17,7 @@ export interface SeatDigestPorts {
 }
 
 /** What a seat was last told: the open items by key, and every finished run it has heard of. */
-export const SeatStateSchema = z.object({ open: z.array(z.string()), finished: z.array(z.string()) });
+const SeatStateSchema = z.object({ open: z.array(z.string()), finished: z.array(z.string()) });
 export type SeatState = z.infer<typeof SeatStateSchema>;
 
 export interface SeatDigestMemory {
@@ -72,7 +72,7 @@ function finishedItem(row: WatchRow): Item | undefined {
 }
 
 /** Each seat's open items and finished runs, from the watch rows; a repo no single seat owns is left out. */
-export function seatViews(inputs: readonly DigestInput[], seatFor: (repo: string) => string | undefined): Map<string, SeatView> {
+function seatViews(inputs: readonly DigestInput[], seatFor: (repo: string) => string | undefined): Map<string, SeatView> {
   const views = new Map<string, SeatView>();
   for (const input of inputs) {
     const seat = seatFor(input.row.repo);
@@ -90,7 +90,7 @@ export function seatViews(inputs: readonly DigestInput[], seatFor: (repo: string
  * The message for a change, or undefined when nothing changed. A seat seen for the first time has its finished runs
  * taken as already known, so a first sweep does not replay history; it hears only of open items.
  */
-export function digestText(seat: string, view: SeatView, last: SeatState | undefined): string | undefined {
+function digestText(seat: string, view: SeatView, last: SeatState | undefined): string | undefined {
   const known = new Set(last?.finished ?? view.finished.map((item) => item.key));
   const fresh = view.finished.filter((item) => !known.has(item.key));
   const open = [...view.open].sort((a, b) => a.key.localeCompare(b.key));
