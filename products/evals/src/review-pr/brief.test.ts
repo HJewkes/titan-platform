@@ -3,20 +3,18 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { reviewerBrief, type ReviewerBriefInput } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import type { VariantSpec } from "../spec/index.js";
+import { parseSpec } from "../spec/index.js";
 import { validateSpec } from "../validate.js";
 import { bundleLines, reviewPrBrief } from "./brief.js";
 
 const UNIT_ROOT = fileURLToPath(new URL("../../units/review-pr/", import.meta.url));
 const readUnitFile = (path: string) => readFile(`${UNIT_ROOT}${path}`);
-const readJson = <T = unknown>(path: string): T => JSON.parse(readFileSync(`${UNIT_ROOT}${path}`, "utf8")) as T;
+const readJson = (path: string): unknown => JSON.parse(readFileSync(`${UNIT_ROOT}${path}`, "utf8"));
 
 const HEAD = "a".repeat(40);
 const BUNDLE = "/private/evals/bundles/case-1";
-const INPUTS: Record<string, ReviewerBriefInput> = {
-  plain: { repo: "owner/repo", pr: 7, head: HEAD, checkoutRoot: "/reviews" },
-  reReviewToOwner: { repo: "owner/repo", pr: 7, head: HEAD, checkoutRoot: "/reviews", fixFirsts: 2, ownerBrief: true, questions: ["Is the cache bounded?"] },
-};
+const PLAIN: ReviewerBriefInput = { repo: "owner/repo", pr: 7, head: HEAD, checkoutRoot: "/reviews" };
+const RE_REVIEW_TO_OWNER: ReviewerBriefInput = { ...PLAIN, fixFirsts: 2, ownerBrief: true, questions: ["Is the cache bounded?"] };
 
 /** The live brief with its checkout block cut out: the lines between the lead line and the next blank line. */
 function withoutBlock(brief: string, block: readonly string[]): string[] {
@@ -27,8 +25,10 @@ function withoutBlock(brief: string, block: readonly string[]): string[] {
 }
 
 describe("reviewPrBrief", () => {
-  it.each(Object.keys(INPUTS))("keeps every line but the checkout lines byte-identical to reviewerBrief (%s)", (name) => {
-    const input = INPUTS[name] as ReviewerBriefInput;
+  it.each([
+    ["plain", PLAIN],
+    ["re-review to owner", RE_REVIEW_TO_OWNER],
+  ] as const)("keeps every line but the checkout lines byte-identical to reviewerBrief (%s)", (_name, input) => {
     const live = reviewerBrief(input);
     const liveBlock = live.split("\n").filter((line) => line.startsWith("  ") || line.startsWith("If you need the base"));
 
@@ -39,7 +39,7 @@ describe("reviewPrBrief", () => {
   });
 
   it("names no gh command and no git fetch, and points at the bundle paths instead", () => {
-    const trial = reviewPrBrief(INPUTS.plain as ReviewerBriefInput, `${BUNDLE}/`);
+    const trial = reviewPrBrief(PLAIN, `${BUNDLE}/`);
 
     expect(trial).not.toMatch(/\bgh pr\b|git fetch|git archive/);
     expect(trial).toContain(`"${BUNDLE}/head"`);
@@ -56,8 +56,8 @@ describe("the shipped review-pr unit", () => {
   });
 
   it("keeps the trial read-only: no Write, Edit, git push or gh", () => {
-    const variant = readJson<VariantSpec>("variants/live-brief.json");
-    const step = variant.steps.review;
+    const variant = parseSpec(readJson("variants/live-brief.json"));
+    const step = variant.schema === "titan.variant/v1" ? variant.steps.review : undefined;
 
     expect(step?.kind).toBe("agent");
     expect(step && "disallowedTools" in step ? step.disallowedTools : []).toEqual(expect.arrayContaining(["Write", "Edit", "Bash(git push:*)", "Bash(gh:*)"]));
