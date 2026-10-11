@@ -22,7 +22,7 @@ import { registerNeeds } from "./needs/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import { ghCliWire, githubPort, isRepo, type RepoSlug } from "@titan-design/github";
+import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
@@ -37,7 +37,7 @@ import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";
-import { implementerFromBranch, taskFromBranch } from "./shepherd/register-infer.js";
+import { inferIdentity, type HeadRefRead } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -70,7 +70,7 @@ export interface CliDeps {
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
   /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
-  headRef?: (repo: RepoSlug, pr: number) => Promise<string>;
+  headRef?: HeadRefRead;
   /** How long a shepherd verb waits on a serve that holds the connection but does not answer; defaults to 20 s. */
   serveWaitMs?: number;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
@@ -242,27 +242,9 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
   const { branch, reviewer, kind, slice } = opts;
   const parsed = parseTarget(target);
-  const { task: given, implementer } = await inferIdentity(parsed, opts, deps);
+  const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
   const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
   return { ...parsed, branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
-}
-
-const defaultHeadRef = async (repo: RepoSlug, pr: number): Promise<string> => (await githubPort(ghCliWire()).getPr(repo, pr)).headRef;
-
-async function headBranchOf({ repo, pr }: { repo: string; pr?: number }, deps: CliDeps): Promise<string> {
-  if (pr === undefined) throw new Error(`${repo} names no pull request; pass --branch <name>, or --task and --implementer`);
-  return (deps.headRef ?? defaultHeadRef)(repo, pr);
-}
-
-/** An explicit flag wins; a missing one is read from the head branch, which --branch names or the PR's head supplies. */
-async function inferIdentity(target: { repo: string; pr?: number }, opts: RegisterOpts, deps: CliDeps): Promise<{ task: string; implementer: string }> {
-  if (opts.task !== undefined && opts.implementer !== undefined) return { task: opts.task, implementer: opts.implementer };
-  const branch = opts.branch ?? (await headBranchOf(target, deps));
-  const task = opts.task ?? taskFromBranch(branch);
-  const implementer = opts.implementer ?? implementerFromBranch(branch);
-  if (task === undefined) throw new Error(`no task id in head branch ${branch}; pass --task <initiative>/<ID>`);
-  if (implementer === undefined) throw new Error(`head branch ${branch} is not agent-chat/<name>; pass --implementer <name>`);
-  return { task, implementer };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
