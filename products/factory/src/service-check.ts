@@ -108,7 +108,8 @@ async function newerRestartTarget(ports: CheckPorts, running: string | undefined
   if (running === undefined || running === UNKNOWN) return undefined;
   const target = await ports.restartTargetSha();
   if (target === undefined || target === UNKNOWN) return undefined;
-  const [from, to] = [running, target].map(withoutDirty) as [string, string];
+  const from = withoutDirty(running);
+  const to = withoutDirty(target);
   if (from === to) return undefined;
   return (await ports.isAncestor(from, to)) ? target : undefined;
 }
