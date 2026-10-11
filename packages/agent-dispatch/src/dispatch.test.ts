@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,11 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   DispatchError,
+  DispatchTimeoutError,
   buildSpawnArgs,
   dispatchToAgentChat as dispatchWithAllowlist,
   type DispatchRequest,
 } from "./dispatch.js";
-import { installExecutable } from "./test-support.js";
+import { installExecutable, installProfiles } from "./test-support.js";
 
 // relay's profile names; the allowlist is the caller's policy, passed in.
 const DISPATCH_PROFILE = "relay-implementer";
@@ -64,6 +65,10 @@ const request = (bin: string, over: Record<string, unknown> = {}) => ({
   brief: "Fix the squeaky floor",
   briefing: "relay",
   cwd: dir,
+  profilesDir: installProfiles(dir, {
+    [DISPATCH_PROFILE]: "headless",
+    [REVIEW_PROFILE]: "headless",
+  }),
   ...over,
 });
 
@@ -215,8 +220,48 @@ describe("dispatchToAgentChat", () => {
     ).toThrow(DispatchError);
   });
 
-  it("turns a hung CLI into a refusal rather than hanging the loop", () => {
+  it("marks a hung CLI as a timeout, apart from a CLI that refused", () => {
     const bin = fakeAgentChat("sleep 3\n");
-    expect(() => dispatchToAgentChat(request(bin), 200)).toThrow(DispatchError);
+    expect(() => dispatchToAgentChat(request(bin), 200)).toThrow(DispatchTimeoutError);
+  });
+
+  it("keeps the refusal wording factory's reviewer dispatch matches", () => {
+    const bin = fakeAgentChat(`echo "the name relay-item-42 is held"\nexit 1\n`);
+    const refused = catchError(() => dispatchToAgentChat(request(bin), 10_000));
+    expect(refused).not.toBeInstanceOf(DispatchTimeoutError);
+    expect((refused as Error).message).toMatch(/^agent-chat refused the \w+: /);
   });
 });
+
+describe("installed profile guard", () => {
+  it("refuses an interactive installed profile without starting the CLI", () => {
+    const bin = fakeAgentChat();
+    const profilesDir = installProfiles(join(dir, "other"), {
+      [DISPATCH_PROFILE]: "interactive",
+    });
+
+    expect(() => dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).toThrow(
+      /installed profile 'relay-implementer' .*surface "interactive", not "headless"/,
+    );
+    expect(existsSync(join(dir, "argv"))).toBe(false);
+  });
+
+  it("refuses a profile that is allowed but not installed", () => {
+    const bin = fakeAgentChat();
+    const profilesDir = installProfiles(join(dir, "other"), {});
+
+    expect(() => dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).toThrow(
+      /installed profile 'relay-implementer' is unreadable/,
+    );
+    expect(existsSync(join(dir, "argv"))).toBe(false);
+  });
+});
+
+function catchError(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (err) {
+    return err;
+  }
+  throw new Error("expected a throw");
+}
