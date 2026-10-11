@@ -1,5 +1,27 @@
 # @titan-design/review-panel
 
+## 0.5.4
+
+### Patch Changes
+
+- 5985f32: The reviewer brief now names the final message as the verdict channel and says the reviewer needs no chat_send; it no longer says "send your verdict".
+
+## 0.5.3
+
+### Patch Changes
+
+- b60d484: `aggregate` fails closed on fix-proof input it cannot read. A `fix-proof/v1` line is parsed with fix-proof's `parseResultLine`, and it makes the tests member blocking when its verdict is `vacuous` or `no-tests`, when it names another head, or when it does not parse. Any other unrecognised non-empty `fixProof` also makes the tests member blocking.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/fix-proof@0.4.0
+
 ## 0.5.1
 
 ### Patch Changes

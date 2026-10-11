@@ -6,8 +6,14 @@ import type { ResyncReport } from "./resync.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
 
+/** `timeline --last N` keeps the last N entries; `--width W` cuts every line to W characters, the `| tail | cut -c` seats used to type. */
+export interface TimelineView {
+  last?: number;
+  width?: number;
+}
+
 type ShepherdResults = { [Name in ShepherdCommandName]: CommandMapOf<typeof SHEPHERD_COMMAND_MAP>[Name]["result"] };
-type Formatters = { [Name in ShepherdCommandName]: (data: ShepherdResults[Name]) => string };
+type Formatters = { [Name in ShepherdCommandName]: (data: ShepherdResults[Name], view: TimelineView) => string };
 type ResultSchemas = { [Name in ShepherdCommandName]: { result: ZodType<ShepherdResults[Name]> } };
 
 /** A verb with no entry here fails to compile, so a new one cannot fall through to another verb's text. */
@@ -27,8 +33,8 @@ const FORMATTERS: Formatters = {
 const RESULT_SCHEMAS: ResultSchemas = SHEPHERD_COMMAND_MAP;
 
 /** The human form of each `titan-factory shepherd` verb's result; `--json` prints the result itself instead. */
-export function formatShepherd<Name extends ShepherdCommandName>(name: Name, data: unknown): string {
-  return FORMATTERS[name](RESULT_SCHEMAS[name].result.parse(data));
+export function formatShepherd<Name extends ShepherdCommandName>(name: Name, data: unknown, view: TimelineView = {}): string {
+  return FORMATTERS[name](RESULT_SCHEMAS[name].result.parse(data), view);
 }
 
 function waitingLine(gate: WaitingGate): string {
@@ -94,9 +100,21 @@ function entryLine(entry: TimelineEntry): string {
   return `  ${entry.kind} ${entry.stepId}`;
 }
 
-function formatTimeline({ row, entries }: PrTimeline): string {
+/** The timeline with only its last `last` entries, oldest first, and how many earlier ones it cut. */
+export function lastEntries(timeline: PrTimeline, last: number | undefined): { timeline: PrTimeline; cut: number } {
+  const cut = last === undefined ? 0 : Math.max(0, timeline.entries.length - last);
+  return { timeline: { ...timeline, entries: timeline.entries.slice(cut) }, cut };
+}
+
+function formatTimeline(full: PrTimeline, { last, width }: TimelineView): string {
+  const { timeline: { row, entries }, cut } = lastEntries(full, last);
   const header = `${rowLine(row)} task ${row.task}${row.slice ? ` slice ${row.slice}` : ""}`;
-  return `${[header, ...entries.map(entryLine)].join("\n")}\n`;
+  const lines = [header, ...(cut > 0 ? [`  … ${cut} earlier entries`] : []), ...entries.map(entryLine)];
+  return `${lines.map((line) => clip(line, width)).join("\n")}\n`;
+}
+
+function clip(line: string, width: number | undefined): string {
+  return width === undefined || line.length <= width ? line : `${line.slice(0, width - 1)}…`;
 }
 
 function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation): string {

@@ -90,7 +90,7 @@ function world(repo: Repo, review: ShepherdPhases["review"] = merges, dbPath = "
   const store = shepherdStoreRef();
   const train = mergeTrainRef();
   const freeze = freezeStoreRef(() => clock);
-  const routes = factoryRoutesFor({ port: landingPort(repo), store, train, freeze, now: () => clock, sleep: tick, registry: async () => true });
+  const routes = factoryRoutesFor({ port: landingPort(repo), store, train, freeze, now: () => clock, sleep: tick, registry: async () => "trusted" as const });
   const phases: ShepherdPhases = { review, wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }) };
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);

@@ -195,6 +195,16 @@ describe("sh-spawn-fixer", () => {
     expect(second.fixer).toBe(first.fixer);
   });
 
+  it("spawns no fixer for an advisory repo, though its seat grants one", async () => {
+    const r = rig();
+    r.freezes.freeze(REPO, RED);
+
+    const result = await spawnFixer({ ...r.deps, advisory: (repo) => repo === REPO }, r.wiring, fixer, signal);
+
+    expect(result).toEqual({ fixer: null, thawed: false, detail: `notify only: ${REPO} is advisory, so Shepherd starts no fixer to push to it` });
+    expect(r.spawned).toEqual([]);
+  });
+
   it("finds the fixer on the roster after a crash between the spawn and its record", async () => {
     const r = rig();
     r.freezes.freeze(REPO, RED);

@@ -1,5 +1,27 @@
 # @titan-design/evals
 
+## 0.4.0
+
+### Minor Changes
+
+- 913bb9a: TP-691b: add `titan-evals review-pr cases`, the private case builder for the `review-pr` unit. It turns outcome-corpus rows into private cases, with caught heads as FIX_FIRST plus the defect path and each PR's final clean head as MERGE. It plants six seeded controls (a deleted assertion, an inverted condition, a test that no longer bites) as tree fixtures with a gold path and line. It writes the cases, a suite with the review-pr checks, and a manifest to an empty out dir outside any git work tree, and the private exclusion runs before anything is written.
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [b60d484]
+- Updated dependencies [7b9335c]
+  - @titan-design/review-panel@0.5.3
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-analytics@0.15.1
+
 ## 0.3.0
 
 ### Minor Changes

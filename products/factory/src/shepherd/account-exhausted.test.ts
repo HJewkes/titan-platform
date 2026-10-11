@@ -195,6 +195,20 @@ describe("a reviewer account out of usage", () => {
       expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`);
       expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
     });
+
+    it("leaves no hold when the PR closes during the hold", async () => {
+      const scene = shepherdWith([PRIMARY], limitedUntilReset, "client", {
+        onTick: (now, { fake }) => {
+          if (now >= T0 + 50 * MINUTE) fake.pr(1).state = "closed";
+        },
+      });
+
+      await vi.waitFor(() => expect(scene.stepIds()).toContain("sh-stopped"), { timeout: 20_000 });
+
+      expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
+      expect(scene.holds).toEqual(new Set([`account-exhausted: ${PRIMARY} until 2026-10-08T13:30:00.000Z; TP-1955`]));
+      expect(scene.fake.calls).not.toContain("merge");
+    });
   });
 
   describe("a review that is not the default spawn", () => {

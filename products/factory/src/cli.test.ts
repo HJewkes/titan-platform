@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -192,6 +193,67 @@ describe("shepherd waiting", () => {
   });
 });
 
+describe("shepherd status filters", () => {
+  async function registered(): Promise<{ dbPath: string; deps: CliDeps; ids: Record<string, string> }> {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture({ frozen: true });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const ids: Record<string, string> = {};
+    for (const [key, branch] of [["livePc", "agent-chat/pc-live"], ["cancelledPc", "agent-chat/pc-gone"], ["liveDc", "agent-chat/dc-live"]] as const) {
+      const run = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, branch, task: `demo/${key}`, implementer: "impl-a" });
+      if (!run.ok) throw new Error(run.error);
+      ids[key] = run.data.runId;
+    }
+    host.runtime.cancel(ids.cancelledPc!, "test");
+    await host.runtime.wait(ids.cancelledPc!);
+    host.close();
+    return { dbPath, deps, ids };
+  }
+
+  it("--active --branch-prefix pc- prints only the live pc- row", async () => {
+    const { dbPath, deps, ids } = await registered();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--active", "--branch-prefix", "pc-", "--json", "--port", String(await deadPort())], deps);
+
+    expect(status.code).toBe(EXIT.OK);
+    expect(JSON.parse(status.out)).toEqual([expect.objectContaining({ runId: ids.livePc })]);
+  });
+
+  it("an unknown --phase is a usage error naming the valid phases", async () => {
+    const { dbPath, deps } = await registered();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--phase", "mergd", "--port", String(await deadPort())], deps);
+
+    expect(status.code).toBe(EXIT.USAGE);
+    expect(status.err).toContain("expected one or more of awaiting-pr");
+  });
+});
+
+describe("shepherd timeline --last", () => {
+  const Timeline = z.object({ entries: z.array(z.unknown()) });
+
+  it("with --json slices entries to the last n, oldest first", async () => {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture();
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const registered = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    await gateOpened(host, gateId(registered.data.runId, "approve-merge"));
+    host.close();
+    const argv = ["--db", dbPath, "shepherd", "timeline", `${REPO}#1`, "--json", "--port", String(await deadPort())];
+    const full = Timeline.parse(JSON.parse((await cli(argv, deps)).out));
+
+    const last = await cli([...argv, "--last", "2"], deps);
+
+    expect(full.entries.length).toBeGreaterThan(2);
+    expect(last.code).toBe(EXIT.OK);
+    expect(Timeline.parse(JSON.parse(last.out)).entries).toEqual(full.entries.slice(-2));
+  });
+});
+
 describe("shepherd hold", () => {
   async function servedRegistration(): Promise<{ deps: CliDeps; server: FactoryServer; runId: string; fixture: ReturnType<typeof shepherdFixture>; heldReason: () => string | null | undefined }> {
     const dbPath = dbFile();
@@ -243,5 +305,52 @@ describe("shepherd register with a bare task ID", () => {
     const result = await cli(["shepherd", "register", "o/r#1", "--task", "CC-784", "--implementer", "agent", "--offline"], { ...landDeps(), fetch });
     expect(result.code).toBe(EXIT.USAGE);
     expect(result.err).toContain("pass --task <initiative>/<ID>");
+  });
+});
+
+describe("shepherd register with only a target", () => {
+  const AGENT_BRANCH = "agent-chat/tc-tp-2239";
+  const taskIndex = (async () => new Response(JSON.stringify({ ok: true, data: { tasks: [{ id: "TP-2239", slug: "titan-platform" }] } }))) as typeof globalThis.fetch;
+
+  function inferDeps(headRef: string): CliDeps {
+    const fixture = shepherdFixture({ frozen: true });
+    fixture.fake.addPr({ headSha: H1, headRef });
+    return { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, fetch: taskIndex, headRef: async () => headRef };
+  }
+
+  it("infers the implementer and the qualified task from the agent-chat head branch", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--offline", "--json", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.OK);
+    expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "tc-tp-2239", kind: "correctness" });
+  });
+
+  it("keeps an explicit flag over the inferred value", async () => {
+    const deps = inferDeps(AGENT_BRANCH);
+
+    const result = await cli(["--db", dbFile(), "shepherd", "register", `${REPO}#1`, "--implementer", "seat-x", "--offline", "--json", "--port", String(await deadPort())], deps);
+
+    expect(JSON.parse(result.out).registration).toMatchObject({ task: "titan-platform/TP-2239", implementer: "seat-x" });
+  });
+
+  it("exits with a usage error naming --task and the branch when the head branch has no task id", async () => {
+    const deps = inferDeps("agent-chat/review-errors");
+
+    const result = await cli(["shepherd", "register", `${REPO}#1`, "--offline", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.err).toContain("agent-chat/review-errors");
+    expect(result.err).toContain("pass --task");
+  });
+
+  it("reads --branch instead of the pull request's head", async () => {
+    const deps = { ...inferDeps(AGENT_BRANCH), headRef: async () => { throw new Error("headRef read"); } };
+
+    const result = await cli(["shepherd", "register", REPO, "--branch", "feat/tp-2239-x", "--offline", "--port", String(await deadPort())], deps);
+
+    expect(result.code).toBe(EXIT.USAGE);
+    expect(result.err).toContain("head branch feat/tp-2239-x is not agent-chat/<name>; pass --implementer");
   });
 });

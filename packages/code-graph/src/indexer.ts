@@ -1,6 +1,5 @@
 import { realpathSync } from "node:fs";
 import * as path from "node:path";
-import { parseFile, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
 import { LanguageExtractor } from "./extractors/dispatch.js";
 import { detectGitHead, detectGitToplevel } from "./git-renames.js";
@@ -11,14 +10,7 @@ import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { rootsAtRevision } from "./git-tree-source.js";
 import { pruneDanglingReferences } from "./barrel-resolve.js";
 import { fileId } from "./extractors/ids.js";
-import {
-  assembleFragments,
-  buildFingerprints,
-  classifyForReuse,
-  classifyParsed,
-  loadReuseBasis,
-  readSourceFiles,
-} from "./incremental.js";
+import { buildFingerprints, classifyForReuse, loadReuseBasis, readSourceFiles, streamFiles } from "./incremental.js";
 import { computeDeltaAffected } from "./reuse-delta.js";
 import { assembleIndexerMetrics } from "./index-metrics.js";
 import { loadEntryPoints } from "./analysis/test-kinds.js";
@@ -120,17 +112,10 @@ function persist(
   return snapshotId;
 }
 
-/** Aliases from bare-name symbol ids to qualified ones, when the newest prior snapshot predates them. */
-function resolveSymbolAliases(
-  store: CodeGraphStore,
-  idRoot: string,
-  parsedByPath: ReadonlyMap<string, ParsedFile>,
-  nodeIds: ReadonlySet<string>,
-): IdAlias[] {
+/** True when the newest prior snapshot wrote bare-name symbol ids, so this run must alias them to qualified ones. */
+function needsRequalifyAliases(store: CodeGraphStore): boolean {
   const prior = store.listSnapshots({ limit: 1 })[0];
-  if (!prior || !predatesQualifiedSymbols(prior.indexVersion)) return [];
-  const files = [...parsedByPath.values()].map((file) => ({ fileId: fileId(idRoot, file.filePath), file }));
-  return qualifiedSymbolAliases(files, nodeIds);
+  return prior !== undefined && predatesQualifiedSymbols(prior.indexVersion);
 }
 
 /**
@@ -146,16 +131,6 @@ function resolveRoots(paths: readonly string[], source: IndexSource): { rootDirs
   const gitToplevel = detectGitToplevel(raw[0]!);
   const rootDirs = gitToplevel !== null ? raw.map(canonicalizePath) : raw;
   return { rootDirs, idRoot: gitToplevel ?? rootDirs[0]! };
-}
-
-async function parseAll(
-  toParse: readonly { filePath: string; content: string; language: string }[],
-): Promise<Map<string, ParsedFile>> {
-  const parsed = new Map<string, ParsedFile>();
-  for (const rf of toParse) {
-    parsed.set(rf.filePath, await parseFile(rf.content, rf.filePath, rf.language));
-  }
-  return parsed;
 }
 
 /** A revision's history ends at its commit, so its windows end at the commit's time, not the wall clock. */
@@ -187,18 +162,18 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   const affected = reuse ? computeDeltaAffected(reuse, currentFileIds) : new Set<string>();
   const { toParse, reusedFileIds } = classifyForReuse(readFiles, idRoot, reuse, affected);
 
-  const parsedByPath = await parseAll(toParse);
-  const classified = classifyParsed(parsedByPath, idRoot, reuse, reusedFileIds, affected);
-  const accumulator = mergeFragments(
-    assembleFragments({
-      readFiles,
-      idRoot,
-      parsedByPath,
-      reuse,
-      cosmeticFileIds: classified.cosmeticFileIds,
-      extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig, source }),
-    }),
-  );
+  const requalify = needsRequalifyAliases(store);
+  const streamed = await streamFiles({
+    readFiles,
+    idRoot,
+    toParse,
+    reuse,
+    reusedFileIds,
+    affected,
+    extractor: new LanguageExtractor({ repoRoot: idRoot, tsConfigPath: options.tsConfig, source }),
+    digest: requalify || options.computeMetrics !== false,
+  });
+  const accumulator = mergeFragments(streamed.fragments);
   const roleHints = computeRoleHints(readFiles, idRoot, fileId, source);
   const annotated = annotateRoles([...accumulator.nodes.values()], roleHints);
   accumulator.nodes = new Map(annotated.map((n) => [n.id, n]));
@@ -210,7 +185,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
       : assembleIndexerMetrics({
           nodes: accumulator.nodes,
           edges: accumulator.edges,
-          parsedFiles: [...parsedByPath.values()],
+          fileDigests: streamed.digests,
           reusedSourceMetrics: reuse
             ? reusedFileIds.flatMap((id) => reuse.sourceMetricsByFile.get(id) ?? [])
             : [],
@@ -226,10 +201,10 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
   const bridge = computeAliasBridge(store, { ...options, rootDir, idRoot, ref, commitHash, nodes: accumulator.nodes });
   const aliases = [
     ...bridge.aliases,
-    ...resolveSymbolAliases(store, idRoot, parsedByPath, new Set(accumulator.nodes.keys())),
+    ...(requalify ? qualifiedSymbolAliases(streamed.digests, new Set(accumulator.nodes.keys())) : []),
   ];
   const snapshot = { ref, commitHash, aliasBase: bridge.baseSnapshotId };
-  const fingerprints = buildFingerprints(readFiles, idRoot, classified.structuralByFileId);
+  const fingerprints = buildFingerprints(readFiles, idRoot, streamed.structuralByFileId);
   const snapshotId = store.atomically(() => {
     const id = persist(store, snapshot, accumulator, aliases, metrics);
     store.insertFingerprints(id, fingerprints);
@@ -245,7 +220,7 @@ export async function indexPaths(store: CodeGraphStore, options: IndexOptions): 
     metrics: metrics.length,
     reused: reusedFileIds.length,
     reparsed: toParse.length,
-    cosmetic: classified.cosmeticFileIds.size,
+    cosmetic: streamed.cosmeticFileIds.size,
     nodesByKind: countByKind(accumulator.nodes.values()),
     edgesByKind: countByKind(accumulator.edges.values()),
     ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),

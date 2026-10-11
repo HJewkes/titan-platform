@@ -15,7 +15,7 @@ import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflic
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
-import { verdictIsMergeAt } from "../gate-brief.js";
+import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
@@ -119,7 +119,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ failedRounds: 0, throttledRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
+  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
@@ -276,7 +276,7 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
 
 /** A tree-equal update of a reviewed head carries its MERGE; otherwise a verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
-  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
+  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy);
   const probe: CarryProbe = {};
   const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;

@@ -5,8 +5,8 @@ an agent under a named profile with the brief on stdin (never in argv, which `ps
 every local process), builds the argv that resumes an ended agent's Claude Code session
 with one more message, and runs binaries by absolute path with a minimal environment.
 
-Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency of
-the `./limits` subpath). Ported unchanged from relay's
+Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency,
+used by `readAnswers` and the `./limits` subpath). Ported unchanged from relay's
 `daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460.
 
 ```ts
@@ -60,6 +60,16 @@ dispatchToAgentChat(
   timeoutMs, { force })` frees a name and returns the broker's caveats. Both throw
   `DispatchError`, or `DispatchTimeoutError` when the CLI hangs, since a hung retire may
   still have happened.
+- `askHuman(bin, { as, text, task?, options?, recommended? }, timeoutMs)` puts a question on
+  agent-chat's human queue for a process that is not a Claude session, under the service
+  label `as`, and returns its msg_id. It runs `agent-chat ask --as <label> --text-stdin
+  --json`, with the text on stdin. `readAnswers(bin, label, since, timeoutMs)` reads the
+  answers and dismissals to that label's asks after the msg_id `since`, oldest first, as
+  `{ answers: ServiceAnswer[], next? }`; pass `next` back as `since`. A body that is not
+  that shape throws rather than reading as an empty page. `dismissAsk(bin, msgId,
+  timeoutMs)` withdraws an ask, and throws `DispatchError` when it is already closed. All
+  three throw `BrokerUnavailableError` when the broker is down or predates the verbs (exit
+  69), and a `DispatchError` naming a usage error on exit 2.
 - `execSafe`, `minimalEnv` and `resolveBinaryPath` never use `PATH` lookup or
   `process.env`, and never a shell.
 

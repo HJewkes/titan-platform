@@ -1,6 +1,6 @@
 # throughput
 
-**Tier 2.** No titan dependencies yet.
+**Tier 2.** Depends on [`evidence`](/reference/evidence) for Wilson intervals.
 
 ```sh
 npm install @titan-design/throughput
@@ -59,11 +59,39 @@ const stale = classTable(rows.map((row) => ({ ...row, doneAt: "2026-09-09" })), 
 stale.classes["feature/2"]; // level "global": 20 rows 21 days old weigh 10, below the minimum of 20
 ```
 
+### Back-testing the table
+
+`backtest(actuals, { origins, horizonDays, metric, open, config })` checks whether the 80%
+interval holds 80%. At each origin it fits `classTable` on rows done and first dispatched
+(`firstImplAt`) before the origin, then scores the rows first dispatched in the next
+`horizonDays` (default 7). Per class and overall it reports `[p10, p90]` coverage with a
+Wilson interval, pinball loss at p10, p50 and p90, the median absolute log error of p50, and
+the Spearman correlation of `estimate` against the actual. The same scores are given for
+three baselines: the unweighted global quantiles, `estimate` times the global hours per
+point, and the unweighted class quantiles. Each class also gets a conformal widening factor
+fitted on the previous origin's rows, and coverage is reported both raw and widened.
+
+```ts
+import { backtest } from "@titan-design/throughput";
+
+const result = backtest(rowsWithFirstImplAt, {
+  origins: ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"],
+  open: openTasks, // { taskId, initiative, kind, estimate, firstImplAt } for tasks not yet done
+});
+result.pooled.coverage.rate; // Wilson interval on the hit rate over every scored row
+const week = result.origins[3];
+if (week.status === "scored") {
+  week.classes["feature/2"]; // model, widenedCoverage, globalMedian, pointsTimesRate, unweightedClass, conformalFactor, open
+  week.censored; // open tasks first dispatched in the horizon, per class and as a share
+  week.contextLine; // precision and recall at 150k tokens, null when no row carries peakContextTokens
+}
+```
+
 ## What it deliberately does not do
 
 It reads no database and no task store; the caller passes rows in. It fits no parametric
 distribution: a log-normal fit is a later option, allowed only if it wins a back-test. It
-does not forecast a set of tasks or wall-clock time yet. Those land as `forecastSet` and
+does not forecast a set of tasks or wall-clock time yet, and `backtest` measures a fit without changing it. Those land as `forecastSet` and
 `simulateWallClock` in later releases.
 
 ## Gotchas
@@ -83,6 +111,12 @@ does not forecast a set of tasks or wall-clock time yet. Those land as `forecast
 - `classTable` throws a `RangeError` when no row is eligible, when a `doneAt` or `asOf` does
   not parse, or when `halfLifeDays` is not positive or `minN` is negative. `table.asOf` is
   always an ISO datetime, so `"2026-10-01"` and its full spelling hash the same.
+- `backtest` scores only done tasks, so a horizon's slow tasks are missing from it until they
+  finish. Pass the not-yet-done tasks as `open`: they are counted per class under `censored`,
+  never scored. A high `censored.share` means the coverage of recent origins is optimistic.
+- `backtest` skips rows with no `firstImplAt` and counts them in `missingFirstImplAt`. An
+  origin with no training rows comes back with `status: "skipped"`. The `clean` stratum
+  leaves out rows flagged `weak-link`, `multi-task` or `reopened`.
 
 ## Where it came from
 

@@ -27,7 +27,7 @@ import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
-import type { Phase } from "./step-phase.js";
+import { FINISHED_PHASES, type Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
 
@@ -65,6 +65,8 @@ export interface MergeEvaluation {
   pendingGate: WatchRow["pendingGate"];
   waiting: string;
 }
+
+const DEFAULT_KIND = "correctness";
 
 const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
@@ -164,12 +166,15 @@ async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: 
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
 }
 
-/** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
+/**
+ * Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back.
+ * A new run with no kind stores correctness here, never in the CLI, so a kindless repeat keeps whatever kind the run already has.
+ */
 async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Promise<Registered> {
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
-      registration = store.register({ ...args, branch, runId: started, policy });
+      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy });
     });
     return { runId, created: true, registration: registration! };
   } catch (error) {
@@ -198,7 +203,7 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
 export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, policy: { fixer: false } }, ctx);
+  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
@@ -220,7 +225,7 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
 function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
   const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
 }
 
 /** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */
@@ -266,7 +271,6 @@ const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
-const FINISHED: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
@@ -293,7 +297,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
   run: async ({ state }, ctx) =>
-    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED.has(row.phase) === (state === "finished")),
+    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED_PHASES.has(row.phase) === (state === "finished")),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({

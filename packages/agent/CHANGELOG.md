@@ -1,5 +1,11 @@
 # @titan-design/agent
 
+## 0.5.0
+
+### Minor Changes
+
+- c54c098: `createCodexExecAdapter` accepts an optional dated `prices` table and fills turn usage with an estimated USD cost when the run's model has a row in force; without one, cost stays `null`. Exports `CodexPriceRow` and `priceCodexUsage`. The package ships no rates.
+
 ## 0.4.7
 
 ### Patch Changes

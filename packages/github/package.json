@@ -1,12 +1,13 @@
 {
   "name": "@titan-design/github",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "description": "GitHub REST port over the gh CLI: validated paths, required checks from branch rules, and an in-memory fake",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "titan-squash-message": "./dist/bin.js"
+    "titan-squash-message": "./dist/bin.js",
+    "titan-gh": "./dist/titan-gh.js"
   },
   "exports": {
     ".": {

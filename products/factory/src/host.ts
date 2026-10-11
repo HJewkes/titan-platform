@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
-import { coordinatorEvidencePolicy } from "./coordinator-evidence.js";
+import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
 import { deviceGateAuthorize } from "./device-gates.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
@@ -153,7 +153,7 @@ function heldRuns(runtime: WorkflowRuntime, resumed: ReadonlySet<string>, nowMs:
   });
 }
 
-/** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; the run's current step names the waiting one. */
+/** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; the gate's own id names its step, because the run's current step can still name an older one. */
 function listPendingGates(runtime: WorkflowRuntime, gates: SqliteGateStore): PendingGate[] {
   return gates.listPending().flatMap((gate) => {
     const slash = gate.id.indexOf("/");
@@ -161,6 +161,6 @@ function listPendingGates(runtime: WorkflowRuntime, gates: SqliteGateStore): Pen
     const runId = gate.id.slice(0, slash);
     const run = runtime.status(runId);
     if (!run) return [];
-    return [{ runId, stepId: run.currentStep ?? gate.id.slice(slash + 1), gate }];
+    return [{ runId, stepId: stepOf(gate.id), gate }];
   });
 }

@@ -1,4 +1,5 @@
 import { verifyCitation, type LineSource } from "@titan-design/evidence";
+import { parseResultLine, RESULT_PREFIX, VERDICTS } from "@titan-design/fix-proof";
 import type { AwaitVerdictResult } from "./accept-verdict.js";
 import { FINDINGS_SEPARATOR, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings } from "./fix-first-findings.js";
 import { DEFAULT_SONNET_FOR } from "./plan.js";
@@ -18,7 +19,10 @@ export interface AggregateInput {
   head: string;
   /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
   source: LineSource;
-  /** fix-proof's verdict for the PR when one ran; `vacuous` or `no-tests` makes the tests member blocking. */
+  /**
+   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, a line naming another head,
+   * or anything unreadable makes the tests member blocking.
+   */
   fixProof?: string;
   /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
   sonnetFor?: Record<string, string>;
@@ -34,7 +38,8 @@ interface Seat {
 }
 
 const SHAPE_ORDER: readonly ReviewShape[] = ["correctness", "adversary", "tests", "visual", "perf"];
-const BAD_FIX_PROOF = new Set(["vacuous", "no-tests"]);
+const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests"]);
+const KNOWN_FIX_PROOF = new Set<string>(VERDICTS);
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
 
@@ -56,7 +61,20 @@ function fixFirstsOf(results: readonly MemberResult[], head: string): Seat["fixF
   });
 }
 
-const badFixProof = (input: AggregateInput): boolean => typeof input.fixProof === "string" && BAD_FIX_PROOF.has(input.fixProof.trim().toLowerCase());
+function badResultLine(line: string, head: string): boolean {
+  const parsed = parseResultLine(line);
+  return !parsed.ok || parsed.result.head !== head || BAD_FIX_PROOF.has(parsed.result.verdict);
+}
+
+/** A fix-proof this cannot read is treated as bad, so an unexpected form can only make the verdict stricter. */
+function badFixProof(input: AggregateInput): boolean {
+  if (input.fixProof === undefined) return false;
+  if (typeof input.fixProof !== "string") return true;
+  const text = input.fixProof.trim();
+  if (text.startsWith(RESULT_PREFIX)) return badResultLine(text, input.head);
+  const word = text.toLowerCase();
+  return word !== "" && (BAD_FIX_PROOF.has(word) || !KNOWN_FIX_PROOF.has(word));
+}
 
 function seatOf(member: PanelMember, results: readonly MemberResult[], input: AggregateInput): Seat {
   const own = results.filter((r) => r.shape === member.shape);

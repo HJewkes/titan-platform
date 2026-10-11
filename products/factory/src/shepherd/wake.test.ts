@@ -83,6 +83,7 @@ interface Scene {
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
   /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
   turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
+  advisory?: (repo: string) => boolean;
 }
 
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
@@ -95,7 +96,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }) };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.advisory && { advisory: scene.advisory }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -131,6 +132,15 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch \`feat/demo-fix\` and check it out at the PR head ${H1}.`);
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
+  });
+
+  it("starts no successor on an advisory repo, though its checkout is bound", async () => {
+    const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(50) }, advisory: (repo) => repo === REPO });
+
+    const { result } = await run("review", fixFirst("fix the parser"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "octo/demo is advisory, so Shepherd starts no successor to push to it" });
+    expect(agents.asked).toEqual([]);
   });
 
   it("spawns a successor under the configured Claude config directory", async () => {
@@ -815,7 +825,7 @@ describe("wakePhase", () => {
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
   });
 
-  it("is unhandled with the exit named when the woken agent exits and the head is unchanged", async () => {
+  it("is unhandled with the exit named when the resumed agent exits and the head is unchanged, with no second ask", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: H1 });
     const agents = fakeAgents([row("impl-a")]);
@@ -826,6 +836,61 @@ describe("wakePhase", () => {
     const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }));
 
     expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: expect.objectContaining({ agent: "impl-a", mode: "resume" }) });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["resume"]);
+  });
+
+  /** A transcript written after every ask, so each wake counts as a turn at once. */
+  const writtenAfterEveryAsk = async (): Promise<Warmth> => ({ lastEventAt: T0 + 24 * 60 * MINUTE, fill: 1 });
+
+  /** A live implementer that is messaged, and whose resume makes it live again. */
+  function liveImplementer() {
+    const agents = fakeAgents([row("impl-a", { presence: "live" })]);
+    const resume = agents.resume;
+    agents.resume = async (...args) => (await resume(...args), void (agents.rows[0]!.presence = "live"));
+    return agents;
+  }
+
+  it("resumes a live implementer with the wake when it exits without reading the message, and is woken once it pushes", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = liveImplementer();
+    fake.onGetPr = (pr) => {
+      if (agents.asked.length === 1) agents.rows[0]!.presence = "exited";
+      if (agents.asked.length === 2) pr.headSha = H2;
+    };
+
+    const { outcome, stepIds, results } = await runPhase(agents, fake, writtenAfterEveryAsk);
+
+    expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
+    expect(agents.asked[1]!.message).toBe(agents.asked[0]!.message);
+    expect(stepIds.filter((id) => id.startsWith("sh-wake-fix-first"))).toHaveLength(1);
+    expect(results["sh-wake-fix-first"]).toMatchObject({ fixFirst: 1 });
+  });
+
+  it("re-delivers a live wake only once, so an agent that exits again is unhandled with its resume named", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = liveImplementer();
+    fake.onGetPr = () => void (agents.asked.length > 0 && (agents.rows[0]!.presence = "exited"));
+
+    const { outcome } = await runPhase(agents, fake, writtenAfterEveryAsk);
+
+    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: expect.objectContaining({ agent: "impl-a", mode: "resume" }) });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
+  });
+
+  it("does not re-deliver a live wake its resume fallback already delivered, when the agent exits without pushing", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = liveImplementer();
+    fake.onGetPr = () => void (agents.asked.length > 0 && (agents.rows[0]!.presence = "exited"));
+    const writtenAfterTheResume = async (): Promise<Warmth> => ({ lastEventAt: agents.asked.some(({ verb }) => verb === "resume") ? T0 + 24 * 60 * MINUTE : T0 - MINUTE, fill: 1 });
+
+    const { outcome } = await runPhase(agents, fake, writtenAfterTheResume);
+
+    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: expect.objectContaining({ mode: "live", fallback: "resume" }) });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
   });
 
   it("is unhandled when the PR closes at the same head", async () => {
