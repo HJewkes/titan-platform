@@ -134,6 +134,7 @@ interface DatedRow {
 interface ScoredRow {
   key: string;
   actual: number;
+  doneMs: number;
   estimate: number | null;
   clean: boolean;
   peakContextTokens: number | null;
@@ -203,7 +204,9 @@ function peaksByClass(train: readonly DatedRow[]): Map<string, number[]> {
   for (const dated of train) {
     const peak = dated.row.peakContextTokens;
     if (peak === null || peak === undefined || !Number.isFinite(peak)) continue;
-    peaks.set(dated.key, [...(peaks.get(dated.key) ?? []), peak]);
+    const group = peaks.get(dated.key);
+    if (group) group.push(peak);
+    else peaks.set(dated.key, [peak]);
   }
   return peaks;
 }
@@ -233,6 +236,7 @@ function scoreRow(dated: DatedRow, fit: OriginFit, metric: BacktestMetric, facto
   return {
     key,
     actual: value,
+    doneMs: dated.doneMs,
     estimate,
     clean: !row.flags?.some((flag) => CONFOUNDED_FLAGS.includes(flag)),
     peakContextTokens: peak !== null && peak !== undefined && Number.isFinite(peak) ? peak : null,
@@ -281,7 +285,12 @@ function groupScore(rows: readonly ScoredRow[]): GroupScore {
 
 function groupBy<T>(items: readonly T[], keyFn: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
-  for (const item of items) groups.set(keyFn(item), [...(groups.get(keyFn(item)) ?? []), item]);
+  for (const item of items) {
+    const key = keyFn(item);
+    const group = groups.get(key);
+    if (group) group.push(item);
+    else groups.set(key, [item]);
+  }
   return new Map([...groups.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
@@ -296,8 +305,10 @@ function censoring(open: readonly OpenTask[], startMs: number, endMs: number, sc
   return { open: inWindow.length, share: total === 0 ? null : inWindow.length / total, byClass };
 }
 
-function nextFactors(rows: readonly ScoredRow[]): Map<string, number> {
-  return new Map([...groupBy(rows, (row) => row.key)].map(([key, group]) => [key, conformalFactor(group.map((row) => ({ actual: row.actual, ...row.model })))]));
+// Only previous-origin rows already done at this origin may calibrate it; later ones were not yet known.
+function factorsKnownAt(previous: readonly ScoredRow[], startMs: number): Map<string, number> {
+  const known = previous.filter((row) => row.doneMs < startMs);
+  return new Map([...groupBy(known, (row) => row.key)].map(([key, group]) => [key, conformalFactor(group.map((row) => ({ actual: row.actual, ...row.model })))]));
 }
 
 function contextLine(rows: readonly ScoredRow[]): ContextLineScore | null {
@@ -345,12 +356,12 @@ export function backtest(actuals: readonly ThroughputRow[], options: BacktestOpt
   const origins = [...new Set(options.origins.map((origin) => parseMs(origin, "origin")))].sort((a, b) => a - b);
   const results: OriginResult[] = [];
   const allScored: ScoredRow[] = [];
-  let factors = new Map<string, number>();
+  let previous: ScoredRow[] = [];
   for (const startMs of origins) {
-    const { result, scored } = runOrigin(dated, open, startMs, startMs + horizonDays * MS_PER_DAY, { metric, config: options.config, factors });
+    const { result, scored } = runOrigin(dated, open, startMs, startMs + horizonDays * MS_PER_DAY, { metric, config: options.config, previous });
     results.push(result);
     allScored.push(...scored);
-    factors = nextFactors(scored);
+    previous = scored;
   }
   const eligible = actuals.filter(isEligible).length;
   return { metric, horizonDays, missingFirstImplAt: eligible - dated.length, excludedRows: actuals.length - eligible, origins: results, pooled: pooled(allScored) };
@@ -359,7 +370,8 @@ export function backtest(actuals: readonly ThroughputRow[], options: BacktestOpt
 interface OriginContext {
   metric: BacktestMetric;
   config: BacktestOptions["config"];
-  factors: ReadonlyMap<string, number>;
+  /** The previous origin's scored rows, which fit this origin's conformal factors. */
+  previous: readonly ScoredRow[];
 }
 
 function runOrigin(dated: readonly DatedRow[], open: readonly OpenTask[], startMs: number, endMs: number, context: OriginContext): { result: OriginResult; scored: ScoredRow[] } {
@@ -369,6 +381,7 @@ function runOrigin(dated: readonly DatedRow[], open: readonly OpenTask[], startM
   const base: OriginBase = { origin, horizonEnd: new Date(endMs).toISOString(), trainN: train.length, testN: test.length, censored: censoring(open, startMs, endMs, test.length) };
   if (train.length === 0) return { result: { ...base, status: "skipped", reason: "no-training-rows" }, scored: [] };
   const fit = fitOrigin(train, origin, context.config);
-  const scored = test.map((row) => scoreRow(row, fit, context.metric, context.factors));
-  return { result: scoredOrigin(base, fit, scored, context.factors), scored };
+  const factors = factorsKnownAt(context.previous, startMs);
+  const scored = test.map((row) => scoreRow(row, fit, context.metric, factors));
+  return { result: scoredOrigin(base, fit, scored, factors), scored };
 }

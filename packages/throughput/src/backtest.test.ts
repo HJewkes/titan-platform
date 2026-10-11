@@ -140,6 +140,22 @@ describe("backtest calibration", () => {
     expect(afterJump.widenedCoverage.hits).toBeGreaterThan(afterJump.model.coverage.hits);
   });
 
+  it("fits no factor on previous-origin rows that finished after the origin", () => {
+    const lateWeekSix = corpus([FEATURE, DRIFTING]).map((row) =>
+      row.taskId.startsWith("security-6-") ? { ...row, doneAt: weekStart(WEEKS) } : row,
+    );
+
+    expect(scored(backtest(lateWeekSix, { origins: weeklyOrigins() }).origins[7]).classes["security/3"]!.conformalFactor).toBe(1);
+  });
+
+  it("ignores the actuals of overlapping-horizon rows not yet done at the origin", () => {
+    const rows = corpus([FEATURE, DRIFTING]);
+    const inflated = rows.map((row) => (row.taskId.startsWith("security-7-") ? { ...row, implAgentHours: { capped: 500 } } : row));
+    const factorAt7 = (input: ThroughputRow[]) => scored(backtest(input, { origins: weeklyOrigins(), horizonDays: 14 }).origins[7]).classes["security/3"]!.conformalFactor;
+
+    expect(factorAt7(inflated)).toBe(factorAt7(rows));
+  });
+
   it("reports clean-row coverage without the confounded flags", () => {
     const rows = corpus([FEATURE]).map((row, i) => (i % 5 === 0 ? { ...row, flags: ["reopened"] } : row));
     const origin = scored(backtest(rows, { origins: [weekStart(5)] }).origins[0]);
