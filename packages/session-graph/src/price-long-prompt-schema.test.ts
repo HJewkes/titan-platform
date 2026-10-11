@@ -40,15 +40,21 @@ function insertRequest(db: SessionGraph["db"], requestId: string, model: string,
 
 const expectCloseTo = (values: number[]) => values.map((v) => expect.closeTo(v, 6));
 
-const costRow = (graph: SessionGraph, requestId: string) =>
-  graph.db.prepare("SELECT * FROM request_cost WHERE request_id = ?").get(requestId) as Record<"cost_usd" | "priced" | (typeof COMPONENTS)[number], number>;
+type CostRow = Record<"cost_usd" | "priced" | (typeof COMPONENTS)[number], number>;
+
+function costRow(graph: SessionGraph, requestId: string): CostRow {
+  const row = graph.db.prepare<[string], CostRow>("SELECT * FROM request_cost WHERE request_id = ?").get(requestId);
+  if (!row) throw new Error(`no request_cost row for ${requestId}`);
+  return row;
+}
 
 function versionTwelveGraphWithOpusRequest(): number {
   const db = openDatabase(file);
   runMigrations(db, MIGRATIONS.slice(0, 12));
   db.prepare("INSERT INTO price VALUES ('claude-opus-5', '2026-01-01', 1, 5, 0.5, 6.25, 10, 25, NULL)").run();
   insertRequest(db, "opus", "claude-opus-5", 150_000);
-  const before = (db.prepare("SELECT cost_usd FROM request_cost").get() as { cost_usd: number }).cost_usd;
+  const before = db.prepare<[], { cost_usd: number }>("SELECT cost_usd FROM request_cost").get()?.cost_usd;
+  if (before === undefined) throw new Error("no request_cost row for the version 12 request");
   db.close();
   return before;
 }
