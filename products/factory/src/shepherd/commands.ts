@@ -342,6 +342,10 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   },
 });
 
+/** The head the seat releases at, so a later move off it is known; a read that fails records none, and a hold with none is never re-held. */
+const openHead = (services: ShepherdServices, repo: RepoSlug, pr: number): Promise<string | undefined> =>
+  services.port.getPr(repo, pr).then((read) => read.headSha, () => undefined);
+
 const releaseCommand = defineCommand<PrRefArgs, HoldResult, FactoryContext>({
   name: "shepherd.release",
   description: "Release a hold on owner/repo#pr so a merge its run reaches can go through",
@@ -350,7 +354,7 @@ const releaseCommand = defineCommand<PrRefArgs, HoldResult, FactoryContext>({
   async run({ repo, pr }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    services.store.get().release(runId);
+    services.store.get().release(runId, { headSha: await openHead(services, repo, pr) });
     return { runId, held: null };
   },
 });
