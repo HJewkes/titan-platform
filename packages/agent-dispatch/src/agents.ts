@@ -191,14 +191,15 @@ export function runAgentChat(
 }
 
 /** The roster is large (hundreds of rows), so its read must not block the caller's event loop. */
-async function runAgentChatAsync(
+export async function runAgentChatAsync(
   binPath: string,
   args: string[],
   timeoutMs: number,
+  input?: string,
 ): Promise<SafeExecResult> {
   try {
     const bin = resolveBinaryPath(binPath, "agent-chat");
-    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs);
+    return await execSafeAsync(bin, args, agentChatEnv(), timeoutMs, input);
   } catch (err) {
     throw mapExecError(err);
   }

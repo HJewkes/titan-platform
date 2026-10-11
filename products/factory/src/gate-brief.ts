@@ -1,10 +1,12 @@
 import type { GateBrief, GateQuestion } from "@titan-design/hitl";
+import type { OwnerBrief } from "@titan-design/review-panel";
 import { z } from "zod";
 import type { Verdict } from "./shepherd/phases.js";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
 const MAX_SUMMARY = 280;
 const MAX_EVIDENCE_REF = 500;
+const MAX_QUESTION = 500;
 
 interface DecisionOption<Id extends string> {
   id: Id;
@@ -58,6 +60,15 @@ export const mainEvidence = (repo: string, mergeSha: string): string => `$ gh ru
 /** A reviewer's MERGE vouches for the head it names and no other. */
 export const verdictIsMergeAt = (verdict: Verdict | undefined, headSha: string): boolean => verdict?.kind === "MERGE" && verdict.headSha === headSha;
 
+/** An owner brief belongs to the reviewed head, so a MERGE at another head lends it to no gate. */
+export const ownerBriefAt = (verdict: Verdict | undefined, headSha: string): OwnerBrief | undefined =>
+  verdict?.kind === "MERGE" && verdict.headSha === headSha ? verdict.ownerBrief : undefined;
+
+export function ownerBriefLines(ownerBrief: OwnerBrief): string[] {
+  const bullets = (items: readonly string[]) => items.map((item) => `- ${item}`);
+  return [`What: ${ownerBrief.what}`, `Why: ${ownerBrief.why}`, "Pros:", ...bullets(ownerBrief.pros), "Cons:", ...bullets(ownerBrief.cons), `Door: ${ownerBrief.doorType}`];
+}
+
 interface PrHead {
   repo: string;
   pr: number;
@@ -67,9 +78,10 @@ interface PrHead {
 const where = ({ repo, pr, headSha }: PrHead): string => `${repo}#${pr} at ${headSha}`;
 
 /** `carriedFrom` is the reviewed head whose MERGE stands at this tree-equal head, so the owner is not told the reviewer saw this one. */
-export function approveMergeDecision(target: PrHead & { reason: string; reviewedMerge: boolean; carriedFrom?: string }) {
+export function approveMergeDecision(target: PrHead & { reason: string; reviewedMerge: boolean; carriedFrom?: string; ownerBrief?: OwnerBrief }) {
+  const asked = `Land ${target.headSha}?`;
   const { schema, questions } = decisionGate({
-    question: `Land ${target.headSha}?`,
+    question: target.ownerBrief ? oneLine(`${asked} Reviewer's owner brief: ${ownerBriefLines(target.ownerBrief).join(" ")}`, MAX_QUESTION) : asked,
     options: [
       { id: "merge", label: "Merge at this head", recommended: target.reviewedMerge },
       { id: "abandon", label: "Abandon the PR" },
