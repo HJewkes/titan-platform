@@ -257,6 +257,24 @@ describe("agentChatReviewerDispatch spawn", () => {
     expect((error as Error).message).toBe("machine stop holds: load5 34 (machine_hold)");
   });
 
+  it("tells the machine-stop ledger of a machine_hold refusal and still throws the machine hold", async () => {
+    const holds: string[] = [];
+    const onMachineHold = (_at: number, reason: string) => void holds.push(reason);
+    const error = await failure(dispatchOver(`echo 'Not spawned: machine stop holds: swap 9 GB'\necho 'code: machine_hold retryable: true'\nexit 1\n`, { onMachineHold }).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerMachineHold);
+    expect(holds).toEqual(["machine stop holds: swap 9 GB (machine_hold)"]);
+  });
+
+  it("does not tell the machine-stop ledger of a plain busy refusal", async () => {
+    const holds: string[] = [];
+    const onMachineHold = (_at: number, reason: string) => void holds.push(reason);
+    const error = await failure(dispatchOver(`echo 'Not spawned: spawn budget spent'\necho 'code: spawn_rate retryable: true'\nexit 1\n`, { onMachineHold }).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect(holds).toEqual([]);
+  });
+
   it("keeps a machine guard refusal coded machine_headless_limit plain busy, not a machine hold", async () => {
     const guard = "machine guard: 11 live headless agents machine-wide (limit 10, config machineHeadlessAgents)";
     const error = await failure(dispatchOver(`echo 'Not spawned: ${guard}'\necho 'code: machine_headless_limit retryable: true'\nexit 1\n`).spawn("rv-demo-7", BRIEF, target));
