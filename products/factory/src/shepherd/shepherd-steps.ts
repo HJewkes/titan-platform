@@ -12,6 +12,7 @@ import { OUTCOME_STEPS } from "./outcome.js";
 import { CONFLICT_CHECK_STEPS } from "./conflict-check.js";
 import { FREEZE_HOLD_STEPS } from "./freeze-hold.js";
 import { G10_RELEASE_STEPS } from "./g10-release.js";
+import { G10_REHOLD_STEPS } from "./g10-rehold.js";
 import { SEAT_NOTICE_STEPS } from "./gate-route.js";
 import { HELD_REPAIR_STEPS } from "./held-repair.js";
 
@@ -36,6 +37,7 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...CONFLICT_CHECK_STEPS,
   ...FREEZE_HOLD_STEPS,
   ...G10_RELEASE_STEPS,
+  ...G10_REHOLD_STEPS,
   ...SEAT_NOTICE_STEPS,
   ...HELD_REPAIR_STEPS,
 ];

@@ -2,8 +2,7 @@ import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
-import { userInfo } from "node:os";
-import { parsePort, parsePositiveInt, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
+import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
@@ -24,7 +23,6 @@ import { registerNeeds } from "./needs/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
 import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
@@ -215,6 +213,11 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
     .action((ref: string, opts: ShepherdOpts & { reason: string; reviewer?: string }) =>
       runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer, actor: callerOf(verbs.io.env) }), opts));
+  verb("release <ref>", "release one hold on owner/repo#N at the head the seat reviewed; refused when the PR has moved past it")
+    .requiredOption("--head <sha>", "the 40-character head sha the hold was reviewed at")
+    .option("--class <class>", "the class of the hold to lift; needed only while a g10-adversary hold sits over another")
+    .action((ref: string, opts: ShepherdOpts & { head: string; class?: string }) =>
+      runShepherd(verbs, "shepherd.release", () => ({ ...parsePrRef(ref), head: opts.head, holdClass: opts.class, actor: callerOf(verbs.io.env) }), opts));
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
@@ -226,26 +229,14 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--width <n>", "cut every text line to n characters", parsePositiveInt)
     .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.timeline", () => parsePrRef(ref), opts));
   for (const [name, description] of PR_VERBS) {
-    verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => (name === "release" ? { ...parsePrRef(ref), actor: callerOf(verbs.io.env) } : parsePrRef(ref)), opts));
+    verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
 }
 
-/** The seat agent-chat launched this shell for, else the OS user: the owner at their own terminal. */
-function callerOf(env: NodeJS.ProcessEnv): string {
-  return env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || userInfo().username;
-}
-
 const PR_VERBS = [
-  ["release", "release the hold on owner/repo#N"],
   ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
   ["review", "ask for Shepherd's own fresh review of owner/repo#N at its current head; a repeat at the same head asks nothing"],
 ] as const;
-
-function parseTarget(target: string): { repo: string; pr?: number } {
-  if (target.includes("#")) return parsePrRef(target);
-  if (!isRepo(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
-  return { repo: target };
-}
 
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);

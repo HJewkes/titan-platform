@@ -293,7 +293,7 @@ describe("shepherd hold", () => {
     const env = { AGENT_CHAT_NAME: "seat-a", AGENT_CHAT_AGENT_ID: "id-1" };
 
     await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "stalled: no step progress for 70 minutes; TP-3", "--port", String(server.port)], deps, env);
-    await cli(["shepherd", "release", `${REPO}#1`, "--port", String(server.port)], deps, env);
+    await cli(["shepherd", "release", `${REPO}#1`, "--head", H1, "--port", String(server.port)], deps, env);
 
     expect(fixture.routes.shepherd!.store.get().eventsOf(runId).map((event) => [event.kind, event.actor])).toEqual([["hold", "seat-a"], ["release", "seat-a"]]);
   });

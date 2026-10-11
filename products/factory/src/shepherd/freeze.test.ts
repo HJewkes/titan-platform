@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { shepherdEventMigration } from "./events.js";
 import { FREEZE_RECHECK_MS, FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef, redOnlyFromCancels } from "./freeze.js";
@@ -29,7 +30,7 @@ interface Rig {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const clock = { at: 0 };
   const freezes = new FreezeStore(db, () => clock.at);
   const registrations = new ShepherdStore(db, () => clock.at);
@@ -506,8 +507,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });

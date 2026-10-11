@@ -221,9 +221,10 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
     profile that is not an opus one keeps the hold.
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
-    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release`.
+    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
 
-  Any other class waits for `shepherd release`.
+  Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
+  hold of another class, `release` must name the hold it lifts with `--class <class>`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 
@@ -684,7 +685,7 @@ read and no correction turn. `sh-account-hold` then:
 While the run is held, `sh-account-wait` waits inside the review, so the run never reaches
 approve-merge on this reason, and `sh-review-intent` starts no reviewer on an exhausted account.
 The wait ends when any account has headroom again (its reset passed); when the owner runs
-`titan-factory shepherd release`, which also clears the account's mark; when the PR's head moves;
+`titan-factory shepherd release <pr> --head <sha>`, which also clears the account's mark; when the PR's head moves;
 or after an hour. Each of these starts a new land round, which reads the PR's current head and
 reviews it again. The run's own hold follows the accounts in one place only, where a review picks
 its account (`sh-review-intent`, and the failover in `sh-account-hold`): an account with headroom

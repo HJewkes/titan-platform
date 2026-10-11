@@ -1,5 +1,8 @@
+import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
+import { isRepo } from "@titan-design/github";
 import { InvalidArgumentError, type Command } from "commander";
+import { parsePrRef } from "./registry.js";
 import { filterRows, parsePhases, type StatusFilter } from "./shepherd/status-filter.js";
 
 export type { StatusFilter };
@@ -57,4 +60,15 @@ export function statusRows(name: string, data: unknown, { active, phase, branchP
   const filter = { active, phase, branchPrefix, task };
   if (name !== "shepherd.status" || !Array.isArray(data) || Object.values(filter).every((value) => value === undefined)) return data;
   return filterRows(data, filter);
+}
+
+/** The seat agent-chat launched this shell for, else the OS user: the owner at their own terminal. */
+export function callerOf(env: NodeJS.ProcessEnv): string {
+  return env.AGENT_CHAT_NAME || env.AGENT_CHAT_AGENT_ID || userInfo().username;
+}
+
+export function parseTarget(target: string): { repo: string; pr?: number } {
+  if (target.includes("#")) return parsePrRef(target);
+  if (!isRepo(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
+  return { repo: target };
 }
