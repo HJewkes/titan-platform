@@ -10,7 +10,7 @@ import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVe
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
-import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { adoptedReviewer, awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
@@ -23,6 +23,7 @@ import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles
 import { withReviewerProfile } from "./g10-release.js";
 import { provablyIndependent } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
+import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
 
@@ -39,6 +40,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
+  ...REVIEW_REQUEST_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -100,10 +102,16 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-/** A hold that names a reviewer waits for that reviewer; `fresh` skips the standing reviewer, which may be the one that went silent. */
+/**
+ * A hold that names a reviewer waits for that reviewer, unless its class needs Shepherd's own review too or a seat asked for
+ * one at this head, taken or not, so a retry of the asked review is Shepherd's own too; `fresh` skips the standing reviewer,
+ * which may be the one that went silent.
+ */
 function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
-  const external = externalReviewer(registration);
+  const asked = registration?.reviewRequest?.head === target.head;
+  const external = asked ? undefined : adoptedReviewer(registration);
   if (external) return { mode: "external", reviewer: external };
+  if (asked) return { mode: "spawn", reviewer: freshName(target, registration.implementer, roster) };
   const standing = fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
@@ -183,11 +191,17 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
     });
   };
 
-/** The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing; it records why the head is reviewed. */
+/**
+ * The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing; it records
+ * why the head is reviewed. Any review of Shepherd's own at a head takes a seat's ask there, so the ask spends one review.
+ */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
-  const choice = chooseReviewer(input, deps.store.get().byRun(input.runId), roster, input.fresh);
-  return { kind: "intent", head: input.head, ...choice, at: deps.now(), ...(input.cause && { cause: input.cause }) };
+  const store = deps.store.get();
+  const registration = store.byRun(input.runId);
+  const choice = chooseReviewer(input, registration, roster, input.fresh);
+  const requested = choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
+  return { kind: "intent", head: input.head, ...choice, at: deps.now(), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }) };
 };
 
 /** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
@@ -284,6 +298,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     codeRoute(MERGE_EVIDENCE_STEP, deps.now, async (input: MergeEvidenceInput, signal: AbortSignal) => mergeEvidence(deps.port, input, isFrozen, registeredKind(deps.store, input.runId), { sleep: (ms) => deps.sleep(ms, signal) }, wiring?.reviewAppId)),
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
+    reviewRequestRoute(deps),
   ];
 };
 

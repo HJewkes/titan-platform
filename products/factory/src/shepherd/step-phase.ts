@@ -26,6 +26,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-park": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
+  "sh-review-request": "review",
   "sh-late-verdict": "review",
   "sh-correct-verdict": "review",
   "sh-release-preflight": "review",

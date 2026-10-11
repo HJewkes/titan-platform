@@ -49,6 +49,8 @@ describe("reviewCause", () => {
     ["a reviewer a busy broker never started", facts({ headSha: H1, last: { headSha: H1, outcome: "not-started", verdict: { kind: "none", cause: "not-started" } } }), { cause: "retry", reason: "not-started" }],
     ["a hold's reviewer read again", facts({ headSha: H1, last: { headSha: H1, outcome: "external-hold", verdict: { kind: "none", cause: "external-hold" } } }), { cause: "hold" }],
     ["a resync that asked for the review again", facts({ headSha: H1, last: merged, ownerAsked: true }), { cause: "owner-request" }],
+    ["a seat's ask for Shepherd's own review at a head it already took a verdict at", facts({ headSha: H1, last: merged, seatAsked: true }), { cause: "seat-request" }],
+    ["a silent reviewer's retry of a seat's asked review", facts({ headSha: H1, last: { headSha: H1, outcome: "timeout", verdict: { kind: "none", cause: "timeout" } }, seatAsked: true }), { cause: "retry", reason: "timeout" }],
     ["a same-head review with nothing to explain it", facts({ headSha: H1, last: merged }), { cause: "unknown" }],
   ])("names %s", (_case, input, expected) => {
     expect(reviewCause(input)).toEqual(expected);

@@ -269,7 +269,11 @@ goes through the evidence step like any other.
 A fresh reviewer is spawned under a name nobody has held, and a standing reviewer is not
 resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own. It takes the
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
-implementer. Shepherd never reads a reviewer's name out of the hold's reason text.
+implementer. Shepherd never reads a reviewer's name out of the hold's reason text. A
+`g10-adversary:` hold is the exception: it needs two independent `MERGE`s, so Shepherd
+still spawns its own reviewer, and the named reviewer's verdict only satisfies the hold
+(`adoptedReviewer` in `products/factory/src/shepherd/external-review.ts`). A seat can also
+ask for Shepherd's own review with [`shepherd review`](#own-review).
 
 `approve-merge` opens for five reasons only, and its prompt names the reason:
 
@@ -469,6 +473,7 @@ GitHub call:
 | `retry` | The same head again after no verdict. `reason` is `timeout`, `no-verdict`, `depth-floor`, `malformed` or `not-started`. |
 | `hold` | The hold's reviewer is read again. |
 | `owner-request` | A resync asked for the review again. |
+| `seat-request` | A seat's `shepherd review` asked for Shepherd's own review at a head the run already had a verdict at. |
 | `unknown` | Recorded before causes existed, or nothing explains it. |
 
 `stats` adds a "review causes" section: per repo and ISO week, every review dispatch counted
@@ -690,13 +695,52 @@ reviews the new head, then comes back to the merge step there, where the same ho
 The push never releases or changes the hold. A merge that waited on a hold does not go
 through on release: land reads CI again first, because the base or the head may have moved.
 
-A hold whose reason starts `g10-review:` releases itself in the `sh-g10-release` step when an
-opus reviewer Shepherd spawned says `MERGE` and the required checks are green at that head.
+A hold whose reason starts `g10-review:` and names no `--reviewer` releases itself in the
+`sh-g10-release` step when an opus reviewer Shepherd spawned says `MERGE` and the required
+checks are green at that head. A hold that names a reviewer waits for that reviewer's `MERGE`.
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the
 remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
 seat releases it.
+
+### Ask for Shepherd's own review {#own-review}
+
+```sh
+titan-factory shepherd review owner/repo#123
+```
+
+```
+run ab0f9228-…: asked for Shepherd's own review at 0123abcd…
+```
+
+`shepherd review` asks for a fresh reviewer of Shepherd's own at the pull request's head as
+read now. The ask is stored on the registration (migration 18), so it survives a serve
+restart. The next review intent at that head spawns a reviewer under a name nobody has held,
+never the standing reviewer or the named reviewer of a `hold --reviewer`, records
+`requested: true` when it takes the ask. A retry at that head, after a silent or timed-out
+reviewer, spawns again too.
+
+A run waiting in `merging` at that head stops waiting without merging and reads CI again,
+held or not: an ask also stops an unheld pull request's merge at that head, which fails safe.
+The `sh-review-request` step then takes the ask and sets aside the verdict the run already
+had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It also ends the
+land round, because `land` trusts a head for the rest of a round once its old verdict let it
+through. The next round asks the policy, or the owner, again, so an asked review that
+escalates opens `approve-merge` instead of merging. That review is named `seat-request`,
+and neither it nor a retry at that head carries an earlier `MERGE`. The ask, taken or not,
+also stops a carry of the other kind: a `MERGE` reviewed at the asked head, or already
+carried there, is never carried on to a later head, even by a clean merge-up, so that head
+gets its own review too (`sh-carry-scope` reads the ask's head). A
+verdict from a hold's named reviewer still counts toward the hold.
+
+The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and
+prints `Shepherd's own review was already asked`. An ask names one head; after a push the new
+head gets its own review anyway. A pull request that is not registered, a run that already
+ended, and the Version Packages run (its release preflight stands in for a reviewer) are
+refused before anything is recorded. The run reads the ask only at a merge wait and
+at a green head it already reviewed, so a run waiting at an owner gate takes it only after
+that gate is answered.
 
 ## Merge train {#merge-train}
 
@@ -891,7 +935,7 @@ These limits remain:
 | `error: Invalid arguments: pr: needs a pr or a branch` | `owner/repo` without `--branch` |
 | `error: Invalid arguments: policy: Unrecognized key: "…"` | an unknown `--policy` key |
 | `error: owner/repo#123 has head <a>, not <b>` | `--branch` is not the pull request's head |
-| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge` or `timeline` on an unknown pull request |
+| `error: owner/repo#123 is not registered with shepherd` | `hold`, `release`, `merge`, `review` or `timeline` on an unknown pull request |
 | `error: expected owner/repo#N, got …`, exit 2 | a malformed reference |
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
 | a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |

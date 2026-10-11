@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openFactoryHost, type FactoryHost } from "../host.js";
+import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
+import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
@@ -29,8 +30,11 @@ const MERGED_TREE = fakeSha("merge-tree");
 const MERGE_UP_STEP = "sh-merge-up";
 const MERGE_UP_RULE = "clean-merge-up";
 
-/** How H2 came to be: a clean merge of main, a merge whose conflict someone resolved, or a merge on top of an extra commit. */
-type Shape = "clean" | "conflict-resolved" | "extra-commit";
+/**
+ * How H2 came to be: a clean merge of main, a merge whose conflict someone resolved, a merge on top of an extra commit, or
+ * code commits after the reviewed head and then a merge of a main the reviewed head conflicts with.
+ */
+type Shape = "clean" | "conflict-resolved" | "extra-commit" | "code-commits";
 
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 
@@ -40,8 +44,8 @@ function scriptedGit(shape: Shape): Git {
   return async (_dir, args) => {
     const [command] = args;
     if (command === "fetch") fromHead = args[5] ?? "";
-    if (command === "rev-list") return ok(`${args.at(-1)} ${shape === "extra-commit" ? EXTRA : fromHead} ${MAIN}`);
-    if (command === "merge-tree" && shape === "conflict-resolved") return { code: 1, stdout: `${fakeSha("conflicted")}\0src/a.ts\0`, stderr: "" };
+    if (command === "rev-list") return ok(`${args.at(-1)} ${shape === "extra-commit" || shape === "code-commits" ? EXTRA : fromHead} ${MAIN}`);
+    if (command === "merge-tree" && (shape === "conflict-resolved" || shape === "code-commits")) return { code: 1, stdout: `${fakeSha("conflicted")}\0src/a.ts\0`, stderr: "" };
     if (command === "merge-tree") return ok(`${MERGED_TREE}\n`);
     if (command === "rev-parse") return ok(shape === "conflict-resolved" ? fakeSha("resolved-tree") : MERGED_TREE);
     if (command === "diff-tree") return ok("src/a.ts\0");
@@ -63,6 +67,7 @@ function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReade
 
 interface World {
   host: FactoryHost;
+  routes: FactoryRoutes;
   fake: FakeGitHub;
   store: ShepherdStore;
   runId: string;
@@ -97,7 +102,7 @@ function heldBehindRun({ shape = "clean", hold = G10_REVIEW, redAtH2 = false }: 
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
   store.register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "correctness" });
   store.hold(runId, hold);
-  return { host, fake, store, runId, spawned: reviewers.spawned };
+  return { host, routes, fake, store, runId, spawned: reviewers.spawned };
 }
 
 const results = (w: World) => Object.values(w.host.runtime.status(w.runId)!.stepResults);
@@ -131,8 +136,35 @@ describe("a verdict carried across Shepherd's own clean merge-up of main", () =>
   });
 });
 
+describe("a seat's ask at the reviewed head before a clean merge-up", () => {
+  it("never carries the asked head's MERGE: H2 gets a fresh review before the g10-review hold releases and the PR merges", async () => {
+    const w = heldBehindRun({});
+    w.store.requestReview(w.runId, H1);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(w.spawned).toHaveLength(2);
+    expect(stepIds(w)).toContain(`sh-review-intent:${h2(w)}`);
+    expect(stepIds(w).filter((id) => id.startsWith(MERGE_UP_STEP))).toEqual([]);
+    expect(resultOf(w, `${G10_RELEASE_STEP}:${h2(w)}:0`)).toMatchObject({ released: true, verdict: { head: h2(w) } });
+  });
+});
+
+describe("a seat's ask at a head a MERGE was carried to", () => {
+  it("sets the carried MERGE aside and spawns a fresh reviewer at H2 instead of carrying it again", async () => {
+    const w = heldBehindRun({ hold: G10_ADVERSARY });
+    await vi.waitFor(() => expect(settledAtH2(w) && stepIds(w).includes(`${MERGE_UP_STEP}:${h2(w)}`)).toBe(true), { timeout: 5_000 });
+
+    const asked = await callCommand(w.host, w.routes, "shepherd.review", { repo: REPO, pr: 1 });
+    await vi.waitFor(() => expect(w.spawned).toHaveLength(2), { timeout: 5_000 });
+
+    expect(asked).toMatchObject({ ok: true, data: { head: h2(w), requested: true } });
+    expect(resultOf(w, `sh-review-intent:${h2(w)}`)).toMatchObject({ mode: "spawn", cause: { cause: "seat-request" } });
+  });
+});
+
 describe("a head move that is not a clean merge-up", () => {
-  it.each(["conflict-resolved", "extra-commit"] as const)("spends a fresh review at H2 after a %s merge", async (shape) => {
+  it.each(["conflict-resolved", "extra-commit", "code-commits"] as const)("spends a fresh review at H2 after a %s merge", async (shape) => {
     const w = heldBehindRun({ shape });
 
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });

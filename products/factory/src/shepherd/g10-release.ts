@@ -30,6 +30,8 @@ export type G10Verdict = z.infer<typeof G10VerdictSchema>;
 interface G10Run {
   held: boolean;
   holdReason: string | null;
+  /** A hold that names a reviewer waits for that reviewer's MERGE, so Shepherd's own never releases it. */
+  holdReviewer?: string | null;
 }
 
 interface G10Checks {
@@ -45,11 +47,11 @@ type MergeUp = z.infer<typeof MergeUpSchema>;
 const standsAt = (verdict: G10Verdict, mergeUp: MergeUp | undefined): string => (mergeUp?.fromHead === verdict.head ? mergeUp.head : verdict.head);
 
 /**
- * True when the run is held as `g10-review` and an opus reviewer's MERGE stands at the PR's head as read now, with
+ * True when the run is held as `g10-review` with no named reviewer and an opus reviewer's MERGE stands at the PR's head as read now, with
  * the required checks green at that same head. The head is the caller's fresh read, never the run's recorded one.
  */
 export function satisfiesG10(run: G10Run, verdict: G10Verdict | undefined, prHead: string, checks: G10Checks, reviewProfile: string | undefined, mergeUp?: MergeUp): boolean {
-  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS) return false;
+  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS || run.holdReviewer) return false;
   if (!isOpusProfile(reviewProfile)) return false;
   return verdict?.value === "MERGE" && standsAt(verdict, mergeUp) === prHead && checks.green && checks.head === prHead;
 }
@@ -65,7 +67,7 @@ export function g10ReleaseRoutes(deps: ShepherdDeps) {
       const prHead = (await deps.port.getPr(input.repo as RepoSlug, input.pr)).headSha;
       const store = deps.store.get();
       const registration = store.byRun(input.runId);
-      const run = { held: registration?.held ?? false, holdReason: registration?.holdReason ?? null };
+      const run = { held: registration?.held ?? false, holdReason: registration?.holdReason ?? null, holdReviewer: registration?.holdReviewer ?? null };
       const judged = satisfiesG10(run, input.verdict, prHead, input.checks, input.reviewerProfile, input.mergeUp);
       const released = judged && run.holdReason !== null && store.releaseIfHeld(input.runId, run.holdReason);
       return { released, head: prHead, ...(released && { verdict: input.verdict }) };

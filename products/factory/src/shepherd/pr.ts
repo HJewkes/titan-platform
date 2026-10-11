@@ -23,6 +23,8 @@ import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from ".
 import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
 import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
+import { standingVerdict } from "./review-request.js";
+import { LeaveLand } from "./leave-land.js";
 import { observePr, observeRoute, type ObservedPr } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
@@ -100,13 +102,6 @@ interface ShepherdRun extends WakeRun {
   escalations: Map<string, Escalated>;
   /** What names the next review's cause. */
   trail: CauseTrail;
-}
-
-/** Thrown out of `land` to end the round early: with no outcome the next round lands, with one the run ends. */
-class LeaveLand extends Error {
-  constructor(readonly outcome?: LandOutcome) {
-    super(outcome ? `left land: ${outcome.kind}` : "left land for the next round");
-  }
 }
 
 /**
@@ -233,7 +228,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
   if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
-    const verdict = run.reviews.get(headSha) ?? (await reviewHead(run, headSha));
+    const verdict = (await standingVerdict(run, headSha)) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);
     const observed = await observePr(run.ctx, run.target, headSha);
     const outcome = await publishOutcome(run.ctx, run.target, verdict, observed, headSha);
@@ -304,7 +299,7 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
   if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
   const probe: CarryProbe = {};
-  const carried = await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
+  const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;
   const cause = takeCause(run.trail, headSha, probe);
   const verdict = await run.phases.review(run.ctx, { ...run.target, round: run.state.round, headSha, ...(run.fresh.has(headSha) && { fresh: true }), cause });
