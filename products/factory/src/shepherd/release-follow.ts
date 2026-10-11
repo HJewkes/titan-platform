@@ -6,10 +6,10 @@ import type { FixTaskFields, FixTasks } from "./main-red.js";
 
 export const RELEASE_FOLLOW_STEP = "sh-release-follow";
 /** The job in `.github/workflows/release.yml`; it posts a check run of this name on the main tip it publishes from. */
-export const RELEASE_JOB = "release";
+const RELEASE_JOB = "release";
 /** Main CI, then the Release workflow, then npm's own propagation: anything slower is recorded, not waited for. */
 export const RELEASE_FOLLOW_TIMEOUT_MS = 45 * 60_000;
-export const RELEASE_FOLLOW_POLL_MS = 30_000;
+const RELEASE_FOLLOW_POLL_MS = 30_000;
 
 const FAILED_CONCLUSIONS = new Set(["failure", "timed_out", "startup_failure"]);
 
@@ -31,7 +31,7 @@ export async function findReleaseRun(port: GitHubPort, repo: RepoSlug, mergeSha:
   return runs.find((run) => run.name === RELEASE_JOB && run.appId === GITHUB_ACTIONS_APP_ID);
 }
 
-export function releaseRedKey(repo: RepoSlug, mergeSha: string): string {
+function releaseRedKey(repo: RepoSlug, mergeSha: string): string {
   return `release-red:${repo}:${mergeSha}`;
 }
 
@@ -46,7 +46,7 @@ export interface ReleaseFollowDeps {
   timeoutMs?: number;
 }
 
-export interface ReleaseFollowInput {
+interface ReleaseFollowInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
@@ -56,7 +56,7 @@ export interface ReleaseFollowInput {
   task?: string;
 }
 
-export interface ReleaseFollow {
+interface ReleaseFollow {
   outcome: "published" | "failed" | "timeout" | "nothing";
   versions: Record<string, string>;
   /** The `name@version`s npm did not serve when the follow ended. */

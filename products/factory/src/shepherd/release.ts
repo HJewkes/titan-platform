@@ -262,7 +262,7 @@ export function decideRelease(effective: EffectivePolicy, headSha: string | unde
   return { outcome: "allow", rule: releaseRule("version-packages"), reason: `the release preflight passed at ${headSha} for ${preflight.packages.length} public packages` };
 }
 
-export function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
+function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
   const verdict = verdictFor(headSha);
   const parsed = verdict?.kind === "MERGE" ? PreflightResult.safeParse((verdict.evidence as { release?: unknown } | null)?.release) : undefined;
   return parsed?.success ? parsed.data : undefined;

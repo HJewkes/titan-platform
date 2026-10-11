@@ -18,7 +18,6 @@ import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
-export { DEFAULT_FIX_INITIATIVE } from "./fix-initiative.js";
 
 export interface FixTaskFields {
   title: string;
