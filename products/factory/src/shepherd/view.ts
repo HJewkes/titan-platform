@@ -46,9 +46,8 @@ export const WatchRowSchema = z.object({
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
-  /** The registration's implementer; null when it names none. Absent in rows older than the field. */
+  /** The registration's implementer and slice label, each null when it names none (only a slice-less run closes its task). Absent in rows older than the fields. */
   implementer: z.string().nullable().optional(),
-  /** The registration's slice label; null for a whole-task run, which alone closes the task on landing. Absent in rows older than the field. */
   slice: z.string().nullable().optional(),
   /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
   reviewer: z.string().nullable().optional(),

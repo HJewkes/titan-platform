@@ -1,3 +1,4 @@
+import type { JsonEnvelope } from "@titan-design/registry";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
@@ -19,10 +20,10 @@ async function registeredWorld(slice?: string) {
   return call;
 }
 
-async function data<T>(envelope: Promise<{ ok: boolean; data?: T; error?: string }>): Promise<T> {
+async function data<T>(envelope: Promise<JsonEnvelope<T>>): Promise<T> {
   const result = await envelope;
   if (!result.ok) throw new Error(result.error);
-  return result.data as T;
+  return result.data;
 }
 
 describe("a sliced registration", () => {
