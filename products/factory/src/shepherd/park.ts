@@ -6,9 +6,10 @@ import { redactForEvidence } from "../redact.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
+import { freshReviewerBase } from "./cleanup.js";
 import { liveRetry, rosterPresence, unrefWait, type LiveRetry, type ParkAttempt } from "./park-retry.js";
 import type { ShepherdDeps } from "./phases.js";
-import { agentChatRoster } from "./roster.js";
+import { agentChatRoster, type RosterReader } from "./roster.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
 export const PARK_STEP = "sh-park";
@@ -108,6 +109,7 @@ async function tellParkRefusal(ports: ExitNoticePorts | undefined, registration:
 
 interface ParkWiring {
   park: ParkPort;
+  roster?: RosterReader;
   notice?: ExitNoticePorts;
   retry?: LiveRetry;
 }
@@ -122,12 +124,39 @@ function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, ag
   });
 }
 
-/** Parks, then either arms the exit retry or tells the seat; the step records which. */
-export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, input: ParkInput): Promise<ParkOutcome> {
+/** What a round's end did to the tree of a reviewer that is no longer running. */
+type ReviewerPark = ParkOutcome;
+
+/** Shepherd's own reviewers of this PR that have exited; a running one is a running round, and the standing reviewer is never Shepherd's to park. */
+async function exitedReviewers(roster: RosterReader, registration: Registration): Promise<string[]> {
+  const read = await roster.read();
+  if (read.kind === "unknown" || registration.pr === null) return [];
+  const own = new RegExp(`^${freshReviewerBase(registration.repo, registration.pr)}(-\\d+)?$`);
+  const exited = read.rows.filter((row) => own.test(row.name) && row.presence === "exited" && row.status !== "retired" && row.name !== registration.policy.reviewer);
+  return [...new Set(exited.map((row) => row.name))];
+}
+
+/** A finished round leaves its reviewer's tree behind; a refusal is told to the seat loudly and asked again at the next round end. */
+async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string): Promise<ReviewerPark[]> {
+  const registration = store.get().byRun(runId);
+  if (wiring.roster === undefined || registration === undefined) return [];
+  const names = await exitedReviewers(wiring.roster, registration).catch(() => []);
+  const outcomes = names.map((name) => attemptPark(wiring.park, name));
+  for (const outcome of outcomes) {
+    if (outcome.kind !== "not-parked") continue;
+    console.error(`shepherd: ${registration.repo}#${registration.pr}: reviewer ${outcome.agent}'s worktree was not parked: ${outcome.reason}`);
+    await tellParkRefusal(wiring.notice, registration, outcome.agent, outcome.reason);
+  }
+  return outcomes;
+}
+
+/** Parks, then either arms the exit retry or tells the seat; the step records which, with the round's reviewers. */
+export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, input: ParkInput): Promise<ParkOutcome & { reviewers: ReviewerPark[] }> {
+  const reviewers = await parkReviewers(store, wiring, input.runId);
   const outcome = parkImplementer(store, wiring.park, input);
-  if (outcome.kind !== "not-parked") return outcome;
-  if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), outcome);
-  return { ...outcome, notice: await tellParkRefusal(wiring.notice, store.get().byRun(input.runId), outcome.agent, outcome.reason) };
+  if (outcome.kind !== "not-parked") return { ...outcome, reviewers };
+  if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), { ...outcome, reviewers });
+  return { ...outcome, reviewers, notice: await tellParkRefusal(wiring.notice, store.get().byRun(input.runId), outcome.agent, outcome.reason) };
 }
 
 /** The serve process's one retry, so a restart's replay re-arms what the step before it armed. */
@@ -142,7 +171,7 @@ function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
 }
 
 export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
-  const wiring: ParkWiring = { park, notice: deps.exitNotice, retry };
+  const wiring: ParkWiring = { park, roster: deps.roster ?? agentChatRoster(deps.agentChatBin), notice: deps.exitNotice, retry };
   rearm = (runId, agent) => armRetry(deps.store, wiring, runId, agent);
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
 };
