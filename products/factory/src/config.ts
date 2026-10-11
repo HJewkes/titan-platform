@@ -46,6 +46,16 @@ export const ReviewConfigSchema = z.strictObject({
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
 
+/** A repo Shepherd works on with no seat behind it; strict, so a misspelt `path` fails the load instead of leaving no checkout. */
+export const ShepherdRepoConfigSchema = z.strictObject({
+  /** The repo's main checkout, used when no seat binds the repo; a seat's path wins. */
+  path: z.string().min(1).optional(),
+  /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
+  advisory: z.boolean().optional(),
+});
+
+export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
+
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
 export const FixerConfigSchema = z.strictObject({
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
@@ -157,6 +167,7 @@ export const FactoryConfigSchema = z.object({
       fixer: FixerConfigSchema.optional(),
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
+      repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), ShepherdRepoConfigSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),

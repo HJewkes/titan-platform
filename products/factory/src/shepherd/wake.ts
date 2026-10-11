@@ -13,7 +13,7 @@ import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeReque
 import { failureOf } from "./error-class.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { loadSeatBook, lookupSeat } from "./seats.js";
+import { boundCheckout, loadSeatBook } from "./seats.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
@@ -72,11 +72,11 @@ export interface WakeWiring {
   home?: string;
 }
 
-/** The checkout a seat binds to `repo`, re-read per wake as the reviewer's spawn re-reads it. */
+/** The checkout a seat binds to `repo`, else its `shepherd.repos` path, re-read per wake as the reviewer's spawn re-reads it. */
 export function seatCheckout(env: NodeJS.ProcessEnv = process.env): (repo: string) => string | undefined {
   return (repo) => {
-    const found = lookupSeat(loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
-    return found.kind === "seat" ? found.seat.paths[repo.toLowerCase()] : undefined;
+    const shepherd = loadConfig(configPath(env)).shepherd ?? {};
+    return boundCheckout(loadSeatBook(shepherd), repo, shepherd.repos);
   };
 }
 
