@@ -226,7 +226,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
 }
 
 async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> {
-  if (!run.reviews.has(headSha) && !run.release && !run.trail.seatAsked.has(headSha)) await parkAtGreen(run.ctx, headSha);
+  if (!run.reviews.has(headSha) && !run.release) await parkAtGreen(run.ctx, headSha);
   for (;;) {
     const verdict = (await standingVerdict(run, headSha)) ?? (await reviewHead(run, headSha));
     run.reviews.set(headSha, verdict);

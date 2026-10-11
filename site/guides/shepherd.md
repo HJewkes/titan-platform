@@ -728,7 +728,10 @@ had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It al
 land round, because `land` trusts a head for the rest of a round once its old verdict let it
 through. The next round asks the policy, or the owner, again, so an asked review that
 escalates opens `approve-merge` instead of merging. That review is named `seat-request`,
-and neither it nor a retry at that head carries an earlier `MERGE`. A
+and neither it nor a retry at that head carries an earlier `MERGE`. The ask, taken or not,
+also stops a carry of the other kind: a `MERGE` reviewed at the asked head, or already
+carried there, is never carried on to a later head, even by a clean merge-up, so that head
+gets its own review too (`sh-carry-scope` reads the ask's head). A
 verdict from a hold's named reviewer still counts toward the hold.
 
 The verb is idempotent per head: a repeat at the same head, taken or not, asks nothing and

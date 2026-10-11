@@ -136,6 +136,20 @@ describe("a verdict carried across Shepherd's own clean merge-up of main", () =>
   });
 });
 
+describe("a seat's ask at the reviewed head before a clean merge-up", () => {
+  it("never carries the asked head's MERGE: H2 gets a fresh review before the g10-review hold releases and the PR merges", async () => {
+    const w = heldBehindRun({});
+    w.store.requestReview(w.runId, H1);
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(w.spawned).toHaveLength(2);
+    expect(stepIds(w)).toContain(`sh-review-intent:${h2(w)}`);
+    expect(stepIds(w).filter((id) => id.startsWith(MERGE_UP_STEP))).toEqual([]);
+    expect(resultOf(w, `${G10_RELEASE_STEP}:${h2(w)}:0`)).toMatchObject({ released: true, verdict: { head: h2(w) } });
+  });
+});
+
 describe("a seat's ask at a head a MERGE was carried to", () => {
   it("sets the carried MERGE aside and spawns a fresh reviewer at H2 instead of carrying it again", async () => {
     const w = heldBehindRun({ hold: G10_ADVERSARY });
