@@ -2,7 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Command, CommanderError, InvalidArgumentError } from "commander";
-import { buildCorpus, labelHistogram } from "./corpus/index.js";
+import { z } from "zod";
+import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
+import { defaultPolicy, selfTest } from "./private/exclusion.js";
+import { buildReviewPrCases } from "./review-pr/build-cases.js";
+import { localCloneGit } from "./review-pr/bundle.js";
 import { validateSpec } from "./validate.js";
 
 /** Prompt paths are relative to the unit directory: the nearest ancestor holding unit.json. */
@@ -90,11 +94,74 @@ function corpusCommand(onResult: (code: number) => void): Command {
     });
 }
 
+interface ReviewPrCasesFlags {
+  corpus: string;
+  repo: Map<string, string>;
+  activeWorkRoot: string;
+  out: string;
+  mainRef: string;
+  seed: string;
+  selftest?: boolean;
+}
+
+/** The fields the builder keys on; a row missing one is a corpus from another tool, refused by line number. */
+const CorpusRowKeys = z.looseObject({ repo: z.string(), pr: z.number(), head: z.string(), label: z.string(), citedPaths: z.array(z.string()) });
+const isCorpusRow = (value: unknown): value is CorpusRow => CorpusRowKeys.safeParse(value).success;
+
+function readCorpus(path: string): CorpusRow[] {
+  const lines = readFileSync(path, "utf8").split("\n");
+  return lines.flatMap((line, index) => {
+    if (line.trim() === "") return [];
+    const row: unknown = JSON.parse(line);
+    if (!isCorpusRow(row)) throw new Error(`${path}:${index + 1} is not an outcome-corpus row`);
+    return [row];
+  });
+}
+
+async function writeReviewPrCases(flags: ReviewPrCasesFlags): Promise<void> {
+  const policy = defaultPolicy(flags.activeWorkRoot);
+  if (flags.selftest) {
+    const result = selfTest(policy);
+    console.error(JSON.stringify({ selftest: result }));
+    if (!result.ok) throw new Error("the private exclusion self-test failed; no case was written");
+  }
+  const gitFor = (repo: string) => mapDefined(flags.repo.get(repo), localCloneGit);
+  const manifest = await buildReviewPrCases(readCorpus(flags.corpus), { outDir: flags.out, policy, gitFor, mainRef: flags.mainRef, seed: flags.seed });
+  console.error(JSON.stringify(manifest));
+}
+
+const mapDefined = <T, U>(value: T | undefined, fn: (value: T) => U): U | undefined => (value === undefined ? undefined : fn(value));
+
+function reviewPrCommand(onResult: (code: number) => void): Command {
+  const cases = new Command("cases")
+    .description("Build private review-pr cases from the outcome corpus: defect heads, clean heads, planted controls, a suite and a manifest")
+    .requiredOption("--corpus <jsonl>", "the JSONL `titan-evals corpus` wrote")
+    .option("--repo <owner/repo=dir>", "a local clone for a repo; repeatable", collectClone, new Map<string, string>())
+    .requiredOption("--active-work-root <dir>", "the active-work root the private markers are read from")
+    .requiredOption("--out <dir>", "an empty dir outside every git work tree")
+    .option("--main-ref <ref>", "the ref holding each repo's main history", "origin/main")
+    .option("--seed <text>", "seeds splits and control placement", "review-pr")
+    .option("--selftest", "run the private exclusion self-test first and abort if it fails")
+    .exitOverride()
+    .action(async (flags: ReviewPrCasesFlags) => {
+      try {
+        await writeReviewPrCases(flags);
+        onResult(EXIT.OK);
+      } catch (error) {
+        if (error instanceof CommanderError) throw error;
+        console.error(`review-pr cases: ${error instanceof Error ? error.message : String(error)}`);
+        onResult(EXIT.FAILURE);
+      }
+    });
+  return new Command("review-pr").description("The review-pr unit's private case builder").addCommand(cases).exitOverride();
+}
+
 export function buildProgram(onResult: (code: number) => void = () => undefined): Command {
   return new Command("titan-evals")
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
     .addCommand(validateCommand(onResult))
     .addCommand(corpusCommand(onResult))
+    .addCommand(reviewPrCommand(onResult))
     .exitOverride()
     .showHelpAfterError();
 }

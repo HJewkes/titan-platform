@@ -99,14 +99,20 @@ export function stampPackageDir(root, opts) {
   return { dir, dest };
 }
 
+/** The new package has no dist/ yet, so its API snapshot waits for a build; the catalog does not. */
+export function regenerateCapabilities(root) {
+  execFileSync(process.execPath, [join(root, "scripts", "gen-capabilities.mjs"), "--catalog-only"], { stdio: "inherit" });
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const { dir } = stampPackageDir(ROOT, opts);
   writeFileSync(CHECK_JSON, registerLayer(readFileSync(CHECK_JSON, "utf8"), `${dir}/${opts.name}`, opts.tier));
   const page = stampReferencePage(ROOT, opts);
   execFileSync(process.execPath, [join(ROOT, "scripts", "gen-docs-reference.mjs")], { stdio: "inherit" });
-  execFileSync(process.execPath, [join(ROOT, "scripts", "gen-capabilities.mjs")], { stdio: "inherit" });
+  regenerateCapabilities(ROOT);
   console.log(`created ${dir}/${opts.name} (tier ${opts.tier})${page ? ` and site/reference/${opts.name}.md` : ""}; fill in its CAPABILITY.md`);
+  console.log(`then run \`pnpm build && pnpm capabilities\` to write its API snapshot`);
   console.log(areasReminder(opts.name));
 }
 

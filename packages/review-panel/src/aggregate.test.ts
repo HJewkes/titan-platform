@@ -1,4 +1,5 @@
 import { lineSourceFromTexts } from "@titan-design/evidence";
+import { formatResultLine, type Verdict } from "@titan-design/fix-proof";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
@@ -27,6 +28,18 @@ const fixFirst = (shape: ReviewShape, text: string, closer?: "yes" | "no"): Memb
   shape,
   result: { kind: "verdict", head: HEAD, locator, reviewer, verdict: "FIX_FIRST", text, ...(closer && { closer }) },
 });
+const fixProofLine = (head: string, verdict: Verdict): string =>
+  formatResultLine({
+    head,
+    mergeBase: OLD_HEAD,
+    verdict,
+    counts: { reproduces: 1, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 },
+    notCollected: [],
+    deletedTests: [],
+    configEdited: false,
+    tests: [],
+    truncated: false,
+  });
 const none = (shape: ReviewShape): MemberResult => ({ shape, result: { kind: "none" } });
 const timeout = (shape: ReviewShape): MemberResult => ({ shape, result: { kind: "timeout" } });
 
@@ -169,6 +182,39 @@ describe("aggregate advisory members", () => {
     const verdicts = ["vacuous", "no-tests", "reproduced"].map((fixProof) => aggregate(planned, [merge("correctness")], { ...input, fixProof }).outcome);
 
     expect(verdicts).toEqual(["no-verdict", "no-verdict", "MERGE"]);
+  });
+});
+
+describe("aggregate reads a fix-proof/v1 line", () => {
+  const g10 = [merge("correctness"), merge("adversary")];
+
+  it("plans no tests member for the g10 case these cases rely on", () => {
+    expect(G10.members.map((m) => m.shape)).not.toContain("tests");
+  });
+
+  it.each([
+    { name: "a vacuous line at the head", fixProof: fixProofLine(HEAD, "vacuous") },
+    { name: "a no-tests line at the head", fixProof: `${fixProofLine(HEAD, "no-tests")}\n` },
+    { name: "a reproduced line at a stale head", fixProof: fixProofLine(OLD_HEAD, "reproduced") },
+    { name: "a line that fails to parse", fixProof: 'fix-proof/v1 {"head":"' + HEAD + '","verdict":"reproduced"}' },
+    { name: "an unrecognised word", fixProof: "passed" },
+    { name: "another fix-proof version", fixProof: "fix-proof/v2 {}" },
+  ])("withholds MERGE and G10 for $name", ({ fixProof }) => {
+    const verdict = aggregate(G10, g10, { ...input, fixProof });
+
+    expect(verdict.outcome).toBe("no-verdict");
+    expect(verdict.satisfiesG10).toBe(false);
+  });
+
+  it("keeps today's outcome for a reproduced line at the head", () => {
+    const verdict = aggregate(G10, g10, { ...input, fixProof: fixProofLine(HEAD, "reproduced") });
+
+    expect(verdict.outcome).toBe("MERGE");
+    expect(verdict.satisfiesG10).toBe(true);
+  });
+
+  it.each(["", "  "])("treats an empty fix-proof %j as none ran", (fixProof) => {
+    expect(aggregate(G10, g10, { ...input, fixProof }).outcome).toBe("MERGE");
   });
 });
 

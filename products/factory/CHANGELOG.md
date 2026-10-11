@@ -1,5 +1,46 @@
 # @titan-design/factory
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.19.0
+
+### Minor Changes
+
+- 22a2d7b: Add the deploy pacer core: a wanted-deploy record and a pure pace decision that coalesce green factory merges into one deploy after a 15 min quiet window, capped at 90 min. Nothing calls it yet.
+- 2239ef0: Shepherd runs a `sh-fix-proof` step before `sh-review` at every head. For a correctness or security run, or a `fix/` head branch, it waits for the head's `fix-proof` check run from GitHub Actions and reads the last `fix-proof/v1` line naming the head. A vacuous or test-less proof ends the review as `NO_REPRO` before any reviewer starts; a reproduced or unproven line reaches the reviewer brief. A missing check, a read error or another kind proceeds to review with the reason recorded.
+
+### Patch Changes
+
+- de97421: Re-deliver a Shepherd wake that was chat-sent to a live implementer once that agent exits without pushing a new head: the wake step runs once more in the same round, so the exited agent is resumed (or a successor started) with the wake as its prompt and the new head is awaited again. Resume and successor wakes are not re-delivered, a second exit takes the existing exit route, and FIX_FIRST is not counted twice.
+- 2f90885: The restart drain treats an unanswered `/health` poll as unknown rather than idle: it keeps draining, and restarts a silent serve only after two minutes of consecutive no-answers (`NO_ANSWER_PROCEED_MS`). `wait: false` keeps its single check.
+- Updated dependencies [b60d484]
+- Updated dependencies [c54c098]
+- Updated dependencies [7b9335c]
+  - @titan-design/review-panel@0.5.3
+  - @titan-design/agent@0.5.0
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-analytics@0.15.1
+  - @titan-design/workflow@0.12.2
+
+## 0.18.3
+
+### Patch Changes
+
+- 60d8aa5: `service deploy` no longer rebuilds or restarts for a merge whose changes inside the factory closure are only test files, markdown, or version-only `package.json` bumps (a Version Packages merge); it records `skipped` instead.
+- 0891776: Shepherd's resync reads each run's PR with up to six reads in flight (`RESYNC_CONCURRENCY`) instead of one at a time, so a restart with dozens of live runs starts adopting in seconds. The gone-elsewhere sweep, moved-gate, stale-review and stale-merge supersedes read first, then act one run at a time in input order, re-reading each run or gate before acting as before; an unreadable PR still leaves its run held. `ResyncReport` gains `phaseMs`, the wall time of each phase.
+- Updated dependencies [3977860]
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/workflow@0.12.1
+  - @titan-design/fix-proof@0.4.0
+  - @titan-design/review-panel@0.5.2
+
 ## 0.18.2
 
 ### Patch Changes

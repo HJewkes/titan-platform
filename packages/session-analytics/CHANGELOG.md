@@ -1,5 +1,24 @@
 # @titan-design/session-analytics
 
+## 0.16.0
+
+### Minor Changes
+
+- cd01cfa: Add `scorecardJournalRows` and `readDispatchJournal`: the W41 scorecard rows read from events.db verdicts and seat `dispatch.jsonl` journals (first-pass FIX_FIRST share, mechanical first-blocker share, coordinator spawns for milestone tasks, cost per merged PR with a 0.8 `usd_est` coverage floor), each `not measured` when its source is absent or empty. Ported from agent-chat's `scripts/seat/scorecard`.
+
+### Patch Changes
+
+- de21f12: Regenerate the committed API surface snapshots so they match the current exports; no source change.
+
+## 0.15.1
+
+### Patch Changes
+
+- 7b9335c: session-read keeps an agent-chat channel tag's `broadcast="true"` attribute as `Inbound.broadcast` (false for a direct message, null without a channel tag) and bumps `EXTRACT_VERSION` to 8, so `backfillFacets` re-extracts stored inbound rows. session-graph adds `inbound.broadcast` in migration 12 and writes it. session-analytics wake episodes read the flag for the `broadcast` sender kind, so a direct message a forked session copied is no longer a broadcast; msg_id fan-out remains the fallback for rows extracted before version 8.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-graph@0.16.2
+
 ## 0.15.0
 
 ### Minor Changes
