@@ -149,6 +149,11 @@ export function acknowledgeBrief(target: { repo: string; mergeSha: string; headl
   return brief(summarize(`${target.headline} at ${target.mergeSha}.`, target.detail, "Acknowledge."), mainEvidence(target.repo, target.mergeSha));
 }
 
+/** A held-up read of the PR's own evidence: the owner answers once GitHub is healthy, with no menu. */
+export function evidenceStalledBrief(target: PrHead & { situation: string }): GateBrief {
+  return brief(summarize(`${where(target)} could not post its merge evidence.`, target.situation, "Answer once GitHub is healthy."), prEvidence(target.repo, target.pr));
+}
+
 function brief(summary: string, evidenceRef: string, questions?: GateQuestion[]): GateBrief {
   return { summary, evidenceRef, ...(questions && { questions }) };
 }

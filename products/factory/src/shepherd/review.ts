@@ -2,8 +2,9 @@ import type { AgentIdentity } from "@titan-design/authority";
 import { DEPTH_FLOOR_REASON, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import { StepFailedError, type StepRoute, type WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import { evidenceStalledBrief } from "../gate-brief.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
@@ -31,6 +32,10 @@ export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
 export { AWAIT_VERDICT_STEP };
 export const LATE_VERDICT_STEP = "sh-late-verdict";
+/** An empty or cut-off JSON body from GitHub; a 5xx is a different failure and still fails the run. */
+const UNPARSEABLE_BODY = /unexpected end of JSON input|unexpected token/i;
+const MERGE_EVIDENCE_GATE = "sh-merge-evidence-gate";
+
 export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: REVIEW_INTENT_STEP, kind: "dispatch" },
   { id: REVIEW_STEP, kind: "dispatch" },
@@ -38,6 +43,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: CORRECT_VERDICT_STEP, kind: "dispatch" },
   { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
+  { id: MERGE_EVIDENCE_GATE, kind: "assisted" },
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
   ...REVIEW_REQUEST_STEPS,
@@ -316,8 +322,24 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
   await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) });
   const { visualPaths } = effectivePolicy(ctx);
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }) };
-  const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
+  const evidence = await evidenceOrGate(ctx, input.head, request);
   return { kind: "MERGE", headSha: input.head, evidence };
+}
+
+/**
+ * GitHub still answered an empty or unparseable body after the step's own retries, which is not the run's
+ * fault: the run waits on a gate naming the step, and reads the evidence again once it is answered.
+ */
+async function evidenceOrGate(ctx: WorkflowContext, head: string, request: MergeEvidenceInput): Promise<z.infer<typeof MergeEvidenceSchema>> {
+  for (;;) {
+    try {
+      return await step(ctx, `${MERGE_EVIDENCE_STEP}:${head}`, request, MergeEvidenceSchema);
+    } catch (error) {
+      if (!(error instanceof StepFailedError) || error.stepId !== `${MERGE_EVIDENCE_STEP}:${head}` || !UNPARSEABLE_BODY.test(error.reason)) throw error;
+      const situation = `Step ${MERGE_EVIDENCE_STEP} could not post the merge-evidence comment at head ${head}: ${failureOf(error)} after its retries. Answer once GitHub is healthy and Shepherd reads the evidence again.`;
+      await ctx.assisted(MERGE_EVIDENCE_GATE, `${request.repo}#${request.pr}: ${situation}`, { brief: evidenceStalledBrief({ repo: request.repo, pr: request.pr, headSha: head, situation }) });
+    }
+  }
 }
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
