@@ -71,6 +71,7 @@ and appends one log line; otherwise it prints nothing. It never answers `ask` or
 | a Bash command that cannot be parsed | deny if its text, as typed or with quotes and backslashes removed and whitespace collapsed, names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line. A name spelled through a variable or glob is not seen |
 | a Bash command over 8 KiB | not classified; always denies, asking for shorter commands or a script file |
 | an authority table that cannot load | deny every classified call; unclassified calls are silent |
+| `TITAN_TOOL_GUARD_BYPASS=1` in the hook's launch environment | evaluated as `owner-terminal`; a guarded call is logged as `bypass` |
 
 The log is `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`: tab-separated `ts`, `kind`,
@@ -96,10 +97,8 @@ through a symlinked parent, is refused just before the append.
   deny with a reason naming the gate.
 - The mention rule is broad: `echo ~/.npmrc`, or a pull request body that names `~/.npmrc`,
   denies as a credential read.
-- There is no owner bypass. Every call inside Claude Code is evaluated as an agent, and
-  `TITAN_TOOL_GUARD_BYPASS` is ignored: the hook runs as the agent's OS user, so nothing it
-  can check is beyond the agent's reach. Take a guarded action from a terminal outside Claude
-  Code.
+- Only the hook's launch environment counts for the bypass. `TITAN_TOOL_GUARD_BYPASS=1 cmd`
+  typed by the model sets it for `cmd` alone and still denies.
 - Claude Code treats a hook that times out or exits non-zero as a non-blocking error and runs
   the call, so the bin exits 0 on every path.
 

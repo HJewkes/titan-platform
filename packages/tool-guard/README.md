@@ -55,22 +55,21 @@ titan-tool-guard report          # deny counts per UTC day and rule, from the lo
 No code path is meant to write a settings file, a hooks directory, a profile or an rc file. The
 only write is the hook's append of its log line, and the log path is checked first (see Log).
 
-**Actor.** Every call is evaluated for `coordinator`, `worker` and `headless`
+**Actor.** With no bypass, every call is evaluated for `coordinator`, `worker` and `headless`
 together and the strictest verdict wins (owner decision D2). A gate verdict denies too, since
 the hook cannot check a resolved gate yet, and the reason names the gate rule.
 
-**No owner bypass.** The hook never grants owner authority. `TITAN_TOOL_GUARD_BYPASS=1` used to
-(owner decision D3), but the hook runs as the same OS user as the agent, so any variable, file,
-process name, parent or terminal it could check is one the agent can produce for a `claude` it
-starts. The variable is now ignored. The owner takes a guarded action from a terminal outside
-Claude Code, where the hook does not run.
+**Bypass.** `TITAN_TOOL_GUARD_BYPASS=1 claude` starts a session with owner authority: calls are
+evaluated as `owner-terminal` and each guarded one is logged as `bypass` (owner decision D3).
+Only the hook's own environment at launch counts; `TITAN_TOOL_GUARD_BYPASS=1 gh pr merge 3`
+typed by the model still denies. Never export it from a shell rc file.
 
 **Log.** `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`, mode 0600 in a 0700
 directory. Before each append the path is refused when, as typed or with its deepest existing
 ancestor resolved through symlinks, it names a guarded path or lands in a `~/.claude*` tree; the
 final file is opened with `O_NOFOLLOW`. The check runs just before the open, so a link swapped
-in between the two is not caught. One tab-separated line per deny or error:
+in between the two is not caught. One tab-separated line per deny, bypass or error:
 
 ```
 ts  kind  rule  action  spelling  actor  actor_id  session  tool  tool_use  subject

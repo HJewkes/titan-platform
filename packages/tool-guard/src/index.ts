@@ -9,7 +9,7 @@ export { classify } from "./classify.js";
 export type { ClassifiedAction, ClassifyContext, Family, GuardedAction } from "./types.js";
 export { checkPreferences, PREFERENCES } from "./families/preference.js";
 export type { PreferenceContext, PreferenceHit, PreferenceId } from "./families/preference.js";
-export { AGENT_CANDIDATES, observeActor } from "./actor.js";
+export { AGENT_CANDIDATES, BYPASS_VAR, observeActor } from "./actor.js";
 export type { ActorObservation } from "./actor.js";
 export { decide } from "./decide.js";
 export type { GuardDecision, Matched } from "./decide.js";

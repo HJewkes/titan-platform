@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { BYPASS_VAR } from "./actor.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
@@ -27,9 +28,6 @@ function fakeFs(links: Record<string, string> = {}): ReadFs {
     isFile: () => false,
   };
 }
-
-/** The owner bypass this variable once turned on is retired: an agent can set it for any process it starts. */
-const RETIRED_BYPASS = { TITAN_TOOL_GUARD_BYPASS: "1" };
 
 function port(overrides: Partial<HookPort> = {}): HookPort {
   return { context: nodeContext(HOME, fakeFs()), now: () => ts, loadDecide: async () => decide, ...overrides };
@@ -223,10 +221,10 @@ describe("handle: failure policy", () => {
     expect(result.log[0]?.split("\t").slice(4, 5)).toEqual(["bash.oversize"]);
   }, 30_000);
 
-  it("denies a command past the reading budget with the retired bypass variable in the hook's env", async () => {
-    const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), RETIRED_BYPASS, port());
+  it("passes a command past the reading budget under the bypass and logs it", async () => {
+    const result = await handle(bash(`${"sudo $a ".repeat(400)}git status`), { [BYPASS_VAR]: "1" }, port());
 
-    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
   });
 
   it("denies a credential read padded past the size cap without classifying it", async () => {
@@ -265,10 +263,10 @@ describe("handle: failure policy", () => {
     expect(decisionOf(result.stdout)).toBe("deny");
   });
 
-  it("denies an oversize command with the retired bypass variable in the hook's env", async () => {
-    const result = await handle(bash(`${"x ".repeat(20_000)}; echo done`), RETIRED_BYPASS, port());
+  it("passes an oversize command under the bypass and logs it", async () => {
+    const result = await handle(bash(`${"x ".repeat(20_000)}; echo done`), { [BYPASS_VAR]: "1" }, port());
 
-    expect(decisionOf(result.stdout)).toBe("deny");
+    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\toversize\tBash\tsess-1"] });
   });
 
   it.each([
@@ -333,11 +331,17 @@ describe("handle: what passes", () => {
     expect(result).toEqual({ stdout: "", log: [] });
   });
 
-  it("denies a merge with the retired bypass variable in the hook's launch env, as an agent's child claude would have it", async () => {
-    const result = await handle(bash("gh pr merge 3"), RETIRED_BYPASS, port());
+  it("passes a bypass set at launch and logs it as bypass", async () => {
+    const result = await handle(bash("gh pr merge 3"), { [BYPASS_VAR]: "1" }, port());
+
+    expect(result.stdout).toBe("");
+    expect(result.log[0]?.split("\t").slice(1, 6)).toEqual(["bypass", "MRG-OT", "merge", "bash.merge.gh-pr-merge", "owner-terminal"]);
+  });
+
+  it("ignores the bypass variable written inline in the command", async () => {
+    const result = await handle(bash(`${BYPASS_VAR}=1 gh pr merge 3`), {}, port());
 
     expect(decisionOf(result.stdout)).toBe("deny");
-    expect(result.log[0]?.split("\t").slice(1, 6)).toEqual(["deny", "MRG-WK", "merge", "bash.merge.gh-pr-merge", "coordinator+worker+headless"]);
   });
 
   it("passes a routine command without logging", async () => {

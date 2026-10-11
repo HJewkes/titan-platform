@@ -1,9 +1,9 @@
 import type { ActorClass } from "@titan-design/authority";
 
-/** The fixed fields of a deny line, in log order. Nothing else is ever written. */
+/** The fixed fields of a deny or bypass line, in log order. Nothing else is ever written. */
 export interface DecisionLine {
   ts: Date;
-  kind: "deny";
+  kind: "deny" | "bypass";
   rule: string | null;
   action: string;
   spelling: string;

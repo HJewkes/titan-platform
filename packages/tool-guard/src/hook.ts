@@ -143,6 +143,7 @@ function scriptsReason(o: ScriptOverrun): string {
  */
 function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: HookPort): HookResult {
   const error = () => logged(formatErrorLine({ ts: port.now(), cls, tool: event.toolName, session: event.sessionId }));
+  if (actor.bypass) return error();
   if (event.kind === "bash") return unclassified(event, actor, "unparsed", UNREADABLE_REASON, port);
   if (!namesGuarded(event.path)) return error();
   return unclassified(event, actor, "unparsed", UNPARSED_REASON, port);
@@ -150,6 +151,7 @@ function failed(event: Event, actor: ActorObservation, cls: ErrorClass, port: Ho
 
 /** Too large to check: an 8 KiB command, or one with more dynamic wrapper readings than classify walks. */
 function oversized(event: Event, actor: ActorObservation, reason: string, port: HookPort): HookResult {
+  if (actor.bypass) return logged(formatErrorLine({ ts: port.now(), cls: "oversize", tool: event.toolName, session: event.sessionId }));
   return unclassified(event, actor, "oversize", reason, port);
 }
 
@@ -166,6 +168,7 @@ async function decided(event: Event, actor: ActorObservation, actions: Classifie
     return tableFailure(event, actor, actions, port);
   }
   if (decision.outcome === "deny") return { stdout: denyAnswer(decision.reason), log: [decisionLine(event, actor, decision, "deny", port)] };
+  if (actor.bypass && decision.matched) return logged(decisionLine(event, actor, decision.matched, "bypass", port));
   return PASS;
 }
 
@@ -176,7 +179,7 @@ function tableFailure(event: Event, actor: ActorObservation, actions: Classified
   return { stdout: denyAnswer(TABLE_REASON), log: [error, decisionLine(event, actor, matched, "deny", port)] };
 }
 
-function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny", port: HookPort): string {
+function decisionLine(event: Event, actor: ActorObservation, m: Logged, kind: "deny" | "bypass", port: HookPort): string {
   return formatDecisionLine({
     ts: port.now(),
     kind,

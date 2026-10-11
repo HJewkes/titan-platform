@@ -6,8 +6,8 @@ import type { ActorObservation } from "./actor.js";
 import { decide } from "./decide.js";
 import { classified } from "./spellings.js";
 
-const agents: ActorObservation = { candidates: AGENT_CANDIDATES, id: "impl-7" };
-const owner: ActorObservation = { candidates: ["owner-terminal"], id: "sess-1" };
+const agents: ActorObservation = { candidates: AGENT_CANDIDATES, id: "impl-7", bypass: false };
+const owner: ActorObservation = { candidates: ["owner-terminal"], id: "sess-1", bypass: true };
 const merge = classified("bash.merge.gh-pr-merge", { pr: "12" });
 
 function withVerdicts(changes: Record<string, "allow" | "deny">): PolicyTable {
