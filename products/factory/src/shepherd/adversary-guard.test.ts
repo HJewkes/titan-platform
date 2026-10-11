@@ -122,6 +122,22 @@ describe("the merge guard after a seat released a g10-adversary hold", () => {
     expect(r.store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
   });
 
+  it("re-holds a run registered only by its branch, still waiting for its PR", async () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+    const store = new ShepherdStore(db);
+    const fake = fakeGitHub({ repo: REPO });
+    const { headRef } = fake.addPr({ headSha: MOVED });
+    store.register({ repo: REPO, branch: headRef, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+    store.release("run-1", { actor: "seat", headSha: REVIEWED });
+    const port = holdingPort(githubPort(fake.wire), () => store, adversaryGuard({ store: () => store, carry: async () => FIX_PUSH }));
+
+    await expect(port.merge(REPO, 1, MOVED, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(fake.pr(1).merged).toBe(false);
+    expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
   it("passes a run that never had a g10-adversary release", async () => {
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);

@@ -100,9 +100,9 @@ function independent(row: ReviewerAgent, registration: Registration, roster: rea
 /** The first guard that names a reason decides; later guards are not read. */
 export function firstReason(...guards: readonly FreezeGuard[]): FreezeGuard {
   return {
-    async reason(port, repo, pr, baseRef, head) {
+    async reason(port, repo, pr, baseRef, head, branch) {
       for (const guard of guards) {
-        const reason = await guard.reason(port, repo, pr, baseRef, head);
+        const reason = await guard.reason(port, repo, pr, baseRef, head, branch);
         if (reason !== undefined) return reason;
       }
       return undefined;
@@ -118,7 +118,7 @@ export function heldCheck(port: GitHubPort, holds: () => HoldLookup, freeze?: Fr
     if (merged || state === "closed") return undefined;
     const at = sha === undefined || sha === headSha ? headSha : undefined;
     if (at !== undefined) await satisfy?.(repo, pr, at, baseRef);
-    return lookup.heldReason(repo, pr, headRef, at) ?? (await freeze?.reason(port, repo, pr, baseRef, headSha));
+    return lookup.heldReason(repo, pr, headRef, at) ?? (await freeze?.reason(port, repo, pr, baseRef, headSha, headRef));
   };
 }
 

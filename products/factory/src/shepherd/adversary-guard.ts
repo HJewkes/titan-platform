@@ -23,14 +23,14 @@ const prKey = (repo: RepoSlug, pr: number): string => `${repo.toLowerCase()}#${p
  * The merge-time half of the g10-adversary re-hold: every merge passes here, so a head the seat's adversary review never
  * saw cannot land, whichever path released the run's other holds and however the CI reads fell. `adversaryRehold` judges
  * the head; one it does not vouch for is re-held here, by a compare-and-swap. A lost swap still refuses this merge, and the
- * next check reads the run again.
+ * next check reads the run again. A run registered only by its branch, still waiting for its PR, is found by the head branch.
  */
 export function adversaryGuard(deps: AdversaryGuardDeps): AdversaryGuard {
   const reheld = new Set<string>();
   return {
-    async reason(_port, repo, pr, baseRef, head) {
+    async reason(_port, repo, pr, baseRef, head, branch) {
       const store = deps.store();
-      const registration = store.byPr(repo, pr);
+      const registration = store.byPr(repo, pr) ?? (branch === undefined ? undefined : store.byBranch(repo, branch));
       if (!registration || head === undefined) return undefined;
       const rehold = await adversaryRehold(store, registration.runId, head, (released) => deps.carry({ repo, baseRef, fromHead: released, head }));
       if (!rehold) return undefined;
