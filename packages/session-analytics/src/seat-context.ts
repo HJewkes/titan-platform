@@ -55,7 +55,7 @@ const SEAT_COMPACTIONS = `
 export function seatContext(db: Db, options: SeatContextOptions): SeatContextRow[] {
   return options.sessions.map((seat) => {
     const params = { ...options.window, ids: JSON.stringify(seat.sessionIds) };
-    const contexts = (db.prepare(SEAT_REQUESTS).all(params) as { context: number }[]).map((row) => row.context).sort((a, b) => a - b);
+    const contexts = asRows(db.prepare(SEAT_REQUESTS).all(params)).map((row) => num(row, "context")).sort((a, b) => a - b);
     return { name: seat.name, requests: contexts.length, ...percentiles(contexts), compactions: readCompactionCounts(db, params) };
   });
 }
@@ -67,8 +67,19 @@ function percentiles(sorted: readonly number[]): Pick<SeatContextRow, "p50" | "p
 
 function readCompactionCounts(db: Db, params: Record<string, unknown>): SeatContextRow["compactions"] {
   const counts = { auto: 0, manual: 0 };
-  for (const row of db.prepare(SEAT_COMPACTIONS).all(params) as { trigger: string; n: number }[]) {
-    if (row.trigger === "auto" || row.trigger === "manual") counts[row.trigger] = row.n;
+  for (const row of asRows(db.prepare(SEAT_COMPACTIONS).all(params))) {
+    if (row.trigger === "auto" || row.trigger === "manual") counts[row.trigger] = num(row, "n");
   }
   return counts;
+}
+
+type Row = Record<string, unknown>;
+
+function asRows(rows: unknown[]): Row[] {
+  return rows.filter((row): row is Row => typeof row === "object" && row !== null);
+}
+
+function num(row: Row, key: string): number {
+  const value = row[key];
+  return typeof value === "number" ? value : 0;
 }
