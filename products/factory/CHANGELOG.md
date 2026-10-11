@@ -1,5 +1,19 @@
 # @titan-design/factory
 
+## 0.20.0
+
+### Minor Changes
+
+- 4d15436: Add the `sh-release-follow` step: after a Version Packages merge it follows the release job on the merge sha, files one release-red fix task if the job fails, and polls npm until every bumped version resolves or it times out. The release preflight now records the bumped versions.
+- 75937e6: `service deploy` watches a restarted build for a short window (`--watch-window`, `service.deployWatchMs`, default 2 min): serve must keep answering `/health` on the same sha and pid with no new failed runs. A failed restart, sha check or watch now rolls back, verifies the old sha is serving, pauses every deploy with `deploy-pause.json` (a newer sha does not bypass it) and files one incident notice to the hub seat and the owner queue. A rollback that does not verify raises one `ALERT:` and is never retried. `service pause` shows the pause and `service pause --clear` lifts it under the deploy lock.
+- cc600f5: `shepherd register` infers a missing `--implementer` and `--task` from an `agent-chat/<name>` head branch, read from `--branch` or the pull request. A new registration without `--kind` stores `correctness`; a kindless repeat keeps the stored kind.
+
+### Patch Changes
+
+- 0e6074d: Shepherd asks the reviewer for an OWNER-BRIEF block when the run's policy carries `visualPaths`, as well as under `owner-gate`, so a `shepherd-merge-guard/visual-path` gate on an auto run has a brief to show. A MERGE verdict now carries the parsed owner brief, and the approve-merge gate at exactly that head shows it: the full block (what, why, pros, cons, door) in the gate prompt and a one-line form in the question the owner reads.
+- Updated dependencies [3199c5a]
+  - @titan-design/agent-dispatch@0.7.0
+
 ## 0.19.1
 
 ### Patch Changes
