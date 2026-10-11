@@ -16,7 +16,7 @@ export function stopReason(readings: MachineReadings, limits: StopLimits = DEFAU
  * reads the machine (the spawn gate, the broker's machine_hold refusal) and lives in memory: a restart forgets it, and a stop
  * still in effect after the restart is caught by the next `sample`.
  */
-interface MachineStopWatch {
+export interface MachineStopWatch {
   /** Records a stop seen at `at` (epoch ms). */
   note(at: number, reason: string): void;
   /** Reads the machine now, notes a stop if there is one, and returns its reason. */
