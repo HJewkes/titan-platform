@@ -229,6 +229,40 @@ The miner exposes it as `titan-miner seat-context --since 7d --seat name=id,id [
 [--auto-max N]`, which prints one line per seat ending in `PASS` or `FAIL <reason>` and exits 1
 on any failure.
 
+### Coordinator duty meter
+
+`mergeCopies(copies, options)` splits a coordinator seat's spend by duty: merges, CI watching,
+briefing, pacing, no-op ticks and so on. Each copy is one transcript file: its `seat`,
+`sessionId`, byte `size`, its pool's window start `lo` and the raw JSONL `lines`. Pass `lines`
+as an iterable, so a large file streams. The meter reads raw lines rather than the graph,
+because the rules need tool inputs the graph does not keep, such as a `chat_send` recipient or
+a resume message. `seatOf(lines, seats)` names a file's seat from its `as seat <seat>` boot
+prompt or its `chat_register` call.
+
+- **Calls and turns.** A call is an assistant message id with usage; `<synthetic>` is dropped.
+  A turn runs from one prompt that is not a tool result to the next. Sidechain records are skipped.
+- **Copies.** The copies of a session run largest first, and a message id is priced only the
+  first time it is seen. A turn counts only if it holds a newly priced call.
+- **Window.** A call counts when `lo <= ts < hi`. A bound with no offset is UTC.
+- **Triggers and outcomes.** Each turn gets a trigger, such as `cron-heartbeat`, `boot` or
+  `peer-seat msg`, from its prompt prefix. `ops` names the operator sessions. Its outcome is the
+  first of `dispatch`, `merge`, `retire`, `task`, `peer-reply`, `file-write` and `teleport`
+  that its tools hit, or `NO-OP`.
+- **Duties.** `rules` is `TP1550_RULES` (the 2026-10-04 baseline) or `V3_RULES` (2026-10-09). In
+  both, the first matching rule wins, and `owners` holds the recipient prefixes that count as
+  owner communication. Every call of a NO-OP turn becomes `noop:<trigger>`, unless the trigger
+  is `boot`; reads in a boot turn count as handoff. An unclassified call inherits a duty: with
+  `inherit: "nearest"` from the nearest earlier classified call, and with `"dominant"` from the
+  turn's highest-dollar duty.
+- **Pricing.** Calls go through `priceRequest`. A model with no price row costs 0 and is counted
+  in `inputs.unpriced`. A cache write with no 5m/1h split prices at
+  `SPLITLESS_CACHE_WRITE_TTL` (5m); `splitlessCacheWrite: "1h"` reprices it for comparison.
+
+`dutyTable(result, { window, seats, rules, mergedPrs })` totals the result for each duty: calls,
+USD, share, $ per merged PR, kind (`det`, `judge`, `half`, `handoff` or `incident`), its TP-1550
+report group, and dollars per seat. It also lists turns, NO-OP turns and dollars per trigger,
+and validates against `coordDutyTableSchema`.
+
 ## What it deliberately does not do
 
 It does not open a transcript, a log or the network, it never writes the graph, and it does

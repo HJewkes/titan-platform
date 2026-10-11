@@ -1,7 +1,7 @@
 import { readCi, type CiInput, type CiSnapshot } from "./land-ci.js";
 import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, missingCheckGraceSpent, type FirstReads } from "./land-budget.js";
 import { rerunIfFlaky, type FlakyState } from "./land-flaky.js";
-import { deadline } from "./deadline.js";
+import { deadline, type Deadline } from "./deadline.js";
 import type { LandDeps, Timing } from "./land.js";
 
 /** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
@@ -11,6 +11,13 @@ export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, wri
   } finally {
     deps.snapshot?.invalidate(input.repo);
   }
+}
+
+/** A rerun and its wait can outlast the step's deadline; `continue` skips the expiry check, so it is made here. */
+async function rerunWithinDeadline(deps: LandDeps, input: CiInput, red: CiSnapshot, run: { timing: Timing; signal: AbortSignal; flaky: FlakyState; clock: Deadline }): Promise<boolean> {
+  const rerun = await afterWrite(deps, input, rerunIfFlaky(deps.port, input, red, run.timing, run.signal, run.flaky));
+  if (rerun && run.clock.expired()) throw new Error(`ci-wait timed out after ${run.timing.timeoutMs} ms: rerunning a flaky check`);
+  return rerun;
 }
 
 /** One blocking step: the workflow retry loop has no backoff, so polling lives here. A failed read is polled again. */
@@ -26,8 +33,9 @@ export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, 
   for (;;) {
     try {
       const snapshot = await readCi(port, input, reads, { missingSettled, openSeen });
-      if (snapshot.verdict === "red" && (await afterWrite(deps, input, rerunIfFlaky(port, input, snapshot, timing, signal, flaky)))) continue;
-      if (snapshot.verdict !== "pending") return { ...snapshot, readAt: timing.now() };
+      const readAt = timing.now();
+      if (snapshot.verdict === "red" && (await rerunWithinDeadline(deps, input, snapshot, { timing, signal, flaky, clock }))) continue;
+      if (snapshot.verdict !== "pending") return { ...snapshot, readAt };
       last = `waiting on ${snapshot.waitingOn?.join(", ") || `mergeable_state ${snapshot.mergeableState}`}`;
       backlog = snapshot.backlog === true;
     } catch (error) {

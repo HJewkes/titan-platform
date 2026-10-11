@@ -23,6 +23,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { MAX_REPAIRS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
+import type { FlakyChecks } from "../workflows/land-flaky.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
@@ -60,14 +61,14 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot, flakyChecks?: Record<string, FlakyChecks>): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)].map((run) => (run.conclusion === "failure" ? outsideActions(run) : run)));
   let clock = 0;
   const ref = shepherdStoreRef();
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen) });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
@@ -1452,10 +1453,10 @@ describe("owner override of a MERGE verdict", () => {
 
 describe("a failed required check at a pull request head", () => {
   /** `validate` fails on H1's first run; a rerun posts a new run that passes or fails again. */
-  function flaky(rerunPasses: boolean, dbPath = ":memory:") {
+  function flaky(rerunPasses: boolean, dbPath = ":memory:", landFlaky?: Record<string, FlakyChecks>) {
     const fake = fakeGitHub();
     const { phases, wakes } = fakePhases({ wake: () => ({ kind: "unhandled", exited: true, reason: "impl-a exited without pushing a new head" }) });
-    const w = world(phases, () => "success", fake, undefined, undefined, dbPath);
+    const w = world(phases, () => "success", fake, undefined, undefined, dbPath, undefined, landFlaky);
     fake.onGetPr = (pr) => {
       const attempt = fake.effects.rerunFailedJobs;
       const conclusion = attempt > 0 && rerunPasses ? "success" : "failure";
@@ -1484,6 +1485,16 @@ describe("a failed required check at a pull request head", () => {
     expect(w.fake.effects.rerunFailedJobs).toBe(1);
     expect(wakes).toHaveLength(1);
     expect(JSON.stringify(wakes[0]!.payload)).toContain("/actions/runs/1011/");
+  });
+
+  it("wakes the implementer once the land rerun budget is spent on a head that fails again", async () => {
+    const { w, wakes } = flaky(false, ":memory:", { [REPO.toLowerCase()]: { checks: ["validate"], waitSeconds: 90 } });
+    const runId = shepherdPr1(w);
+
+    await gateOpened(w.host, gateId(runId, "sh-sent-back"));
+
+    expect(w.fake.effects.rerunFailedJobs).toBeGreaterThanOrEqual(1);
+    expect(wakes).toHaveLength(1);
   });
 
   it("wakes the implementer, with the run not failed, when GitHub answers 403 that the run cannot be retried", async () => {
