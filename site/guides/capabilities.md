@@ -697,10 +697,11 @@ Tier 2, `@titan-design/coordinator@0.2.0`. Seat config and charter policy schema
 Key exports:
 
 - `charter-policy`: `charterDefaultsSchema`, `charterPolicyErrorSchema`, `charterPolicySchema`, `hardStopClassSchema`, `parseCharterPolicy`
+- `hard-stops`: `hardStopsIn`
 - `seat-config`: `seatConcurrencySchema`, `seatConfigSchema`, `seatRepoSchema`, `seatSpendSchema`
 - `seat-events`: `seatEventSchema`
-- `seat-state`: `emptySeatState`, `foldSeatEvents`
-- +41 more in the [reference page](/reference/coordinator)
+- `seat-state`: `emptySeatState`
+- +44 more in the [reference page](/reference/coordinator)
 
 <a id="cap-decider"></a>
 
