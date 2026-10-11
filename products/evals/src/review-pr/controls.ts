@@ -25,20 +25,38 @@ interface LineEdit {
   description: string;
 }
 
-function findEdit(kind: ControlKind, path: string, lines: readonly string[]): LineEdit | undefined {
-  const isTest = TEST_FILE.test(path);
+type Rewrite = Omit<LineEdit, "index">;
+
+function rewriteLine(kind: ControlKind, line: string): Rewrite | undefined {
   if (kind === "inverted-condition") {
-    if (isTest || !SOURCE_FILE.test(path)) return undefined;
-    const index = lines.findIndex((line) => CONDITION.test(line));
-    const match = CONDITION.exec(lines[index] ?? "");
-    return match ? { index, replacement: `${match[1]}!(${match[2]})${match[3]}`, description: "the condition is inverted, so the branch runs in the opposite case" } : undefined;
+    const match = CONDITION.exec(line);
+    return match ? { replacement: `${match[1]}!(${match[2]})${match[3]}`, description: "the condition is inverted, so the branch runs in the opposite case" } : undefined;
   }
-  if (!isTest) return undefined;
-  const index = lines.findIndex((line) => ASSERTION.test(line));
-  if (index < 0) return undefined;
-  if (kind === "deleted-assertion") return { index, replacement: null, description: "an assertion was deleted, so the test no longer checks this result" };
-  const match = MATCHER.exec(lines[index] ?? "");
-  return match ? { index, replacement: `${match[1]}.toBeDefined();`, description: "the assertion only checks the value is defined, so the test no longer bites" } : undefined;
+  if (!ASSERTION.test(line)) return undefined;
+  if (kind === "deleted-assertion") return { replacement: null, description: "an assertion was deleted, so the test no longer checks this result" };
+  const match = MATCHER.exec(line);
+  return match ? { replacement: `${match[1]}.toBeDefined();`, description: "the assertion only checks the value is defined, so the test no longer bites" } : undefined;
+}
+
+const essence = (line: string) => line.trim().replace(/;$/, "").trimEnd();
+
+/** A rewrite that leaves the line as it was would give the control a gold defect the tree never carries. */
+function changesLine(original: string, rewrite: Rewrite): boolean {
+  return rewrite.replacement === null || essence(rewrite.replacement) !== essence(original);
+}
+
+function canCarry(kind: ControlKind, path: string): boolean {
+  const isTest = TEST_FILE.test(path);
+  return kind === "inverted-condition" ? !isTest && SOURCE_FILE.test(path) : isTest;
+}
+
+function findEdit(kind: ControlKind, path: string, lines: readonly string[]): LineEdit | undefined {
+  if (!canCarry(kind, path)) return undefined;
+  for (const [index, line] of lines.entries()) {
+    const rewrite = rewriteLine(kind, line);
+    if (rewrite && changesLine(line, rewrite)) return { index, ...rewrite };
+  }
+  return undefined;
 }
 
 /** Plants `kind` at the first line of `text` that can carry it, or returns undefined when none can. */

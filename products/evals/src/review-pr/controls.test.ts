@@ -43,6 +43,23 @@ describe("plantDefect", () => {
     expect(linesOf(planted?.text ?? "")).toEqual(editAt(TEST, 4, "  expect(result).toBeDefined();"));
   });
 
+  it("skips an assertion that already only checks definedness and defangs the next one", () => {
+    const head = editAt(TEST, 4, "  expect(result).toBeDefined()");
+    head.splice(5, 0, "  expect(result).toBe(5);");
+    const text = head.join("\n");
+
+    const planted = plantDefect("toothless-test", "src/clamp.test.ts", text);
+
+    expect(planted?.line).toBe(6);
+    expect(linesOf(planted?.text ?? "")).toEqual(editAt(text, 5, "  expect(result).toBeDefined();"));
+  });
+
+  it("plants no toothless test when every assertion already only checks definedness", () => {
+    const text = editAt(TEST, 4, "  expect(result).toBeDefined();").join("\n");
+
+    expect(plantDefect("toothless-test", "src/clamp.test.ts", text)).toBeUndefined();
+  });
+
   it("plants nothing where the file cannot carry the kind", () => {
     expect(plantDefect("inverted-condition", "src/clamp.test.ts", TEST)).toBeUndefined();
     expect(plantDefect("deleted-assertion", "src/clamp.ts", SOURCE)).toBeUndefined();
