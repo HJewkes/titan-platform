@@ -44,7 +44,8 @@ every caller plans, briefs and aggregates the same way:
   `satisfiesG10`.
 - The ports `ReviewerDispatch` (roster, spawn, resume), `ReviewerReader` (a reviewer's
   assistant messages) and their rows `ReviewerAgent` and `ReviewerMessage`, with
-  `ReviewTarget` naming the head under review.
+  `ReviewTarget` naming the head under review. `ReviewerMessage.synthetic` is set only from
+  a client-written record's own fields.
 - `acceptVerdict(input, messages)`: the pure acceptor. It takes only the final message of
   the dispatched agent and session, written after dispatch, whose `Verdict:` block names
   the PR at this head (`namesTarget`; repo case is ignored). A refused or misaimed block
@@ -52,7 +53,9 @@ every caller plans, briefs and aggregates the same way:
   FIX_FIRST from a session with no investigative call (`isInvestigativeCall`) is `none`
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
-  (`parseOwnerBrief`).
+  (`parseOwnerBrief`). A short usage-limit notice the client wrote itself (a `synthetic`
+  message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
+  `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
   (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
   a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other

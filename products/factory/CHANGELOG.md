@@ -1,5 +1,29 @@
 # @titan-design/factory
 
+## 0.17.0
+
+### Minor Changes
+
+- 20e426a: Add the Shepherd seat digest: `titan-factory serve` sends each seat one agent-chat message whenever its state changes, listing every open gate with its exact `titan-factory gate resolve` command, every `ci-failed` or `sh-sent-back` fix round the seat was told about with no fixer woken, and runs that finished since the last digest. An unchanged state sends nothing, and what each seat was last told is kept in `seat-digest.json` beside the factory database so a restart does not resend. The seat notice record now carries its gate and head.
+
+### Patch Changes
+
+- 452b194: Shepherd's main-red acknowledgement now judges a later main commit with `judgeMain` on `readMainRules`, the same path that greenAfterRed, unfreezeStep and readMainGreen use. A context pinned to a non-Actions app is judged by that app's runs, and classic protection contexts count as well.
+- Updated dependencies [2b1640a]
+- Updated dependencies [7c73654]
+  - @titan-design/agent-dispatch@0.6.0
+  - @titan-design/session-read@0.13.0
+  - @titan-design/review-panel@0.5.1
+  - @titan-design/session-analytics@0.13.2
+
+## 0.16.1
+
+### Patch Changes
+
+- 77c1298: Open a gate naming sh-merge-evidence, instead of failing the run, when the merge-evidence comment post still answers an empty or unparseable body after its retries.
+- Updated dependencies [3873ce6]
+  - @titan-design/session-analytics@0.13.1
+
 ## 0.16.0
 
 ### Minor Changes
