@@ -1,5 +1,21 @@
 # @titan-design/session-miner
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.7.0
+
+### Minor Changes
+
+- 89a7e88: The adoption registry holds unshipped `baseline` entries beside shipped ones and is seeded with the 15 ranked rows of the 2026-10-08 bash-to-tool mining. Q10 `tool-adoption` counts a baseline's old pipelines from the window start, never flags it, and marks it `baseline` in the text table. Rows gain `row`, `status` and `note`; `task`, `pr`, `shipped` and `daysSinceShip` are null for a baseline. With nothing shipped and no `--since`, the window starts four weeks back. A new form on the old head with no flags is no longer counted.
+
 ## 0.6.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @titan-design/workflow
 
+## 0.11.0
+
+### Minor Changes
+
+- dda3272: Pin a definition version on each run: `register(name, fn, { version })` stores the version on the run row, and `hydrate` parks a run pinned to a different version as `recovery_required` with evidence naming both versions instead of replaying the new definition over its memos. Existing tables add the column with the new `workflowDefinitionVersionMigration`; a pinned run in a table without it throws `WorkflowStoreSchemaOutdated`.
+
 ## 0.10.1
 
 ### Patch Changes

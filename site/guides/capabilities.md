@@ -386,7 +386,7 @@ Key exports:
 
 ### [`tool-guard`](/reference/tool-guard)
 
-Tier 0, `@titan-design/tool-guard@0.3.3`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
+Tier 0, `@titan-design/tool-guard@0.4.0`. Classifies Claude Code tool calls into guarded authority actions, with a POSIX shell tokenizer
 
 **Use this when:** A hook or guard must see what a Bash command string would actually run: every simple command through `;`, `&&`, pipes, subshells, substitutions, `bash -c`, `eval`, wrappers and package runners, with redirect targets, heredoc bodies, decoded ANSI-C strings and literal variables kept. `@titan-design/tool-guard/shell` is pure and never runs the command. `classify` turns a parsed PreToolUse event into the guarded actions it would take (a merge, a release, a credential read, a permission-config edit, data sent off the host allowlist) with no actor attached, `decide` applies the authority table, and the `titan-tool-guard` bin is the PreToolUse hook that denies them; the owner installs it by hand.
 
@@ -812,7 +812,7 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.13.3`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.14.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
 
@@ -826,7 +826,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +250 more in the [reference page](/reference/session-analytics)
+- +255 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -852,7 +852,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.13.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.13.1`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -929,7 +929,7 @@ Key exports:
 
 ### [`throughput`](/reference/throughput)
 
-Tier 2, `@titan-design/throughput@0.1.0`. Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals
+Tier 2, `@titan-design/throughput@0.1.1`. Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals
 
 **Use this when:** You have per-task actuals (agent-hours, USD) and need deterministic per-class p10/p50/p80/p90 for planning, keyed kind x size band with recency weighting and a named back-off level. Producing the actuals from sessions belongs to session-analytics.
 
@@ -943,7 +943,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.10.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.11.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 

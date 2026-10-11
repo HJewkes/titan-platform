@@ -19,7 +19,8 @@ import { adversaryGuard } from "./shepherd/adversary-guard.js";
 import { firstReason, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld, type HoldSatisfier } from "./shepherd/hold.js";
 import { agentChatAgents } from "./shepherd/agents.js";
 import { configuredExitNotice, type ExitNoticePorts } from "./shepherd/exit-notice.js";
-import { spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
+import { machineStopWatch, type MachineStopWatch } from "./shepherd/machine-stop.js";
+import { readMachine, spawnGate, type SpawnGate, type SpawnLimits } from "./shepherd/spawn-gate.js";
 import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
 import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
@@ -68,6 +69,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   roster?: RosterReader;
   /** The one gate every factory-started agent passes; absent means spawns are not gated. */
   spawnGate?: SpawnGate;
+  /** The one ledger of machine stops the spawn gate and the broker's refusals feed, read when a reviewer ends with no verdict. */
+  machineStop?: MachineStopWatch;
   /** The seat book `shepherd.register` resolves policy against; defaults to no seats, so every repo is owner-gated. */
   seats?: () => SeatBook;
   /** The reviewer reader and dispatch; absent means `sh-review` answers none and the owner gate decides. */
@@ -189,13 +192,13 @@ function reviewAccounts(review: ReviewConfigured, under: (configDir: string | un
 }
 
 /** One dispatch serves both halves, so the reader finds the reviewer on the roster that started it. No `review` key starts nothing. */
-function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean): FactoryRouteDeps["review"] {
+function configuredReview(shepherd: FactoryConfig["shepherd"], seats: () => SeatBook, roster: RosterReader | undefined, gate: SpawnGate, isFixer: (target: ReviewTarget) => boolean, machineStop: MachineStopWatch): FactoryRouteDeps["review"] {
   const { agentChatBin, review } = shepherd ?? {};
   if (!review || !agentChatBin) return undefined;
-  const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer });
+  const under = (configDir: string | undefined) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, cwdFor: (repo) => checkoutPath(seats(), repo), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos);
-  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), ...(codewatch && { codewatch }) };
+  return { dispatch, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, ...(codewatch && { codewatch }) };
 }
 
 /** Cleanup retires agents through the configured `agent-chat`, so no binary configured means no retire and no task close. */
@@ -235,10 +238,11 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
-  const gate = overrides.spawnGate ?? spawnGate({ limits: configuredSpawnLimits(shepherd), disk: reviewCheckoutDisk(reviewCheckoutRoot()) });
+  const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits: configuredSpawnLimits(shepherd) });
+  const gate = overrides.spawnGate ?? spawnGate({ limits: configuredSpawnLimits(shepherd), disk: reviewCheckoutDisk(reviewCheckoutRoot()), onStop: machineStop.note });
   const store = overrides.store ?? shepherdStoreRef();
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
-  const review = configuredReview(shepherd, seats, roster, gate, fixerReview(freeze, store));
+  const review = configuredReview(shepherd, seats, roster, gate, fixerReview(freeze, store), machineStop);
   const cleanup = configuredCleanup(shepherd, env, roster);
   const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat) : undefined;

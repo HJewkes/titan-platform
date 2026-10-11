@@ -188,16 +188,18 @@ async function supervise() {
   const dbPath = keptDbPath(process.argv.slice(2));
   const cleanups = [];
   cleanupOnSignal(cleanups);
+  let hold;
   try {
-    await acquire({ timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
+    hold = await acquire({ check: "dag:check", timeoutMs: lockWaitMs(), log: (m) => console.error(m) });
   } catch (err) {
     if (!(err instanceof LockTimeoutError)) throw err;
     console.error(err.message);
     return BUSY_EXIT_CODE;
   }
-  cleanups.push(() => release(DEFAULT_LOCK_DIR), clearWorkDir);
+  cleanups.push(() => release(DEFAULT_LOCK_DIR, hold), clearWorkDir);
   try {
-    return await indexUnderLock(cleanups, dbPath);
+    hold.exit = await indexUnderLock(cleanups, dbPath);
+    return hold.exit;
   } finally {
     runCleanups(cleanups);
   }

@@ -1,5 +1,31 @@
 # @titan-design/factory
 
+## 0.18.1
+
+### Patch Changes
+
+- 5b9d9f5: Wire Shepherd's machine-stop watch in production. `configuredRoutes` builds one watch over the factory's machine reading and spawn limits; the spawn gate notes every machine-stop breach it reads (not a pace or build-limit deferral), the reviewer dispatch notes every broker `machine_hold` refusal, and the review wiring carries the watch, so a reviewer that goes silent while the stop held is retried as a throttled round.
+- d6e85ba: `shepherd status --json` rows carry the registration's `slice` (null for a whole-task run), and the `shepherd timeline` header line names the run's task and, when set, its slice, so a seat can confirm a sliced registration without reading `factory.sqlite3`.
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.18.0
+
+### Minor Changes
+
+- 97e40c3: `titan-factory shepherd stats --per-run --json` prints `{ perRun: [...] }`, one record per shepherd-pr run started in range: task, repo, pr, kind (from the registration, else `unknown`), status, start and completion, minutes per stage summed from the stage spans, review rounds as distinct verdict heads, and the merge time with its path (`shepherd`, `outside` or null). `--per-run` without `--json` exits 2.
+
+### Patch Changes
+
+- 34c1d15: End a Shepherd wake whose asks are only waited out (agent-chat timing out, the spawn gate deferring, the broker down) once `WAKE_ASK_MS`, 5 minutes, passes with the roster showing no effect, so the seat hears of it instead of the run waiting on an implementer that never resumes. A resume fallback the spawn gate defers past the same deadline fails too.
+- 9e5af93: Retry a Shepherd review whose reviewer went silent while the machine stop held. A dispatched reviewer that times out now runs `sh-review-stop`, which asks the wired machine-stop watch whether a stop applied during the round or applies now, and waits for it to lift. A lifted stop records the round as `throttled`: the same head is reviewed again by a fresh reviewer and the round is not counted. Only the first throttled round at a run is exempt (`MAX_THROTTLED_ROUNDS`); later ones count as failed rounds, so a machine that never settles still reaches approve-merge. With no watch wired, or on a healthy machine, a silent reviewer is a timeout as before.
+- 7c32fa8: Add the toolchain fanout core. It reads titan-platform's canonical `.node-version`, `packageManager` and `engines.node`, plans one adoption edit per consumer repo, and prints dry-run lines. An `actions/setup-node` literal `node-version:` becomes `node-version-file: .node-version`; matrix values, expressions and reusable-workflow inputs are left alone and listed. Nothing calls it yet; the serve sweep and CLI follow.
+- Updated dependencies [dda3272]
+  - @titan-design/workflow@0.11.0
+
 ## 0.17.1
 
 ### Patch Changes
