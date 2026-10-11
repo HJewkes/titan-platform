@@ -49,6 +49,7 @@ titan-miner insights cache-ttl --since 2026-09-01   # one of six questions; see 
 titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on loopback
 titan-miner mcp                              # MCP over stdio
 titan-miner --graph <file> graph-refresh -- active-work miner refresh   # one scheduled pass
+titan-miner --graph <file> tool-gap-weekly --notify-command <path>     # weekly tool-gap tasks and digest
 ```
 
 Six options go before the command and apply to all of them:
@@ -124,6 +125,8 @@ the FTS orphan ratio.
 | a name in `degraded` from `search` | one retriever failed; the others still answered |
 | `graph-refresh: another run holds …`, exit 75 | a second `graph-refresh` while one is running; nothing was done |
 | `graph-refresh: FAILED: …`, exit 70 | the owner's refresh failed, or the graph failed `quick_check` |
+| `tool-gap-weekly: another run holds …`, exit 75 | a second weekly pass while one is running; nothing was done |
+| `tool-gap-weekly: FAILED: …`, exit 70 | a task action or the notifier failed; last week's snapshot is kept |
 
 ## A refresh, package by package
 
@@ -311,7 +314,9 @@ playbook is exercised.
 - **No dashboard.** That waits on the UI package split.
 - **No built-in scheduler.** A systemd timer drives `graph-refresh`, which runs the
   graph owner's refresh under a lock and then quick_checks the file
-  (`ops/systemd/session-miner-refresh.timer`; install steps in the product README).
+  (`ops/systemd/session-miner-refresh.timer`; install steps in the product README). A
+  weekly timer drives `tool-gap-weekly`, which files or notes one active-work task per
+  tool-gap pattern and sends the owner one digest (`ops/systemd/session-miner-tool-gaps.timer`).
 - **Per-tool Drain partitions** wait on the fact table carrying tool names for results.
 
 The value of naming these is that each is a gap in a *product*, not in a package. The

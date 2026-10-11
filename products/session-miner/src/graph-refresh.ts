@@ -87,7 +87,7 @@ export function checkGraph(dbPath: string): GraphHealth {
 }
 
 /** An exclusive-create lock file naming its holder; a holder whose pid is gone was killed, so its lock is taken over. */
-function tryLock(lockPath: string): "acquired" | LockHolder | null {
+export function tryLock(lockPath: string): "acquired" | LockHolder | null {
   mkdirSync(path.dirname(lockPath), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {

@@ -27,6 +27,7 @@ titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
 titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
+titan-miner --graph <file> tool-gap-weekly --notify-command <path>  # weekly tool-gap pass; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -305,6 +306,42 @@ systemctl --user enable --now session-miner-refresh.timer
 Then `systemctl --user start session-miner-refresh.service` runs a pass at once,
 `journalctl --user -u session-miner-refresh` shows its log, and a failed pass leaves the
 unit in `systemctl --user --failed`.
+
+## Weekly tool-gap pass (TP-2076)
+
+`titan-miner tool-gap-weekly --notify-command <path>` is one weekly pass over Q9
+`tool-gaps` and Q10 `tool-adoption`. It files and notes tasks and reports; it never builds a tool.
+
+1. It takes `<state>/tool-gap-weekly/run.lock` without waiting; a second live run exits 75.
+2. It runs both questions over the 7 days ending now and diffs them against
+   `<state>/tool-gap-weekly/latest.json`, last week's answers. A first run counts every row as new.
+3. For each pattern id with at least `--min-calls` calls (default 50) and `--min-sessions`
+   sessions (default 10) that the adoption registry does not already name, it files one task in
+   `--initiative <slug>` (default `titan-platform`) through `active-work task add`, tagged
+   `tool-gap`, `tool-gap:<patternId>` and `item-114`. If an open task already carries
+   `tool-gap:<patternId>`, it appends this week's counts with `active-work task note` instead.
+4. It runs the notify command once, with the digest on stdin: new gaps, task actions, adoption
+   results and removal candidates (shipped, unused 28 days or more after ship). The digest is a
+   notice and asks nothing.
+5. Only then does it replace `latest.json`. If a task action or the notifier fails, the pass logs
+   `tool-gap-weekly: FAILED: …`, exits 70 and keeps last week's snapshot, so the next run diffs
+   against the same base. A rerun in the same week notes the tasks the failed run did file.
+
+Stdout carries one JSON line: `outcome` (`ok`, `locked` or `failed`), the actions taken, and
+`exitCode`. agent-chat has no CLI verb that posts a notice, so the operator picks the notifier:
+any executable that reads stdin.
+
+`ops/systemd/session-miner-tool-gaps.{service,timer}` run it every Monday at 05:30, catching up a
+missed week on boot. The service reads `ACTIVE_ROOT`, `TITAN_MINER_GRAPH` and `TITAN_MINER_NOTIFY`
+from `~/.config/titan-session-miner/tool-gaps.env`, which it requires. To install (an owner step,
+same build and checkout as the hourly refresh):
+
+```sh
+printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\nTITAN_MINER_NOTIFY=<notifier>\n' > ~/.config/titan-session-miner/tool-gaps.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.service ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-tool-gaps.timer
+```
 
 ## Codex sessions
 
