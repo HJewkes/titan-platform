@@ -14,6 +14,7 @@ export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform",
 export const BUSY_EXIT_CODE = 75;
 const DEFAULT_WAIT_MS = 8 * 60 * 1000;
 // Only the holder appends, so the log needs no lock of its own; the tail bounds both its size and a stale median.
+// Holds logged with exit null (killed by a signal, or the check threw) are not representative and skip the median.
 const LOG_KEEP_LINES = 200;
 const ESTIMATE_LINES = 20;
 const ESTIMATE_MIN_LINES = 3;
@@ -121,17 +122,22 @@ function appendHold(lockDir, hold) {
 
 /**
  * Remove the lock if this process holds it. Safe to call more than once. Given the hold acquire returned, first
- * appends one line to the hold log; set hold.exit beforehand to record the check's exit code.
+ * appends one line to the hold log; set hold.exit beforehand to record the check's exit code. A failed log write
+ * still removes the lock, then throws.
  */
 export function release(lockDir, hold) {
   if (readHolder(lockDir) !== process.pid) return;
-  if (hold) appendHold(lockDir, { check: null, exit: null, ...hold });
-  rmSync(lockDir, { recursive: true, force: true });
+  try {
+    if (hold) appendHold(lockDir, { check: null, exit: null, ...hold });
+  } finally {
+    rmSync(lockDir, { recursive: true, force: true });
+  }
 }
 
-/** The median hold in ms over the recent log, or null with too little history to estimate from. */
+/** The median hold in ms over the recent completed holds, or null with too little history to estimate from. */
 export function medianHoldMs(lockDir) {
   const held = readHolds(lockDir)
+    .filter((h) => h.exit !== null)
     .slice(-ESTIMATE_LINES)
     .map((h) => h.releasedAt - h.acquiredAt)
     .sort((a, b) => a - b);
@@ -140,13 +146,20 @@ export function medianHoldMs(lockDir) {
   return held.length % 2 ? held[mid] : (held[mid - 1] + held[mid]) / 2;
 }
 
-/** The fail-fast message when the waiters ahead cannot clear within the budget at the median hold, else null. */
+/**
+ * The fail-fast message when a live holder plus the waiters ahead cannot clear within the budget at the median hold,
+ * else null.
+ */
 export function queueTooDeep(lockDir, ahead, budgetMs) {
   const median = medianHoldMs(lockDir);
-  if (median === null || ahead * median <= budgetMs) return null;
-  const minutes = Math.round((ahead * median) / 60000);
+  if (median === null) return null;
+  const holder = readHolder(lockDir);
+  const holding = holder !== null && isAlive(holder);
+  const estimate = (ahead + (holding ? 1 : 0)) * median;
+  if (estimate <= budgetMs) return null;
+  const queue = holding ? `the holder and ${ahead} ahead` : `${ahead} ahead`;
   return (
-    `dag-check lock: ${ahead} ahead, about ${minutes} min at the median hold of ${Math.round(median / 1000)} s; ` +
+    `dag-check lock: ${queue}, about ${Math.round(estimate / 60000)} min at the median hold of ${Math.round(median / 1000)} s; ` +
     `exit ${BUSY_EXIT_CODE}. CI's dag-check job runs dag:check and dead:check on the PR.`
   );
 }
@@ -192,7 +205,7 @@ function dropTicket(lockDir, name) {
 /**
  * Wait for the lock in arrival order and return the hold record for release. Logs the holder and queue position on the
  * first wait and every logEveryMs after. Throws LockTimeoutError once timeoutMs has passed, or at once on joining when
- * the hold log says the queue ahead cannot clear within timeoutMs.
+ * the hold log says the live holder and the queue ahead cannot clear within timeoutMs.
  */
 export async function acquire({ lockDir = DEFAULT_LOCK_DIR, check = null, timeoutMs, pollMs = 2000, logEveryMs = 30000, log }) {
   const start = Date.now();
