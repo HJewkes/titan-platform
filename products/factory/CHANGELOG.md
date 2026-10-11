@@ -1,5 +1,18 @@
 # @titan-design/factory
 
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [ea3d34c]
+- Updated dependencies [790401a]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/agent@0.4.7
+  - @titan-design/workflow@0.12.0
+  - @titan-design/session-read@0.13.2
+
 ## 0.18.1
 
 ### Patch Changes

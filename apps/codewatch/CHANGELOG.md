@@ -1,5 +1,11 @@
 # codewatch
 
+## 0.0.19
+
+### Patch Changes
+
+- @titan-design/code-read@0.3.3
+
 ## 0.0.18
 
 ### Patch Changes
