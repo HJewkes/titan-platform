@@ -35,6 +35,9 @@ export interface ShepherdEvent {
   headSha: string | null;
 }
 
+/** Every new row names its actor: a seat or owner name from the CLI, `owner` for a gate answer, else Shepherd itself. Only rows from before TP-2266 are null. */
+export const SHEPHERD_ACTOR = "shepherd";
+
 /** Who made the change and the PR head it was made at, where the caller knows them. */
 export interface EventContext {
   actor?: string;
@@ -60,7 +63,7 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
     event.pr ?? null,
     event.kind,
     event.reason ?? null,
-    event.actor ?? null,
+    event.actor ?? SHEPHERD_ACTOR,
     event.at,
     event.headSha ?? null,
   );
