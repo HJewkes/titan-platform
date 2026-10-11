@@ -19,7 +19,7 @@ export function registration(name: string, fn: WorkflowFn, version: string | und
 }
 
 /** Evidence when a pinned run would replay a different definition over its memos; null when it may hydrate. */
-export function definitionDrift(run: WorkflowRun, registered: string | undefined): string | null {
+function definitionDrift(run: WorkflowRun, registered: string | undefined): string | null {
   if (run.definitionVersion === undefined || run.definitionVersion === registered) return null;
   const now = registered === undefined ? "none" : JSON.stringify(registered);
   return `workflow ${run.workflowName} definition changed: run pinned ${JSON.stringify(run.definitionVersion)}, registered ${now}`;
