@@ -1,3 +1,39 @@
+import { Interval } from '@titan-design/evidence/stats';
+
+/** One scored test row: the realised value and the interval predicted for it. */
+interface IntervalForecast {
+    actual: number;
+    p10: number;
+    p50: number;
+    p90: number;
+}
+interface Coverage$1 {
+    hits: number;
+    n: number;
+    /** Wilson interval on the hit rate; null when there is nothing to score. */
+    rate: Interval | null;
+}
+/** Share of rows whose actual lies inside [p10, p90], with a Wilson interval. */
+declare function intervalCoverage(rows: readonly IntervalForecast[], options?: {
+    confidence?: number;
+}): Coverage$1;
+interface ContextLineRow {
+    predictedOver: boolean;
+    peakContextTokens: number;
+}
+interface ContextLineScore$1 {
+    n: number;
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    /** null when nothing was predicted over the line. */
+    precision: number | null;
+    /** null when nothing was actually over the line. */
+    recall: number | null;
+}
+/** Precision and recall of the over-150k prediction; null when no row carries a peak. */
+declare function contextLineScore(rows: readonly ContextLineRow[]): ContextLineScore$1 | null;
+
 /** Agent-hours under the extractor's headline idle cap. */
 interface CappedHoursLike {
     capped: number;
@@ -17,6 +53,10 @@ interface ThroughputRow {
     kind?: string | null;
     estimate?: number | null;
     flags?: readonly string[];
+    /** When the first implementer session started; `backtest` splits train and test on it. */
+    firstImplAt?: string | null;
+    /** The implementer's peak context in tokens, when the miner recorded it. */
+    peakContextTokens?: number | null;
 }
 /** The plan-time facts that place a task in a class. */
 interface TaskClassFacts {
@@ -92,4 +132,111 @@ declare function classFor(table: ClassTable, facts: TaskClassFacts): ClassEntry;
  */
 declare function classTable(actuals: readonly ThroughputRow[], config?: ThroughputConfig): ClassTable;
 
-export { type BackoffLevel, type CappedHoursLike, type ClassEntry, type ClassTable, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, type LevelStats, type Quantiles, type SizeBand, type TaskClassFacts, type ThroughputConfig, type ThroughputRow, type Watermark, classFor, classTable, sizeBand };
+type BacktestMetric = "implAgentHours" | "reviewAgentHours" | "usd";
+/** A task first dispatched but not yet done: right-censored, so counted rather than scored. */
+interface OpenTask extends TaskClassFacts {
+    taskId: string;
+    initiative: string;
+    firstImplAt?: string | null;
+}
+interface BacktestOptions {
+    /** ISO dates; each one refits on what was known before it. */
+    origins: readonly string[];
+    horizonDays?: number;
+    metric?: BacktestMetric;
+    open?: readonly OpenTask[];
+    /** Passed to classTable at each origin; `asOf` is always the origin. */
+    config?: Omit<ThroughputConfig, "asOf">;
+}
+type Coverage = ReturnType<typeof intervalCoverage>;
+type ContextLineScore = NonNullable<ReturnType<typeof contextLineScore>>;
+interface IntervalScore {
+    n: number;
+    coverage: Coverage;
+    pinball: {
+        p10: number | null;
+        p50: number | null;
+        p90: number | null;
+    };
+    medianAbsLogError: number | null;
+}
+/** A point forecast has no interval, so only the p50 loss and the log error apply. */
+interface PointScore {
+    n: number;
+    pinballP50: number | null;
+    medianAbsLogError: number | null;
+}
+interface GroupScore {
+    n: number;
+    model: IntervalScore;
+    /** Coverage after widening each interval by its class's factor from the previous origin. */
+    widenedCoverage: Coverage;
+    globalMedian: IntervalScore;
+    pointsTimesRate: PointScore;
+    unweightedClass: IntervalScore;
+    /** Estimate vs actual over rows that carry an estimate. */
+    spearman: number | null;
+}
+interface ClassScore extends GroupScore {
+    /** The widening factor applied here, fitted on the previous origin's rows of this class. */
+    conformalFactor: number;
+    /** Open tasks of this class first dispatched in the horizon. */
+    open: number;
+}
+interface Censoring {
+    open: number;
+    /** open / (open + scored); null when the horizon saw no dispatch. */
+    share: number | null;
+    byClass: Record<string, number>;
+}
+interface OriginBase {
+    origin: string;
+    horizonEnd: string;
+    trainN: number;
+    testN: number;
+    censored: Censoring;
+}
+interface SkippedOrigin extends OriginBase {
+    status: "skipped";
+    reason: "no-training-rows";
+}
+interface ScoredOrigin extends OriginBase {
+    status: "scored";
+    modelHash: string;
+    overall: GroupScore;
+    /** Rows with none of the weak-link, multi-task or reopened flags. */
+    clean: {
+        n: number;
+        coverage: Coverage;
+        widenedCoverage: Coverage;
+    };
+    classes: Record<string, ClassScore>;
+    contextLine: ContextLineScore | null;
+}
+type OriginResult = ScoredOrigin | SkippedOrigin;
+interface BacktestResult {
+    metric: BacktestMetric;
+    horizonDays: number;
+    /** Eligible rows with no `firstImplAt`, left out of every split. */
+    missingFirstImplAt: number;
+    /** Rows flagged `no-impl-session`. */
+    excludedRows: number;
+    origins: OriginResult[];
+    /** Coverage over every scored row of every origin. */
+    pooled: {
+        coverage: Coverage;
+        widenedCoverage: Coverage;
+        classes: Record<string, {
+            coverage: Coverage;
+            widenedCoverage: Coverage;
+        }>;
+    };
+}
+/**
+ * Rolling-origin back-test of classTable. At each origin it fits on rows done and first
+ * dispatched before the origin, then scores rows first dispatched in the next horizon against
+ * the fit and three baselines. Pure: equal input gives equal output, whatever the row order.
+ */
+declare function backtest(actuals: readonly ThroughputRow[], options: BacktestOptions): BacktestResult;
+
+export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ContextLineScore, type Coverage, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, type GroupScore, type IntervalScore, type LevelStats, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type SizeBand, type SkippedOrigin, type TaskClassFacts, type ThroughputConfig, type ThroughputRow, type Watermark, backtest, classFor, classTable, sizeBand };
