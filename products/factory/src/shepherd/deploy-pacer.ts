@@ -8,7 +8,6 @@ export const DEPLOY_WANTED = "deploy-wanted.json";
 export const DEPLOY_QUIET_MS = 15 * 60_000;
 /** Steady merges or busy runs never hold a wanted deploy longer than this. */
 export const DEPLOY_MAX_WAIT_MS = 90 * 60_000;
-export const PACER_SWEEP_MS = 60_000;
 
 export const DeployWanted = z.object({
   sha: z.string(),
@@ -20,13 +19,13 @@ export const DeployWanted = z.object({
 
 export type DeployWanted = z.infer<typeof DeployWanted>;
 
-export type PaceDecision =
+type PaceDecision =
   | { kind: "idle" }
   | { kind: "clear"; why: string }
   | { kind: "wait"; why: string; until?: number }
   | { kind: "spawn"; sha: string };
 
-export interface PaceInput {
+interface PaceInput {
   wanted: DeployWanted | undefined;
   now: number;
   runningSha: string;
@@ -95,11 +94,11 @@ export function writeWanted(stateDir: string, store: WantedStore, wanted: Deploy
   store.rename(`${path}.tmp`, path);
 }
 
-export function clearWanted(stateDir: string, store: WantedStore): void {
+function clearWanted(stateDir: string, store: WantedStore): void {
   store.remove(wantedPath(stateDir));
 }
 
-export interface PacerDeps {
+interface PacerDeps {
   stateDir: string;
   store: WantedStore;
   now: () => number;
@@ -152,7 +151,7 @@ export function pacerTick(deps: PacerDeps): PaceDecision {
   }
 }
 
-export interface PacerStatus {
+interface PacerStatus {
   sha: string;
   since: string;
   /** The cap: a later deploy only happens when the deployer fails. */
