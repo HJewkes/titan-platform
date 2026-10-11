@@ -150,3 +150,78 @@ describe("the merge guard after a seat released a g10-adversary hold", () => {
     expect(await guard.reason(githubPort(fakeGitHub({ repo: REPO }).wire), REPO, 1, "main", MOVED)).toBeUndefined();
   });
 });
+
+describe("the merge guard failing closed on a g10-adversary run", () => {
+  /** A bare run on PR 1, at `head`, whose probe answers by base branch and counts its calls. */
+  function bare(head = MOVED, answer: (input: CarryInput) => CarryResult = () => FIX_PUSH) {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
+    const store = new ShepherdStore(db);
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: head });
+    store.register({ repo: REPO, pr: 1, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    const probes: CarryInput[] = [];
+    const guard = adversaryGuard({ store: () => store, carry: async (input) => (probes.push(input), answer(input)) });
+    const port = holdingPort(githubPort(fake.wire), () => store, guard);
+    return { db, store, fake, guard, probes, merge: () => port.merge(REPO, 1, head, "squash") };
+  }
+
+  it("keeps the released line across a repoint, so the replacing run still re-holds a fix push", async () => {
+    const r = bare();
+    r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+    r.store.release("run-1", { actor: "seat", headSha: REVIEWED });
+
+    r.store.repoint("run-1", "run-2");
+
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.probes).toHaveLength(1);
+    expect(r.store.byRun("run-2")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
+  it("re-holds when legacy history let a hold of another class overwrite an unreleased adversary hold", async () => {
+    const r = bare();
+    r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+    r.db.prepare("INSERT INTO shepherd_event (run_id, repo, pr, kind, reason, actor, at) VALUES ('run-1', ?, 1, 'hold', ?, 'owner', '2026-01-01T00:00:00Z')").run(REPO, STALL);
+    r.db.prepare("UPDATE shepherd_registration SET hold_reason = ? WHERE run_id = 'run-1'").run(STALL);
+
+    r.store.release("run-1", { actor: "owner", headSha: MOVED });
+
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.fake.pr(1).merged).toBe(false);
+  });
+
+  it("re-holds after an adversary release that named no head", async () => {
+    const r = bare(REVIEWED);
+    r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+
+    r.store.release("run-1", { actor: "seat" });
+
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdReason).toContain(`covers ${REVIEWED}`);
+  });
+
+  it("probes again on main a head proven clean only onto another base branch, and re-holds a fix push there", async () => {
+    const r = bare(MOVED, ({ baseRef }) => (baseRef === "evil" ? CLEAN_MERGE_UP : FIX_PUSH));
+    r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+    r.store.release("run-1", { actor: "seat", headSha: REVIEWED });
+
+    const onEvil = await r.guard.reason(githubPort(r.fake.wire), REPO, 1, "evil", MOVED);
+
+    expect(onEvil).toBeUndefined();
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.probes.map((probe) => probe.baseRef)).toEqual(["evil", "main"]);
+  });
+
+  it("does not read a finished run on the same branch as the run of another PR", async () => {
+    const r = bare();
+    const { headRef } = r.fake.pr(1);
+    r.db.prepare("DELETE FROM shepherd_registration WHERE run_id = 'run-1'").run();
+    r.store.register({ repo: REPO, pr: 9, branch: headRef, runId: "run-9", task: "demo/9", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    r.store.hold("run-9", ADVERSARY, undefined, { actor: "seat" });
+    r.store.release("run-9", { actor: "seat", headSha: REVIEWED });
+
+    await r.merge();
+
+    expect(r.fake.pr(1).merged).toBe(true);
+  });
+});

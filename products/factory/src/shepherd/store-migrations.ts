@@ -36,11 +36,13 @@ const TP2239_DDL = `
     run_id    TEXT NOT NULL,
     from_head TEXT NOT NULL,
     head      TEXT NOT NULL,
+    base_ref  TEXT NOT NULL,
+    base      TEXT NOT NULL,
     at        TEXT NOT NULL,
-    PRIMARY KEY (run_id, from_head, head)
+    PRIMARY KEY (run_id, from_head, head, base_ref)
   );`;
 
-/** A hold kept under a run's `g10-adversary` hold, and the heads proven clean merge-ups of a head the seat released it at. */
+/** A hold kept under a run's `g10-adversary` hold, and the heads proven clean merge-ups of a head the seat released it at, per base branch. */
 export function holdSlotsMigration(version = 19): Migration {
   return { version, name: "factory:shepherd_hold_slots_vouch", up: (db) => db.exec(TP2239_DDL) };
 }

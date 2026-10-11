@@ -209,7 +209,7 @@ describe("shepherd review", () => {
     const first = await ask(w);
     await vi.waitFor(() => expect(w.store.byRun(w.runId)?.reviewRequest?.takenAt).not.toBeNull(), { timeout: 5_000 });
     const repeat = await ask(w);
-    w.store.release(w.runId);
+    w.store.release(w.runId, { headSha: H1 });
     await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
 
     expect(first).toEqual({ ok: true, data: { runId: w.runId, head: H1, requested: true } });

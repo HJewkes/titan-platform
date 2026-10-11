@@ -84,14 +84,14 @@ describe("a g10-adversary hold the seat released", () => {
 
     expect(await run({ head: MOVED })).toEqual({ reheld: false });
     expect(store.byRun("run-1")?.held).toBe(false);
-    expect(store.vouchedLine("run-1", REVIEWED)).toEqual(new Set([REVIEWED, MOVED]));
+    expect(store.vouchedLine("run-1", REVIEWED, "main")).toEqual(new Set([REVIEWED, MOVED]));
   });
 
   it("stays released at the head it was released at, and at a head already shown clean", async () => {
     const { store, run } = rig("fix-push", REVIEWED);
 
     expect(await run({ head: REVIEWED })).toEqual({ reheld: false });
-    store.vouch("run-1", REVIEWED, MOVED);
+    store.vouch("run-1", { fromHead: REVIEWED, head: MOVED, baseRef: "main", base: MAIN });
     expect(await run({ head: MOVED })).toEqual({ reheld: false });
     expect(store.byRun("run-1")?.held).toBe(false);
   });
@@ -172,13 +172,14 @@ describe("a g10-adversary hold the seat released", () => {
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
-  it("leaves a hold another seat placed during the probe, with its reviewer, and writes no re-hold", async () => {
+  it("reads the run again after another seat holds during the probe, re-holds over that hold, and keeps it with its reviewer", async () => {
     const other = "g10-review: auth change; TP-9";
     const { store, run } = rig("fix-push", MOVED, (s) => void s.hold("run-1", other, "sec-audit-review"));
 
-    expect(await run({ head: MOVED })).toEqual({ reheld: false });
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.eventsOf("run-1").filter((event) => event.kind === "hold")).toHaveLength(3);
+    store.release("run-1", { headSha: MOVED });
     expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: other, holdReviewer: "sec-audit-review" });
-    expect(store.eventsOf("run-1").filter((event) => event.kind === "hold")).toHaveLength(2);
   });
 
   it("reads the run again and re-holds when a stray release lands during the probe", async () => {

@@ -19,11 +19,26 @@ export function writeSlotRow(db: Db, runId: string, { top, parked }: HoldSlots, 
   return db.prepare(update).run(top ? 1 : 0, top?.reason ?? null, top?.reviewer ?? null, parked?.reason ?? null, parked?.reviewer ?? null, at, runId).changes;
 }
 
-export function recordVouch(db: Db, runId: string, fromHead: string, head: string, at: string): void {
-  db.prepare("INSERT INTO shepherd_vouch (run_id, from_head, head, at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING").run(runId, fromHead, head, at);
+/** A probe's proof that `head` is a clean merge-up of `fromHead` onto `base`, a commit it found on `baseRef`. */
+export interface Vouch {
+  fromHead: string;
+  head: string;
+  baseRef: string;
+  base: string;
 }
 
-export function vouchedLine(db: Db, runId: string, fromHead: string): Set<string> {
-  const rows = VouchRows.parse(db.prepare("SELECT head FROM shepherd_vouch WHERE run_id = ? AND from_head = ?").all(runId, fromHead));
+export function recordVouch(db: Db, runId: string, { fromHead, head, baseRef, base }: Vouch, at: string): void {
+  db.prepare("INSERT INTO shepherd_vouch (run_id, from_head, head, base_ref, base, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING").run(runId, fromHead, head, baseRef, base, at);
+}
+
+/** A proof on another base branch vouches for nothing here: its base commit was only shown to be on that branch. */
+export function vouchedLine(db: Db, runId: string, fromHead: string, baseRef: string): Set<string> {
+  const rows = VouchRows.parse(db.prepare("SELECT head FROM shepherd_vouch WHERE run_id = ? AND from_head = ? AND base_ref = ?").all(runId, fromHead, baseRef));
   return new Set([fromHead, ...rows.map((row) => row.head)]);
+}
+
+/** A run's hold history and proofs move with its registration, so the replacing run reads the same released line. */
+export function repointRunRows(db: Db, runId: string, newRunId: string): void {
+  db.prepare("UPDATE shepherd_event SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+  db.prepare("UPDATE shepherd_vouch SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
 }

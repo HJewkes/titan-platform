@@ -30,9 +30,10 @@ export function adversaryGuard(deps: AdversaryGuardDeps): AdversaryGuard {
   return {
     async reason(_port, repo, pr, baseRef, head, branch) {
       const store = deps.store();
-      const registration = store.byPr(repo, pr) ?? (branch === undefined ? undefined : store.byBranch(repo, branch));
+      const waiting = branch === undefined ? undefined : store.byBranch(repo, branch);
+      const registration = store.byPr(repo, pr) ?? (waiting?.pr === null ? waiting : undefined);
       if (!registration || head === undefined) return undefined;
-      const rehold = await adversaryRehold(store, registration.runId, head, (released) => deps.carry({ repo, baseRef, fromHead: released, head }));
+      const rehold = await adversaryRehold(store, registration.runId, { head, baseRef: async () => baseRef }, (released) => deps.carry({ repo, baseRef, fromHead: released, head }));
       if (!rehold) return undefined;
       if (store.holdIfUnchanged(registration.runId, rehold.mark, rehold.reason, { actor: SHEPHERD_ACTOR, headSha: head })) reheld.add(prKey(repo, pr));
       return rehold.reason;

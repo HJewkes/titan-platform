@@ -2,7 +2,7 @@ import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
-import { readSlots, recordVouch, vouchedLine, writeSlotRow } from "./hold-slot-rows.js";
+import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, afterRelease, type HoldSlots, type SlotHold } from "./hold-slots.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
@@ -202,12 +202,13 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Points a registration, and the authors recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors, hold events and proofs recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
       if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+      repointRunRows(this.db, runId, newRunId);
     });
     move();
     return this.byRun(newRunId)!;
@@ -222,9 +223,10 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Lifts the hold that gates; a hold parked under it gates in its place. */
+  /** Lifts the hold that gates, and records its reason; a hold parked under it gates in its place. */
   release(runId: string, by: EventContext = {}): Registration {
-    this.db.transaction(() => this.writeSlots(runId, afterRelease(readSlots(this.db, runId)), { kind: "release", reason: null }, by))();
+    const lift = (slots: HoldSlots) => this.writeSlots(runId, afterRelease(slots), { kind: "release", reason: slots.top?.reason ?? null }, by);
+    this.db.transaction(() => lift(readSlots(this.db, runId)))();
     return this.byRun(runId)!;
   }
 
@@ -248,14 +250,14 @@ export class ShepherdStore implements HoldLookup {
     return this.db.transaction(() => latestChangeId(this.db, runId) === mark && (this.placeHold(runId, { reason, reviewer: null }, by), true))();
   }
 
-  /** Records that a probe proved `head` a clean merge-up carrying `fromHead`'s tree; a repeat changes nothing. */
-  vouch(runId: string, fromHead: string, head: string): void {
-    recordVouch(this.db, runId, fromHead, head, this.stamp());
+  /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
+  vouch(runId: string, proof: Vouch): void {
+    recordVouch(this.db, runId, proof, this.stamp());
   }
 
-  /** `fromHead` and every head recorded as a clean merge-up of it for the run. */
-  vouchedLine(runId: string, fromHead: string): Set<string> {
-    return vouchedLine(this.db, runId, fromHead);
+  /** `fromHead` and every head recorded as a clean merge-up of it onto `baseRef` for the run. */
+  vouchedLine(runId: string, fromHead: string, baseRef: string): Set<string> {
+    return vouchedLine(this.db, runId, fromHead, baseRef);
   }
 
   /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */

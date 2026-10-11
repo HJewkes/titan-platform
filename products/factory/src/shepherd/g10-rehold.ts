@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { adversaryRehold, ownReholdAt } from "./adversary-anchor.js";
+import { adversaryRehold, ownReholdAt, type PrAt } from "./adversary-anchor.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
@@ -20,7 +20,7 @@ type ReholdInput = z.infer<typeof ReholdInput>;
 const ReholdResult = z.looseObject({ reheld: z.boolean(), reason: z.string().optional(), seat: z.string().optional() });
 type ReholdResult = z.infer<typeof ReholdResult>;
 
-type Probe = (released: string) => Promise<CarryResult>;
+type Probe = (released: string, baseRef: string) => Promise<CarryResult>;
 
 /**
  * A hold the seat released at one head stays released only across clean merge-ups of it (`adversaryRehold`). Any other
@@ -33,9 +33,11 @@ export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now
     codeRoute(G10_REHOLD_STEP, deps.now, async (raw: unknown, signal) => {
       const input = ReholdInput.parse(raw);
       const probes = new Map<string, Promise<CarryResult>>();
-      const probeFrom: Probe = (released) => probes.get(released) ?? probes.set(released, carryFrom(deps, input, released, { ...probe, signal })).get(released)!;
+      const probeFrom: Probe = (released, baseRef) => probes.get(released) ?? probes.set(released, carry({ repo: input.repo, baseRef, fromHead: released, head: input.head }, { ...probe, signal })).get(released)!;
+      let read: Promise<string | undefined> | undefined;
+      const baseRef = () => (read ??= deps.port.getPr(input.repo, input.pr).then((pr) => pr.baseRef, () => undefined));
       for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
-        const outcome = await reholdOnce(deps, input, probeFrom);
+        const outcome = await reholdOnce(deps, { head: input.head, baseRef }, input, probeFrom);
         if (outcome) return outcome;
       }
       return { reheld: false };
@@ -44,20 +46,15 @@ export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now
 }
 
 /** One read and one compare-and-swap; undefined when a hold or release landed meanwhile and the run must be read again. */
-async function reholdOnce(deps: Pick<ShepherdDeps, "store">, input: ReholdInput, probeFrom: Probe): Promise<ReholdResult | undefined> {
+async function reholdOnce(deps: Pick<ShepherdDeps, "store">, at: PrAt, input: ReholdInput, probeFrom: Probe): Promise<ReholdResult | undefined> {
   const store = deps.store.get();
   const seat = singleSeat(store.byRun(input.runId)?.policy.seat);
   const own = ownReholdAt(store.eventsOf(input.runId), input.head);
   if (own) return { reheld: true, reason: own, ...(seat && { seat }) };
-  const rehold = await adversaryRehold(store, input.runId, input.head, probeFrom);
+  const rehold = await adversaryRehold(store, input.runId, at, probeFrom);
   if (!rehold) return { reheld: false };
   if (!store.holdIfUnchanged(input.runId, rehold.mark, rehold.reason, { actor: SHEPHERD_ACTOR, headSha: input.head })) return undefined;
   return { reheld: true, reason: rehold.reason, ...(seat && { seat }) };
-}
-
-async function carryFrom(deps: Pick<ShepherdDeps, "port">, input: ReholdInput, released: string, options: CarryOptions): Promise<CarryResult> {
-  const baseRef = await deps.port.getPr(input.repo, input.pr).then((read) => read.baseRef, () => undefined);
-  return baseRef === undefined ? { equal: false } : carry({ repo: input.repo, baseRef, fromHead: released, head: input.head }, options);
 }
 
 /** Re-applies the hold when the head moved off a released `g10-adversary` hold, and tells the seat once. */

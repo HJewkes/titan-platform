@@ -29,14 +29,14 @@ describe("shepherd event history", () => {
     ]);
   });
 
-  it("writes one release event per release and keeps the earlier hold", () => {
+  it("writes one release event per release, naming the hold it lifted, and keeps the earlier hold", () => {
     const { db, store } = open();
     store.hold("run-1", "r1");
 
     store.release("run-1");
     store.hold("run-1", "r2");
 
-    expect(eventsSince(db).map((event) => [event.kind, event.reason])).toEqual([["hold", "r1"], ["release", null], ["hold", "r2"]]);
+    expect(eventsSince(db).map((event) => [event.kind, event.reason])).toEqual([["hold", "r1"], ["release", "r1"], ["hold", "r2"]]);
   });
 
   it("writes a release event when a compare-and-swap release succeeds, and none when it does not", () => {

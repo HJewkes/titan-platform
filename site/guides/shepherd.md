@@ -740,7 +740,8 @@ the seat is told. A pure merge-up keeps the release: the head's first parent is 
 (or a head already shown pure, so a chain of merge-ups stays released), its second parent is on the base branch, and its tree equals
 `git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
 show, including a failed probe, counts as a move and re-holds. Each head the probe shows pure is
-recorded in the factory database, so the CI read and the merge check read the same line of heads. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
+recorded in the factory database with its base branch and base commit, so the CI read and the
+merge check read the same line of heads. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
 hold or release landed since the step read the run, and when one did, the step reads the run again.
 
 The merge enforces the same rule, so it does not depend on a CI read seeing the head. Every merge
@@ -762,8 +763,14 @@ A run keeps two holds at once: the `g10-adversary` hold and one hold of any othe
 `shepherd hold` replaces only the hold of its own kind, and both are recorded. While both are in
 force, the `g10-adversary` hold gates and shows; a `release` lifts it, and the other hold, with its
 `--reviewer`, then gates until it is released in turn. So an owner's or another seat's hold survives
-the seat's adversary release, and an adversary hold placed over another hold never drops it. A run whose only
-`g10-adversary` release has no head (made before `--head` was required) is never re-held.
+the seat's adversary release, and an adversary hold placed over another hold never drops it. A
+`g10-adversary` release with no head (made before `--head` was required) vouches for no head, so
+the next merge check re-holds and the seat releases again with `--head`.
+
+The rule fails closed. The run's registration row decides whether a hold gates now; the events
+decide only where the seat released. A repoint carries the run's events and proofs to the run that
+replaces it. A proof is kept per base branch, so a head shown clean onto another branch is probed
+again onto the pull request's own base. A release records the hold it lifted.
 
 ### Ask for Shepherd's own review {#own-review}
 

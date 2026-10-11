@@ -16,7 +16,7 @@ const EVENT_DDL = `
   CREATE INDEX shepherd_event_run ON shepherd_event (run_id, id);
   CREATE INDEX shepherd_event_repo ON shepherd_event (repo, id);`;
 
-/** The append-only history of holds, releases, freezes and thaws; nothing here is ever updated or deleted. */
+/** The append-only history of holds, releases, freezes and thaws; nothing is deleted, and only a repoint rewrites a run id, to the run that replaces it. */
 export function shepherdEventMigration(version = 16): Migration {
   return { version, name: "factory:shepherd_event", up: (db) => db.exec(EVENT_DDL) };
 }
