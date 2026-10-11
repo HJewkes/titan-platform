@@ -1,5 +1,15 @@
 # @titan-design/session-miner
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
 ## 0.7.0
 
 ### Minor Changes

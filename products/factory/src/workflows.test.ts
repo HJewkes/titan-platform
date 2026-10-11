@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, type FactoryHost } from "./host.js";
 import { DEFAULT_EXIT_GRACE_MS, DEFAULT_SESSION_START_TIMEOUT_MS, DEFAULT_VERDICT_TIMEOUT_MS, REVIEW_STEPS, reviewPhase } from "./shepherd/review.js";
+import type { MachineStopWatch } from "./shepherd/machine-stop.js";
 import { shepherdPrWorkflow } from "./shepherd/pr.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import type { SeatBook } from "./shepherd/seats.js";
@@ -174,6 +175,9 @@ interface Reviewed {
   elapsed: number;
 }
 
+/** A machine-stop ledger that answers the same each time; the default keeps the real machine's load out of these runs. */
+const watchReading = (stop: string | undefined): MachineStopWatch => ({ note: () => undefined, sample: () => undefined, stoppedSince: () => stop });
+
 /** Runs the review phase for PR 1 at H1 on the production route set, over a fake GitHub and a fake clock. */
 async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDeps> = {}, repo: string = REPO): Promise<Reviewed> {
   const fake = fakeGitHub();
@@ -181,7 +185,7 @@ async function reviewWith(scene: ReviewScene, overrides: Partial<FactoryRouteDep
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
   let clock = 0;
-  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined }, ...overrides });
+  const routes = configuredRoutes(scene.env, { port: githubPort(fake.wire), now: () => clock, sleep: async (ms) => void (clock += ms), spawnGate: { admit: () => undefined }, machineStop: watchReading(undefined), ...overrides });
   const workflow = defineWorkflow({ name: "review-wiring", steps: REVIEW_STEPS, run: async (ctx) => void (await reviewPhase(ctx, { repo, pr: 1, round: 0, headSha: H1 })) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [workflow], routes, gatePollMs: 5 });
   hosts.push(host);
@@ -195,6 +199,7 @@ const REVIEW_INTENT = `sh-review-intent:${H1}`;
 const REVIEW = `sh-review:${H1}`;
 const AWAIT_VERDICT = `sh-await-verdict:${H1}`;
 const MERGE_EVIDENCE = `sh-merge-evidence:${H1}`;
+const REVIEW_STOP = `sh-review-stop:${H1}`;
 
 describe("configuredRoutes with shepherd.review", () => {
   it("spawns a reviewer through the configured agent-chat in the seat's checkout and takes its MERGE to the evidence step", async () => {
@@ -295,6 +300,14 @@ describe("configuredRoutes with shepherd.review", () => {
     expect(result(AWAIT_VERDICT)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
     expect(elapsed).toBeGreaterThanOrEqual(30_000);
     expect(elapsed).toBeLessThan(DEFAULT_EXIT_GRACE_MS);
+  });
+
+  it("asks the shared machine-stop ledger about a reviewer that ended with no verdict while the stop held", async () => {
+    const scene = reviewScene({ review: { profile: PROFILE, verdictTimeoutMs: 30_000 }, lastWords: "Still reading." });
+
+    const { result } = await reviewWith(scene, { machineStop: watchReading("load5 40 (limit 28)") });
+
+    expect(result(REVIEW_STOP)).toEqual({ kind: "stopped", reason: "load5 40 (limit 28)", lifted: true });
   });
 
   it("gives up one exit grace after the roster shows the reviewer exited with no verdict, long before the verdict timeout", async () => {
