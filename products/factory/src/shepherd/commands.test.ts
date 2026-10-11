@@ -482,6 +482,21 @@ describe("shepherd.merge", () => {
     expect(released).toMatchObject({ ok: true, data: { held: null } });
   });
 
+  it("records the caller's actor on a hold and a release, and unknown when a client sends none", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    const reason = "no-reviewer: review step recorded none; TP-1";
+
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason, actor: "seat-a" });
+    await w.call("shepherd.release", { repo: REPO, pr: 1, actor: "seat-b" });
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason });
+    await w.call("shepherd.release", { repo: REPO, pr: 1 });
+
+    const events = w.routes.shepherd!.store.get().eventsOf(runId);
+    expect(events.map((event) => [event.kind, event.actor])).toEqual([["hold", "seat-a"], ["release", "seat-b"], ["hold", "unknown"], ["release", "unknown"]]);
+  });
+
   it("records a hold's --reviewer and refuses one with whitespace", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
