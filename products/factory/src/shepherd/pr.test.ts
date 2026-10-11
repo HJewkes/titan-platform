@@ -20,7 +20,7 @@ import type { ParkPort } from "./park.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { MAX_REPAIRS } from "./route-table.js";
+import { MAX_REPAIRS, MAX_THROTTLED_ROUNDS } from "./route-table.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { VERSION_PACKAGES_BRANCH, type PackageRegistry } from "./release.js";
 import { mergeVerdict } from "./review.js";
@@ -520,6 +520,31 @@ describe("the route table in a run", () => {
 
     expect(asked).toHaveLength(3);
     expect(gate?.prompt).toContain(`Policy shepherd-route/failed-rounds: 3 review rounds failed at this task: the last at ${H1} ended with no reviewer verdict`);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("does not count one review throttled by the machine stop, so two silent rounds after it still merge on the fourth review", async () => {
+    const asked: ReviewRequest[] = [];
+    const silent: Verdict[] = [{ kind: "none", cause: "throttled" }, { kind: "none", cause: "timeout" }, { kind: "none", cause: "timeout" }];
+    const w = autoWorld(async (ctx, request) => (asked.push(request), silent[asked.length - 1] ?? merges(ctx, request)));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked).toHaveLength(4);
+    expect(w.fake.effects.merge).toBe(1);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toBeUndefined();
+  });
+
+  it(`counts throttled reviews past ${MAX_THROTTLED_ROUNDS}, so a machine stop that never settles opens approve-merge`, async () => {
+    const asked: ReviewRequest[] = [];
+    const w = autoWorld(async (_ctx, request) => (asked.push(request), { kind: "none", cause: "throttled" }));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(asked).toHaveLength(MAX_THROTTLED_ROUNDS + 3);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`the last at ${H1} ended with no reviewer verdict while the machine stop held`);
     expect(w.fake.effects.merge).toBe(0);
   });
 

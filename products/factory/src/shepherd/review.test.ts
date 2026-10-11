@@ -49,6 +49,7 @@ import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
+import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -1272,6 +1273,7 @@ describe("reviewPhase", () => {
     roles?: ReviewerRoles;
     /** Collects the checkout dirs removed; no scene touches the real filesystem. */
     removals?: string[];
+    machineStop?: MachineStopWatch;
   }
 
   async function review(scene: Scene) {
@@ -1289,7 +1291,7 @@ describe("reviewPhase", () => {
       for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1819,6 +1821,51 @@ describe("reviewPhase", () => {
 
     expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
     expect(dispatch.spawns).toHaveLength(1);
+  });
+
+  describe("a reviewer that goes silent under the machine stop", () => {
+    const STOP = "load5 40 (limit 28)";
+    /** A watch that reads each load5 in turn, then keeps the last; nothing was noted before the step reads it. */
+    const loads = (...readings: number[]): MachineStopWatch => machineStopWatch({ read: () => ({ load5: readings.length > 1 ? readings.shift()! : readings[0]! }) });
+
+    it("is throttled once the stop lifts, so the same head is reviewed again", async () => {
+      const { verdicts, resultOf } = await review({ dispatch: fakeDispatch(), read: () => [], machineStop: loads(40, 40, 1) });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "throttled", reason: `the machine stop held while the reviewer ran (${STOP})` }]);
+      expect(resultOf(`sh-review-stop:${H1}`)).toEqual({ kind: "stopped", reason: STOP, lifted: true });
+    });
+
+    it("stays a timeout on a healthy machine", async () => {
+      const { verdicts, resultOf } = await review({ dispatch: fakeDispatch(), read: () => [], machineStop: loads(1) });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(resultOf(`sh-review-stop:${H1}`)).toEqual({ kind: "clear" });
+    });
+
+    it("stays a timeout when the stop has not lifted by the hold ceiling", async () => {
+      const { verdicts, resultOf } = await review({ dispatch: fakeDispatch(), read: () => [], machineStop: loads(40) });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "timeout" }]);
+      expect(resultOf(`sh-review-stop:${H1}`)).toEqual({ kind: "stopped", reason: STOP, lifted: false });
+    });
+
+    it("never reads the stop for a verdict below the depth floor, which is the reviewer's answer", async () => {
+      const read: Scene["read"] = (input, dispatch) => [{ ...said(dispatch.agents[0]!, verdictAt(input.head), 20_000), investigativeCalls: 0 }];
+
+      const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), read, policy: AUTO, machineStop: loads(40, 40, 1) });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: DEPTH_FLOOR_REASON }]);
+      expect(stepIds).not.toContain(`sh-review-stop:${H1}`);
+    });
+
+    it("never reads the stop for a hold's reviewer, whom Shepherd did not start", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+
+      const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(crew(external)), read: () => [], hold: "security: awaiting the audit", holdReviewer: external.name, machineStop: loads(40, 40, 1) });
+
+      expect(verdicts).toEqual([{ kind: "none", cause: "external-hold" }]);
+      expect(stepIds).not.toContain(`sh-review-stop:${H1}`);
+    });
   });
 
   describe("a seat reviewer outside Shepherd's dispatch", () => {
