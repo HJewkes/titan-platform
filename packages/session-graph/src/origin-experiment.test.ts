@@ -34,9 +34,9 @@ const spawned = (arm: string, extra: Partial<ResolvedOrigin> = {}): ResolvedOrig
 
 describe("origin experiment columns", () => {
   it("are added by a named migration", () => {
-    const applied = graph.db.prepare("SELECT name FROM _migration").all() as { name: string }[];
+    const applied = graph.db.prepare("SELECT name FROM _migration").pluck().all();
 
-    expect(applied.map((r) => r.name)).toContain(ORIGIN_EXPERIMENT_MIGRATION_NAME);
+    expect(applied).toContain(ORIGIN_EXPERIMENT_MIGRATION_NAME);
   });
 
   it("stores experiment, predecessor and follow-up counts from an origin resolution", async () => {
