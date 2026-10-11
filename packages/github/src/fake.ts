@@ -163,8 +163,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
   } as Omit<FakeGitHub, "wire"> as FakeGitHub;
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
   const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
-    fake.calls.push(name);
-    const fault = fake.readFaults[name]?.shift();
+    const fault = (fake.calls.push(name), fake.readFaults[name]?.shift());
     if (fault) throw fault;
     return answer();
   };
@@ -271,8 +270,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
 
 /** A commit is known when it was created, is a ref's tip, or has runs or statuses; only a unique prefix expands, as on GitHub. */
 function resolveCommit(fake: FakeGitHub, runs: Map<string, CheckRun[]>, sha: string): string | null {
-  const known = new Set([...fake.commits.keys(), ...fake.refs.values(), ...runs.keys(), ...fake.statuses.keys()]);
-  const matches = [...known].filter((full) => full.startsWith(sha));
+  const matches = [...new Set([...fake.commits.keys(), ...fake.refs.values(), ...runs.keys(), ...fake.statuses.keys()])].filter((full) => full.startsWith(sha));
   return matches.length === 1 ? matches[0]! : null;
 }
 

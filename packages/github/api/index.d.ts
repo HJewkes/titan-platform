@@ -115,6 +115,12 @@ interface Commit {
     /** The committer date; for a commit GitHub made on merge, when it landed. Absent when the wire does not report it. */
     committedAt?: string;
 }
+/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
+interface CommitStatus {
+    context: string;
+    /** `success`, `pending`, `failure` or `error`. */
+    state: string;
+}
 /** A commit on the default branch with its full message, subject line first. */
 interface LoggedCommit {
     sha: string;
@@ -193,12 +199,6 @@ interface CheckRun {
     workflowRunId: number | null;
     url: string;
 }
-/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
-interface CommitStatus {
-    context: string;
-    /** `success`, `pending`, `failure` or `error`. */
-    state: string;
-}
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
 interface HeadRef {
     branch: string;
@@ -274,9 +274,8 @@ interface GitHubWire {
         id: number;
     }>;
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
-    /** The full sha of the commit `sha` abbreviates; null when GitHub has no such commit (HTTP 422 or 404). */
+    /** Null when GitHub has no such commit (HTTP 422 or 404). */
     resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
-    /** Every page of the combined status, which holds the newest status per context. */
     listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
     getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
     getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
@@ -356,7 +355,6 @@ interface GitHubPort {
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
     /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
     resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
-    /** The newest commit status per context on `sha`. */
     commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
     /** The last `lines` lines of an Actions job's log. */
     jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;

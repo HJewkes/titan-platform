@@ -9,8 +9,8 @@ import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
-export type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
+import type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
+export type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -66,13 +66,6 @@ export interface CheckRun {
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
   workflowRunId: number | null;
   url: string;
-}
-
-/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
-export interface CommitStatus {
-  context: string;
-  /** `success`, `pending`, `failure` or `error`. */
-  state: string;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
@@ -145,9 +138,8 @@ export interface GitHubWire {
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
-  /** The full sha of the commit `sha` abbreviates; null when GitHub has no such commit (HTTP 422 or 404). */
+  /** Null when GitHub has no such commit (HTTP 422 or 404). */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
-  /** Every page of the combined status, which holds the newest status per context. */
   listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
@@ -210,7 +202,6 @@ export interface GitHubPort {
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
   /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
-  /** The newest commit status per context on `sha`. */
   commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
   /** The last `lines` lines of an Actions job's log. */
   jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
