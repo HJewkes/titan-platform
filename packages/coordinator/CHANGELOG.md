@@ -1,5 +1,11 @@
 # @titan-design/coordinator
 
+## 0.3.0
+
+### Minor Changes
+
+- 7a03e62: Add `HARD_STOPS` and `hardStopsIn`: one detection pattern for each of the twelve hard-stop classes, so hosts share a single detector.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -36,7 +36,7 @@ function itemRefusal(host: FactoryHost, item: ProofItem, inBatch: boolean): stri
 }
 
 /** What kind of gate this is when it may not ride in a batch; undefined for a plain merge gate. */
-function batchRefusal(gate: GateRecord): string | undefined {
+export function batchRefusal(gate: GateRecord): string | undefined {
   const step = stepOf(gate.id);
   if (HARDWARE_STEP.test(step)) return "a hardware gate";
   if (RELEASE_STEPS.has(step)) return "a release gate";
