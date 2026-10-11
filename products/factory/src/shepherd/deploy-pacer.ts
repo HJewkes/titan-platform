@@ -9,12 +9,15 @@ export const DEPLOY_QUIET_MS = 15 * 60_000;
 /** Steady merges or busy runs never hold a wanted deploy longer than this. */
 export const DEPLOY_MAX_WAIT_MS = 90 * 60_000;
 
+/** Times must parse: an unparseable one would make every window comparison false and spawn at once. */
+const instant = z.iso.datetime({ offset: true });
+
 export const DeployWanted = z.object({
   sha: z.string(),
-  firstAt: z.string(),
-  lastAt: z.string(),
+  firstAt: instant,
+  lastAt: instant,
   spawnedSha: z.string().optional(),
-  spawnedAt: z.string().optional(),
+  spawnedAt: instant.optional(),
 });
 
 export type DeployWanted = z.infer<typeof DeployWanted>;
@@ -38,10 +41,14 @@ interface PaceInput {
 const iso = (ms: number): string => new Date(ms).toISOString();
 const ms = (at: string): number => Date.parse(at);
 
-/** A repeat of the same sha keeps `lastAt`, so a replayed step cannot extend the wait. */
+/**
+ * A repeat of the same sha keeps `lastAt`, so a replayed step cannot extend the wait.
+ * A sha after a spawn starts its own window: the old `firstAt` is past the cap, and keeping it would spawn once per merge while the spawned deploy drains.
+ */
 export function noteWanted(previous: DeployWanted | undefined, sha: string, now: number): DeployWanted {
   if (previous?.sha === sha) return previous;
-  return { sha, firstAt: previous?.firstAt ?? iso(now), lastAt: iso(now) };
+  const firstAt = previous?.spawnedSha === undefined ? previous?.firstAt : undefined;
+  return { sha, firstAt: firstAt ?? iso(now), lastAt: iso(now) };
 }
 
 /** A record before the request is an older deploy of the same sha, such as a rollback, so it does not answer this one. */

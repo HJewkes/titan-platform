@@ -151,12 +151,35 @@ describe("deploy pacer", () => {
     expect(decide(replayed, 15)).toEqual({ kind: "spawn", sha: "a" });
   });
 
-  it("a new sha keeps firstAt and drops the spawn mark", () => {
+  it("a new sha after a spawn starts its own window and drops the spawn mark", () => {
     const spawned = wantedAt("a", 0, 0, { spawnedSha: "a", spawnedAt: new Date(15 * MIN).toISOString() });
 
     const next = noteWanted(spawned, "b", 20 * MIN);
 
-    expect(next).toEqual(wantedAt("b", 0, 20));
+    expect(next).toEqual(wantedAt("b", 20, 20));
+  });
+
+  it("steady merges while a spawned deploy is unserved spawn once per cap, not once per merge", () => {
+    const p = pacer();
+    for (let minute = 0; minute <= 240; minute += 5) {
+      p.ticksUntil(minute);
+      p.merge(`sha-${minute}`);
+    }
+
+    p.ticksUntil(240);
+
+    expect(p.spawns.map(([minute]) => minute)).toEqual([90, 180]);
+  });
+
+  it("a wanted file with an unparseable time reads as none instead of spawning at once", () => {
+    const p = pacer();
+    p.store.files.set(PATH, JSON.stringify({ sha: "a", firstAt: "not a date", lastAt: new Date(0).toISOString() }));
+    p.world.now = MIN;
+
+    const decision = p.tick();
+
+    expect(decision).toEqual({ kind: "idle" });
+    expect(p.spawns).toEqual([]);
   });
 
   it("a torn wanted file reads as none and is rewritten on the next request", () => {
