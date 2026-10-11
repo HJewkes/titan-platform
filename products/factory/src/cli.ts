@@ -3,7 +3,7 @@ import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { userInfo } from "node:os";
-import { parsePort } from "./cli-options.js";
+import { parsePort, withStatusFilters } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
@@ -197,12 +197,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
-  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line")
+  withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line"))
     .option("--deploy", "with --json, print { rows, deploy } so the deploy block rides along; without it --json stays the bare row array")
-    .option("--active", "only runs not done, failed or cancelled")
-    .option("--phase <a,b>", "only runs in one of these phases")
-    .option("--branch-prefix <p>", "only runs whose branch starts with p, with or without the agent-chat/ prefix")
-    .option("--task <id>", "only runs for this task: a bare ID in any initiative, or slug/ID")
     .action((target: string | undefined, opts: ShepherdOpts & StatusFlags) =>
       runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts, () => statusNarrow(opts)));
   verb("list", "the watch list")

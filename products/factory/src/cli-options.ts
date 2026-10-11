@@ -1,5 +1,5 @@
 import { isAbsolute } from "node:path";
-import { InvalidArgumentError } from "commander";
+import { InvalidArgumentError, type Command } from "commander";
 
 /** node's directory goes on the job's PATH, where ":" separates entries. */
 export function parseNodePath(value: string): string {
@@ -25,4 +25,13 @@ export function parseDuration(value: string): number {
   const match = /^([0-9]+)(ms|s|m|h)$/.exec(value);
   if (!match) throw new InvalidArgumentError("expected a duration such as 45m, 90s or 1h");
   return Number(match[1]) * DURATION_UNIT_MS[match[2]!]!;
+}
+
+/** The `shepherd status` row filters; `statusNarrow` in shepherd/status-filter.ts applies them. */
+export function withStatusFilters(command: Command): Command {
+  return command
+    .option("--active", "only runs not done, failed or cancelled")
+    .option("--phase <a,b>", "only runs in one of these phases")
+    .option("--branch-prefix <p>", "only runs whose branch starts with p, with or without the agent-chat/ prefix")
+    .option("--task <id>", "only runs for this task: a bare ID in any initiative, or slug/ID");
 }
