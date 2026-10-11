@@ -561,7 +561,10 @@ The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. 
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
 `merge-into-feature-base` lets its runs merge into a base other than the default branch (see
-[Feature base](#feature-base)). `--policy`
+[Feature base](#feature-base)). A Version Packages pull request merges on its passed
+preflight only when the seat's `grants_extra` also includes `release-merge`, because that
+merge publishes to npm. Under `auto` without it, the release gates as
+`shepherd-release/no-release-grant`. `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
 `rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown

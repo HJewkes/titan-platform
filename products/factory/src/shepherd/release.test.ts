@@ -21,7 +21,8 @@ import { ShepherdStore, holdReviewerMigration, shepherdMigration, sliceMigration
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("version-packages-head");
-const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
+const MERGE_ON_GREEN: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
+const AUTO: EffectivePolicy = { ...MERGE_ON_GREEN, release: "grant" };
 const onNpm = (...names: string[]): PackageRegistry => async (name) => names.includes(name);
 
 const BASE = fakeSha("base");
@@ -140,7 +141,8 @@ describe("decideRelease", () => {
     ["a preflight at another head", AUTO, HEAD, { ...passed, head: fakeSha("other") }, "gate", "no-preflight"],
     ["a blocked preflight", AUTO, HEAD, { ...passed, blockers: ["@demo/widget is not on registry.npmjs.org yet"] }, "gate", "preflight-blocked"],
     ["an owner-gate seat", OWNER_GATE_POLICY, HEAD, passed, "gate", "owner-gate"],
-    ["a passed preflight under an auto seat", AUTO, HEAD, passed, "allow", "version-packages"],
+    ["a passed preflight under an auto seat without the release-merge grant", MERGE_ON_GREEN, HEAD, passed, "gate", "no-release-grant"],
+    ["a passed preflight under an auto seat with the release-merge grant", AUTO, HEAD, passed, "allow", "version-packages"],
   ])("decides %s as %s by shepherd-release/%s", (_name, policy, head, found, outcome, rowId) => {
     expect(decideRelease(policy, head, found)).toMatchObject({ outcome, rule: { table: "shepherd-release", rowId } });
   });

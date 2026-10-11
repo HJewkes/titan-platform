@@ -229,12 +229,13 @@ export async function releaseVerdict(ctx: WorkflowContext, target: ReleaseTarget
 
 const releaseRule = (rowId: string): PolicyRule => ({ table: "shepherd-release", rowId, version: 1 });
 
-/** The release gate: a passed preflight at this exact head merges under an auto seat; every other row is the owner's. */
+/** The release gate: a passed preflight at this exact head merges under an auto seat with the release-merge grant; every other row is the owner's. */
 export function decideRelease(effective: EffectivePolicy, headSha: string | undefined, preflight: ReleasePreflight | undefined): GateDecision {
   if (effective.merge === "never") return { outcome: "deny", rule: releaseRule("never"), reason: `seat ${effective.seat} policy never allows a merge` };
   if (headSha === undefined || preflight?.head !== headSha) return { outcome: "gate", rule: releaseRule("no-preflight"), reason: `no release preflight ran at ${headSha ?? "an unknown head"}` };
   if (preflight.blockers.length > 0) return { outcome: "gate", rule: releaseRule("preflight-blocked"), reason: `the release cannot land yet: ${preflight.blockers.join("; ")}` };
   if (effective.merge !== "auto") return { outcome: "gate", rule: releaseRule("owner-gate"), reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner` };
+  if (effective.release !== "grant") return { outcome: "gate", rule: releaseRule("no-release-grant"), reason: `seat ${effective.seat} lacks the release-merge grant, so the release waits for the owner` };
   return { outcome: "allow", rule: releaseRule("version-packages"), reason: `the release preflight passed at ${headSha} for ${preflight.packages.length} public packages` };
 }
 
