@@ -193,6 +193,12 @@ interface CheckRun {
     workflowRunId: number | null;
     url: string;
 }
+/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
+interface CommitStatus {
+    context: string;
+    /** `success`, `pending`, `failure` or `error`. */
+    state: string;
+}
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
 interface HeadRef {
     branch: string;
@@ -268,6 +274,10 @@ interface GitHubWire {
         id: number;
     }>;
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+    /** The full sha of the commit `sha` abbreviates; null when GitHub has no such commit (HTTP 422 or 404). */
+    resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+    /** Every page of the combined status, which holds the newest status per context. */
+    listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
     getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
     getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
@@ -344,6 +354,10 @@ interface GitHubPort {
         id: number;
     }>;
     getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+    /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
+    resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+    /** The newest commit status per context on `sha`. */
+    commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
     /** The last `lines` lines of an Actions job's log. */
     jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
     updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
@@ -413,6 +427,51 @@ declare class WriteRetriesExhaustedError extends Error {
 declare function isPassing(run: CheckRun): boolean;
 /** One head can carry several runs per name (a superseded run is `cancelled`); only the newest counts. */
 declare function latestPerName(runs: readonly CheckRun[]): CheckRun[];
+
+interface CiVerdictInput {
+    /** The base branch's required contexts; an empty list judges every run and status instead. */
+    rules: RequiredChecks;
+    runs: readonly CheckRun[];
+    statuses: readonly CommitStatus[];
+}
+/** `reasons` names the pending contexts, or each red one as `name=conclusion`; empty when green. */
+interface CiVerdict {
+    verdict: "green" | "red" | "pending";
+    reasons: string[];
+}
+/**
+ * Pure. With required contexts, each must be green the way a merge gate judges it and other runs are ignored;
+ * without any, every run and status must pass and at least one check-run must exist. Pending outranks red, so a
+ * red verdict names every failure, not just the first to finish.
+ */
+declare function ciVerdict(input: CiVerdictInput): CiVerdict;
+/** Rulesets first, then classic protection; both read a free-plan 403 as none, so an empty list means the all-runs rule applies. */
+declare function loadRequiredContexts(port: GitHubPort, repo: RepoSlug, branch: string): Promise<RequiredChecks>;
+
+interface CiWaitOptions {
+    repo: RepoSlug;
+    /** Seven to 40 lower-case hex characters; an abbreviation is expanded before the first poll. */
+    sha: string;
+    /** The branch whose required contexts apply; the repo's default branch when absent. */
+    base?: string;
+    timeoutSeconds: number;
+    intervalSeconds: number;
+    now: () => number;
+    sleep: (ms: number) => Promise<void>;
+    /** Told of each failed read, which is retried on the next poll and never decides the outcome. */
+    onReadError?: (error: unknown) => void;
+}
+type CiWaitOutcome = "green" | "red" | "timeout" | "unknown-sha";
+/** `line` is what `ci-wait` prints: on stdout for green, red and timeout, on stderr for an unknown sha. */
+interface CiWaitResult {
+    outcome: CiWaitOutcome;
+    line: string;
+}
+/**
+ * Polls until the sha's CI is green or red, or the next poll would pass the deadline. The required contexts
+ * are read once. A sha GitHub does not have ends at once, because its status would read pending forever.
+ */
+declare function ciWait(port: GitHubPort, options: CiWaitOptions): Promise<CiWaitResult>;
 
 /** The GitHub Actions app; on this owner's repos every required check comes from it. */
 declare const GITHUB_ACTIONS_APP_ID = 15368;
@@ -515,6 +574,8 @@ interface FakeEffects {
     merge: number;
     rerunFailedJobs: number;
 }
+/** Reads a test can make fail, for a caller that must treat a failed read as transient. */
+type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit";
 interface FakeGitHub {
     wire: GitHubWire;
     effects: FakeEffects;
@@ -569,6 +630,10 @@ interface FakeGitHub {
         request: CreateCheckRunRequest;
     }[];
     commits: Map<string, Commit>;
+    /** Sha to its combined status, newest per context. */
+    statuses: Map<string, CommitStatus[]>;
+    /** Errors the next calls of a read throw, one per call, before it answers. */
+    readFaults: Partial<Record<FakeFaultyRead, Error[]>>;
     refs: Map<string, string>;
     /** Job id to full log text, for `getJobLog`. */
     jobLogs: Map<number, string>;
@@ -643,4 +708,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type Commit, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, backoffMs, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };
+export { type AppCredentials, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };

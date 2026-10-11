@@ -8,7 +8,7 @@ import { pause } from "./write-read-back.js";
 import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkTimestamp } from "./validate.js";
+import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
 import type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
 export type { Commit, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
 
@@ -66,6 +66,13 @@ export interface CheckRun {
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
   workflowRunId: number | null;
   url: string;
+}
+
+/** The newest commit status per context on a sha, as the combined status endpoint reports it. */
+export interface CommitStatus {
+  context: string;
+  /** `success`, `pending`, `failure` or `error`. */
+  state: string;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
@@ -138,6 +145,10 @@ export interface GitHubWire {
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** The full sha of the commit `sha` abbreviates; null when GitHub has no such commit (HTTP 422 or 404). */
+  resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+  /** Every page of the combined status, which holds the newest status per context. */
+  listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
   getWorkflowRunStatus(repo: RepoSlug, runId: number): Promise<string>;
   getJobLog(repo: RepoSlug, jobId: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<void>;
@@ -197,6 +208,10 @@ export interface GitHubPort {
   /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
+  resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
+  /** The newest commit status per context on `sha`. */
+  commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
   /** The last `lines` lines of an Actions job's log. */
   jobLogTail(repo: RepoSlug, jobId: number, lines: number): Promise<string>;
   updateBranch(repo: RepoSlug, number: number, expectedHeadSha: string): Promise<WriteResult>;
@@ -272,6 +287,8 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     latestCheckRuns: async (repo, sha) => latestPerName(await wire.listCheckRuns(repoOf(repo), checkSha("sha", sha))),
     createCheckRun: async (repo, request) => wire.createCheckRun(repoOf(repo), { ...request, headSha: checkSha("headSha", request.headSha), conclusion: checkConclusion(request.conclusion) }),
     getCommit: async (repo, sha) => wire.getCommit(repoOf(repo), checkSha("sha", sha)),
+    resolveCommit: async (repo, sha) => wire.resolveCommit(repoOf(repo), checkShaPrefix("sha", sha)),
+    commitStatuses: async (repo, sha) => wire.listCommitStatuses(repoOf(repo), checkSha("sha", sha)),
     jobLogTail: async (repo, jobId, lines) => tail(await wire.getJobLog(repoOf(repo), checkPositiveInt("jobId", jobId)), checkPositiveInt("lines", lines)),
     updateBranch: async (repo, number, expectedHeadSha) => updateBranch(wire, repoOf(repo), pr(number), checkSha("expectedHeadSha", expectedHeadSha)),
     pushEmptyCommit: async (repo, branch, expectedHeadSha, message) => pushEmptyCommit(wire, repoOf(repo), checkRef("branch", branch), checkSha("expectedHeadSha", expectedHeadSha), message),
