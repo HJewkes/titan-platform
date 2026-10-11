@@ -216,7 +216,7 @@ describe("shepherd status filters", () => {
     const status = await cli(["--db", dbPath, "shepherd", "status", "--active", "--branch-prefix", "pc-", "--json", "--port", String(await deadPort())], deps);
 
     expect(status.code).toBe(EXIT.OK);
-    expect((JSON.parse(status.out) as { runId: string }[]).map((row) => row.runId)).toEqual([ids.livePc]);
+    expect(JSON.parse(status.out)).toEqual([expect.objectContaining({ runId: ids.livePc })]);
   });
 
   it("an unknown --phase is a usage error naming the valid phases", async () => {

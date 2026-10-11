@@ -35,8 +35,7 @@ import type { MainWatchPorts } from "./shepherd/main-watch.js";
 import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd } from "./shepherd/format.js";
-import { filterRows, parsePhases, type StatusFilter } from "./shepherd/status-filter.js";
-import type { WatchRow } from "./shepherd/view.js";
+import { statusNarrow, unfiltered, type Narrow, type StatusFlags } from "./shepherd/status-filter.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
@@ -173,9 +172,6 @@ interface ShepherdOpts {
   deploy?: boolean;
 }
 
-type StatusOpts = ShepherdOpts & { active?: boolean; phase?: string; branchPrefix?: string; task?: string };
-type Narrow = (data: unknown) => unknown;
-
 type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
@@ -204,8 +200,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--phase <a,b>", "only runs in one of these phases")
     .option("--branch-prefix <p>", "only runs whose branch starts with p, with or without the agent-chat/ prefix")
     .option("--task <id>", "only runs for this task: a bare ID in any initiative, or slug/ID")
-    .action((target: string | undefined, opts: StatusOpts) =>
-      runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts, () => narrowRows(statusFilterOf(opts))));
+    .action((target: string | undefined, opts: ShepherdOpts & StatusFlags) =>
+      runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts, () => statusNarrow(opts)));
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
@@ -252,14 +248,7 @@ async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Ve
   return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
-function statusFilterOf({ active, phase, branchPrefix, task }: StatusOpts): StatusFilter {
-  return { active, phases: phase === undefined ? undefined : parsePhases(phase), branchPrefix, task };
-}
-
-/** No flag leaves the data untouched, so a script reading plain `status` sees exactly what serve sent. */
-const narrowRows = (filter: StatusFilter): Narrow => (Object.values(filter).some((value) => value !== undefined) ? (data) => filterRows(data as WatchRow[], filter) : (data) => data);
-
-async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts, narrowOf: () => Narrow = () => (data) => data): Promise<void> {
+async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts, narrowOf: () => Narrow = () => unfiltered): Promise<void> {
   let args: object;
   let narrow: Narrow;
   try {
@@ -272,7 +261,7 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   const probe = await probeServe(opts.port, verbs.deps.serveWaitMs);
   const health = probe.state === "up" ? probe.health : null;
   const deploy = name === "shepherd.status" ? deployBlockOf(health) : undefined;
-  if (health) return verbs.setExit(printShepherd(verbs.io, name, narrowed(await postRpc(opts.port, name, args), narrow), opts, deploy));
+  if (health) return verbs.setExit(printShepherd(verbs.io, name, await postRpc(opts.port, name, args), opts, deploy, narrow));
   if (name === "shepherd.register" && !opts.offline) {
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
@@ -280,11 +269,9 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   await verbs.withHost(async (host, routes) => {
     const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
     if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
-    return printShepherd(verbs.io, name, narrowed(envelope, narrow), opts, deploy);
+    return printShepherd(verbs.io, name, envelope, opts, deploy, narrow);
   });
 }
-
-const narrowed = (envelope: JsonEnvelope<unknown>, narrow: Narrow): JsonEnvelope<unknown> => (envelope.ok ? { ...envelope, data: narrow(envelope.data) } : envelope);
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
 const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
@@ -296,13 +283,14 @@ function unansweredMessage(probe: ServeProbe, port: number): string {
 }
 
 /** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
-function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
+function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined, narrow: Narrow): number {
   if (!envelope.ok) {
     io.stderr(`error: ${envelope.error}\n`);
     return exitOf(envelope.code);
   }
-  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
-  else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
+  const data = narrow(envelope.data);
+  if (!opts.json) io.stdout(`${formatShepherd(name, data)}${deploy ? deploySummary(deploy) : ""}`);
+  else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: data, deploy } : data, null, 2)}\n`);
   return name === "shepherd.waiting" && overdueOwnerGates(WaitingSchema.parse(envelope.data)).length > 0 ? EXIT.FAILURE : EXIT.OK;
 }
 
