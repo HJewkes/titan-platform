@@ -2,4 +2,4 @@
 "@titan-design/factory": patch
 ---
 
-The Shepherd ci-red wake names the failing jobs and the local command that reproduces each (`pnpm dag:check` and `pnpm dead:check` for dag-check, `pnpm capabilities:check` for validate), and tells the implementer to run it before pushing.
+The Shepherd ci-red wake counts the failing check runs and, for the known CI jobs (validate, lint-types, dag-check, egress-scan), names the scripts that reproduce each and asks the implementer to rerun them before pushing, as the brief's test rule says. Check-run names stay inside the fenced CI log and never reach the instruction text.

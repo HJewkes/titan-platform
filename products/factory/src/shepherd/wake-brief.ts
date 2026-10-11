@@ -41,18 +41,25 @@ async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun
   return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
 }
 
-/** What reproduces each failing CI job locally; a job named here fails in seconds on the implementer's machine, before a push spends a CI cycle. */
+/**
+ * The script behind each CI job, so the implementer reruns the failing one before a push spends a CI cycle.
+ * Only these fixed keys reach `reason`: a check run's name is outside text (a branch can rename a job, any app can post a run), so it stays in the fenced log.
+ * Each entry names scripts, not commands; the appended test rule decides where and how they run.
+ */
 const LOCAL_REPRO: Readonly<Record<string, string>> = {
-  "dag-check": "`pnpm dag:check` and `pnpm dead:check`",
-  validate: "`pnpm capabilities:check` and the tests the log names (`timeout 300 npx vitest run <files>`)",
-  "lint-types": "`pnpm lint:types`",
-  "egress-scan": "`pnpm egress:scan range <base sha> <head sha>`",
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  "lint-types": "the `lint:types` script",
+  "dag-check": "the `dag:check` and `dead:check` scripts",
+  "egress-scan": "the `egress:scan` script over the PR's commit range",
 };
 
-function localRepro(failing: readonly CheckRun[]): string {
-  const known = failing.flatMap((run) => (LOCAL_REPRO[run.name] === undefined ? [] : [`${run.name}: ${LOCAL_REPRO[run.name]}`]));
-  if (known.length === 0) return "";
-  return ` Reproduce it locally and run it before you push: ${known.join("; ")}.`;
+function failingJobsLine(failing: readonly CheckRun[]): string {
+  if (failing.length === 0) return "";
+  const names = new Set(failing.map((run) => run.name));
+  const known = Object.keys(LOCAL_REPRO).filter((job) => names.has(job));
+  const repro = known.map((job) => `${job}: ${LOCAL_REPRO[job]}`).join("; ");
+  const listed = known.length === 0 ? "" : ` Rerun the failing job's checks before you push, run as your test rule below says: ${repro}.`;
+  return ` ${failing.length} failing check run(s), named in the log below.${listed}`;
 }
 
 async function ciLogs(port: GitHubPort, input: WakeFacts, failing: readonly CheckRun[]): Promise<string> {
@@ -237,8 +244,7 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
   switch (input.kind) {
     case "ci-red": {
       const failing = await failingRuns(port, input);
-      const jobs = failing.length === 0 ? "" : ` Failing: ${failing.map((run) => run.name).join(", ")}.`;
-      return { reason: `CI failed at head ${head}.${jobs}${localRepro(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }
     case "review":
       return withReviewComments(port, input, reviewWake(input));
