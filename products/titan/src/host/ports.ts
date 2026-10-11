@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, readFile, realpath } from "node:fs/promises";
+import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 
 export interface ExecResult {
@@ -14,6 +14,10 @@ export interface HostPorts {
   /** Rejects with an error whose `code` is "ENOENT" when the command is not on PATH. */
   exec(command: string, args: string[]): Promise<ExecResult>;
   readFile(path: string): Promise<string>;
+  /** What sits at a path, symlinks followed, or null when nothing does. Never opens the file. */
+  stat(path: string): Promise<"file" | "dir" | null>;
+  /** The entry names in a directory, or none when it cannot be listed. */
+  list(dir: string): Promise<string[]>;
   /** The real path of a command on PATH, symlinks resolved, or null. */
   which(command: string): Promise<string | null>;
 }
@@ -29,6 +33,8 @@ export function realHostPorts(env: NodeJS.ProcessEnv): HostPorts {
   return {
     exec: (command, args) => execCommand(command, args, env),
     readFile: (path) => readFile(path, "utf8"),
+    stat: statKind,
+    list: (dir) => readdir(dir).catch(() => []),
     which: (command) => whichCommand(command, env),
   };
 }
@@ -42,6 +48,14 @@ function execCommand(command: string, args: string[], env: NodeJS.ProcessEnv): P
       resolve({ code: typeof error.code === "number" ? error.code : 1, stdout, stderr });
     });
   });
+}
+
+async function statKind(path: string): Promise<"file" | "dir" | null> {
+  try {
+    return (await stat(path)).isDirectory() ? "dir" : "file";
+  } catch {
+    return null;
+  }
 }
 
 async function whichCommand(command: string, env: NodeJS.ProcessEnv): Promise<string | null> {
