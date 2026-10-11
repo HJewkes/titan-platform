@@ -1,19 +1,17 @@
 import { parseChannelTag } from "@titan-design/session-read";
 import type { ToolUse } from "./transcript.js";
 
-const TRIGGERS = [
-  "local-cmd",
-  "cron-heartbeat",
-  "boot",
-  "bg-task-notification",
-  "agent-chat system msg",
-  "peer-seat msg",
-  "operator/ram relay",
-  "own-agent report",
-  "one-shot-timer",
-  "owner/direct",
-] as const;
-export type Trigger = (typeof TRIGGERS)[number];
+export type Trigger =
+  | "local-cmd"
+  | "cron-heartbeat"
+  | "boot"
+  | "bg-task-notification"
+  | "agent-chat system msg"
+  | "peer-seat msg"
+  | "operator/ram relay"
+  | "own-agent report"
+  | "one-shot-timer"
+  | "owner/direct";
 
 /** The prompt prefix the trigger rules read, as the tick audit did. */
 const TRIGGER_SCAN_CHARS = 400;
