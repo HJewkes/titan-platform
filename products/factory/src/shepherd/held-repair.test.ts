@@ -180,4 +180,17 @@ describe("a head pushed while the run is held runs CI and review at it, with the
 
     expect(heldWaitResult(world)).toEqual({ moved: true, headSha: H2 });
   });
+
+  it("the held wait records no head when the PR closes", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const { ports } = seatPorts();
+    const world = heldWorld(fake, ports, phases(fake, []));
+    await waitingOnHold(world);
+
+    fake.pr(1).state = "closed";
+    await vi.waitFor(() => expect(heldWaitResult(world)).toBeDefined());
+
+    expect(heldWaitResult(world)).toEqual({ moved: true });
+  });
 });
