@@ -21,10 +21,7 @@ const SPECS: Record<ViewKey, Omit<ViewSpec, "key">> = {
   tasks: { label: "Tasks", title: "Tasks", icon: <KanbanIcon size={ICON_SIZE} /> },
   sessions: { label: "Sessions", title: "Sessions", icon: <HistoryIcon size={ICON_SIZE} /> },
   agents: { label: "Agents", title: "Agents", icon: <BotIcon size={ICON_SIZE} /> },
-  knowledge: {
-    label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} />,
-    planned: { summary: "Notes and sources with a reader and search, and a Graph tab.", tasks: "TP-869 and TP-871a" },
-  },
+  knowledge: { label: "Notes", title: "Knowledge", icon: <BrainIcon size={ICON_SIZE} /> },
   rounds: { label: "Rounds", title: "Review rounds", icon: <TargetIcon size={ICON_SIZE} /> },
 };
 
