@@ -131,6 +131,8 @@ export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js"
 export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
+export type { Assignment, CostPerOutcomeOptions, CostPerOutcomeReport, OutcomeBucket } from "./cost-per-outcome.js";
+export { assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
 export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
