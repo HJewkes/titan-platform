@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backtest, type OpenTask, type ScoredOrigin } from "./backtest.js";
+import { backtest, type OpenTask, type OriginResult, type ScoredOrigin } from "./backtest.js";
 import { classTable } from "./class-table.js";
 import type { ThroughputRow } from "./rows.js";
 
@@ -72,9 +72,9 @@ function shuffled<T>(items: readonly T[], seed: number): T[] {
   return out;
 }
 
-const scored = (origin: unknown): ScoredOrigin => {
-  expect((origin as ScoredOrigin).status).toBe("scored");
-  return origin as ScoredOrigin;
+const scored = (origin: OriginResult | undefined): ScoredOrigin => {
+  if (origin?.status !== "scored") throw new Error(`expected a scored origin, got ${origin?.status}`);
+  return origin;
 };
 
 describe("backtest on a stationary synthetic corpus", () => {
