@@ -2,9 +2,9 @@ import { PhaseSchema, type Phase } from "./step-phase.js";
 import type { WatchRow } from "./view.js";
 
 /** The phases a run never leaves; `--active` drops them. */
-export const TERMINAL_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
+const TERMINAL_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
-export interface StatusFilter {
+interface StatusFilter {
   active?: boolean;
   phases?: readonly Phase[];
   branchPrefix?: string;
