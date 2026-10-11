@@ -183,6 +183,7 @@ describe("advisory read from shepherd.repos", () => {
     spoil(file);
     await settle();
 
+    expect(w.host.runtime.status(runId)?.status).toBe("running");
     expect(w.host.runtime.status(runId)?.currentStep).toMatch(/^merge:/);
     expect(w.fake.effects.merge).toBe(0);
     expect(w.writes).toEqual([]);
