@@ -91,4 +91,6 @@ export interface ShepherdDeps {
   suiteRules?: SuiteRules;
   /** Where reviewers extract checkouts and how a run's dir is removed; absent means the app data dir and `rm -rf`. */
   reviewCheckouts?: { root?: string; remove?: RemoveDir };
+  /** True for a repo where Shepherd never writes to a branch: no successor is spawned and no head ref deleted. */
+  advisory?: (repo: string) => boolean;
 }

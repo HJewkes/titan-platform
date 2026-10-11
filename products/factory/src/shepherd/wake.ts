@@ -134,6 +134,7 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);

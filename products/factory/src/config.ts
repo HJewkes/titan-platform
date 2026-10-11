@@ -210,7 +210,12 @@ function parseJson(path: string): unknown {
 }
 
 export function loadConfig(path: string): FactoryConfig {
-  if (!existsSync(path)) return {};
+  return readConfig(path) ?? {};
+}
+
+/** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
+export function readConfig(path: string): FactoryConfig | undefined {
+  if (!existsSync(path)) return undefined;
   const raw = parseJson(path);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);

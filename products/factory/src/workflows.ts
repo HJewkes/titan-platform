@@ -6,7 +6,7 @@ import { systemAuditPorts } from "./audit/production.js";
 import { auditRoutes } from "./audit/routes.js";
 import { measurementAuditWorkflow } from "./audit/workflow.js";
 import { ownCheckout } from "./cli-service.js";
-import { configPath, factoryStateDir, loadConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
+import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import type { WorkflowDefinition } from "./definition.js";
 import type { DatabaseTenant, FactoryRoutes } from "./host.js";
 import type { CleanupPorts } from "./shepherd/cleanup.js";
@@ -36,7 +36,7 @@ import { configuredRoles } from "./shepherd/reviewer-roles.js";
 import { agentChatRoster, type RosterReader } from "./shepherd/roster.js";
 import { transcriptReviewerReader } from "./shepherd/reviewer-reader.js";
 import { boundCheckout, loadSeatBook, lookupSeat, type SeatBook } from "./shepherd/seats.js";
-import { advisoryGuard, advisoryPort, advisoryUpdates, type IsAdvisory } from "./shepherd/advisory.js";
+import { advisoryGuard, advisoryPort, advisoryUpdates, stickyAdvisory, type AdvisoryRead, type IsAdvisory } from "./shepherd/advisory.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./shepherd/account-store.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./shepherd/account-limit.js";
 import { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, reviewRequestMigration, shepherdMigration, sliceMigration, shepherdStoreRef, type ShepherdStoreRef } from "./shepherd/store.js";
@@ -130,7 +130,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
     if (route.match === "update-branch") return advisoryUpdates(route, isAdvisory, timing);
     return route.match === "merge" ? waitWhileHeld(rideTrain(route, { train, port: deps.port, held, timing }), held, timing, openHeadRead(deps.port, deps.snapshot), (repo, pr, sha) => reviewPendingAt(holds().byPr(repo, pr), sha)) : route;
   });
-  const shepherdDeps = { port: deps.port, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits };
+  const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
   const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
@@ -157,7 +157,7 @@ export function bindAll(db: Db, ...refs: { bind(db: Db): () => void }[]): () => 
   return () => unbinds.forEach((unbind) => unbind());
 }
 
-/** `shepherd.repos` with lower-cased keys, re-read per call as the seat book is. */
+/** `shepherd.repos` as the config file writes it, re-read per call as the seat book is. */
 type UnseatedRepos = () => Record<string, ShepherdRepoConfig>;
 
 /** The PR registered as its frozen repo's fix; a store the host has not bound reads as no fixer, so the review queues like any other. */
@@ -210,10 +210,10 @@ function configuredCleanup(shepherd: FactoryConfig["shepherd"], env: NodeJS.Proc
   return { agents: agentChatCleanupAgents(agentChatBin, undefined, undefined, roster), tasks: activeWorkTasks({ origin: activeWorkOrigin(env) }) };
 }
 
-/** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`, and is cut from the reviewer's checkout. */
-function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate, checkoutFor: (repo: string) => string | undefined): FactoryRouteDeps["mainRed"] {
+/** Fix tasks go over active-work's loopback rpc; a fixer needs the configured `agent-chat`. */
+function configuredMainRed(shepherd: FactoryConfig["shepherd"], env: NodeJS.ProcessEnv, roster: RosterReader | undefined, gate: SpawnGate): FactoryRouteDeps["mainRed"] {
   const agentChatBin = shepherd?.agentChatBin;
-  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), checkoutFor, ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster, gate })) }) };
+  return { tasks: activeWorkFixTasks({ origin: activeWorkOrigin(env) }), ...(agentChatBin && { fixers: fixersOver(agentChatAgents(agentChatBin, { configDir: shepherd.fixer?.configDir, roster, gate })) }) };
 }
 
 function lowerKeys<V>(record: Record<string, V> | undefined): Record<string, V> | undefined {
@@ -238,7 +238,7 @@ const ownBin = (): string => fileURLToPath(new URL("./bin.js", import.meta.url))
 export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<FactoryRouteDeps> = {}): FactoryRoutes {
   const { postMerge, shepherd } = loadConfig(configPath(env));
   const seats = overrides.seats ?? ((): SeatBook => loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}));
-  const repos: UnseatedRepos = () => lowerKeys(loadConfig(configPath(env)).shepherd?.repos) ?? {};
+  const repos: UnseatedRepos = () => loadConfig(configPath(env)).shepherd?.repos ?? {};
   const agentChatBin = shepherd?.agentChatBin;
   const roster = overrides.roster ?? (agentChatBin ? agentChatRoster(agentChatBin, { now: overrides.now }) : undefined);
   const machineStop = overrides.machineStop ?? machineStopWatch({ read: () => readMachine(), limits: configuredSpawnLimits(shepherd) });
@@ -247,13 +247,21 @@ export function configuredRoutes(env: NodeJS.ProcessEnv, overrides: Partial<Fact
   const freeze = overrides.freeze ?? freezeStoreRef(overrides.now);
   const review = configuredReview(shepherd, seats, repos, roster, gate, fixerReview(freeze, store), machineStop);
   const cleanup = configuredCleanup(shepherd, env, roster);
-  const mainRed = configuredMainRed(shepherd, env, roster, gate, (repo) => boundCheckout(seats(), repo, repos()));
+  const mainRed = configuredMainRed(shepherd, env, roster, gate);
   const exitNotice = agentChatBin ? configuredExitNotice(seats, agentChatAgents(agentChatBin, { roster }), shepherd?.hubSeat) : undefined;
   const redeploy = systemDeployer({ bin: ownBin(), stateDir: factoryStateDir(env) });
   const port = overrides.port ?? githubPort(ghCliWire());
   const pacing = tickPacing({ now: overrides.now });
   const snapshot = prSnapshot(port, { now: overrides.now, tickMs: pacing.tickMs });
-  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: (repo) => repos()[repo.toLowerCase()]?.advisory === true, ...overrides, seats });
+  return factoryRoutesFor({ port, snapshot, pacing, store, freeze, postMerge, review, agentChatBin, agentChatConfigDir: shepherd?.fixer?.configDir, roster, spawnGate: gate, cleanup, mainRed, redeploy, exitNotice, flakyChecks: lowerKeys(shepherd?.flakyChecks), reviewCheck: reviewCheckPort(shepherd?.reviewCheck), suiteRules: suiteRules(localBasementSuite(env)), advisory: stickyAdvisory(configuredAdvisory(env)), ...overrides, seats });
+}
+
+/** Each read takes the file afresh; no file reads as undefined, never as a map with no advisory repo in it. */
+function configuredAdvisory(env: NodeJS.ProcessEnv): AdvisoryRead {
+  return () => {
+    const config = readConfig(configPath(env));
+    return config && (config.shepherd?.repos ?? {});
+  };
 }
 
 let cachedRoutes: FactoryRoutes | undefined;

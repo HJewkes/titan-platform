@@ -1,12 +1,15 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type GitHubPort } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
-import { factoryRoutesFor } from "../workflows.js";
+import { configuredRoutes, factoryRoutesFor, type FactoryRouteDeps } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
-import { AdvisoryRefused, advisoryGuard, advisoryPort } from "./advisory.js";
+import { AdvisoryRefused, advisoryGuard, advisoryPort, stickyAdvisory } from "./advisory.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -33,8 +36,13 @@ const locator: SourceTextLocator = {
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 };
 const MERGE_SHA = fakeSha("advisory-merge");
+const H2 = fakeSha("advisory-head-2");
 const hosts: FactoryHost[] = [];
-afterEach(() => hosts.splice(0).forEach((host) => host.close()));
+const dirs: string[] = [];
+afterEach(() => {
+  hosts.splice(0).forEach((host) => host.close());
+  dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
 
 interface World {
   fake: FakeGitHub;
@@ -55,12 +63,18 @@ function recordingPort(fake: FakeGitHub, writes: string[]): GitHubPort {
     merge: async (...args) => (writes.push("merge"), port.merge(...args)),
     updateBranch: async (...args) => (writes.push("updateBranch"), port.updateBranch(...args)),
     pushEmptyCommit: async (...args) => (writes.push("pushEmptyCommit"), port.pushEmptyCommit(...args)),
+    deleteRef: async (...args) => (writes.push("deleteRef"), port.deleteRef(...args)),
     checkRuns: async (slug, sha) => (sha === MERGE_SHA && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(slug, sha)),
   };
 }
 
-/** PR 1 at H1 is green on a strict repo; its reviewer answers MERGE under an auto policy, so only the advisory flag stands between it and a merge. */
-function world(options: { behind?: boolean } = {}): World {
+type Routed = Pick<FactoryRouteDeps, "port" | "store" | "now" | "sleep" | "registry">;
+
+/**
+ * PR 1 at H1 is green on a strict repo; its reviewer answers MERGE under an auto policy, so only the advisory flag
+ * stands between it and a merge. `env` builds the production routes over that config home instead of the test's flag.
+ */
+function world(options: { behind?: boolean; env?: NodeJS.ProcessEnv } = {}): World {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.addPr({ headSha: H1, mergeSha: MERGE_SHA, behind: options.behind ?? false });
@@ -72,7 +86,8 @@ function world(options: { behind?: boolean } = {}): World {
   const store = shepherdStoreRef();
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
-  const routes = factoryRoutesFor({ port: recordingPort(fake, writes), store, now: () => clock, sleep: tick, registry: async () => true, advisory: (repo) => flag.advisory && repo === REPO });
+  const deps: Routed = { port: recordingPort(fake, writes), store, now: () => clock, sleep: tick, registry: async () => true };
+  const routes = options.env ? configuredRoutes(options.env, deps) : factoryRoutesFor({ ...deps, advisory: (repo) => flag.advisory && repo === REPO });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review, wake: async () => ({ kind: "unhandled", reason: "no agent in this test" }) }), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { fake, host, writes, reviews, flag, store: store.get() };
@@ -117,6 +132,20 @@ describe("an advisory repo under an auto policy", () => {
     expect(w.writes).toEqual([]);
   });
 
+  it("reviews a head pushed while the merge is held, and holds the new head too", async () => {
+    const w = world();
+    const runId = shepherd(w);
+    await heldAt(w, runId, /^merge:/);
+
+    w.fake.pr(1).headSha = H2;
+    await vi.waitFor(() => expect(w.reviews.asked).toBe(2), { timeout: 5_000 });
+    await heldAt(w, runId, /^merge:/);
+
+    expect(w.host.runtime.status(runId)?.status).toBe("running");
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.writes).toEqual([]);
+  });
+
   it("merges the held PR on its next poll once the flag is cleared", async () => {
     const w = world();
     const runId = shepherd(w);
@@ -127,6 +156,66 @@ describe("an advisory repo under an auto policy", () => {
 
     expect(w.writes).toEqual(["merge"]);
     expect(w.reviews.asked).toBe(1);
+  });
+});
+
+/** A config home whose `shepherd.repos` is `repos`; the returned writer rewrites the file in place. */
+function configHome(repos: object): { env: NodeJS.ProcessEnv; file: string } {
+  const home = mkdtempSync(join(tmpdir(), "factory-advisory-"));
+  dirs.push(home);
+  mkdirSync(join(home, "titan-factory"));
+  const file = join(home, "titan-factory", "config.json");
+  writeFileSync(file, JSON.stringify({ shepherd: { repos } }));
+  return { env: { XDG_CONFIG_HOME: home }, file };
+}
+
+describe("advisory read from shepherd.repos", () => {
+  it.each([
+    ["moved away", (file: string) => rmSync(file)],
+    ["half written", (file: string) => writeFileSync(file, '{"shepherd": {"rep')],
+    ["holding an entry that cannot be read", (file: string) => writeFileSync(file, JSON.stringify({ shepherd: { repos: { [REPO]: { advisory: "yes" } } } }))],
+  ])("keeps a held merge held while the config file is %s", async (_case, spoil) => {
+    const { env, file } = configHome({ [REPO]: { advisory: true } });
+    const w = world({ env });
+    const runId = shepherd(w);
+    await heldAt(w, runId, /^merge:/);
+
+    spoil(file);
+    await settle();
+
+    expect(w.host.runtime.status(runId)?.currentStep).toMatch(/^merge:/);
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.writes).toEqual([]);
+  });
+
+  it("holds the merge when a key that differs only in case is advisory and a later one is not", async () => {
+    const { env } = configHome({ [REPO]: { advisory: true }, [REPO.toUpperCase()]: { path: "/srv/checkouts/demo" } });
+    const w = world({ env });
+
+    const runId = shepherd(w);
+    await heldAt(w, runId, /^merge:/);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.writes).toEqual([]);
+  });
+});
+
+describe("stickyAdvisory", () => {
+  it("lets a successful read clear the flag, and keeps it through a read that throws or finds no file", () => {
+    const reads: (() => Record<string, { advisory?: boolean }> | undefined)[] = [() => ({ [REPO]: { advisory: true } }), () => undefined, () => { throw new Error("invalid config"); }, () => ({})];
+    const isAdvisory = stickyAdvisory(() => reads.shift()!());
+
+    const answers = [isAdvisory(REPO), isAdvisory(REPO), isAdvisory(REPO)];
+
+    expect(answers).toEqual([true, true, false]);
+  });
+
+  it("keeps a repo advisory that was never asked about before the file went missing", () => {
+    const reads: (() => Record<string, { advisory?: boolean }> | undefined)[] = [() => ({ [REPO]: { advisory: true } }), () => ({ [REPO]: { advisory: true } }), () => undefined];
+    const isAdvisory = stickyAdvisory(() => reads.shift()!());
+    isAdvisory("octo/other");
+
+    expect(isAdvisory(REPO)).toBe(true);
   });
 });
 
@@ -141,13 +230,14 @@ describe("advisoryGuard", () => {
 });
 
 describe("advisoryPort", () => {
-  it("refuses merge, updateBranch and pushEmptyCommit for an advisory repo, before GitHub sees them", async () => {
+  it("refuses merge, updateBranch, pushEmptyCommit and deleteRef for an advisory repo, before GitHub sees them", async () => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), (repo) => repo === REPO);
 
     await expect(port.merge(REPO, 1, H1, "squash")).rejects.toThrow(AdvisoryRefused);
     await expect(port.updateBranch(REPO, 1, H1)).rejects.toThrow(AdvisoryRefused);
     await expect(port.pushEmptyCommit(REPO, "topic", H1, "retrigger")).rejects.toThrow(AdvisoryRefused);
+    await expect(port.deleteRef(REPO, { branch: "topic", repo: REPO })).rejects.toThrow(AdvisoryRefused);
     expect(writes).toEqual([]);
   });
 
@@ -155,8 +245,8 @@ describe("advisoryPort", () => {
     const writes: string[] = [];
     const port = advisoryPort(recordingPort(fakeGitHub(), writes), () => false);
 
-    await Promise.allSettled([port.merge(REPO, 1, H1, "squash"), port.updateBranch(REPO, 1, H1), port.pushEmptyCommit(REPO, "topic", H1, "retrigger")]);
+    await Promise.allSettled([port.merge(REPO, 1, H1, "squash"), port.updateBranch(REPO, 1, H1), port.pushEmptyCommit(REPO, "topic", H1, "retrigger"), port.deleteRef(REPO, { branch: "topic", repo: REPO })]);
 
-    expect(writes).toEqual(["merge", "updateBranch", "pushEmptyCommit"]);
+    expect(writes).toEqual(["merge", "updateBranch", "pushEmptyCommit", "deleteRef"]);
   });
 });
