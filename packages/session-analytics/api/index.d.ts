@@ -17,7 +17,7 @@ interface PriceRow {
     output: number;
 }
 /** Bump on any edit to PRICE_TABLE. The cost report prints it in its footer. */
-declare const PRICE_TABLE_VERSION = 2;
+declare const PRICE_TABLE_VERSION = 3;
 declare const PRICE_TABLE: readonly PriceRow[];
 /**
  * The longest prefix that matches the model at an id boundary, then the latest row effective at `ts`.

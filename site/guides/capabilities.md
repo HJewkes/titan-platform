@@ -1051,8 +1051,8 @@ Key exports:
 - `serve`: `runMinerMcpStdio`, `serveMinerUntilSignal`, `serveOptions`, `startMiner`
 - `cli`: `runCli`
 - `graph-refresh`: `checkGraph`, `runGraphRefresh`, `spawnRefresh`
-- `insights/post-filter`: `normaliseStage`
-- +42 more in `products/session-miner/src/index.ts`
+- `tool-gap-weekly`: `diffWeeks`
+- +57 more in `products/session-miner/src/index.ts`
 
 <a id="cap-titan"></a>
 
