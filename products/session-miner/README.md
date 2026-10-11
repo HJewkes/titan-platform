@@ -90,6 +90,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
 | Q5 | `insights tool-errors` | error tool results and classifier denials per local day, by error class and by tool, with sessions and agents, and denials by classifier reason | `--transcript <seat>=<path>` (CLI only) |
+| Q6 | `insights round-trips` | per local day, a parent's follow-ups to the agents it spawned by class (`brief-fix`, `poll`, `correction`, `other`), and per PR the verdict sequence with FIX_FIRST rounds and re-reviews, plus verdicts with no PR line | none |
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 | Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
 | Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
@@ -171,6 +172,16 @@ tool, an MCP tool named by its last segment, with distinct sessions and agent-ch
 denials are also counted by their bracketed reason. Each `--transcript` adds the denials it holds
 that the graph has not already counted under the same `tool_use_id`, with the seat as the agent; it
 cannot be combined with `--session` or `--agent-prefix`. Q5 refuses `--role`.
+
+Q6 reads agent-chat's events table read-only, like Q7, and refuses `--session`, `--agent-prefix`
+and `--role`. A follow-up is a message in the window from an agent to one it spawned (the
+`agent_spawned` row, however long before `--since`). Its first 1500 characters are classed by the
+first match of `brief-fix` (a brief update, correction or "you missed"), `poll` (a status ask) and
+`correction` (the self-improve correction phrases), else `other`. Verdicts are messages with a
+`Verdict: <WORD>` line, grouped by their `PR:` line, `owner/repo#n` or a pull URL; a verdict
+without one is counted on its day only. Each PR lists its verdicts in order: FIX_FIRST rounds are
+the verdicts that are not MERGE, re-reviews every verdict after the first, and a first-pass merge a
+PR whose first verdict in the window is MERGE. Q6 is registered from `AGENT_CHAT_QUESTIONS`.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a

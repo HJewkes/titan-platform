@@ -1,5 +1,5 @@
 import { EXIT, defineCommand, type AnyCommand, type CliOption } from "@titan-design/registry";
-import { LIST_PRICE_CAVEAT, type CostReportOptions } from "@titan-design/session-analytics";
+import { LIST_PRICE_CAVEAT, type CostReportOptions, type ReportScope } from "@titan-design/session-analytics";
 import type { Db } from "@titan-design/store-sqlite";
 import { z, type ZodType } from "zod";
 import type { MinerConfig } from "../config.js";
@@ -94,6 +94,12 @@ export function utc(time: string | undefined): string | undefined {
 export function localDay(at: string | number): string {
   const date = new Date(at);
   return [date.getFullYear(), date.getMonth() + 1, date.getDate()].map((n) => String(n).padStart(2, "0")).join("-");
+}
+
+/** Questions that read agent-chat's files, not the session graph, would silently match nothing under session filters. */
+export function refuseSessionScope(question: string, scope: ReportScope | undefined, hint = "; narrow it with --seat"): void {
+  const given = Object.entries(scope ?? {}).filter(([, value]) => value !== undefined).map(([key]) => key);
+  if (given.length > 0) throw Object.assign(new Error(`${question} does not take ${given.join(", ")}${hint}`), { code: EXIT.DATAERR });
 }
 
 function refuseCliOnly(question: AnyInsight, options: Record<string, unknown>, ctx: MinerContext): void {

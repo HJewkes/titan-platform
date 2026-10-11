@@ -140,14 +140,16 @@ export interface FixtureMessage {
   actor: string;
   target: string;
   body: string;
+  /** Defaults to `message`; `agent_spawned` records `actor` spawning `target`. */
+  kind?: string;
 }
 
 /** An agent-chat events table holding these messages; returns its path. */
 export function seedEventsDb(file: string, messages: readonly FixtureMessage[]): string {
   const db = openDatabase(file);
   db.exec(EVENTS_TABLE_DDL);
-  const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, 'message', ?, ?, ?)");
-  for (const m of messages) insert.run(Date.parse(m.ts), m.actor, m.target, m.body);
+  const insert = db.prepare("INSERT INTO events (ts, kind, actor, target, body) VALUES (?, ?, ?, ?, ?)");
+  for (const m of messages) insert.run(Date.parse(m.ts), m.kind ?? "message", m.actor, m.target, m.body);
   db.close();
   return file;
 }
