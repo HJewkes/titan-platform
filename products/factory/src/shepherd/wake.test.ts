@@ -870,6 +870,19 @@ describe("wakePhase", () => {
     expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
   });
 
+  it("does not re-deliver a live wake its resume fallback already delivered, when the agent exits without pushing", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = liveImplementer();
+    fake.onGetPr = () => void (agents.asked.length > 0 && (agents.rows[0]!.presence = "exited"));
+    const writtenAfterTheResume = async (): Promise<Warmth> => ({ lastEventAt: agents.asked.some(({ verb }) => verb === "resume") ? T0 + 24 * 60 * MINUTE : T0 - MINUTE, fill: 1 });
+
+    const { outcome } = await runPhase(agents, fake, writtenAfterTheResume);
+
+    expect(outcome).toEqual({ kind: "unhandled", exited: true, reason: `impl-a exited without pushing a new head past ${H1}`, wake: expect.objectContaining({ mode: "live", fallback: "resume" }) });
+    expect(agents.asked.map(({ verb }) => verb)).toEqual(["message", "resume"]);
+  });
+
   it("is unhandled when the PR closes at the same head", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: H1 });
