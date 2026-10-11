@@ -297,19 +297,21 @@ async function supervise(args) {
   const cleanups = [];
   const log = (m) => console.error(m);
   cleanupOnSignal(cleanups);
+  let hold;
   try {
-    await acquire({ timeoutMs: lockWaitMs(), log });
+    hold = await acquire({ check: "dead:check", timeoutMs: lockWaitMs(), log });
   } catch (err) {
     if (!(err instanceof LockTimeoutError)) throw err;
     log(err.message);
     return BUSY_EXIT_CODE;
   }
-  cleanups.push(() => release(DEFAULT_LOCK_DIR));
+  cleanups.push(() => release(DEFAULT_LOCK_DIR, hold));
   const workDir = mkdtempSync(path.join(tmpdir(), "dead-check-"));
   cleanups.push(() => rmSync(workDir, { recursive: true, force: true }));
   try {
     const workerArgs = [WORKER_FLAG, workDir, ...args];
-    return await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log });
+    hold.exit = await runCappedWorker({ script: SCRIPT, args: workerArgs, name: "dead:check", heapCapMb: HEAP_CAP_MB, cleanups, log });
+    return hold.exit;
   } finally {
     runCleanups(cleanups);
   }

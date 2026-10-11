@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { loadavg } from "node:os";
 import { readLinuxMemory, type ReadFile } from "./machine-linux.js";
+import { stopReason } from "./machine-stop.js";
 import { BUSY_LONGEST_WAIT_MS } from "./review-wait.js";
 
 /**
@@ -245,6 +246,8 @@ interface SpawnGateOptions {
   reviewStaleMs?: number;
   /** One line per admitted or deferred spawn; defaults to the factory log. */
   log?: (line: string) => void;
+  /** Told of every machine-stop breach a spawn ask reads, whatever the verdict, so a review that ends later can see the stop held. */
+  onStop?: (at: number, reason: string) => void;
 }
 
 const unread = (value: number | undefined) => value ?? "unread";
@@ -269,6 +272,8 @@ export function spawnGate(options: SpawnGateOptions = {}): SpawnGate {
     admit(name, runningReviews = [], review) {
       const at = now();
       const readings = read();
+      const stop = stopReason(readings, limits);
+      if (stop !== undefined) options.onStop?.(at, stop);
       const checkout = review ? disk() : {};
       const queue = review ? reviews.ask(name, review, at) : [];
       const reviewVerdict = review ? admitReview(checkout, limits, runningReviews.length) : { admit: true as const };
