@@ -34,9 +34,6 @@ export async function openHead(services: ShepherdServices, runId: string, onUnre
   return pr?.state === "open" ? pr.headSha : undefined;
 }
 
-/** How often serve looks for moved heads: the snapshot's own tick, so a quiet sweep reads only the open list, which answers 304. */
-export const HEAD_MOVED_SWEEP_MS = 60_000;
-
 /**
  * The open PR's head when it moved off `asked`; undefined while it is still `asked`, cannot be read, or is merged or closed.
  * A snapshot row still at `asked` costs no PR read. Any other row is confirmed through the port, since the list may be a
