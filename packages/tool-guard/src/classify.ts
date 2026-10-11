@@ -1,3 +1,4 @@
+import { BYPASS_VAR } from "./actor.js";
 import type { HookEvent } from "./event.js";
 import { config } from "./families/config.js";
 import { egress } from "./families/egress.js";
@@ -42,8 +43,10 @@ interface ScriptMemo {
 }
 
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
-  const asWritten = classifyLine(extractCommands(src, extractOptions(cwd, ctx, scripts, false)), ctx, scripts);
-  return ctx.foldCase ? unique([...asWritten, ...foldedActions(src, cwd, ctx, scripts)]) : asWritten;
+  const assigned = new Set<string>();
+  const asWritten = classifyLine(extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), assigned }), ctx, scripts);
+  const bypass = assigned.has(BYPASS_VAR) ? [classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` })] : [];
+  return ctx.foldCase ? unique([...asWritten, ...bypass, ...foldedActions(src, cwd, ctx, scripts)]) : unique([...asWritten, ...bypass]);
 }
 
 /** A script's text (`scripts` null) stops at the dynamic-word cap and reads on as main does; the line refuses past it. */

@@ -1,3 +1,4 @@
+import { BYPASS_VAR } from "../actor.js";
 import type { WriteEvent } from "../event.js";
 import { commandMentions, pathMentions } from "../mentions.js";
 import type { Mention } from "../mentions.js";
@@ -21,6 +22,8 @@ const CLAUDE_CLI: Record<string, Set<string>> = {
   mcp: new Set(["add", "add-json", "remove"]),
   plugin: new Set(["install", "uninstall"]),
 };
+/** Builtins that set a variable the shell passes to its children. */
+const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
 const GIT_CONFIG_READS = new Set(["--get", "--get-all", "--get-regexp", "-l", "--list"]);
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
@@ -72,7 +75,17 @@ function copyIntoMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
   return commandMentions(copied, ctx, GUARDED_PATHS.config).map((m) => ({ ...m, word: null }));
 }
 
+/** `export X=1` stores no prefix assignment, so a declaration builtin's arguments are read for the name. */
+function exportsBypass(cmd: SimpleCommand): boolean {
+  if (cmd.name === null || !DECLARERS.has(cmd.name)) return false;
+  return cmd.args.some((a) => {
+    const name = a.value.split(/[=[]/, 1)[0] ?? "";
+    return name === BYPASS_VAR || /[$`]/.test(name);
+  });
+}
+
 function namedWrite(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction | null {
+  if (exportsBypass(cmd)) return classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` });
   if (cmd.name === "git" && setsHooksPath(cmd, ctx)) {
     return classified("bash.config.git-config-hookspath", { pattern: "git:core.hooksPath" });
   }
@@ -96,4 +109,4 @@ function write(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Editing permission config, hooks or home instructions: CFG rows of the authority table. */
-export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude"]), bash, write };
+export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", ...DECLARERS]), bash, write };
