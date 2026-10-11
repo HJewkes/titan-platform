@@ -103,14 +103,35 @@ const { subject, body } = formatSquashMessage({
 // body: "## Summary\n\nAdds the widget.\n\n## Changes\n\n- **Add the widget core.** Holds no I/O, so tests need no fakes.\n\nRefs: TP-1, #42"
 ```
 
+Waiting on CI for a pushed sha is `ciWait`, or the `titan-gh ci-wait` bin. The verdict itself
+is pure, so a caller with its own loop can call `ciVerdict` directly:
+
+```ts
+import { ciVerdict, loadRequiredContexts } from "@titan-design/github";
+
+const rules = await loadRequiredContexts(port, "o/r", "main"); // rulesets, else classic; a free-plan 403 reads as none
+const [runs, statuses] = await Promise.all([port.checkRuns("o/r", sha), port.commitStatuses("o/r", sha)]);
+ciVerdict({ rules, runs, statuses }); // { verdict: "red", reasons: ["lint=failure"] }
+```
+
+```
+$ titan-gh ci-wait o/r 1a2b3c4 --timeout 600
+GREEN o/r 1a2b3c4d...   # exit 0; RED exits 1, TIMEOUT exits 2, a usage error or unknown sha exits 64
+```
+
+A required context is green only on `success`: skipped and neutral are red, as a merge gate
+judges them. An unpinned one counts only from GitHub Actions or a commit status. With no
+required contexts every run and status must pass, and a sha with statuses but no check-run
+stays pending, because statuses can land before the check suites exist.
+
 ## What it deliberately does not do
 
 - No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every
   call is `gh api`; only those two post to `graphql`, because GitHub reports a review thread's
   resolved state and a force-push's replaced head nowhere in REST.
 - No token handling. It runs on the caller's existing `gh` login.
-- No polling, timeouts or retry policy. The caller owns when to read again. The rate budget
-  only paces calls; it never drops one.
+- No polling, timeouts or retry policy outside `ciWait`. Every other read leaves when to read
+  again to the caller. The rate budget only paces calls; it never drops one.
 - No merge policy beyond readiness. Whether a ready PR may merge without a human is the
   caller's decision (`@titan-design/authority`).
 - No hardcoded required checks. `requiredChecks` reads the branch's active rulesets.
