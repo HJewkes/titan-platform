@@ -32,10 +32,15 @@ function succeeded(result: DurableHarnessSuccess): DurableStepOutcome {
   return { kind: "succeeded", output: outputText(result), ...(usage ? { usage } : {}) };
 }
 
+function failed(terminal: Extract<Terminal<Harness>, { outcome: "failed" }>): DurableStepOutcome {
+  const usage = usageFromMeasurements(terminal.usage ?? []);
+  return { kind: "failed", error: terminal.reason, retryable: terminal.retryable, ...(usage ? { usage } : {}) };
+}
+
 function terminalOutcome<H extends Harness>(terminal: Terminal<H>): DurableStepOutcome {
   switch (terminal.outcome) {
     case "succeeded": return succeeded(terminal.result);
-    case "failed": return { kind: "failed", error: terminal.reason, retryable: terminal.retryable };
+    case "failed": return failed(terminal);
     case "cancelled": return { kind: "cancelled", reason: terminal.reason };
     case "cancellation_unknown": return { kind: "cancellation_unknown", reason: terminal.reason };
     // A step that produced no output cannot be proven side-effect free, so it is never retried.
