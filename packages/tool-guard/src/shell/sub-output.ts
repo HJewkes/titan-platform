@@ -36,11 +36,25 @@ function subOutput(tokens: Token[], shell: Shell): string | null {
   return cmd ? commandOutput(cmd.name, cmd.args, body.redirects, shell) : null;
 }
 
-/** The text one unwrapped command prints under `shell` when it is literal on the line, else null. */
+/**
+ * The text one unwrapped command prints under `shell` when it is literal on the line, else null. It keeps the newline
+ * `echo` and a here-string end with, which a file the output is written to holds and a substitution strips.
+ */
 export function commandOutput(name: string | null, args: WordToken[], redirects: RedirectToken[], shell: Shell): string | null {
   if (name === "cat") return readsOnlyStdin(args) ? literalStdin(redirects) : null;
   // Bash's echo prints `\0043` as written where zsh's decodes it, and escapes are modelled for neither shell alone.
-  return args.some((a) => a.value.includes("\\")) ? null : printedText(name, args, shell);
+  if (args.some((a) => a.value.includes("\\"))) return null;
+  const text = printedText(name, args, shell);
+  return text !== null && name === "echo" && !echoOmitsNewline(args) ? `${text}\n` : text;
+}
+
+/** `echo`'s leading option words, as `printedText` reads them; one holding `n` drops the newline. */
+function echoOmitsNewline(args: WordToken[]): boolean {
+  for (const { value } of args) {
+    if (!/^-[neE]+$/.test(value)) return false;
+    if (value.includes("n")) return true;
+  }
+  return false;
 }
 
 function readsOnlyStdin(args: WordToken[]): boolean {
@@ -51,7 +65,7 @@ function readsOnlyStdin(args: WordToken[]): boolean {
 function literalStdin(redirects: RedirectToken[]): string | null {
   const feed = [...redirects].reverse().find((r) => r.body !== null || r.op === "<<<");
   if (!feed || feed.target === null) return null;
-  if (feed.op === "<<<") return feed.target.dynamic ? null : feed.target.value;
+  if (feed.op === "<<<") return feed.target.dynamic ? null : `${feed.target.value}\n`;
   return feed.target.quoted ? feed.body : unquotedBody(feed.body ?? "");
 }
 

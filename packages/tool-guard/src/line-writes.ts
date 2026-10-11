@@ -2,51 +2,48 @@ import type { SimpleCommand } from "./shell/commands.js";
 import type { RedirectToken } from "./shell/lexer.js";
 import { resolvePath } from "./shell/path.js";
 import { commandOutput, SPLICING_SHELLS } from "./shell/sub-output.js";
+import { ReadingLimitError } from "./shell/unsure-readings.js";
 import type { ClassifyContext } from "./types.js";
 
 /** Redirects that open a file for writing; `<>` neither truncates nor, without an fd, takes stdout, so the disk text stands. */
 const WRITE_OPS = new Set([">", ">|", ">>", "&>", "&>>", ">&"]);
 /** `>&2` and `>&-` move or close a descriptor rather than name a file. */
 const DUP_TARGET_RE = /^(\d+-?|-)$/;
+/** Each conditional append doubles a file's readings; past this many the line is refused rather than read. */
+export const MAX_WRITTEN_READINGS = 16;
 
-interface FileWrite {
-  path: string;
-  append: boolean;
-  /** What the command writes there, null when only known at run time. */
-  text: string | null;
+/**
+ * Every text a script at `path` may hold at this point of the line: what the disk held, and what each earlier write on
+ * the line may have left there.
+ */
+export function scriptReadings(ctx: ClassifyContext, path: string): string[] {
+  if (ctx.scriptReadings) return ctx.scriptReadings(path);
+  const text = diskText(ctx, path);
+  return text === null ? [] : [text];
 }
 
 /**
- * The line state after `cmd` writes files through its redirects, so a script the same line runs next is read as the
- * line leaves it, not as the disk held it before the line ran. Text the guard cannot know replaces the file with null
- * (the D6 residual); an append of unknown text keeps what was known.
+ * The line state after `cmd` writes literal text to a file, so a script the same line runs next is also read as the
+ * write leaves it. A write only ever adds a reading: it may sit behind `&&`, in a body that never runs, in the
+ * background or under noclobber, so what the file held before stays a reading too. A write whose text is only known at
+ * run time adds nothing (the D6 residual).
  */
 export function afterWrites(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
-  const writes = fileWrites(cmd, line.home);
-  if (writes.length === 0) return line;
-  const known = new Map<string, string | null>();
-  const current = (path: string) => (known.has(path) ? (known.get(path) ?? null) : diskText(line, path));
-  for (const { path, append, text } of writes) {
-    known.set(path, !append ? text : text === null ? current(path) : (current(path) ?? "") + text);
-  }
-  return { ...line, readScript: (path) => (known.has(path) ? (known.get(path) ?? null) : line.readScript(path)) };
+  const target = stdoutFile(cmd.redirects);
+  const path = target ? resolvePath(cmd.dir, target.target, line.home) : null;
+  const text = path === null ? null : written(cmd);
+  if (path === null || !text) return line;
+  const prior = scriptReadings(line, path);
+  const added = target?.op.endsWith(">>") && prior.length > 0 ? prior.map((p) => p + text) : [text];
+  const readings = [...new Set([...prior, ...added])];
+  if (readings.length > MAX_WRITTEN_READINGS) throw new ReadingLimitError();
+  return { ...line, scriptReadings: (p) => (p === path ? readings : scriptReadings(line, p)) };
 }
 
-function fileWrites(cmd: SimpleCommand, home: string): FileWrite[] {
-  const stdout = cmd.redirects.filter((r) => takesStdout(r) || (isDup(r) && (r.fd === null || r.fd === "1"))).at(-1);
-  return cmd.redirects.flatMap((r) => {
-    if (!WRITE_OPS.has(r.op) || isDup(r)) return [];
-    const path = resolvePath(cmd.dir, r.target, home);
-    if (path === null) return [];
-    const text = r === stdout ? printed(cmd) : takesStdout(r) ? "" : null;
-    return [{ path, append: r.op.endsWith(">>"), text }];
-  });
-}
-
-/** A file stdout points at; only the last such redirect receives the output, the earlier ones are just opened. */
-function takesStdout(r: RedirectToken): boolean {
-  if (!WRITE_OPS.has(r.op) || isDup(r)) return false;
-  return r.op.startsWith("&") || r.fd === null || r.fd === "1";
+/** The file stdout ends at: only the last redirect of stdout receives the output, and a dup sends it to no file. */
+function stdoutFile(redirects: RedirectToken[]): RedirectToken | null {
+  const last = redirects.filter((r) => WRITE_OPS.has(r.op) && (r.op.startsWith("&") || r.fd === null || r.fd === "1")).at(-1);
+  return !last || isDup(last) ? null : last;
 }
 
 function isDup(r: RedirectToken): boolean {
@@ -54,15 +51,15 @@ function isDup(r: RedirectToken): boolean {
 }
 
 /** Each shell's output is one reading, so where bash and zsh print differently the file holds both, one per line. */
-function printed(cmd: SimpleCommand): string | null {
+function written(cmd: SimpleCommand): string | null {
   const readings = SPLICING_SHELLS.map((shell) => commandOutput(cmd.name, cmd.args, cmd.redirects, shell));
   if (readings.some((r) => r === null)) return null;
   return [...new Set(readings)].join("\n");
 }
 
-function diskText(line: ClassifyContext, path: string): string | null {
+function diskText(ctx: ClassifyContext, path: string): string | null {
   try {
-    return line.readScript(path);
+    return ctx.readScript(path);
   } catch {
     return null;
   }
