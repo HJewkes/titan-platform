@@ -1,5 +1,14 @@
 # titan-console
 
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-analytics@0.13.2
+  - @titan-design/session-graph@0.15.1
+
 ## 0.3.4
 
 ### Patch Changes
