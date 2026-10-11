@@ -1,4 +1,4 @@
-import { TEST_CLASSES, formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
+import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
 import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
@@ -22,8 +22,7 @@ const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
 
 function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
-  const counts = Object.fromEntries(TEST_CLASSES.map((name) => [name, 0])) as FixProofResult["counts"];
-  if (verdict === "reproduced") counts.reproduces = 1;
+  const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
   return formatResultLine({ head, mergeBase: BASE, verdict, counts, notCollected: [], deletedTests: [], configEdited: false, tests: [], truncated: false });
 }
 

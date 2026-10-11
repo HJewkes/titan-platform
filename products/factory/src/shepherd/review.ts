@@ -5,14 +5,13 @@ import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
-import { freshReviewerBase } from "./cleanup.js";
 import { CORRECT_VERDICT_STEP, CorrectVerdictInputSchema, correctOnce, correctVerdict, type CorrectVerdictInput, type CorrectedResult } from "./correct-verdict.js";
 import { reviewBrief, type CodewatchEvidence, type CodewatchReader } from "./codewatch-questions.js";
 import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, parseAwaitVerdictInput, type AwaitVerdictTiming } from "./await-verdict.js";
 import { ACCOUNT_STEPS, accountHeld, accountRoutes, billIntent, dispatchFor } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
-import { adoptedReviewer, awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Awaited, Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEPS, evidenceOrGate } from "./merge-evidence-gate.js";
@@ -24,10 +23,9 @@ import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteRevie
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
 import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { withReviewerProfile } from "./g10-release.js";
-import { provablyIndependent } from "./lineage.js";
+import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
-import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
 import { FIX_PROOF_STEP, FIX_PROOF_STEPS, FixProofReadSchema, fixProofRoute, fixProofVerdict } from "./fix-proof.js";
 import type { MachineStopWatch } from "./machine-stop.js";
@@ -56,8 +54,7 @@ export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 /** How long a timed-out reviewer that has not exited is read again for its verdict. */
 export const DEFAULT_LATE_VERDICT_MS = 10 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
-/** A standing reviewer holding this much context or more is not resumed. */
-export const MAX_RESUME_FILL_TOKENS = 300_000;
+export { MAX_RESUME_FILL_TOKENS } from "./reviewer-choice.js";
 const DEFAULT_POLL_MS = 30_000;
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
 export { DEFAULT_DETACH_GRACE_MS, DEFAULT_EXIT_GRACE_MS, awaitVerdict, parseAwaitVerdictInput } from "./await-verdict.js";
@@ -91,42 +88,6 @@ const ReviewInputSchema = ReviewTargetSchema.extend({ runId: z.string().min(1), 
 const ReviewIntentSchema = z.object({ head: HeadSchema, reviewer: z.string().min(1), at: z.number(), mode: z.enum(["spawn", "resume", "external"]), agentId: z.string().min(1).optional(), account: z.string().min(1).optional() });
 /** `fixFirsts` counts the run's earlier FIX_FIRST reviews; one or more makes the brief a re-review. `fixProof` is the raw result line the sh-fix-proof step read at this head. */
 const ReviewDispatchInputSchema = ReviewTargetSchema.extend({ intent: ReviewIntentSchema, runId: z.string().min(1).optional(), fixFirsts: z.number().int().positive().optional(), ownerBrief: z.boolean().optional(), fixProof: z.string().optional() });
-
-/** The registration's opt-in reviewer, only when it is provably independent of the implementer, has ended, and has room left. */
-function standingReviewer(registration: Registration | undefined, roster: readonly ReviewerAgent[]): ReviewerAgent | undefined {
-  const name = registration?.policy.reviewer;
-  if (registration === undefined || name === undefined) return undefined;
-  const named = roster.filter((agent) => agent.name === name);
-  const agent = named[0];
-  if (named.length !== 1 || agent === undefined) return undefined;
-  const resumable = agent.presence === "exited" && agent.sessionId !== "" && agent.fillTokens !== undefined && agent.fillTokens < MAX_RESUME_FILL_TOKENS;
-  return resumable && provablyIndependent(agent, registration.implementer, roster) ? agent : undefined;
-}
-
-/** A name no agent in the roster has held, so a fresh reviewer is never confused with an earlier agent. */
-function freshName(target: ReviewTarget, implementer: string | undefined, roster: readonly ReviewerAgent[]): string {
-  const taken = new Set([...roster.map((agent) => agent.name), implementer]);
-  const base = freshReviewerBase(target.repo, target.pr);
-  for (let k = 1; ; k += 1) {
-    const name = k === 1 ? base : `${base}-${k}`;
-    if (!taken.has(name)) return name;
-  }
-}
-
-/**
- * A hold that names a reviewer waits for that reviewer, unless its class needs Shepherd's own review too or a seat asked for
- * one at this head, taken or not, so a retry of the asked review is Shepherd's own too; `fresh` skips the standing reviewer,
- * which may be the one that went silent.
- */
-function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
-  const asked = registration?.reviewRequest?.head === target.head;
-  const external = asked ? undefined : adoptedReviewer(registration);
-  if (external) return { mode: "external", reviewer: external };
-  if (asked) return { mode: "spawn", reviewer: freshName(target, registration.implementer, roster) };
-  const standing = fresh ? undefined : standingReviewer(registration, roster);
-  if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
-  return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
-}
 
 type Timing = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs">;
 
