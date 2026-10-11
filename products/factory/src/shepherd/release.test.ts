@@ -227,9 +227,12 @@ describe("npmRegistry", () => {
   });
 
   it.each<[string, string, object]>([
-    ["a trusted publisher on its latest version", "trusted", { ...HAND, _npmUser: { name: "GitHub Actions", trustedPublisher: { id: "github" } } }],
-    ["provenance attestations on its latest version", "trusted", { ...HAND, dist: { attestations: { url: "https://registry.npmjs.org/-/npm/v1/attestations/x" } } }],
-    ["a hand publish with neither", "untrusted", HAND],
+    ["a trusted publisher on its latest version", "trusted", { ...HAND, _npmUser: { name: "GitHub Actions", trustedPublisher: { id: "github", oidcConfigId: "config-1" } } }],
+    ["a hand publish with no trusted publisher", "untrusted", HAND],
+    ["a null trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: null } }],
+    ["a false trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: false } }],
+    ["an empty trusted publisher", "untrusted", { ...HAND, _npmUser: { ...HAND._npmUser, trustedPublisher: {} } }],
+    ["a token publish with provenance attestations only", "untrusted", { ...HAND, dist: { attestations: { url: "https://registry.npmjs.org/-/npm/v1/attestations/x", provenance: { predicateType: "https://slsa.dev/provenance/v1" } } } }],
   ])("reads %s as %s", async (_name, presence, latest) => {
     expect(await read(200, latest)).toBe(presence);
   });

@@ -904,6 +904,7 @@ describe("the Version Packages PR", () => {
     expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H1}`);
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-park"))).toEqual([]);
     expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "allow", rule: { table: "shepherd-release", rowId: "version-packages" } } });
+    expect(w.store.byRun(runId)?.releaseReady).toMatchObject({ head: H1 });
   });
 
   it("gates with the package's name when npm has never seen it", async () => {

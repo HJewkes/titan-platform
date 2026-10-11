@@ -27,17 +27,16 @@ export function releaseTask(repo: RepoSlug): string {
 
 /**
  * `missing` when npm answers 404, `trusted` when its latest version was published by a trusted publisher, `untrusted`
- * otherwise; any other answer throws. Only a trusted publisher shows that release.yml can publish the next version.
+ * otherwise; any other answer throws. Only a trusted publisher shows that release.yml can publish the next version;
+ * provenance attestations do not, because a token publish can carry them too.
  */
 type NpmPresence = "missing" | "untrusted" | "trusted";
 export type PackageRegistry = (name: string) => Promise<NpmPresence>;
 
 const REGISTRY_TIMEOUT_MS = 10_000;
 
-const LatestVersion = z.looseObject({
-  _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional(),
-  dist: z.looseObject({ attestations: z.unknown().optional() }).optional(),
-});
+const LatestVersion = z.looseObject({ _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional() });
+const TrustedPublisher = z.looseObject({ id: z.string().min(1) });
 
 export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   return async (name) => {
@@ -45,7 +44,7 @@ export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
     if (response.status === 404) return "missing";
     if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}`);
     const latest = LatestVersion.parse(await response.json());
-    return latest._npmUser?.trustedPublisher !== undefined || latest.dist?.attestations !== undefined ? "trusted" : "untrusted";
+    return TrustedPublisher.safeParse(latest._npmUser?.trustedPublisher).success ? "trusted" : "untrusted";
   };
 }
 

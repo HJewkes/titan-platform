@@ -818,9 +818,9 @@ Shepherd lands it with no human step (`products/factory/src/shepherd/release.ts`
    checks that every changed file is one `changeset version` writes, and that every public
    package in the release is already on registry.npmjs.org. A brand-new package cannot use
    trusted publishing until its first version is published by hand, so it blocks with its
-   name. The package's latest version must also show a trusted publisher
-   (`_npmUser.trustedPublisher`) or provenance attestations, read from `/<name>/latest` with a
-   10-second timeout. A hand-published latest version blocks, so the owner confirms the trusted
+   name. The package's latest version must also name a trusted publisher
+   (`_npmUser.trustedPublisher` with an `id`), read from `/<name>/latest` with a 10-second
+   timeout. Provenance attestations alone do not count, because a token publish can carry them. A hand-published latest version blocks, so the owner confirms the trusted
    publisher is saved before `release.yml` tries to publish. An unreadable registry fails the
    step, and the next sweep reads it again.
 4. **The `shepherd-release` decision.** A passed preflight at the exact head merges under an
