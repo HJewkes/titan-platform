@@ -23,7 +23,7 @@ export function predatesQualifiedSymbols(indexVersion: string): boolean {
 }
 
 /** A parsed file, or its precomputed qualified-name map when the tree is already gone (TP-747). */
-export type QualifiedNameSource =
+type QualifiedNameSource =
   | { fileId: string; file: ParsedFile }
   | { fileId: string; qualifiedByName: ReadonlyMap<string, ReadonlySet<string>> };
 
