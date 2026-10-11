@@ -1,0 +1,17 @@
+# Weekly tool-gap pass: Q9 and Q10 over the last 7 days, one active-work task per pattern, one
+# digest to the notifier. Install steps: products/session-miner/README.md, "Weekly tool-gap pass".
+[Unit]
+Description=Session miner: weekly tool-gap pass, task upkeep and owner digest
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Sets ACTIVE_ROOT, TITAN_MINER_GRAPH and TITAN_MINER_NOTIFY; required, so a host without it fails rather than reading the wrong graph.
+EnvironmentFile=%h/.config/titan-session-miner/tool-gaps.env
+ExecStart=/usr/bin/node %h/projects/titan-platform/products/session-miner/dist/bin.js --graph "${TITAN_MINER_GRAPH}" tool-gap-weekly --notify-command "${TITAN_MINER_NOTIFY}"
+# 75 is "another run holds the lock": nothing happened and the next tick retries.
+SuccessExitStatus=75
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle

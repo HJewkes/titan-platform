@@ -12,7 +12,7 @@ export interface PriceRow {
 }
 
 /** Bump on any edit to PRICE_TABLE. The cost report prints it in its footer. */
-export const PRICE_TABLE_VERSION = 2;
+export const PRICE_TABLE_VERSION = 3;
 
 const OPUS = { input: 5.0, cacheRead: 0.5, cacheWrite5m: 6.25, cacheWrite1h: 10.0, output: 25.0 };
 const OPUS_5_5 = { input: 4.0, cacheRead: 0.2, cacheWrite5m: 5.0, cacheWrite1h: 8.0, output: 20.0 };
@@ -22,6 +22,7 @@ const SONNET = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.
 const FABLE = { input: 10.0, cacheRead: 0.25, cacheWrite5m: 12.5, cacheWrite1h: 20.0, output: 50.0 };
 const SONNET_5_5 = { input: 2.0, cacheRead: 0.2, cacheWrite5m: 2.5, cacheWrite1h: 4.0, output: 10.0 };
 const HAIKU = { input: 1.0, cacheRead: 0.1, cacheWrite5m: 1.25, cacheWrite1h: 2.0, output: 5.0 };
+const HAIKU_5_5 = { input: 0.1, cacheRead: 0.01, cacheWrite5m: 0.125, cacheWrite1h: 0.2, output: 0.5 };
 const FREE = { input: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0, output: 0 };
 
 const GENESIS = "2026-01-01";
@@ -35,6 +36,9 @@ export const PRICE_TABLE: readonly PriceRow[] = [
   { modelPrefix: "claude-sonnet-5", effectiveFrom: GENESIS, ...SONNET },
   { modelPrefix: "claude-fable-5-1", effectiveFrom: GENESIS, ...FABLE },
   { modelPrefix: "claude-fable-5", effectiveFrom: GENESIS, ...FABLE },
+  // Claude Code 2.1.296 bundled model catalog, pricing_tiers.haiku_55. Base rates only: prompts
+  // over 100K tokens bill every component at 5x and are under-read until TP-2379 slice c.
+  { modelPrefix: "claude-haiku-5-5", effectiveFrom: GENESIS, ...HAIKU_5_5 },
   { modelPrefix: "claude-haiku-4-5", effectiveFrom: GENESIS, ...HAIKU },
   { modelPrefix: "<synthetic>", effectiveFrom: GENESIS, ...FREE },
 ];

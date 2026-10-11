@@ -168,9 +168,13 @@ describe("dag-check lock", () => {
 describe("the dag-check hold log", () => {
   const EIGHT_MINUTES = 8 * 60 * 1000;
 
+  /** heldSeconds entries are seconds, or { s, exit } to record the check's exit code on that line. */
   function seedHolds(lockDir, heldSeconds, extraLines = []) {
     mkdirSync(join(lockDir, ".."), { recursive: true });
-    const lines = heldSeconds.map((s, i) => JSON.stringify({ check: "dag:check", acquiredAt: i * 1e6, releasedAt: i * 1e6 + s * 1000 }));
+    const lines = heldSeconds.map((held, i) => {
+      const { s, ...rest } = typeof held === "number" ? { s: held } : held;
+      return JSON.stringify({ check: "dag:check", acquiredAt: i * 1e6, releasedAt: i * 1e6 + s * 1000, ...rest });
+    });
     writeFileSync(holdLogPath(lockDir), `${[...lines, ...extraLines].join("\n")}\n`);
   }
 
@@ -232,6 +236,51 @@ describe("the dag-check hold log", () => {
 
     await expect(attempt).rejects.toThrow("dag-check lock busy");
     expect(lines[0]).toContain("5 ahead of you");
+  });
+
+  it("fails at once behind a live holder with nobody ahead when one median hold exceeds the budget", async () => {
+    const lockDir = lockPath();
+    seedHolds(lockDir, [600, 600, 600]);
+    tryAcquire(lockDir);
+    const started = Date.now();
+
+    const attempt = acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+
+    await expect(attempt).rejects.toThrow(
+      "dag-check lock: the holder and 0 ahead, about 10 min at the median hold of 600 s; exit 75. CI's dag-check job runs dag:check and dead:check on the PR.",
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
+  }, 2000);
+
+  it("acquires behind a long median when no one holds the lock", async () => {
+    const lockDir = lockPath();
+    seedHolds(lockDir, [600, 600, 600]);
+
+    await acquire({ lockDir, timeoutMs: EIGHT_MINUTES, pollMs: 10, log: () => {} });
+
+    expect(readHolder(lockDir)).toBe(process.pid);
+  }, 2000);
+
+  it("removes the lock even when the hold-log write throws", () => {
+    const lockDir = lockPath();
+    tryAcquire(lockDir);
+    mkdirSync(holdLogPath(lockDir));
+
+    expect(() => release(lockDir, { check: "dag:check", joinedAt: 0, acquiredAt: 0, aheadAtJoin: 0 })).toThrow();
+
+    expect(existsSync(lockDir)).toBe(false);
+  });
+
+  it("leaves holds with no exit code out of the median and the three-hold minimum", () => {
+    const completed = { s: 300, exit: 0 };
+    const signalled = { s: 1, exit: null };
+    const mixed = lockPath();
+    const mostlySignalled = lockPath();
+    seedHolds(mixed, [completed, completed, completed, signalled, signalled, signalled]);
+    seedHolds(mostlySignalled, [completed, completed, signalled, signalled, signalled, signalled, signalled]);
+
+    expect(medianHoldMs(mixed)).toBe(300000);
+    expect(medianHoldMs(mostlySignalled)).toBeNull();
   });
 
   it("skips a corrupt or partial log line instead of throwing", () => {
