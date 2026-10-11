@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { cloneIfAbsent, serviceRunsFromCheckout } from "./deploy-bootstrap.js";
 import { DIRTY_SUFFIX } from "./build-info.js";
-import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths } from "./deploy-closure.js";
+import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touchedPaths, versionOnlyManifestChange } from "./deploy-closure.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { redactCredentials } from "./redact.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
@@ -213,7 +213,7 @@ async function planFor(deploy: Deploy, target: string, prepareOnly: boolean): Pr
   if (head !== target && (await isAncestor(ports, target, head))) return refuse(await pastTarget(ports, head, target));
   const closure = closureDirs(readWorkspace({ readFile: (path) => ports.readFile(join(options.checkout, path)), listDirs: (dir) => ports.listDirs(join(options.checkout, dir)) }));
   const changed = from === undefined ? undefined : await changedPaths(ports, from, target);
-  const go = { target, running, closure, touched: touchedPaths(changed, closure), prepareOnly };
+  const go = { target, running, closure, touched: await runtimeTouched(ports, touchedPaths(changed, closure), from, target), prepareOnly };
   const native = go.touched.length === 0 ? undefined : await nativeBuildRefusal(ports, head, target);
   return native === undefined ? { kind: "go", go } : refuse(native);
 }
@@ -239,6 +239,17 @@ async function nativeBuildRefusal(ports: DeployPorts, head: string, target: stri
 async function changedPaths(ports: DeployPorts, from: string, target: string): Promise<string[] | undefined> {
   const diff = await ports.git(["diff", "--name-only", "--no-renames", from, target]);
   return diff.code === 0 ? diff.stdout.split("\n").filter((line) => line !== "") : undefined;
+}
+
+/** A Version Packages merge bumps only package versions, which the build never reads, so those manifests are not build inputs. */
+async function runtimeTouched(ports: DeployPorts, touched: string[], from: string | undefined, target: string): Promise<string[]> {
+  if (from === undefined) return touched;
+  const read = async (sha: string, path: string): Promise<string | undefined> => {
+    const shown = await ports.git(["show", `${sha}:${path}`]);
+    return shown.code === 0 ? shown.stdout : undefined;
+  };
+  const kept = await Promise.all(touched.map(async (path) => !path.endsWith("/package.json") || !versionOnlyManifestChange(await read(from, path), await read(target, path))));
+  return touched.filter((_, index) => kept[index]);
 }
 
 async function execute(deploy: Deploy, go: Go): Promise<number> {
