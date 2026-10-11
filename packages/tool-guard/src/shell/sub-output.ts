@@ -33,10 +33,14 @@ function subOutput(tokens: Token[], shell: Shell): string | null {
   const body = soleCommand(tokens);
   if (!body) return null;
   const cmd = unwrap(body.words);
-  if (!cmd) return null;
-  if (cmd.name === "cat") return readsOnlyStdin(cmd.args) ? literalStdin(body.redirects) : null;
+  return cmd ? commandOutput(cmd.name, cmd.args, body.redirects, shell) : null;
+}
+
+/** The text one unwrapped command prints under `shell` when it is literal on the line, else null. */
+export function commandOutput(name: string | null, args: WordToken[], redirects: RedirectToken[], shell: Shell): string | null {
+  if (name === "cat") return readsOnlyStdin(args) ? literalStdin(redirects) : null;
   // Bash's echo prints `\0043` as written where zsh's decodes it, and escapes are modelled for neither shell alone.
-  return cmd.args.some((a) => a.value.includes("\\")) ? null : printedText(cmd.name, cmd.args, shell);
+  return args.some((a) => a.value.includes("\\")) ? null : printedText(name, args, shell);
 }
 
 function readsOnlyStdin(args: WordToken[]): boolean {

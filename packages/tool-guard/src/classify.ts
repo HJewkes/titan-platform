@@ -5,6 +5,7 @@ import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
+import { afterWrites } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { scriptTarget, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -76,7 +77,7 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
     }
     out.push(...classifySimple(cmd, line));
     if (scripts) out.push(...scriptActions(cmd, line, scripts));
-    line = afterDynamic(cmd, afterAll(cmd, line));
+    line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
   return unique(out);
 }
