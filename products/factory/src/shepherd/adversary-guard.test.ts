@@ -190,6 +190,18 @@ describe("the merge guard failing closed on a g10-adversary run", () => {
     expect(r.fake.pr(1).merged).toBe(false);
   });
 
+  it("re-holds a code push after the seat released an adversary hold placed before hold events were recorded", async () => {
+    const r = bare();
+    r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });
+    r.db.prepare("DELETE FROM shepherd_event WHERE run_id = 'run-1'").run();
+
+    expect(r.store.releaseClass("run-1", "g10-adversary", { actor: "seat", headSha: REVIEWED })).toBe(true);
+
+    await expect(r.merge()).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.fake.pr(1).merged).toBe(false);
+    expect(r.store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
   it("re-holds after an adversary release that named no head", async () => {
     const r = bare(REVIEWED);
     r.store.hold("run-1", ADVERSARY, undefined, { actor: "seat" });

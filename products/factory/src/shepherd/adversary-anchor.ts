@@ -5,7 +5,7 @@ import type { ShepherdStore } from "./store.js";
 import type { CarryResult } from "./tree-carry.js";
 
 interface Replayed {
-  /** Whether the run ever had a `g10-adversary` hold; a run that never did has no rule to keep. */
+  /** Whether the run ever had a `g10-adversary` hold, by its hold event or its release; a run that never did has no rule to keep. */
   seen: boolean;
   /** An adversary hold the events still show in force, which the store's row may have lost to an older overwrite. */
   pending: boolean;
@@ -34,7 +34,7 @@ function replay(events: readonly ShepherdEvent[]): Replayed {
       if (isAdversaryHold(event.reason)) [state.seen, state.adversaryHold] = [true, event];
     }
     if (event.kind !== "release") continue;
-    if (isAdversaryHold(event.reason ?? slots.top?.reason)) [state.released, state.adversaryHold] = [event.headSha ?? undefined, undefined];
+    if (isAdversaryHold(event.reason ?? slots.top?.reason)) [state.seen, state.released, state.adversaryHold] = [true, event.headSha ?? undefined, undefined];
     slots = lift(slots, event.reason);
   }
   return { ...state, pending: isAdversaryHold(slots.top?.reason) };
