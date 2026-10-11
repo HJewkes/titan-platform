@@ -38,7 +38,7 @@ function readInstalledProfile(profile: string, dir: string): unknown {
     text = readFileSync(path, "utf8");
   } catch (err) {
     throw new DispatchError(
-      `installed profile '${profile}' is unreadable at ${path} (${(err as Error).message}); ${REINSTALL_HINT}`,
+      `installed profile '${profile}' is unreadable at ${path} (${err instanceof Error ? err.message : String(err)}); ${REINSTALL_HINT}`,
     );
   }
   try {

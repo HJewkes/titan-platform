@@ -229,7 +229,7 @@ describe("dispatchToAgentChat", () => {
     const bin = fakeAgentChat(`echo "the name relay-item-42 is held"\nexit 1\n`);
     const refused = catchError(() => dispatchToAgentChat(request(bin), 10_000));
     expect(refused).not.toBeInstanceOf(DispatchTimeoutError);
-    expect((refused as Error).message).toMatch(/^agent-chat refused the \w+: /);
+    expect(refused.message).toMatch(/^agent-chat refused the \w+: /);
   });
 });
 
@@ -257,11 +257,12 @@ describe("installed profile guard", () => {
   });
 });
 
-function catchError(run: () => unknown): unknown {
+function catchError(run: () => unknown): Error {
   try {
     run();
   } catch (err) {
-    return err;
+    if (err instanceof Error) return err;
+    throw err;
   }
   throw new Error("expected a throw");
 }

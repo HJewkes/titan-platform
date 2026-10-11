@@ -20,11 +20,12 @@ afterEach(() => {
 const install = (contents: string): void =>
   writeFileSync(join(dir, "implementer.json"), contents);
 
-const refusal = (): unknown => {
+const refusal = (): Error | undefined => {
   try {
     assertInstalledHeadless("implementer", dir);
   } catch (err) {
-    return err;
+    if (err instanceof Error) return err;
+    throw err;
   }
   return undefined;
 };
@@ -46,18 +47,18 @@ describe("assertInstalledHeadless", () => {
     const err = refusal();
 
     expect(err).toBeInstanceOf(DispatchError);
-    expect((err as Error).message).toMatch(reason);
-    expect((err as Error).message).toContain(`'implementer'`);
-    expect((err as Error).message).toContain(join(dir, "implementer.json"));
+    expect(err?.message).toMatch(reason);
+    expect(err?.message).toContain(`'implementer'`);
+    expect(err?.message).toContain(join(dir, "implementer.json"));
   });
 
   it("refuses a profile that is not installed", () => {
-    expect((refusal() as Error).message).toMatch(/'implementer' is unreadable/);
+    expect(refusal()?.message).toMatch(/'implementer' is unreadable/);
   });
 
   it("never echoes an unexpected surface value from the file", () => {
     install(JSON.stringify({ surface: "SECRET-TOKEN-abc123 interactive" }));
-    const message = (refusal() as Error).message;
+    const message = refusal()?.message;
     expect(message).toContain("surface of type string");
     expect(message).not.toContain("SECRET-TOKEN");
   });
