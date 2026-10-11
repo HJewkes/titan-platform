@@ -6,6 +6,8 @@ import { EXIT, createRegistry, defineCommand, type BaseContext, type CommandRegi
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
+import { evidenceSources } from "./coordinator-evidence-read.js";
+import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
 import { logSlowRegister } from "./slow-register.js";
 import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
@@ -152,6 +154,14 @@ const gates = defineCommand<Record<string, never>, { gates: GateSummary[]; aud: 
   }),
 });
 
+const gatesReview = defineCommand<Record<string, never>, { gates: ReviewGate[]; aud: string }, FactoryContext>({
+  name: "factory.gates-review",
+  description: "Pending human gates with the PR, head, policy rule, reviewer verdict at that head and required checks, and whether each may ride in a batch; reads only",
+  args: z.object({}),
+  result: z.custom<{ gates: ReviewGate[]; aud: string }>(),
+  run: async (_args, ctx) => ({ aud: ctx.aud ?? hostname(), gates: await reviewGates(ctx.host, ctx.shepherd && evidenceSources(ctx.shepherd)) }),
+});
+
 /** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
 export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources): FactoryContext {
   return {
@@ -167,6 +177,6 @@ export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: s
 /** Resolving a gate is deliberately absent: over the network only serve's signed-proof route resolves, never a command. */
 export function createFactoryRegistry(log?: Logger): CommandRegistry<FactoryContext> {
   const registry = createRegistry<FactoryContext>();
-  for (const cmd of [land, status, gates, ...SHEPHERD_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
+  for (const cmd of [land, status, gates, gatesReview, ...SHEPHERD_COMMANDS, ...NEEDS_COMMANDS]) registry.register(log ? logSlowRegister(cmd, log) : cmd);
   return registry;
 }

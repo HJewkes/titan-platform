@@ -252,6 +252,38 @@ describe("transcriptReviewerReader", () => {
   });
 });
 
+describe("a usage-limit line, by who wrote it", () => {
+  const NOTICE = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
+  const RESETS_AT_S = 1_791_676_800;
+  /** Claude Code's own record: its placeholder model, the API error and the quota it was refused under. */
+  const clientNotice = (sessionId: string): Json => ({
+    ...assistant(sessionId, [NOTICE]),
+    message: { id: "msg-limit", role: "assistant", model: "<synthetic>", content: [text(NOTICE)] },
+    isApiErrorMessage: true,
+    error: "rate_limit",
+    apiErrorStatus: 429,
+    quotaLimits: { status: "rejected", resetsAt: RESETS_AT_S, rateLimitType: "seven_day" },
+  });
+
+  it("marks Claude Code's own limit record with its error and reset, which reads as a usage limit", async () => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), clientNotice(SESSION)]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.at(-1)).toMatchObject({ text: NOTICE, synthetic: { apiError: "rate_limit", resetsAt: RESETS_AT_S * 1000 } });
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", resetsAt: RESETS_AT_S * 1000 });
+  });
+
+  it("leaves the same words written by the reviewer unmarked, so they read as a malformed verdict", async () => {
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), clientNotice(SESSION), assistant(SESSION, [NOTICE])]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.at(-1)).not.toHaveProperty("synthetic");
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", malformed: { refusal: "no_block" } });
+  });
+});
+
 describe("reviewerMessages", () => {
   const observed = async (records: readonly Json[]): Promise<NormalizedSessionObservation[]> => {
     const observations: NormalizedSessionObservation[] = [];
