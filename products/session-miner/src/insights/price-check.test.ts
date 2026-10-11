@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { PRICE_TABLE, PRICE_TABLE_VERSION, findPrice } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { createMinerContext } from "../context.js";
@@ -73,9 +74,7 @@ describe("insights prices", () => {
     const { code, stdout, stderr } = await cli(["--json", "insights", "prices", ...WINDOW, ...flags]);
     expect(stderr).toBe("");
     expect(code).toBe(0);
-    const data = (JSON.parse(stdout) as { data: unknown }).data;
-    expect(insightResultSchema(priceCheckSchema).safeParse(data).success).toBe(true);
-    return (data as { answer: PriceCheck }).answer;
+    return z.object({ data: insightResultSchema(priceCheckSchema) }).parse(JSON.parse(stdout)).data.answer;
   }
 
   it("returns the table as data and lists a request on an unknown model as unpriced", async () => {
