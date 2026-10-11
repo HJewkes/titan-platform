@@ -15,7 +15,7 @@ import { conflictCheckRoute, conflictCheckedGates, conflictsAt } from "./conflic
 import type { MainRedWiring } from "./main-red.js";
 import { parkAtGreen, parkRoutes, type ParkPort } from "./park.js";
 import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phases.js";
-import { verdictIsMergeAt } from "../gate-brief.js";
+import { ownerBriefAt, verdictIsMergeAt } from "../gate-brief.js";
 import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
@@ -117,7 +117,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ failedRounds: 0, throttledRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha) };
+  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);

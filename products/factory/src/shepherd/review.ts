@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type OwnerBrief, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -293,16 +293,21 @@ async function lateVerdict(deps: ShepherdDeps, wiring: ReviewWiring | undefined,
 }
 
 /** A MERGE at one head, taken or carried, published before its evidence step reads the check; a replay reuses each step's output. */
-export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">): Promise<Verdict> {
+export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEvidenceInput, "runId">, ownerBrief?: OwnerBrief): Promise<Verdict> {
   await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) });
   const { visualPaths } = effectivePolicy(ctx);
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }) };
   const evidence = await evidenceOrGate(ctx, input.head, request);
-  return { kind: "MERGE", headSha: input.head, evidence };
+  return { kind: "MERGE", headSha: input.head, evidence, ...(ownerBrief && { ownerBrief }) };
 }
 
 /** The grant is read from the run's own policy param, the ceiling a registration can only narrow. */
 const effectivePolicy = (ctx: WorkflowContext) => runPolicyCeiling(ctx.param("policy"));
+/** Whether a visual-path gate will open is unknown until the evidence step, so a visual-ceiling run always asks for the brief. */
+const asksOwnerBrief = (ctx: WorkflowContext): boolean => {
+  const policy = effectivePolicy(ctx);
+  return policy.merge === "owner-gate" || (policy.visualPaths?.length ?? 0) > 0;
+};
 const seatGrants = (ctx: WorkflowContext): string[] => (effectivePolicy(ctx).merge === "auto" ? [MERGE_ON_GREEN_GRANT] : []);
 
 /**
@@ -319,7 +324,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
   const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(effectivePolicy(ctx).merge === "owner-gate" && { ownerBrief: true }), ...(proof.kind === "result" && { fixProof: proof.line }) }, Dispatched);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(proof.kind === "result" && { fixProof: proof.line }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
@@ -345,10 +350,10 @@ async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting:
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
   if (dispatchedReviewer && isUsageLimit(onTime)) return accountHeld(ctx, target, { account, notice: String(onTime.notice), ...(typeof onTime.resetsAt === "number" && { resetsAt: onTime.resetsAt }) });
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
-  const correction = { ownerBrief: effectivePolicy(ctx).merge === "owner-gate", replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
+  const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
-  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) });
+  return mergeVerdict(ctx, { ...target, verdict, resolver: awaited.reviewer, dispatchedReviewer: dispatchedReviewer ?? awaited.reviewer, seatGrants: seatGrants(ctx) }, awaited.ownerBrief ?? undefined);
 }
