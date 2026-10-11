@@ -21,6 +21,10 @@ The autonomy charter carries front matter too (`schema: autonomy-charter/v1`): t
 roster, the hub, the hard-stop classes and the scorer defaults. `charterPolicySchema` types it and `parseCharterPolicy` validates it, so generic charter
 rules can live in code rather than prose.
 
+`HARD_STOPS` catalogues those classes with one detection pattern each, and `hardStopsIn`
+names the classes a task's `done_when` (or any text) touches, so every host detects hard
+stops the same way.
+
 A coordinator for another user needs one document instead of a tree of seat files:
 `titan-coordinator/v1`. `coordinatorConfigSchema` composes it from the schemas above and
 agent-dispatch's `limitsSchema`, and `checkCoordinatorConfig` checks the references between
@@ -61,6 +65,15 @@ if (!result.ok) {
   // e.g. [{ code: "missing", path: "defaults.teleport_k", message: "..." }]
   console.error(result.errors);
 }
+```
+
+```ts
+import { hardStopsIn } from "@titan-design/coordinator";
+
+hardStopsIn("Edit CLAUDE.md, then deploy.");
+// ["deploy", "config-edit"]
+hardStopsIn("Edit CLAUDE.md, then deploy.", policy.hard_stops.filter((s) => s !== "deploy"));
+// ["config-edit"]
 ```
 
 ```ts
@@ -117,6 +130,13 @@ classes); an unknown class is refused, since a misspelt one would guard nothing.
 through. `pools` and `funds` are deliberately not in the schema, because account limits
 belong to `@titan-design/agent-dispatch`; they pass through untyped. An error's `code` is
 `missing` when nothing sits at its `path`, and `invalid` otherwise.
+
+`hardStopsIn` reports classes in `HARD_STOPS` order, not charter order, and treats a
+missing text as empty. The patterns favour a false hit over a miss: a stop-short task costs
+a score penalty, a missed hard stop costs an action a person should have taken. They are
+keyword patterns, not a parser, so a negation ("do not deploy") still matches. Pass `among`
+to report only the classes a charter or seat lists; a name outside `HARD_STOP_CLASSES` in
+`among` is ignored.
 
 `checkCoordinatorConfig` never throws. A schema failure returns `missing` or `invalid` errors
 and skips the reference checks; a document that parses then gets `reference` errors, each
