@@ -48,8 +48,8 @@ describe("ENFORCEMENT", () => {
   });
 
   it("flags a citation whose symbol was renamed away", () => {
-    const [first] = localMechanisms();
-    expect(unresolved([{ ...first, symbol: `${first.symbol}Renamed` }])).toHaveLength(1);
+    const renamed: LocalMechanism = { kind: "mechanism", repo: "titan-platform", path: "packages/authority/src/evaluate.ts", symbol: "canResolveRenamed" };
+    expect(unresolved([renamed])).toEqual(["packages/authority/src/evaluate.ts#canResolveRenamed"]);
   });
 
   it("uses inherent citations only on owner-terminal allow rows", () => {
