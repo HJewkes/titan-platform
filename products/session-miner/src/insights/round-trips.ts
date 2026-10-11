@@ -17,13 +17,13 @@ const FOLLOW_UP_PATTERNS = [
   ],
 ] as const satisfies readonly (readonly [string, RegExp])[];
 
-export const FOLLOW_UP_CLASSES = [...FOLLOW_UP_PATTERNS.map(([name]) => name), "other"] as const;
-export type FollowUpClass = (typeof FOLLOW_UP_CLASSES)[number];
+const FOLLOW_UP_CLASSES = [...FOLLOW_UP_PATTERNS.map(([name]) => name), "other"] as const;
+type FollowUpClass = (typeof FOLLOW_UP_CLASSES)[number];
 
 /** Only the opening of a message is classed, as the self-improve classifier did, so a long quoted brief cannot match. */
 const CLASSED_CHARS = 1500;
 
-export function classifyFollowUp(body: string): FollowUpClass {
+function classifyFollowUp(body: string): FollowUpClass {
   const head = body.slice(0, CLASSED_CHARS);
   return FOLLOW_UP_PATTERNS.find(([, pattern]) => pattern.test(head))?.[0] ?? "other";
 }
@@ -31,21 +31,18 @@ export function classifyFollowUp(body: string): FollowUpClass {
 const VERDICT_WORD = /Verdict:\s*([A-Z_]{4,})/;
 const PR_LINE = /PR:\s*(?:https:\/\/github\.com\/)?([\w.-]+\/[\w.-]+)(?:#|\/pull\/)(\d+)/;
 
-export interface EventMessage {
-  ts: number;
-  actor: string;
-  target: string | null;
-  body: string;
-}
+const messageRows = z.array(z.object({ ts: z.number(), actor: z.string(), target: z.string().nullable(), body: z.string() }));
+type EventMessage = z.infer<typeof messageRows>[number];
+const spawnRows = z.array(z.object({ child: z.string(), parent: z.string() }));
 
 const MESSAGES_SQL = "SELECT ts, actor, target, coalesce(body, '') AS body FROM events WHERE kind = 'message' AND ts >= @since AND ts < @until ORDER BY id";
 const SPAWNERS_SQL = "SELECT target AS child, actor AS parent FROM events WHERE kind = 'agent_spawned' AND target IS NOT NULL AND ts < @until ORDER BY id";
 
 /** Messages in the window, and each agent's spawner from every spawn before `until`, so a child spawned before the window still counts. */
-export function readRoundTripEvents(db: Db, window: { since?: string; until?: string }): { messages: EventMessage[]; spawners: Map<string, string> } {
+function readRoundTripEvents(db: Db, window: { since?: string; until?: string }): { messages: EventMessage[]; spawners: Map<string, string> } {
   const bounds = { since: window.since ? Date.parse(window.since) : 0, until: window.until ? Date.parse(window.until) : Number.MAX_SAFE_INTEGER };
-  const messages = db.prepare(MESSAGES_SQL).all(bounds) as EventMessage[];
-  const spawns = db.prepare(SPAWNERS_SQL).all({ until: bounds.until }) as { child: string; parent: string }[];
+  const messages = messageRows.parse(db.prepare(MESSAGES_SQL).all(bounds));
+  const spawns = spawnRows.parse(db.prepare(SPAWNERS_SQL).all({ until: bounds.until }));
   return { messages, spawners: new Map(spawns.map((s) => [s.child, s.parent])) };
 }
 
@@ -69,16 +66,15 @@ type VerdictDay = RoundTripsReport["verdictDays"][number];
 type PrRow = RoundTripsReport["prs"][number];
 
 function followUpRows(messages: readonly EventMessage[], spawners: ReadonlyMap<string, string>): RoundTripsReport["followUps"] {
-  const counts = new Map<string, number>();
+  const rows = new Map<string, { day: string; class: FollowUpClass; count: number }>();
   for (const m of messages) {
     if (m.target === null || spawners.get(m.target) !== m.actor) continue;
-    const key = `${localDay(m.ts)}\u0000${classifyFollowUp(m.body)}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const row = { day: localDay(m.ts), class: classifyFollowUp(m.body), count: 0 };
+    const key = `${row.day}\u0000${row.class}`;
+    if (!rows.has(key)) rows.set(key, row);
+    rows.get(key)!.count += 1;
   }
-  return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, count]) => {
-    const [day, cls] = key.split("\u0000") as [string, FollowUpClass];
-    return { day, class: cls, count };
-  });
+  return [...rows.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, row]) => row);
 }
 
 /** Each PR's verdicts in order; a verdict whose PR line is missing or unreadable counts toward its day and no PR. */
@@ -113,7 +109,7 @@ function verdictRows(messages: readonly EventMessage[]): { prs: PrRow[]; days: V
   return { prs, days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)) };
 }
 
-export function roundTripsReport(events: { messages: readonly EventMessage[]; spawners: ReadonlyMap<string, string> }, window: { since?: string; until?: string }): RoundTripsReport {
+function roundTripsReport(events: { messages: readonly EventMessage[]; spawners: ReadonlyMap<string, string> }, window: { since?: string; until?: string }): RoundTripsReport {
   const followUps = followUpRows(events.messages, events.spawners);
   const { prs, days } = verdictRows(events.messages);
   const sum = (key: keyof Omit<VerdictDay, "day">) => days.reduce((n, d) => n + d[key], 0);
@@ -137,7 +133,7 @@ const cell = (value: string | number) => String(value).replaceAll("|", "\\|");
 const table = (header: string[], rows: (string | number)[][]) =>
   [`| ${header.join(" | ")} |`, `|${header.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)].join("\n");
 
-export function renderRoundTripsText(data: RoundTripsReport): string {
+function renderRoundTripsText(data: RoundTripsReport): string {
   const { totals, window } = data;
   const header = [
     `Round trips per local day, ${window.since ?? "beginning"} to ${window.until ?? "now"}`,

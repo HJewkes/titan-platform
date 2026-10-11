@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { LIST_PRICE_CAVEAT } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { createMinerContext } from "../context.js";
 import { resolveConfig } from "../config.js";
+import { insightResultSchema } from "./define.js";
 import { seedInsightGraph, seedToolResults, type FixtureToolResult } from "./fixture.js";
-import type { ErrorClass, ToolErrorsReport } from "./tool-errors.js";
+import { toolErrorsSchema, type ErrorClass, type ToolErrorsReport } from "./tool-errors.js";
 
 const DENIAL = "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Merge Without Review]. Continue.";
 
@@ -67,7 +69,7 @@ async function cli(args: string[]): Promise<{ code: number; stdout: string }> {
 async function ask(flags: string[] = []): Promise<ToolErrorsReport> {
   const { code, stdout } = await cli(["--json", "insights", "tool-errors", ...WINDOW, ...flags]);
   expect(code).toBe(0);
-  const data = (JSON.parse(stdout) as { data: { question: string; caveat: string; answer: ToolErrorsReport } }).data;
+  const data = z.object({ data: insightResultSchema(toolErrorsSchema) }).parse(JSON.parse(stdout)).data;
   expect(data).toMatchObject({ question: "Q5", caveat: LIST_PRICE_CAVEAT });
   return data.answer;
 }

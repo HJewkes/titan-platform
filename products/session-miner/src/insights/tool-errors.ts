@@ -33,28 +33,31 @@ const CLASS_PATTERNS = [
 ] as const satisfies readonly (readonly [string, RegExp])[];
 
 /** `unreadable` is an error whose transcript line is gone or moved, so its text cannot be classed. */
-export const ERROR_CLASSES = [...CLASS_PATTERNS.map(([name]) => name), "other", "unreadable"] as const;
+const ERROR_CLASSES = [...CLASS_PATTERNS.map(([name]) => name), "other", "unreadable"] as const;
 export type ErrorClass = (typeof ERROR_CLASSES)[number];
 
-export function classifyError(text: string): ErrorClass {
+function classifyError(text: string): ErrorClass {
   return CLASS_PATTERNS.find(([, pattern]) => pattern.test(text))?.[0] ?? "other";
 }
 
 const DENIAL_REASON = /classifier\. Reason: \[([^\]]+)\]/;
 
 /** An error tool result in the graph, located in its transcript; the graph keeps no result text. */
-export interface ErrorResult {
-  sessionId: string;
-  toolUseId: string;
-  ts: string;
-  /** As the graph stores it, which may start with `~/`. */
-  path: string;
-  byteOffset: number;
-  /** Null when no fact row gives the line's length, so it cannot be read back. */
-  byteLength: number | null;
-  /** The called tool's name, or null when its call is not in the graph. */
-  tool: string | null;
-}
+const errorResultRows = z.array(
+  z.object({
+    sessionId: z.string(),
+    toolUseId: z.string(),
+    ts: z.string(),
+    /** As the graph stores it, which may start with `~/`. */
+    path: z.string(),
+    byteOffset: z.number().int(),
+    /** Null when no fact row gives the line's length, so it cannot be read back. */
+    byteLength: z.number().int().nullable(),
+    /** The called tool's name, or null when its call is not in the graph. */
+    tool: z.string().nullable(),
+  }),
+);
+type ErrorResult = z.infer<typeof errorResultRows>[number];
 
 const ERROR_RESULTS = `
   SELECT i.session_id AS sessionId, i.tool_use_id AS toolUseId, i.ts AS ts, t.source_key AS path, i.byte_offset AS byteOffset,
@@ -67,25 +70,23 @@ const ERROR_RESULTS = `
     AND (@since IS NULL OR i.ts >= @since) AND (@until IS NULL OR i.ts < @until)
   ORDER BY i.ts`;
 
-export function readErrorResults(db: Db, window: { since?: string; until?: string }): ErrorResult[] {
-  const rows = db.prepare(ERROR_RESULTS).all({ since: window.since ?? null, until: window.until ?? null }) as ErrorResult[];
+function readErrorResults(db: Db, window: { since?: string; until?: string }): ErrorResult[] {
+  const rows = errorResultRows.parse(db.prepare(ERROR_RESULTS).all({ since: window.since ?? null, until: window.until ?? null }));
   return [...new Map(rows.map((r) => [`${r.sessionId}\u0000${r.toolUseId}`, r])).values()];
 }
 
-interface ResultBlock {
-  type?: unknown;
-  tool_use_id?: unknown;
-  content?: unknown;
-}
+const transcriptLine = z.object({ message: z.object({ content: z.array(z.unknown()) }) });
+const resultBlock = z.object({ type: z.literal("tool_result"), tool_use_id: z.string(), content: z.unknown() });
+const textBlock = z.object({ type: z.literal("text"), text: z.string() });
 
 /** The text of the result's `tool_result` block, or null when the line is gone, moved or not that result. */
-export async function readErrorText(result: ErrorResult, home: string = os.homedir()): Promise<string | null> {
+async function readErrorText(result: ErrorResult, home: string = os.homedir()): Promise<string | null> {
   if (result.byteLength === null) return null;
   try {
-    const line = JSON.parse(await readLocatorText(expandHome(result.path, home), [0, result.byteOffset, result.byteLength])) as { message?: { content?: unknown } };
-    const content = line.message?.content;
-    const block = Array.isArray(content) ? (content as ResultBlock[]).find((b) => b?.type === "tool_result" && b.tool_use_id === result.toolUseId) : undefined;
-    return block ? resultText(block.content) : null;
+    const line = transcriptLine.safeParse(JSON.parse(await readLocatorText(expandHome(result.path, home), [0, result.byteOffset, result.byteLength])));
+    const blocks = line.success ? line.data.message.content.map((b) => resultBlock.safeParse(b)) : [];
+    const block = blocks.find((b) => b.success && b.data.tool_use_id === result.toolUseId);
+    return block?.success ? resultText(block.data.content) : null;
   } catch {
     return null;
   }
@@ -93,12 +94,16 @@ export async function readErrorText(result: ErrorResult, home: string = os.homed
 
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return (content as { type?: unknown; text?: unknown }[]).flatMap((b) => (b?.type === "text" && typeof b.text === "string" ? [b.text] : [])).join("\n");
+  const blocks = z.array(z.unknown()).safeParse(content);
+  if (!blocks.success) return "";
+  return blocks.data.flatMap((b) => {
+    const text = textBlock.safeParse(b);
+    return text.success ? [text.data.text] : [];
+  }).join("\n");
 }
 
 /** One error, classed, with who hit it; a transcript denial has a seat in place of a session. */
-export interface ClassifiedError {
+interface ClassifiedError {
   toolUseId: string | null;
   day: string;
   class: ErrorClass;
@@ -110,22 +115,17 @@ export interface ClassifiedError {
   reason: string | null;
 }
 
-/** Where the question reads error text; tests inject a fixture. */
-export interface ToolErrorsPorts {
-  errorText(result: ErrorResult): Promise<string | null>;
-}
-
 const shortTool = (name: string) => name.split("__").at(-1) ?? name;
 
 const READ_CONCURRENCY = 32;
 
 /** Every error result in the window and scope, classed from its transcript text. */
-export async function classifyGraphErrors(db: Db, report: CostReportOptions, ports: ToolErrorsPorts): Promise<ClassifiedError[]> {
+async function classifyGraphErrors(db: Db, report: CostReportOptions): Promise<ClassifiedError[]> {
   const inScope = scopeFilter(db, report.scope);
   const results = readErrorResults(db, report).filter((r) => inScope({ sessionId: r.sessionId, role: "" }));
   const agents = readAgentNames(db);
   const texts: (string | null)[] = [];
-  for (let i = 0; i < results.length; i += READ_CONCURRENCY) texts.push(...(await Promise.all(results.slice(i, i + READ_CONCURRENCY).map(ports.errorText))));
+  for (let i = 0; i < results.length; i += READ_CONCURRENCY) texts.push(...(await Promise.all(results.slice(i, i + READ_CONCURRENCY).map((r) => readErrorText(r)))));
   return results.map((r, i) => {
     const text = texts[i] ?? null;
     return {
@@ -141,7 +141,7 @@ export async function classifyGraphErrors(db: Db, report: CostReportOptions, por
 }
 
 /** Transcript denials in the window that the graph has not already counted under the same tool_use_id. */
-export function transcriptDenials(denials: readonly DenialRecord[], window: { since?: string; until?: string }, graphToolUseIds: ReadonlySet<string>): ClassifiedError[] {
+function transcriptDenials(denials: readonly DenialRecord[], window: { since?: string; until?: string }, graphToolUseIds: ReadonlySet<string>): ClassifiedError[] {
   return denials
     .filter((d) => (!d.toolUseId || !graphToolUseIds.has(d.toolUseId)) && (!window.since || d.at >= window.since) && (!window.until || d.at < window.until))
     .map((d) => ({ toolUseId: d.toolUseId ?? null, day: localDay(d.at), class: "classifier-denial", tool: shortTool(d.tool), sessionId: null, agent: d.seat, reason: d.reason }));
@@ -176,7 +176,7 @@ function groupBy<K extends string>(errors: readonly ClassifiedError[], key: (e: 
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([k, group]) => [k.split("\u0000")[0]!, key(group[0]!), group]);
 }
 
-export function toolErrorsReport(errors: readonly ClassifiedError[], window: { since?: string; until?: string }): ToolErrorsReport {
+function toolErrorsReport(errors: readonly ClassifiedError[], window: { since?: string; until?: string }): ToolErrorsReport {
   const denials = errors.filter((e) => e.reason !== null);
   const { sessions, agents } = tally(errors);
   const unreadable = errors.filter((e) => e.class === "unreadable").length;
@@ -196,7 +196,7 @@ function table(header: string[], rows: (string | number)[][]): string {
   return [`| ${header.join(" | ")} |`, `|${align.join("|")}|`, ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)].join("\n");
 }
 
-export function renderToolErrorsText(data: ToolErrorsReport): string {
+function renderToolErrorsText(data: ToolErrorsReport): string {
   const { totals, window } = data;
   const header = [
     `Tool errors by class and tool per local day, ${window.since ?? "beginning"} to ${window.until ?? "now"}`,
@@ -208,34 +208,28 @@ export function renderToolErrorsText(data: ToolErrorsReport): string {
   return [header, byClass, byTool, denials, LIST_PRICE_CAVEAT].join("\n\n") + "\n";
 }
 
-export const DEFAULT_TOOL_ERRORS_PORTS: ToolErrorsPorts = { errorText: (result) => readErrorText(result) };
-
 const seatPathSpec = z.string().regex(/^[^=]+=.+$/, "expected <seat>=<path>");
 
 /** Q5's answer for a window, shared with the probes question. */
-export async function answerToolErrors(db: Db, report: CostReportOptions, transcripts: readonly string[], ports: ToolErrorsPorts): Promise<ToolErrorsReport> {
+export async function answerToolErrors(db: Db, report: CostReportOptions, transcripts: readonly string[]): Promise<ToolErrorsReport> {
   if (report.scope?.roles !== undefined) throw Object.assign(new Error("tool-errors does not take role; narrow it with --session or --agent-prefix"), { code: EXIT.DATAERR });
   const sessionScoped = report.scope?.sessionIds !== undefined || report.scope?.agentPrefix !== undefined;
   if (sessionScoped && transcripts.length > 0) throw Object.assign(new Error("--transcript denials have no session, so tool-errors refuses them with --session or --agent-prefix"), { code: EXIT.DATAERR });
-  const graph = await classifyGraphErrors(db, report, ports);
+  const graph = await classifyGraphErrors(db, report);
   const graphIds = new Set(graph.flatMap((e) => e.toolUseId ?? []));
   return toolErrorsReport([...graph, ...transcriptDenials(transcripts.flatMap(readDenials), report, graphIds)], report);
 }
 
-export function toolErrorsQuestion(ports: ToolErrorsPorts = DEFAULT_TOOL_ERRORS_PORTS) {
-  return defineInsight<{ transcript?: string[] }, ToolErrorsReport>({
-    id: "Q5",
-    name: "tool-errors",
-    description: "Error tool results and classifier denials per local day, by error class and by tool, with sessions and agents",
-    options: { transcript: z.array(seatPathSpec).optional().describe("<seat>=<transcript .jsonl or directory> to add classifier denials the graph lacks") },
-    flags: { transcript: { long: "--transcript", description: "<seat>=<path> seat transcript file or directory (repeatable)" } },
-    schema: toolErrorsSchema,
-    cliOnly: ["transcript"],
-    async answer(db, report, options) {
-      const data = await answerToolErrors(db, report, options.transcript ?? [], ports);
-      return { data, text: renderToolErrorsText(data) };
-    },
-  });
-}
-
-export const toolErrors = toolErrorsQuestion();
+export const toolErrors = defineInsight<{ transcript?: string[] }, ToolErrorsReport>({
+  id: "Q5",
+  name: "tool-errors",
+  description: "Error tool results and classifier denials per local day, by error class and by tool, with sessions and agents",
+  options: { transcript: z.array(seatPathSpec).optional().describe("<seat>=<transcript .jsonl or directory> to add classifier denials the graph lacks") },
+  flags: { transcript: { long: "--transcript", description: "<seat>=<path> seat transcript file or directory (repeatable)" } },
+  schema: toolErrorsSchema,
+  cliOnly: ["transcript"],
+  async answer(db, report, options) {
+    const data = await answerToolErrors(db, report, options.transcript ?? []);
+    return { data, text: renderToolErrorsText(data) };
+  },
+});

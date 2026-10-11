@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { LIST_PRICE_CAVEAT } from "@titan-design/session-analytics";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig } from "../config.js";
 import { createMinerContext } from "../context.js";
+import { insightResultSchema } from "./define.js";
 import { seedEventsDb, seedRequest, seedToolResults, type FixtureMessage } from "./fixture.js";
-import type { ProbesReport } from "./probes.js";
+import { probesSchema, type ProbesReport } from "./probes.js";
 
 const HEAD = "a".repeat(40);
 const WINDOW = ["--since", "2026-09-10", "--until", "2026-09-12"];
@@ -59,7 +61,7 @@ async function cli(args: string[]): Promise<{ code: number; stdout: string }> {
 async function ask(probes: unknown = PROBES): Promise<ProbesReport["rows"]> {
   const { code, stdout } = await cli(["--json", "insights", "probes", "--probes", writeProbes("probes.json", probes), ...WINDOW]);
   expect(code).toBe(0);
-  const data = (JSON.parse(stdout) as { data: { question: string; caveat: string; answer: ProbesReport } }).data;
+  const data = z.object({ data: insightResultSchema(probesSchema) }).parse(JSON.parse(stdout)).data;
   expect(data).toMatchObject({ question: "Q11", caveat: LIST_PRICE_CAVEAT });
   return data.answer.rows;
 }
