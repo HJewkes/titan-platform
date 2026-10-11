@@ -29,6 +29,24 @@ export function reviewRequestMigration(version = 18): Migration {
   return { version, name: "factory:shepherd_registration_review_request", up: (db) => db.exec(TP2254_DDL) };
 }
 
+const TP2239_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN parked_reason TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN parked_reviewer TEXT;
+  CREATE TABLE shepherd_vouch (
+    run_id    TEXT NOT NULL,
+    from_head TEXT NOT NULL,
+    head      TEXT NOT NULL,
+    base_ref  TEXT NOT NULL,
+    base      TEXT NOT NULL,
+    at        TEXT NOT NULL,
+    PRIMARY KEY (run_id, from_head, head, base_ref)
+  );`;
+
+/** A hold kept under a run's `g10-adversary` hold, and the heads proven clean merge-ups of a head the seat released it at, per base branch. */
+export function holdSlotsMigration(version = 19): Migration {
+  return { version, name: "factory:shepherd_hold_slots_vouch", up: (db) => db.exec(TP2239_DDL) };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,

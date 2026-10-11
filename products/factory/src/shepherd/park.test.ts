@@ -204,6 +204,21 @@ describe("parkStep", () => {
     expect(notice.sent.map(([seat]) => seat)).toEqual(["hub"]);
   });
 
+  it("skips without a notice when the broker no longer knows the only candidate", async () => {
+    const notice = noticePorts("hub");
+    const park = refusing({ "impl-a": 'no agent named "impl-a"' });
+
+    const outcome = await parkStep(
+      storeWith({ implementer: "impl-a" }),
+      { park, notice },
+      input
+    );
+
+    expect(outcome).toMatchObject({ kind: "skipped" });
+    expect(outcome).not.toHaveProperty("notice");
+    expect(notice.sent).toEqual([]);
+  });
+
   it("holds a live agent's refusal for a retry at its exit instead of telling the seat", async () => {
     const notice = noticePorts("hub");
     const armed: string[] = [];
@@ -481,6 +496,31 @@ describe("an implementer retired while its park waited for its exit", () => {
 
     if (!outcome.ok) throw new Error("the park step failed");
     expect(JSON.parse(outcome.output).result).toMatchObject({ kind: "not-parked", retry: "at-exit" });
+    expect(notice.sent).toEqual([]);
+  });
+
+  it("stays silent each time a replay re-arms its recorded live refusal", async () => {
+    vi.useFakeTimers();
+    const notice = noticePorts("hub");
+    const asked: string[] = [];
+    parkRoutes(
+      {
+        store: storeWith({ implementer: "impl-a" }),
+        now: () => Date.now(),
+        agentChatBin: "agent-chat",
+        roster: createRosterReader(async () => []),
+        exitNotice: notice,
+      },
+      refusing({ "impl-a": 'no agent named "impl-a"' }, asked)
+    );
+    const recorded = { kind: "not-parked", agent: "impl-a", reason: LIVE("impl-a"), brokerDown: false, retry: "at-exit" };
+
+    rearmRecorded("run-1", recorded);
+    await vi.advanceTimersByTimeAsync(61_000);
+    rearmRecorded("run-1", recorded);
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    expect(asked).toEqual(["impl-a", "impl-a"]);
     expect(notice.sent).toEqual([]);
   });
 });

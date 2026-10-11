@@ -239,4 +239,95 @@ interface BacktestResult {
  */
 declare function backtest(actuals: readonly ThroughputRow[], options: BacktestOptions): BacktestResult;
 
-export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ContextLineScore, type Coverage, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, type GroupScore, type IntervalScore, type LevelStats, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type SizeBand, type SkippedOrigin, type TaskClassFacts, type ThroughputConfig, type ThroughputRow, type Watermark, backtest, classFor, classTable, sizeBand };
+declare const DEFAULT_WEEK_MIN_TASKS = 8;
+interface ClosureStats {
+    n: number;
+    weightedN: number;
+    /** Recency-weighted share of rows closed with no implementer session. */
+    rate: number;
+}
+interface ClosureRates {
+    asOf: string;
+    halfLifeDays: number;
+    minN: number;
+    levels: {
+        class: Record<string, ClosureStats>;
+        kind: Record<string, ClosureStats>;
+        band: Record<string, ClosureStats>;
+        initiative: Record<string, ClosureStats>;
+        global: ClosureStats;
+    };
+}
+interface ClosureLookup {
+    rate: number;
+    level: BackoffLevel;
+    levelKey: string;
+}
+interface WeekEffect {
+    /** UTC ISO weeks, as the date of their Monday, ascending. */
+    weeks: string[];
+    /** Per metric, one multiplier per week, normalised to mean 1. */
+    multipliers: Record<BacktestMetric, number[]>;
+}
+interface WeekEffectOptions {
+    /** Weeks with fewer rows are dropped. Defaults to 8. */
+    minTasks?: number;
+}
+/**
+ * Per-level recency-weighted rate of zero-agent closures (rows flagged `no-impl-session`),
+ * weighted with the table's `asOf` and half-life so it matches the table's classes.
+ */
+declare function closureRates(actuals: readonly ThroughputRow[], table: ClassTable): ClosureRates;
+/** One task's closure rate, backing off class, kind, size band, initiative, then global. */
+declare function closureFor(rates: ClosureRates, facts: TaskClassFacts): ClosureLookup;
+/**
+ * Per-week actual / class-p50 ratios over eligible rows, normalised to mean 1 per metric, so a
+ * shared week multiplier widens a set forecast without shifting it.
+ */
+declare function weekEffects(actuals: readonly ThroughputRow[], table: ClassTable, options?: WeekEffectOptions): WeekEffect;
+
+declare const DEFAULT_FORECAST_DRAWS = 2000;
+interface SetTask extends TaskClassFacts {
+    taskId: string;
+}
+interface ForecastSetOptions {
+    seed: string | number;
+    /** Simulated sets. Defaults to 2000. */
+    draws?: number;
+    /** From `closureRates`; without it no task closes and every `closureRate` is null. */
+    closure?: ClosureRates;
+    /** From `weekEffects`; one week's multipliers apply to every task in a draw. */
+    weekEffect?: WeekEffect;
+}
+interface TaskForecast {
+    taskId: string;
+    kind: string;
+    band: SizeBand;
+    level: BackoffLevel;
+    levelKey: string;
+    n: number;
+    closureRate: number | null;
+    closureLevel: BackoffLevel | null;
+}
+interface UnclassifiableTask {
+    taskId: string;
+    reason: "unknown-kind";
+}
+interface SetForecast {
+    modelHash: string;
+    forecastHash: string;
+    seed: string | number;
+    draws: number;
+    weekEffect: "on" | "off" | "none-available";
+    totals: Record<BacktestMetric, Quantiles>;
+    tasks: TaskForecast[];
+    unclassifiable: UnclassifiableTask[];
+}
+/**
+ * p10/p50/p80/p90 of a task set's total implementer hours, reviewer hours and USD, simulated
+ * from each task's class quantiles. Equal tasks, table and options give identical output in any
+ * task order.
+ */
+declare function forecastSet(tasks: readonly SetTask[], table: ClassTable, options: ForecastSetOptions): SetForecast;
+
+export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ClosureLookup, type ClosureRates, type ClosureStats, type ContextLineScore, type Coverage, DEFAULT_FORECAST_DRAWS, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, DEFAULT_WEEK_MIN_TASKS, type ForecastSetOptions, type GroupScore, type IntervalScore, type LevelStats, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type SetForecast, type SetTask, type SizeBand, type SkippedOrigin, type TaskClassFacts, type TaskForecast, type ThroughputConfig, type ThroughputRow, type UnclassifiableTask, type Watermark, type WeekEffect, type WeekEffectOptions, backtest, classFor, classTable, closureFor, closureRates, forecastSet, sizeBand, weekEffects };
