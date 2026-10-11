@@ -16,16 +16,17 @@ export interface WatchPorts {
   sleep: (ms: number) => Promise<void>;
 }
 
+/** A named field of an object, or undefined for anything else; `/health` is untrusted JSON. */
+const field = (value: unknown, key: string): unknown => (typeof value === "object" && value !== null ? Object.entries(value).find(([name]) => name === key)?.[1] : undefined);
+
 export function buildShaOf(health: Health | null | undefined): string | undefined {
-  const build = health?.build;
-  const sha = typeof build === "object" && build !== null ? (build as Health).sha : undefined;
+  const sha = field(health?.build, "sha");
   return typeof sha === "string" ? sha : undefined;
 }
 
 /** Runs that failed or need recovery; a count that grows during the window is a new step error. */
 function erroredRuns(health: Health): number {
-  const runs = typeof health.runs === "object" && health.runs !== null ? (health.runs as Health) : {};
-  return [runs.failed, runs.recovery_required].reduce<number>((sum, count) => sum + (typeof count === "number" ? count : 0), 0);
+  return [field(health.runs, "failed"), field(health.runs, "recovery_required")].reduce<number>((sum, count) => sum + (typeof count === "number" ? count : 0), 0);
 }
 
 function drift(baseline: Health, health: Health, target: string): string | undefined {

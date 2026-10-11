@@ -1,18 +1,21 @@
 import { join } from "node:path";
+import { z } from "zod";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 
 export const DEPLOY_PAUSE = "deploy-pause.json";
 
 /** Why every deploy is held after a rollback of a restarted build. */
-export interface DeployPause {
-  pausedAt: string;
-  target: string;
+const DeployPauseSchema = z.object({
+  pausedAt: z.string(),
+  target: z.string(),
   /** The build sha `/health` reported before the deploy, or `unknown`. */
-  from: string;
-  why: string;
+  from: z.string(),
+  why: z.string(),
   /** `pending` is written before anything is restored, so a deployer killed mid-rollback still leaves the pause; `failed` means the old build was not seen serving. */
-  rollback: "pending" | "verified" | "failed";
-}
+  rollback: z.enum(["pending", "verified", "failed"]),
+});
+
+export type DeployPause = z.infer<typeof DeployPauseSchema>;
 
 /** `pause` is undefined when the file exists but does not parse; that still pauses. */
 export type PauseState = { paused: false } | { paused: true; pause: DeployPause | undefined };
@@ -26,8 +29,8 @@ export const deployPausePath = (stateDir: string): string => join(stateDir, DEPL
 
 function parsePause(text: string | undefined): DeployPause | undefined {
   try {
-    const value = JSON.parse(text ?? "") as Partial<DeployPause> | null;
-    return typeof value?.target === "string" && typeof value.pausedAt === "string" ? (value as DeployPause) : undefined;
+    const parsed = DeployPauseSchema.safeParse(JSON.parse(text ?? ""));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -39,8 +42,14 @@ export function readDeployPause(ports: PauseReadPorts, stateDir: string): PauseS
   return ports.exists(path) ? { paused: true, pause: parsePause(ports.readFile(path)) } : { paused: false };
 }
 
-export function writeDeployPause(ports: { writeFile: (path: string, text: string) => void }, stateDir: string, pause: DeployPause): void {
-  ports.writeFile(deployPausePath(stateDir), `${JSON.stringify(pause, null, 2)}\n`);
+/** Undefined once the pause is on disk, else why not; a lost write must not stop the rollback that follows it. */
+export function writeDeployPause(ports: { writeFile: (path: string, text: string) => void }, stateDir: string, pause: DeployPause): string | undefined {
+  try {
+    ports.writeFile(deployPausePath(stateDir), `${JSON.stringify(pause, null, 2)}\n`);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 export function describePause(state: PauseState): string {

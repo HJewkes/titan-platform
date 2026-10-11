@@ -358,15 +358,8 @@ async function rollBackRestart(deploy: Deploy, go: Go, backup: string, why: stri
   return finish(deploy, go, "rolled-back", told);
 }
 
-/** Undefined once the pause is on disk, else why not; a lost write must not stop the rollback itself. */
-function pause({ ports, options }: Deploy, go: Go, why: string, rollback: DeployPause["rollback"]): string | undefined {
-  try {
-    writeDeployPause(ports, options.stateDir, { pausedAt: new Date(ports.now()).toISOString(), target: go.target, from: go.running ?? UNKNOWN, why, rollback });
-    return undefined;
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-}
+const pause = ({ ports, options }: Deploy, go: Go, why: string, rollback: DeployPause["rollback"]): string | undefined =>
+  writeDeployPause(ports, options.stateDir, { pausedAt: new Date(ports.now()).toISOString(), target: go.target, from: go.running ?? UNKNOWN, why, rollback });
 
 /** Undefined only when the restored build answers `/health` as the sha that ran before; an unknown old sha cannot be verified. */
 async function restoreAndVerify(deploy: Deploy, go: Go, backup: string): Promise<string | undefined> {
