@@ -1,5 +1,15 @@
 # @titan-design/throughput
 
+## 0.2.0
+
+### Minor Changes
+
+- dc1d669: Add `backtest`: a rolling-origin back-test of `classTable` that reports 80% interval coverage with Wilson intervals, pinball loss, median log error and Spearman per class and overall, against three baselines, with censoring counts, the 150k context line and a conformal widening factor from the previous origin. `ThroughputRow` gains optional `firstImplAt` and `peakContextTokens`.
+
+### Patch Changes
+
+- de21f12: Regenerate the committed API surface snapshots so they match the current exports; no source change.
+
 ## 0.1.1
 
 ### Patch Changes
