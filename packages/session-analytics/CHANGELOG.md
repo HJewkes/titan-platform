@@ -1,5 +1,15 @@
 # @titan-design/session-analytics
 
+## 0.16.0
+
+### Minor Changes
+
+- cd01cfa: Add `scorecardJournalRows` and `readDispatchJournal`: the W41 scorecard rows read from events.db verdicts and seat `dispatch.jsonl` journals (first-pass FIX_FIRST share, mechanical first-blocker share, coordinator spawns for milestone tasks, cost per merged PR with a 0.8 `usd_est` coverage floor), each `not measured` when its source is absent or empty. Ported from agent-chat's `scripts/seat/scorecard`.
+
+### Patch Changes
+
+- de21f12: Regenerate the committed API surface snapshots so they match the current exports; no source change.
+
 ## 0.15.1
 
 ### Patch Changes

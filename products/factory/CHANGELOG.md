@@ -1,5 +1,13 @@
 # @titan-design/factory
 
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
 ## 0.19.0
 
 ### Minor Changes
