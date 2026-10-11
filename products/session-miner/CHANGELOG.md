@@ -1,5 +1,16 @@
 # @titan-design/session-miner
 
+## 0.9.0
+
+### Minor Changes
+
+- d58ce99: Add insights question Q5, `tool-errors`: error tool results and classifier denials per local day, by the self-improve extractor's error classes and by tool, with sessions and agents. Add Q6, `round-trips`: parent-to-child follow-ups by class and per-PR verdict rounds per local day from agent-chat's events. Add Q11, `probes`: each probe in a `--probes` JSON file, a named Q5 or Q6 measure, against its target per local day as HOLDING, REGRESSED or NO-DATA.
+
+### Patch Changes
+
+- Updated dependencies [cd830c1]
+  - @titan-design/github@0.9.0
+
 ## 0.8.2
 
 ### Patch Changes
