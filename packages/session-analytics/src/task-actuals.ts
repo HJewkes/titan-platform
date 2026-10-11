@@ -1,7 +1,9 @@
 import type { Db } from "@titan-design/store-sqlite";
 import { roleFromProfile, type WorkerRole } from "./roles.js";
 import {
+  readContextAtFirstDeliverable,
   readOriginsOf,
+  readPeakContext,
   readPrSessions,
   readSessionPrs,
   readSessionStats,
@@ -72,6 +74,10 @@ export interface TaskActuals {
   firstImplAt: string | null;
   lastImplAt: string | null;
   prs: TaskPr[];
+  /** Largest main-thread context over the implementer sessions; null when they have no requests. */
+  peakContext: number | null;
+  /** Context of the first implementer request at or after the first status_report or pr_create; null when there is none. */
+  contextAtFirstDeliverable: number | null;
   /** Task-linked sessions that count toward neither total: a profile that is not an implementer or reviewer. */
   unmappedSessions: number;
   flags: TaskActualsFlag[];
@@ -181,6 +187,7 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
   const unmapped = all.length - used.length;
   const starts = impl.map((c) => c.record.stats.firstTs).sort();
   const prs = collectPrs(db, impl);
+  const implIds = impl.map((c) => c.record.origin.sessionId);
   return {
     taskId: task.id,
     initiative: task.initiative,
@@ -192,6 +199,8 @@ function rowFor(task: ActualsTask & { doneAt: string }, attached: Attachments, d
     firstImplAt: starts[0] ?? null,
     lastImplAt: impl.map((c) => c.record.stats.lastTs).sort().at(-1) ?? null,
     prs,
+    peakContext: readPeakContext(db, implIds),
+    contextAtFirstDeliverable: readContextAtFirstDeliverable(db, implIds),
     unmappedSessions: unmapped,
     flags: flagsFor(task.doneAt, impl, used, unmapped),
   };

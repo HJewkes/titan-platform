@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, type FixtureGraph } from "./fixture.js";
+import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, insertSignal, type FixtureGraph } from "./fixture.js";
 import { taskActuals, type ActualsTask } from "./task-actuals.js";
 
 let fixture: FixtureGraph;
@@ -46,6 +46,17 @@ function linkPr(sessionId: string, prRef: string, mergedAt: string | null): void
   const db = fixture.graph.db;
   db.prepare("INSERT OR IGNORE INTO pr (pr_ref, merged_at) VALUES (?, ?)").run(prRef, mergedAt);
   fixture.graph.edges.assert({ sourceRef: `session:${sessionId}`, relation: "linked", targetRef: prRef });
+}
+
+/** One request per entry at 09:MM, its context carried as input tokens. */
+function addContexts(sessionId: string, contexts: Record<string, number>): void {
+  for (const [minute, context] of Object.entries(contexts)) {
+    insertRequest(fixture.graph.db, { sessionId, ts: `2026-09-20T09:${minute}:00.000Z`, inputTokens: context });
+  }
+}
+
+function addSignal(sessionId: string, minute: string, signal: string): void {
+  insertSignal(fixture.graph.db, { sessionId, ts: `2026-09-20T09:${minute}:00.000Z`, signal });
 }
 
 describe("taskActuals", () => {
@@ -194,5 +205,64 @@ describe("taskActuals", () => {
     const rows = taskActuals(fixture.openReadOnly(), [task("P-1", "2026-09-20T12:00:00Z", "personal"), task("T-5", null)], OPTIONS);
 
     expect(rows).toEqual([]);
+  });
+
+  describe("context", () => {
+    it("takes the context of the first implementer request after a pr_create, and the peak over all of them", () => {
+      addSession({ id: "impl", tasks: ["T-1"], gaps: [] });
+      addContexts("impl", { "10": 40_000, "20": 90_000, "30": 120_000, "40": 70_000 });
+      addSignal("impl", "15", "pr_create");
+
+      const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+      expect(row!.contextAtFirstDeliverable).toBe(90_000);
+      expect(row!.peakContext).toBe(120_000);
+    });
+
+    it("lets an earlier status_report win over a later pr_create, across implementer sessions", () => {
+      addSession({ id: "first", tasks: ["T-1"], gaps: [] });
+      addSession({ id: "second", tasks: ["T-1"], gaps: [] });
+      addContexts("first", { "10": 30_000, "40": 80_000 });
+      addContexts("second", { "20": 50_000, "30": 60_000 });
+      addSignal("second", "25", "pr_create");
+      addSignal("first", "15", "status_report");
+
+      const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+      expect(row!.contextAtFirstDeliverable).toBe(80_000);
+      expect(row!.peakContext).toBe(80_000);
+    });
+
+    it("leaves contextAtFirstDeliverable null with no deliverable signal but still reports the peak", () => {
+      addSession({ id: "impl", tasks: ["T-1"], gaps: [] });
+      addContexts("impl", { "10": 40_000, "20": 55_000 });
+      addSignal("impl", "15", "commit");
+
+      const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+      expect(row!.contextAtFirstDeliverable).toBeNull();
+      expect(row!.peakContext).toBe(55_000);
+    });
+
+    it("counts no reviewer request or signal toward either value", () => {
+      addSession({ id: "impl", tasks: ["T-1"], gaps: [] });
+      addSession({ id: "rev", profile: "reviewer", tasks: ["T-1"], gaps: [] });
+      addContexts("impl", { "10": 40_000, "30": 45_000 });
+      addContexts("rev", { "10": 150_000, "20": 160_000 });
+      addSignal("rev", "15", "status_report");
+      addSignal("impl", "20", "pr_create");
+
+      const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], OPTIONS);
+
+      expect(row!.contextAtFirstDeliverable).toBe(45_000);
+      expect(row!.peakContext).toBe(45_000);
+    });
+
+    it("reports null for both when the task has no implementer session", () => {
+      const [row] = taskActuals(fixture.openReadOnly(), [task("T-9")], OPTIONS);
+
+      expect(row!.peakContext).toBeNull();
+      expect(row!.contextAtFirstDeliverable).toBeNull();
+    });
   });
 });
