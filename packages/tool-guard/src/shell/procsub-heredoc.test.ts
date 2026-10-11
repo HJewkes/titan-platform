@@ -24,7 +24,7 @@ function classifyCommand(command: string): string[] {
   return classify(event, context).map((a) => a.spelling);
 }
 
-/** The hook's own verdict, which is what the agent meets: a ParseError passes unless the text names a guarded keyword. */
+/** The hook's own verdict, which is what the agent meets: a ParseError denies. */
 async function hookDenies(command: string): Promise<boolean> {
   const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });

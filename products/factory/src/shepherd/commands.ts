@@ -282,6 +282,9 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
 }
 
 const PrRefArgs = z.object({ repo: RepoArg, pr: PrArg });
+
+/** The seat or owner behind a hold or release, sent by the CLI because serve cannot read the caller's environment; a client that sends none is recorded as unknown. */
+const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
@@ -328,30 +331,30 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   },
 });
 
-const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(), actor: ActorArg });
 
 const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
   description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release; --reviewer names the reviewer whose verdict the run waits for",
   args: HoldArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, reason, reviewer }, ctx) {
+  async run({ repo, pr, reason, reviewer, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason, reviewer);
+    const held = services.store.get().hold(runId, reason, reviewer, { actor });
     return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
 
-const releaseCommand = defineCommand<PrRefArgs & { head: string }, HoldResult, FactoryContext>({
+const releaseCommand = defineCommand<PrRefArgs & { actor: string; head: string }, HoldResult, FactoryContext>({
   name: "shepherd.release",
   description: "Release a hold on owner/repo#pr at the head the seat reviewed (--head); refused when the PR's head is another sha",
-  args: PrRefArgs.extend({ head: ReleaseHeadArg }),
+  args: PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg }),
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, head }, ctx) {
+  async run({ repo, pr, head, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head });
+    await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor });
     return { runId, held: null };
   },
 });

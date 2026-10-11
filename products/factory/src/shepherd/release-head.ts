@@ -15,7 +15,7 @@ async function assertReleasableAt(port: GitHubPort, repo: RepoSlug, pr: number, 
 }
 
 /** Releases the run's hold, recording the head so a later move off it is known. */
-export async function releaseAtHead(store: ShepherdStore, port: GitHubPort, at: { runId: string; repo: RepoSlug; pr: number; head: string }): Promise<void> {
+export async function releaseAtHead(store: ShepherdStore, port: GitHubPort, at: { runId: string; repo: RepoSlug; pr: number; head: string; actor: string }): Promise<void> {
   await assertReleasableAt(port, at.repo, at.pr, at.head);
-  store.release(at.runId, { headSha: at.head });
+  store.release(at.runId, { actor: at.actor, headSha: at.head });
 }

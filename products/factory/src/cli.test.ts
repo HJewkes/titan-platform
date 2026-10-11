@@ -43,10 +43,10 @@ function hanging(routes: StepRoute[], stepId: string): StepRoute[] {
   }));
 }
 
-async function cli(argv: string[], deps: CliDeps): Promise<{ code: number; out: string; err: string }> {
+async function cli(argv: string[], deps: CliDeps, env: NodeJS.ProcessEnv = {}): Promise<{ code: number; out: string; err: string }> {
   let out = "";
   let err = "";
-  const code = await runCli(argv, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), env: {} }, deps);
+  const code = await runCli(argv, { stdout: (t) => void (out += t), stderr: (t) => void (err += t), env }, deps);
   return { code, out, err };
 }
 
@@ -193,7 +193,7 @@ describe("shepherd waiting", () => {
 });
 
 describe("shepherd hold", () => {
-  async function servedRegistration(): Promise<{ deps: CliDeps; server: FactoryServer; runId: string; heldReason: () => string | null | undefined }> {
+  async function servedRegistration(): Promise<{ deps: CliDeps; server: FactoryServer; runId: string; fixture: ReturnType<typeof shepherdFixture>; heldReason: () => string | null | undefined }> {
     const dbPath = dbFile();
     const fixture = shepherdFixture({ frozen: true });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -203,7 +203,7 @@ describe("shepherd hold", () => {
     const registered = await callCommand<{ runId: string }>(server.host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
     if (!registered.ok) throw new Error(registered.error);
     const runId = registered.data.runId;
-    return { deps, server, runId, heldReason: () => fixture.routes.shepherd!.store.get().byRun(runId)?.holdReason };
+    return { deps, server, runId, fixture, heldReason: () => fixture.routes.shepherd!.store.get().byRun(runId)?.holdReason };
   }
 
   it("exits 65 on an untyped reason, prints no hold, and leaves the run unheld on serve", async () => {
@@ -224,6 +224,16 @@ describe("shepherd hold", () => {
 
     expect(held.code).toBe(EXIT.OK);
     expect(held.out).toBe(`run ${runId}: held (stalled: no step progress for 70 minutes; TP-3)\n`);
+  });
+
+  it("records the seat that held and released as the event actor", async () => {
+    const { deps, server, runId, fixture } = await servedRegistration();
+    const env = { AGENT_CHAT_NAME: "seat-a", AGENT_CHAT_AGENT_ID: "id-1" };
+
+    await cli(["shepherd", "hold", `${REPO}#1`, "--reason", "stalled: no step progress for 70 minutes; TP-3", "--port", String(server.port)], deps, env);
+    await cli(["shepherd", "release", `${REPO}#1`, "--head", H1, "--port", String(server.port)], deps, env);
+
+    expect(fixture.routes.shepherd!.store.get().eventsOf(runId).map((event) => [event.kind, event.actor])).toEqual([["hold", "seat-a"], ["release", "seat-a"]]);
   });
 });
 
