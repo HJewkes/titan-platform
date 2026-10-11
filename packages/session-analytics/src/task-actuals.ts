@@ -9,6 +9,7 @@ import {
   type OriginLink,
   type SessionStats,
 } from "./task-actuals-queries.js";
+import { shepherdFactsFor, shepherdWindowStart, type ShepherdFacts, type ShepherdRunRecord } from "./task-actuals-shepherd.js";
 
 export const DEFAULT_ACTIVE_CAP_MINUTES = 15;
 const SHORT_CAP_MINUTES = 5;
@@ -42,6 +43,10 @@ export interface TaskActualsOptions {
   initiatives: readonly string[];
   /** The idle cap behind the headline hours; the 5 and 60 minute values always come alongside. */
   capMinutes?: number;
+  /** Shepherd's per-run records; when passed, every row carries the Shepherd facts. */
+  shepherdRuns?: readonly ShepherdRunRecord[];
+  /** Where Shepherd's ledger begins; defaults to the earliest run. A row merged before it gets null Shepherd facts. */
+  shepherdSince?: string;
 }
 
 /** Agent-hours at three idle caps. */
@@ -70,6 +75,10 @@ export interface TaskActuals {
   /** Task-linked sessions that count toward neither total: a profile that is not an implementer or reviewer. */
   unmappedSessions: number;
   flags: TaskActualsFlag[];
+  reviewRounds?: ShepherdFacts["reviewRounds"];
+  stageMinutes?: ShepherdFacts["stageMinutes"];
+  serviceWallHours?: ShepherdFacts["serviceWallHours"];
+  mergePath?: ShepherdFacts["mergePath"];
 }
 
 interface SessionRecord {
@@ -95,7 +104,11 @@ export function taskActuals(minerDb: Db, tasks: readonly ActualsTask[], options:
   const records = buildRecords(minerDb, origins, caps);
   const attached = attachByName(records, wanted);
   attachReviewersByPr(minerDb, records, attached, wanted, caps);
-  return done.map((task) => rowFor(task, attached, minerDb));
+  const rows = done.map((task) => rowFor(task, attached, minerDb));
+  const runs = options.shepherdRuns;
+  if (runs === undefined) return rows;
+  const windowStart = shepherdWindowStart(runs, options.shepherdSince);
+  return rows.map((row) => ({ ...row, ...shepherdFactsFor(row, runs, windowStart) }));
 }
 
 function buildRecords(db: Db, origins: readonly OriginLink[], caps: readonly number[]): Map<string, SessionRecord> {
