@@ -169,11 +169,20 @@ describe("a g10-adversary hold the seat released", () => {
     expect(store.eventsOf("run-1").filter((event) => event.kind === "hold")).toHaveLength(2);
   });
 
-  it("does not re-hold over a release the seat made at the new head during the probe", async () => {
+  it("reads the run again and re-holds when a stray release lands during the probe", async () => {
     const { store, run } = rig("fix-push", MOVED, (s) => void s.release("run-1", { headSha: MOVED }));
 
-    expect(await run({ head: MOVED })).toEqual({ reheld: false });
-    expect(store.byRun("run-1")?.held).toBe(false);
-    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold", "release", "release"]);
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold", "release", "release", "hold"]);
+  });
+
+  it("reports a re-hold the merge guard already placed at this head, so the seat is told", async () => {
+    const { store, run } = rig("fix-push");
+    const reason = `g10-adversary: head moved from ${REVIEWED} to ${MOVED} after the seat released the hold`;
+    store.hold("run-1", reason, undefined, { actor: "shepherd", headSha: MOVED });
+
+    expect(await run({ head: MOVED })).toEqual({ reheld: true, reason, seat: "trusted-seat" });
+    expect(store.eventsOf("run-1").filter((event) => event.kind === "hold")).toHaveLength(2);
   });
 });

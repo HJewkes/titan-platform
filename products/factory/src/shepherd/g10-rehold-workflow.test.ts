@@ -100,6 +100,26 @@ describe("a g10-adversary hold the seat released at one head, with the PR now at
     expect(w.fake.pr(1).merged).toBe(false);
   });
 
+  it("is re-held at the merge when the seat lifts a stall at the new head after the last CI read, and the PR does not merge", async () => {
+    const w = releasedThenMoved("fix-push");
+    w.store.hold(w.runId, "stalled: no progress; TP-2", undefined, { actor: "seat" });
+    const read = w.fake.onGetPr;
+    let lifted = false;
+    w.fake.onGetPr = (pr, reads) => {
+      if (!lifted && w.host.runtime.status(w.runId)?.currentStep?.startsWith("merge")) {
+        lifted = true;
+        w.store.release(w.runId, { actor: "seat", headSha: MOVED });
+      }
+      read?.(pr, reads);
+    };
+
+    await vi.waitFor(() => expect(w.store.byRun(w.runId)?.holdReason).toContain(`from ${H1} to ${MOVED}`), { timeout: 5_000 });
+    await vi.waitFor(() => expect(stepIds(w)).toContain("sh-seat-notice"), { timeout: 5_000 });
+
+    expect(w.store.eventsOf(w.runId).at(-1)).toMatchObject({ kind: "hold", actor: "shepherd", headSha: MOVED });
+    expect(w.fake.pr(1).merged).toBe(false);
+  });
+
   it("stays released across a clean merge-up of the released head", async () => {
     const w = releasedThenMoved("clean-merge-up");
 

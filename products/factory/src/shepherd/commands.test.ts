@@ -507,6 +507,17 @@ describe("shepherd.merge", () => {
     expect(store.byRun(runId)?.held).toBe(true);
   });
 
+  it("refuses a release on a run that is not held, and records no event", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+
+    const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("not held") });
+    expect(w.routes.shepherd!.store.get().eventsOf(runId)).toEqual([]);
+  });
+
   it("refuses a release when the PR's head cannot be read, and without a head", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });

@@ -730,8 +730,8 @@ seat releases it.
 
 `release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
 when the pull request is at another head, or with exit 69 when the head cannot be read: a seat
-that reviewed one head must not release a later one. The release records that head, and the
-`sh-g10-rehold` step compares later heads against it.
+that reviewed one head must not release a later one. It also refuses, with exit 65, a run that is
+not held. The release records that head, and the `sh-g10-rehold` step compares later heads against it.
 
 A `g10-adversary:` hold the seat released is re-applied by the `sh-g10-rehold` step, read at every
 CI read, when the head then moves off the released one: a fix round, a fixer's push, a rebase, or
@@ -740,7 +740,17 @@ the seat is told. A pure merge-up keeps the release: the head's first parent is 
 (or a head already shown pure), its second parent is on the base branch, and its tree equals
 `git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
 show, including a failed probe, counts as a move and re-holds. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
-hold or release landed since the step read the run. Once a `g10-adversary` hold has been released at
+hold or release landed since the step read the run, and when one did, the step reads the run again.
+
+The merge enforces the same rule, so it does not depend on a CI read seeing the head. Every merge
+check, including the one just before the merge itself, refuses a head that is neither the head of
+the last `g10-adversary` release nor a pure merge-up of it, and re-holds it there. That covers a
+hold of another class that was in force at the CI read and released before the merge, whether by
+Shepherd's own `g10-review` auto-release or by a seat lifting a stall with `--head` at the new head.
+A merge that waits on a re-hold the check just placed ends at once, so the run reads CI again and
+the seat is told.
+
+Once a `g10-adversary` hold has been released at
 a recorded head, the rule holds for the rest of the run. Later holds of other classes, and releases
 written with no head, such as Shepherd's own `g10-review` auto-release, do not switch it off. Later
 heads are compared against the head the seat last released a `g10-adversary` hold at. A release of

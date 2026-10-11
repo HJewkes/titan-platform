@@ -1,4 +1,3 @@
-import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
@@ -19,6 +18,7 @@ import {
 } from "./policy.js";
 import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";

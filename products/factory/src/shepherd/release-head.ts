@@ -14,8 +14,9 @@ async function assertReleasableAt(port: GitHubPort, repo: RepoSlug, pr: number, 
   if (now !== head) throw refused(`${repo}#${pr} is at ${now}, not ${head}: review the new head, then release at it`, EXIT.DATAERR);
 }
 
-/** Releases the run's hold, recording the head so a later move off it is known. */
+/** Releases the run's hold, recording the head so a later move off it is known; a run that is not held is refused, so no release event is written for nothing. */
 export async function releaseAtHead(store: ShepherdStore, port: GitHubPort, at: { runId: string; repo: RepoSlug; pr: number; head: string; actor: string }): Promise<void> {
+  if (!store.byRun(at.runId)?.held) throw refused(`${at.repo}#${at.pr} is not held, so there is nothing to release`, EXIT.DATAERR);
   await assertReleasableAt(port, at.repo, at.pr, at.head);
   store.release(at.runId, { actor: at.actor, headSha: at.head });
 }
