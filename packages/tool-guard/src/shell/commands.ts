@@ -332,17 +332,25 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
 
 /**
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
- * text carries what its substitutions print, when that is literal on the line.
+ * text is read with and without what its substitutions print, when that is literal on the line.
  */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: caseScripts(splicedWords(cmd.args)), wrap: "eval" };
+  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? caseScripts(splicedWords([positional])) : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? splicedReadings([positional]) : stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
+}
+
+/**
+ * Splicing only adds a reading: where the model of a substitution's output is wrong (`printf '%d' '#'` prints `0`,
+ * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too.
+ */
+function splicedReadings(words: WordToken[]): string[] {
+  return [...new Set([...caseScripts(words), ...caseScripts(splicedWords(words))])];
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {

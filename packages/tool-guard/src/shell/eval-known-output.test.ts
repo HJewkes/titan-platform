@@ -55,11 +55,19 @@ const outputUnsure: [string, string][] = [
   ["eval of an unquoted heredoc whose \\\\ the shell reduces to \\", `eval "$(cat <<E\necho \\\\'\n${PUSH}\necho '\nE\n)"`],
 ];
 
+/** Lines where the guard's model of the output is wrong and the spliced text alone would comment the push out. */
+const outputMismodelled: [string, string][] = [
+  ["eval after printf %d of '#', which the shell prints as 0", `eval "$(printf '%d' '#');${PUSH}"`],
+  ["bash -c after printf %d of '#', which the shell prints as 0", `bash -c "$(printf '%d' '#');${PUSH}"`],
+  ["eval after printf %i of '#', which the shell prints as 0", `eval "$(printf '%i' '#');${PUSH}"`],
+];
+
 const denyRows = [
   ...reachedThroughOutput(PUSH).map(([n, c]) => [`${n} (push)`, c]),
   ...reachedThroughOutput(MERGE).map(([n, c]) => [`${n} (merge)`, c]),
   ...splicedIntoWord,
   ...outputUnsure,
+  ...outputMismodelled,
 ];
 
 const passRows: [string, string][] = [
