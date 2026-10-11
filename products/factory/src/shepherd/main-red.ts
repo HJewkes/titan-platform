@@ -250,6 +250,6 @@ export function mainRedRoutes(deps: ShepherdDeps, wiring: MainRedWiring | undefi
     codeRoute("sh-file-fix-task", deps.now, (input: EpisodeInput, signal) => fileFixTask(deps, wiring, input, signal)),
     codeRoute("sh-spawn-fixer", deps.now, (input: FixerInput, signal) => spawnFixer(deps, wiring, input, signal)),
     codeRoute("sh-unfreeze", deps.now, (input: RedInput) => unfreezeStep(deps, wiring, input)),
-    codeRoute("sh-thaw", deps.now, async (input: EpisodeInput) => ({ thawed: input.episode !== null && (wiring?.freezes().release(input.repo, input.episode) ?? false) })),
+    codeRoute("sh-thaw", deps.now, async (input: EpisodeInput) => ({ thawed: input.episode !== null && (wiring?.freezes().release(input.repo, input.episode, "owner") ?? false) })),
   ];
 }
