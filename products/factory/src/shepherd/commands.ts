@@ -247,15 +247,18 @@ function rowOf(host: FactoryHost, services: ShepherdServices, registration: Regi
   return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
 }
 
-function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
+/** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */
+export function rowsWithRuns(host: FactoryHost, services: ShepherdServices): { row: WatchRow; run: WorkflowRun }[] {
   return services.store
     .get()
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, services, registration, run)] : [];
+      return run ? [{ row: rowOf(host, services, registration, run), run }] : [];
     });
 }
+
+const rows = (host: FactoryHost, services: ShepherdServices): WatchRow[] => rowsWithRuns(host, services).map(({ row }) => row);
 
 /** Every gate the run opened: the ones its results name, and the one it waits on now. */
 function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {

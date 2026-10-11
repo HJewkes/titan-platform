@@ -160,7 +160,7 @@ export async function noticeSeat(run: NoticeRun, kind: WakeRequest["kind"], head
 }
 
 /** A seat book entry that joins several seats names no one agent to message. */
-function singleSeat(book: SeatBook, repo: string): string | undefined {
+export function singleSeat(book: SeatBook, repo: string): string | undefined {
   const found = lookupSeat(book, repo);
   return found.kind === "seat" && !found.seat.name.includes("+") ? found.seat.name : undefined;
 }
