@@ -172,7 +172,7 @@ function latestSession(rows: readonly AgentRow[], agent: string, sessionId: stri
 
 /** The agent's last message through the reviewer reader, which reads a seat's transcript whatever its presence. */
 function transcriptLastReport(roster: () => Promise<readonly AgentRow[]>): ExitNoticePorts["lastReport"] {
-  const reader = transcriptReviewerReader({ roster: async () => (await roster()).map((row) => ({ ...row, presence: toPresence(row.presence) })) });
+  const reader = transcriptReviewerReader({ roster: async () => (await roster()).map((row) => ({ ...row, presence: toPresence(row.presence), transcriptPath: row.transcriptPath ?? null, transcriptExists: row.transcriptExists === true })) });
   return async (target, agent, sessionId) => {
     const row = latestSession(await roster(), agent, sessionId);
     if (row === undefined || reader.readSeat === undefined) return undefined;
