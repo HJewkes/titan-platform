@@ -1,3 +1,4 @@
+import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
@@ -342,21 +343,15 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   },
 });
 
-const ReleaseArgs = PrRefArgs.extend({ head: z.string().regex(/^[0-9a-f]{40}$/, "must be the 40-character head sha the hold was reviewed at") });
-
-/** A release is a statement about one head, the one the seat reviewed: a PR at another head, or a head that cannot be read, refuses it. */
-const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
+const releaseCommand = defineCommand<PrRefArgs & { head: string }, HoldResult, FactoryContext>({
   name: "shepherd.release",
   description: "Release a hold on owner/repo#pr at the head the seat reviewed (--head); refused when the PR's head is another sha",
-  args: ReleaseArgs,
+  args: PrRefArgs.extend({ head: ReleaseHeadArg }),
   result: z.custom<HoldResult>(),
   async run({ repo, pr, head }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const now = await services.port.getPr(repo, pr).then((read) => read.headSha, () => undefined);
-    if (now === undefined) throw coded(`${repo}#${pr}: the PR's head could not be read, so the release is refused`, EXIT.UNAVAILABLE);
-    if (now !== head) throw coded(`${repo}#${pr} is at ${now}, not ${head}: review the new head, then release at it`, EXIT.DATAERR);
-    services.store.get().release(runId, { headSha: head });
+    await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head });
     return { runId, held: null };
   },
 });
