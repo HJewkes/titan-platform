@@ -4,7 +4,7 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { suiteRules } from "./suite-host.js";
-import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
+import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -181,6 +181,53 @@ describe("review wake brief: the PR's review comments", () => {
     expect(wake.reason).toContain("run as your test rule below says");
     expect(wake.reason).not.toMatch(/pnpm |npx /);
     expect(wake.reason.endsWith("\n\nTEST RULE")).toBe(true);
+  });
+
+  describe("a failing dag-check run's dead:check findings", () => {
+    const stamp = (line: string): string => `2026-10-07T07:53:12.1234567Z ${line}`;
+    const NEW_EXPORTS = [
+      ["alphaOrphan", "packages/a/src/one.ts"],
+      ["betaOrphan", "packages/b/src/two.ts"],
+      ["gammaOrphan", "products/c/src/three.ts"],
+    ];
+    /** In the order dead:check printed before TP-1896: NEW above the CARRY lines, out of a 150-line tail's reach. */
+    const deadCheckLog = [
+      ...NEW_EXPORTS.map(([name, file]) => `  NEW    \`${name}\` in \`${file}\` has no importer. Delete it and its tests.`),
+      ...Array.from({ length: 251 }, (_, i) => `  CARRY  packages/old/src/f${i}.ts#stale${i}`),
+      "3 new, 251 baselined dead export(s) — failed.",
+      ...Array.from({ length: 30 }, (_, i) => `post-step noise ${i}`),
+    ].map(stamp);
+
+    async function ciRedWake(name: string) {
+      const fake = fakeGitHub({ repo: REPO });
+      const pr = fake.addPr({ headSha: H1 });
+      const requested: number[] = [];
+      const jobLogTail = async (_repo: string, _id: number, lines: number) => {
+        requested.push(lines);
+        return deadCheckLog.slice(-lines).join("\n");
+      };
+      const port = { ...githubPort(fake.wire), latestCheckRuns: async () => [successRun(name, 1, undefined, "failure")], jobLogTail };
+      const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+      return { payload: wake.payload, requested };
+    }
+
+    it("quotes every NEW dead export's symbol and file, ahead of the log tail", async () => {
+      const { payload } = await ciRedWake("dag-check");
+
+      for (const [name, file] of NEW_EXPORTS) {
+        expect(payload).toContain(`\`${name}\` in \`${file}\``);
+      }
+      expect(payload).toContain("dead:check findings:");
+      expect(payload).toContain("post-step noise 29");
+    });
+
+    it("leaves another job's tail as before, with no findings block", async () => {
+      const { payload, requested } = await ciRedWake("validate");
+
+      expect(requested).toEqual([LOG_TAIL_LINES]);
+      expect(payload).not.toContain("dead:check findings:");
+      expect(payload).not.toContain("alphaOrphan");
+    });
   });
 
   it("keeps a hostile check-run name out of the instruction text and inside the fenced log", async () => {

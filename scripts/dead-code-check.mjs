@@ -193,9 +193,10 @@ function statusLine({ fresh, carried }, { reportOnly, grew }) {
 }
 
 export function formatReport(result, { reportOnly, grew = false }) {
-  const lines = result.fresh.map((f) => `  NEW    ${deadExportMessage(f)}`);
-  lines.push(...result.carried.map((f) => `  CARRY  ${f.id}`));
+  // NEW lines sit next to the verdict, so a log tail that skips the CARRY lines still names them.
+  const lines = result.carried.map((f) => `  CARRY  ${f.id}`);
   if (result.fixed.length > 0) lines.push(`${result.fixed.length} baselined export(s) are gone; run pnpm dead:check --update to shrink the baseline.`);
+  lines.push(...result.fresh.map((f) => `  NEW    ${deadExportMessage(f)}`));
   lines.push(statusLine(result, { reportOnly, grew }));
   return lines.join("\n");
 }
