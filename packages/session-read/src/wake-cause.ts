@@ -33,6 +33,8 @@ export interface Inbound {
   readonly originServer: string | null;
   readonly fromName: string | null;
   readonly msgId: string | null;
+  /** The channel tag's own broadcast flag; null when the arrival carries no channel tag. */
+  readonly broadcast: boolean | null;
   readonly toolUseId: string | null;
   readonly isError: boolean;
   readonly contentHash: string;
@@ -71,6 +73,7 @@ export function classifyInbound(record: Json): Inbound {
     originServer: channel?.source ?? originServer(queued),
     fromName: channel?.from ?? null,
     msgId: channel?.msgId ?? null,
+    broadcast: channel?.broadcast ?? null,
     toolUseId: result.toolUseId,
     isError: result.isError,
     contentHash: contentHash(text),

@@ -55,6 +55,7 @@ describe("injected markers", () => {
       from: "peer-name",
       msgId: "0f2cc8a1",
       isSystem: false,
+      broadcast: false,
     });
   });
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport, type CostReport } from "./cost-report.js";
-import { WAKE_WINDOW, createFixtureGraph, seedWakeScenario, type FixtureGraph } from "./fixture.js";
+import { WAKE_WINDOW, createFixtureGraph, insertInbound, insertOrigin, insertPrices, insertRequest, insertSession, seedWakeScenario, type FixtureGraph } from "./fixture.js";
 import { priceRequest } from "./price-request.js";
 import { buildWakeEpisodes, episodeNames, fromKindOf, summarizeWakeEpisodes, type WakeEpisode, type WakeEpisodes } from "./wake-episodes.js";
 
@@ -84,6 +84,33 @@ describe("wakeEpisodes", () => {
     expect(episodes.unattributed.requests).toBe(1);
     expect(episodes.unattributed.costUsd).toBeCloseTo(outputCost(100), 10);
     expect(reportWith({ episodeRoles: ["worker:implementer"] }).wakeEpisodes).toMatchObject({ episodes: 1, requests: 1 });
+  });
+});
+
+describe("broadcast flag", () => {
+  /** `seat-a` and its fork `seat-a-fork` both hold one message from `seat-b`, as a resumed fork copies history. */
+  function copiedMessageSenderKinds(broadcast: boolean | undefined): string[] {
+    const copy = createFixtureGraph();
+    const db = copy.graph.db;
+    insertPrices(copy.graph);
+    for (const sessionId of ["seat-a", "seat-a-fork", "seat-b"]) insertSession(db, { sessionId });
+    for (const sessionId of ["seat-a", "seat-a-fork"]) insertOrigin(db, { sessionId, depth: 1, profile: "opus-coordinator", agentName: sessionId, originKind: "spawned" });
+    insertOrigin(db, { sessionId: "seat-b", depth: 0, agentName: "seat-b", originKind: "adopted" });
+    for (const [sessionId, transcriptId] of [["seat-a", 1], ["seat-a-fork", 2]] as const) {
+      insertInbound(db, { sessionId, transcriptId, ts: "2026-09-22T01:00:00Z", cause: "channel_message", fromName: "seat-b", msgId: "m-copied", broadcast });
+      insertRequest(db, { sessionId, transcriptId, ts: "2026-09-22T01:00:00Z", outputTokens: 100 });
+    }
+    const kinds = costReport(copy.openReadOnly(), WAKE_WINDOW).wakeEpisodes.pairs.map((pair) => pair.fromKind);
+    copy.close();
+    return kinds;
+  }
+
+  it("a DM copied into a forked session is not counted as a broadcast", () => {
+    expect(copiedMessageSenderKinds(false)).toEqual(["seat", "seat"]);
+  });
+
+  it("a row extracted before the bump still infers a broadcast from msg_id fan-out", () => {
+    expect(copiedMessageSenderKinds(undefined)).toEqual(["broadcast", "broadcast"]);
   });
 });
 
