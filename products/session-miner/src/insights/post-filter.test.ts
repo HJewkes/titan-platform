@@ -11,6 +11,7 @@ describe("postFilters", () => {
     ["timeout 60 basement-suite demo \"$B\" --agent x -- --run a.test.ts | tail -4", "basement-suite", "| tail"],
     ["sqlite3 -readonly ~/.agent-chat/events.db 'select 1' | cut -d'|' -f1,2 | sort -u", "sqlite3 events.db", "| cut -d -f | sort -u"],
     ["ssh box basement-suite demo main | tail -n2", "basement-suite", "| tail"],
+    ["titan-gh pr-status 1 | head", "titan-gh pr-status", "| head"],
   ])("normalises %s", (command, head, pattern) => {
     expect(postFilters(command)).toMatchObject([{ head, pattern }]);
   });
