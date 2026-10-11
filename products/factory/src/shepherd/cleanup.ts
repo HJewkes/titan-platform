@@ -46,6 +46,8 @@ export interface CleanupDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   cleanup?: CleanupPorts;
+  /** An advisory repo's head ref is never deleted, even after a human merge. */
+  advisory?: (repo: RepoSlug) => boolean;
 }
 
 export interface CleanupInput {
@@ -75,7 +77,7 @@ interface Waiter {
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), waiter())) ?? "unread";
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input), waiter())) ?? "unread";
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
@@ -88,7 +90,8 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 }
 
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
-async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string> {
+async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
+  if (advisory?.(input.repo)) return "advisory";
   const pr = await port.getPr(input.repo, input.pr);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });

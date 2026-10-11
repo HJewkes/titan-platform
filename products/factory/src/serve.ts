@@ -6,9 +6,11 @@ import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-des
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
+import { deployPendingHealth, startDeployPacer } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
+import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
@@ -64,6 +66,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   resyncOnStart?: boolean;
   /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
   deployWatch?: DeployWatch;
+  /** Spawns the deployer for Shepherd's queued merge sha once merges go quiet; absent means no sweep and no `deployPending` in health. */
+  deployPacer?: DeployPacerOptions;
   /** Where the main CI watch sends a red sha's one event; absent means main is watched only after a Shepherd run's own merge. */
   mainWatch?: MainWatchPorts;
   /** Reclaims a main-red fixer once its red main is over; absent means fixers stay until the owner retires them. */
@@ -122,11 +126,13 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const mainSweep = mainWatch && startSweep(mainWatch.tick, MAIN_WATCH_MS, "main CI watch", log);
   void mainSweep?.tick();
   const digestSweep = startSeatDigest(host, services, options.seatDigest, stateDir, log);
+  const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
+  const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep]) await later?.stop();
+    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -227,6 +233,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
+      ...deployPendingHealth(options.deployPacer),
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),

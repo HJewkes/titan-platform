@@ -6,11 +6,12 @@ import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CommitStatus, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile } from "./port.js";
 import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
   /** Defaults to one budget per process, because GitHub counts calls per login. */
@@ -46,7 +47,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
     createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
     getPr: (repo, number) => getPr(api, repo, number),
-    getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
+    getBranchRules: (repo, branch) => branchRules(api, repo, branch),
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
@@ -58,6 +59,8 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
       const tree = commit.tree?.sha;
       return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
     },
+    resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
+    listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
@@ -172,51 +175,6 @@ async function getPr(api: Rest, repo: string, number: number): Promise<PullReque
   return toPullRequest(pr, compare.behind_by > 0);
 }
 
-interface GhRule {
-  type: string;
-  ruleset_id?: number;
-  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string; integration_id?: number | null }[] };
-}
-
-function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
-  const statusRules = rules.filter((rule) => rule.type === "required_status_checks");
-  if (statusRules.some((rule) => !Array.isArray(rule.parameters?.required_status_checks))) {
-    throw new Error("a required_status_checks rule has no required_status_checks list, so the required contexts are unknown");
-  }
-  const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
-  const pins = pinsOf(statusRules.flatMap((rule) => (rule.parameters?.required_status_checks ?? []).map((check) => [check.context, check.integration_id] as const)));
-  return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true), ...pins };
-}
-
-/** Only a positive app id pins; classic protection spells "any app" as -1. */
-function pinsOf(entries: readonly (readonly [string, number | null | undefined])[]): { pins?: Record<string, number[]> } {
-  const pins: Record<string, number[]> = {};
-  for (const [context, app] of entries) {
-    if (typeof app === "number" && app > 0 && !pins[context]?.includes(app)) (pins[context] ??= []).push(app);
-  }
-  return Object.keys(pins).length > 0 ? { pins } : {};
-}
-
-interface GhClassicChecks {
-  strict?: boolean;
-  contexts?: string[];
-  checks?: { context: string; app_id?: number | null }[];
-}
-
-/** A 404 means the branch has no classic protection; any other failure propagates, so it never reads as "none". */
-async function classicRequiredChecks(api: Rest, repo: string, branch: string): Promise<RequiredChecks> {
-  let body: GhClassicChecks;
-  try {
-    body = await api.get<GhClassicChecks>(`repos/${repo}/branches/${branch}/protection/required_status_checks`);
-  } catch (error) {
-    if ((error as { status?: unknown } | null)?.status === 404) return { contexts: [], strict: false };
-    throw error;
-  }
-  if (body === null || typeof body !== "object") throw new Error("classic protection answered an unexpected shape, so the required contexts are unknown");
-  const contexts = [...new Set([...(body.contexts ?? []), ...(body.checks ?? []).map((check) => check.context)])].sort();
-  return { contexts, strict: body.strict === true, ...pinsOf((body.checks ?? []).map((check) => [check.context, check.app_id] as const)) };
-}
-
 async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
   const body = await api.get<{ protected?: unknown }>(`repos/${repo}/branches/${branch}`);
   if (typeof body?.protected !== "boolean") throw new Error("the branch answered no boolean protected flag, so whether it is protected is unknown");
@@ -265,6 +223,27 @@ async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<Chec
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
     url: run.html_url ?? run.details_url ?? "",
   }));
+}
+
+/** `commits/{ref}` expands an abbreviation, unlike `git/commits/{sha}`; GitHub answers 422 "No commit found" for a sha it lacks. */
+async function resolveCommit(api: Rest, repo: string, sha: string): Promise<string | null> {
+  try {
+    return (await api.get<{ sha: string }>(`repos/${repo}/commits/${sha}`)).sha;
+  } catch (error) {
+    if (error instanceof GhError && (error.status === 422 || error.status === 404)) return null;
+    throw error;
+  }
+}
+
+/** A list shorter than `total_count` throws rather than read as complete, because a missing failure would read as green. */
+async function listCommitStatuses(api: Rest, repo: string, sha: string): Promise<CommitStatus[]> {
+  let total = 0;
+  const statuses = await api.pages(`repos/${repo}/commits/${sha}/status`, { per_page: "100" }, (page: { total_count: number; statuses: CommitStatus[] }) => {
+    total = page.total_count;
+    return page.statuses;
+  });
+  if (statuses.length !== total) throw new Error(`the combined status of ${sha} listed ${statuses.length} of ${total} statuses`);
+  return statuses.map((status) => ({ context: status.context, state: status.state }));
 }
 
 /** Actions job URLs read `.../actions/runs/<runId>/job/<jobId>`. */

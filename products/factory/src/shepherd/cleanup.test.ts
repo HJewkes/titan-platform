@@ -53,14 +53,14 @@ function fakeTasks(state: TaskState): CleanupTasks & { closed: string[]; notes: 
   return { closed, notes, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
 }
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput; advisory?: (repo: string) => boolean } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
   const tasks = fakeTasks(options.task ?? "open");
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
-  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup };
+  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
   const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
@@ -116,6 +116,17 @@ describe("sh-cleanup task", () => {
 });
 
 describe("sh-cleanup head ref", () => {
+  it("leaves an advisory repo's head branch in place after a human merge, and still closes the task", async () => {
+    const w = world({ advisory: (repo) => repo === REPO });
+
+    const result = await w.run();
+
+    expect(result.ref).toBe("advisory");
+    expect(w.fake.refs.has("feat/x")).toBe(true);
+    expect(w.fake.effects.deleteRef).toBe(0);
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+  });
+
   it("deletes a same-repo head branch after the merge", async () => {
     const w = world();
 
