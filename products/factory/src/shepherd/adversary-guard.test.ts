@@ -7,7 +7,7 @@ import { shepherdEventMigration } from "./events.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
-import type { CarryResult } from "./tree-carry.js";
+import type { CarryInput, CarryResult } from "./tree-carry.js";
 
 const REPO = "octo/demo";
 const REVIEWED = fakeSha("reviewed");
@@ -28,7 +28,7 @@ interface Rig {
 }
 
 /** A run whose seat released a g10-adversary hold at REVIEWED, then held and lifted a stall at MOVED, where the PR now is. */
-function rig(probe: () => Promise<CarryResult>, head = MOVED): Rig {
+function rig(probe: (input: CarryInput) => Promise<CarryResult>, head = MOVED): Rig {
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db);
