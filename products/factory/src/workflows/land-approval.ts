@@ -1,6 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
+import type { OwnerBrief } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import { approveMergeDecision } from "../gate-brief.js";
+import { approveMergeDecision, ownerBriefLines } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
 
@@ -26,10 +27,12 @@ export type ApprovalAnswer = "merge" | "abandon" | { failed: string };
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
 
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
-export function approveMergeGate(rule: PolicyRule, reviewedMerge?: (headSha: string) => boolean): AskApproval {
+export function approveMergeGate(rule: PolicyRule, reviewedMerge?: (headSha: string) => boolean, ownerBriefAt?: (headSha: string) => OwnerBrief | undefined): AskApproval {
   return async (ctx, { repo, pr, headSha, reason, base }) => {
-    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: reviewedMerge?.(headSha) ?? false });
-    const prompt = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
+    const ownerBrief = ownerBriefAt?.(headSha);
+    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: reviewedMerge?.(headSha) ?? false, ownerBrief });
+    const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
+    const prompt = ownerBrief ? [asked, "", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)].join("\n") : asked;
     const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${headSha}: ${answer.error.message}`);
     return answer.data.decision;

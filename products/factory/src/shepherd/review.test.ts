@@ -1334,6 +1334,22 @@ describe("reviewPhase", () => {
     expect(auto.inputs[`sh-review:${H1}`]).not.toHaveProperty("ownerBrief");
   });
 
+  it("asks the reviewer for an owner brief on an auto run whose policy carries visual paths, since a visual-path gate may open", async () => {
+    const visual = await review({ dispatch: fakeDispatch(), policy: { ...AUTO, visualPaths: ["packages/ui/**"] } });
+
+    expect(visual.inputs[`sh-review:${H1}`]).toMatchObject({ ownerBrief: true });
+  });
+
+  it("carries the reviewer's owner brief on the MERGE verdict, so an approve-merge gate at that head can show it", async () => {
+    const ownerBrief = { what: "Restyle the button", why: "Contrast", pros: ["Passes contrast"], cons: ["Baselines move"], doorType: "two-way" as const };
+    const reviewer = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
+    const awaited: Scene["awaited"] = (input) => ({ kind: "verdict", verdict: "MERGE", head: input.head, locator: locatorIn(reviewer.sessionId), reviewer, ownerBrief });
+
+    const { verdicts } = await review({ dispatch: fakeDispatch(), awaited, policy: { ...AUTO, visualPaths: ["packages/ui/**"] } });
+
+    expect(verdicts[0]).toMatchObject({ kind: "MERGE", headSha: H1, ownerBrief });
+  });
+
   it("hands the owner-brief request to the spawned reviewer's brief only under an owner-gate policy", async () => {
     const gated = fakeDispatch();
     const auto = fakeDispatch();

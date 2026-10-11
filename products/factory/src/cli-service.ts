@@ -7,8 +7,10 @@ import { parseDuration, parseNodePath, parsePort, parseSha } from "./cli-options
 import type { CliIo, Verbs } from "./cli.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { deployCheckoutPath, deployedBinPath } from "./deploy-checkout.js";
-import { deployService } from "./deploy.js";
+import { deployService, type DeployPorts } from "./deploy.js";
+import { clearDeployPause, describePause, readDeployPause } from "./deploy-pause.js";
 import { originOf, systemDeployPorts } from "./deploy-ports.js";
+import { configuredDeployIncident } from "./deploy-watch-ports.js";
 import { DEFAULT_DRAIN_TIMEOUT_MS } from "./restart-drain.js";
 import { FACTORY_PORT } from "./serve.js";
 import { servicePath, stableNodePath, type PlistOptions } from "./service.js";
@@ -72,6 +74,7 @@ export function registerService(program: Command, verbs: Verbs): void {
     });
   registerServiceControl(service, verbs);
   registerServiceDeploy(service, verbs);
+  registerServicePause(service, verbs);
 }
 
 function registerServiceControl(service: Command, { io, deps, setExit }: Verbs): void {
@@ -130,16 +133,46 @@ interface RestartFlags {
 /** The checkout this bin was built in: dist/bin.js and src/cli.ts both sit three levels below its root. */
 export const ownCheckout = (): string => fileURLToPath(new URL("../../../", import.meta.url));
 
-function registerServiceDeploy(service: Command, { io, deps, setExit }: Verbs): void {
+function deployPortsFor({ io, deps }: Verbs): { checkout: string; ports: DeployPorts } {
+  const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
+  return { checkout, ports: deps.deploy ?? { ...systemDeployPorts(checkout), incident: configuredDeployIncident(io.env) } };
+}
+
+function registerServiceDeploy(service: Command, verbs: Verbs): void {
+  const { io, deps, setExit } = verbs;
   const deploy = service
     .command("deploy")
-    .description("fast-forward the dedicated deploy checkout's main to a sha (cloning it first when absent), rebuild the factory closure and restart drained; restores dist when the new build fails")
-    .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha);
-  withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string }) => {
-    const checkout = deployCheckoutFor(io.env, { home: deps.deploy?.home ?? homedir(), platform: deps.deploy?.platform ?? process.platform });
-    const ports = deps.deploy ?? systemDeployPorts(checkout);
-    const remote = serviceConfig(io.env).deployRemote ?? (deps.deploy === undefined && !existsSync(join(checkout, ".git")) ? await originOf(ownCheckout()) : undefined);
-    const options = { checkout, remote, stateDir: factoryStateDir(io.env), logDir: factoryStateDir(io.env), port: opts.port, expect: opts.expect, drain: drainOf(opts) };
+    .description("fast-forward the dedicated deploy checkout's main to a sha (cloning it first when absent), rebuild the factory closure, restart drained and watch it; restores dist when the new build fails, and pauses every deploy when a restarted build fails")
+    .option("--expect <sha>", "the commit to deploy; default is origin/main after a fetch", parseSha)
+    .option("--watch-window <duration>", "how long the restarted build must stay up with no new failed runs, such as 2m; default service.deployWatchMs or 2m", parseDuration);
+  withRestartFlags(deploy).action(async (opts: RestartFlags & { expect?: string; watchWindow?: number }) => {
+    const { checkout, ports } = deployPortsFor(verbs);
+    const config = serviceConfig(io.env);
+    const remote = config.deployRemote ?? (deps.deploy === undefined && !existsSync(join(checkout, ".git")) ? await originOf(ownCheckout()) : undefined);
+    const windowMs = opts.watchWindow ?? config.deployWatchMs;
+    const stateDir = factoryStateDir(io.env);
+    const options = { checkout, remote, stateDir, logDir: stateDir, port: opts.port, expect: opts.expect, drain: drainOf(opts), ...(windowMs !== undefined && { watch: { windowMs } }) };
     setExit(await runServiceVerb("deploy", ports, io, () => deployService(ports, io, options), MANAGED_PLATFORMS));
   });
+}
+
+/** The pause a rolled-back restart leaves; only a person clears it, since a newer sha must not. */
+function registerServicePause(service: Command, verbs: Verbs): void {
+  const { io, setExit } = verbs;
+  service
+    .command("pause")
+    .description("show whether a failed deploy has paused every deploy; --clear lifts the pause once the cause is fixed")
+    .option("--clear", "remove the pause, so the next deploy runs; refused while a deployer holds the deploy lock")
+    .action((opts: { clear?: boolean }) => {
+      const { ports } = deployPortsFor(verbs);
+      const stateDir = factoryStateDir(io.env);
+      const state = readDeployPause(ports, stateDir);
+      if (!opts.clear) return void io.stdout(`${describePause(state)}\n`);
+      const held = clearDeployPause(ports, stateDir);
+      if (held !== undefined) {
+        io.stderr(`error: ${held}\n`);
+        return setExit(1);
+      }
+      io.stdout(state.paused ? "cleared the deploy pause\n" : "deploys are not paused\n");
+    });
 }
