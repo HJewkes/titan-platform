@@ -706,7 +706,7 @@ Key exports:
 
 ### [`decider`](https://hjewkes.github.io/titan-platform/reference/decider)
 
-Tier 2, `@titan-design/decider@0.6.1`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+Tier 2, `@titan-design/decider@0.6.2`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
 
 **Use this when:** You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list.
 
@@ -723,7 +723,7 @@ Key exports:
 
 ### [`memory`](https://hjewkes.github.io/titan-platform/reference/memory)
 
-Tier 2, `@titan-design/memory@0.1.4`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
+Tier 2, `@titan-design/memory@0.2.0`. Decaying rule playbook: bullets, feedback, deterministic curation, recall
 
 **Use this when:** An agent must carry lessons between sessions in a rule playbook whose confidence decays with evidence and stays small without manual curation. It also parses, dedupes and groups Claude Code auto-memory fact files, proposing where each group should live.
 
