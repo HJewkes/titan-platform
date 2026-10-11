@@ -197,6 +197,10 @@ capped, so a first request adds nothing. `usd` is `request_cost` at list price. 
 linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
 task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
 implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+`peakContext` is the largest main-thread `context_tokens` over the implementer sessions.
+`contextAtFirstDeliverable` is the context of the first implementer request at or after the
+earliest `status_report` or `pr_create` signal, in that signal's session. Reviewer sessions count
+toward neither, and each is null when there is nothing to read.
 
 | Flag | Meaning |
 |---|---|
