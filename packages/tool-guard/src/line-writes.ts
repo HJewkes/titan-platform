@@ -43,8 +43,15 @@ export function afterWrites(cmd: SimpleCommand, line: ClassifyContext): Classify
   const path = target ? resolvePath(cmd.dir, target.target, line.home) : null;
   const text = path === null ? null : written(cmd);
   if (path === null || !text) return line;
-  const readings = withWrite(trackedReadings(line, path), text, target?.op.endsWith(">>") === true);
-  return { ...line, scriptReadings: (p) => (p === path ? readings : trackedReadings(line, p)) };
+  return withFileWrite(line, path, text, target?.op.endsWith(">>") === true);
+}
+
+/** The write lands in the state an `&&` chain falls back to as well, since the command ran whether or not the chain breaks later. */
+function withFileWrite(line: ClassifyContext, path: string, text: string, append: boolean): ClassifyContext {
+  const readings = withWrite(trackedReadings(line, path), text, append);
+  const next: ClassifyContext = { ...line, scriptReadings: (p) => (p === path ? readings : trackedReadings(line, p)) };
+  const trust = line.chainTrust;
+  return trust ? { ...next, chainTrust: { ...trust, fallback: withFileWrite(trust.fallback, path, text, append) } } : next;
 }
 
 function withWrite(prior: string[] | null, text: string, append: boolean): string[] | null {

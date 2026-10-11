@@ -111,6 +111,15 @@ describe("one fixture per bash.merge spelling", () => {
   });
 
   it.each([
+    ["no write, the control", "git checkout -b feat/z && git add . ; git merge x", ["bash.merge.git-merge-protected"]],
+    ["a write to a file, then ;", "git checkout -b feat/z && echo x > log; git merge x", ["bash.merge.git-merge-protected"]],
+    ["a write to /dev/null, then ;", "git switch -c feat/z && echo x > /dev/null; git push origin HEAD", ["bash.merge.git-push-protected"]],
+    ["a printf write, then a newline", "git switch -c feat/z && printf ok > out.txt\ngit push", ["bash.merge.git-push-implicit"]],
+  ])("drops the trust in a branch created from main once the && chain breaks, after a step that writes a file: %s", (_how, command, expected) => {
+    expect(spellings(bash(command, "main"))).toEqual(expected);
+  });
+
+  it.each([
     "git checkout main && cd src && git merge x",
     "git checkout main && git -C src merge x",
     "cd src && git checkout main && cd .. && git merge x",

@@ -54,6 +54,7 @@ const reachedThroughWrite = (cmd: string): [string, string][] => [
   ["'.' of a file a negated echo writes", `! echo '${cmd}' > f; . ./f`],
   ["'.' of a file echo writes behind [ -s f ] ||", `[ -s f ] || echo '${cmd}' > f; . ./f`],
   ["'.' of a file a negated pipeline's echo writes", `! echo '${cmd}' > f | cat; . ./f`],
+  ["'.' one command after the && chain that wrote the file ends", `git checkout -b feat/z && echo '${cmd}' > f; true; . ./f`],
 ];
 
 /** Lines whose write to `f` may not run, or not replace it, so the push `f` already holds may still be what runs. */
