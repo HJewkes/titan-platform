@@ -114,6 +114,36 @@ back in for up to three iterations, stops on nothing new or at 50 deltas, valida
 item, then curates with the session's provenance and advances the watermark. Invalid output
 is reported in `rejected`, never thrown.
 
+## Auto-memory
+
+Claude Code writes auto-memory facts as markdown files with YAML frontmatter, one directory per
+project, with no view across projects. These pure functions turn the raw files into reviewable
+groups. The caller reads the files; nothing here touches the filesystem or calls a model.
+
+```ts
+import { dedupeFacts, groupFacts, parseMemoryFile, proposeDestination } from "@titan-design/memory";
+
+const parsed = files.map(({ raw, ref }) => parseMemoryFile(raw, ref));
+const facts = parsed.filter((result) => result.ok);
+const unparsed = parsed.filter((result) => !result.ok); // { ok: false, error } names the file
+
+for (const group of groupFacts(dedupeFacts(facts))) {
+  const { destination, reason } = proposeDestination(group, skills, { now: new Date() });
+  // destination: "skill:release" | "new-skill:<label>" | "charter" | "claude-md:global" | "claude-md:<project>" | "delete"
+}
+```
+
+- **Parsing** accepts a top-level `type`, a nested `metadata.type`, and a `metadata` block with
+  no type (type `unknown`). A missing closing `---` or invalid YAML is a failure value, never a
+  throw. `parseMemoryIndex` reads the `- [Title](file.md)` lines of a `MEMORY.md`.
+- **Dedupe** merges equal content keys, then near-duplicates at Jaccard ≥ 0.85 with the same
+  polarity, the same rule `curate` uses. Every source file is kept.
+- **Grouping** is single-link over name-and-description tokens at Jaccard ≥ 0.3, largest group
+  first. The same files give the same groups in any input order.
+- **Destinations** follow a fixed rule order: matching skill, coordination feedback to the
+  charter, guidance across projects to the global CLAUDE.md, stale project facts to delete,
+  single-project guidance to that project's CLAUDE.md, otherwise a new skill.
+
 ## Gotchas
 
 **Provenance is an option on `curate`, never a field on a delta.** A model cannot claim a
