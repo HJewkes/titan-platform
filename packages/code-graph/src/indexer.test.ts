@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
 import { indexPaths } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 
@@ -63,7 +64,14 @@ describe("indexPaths", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  const index = () => indexPaths(store, { paths: [root], ref: "wd", detectRenames: false });
+  const index = () =>
+    indexPaths(store, { paths: [root], ref: "wd", detectRenames: false, tsConfig: FIXTURE_TSCONFIG });
+
+  // TP-729: loading the full TS lib per program is what timed these suites out under load.
+  it("indexes under a fixture tsconfig that loads no TS lib or @types", async () => {
+    const config = JSON.parse(await fs.readFile(FIXTURE_TSCONFIG, "utf8"));
+    expect(config.compilerOptions).toMatchObject({ noLib: true, types: [] });
+  });
 
   it("builds file, module, symbol, and external nodes with import edges", async () => {
     const result = await index();
