@@ -6,7 +6,7 @@ import type { OwnerGateReason } from "./policy.js";
 import { transientOnlyConditions } from "./resync.js";
 import { ESCALATIONS } from "./route-table.js";
 
-export type GateClass = "deliberate" | "accidental" | "unclassified";
+type GateClass = "deliberate" | "accidental" | "unclassified";
 
 export interface GateRuleRef {
   table: string;

@@ -10,10 +10,10 @@ import type { OwnerGateReason } from "./policy.js";
 import { whyAsked, type GateRuleRef, type WhyAsked } from "./why-asked.js";
 
 type QuestionInput = ManifestInput["questions"][number];
-export type OwnerSectionInputSection = NonNullable<ManifestInput["sections"]>[number];
-export type OwnerQuestion = Extract<QuestionInput, { kind: "pick-one" }>;
+type OwnerSectionInputSection = NonNullable<ManifestInput["sections"]>[number];
+type OwnerQuestion = Extract<QuestionInput, { kind: "pick-one" }>;
 
-export interface OwnerSectionPr {
+interface OwnerSectionPr {
   repo: string;
   number: number;
   url: string;
@@ -30,7 +30,7 @@ export interface OwnerSectionPr {
   ui: boolean;
 }
 
-export interface VisualPair {
+interface VisualPair {
   story: string;
   width: string;
   before: string;
@@ -47,10 +47,10 @@ export interface OwnerSectionInput {
   visuals?: { pairs: VisualPair[]; base: string } | { none: string };
 }
 
-export const OWNER_ANSWERS = ["Approve merge", "Changes needed", "Close", "Defer"] as const;
-export type OwnerAnswer = (typeof OWNER_ANSWERS)[number];
+const OWNER_ANSWERS = ["Approve merge", "Changes needed", "Close", "Defer"] as const;
+type OwnerAnswer = (typeof OWNER_ANSWERS)[number];
 
-export interface OwnerSection {
+interface OwnerSection {
   markdown: string;
   section: OwnerSectionInputSection;
   question: OwnerQuestion;
