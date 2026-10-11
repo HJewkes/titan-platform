@@ -13,7 +13,7 @@ interface Unparsed {
   error: string;
 }
 
-export interface MemoryScanResult {
+interface MemoryScanResult {
   files: number;
   indexes: number;
   byAccount: Record<string, number>;
@@ -21,7 +21,7 @@ export interface MemoryScanResult {
   unparsed: Unparsed[];
 }
 
-export interface MemoryReportResult {
+interface MemoryReportResult {
   reportId: string;
   dir: string;
   report: string;
