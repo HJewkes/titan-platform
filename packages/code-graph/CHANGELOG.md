@@ -1,5 +1,11 @@
 # @titan-design/code-graph
 
+## 0.17.0
+
+### Minor Changes
+
+- 334b3d3: TP-747 a: add a per-file digest of tree-derived facts (source, dead-code and growth-risk metrics, qualified names). `assembleIndexerMetrics` and `buildIndexerMetrics` accept optional `fileDigests` in place of `parsedFiles` (now optional), keeping symbol metrics only for symbols in the final node map, and `qualifiedSymbolAliases` accepts precomputed qualified-name maps. Groundwork for deleting each tree as soon as its file is indexed.
+
 ## 0.16.0
 
 ### Minor Changes

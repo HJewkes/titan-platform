@@ -166,7 +166,11 @@ reordered between runs. Duplicate keys throw before anything launches.
 `budgetUsd` is checked before each launch against the cost that items reported
 in `StepResult.usage` or on their failure. An item that succeeds on retry
 counts its failed attempts once, through its result. Items still in flight are not
-counted, so a run can overshoot by up to `concurrency - 1` items.
+counted, so a run can overshoot by up to `concurrency - 1` items. A usage marked
+`costUnknown` (some spend had no price, such as a Codex subscription run) stops
+new launches with `stoppedBy: "cost_unknown"` when `budgetUsd` is set, because
+counting the gap as zero would let the budget overrun unseen. Without a budget it
+changes nothing.
 
 An item whose step throws `StepFailedError` lands in `failed` with its `error`,
 `retryable` flag and, when the runner reported it, the `usage` of its failed
@@ -175,7 +179,7 @@ budget, refusal, schema) stops new launches at once, because the next item would
 fail the same way. Retryable failures stop launches once there are more than
 `maxFailures` of them (default 3). `spentUsd` includes failed-call cost. The
 result reports `results` in input order, plus `failed`, `skipped`, `spentUsd`
-and `stoppedBy` (`"budget"`, `"failure"` or `null`). Any other error is
+and `stoppedBy` (`"budget"`, `"failure"`, `"cost_unknown"` or `null`). Any other error is
 rethrown once the items in flight settle.
 
 `agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
