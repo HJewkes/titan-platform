@@ -4,6 +4,7 @@ import { commandMentions, pathMentions } from "../mentions.js";
 import type { Mention } from "../mentions.js";
 import { GUARDED_PATHS } from "../paths.js";
 import type { SimpleCommand } from "../shell/commands.js";
+import type { WordToken } from "../shell/lexer.js";
 import { parseGit } from "../shell/git.js";
 import { basename } from "../shell/path.js";
 import { classified } from "../spellings.js";
@@ -24,6 +25,7 @@ const CLAUDE_CLI: Record<string, Set<string>> = {
 };
 /** Builtins that set a variable the shell passes to its children. */
 const DECLARERS = new Set(["export", "declare", "typeset", "local", "readonly"]);
+const STORERS = new Set(["printf", "read", "mapfile", "readarray", "let"]);
 const GIT_CONFIG_READS = new Set(["--get", "--get-all", "--get-regexp", "-l", "--list"]);
 
 function bash(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
@@ -75,17 +77,50 @@ function copyIntoMentions(cmd: SimpleCommand, ctx: ClassifyContext): Mention[] {
   return commandMentions(copied, ctx, GUARDED_PATHS.config).map((m) => ({ ...m, word: null }));
 }
 
+/** The variable a word names when it assigns, before any `=` or `[`; `=1` with nothing before it is a substitution that dropped. */
+function assignedName(word: WordToken): string {
+  return word.value.split(/[=[]/, 1)[0] ?? "";
+}
+
+/** A name the reader cannot spell out: it holds an expansion, or a substitution dropped from the word. */
+function unreadableName(word: WordToken): boolean {
+  const name = assignedName(word);
+  return /[$`]/.test(name) || (name === "" && word.subs.length > 0);
+}
+
+const operands = (cmd: SimpleCommand) => cmd.args.filter((a) => !a.value.startsWith("-"));
+
+/** A nameref makes the next `export r=1` set whatever `r` points at, so a `-n` declaration may not point at the bypass or at anything unread. */
+function pointsAtBypass(cmd: SimpleCommand): boolean {
+  if (!cmd.args.some((a) => /^-[a-zA-Z]*n/.test(a.value))) return false;
+  return operands(cmd).some((a) => a.value.includes("=") && (a.value.split("=").slice(1).join("=") === BYPASS_VAR || a.dynamic));
+}
+
 /** `export X=1` stores no prefix assignment, so a declaration builtin's arguments are read for the name. */
-function exportsBypass(cmd: SimpleCommand): boolean {
-  if (cmd.name === null || !DECLARERS.has(cmd.name)) return false;
-  return cmd.args.some((a) => {
-    const name = a.value.split(/[=[]/, 1)[0] ?? "";
-    return name === BYPASS_VAR || /[$`]/.test(name);
-  });
+function declaresBypass(cmd: SimpleCommand): boolean {
+  return operands(cmd).some((a) => assignedName(a) === BYPASS_VAR || unreadableName(a)) || pointsAtBypass(cmd);
+}
+
+/** Under `set -a` any of these stores into the environment; they are denied by name wherever they appear. */
+function storesBypass(cmd: SimpleCommand): boolean {
+  const targets = cmd.name === "printf" ? cmd.args.slice(cmd.args.findIndex((a) => a.value === "-v") + 1).slice(0, 1) : operands(cmd);
+  const named = cmd.name === "printf" && !cmd.args.some((a) => a.value === "-v") ? [] : targets;
+  return named.some((a) => assignedName(a) === BYPASS_VAR || (cmd.name !== "let" && unreadableName(a)));
+}
+
+/** `env $N=1 claude` reads as a command with no name, so an assignment-shaped word whose name is unread is checked there too. */
+function envsBypass(cmd: SimpleCommand): boolean {
+  return cmd.args.some((a) => a.value.includes("=") && (assignedName(a) === BYPASS_VAR || unreadableName(a)));
+}
+
+function setsBypass(cmd: SimpleCommand): boolean {
+  if (cmd.name === null || cmd.name === "env") return envsBypass(cmd);
+  if (DECLARERS.has(cmd.name)) return declaresBypass(cmd);
+  return STORERS.has(cmd.name) && storesBypass(cmd);
 }
 
 function namedWrite(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction | null {
-  if (exportsBypass(cmd)) return classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` });
+  if (setsBypass(cmd)) return classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` });
   if (cmd.name === "git" && setsHooksPath(cmd, ctx)) {
     return classified("bash.config.git-config-hookspath", { pattern: "git:core.hooksPath" });
   }
@@ -109,4 +144,4 @@ function write(event: WriteEvent, ctx: ClassifyContext): ClassifiedAction[] {
 }
 
 /** Editing permission config, hooks or home instructions: CFG rows of the authority table. */
-export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", ...DECLARERS]), bash, write };
+export const config: Family = { verbs: new Set([...READ_ONLY, ...REMOVERS, ...IN_PLACE, ...COPIERS, "tee", "git", "claude", ...DECLARERS, ...STORERS, "env"]), bash, write };

@@ -35,6 +35,14 @@ const settingTheBypass = [
   "readonly TITAN_TOOL_GUARD_BYPASS=1",
   "v=TITAN_TOOL_GUARD_BYPASS; export $v=1",
   "export TITAN_TOOL_GUARD_BYPAS$'S'=1",
+  "N=$(printf TITAN_TOOL_GUARD_BYPASS); env $N=1 claude",
+  "env $(printf TITAN_TOOL_GUARD_BYPASS)=1 claude",
+  "export $(printf TITAN_TOOL_GUARD_BYPASS)=1; claude",
+  'export "$(printf TITAN_TOOL_GUARD_BYPASS)=1"; claude',
+  "declare -n r=TITAN_TOOL_GUARD_BYPASS; export r=1; claude",
+  "set -a; printf -v TITAN_TOOL_GUARD_BYPASS 1; claude",
+  "set -a; read TITAN_TOOL_GUARD_BYPASS <<< 1; claude",
+  "set -a; mapfile TITAN_TOOL_GUARD_BYPASS <<< 1; claude",
   "bash -c 'export TITAN_TOOL_GUARD_BYPASS=1; claude'",
 ];
 
@@ -62,6 +70,10 @@ describe("an agent setting the tool-guard bypass variable", () => {
     "grep TITAN_TOOL_GUARD_BYPASS src/actor.ts",
     'export PATH="$PATH:/x"',
     "FOO=1 claude -p hi",
+    "env FOO=1 claude -p hi",
+    "read -r line <<< x",
+    "printf '%s\\n' hi",
+    "echo --flag=$x",
   ])("passes when it only reads or leaves the variable alone: %s", async (command) => {
     expect(await decisionFor(command)).toBe("pass");
   });
