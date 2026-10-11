@@ -88,26 +88,85 @@ export interface DeployerOptions {
   stateDir: string;
   node?: string;
   now?: () => Date;
+  platform?: NodeJS.Platform;
 }
 
+export const SYSTEMD_RUN = "systemd-run";
+
+/** The timestamp keeps a redeploy of the same sha from colliding with a unit that is still running. */
+export const deployUnitName = (mergeSha: string, at: Date): string => `titan-factory-deploy-${mergeSha.slice(0, 8)}-${at.getTime().toString(36)}`;
+
+/** A transient unit sits in its own cgroup, so `systemctl restart titan-factory` (KillMode=control-group) no longer kills the deployer mid-deploy. */
+export function systemdRunArgs(unit: string, log: string, cwd: string, command: readonly string[]): string[] {
+  const output = [`--property=StandardOutput=append:${log}`, `--property=StandardError=append:${log}`];
+  return ["--user", "--collect", "--quiet", "--unit", unit, `--working-directory=${cwd}`, "--setenv=PATH", ...output, "--", ...command];
+}
+
+type Started = ReturnType<DeployerPorts["spawn"]>;
+
 /** Detached is setsid(2): the deployer leads its own process group, so launchd's kill of the service's group misses it. */
+function startDetached(ports: DeployerPorts, log: string, cwd: string, file: string, args: readonly string[]): Started {
+  const fd = ports.openAppend(log);
+  try {
+    const child = ports.spawn(file, args, { cwd, detached: true, stdio: ["ignore", fd, fd] });
+    child.unref();
+    return child;
+  } finally {
+    ports.close(fd);
+  }
+}
+
+/** deploy-health reads this line as a refusal, so only the deployer itself writes it, never the systemd-run launcher. */
+function startDeployer(ports: DeployerPorts, log: string, cwd: string, command: DeployCommand): Started {
+  const child = startDetached(ports, log, cwd, command.file, command.args);
+  child.on("error", (error: Error) => appendQuietly(ports, log, `deployer did not start: ${error.message}\n`));
+  return child;
+}
+
+interface DeployCommand {
+  file: string;
+  args: readonly string[];
+}
+
+const fallbackNote = (why: string): string => `${SYSTEMD_RUN} did not start the deployer (${why}); starting it in its own session instead\n`;
+
+/** systemd-run reports a missing binary or a refused unit only after spawn returns, so the fallback runs from its error and exit events. */
+function startUnderSystemd(ports: DeployerPorts, log: string, cwd: string, unit: string, command: DeployCommand): Started {
+  let fellBack = false;
+  const fallBack = (why: string) => {
+    if (fellBack) return;
+    fellBack = true;
+    appendQuietly(ports, log, fallbackNote(why));
+    try {
+      startDeployer(ports, log, cwd, command);
+    } catch (error) {
+      appendQuietly(ports, log, `deployer did not start: ${failureOf(error)}\n`);
+    }
+  };
+  try {
+    const launcher = startDetached(ports, log, cwd, SYSTEMD_RUN, systemdRunArgs(unit, log, cwd, [command.file, ...command.args]));
+    launcher.on("error", (error: Error) => fallBack(error.message));
+    launcher.on("exit", (code: number | null) => code !== 0 && fallBack(`exit ${code}`));
+    return launcher;
+  } catch (error) {
+    appendQuietly(ports, log, fallbackNote(failureOf(error)));
+    return startDeployer(ports, log, cwd, command);
+  }
+}
+
+/** On systemd the returned pid is systemd-run's, which exits once the transient unit has started. */
 export function systemDeployer(options: DeployerOptions, ports: DeployerPorts = nodeDeployerPorts): Deployer {
   return {
     runningSha: buildSha,
     spawn: (mergeSha) => {
       const log = join(options.stateDir, REDEPLOY_LOG);
-      const args = [options.bin, "service", "deploy", "--expect", mergeSha];
+      const at = options.now?.() ?? new Date();
+      const command = { file: options.node ?? process.execPath, args: [options.bin, "service", "deploy", "--expect", mergeSha] };
       ports.mkdir(options.stateDir);
-      ports.append(log, `${(options.now?.() ?? new Date()).toISOString()} ${args.slice(1).join(" ")}\n`);
-      const fd = ports.openAppend(log);
-      try {
-        const child = ports.spawn(options.node ?? process.execPath, args, { cwd: options.stateDir, detached: true, stdio: ["ignore", fd, fd] });
-        child.on("error", (error: Error) => appendQuietly(ports, log, `deployer did not start: ${error.message}\n`));
-        child.unref();
-        return { pid: child.pid, log };
-      } finally {
-        ports.close(fd);
-      }
+      ports.append(log, `${at.toISOString()} ${command.args.slice(1).join(" ")}\n`);
+      const onSystemd = (options.platform ?? process.platform) === "linux";
+      const child = onSystemd ? startUnderSystemd(ports, log, options.stateDir, deployUnitName(mergeSha, at), command) : startDeployer(ports, log, options.stateDir, command);
+      return { pid: child.pid, log };
     },
   };
 }
