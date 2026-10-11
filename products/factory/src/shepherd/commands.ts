@@ -20,6 +20,7 @@ import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
+import { reviewCommand } from "./review-request.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
@@ -380,6 +381,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
   "shepherd.merge": mergeCommand,
+  "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
 };
 

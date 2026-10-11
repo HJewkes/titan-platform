@@ -152,7 +152,7 @@ export interface HoldTiming {
 export const AFTER_HOLD = { done: false, skipped: "held", mergeSha: "" };
 
 /** Wraps the `merge` route so a held PR waits for release, abort-safe, instead of failing on the port's refusal. */
-export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead): StepRoute {
+export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTiming, headNow: OpenHeadRead, reviewAsked?: ReviewAsked): StepRoute {
   const afterHold = codeRoute(route.match, timing.now ?? Date.now, async () => AFTER_HOLD);
   return {
     ...route,
@@ -160,7 +160,7 @@ export function waitWhileHeld(route: StepRoute, held: HeldCheck, timing: HoldTim
       run: async (input) => {
         let waited: boolean;
         try {
-          waited = await untilReleased({ held, headNow }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
+          waited = await untilReleased({ held, headNow, reviewAsked }, JSON.parse(input.prompt) as MergeTarget, input.signal, timing);
         } catch (error) {
           return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
         }
@@ -176,19 +176,25 @@ interface MergeTarget {
   sha?: string;
 }
 
+/** True while a seat's `shepherd review` ask at `sha` waits for the run to take it. */
+type ReviewAsked = (repo: RepoSlug, pr: number, sha: string) => boolean;
+
 interface HoldReads {
   held: HeldCheck;
   headNow: OpenHeadRead;
+  reviewAsked?: ReviewAsked;
 }
 
 /**
  * True when the PR was held at least once before its release. A merge at `sha` can never go through once the head has
  * moved past it, so a push ends the wait too: land then reads CI and the run reviews the new head, where the same hold
- * applies. A head that cannot be read counts as not moved.
+ * applies. A head that cannot be read counts as not moved. A seat's ask for Shepherd's own review at `sha` ends the wait
+ * with no merge too, so the run reads CI again and reviews that head.
  */
-async function untilReleased({ held, headNow }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
+async function untilReleased({ held, headNow, reviewAsked }: HoldReads, target: MergeTarget, signal: AbortSignal, timing: HoldTiming): Promise<boolean> {
   for (let waited = false; ; waited = true) {
     signal.throwIfAborted();
+    if (target.sha !== undefined && reviewAsked?.(target.repo, target.pr, target.sha)) return true;
     if ((await held(target.repo, target.pr, target.sha)) === undefined) return waited;
     if (await movedPast(headNow, target)) return true;
     await timing.sleep(timing.pollMs ?? HOLD_POLL_MS, signal);

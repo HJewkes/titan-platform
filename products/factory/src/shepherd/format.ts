@@ -1,6 +1,7 @@
 import type { CommandMapOf } from "@titan-design/registry";
 import type { ZodType } from "zod";
 import { SHEPHERD_COMMAND_MAP, type MergeEvaluation, type Registered, type ShepherdCommandName } from "./commands.js";
+import type { ReviewAsk } from "./review-request.js";
 import type { ResyncReport } from "./resync.js";
 import { OVERDUE_HOURS, overdueOwnerGates, type Waiting, type WaitingGate } from "./waiting.js";
 import type { PrTimeline, TimelineEntry, WatchRow } from "./view.js";
@@ -19,6 +20,7 @@ const FORMATTERS: Formatters = {
   "shepherd.hold": formatHold,
   "shepherd.release": formatHold,
   "shepherd.merge": formatMerge,
+  "shepherd.review": formatReviewAsk,
   "shepherd.resync": formatResync,
 };
 
@@ -44,6 +46,10 @@ function formatWaiting(waiting: Waiting): string {
 
 function formatHold({ runId, held }: ShepherdResults["shepherd.hold"]): string {
   return `run ${runId}: ${held ? `held (${held.reason})` : "released"}\n`;
+}
+
+function formatReviewAsk({ runId, head, requested }: ReviewAsk): string {
+  return `run ${runId}: ${requested ? "asked for Shepherd's own review" : "Shepherd's own review was already asked"} at ${head}\n`;
 }
 
 function formatRegistered(registered: Registered): string {

@@ -165,6 +165,9 @@ importers:
       '@titan-design/registry':
         specifier: workspace:^
         version: link:../../packages/registry
+      '@titan-design/review-schema':
+        specifier: ^0.1.0
+        version: 0.1.0(zod@4.5.4)
       '@titan-design/rpc-client':
         specifier: workspace:*
         version: link:../../packages/rpc-client

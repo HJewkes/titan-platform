@@ -642,11 +642,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/pr.test.ts": {
-    "titan/no-chained-type-assertions": {
-      "count": 3
-    }
-  },
   "products/factory/src/shepherd/publish-review.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1

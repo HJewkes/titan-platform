@@ -68,6 +68,7 @@ beforeEach(async () => {
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
+    roundsDir: path.join(dir, "state", "rounds"),
   };
   await writeFile(config.sessionGraphPath, "synthetic");
 });
@@ -122,6 +123,18 @@ describe("the console daemon", () => {
     expect(initiatives).toHaveLength(5);
     const detail = await client.call("work.initiative", { slug: "lantern-docs" });
     expect(detail.tasks.map((task) => task.id)).toEqual(["LD-3"]);
+  });
+
+  it("answers work.notes, work.record and work.search from the active-work daemon it fronts", async () => {
+    handle = await startConsoleDaemon({ config, logger: silentLogger });
+    const client = createRpcClient<ConsoleCommands>(liveSource({ origin: origin() }));
+    const { records } = await client.call("work.notes");
+    const note = await client.call("work.record", { ref: "note:orbit-relay/2031-03-03-backoff-ceiling.md" });
+    const { hits } = await client.call("work.search", { q: "handshake" });
+    expect(records.map((row) => row.ref)).toContain("source:kiln-tools/deepdive-cone-chart.md");
+    expect(note).toMatchObject({ title: "Cap the backoff at thirty seconds", truncated: false });
+    expect(hits.map((hit) => hit.ref)).toEqual(["source:orbit-relay/pr-41-handshake.md"]);
+    await expect(client.call("work.record", { ref: "source:orbit-relay/missing.md" })).rejects.toThrow(/not found/);
   });
 
   it("lists the upstream targets on /health without probing them", async () => {

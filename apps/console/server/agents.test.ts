@@ -233,6 +233,23 @@ describe("agents.messages", () => {
     expect(second.nextCursor).toBeNull();
   });
 
+  it("lists every agent's messages without an agent, still without lifecycle rows", async () => {
+    seedEventsDb(CONVERSATION);
+    const data = dataOf<Messages>((await invoke("agents.messages", await closedPort(), undefined, undefined, {})).envelope);
+    expect(data.messages.map((m) => m.id)).toEqual([6, 5, 4, 3, 1]);
+  });
+
+  it("lists every agent's messages from the history fallback without an agent", async () => {
+    const data = dataOf<Messages>((await invoke("agents.messages", await liveBroker(), undefined, undefined, {})).envelope);
+    expect(data.messages.map((m) => m.msgId)).toEqual(["m2", "m1"]);
+  });
+
+  it("refuses a peer without an agent", async () => {
+    const { envelope, exitCode } = await invoke("agents.messages", await closedPort(), undefined, undefined, { peer: "coord" });
+    expect(envelope.ok).toBe(false);
+    expect(exitCode).toBe(EXIT.DATAERR);
+  });
+
   it("leaves events.db byte for byte unchanged and never calls the broker while it answers", async () => {
     seedEventsDb(CONVERSATION);
     const before = await readFile(path.join(dir, "events.db"));

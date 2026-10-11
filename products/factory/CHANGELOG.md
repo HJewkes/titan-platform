@@ -1,5 +1,26 @@
 # @titan-design/factory
 
+## 0.13.0
+
+### Minor Changes
+
+- 62bd19c: A `g10-adversary` hold that names a reviewer no longer takes that reviewer's verdict as Shepherd's review: Shepherd spawns its own reviewer at the head, and the named reviewer's MERGE only satisfies the hold. The new `titan-factory shepherd review owner/repo#N` asks for Shepherd's own fresh review at the PR's current head, once per head; a run waiting to merge at that head, held or not, sets its verdict aside, ends the land round so the policy or the owner decides again, and reviews again. A MERGE that stands for an asked head is never carried to a later head. Retries at an asked head stay Shepherd's own, a `g10-review` hold that names a reviewer no longer releases itself on Shepherd's own MERGE, and the Version Packages run refuses an ask. Migration 18 stores the ask on the registration.
+
+## 0.12.2
+
+### Patch Changes
+
+- 2c83ae0: `titan-factory service check` reports a stale build only when the deploy checkout a restart loads is at a commit newer than the running build, so it no longer advises a restart that would roll serve back.
+- Updated dependencies [15ede18]
+  - @titan-design/session-read@0.12.1
+
+## 0.12.1
+
+### Patch Changes
+
+- b3c0688: Shepherd no longer reruns a red head's failed jobs when it replays a run recorded before the hold check or the rerun existed, so a run that landed before a serve restart does not touch CI again. A rerun GitHub answers with "cannot be retried" or "already running" is recorded as not rerunnable and the run goes on to the normal wake instead of failing.
+- 23b4922: Read the not-started review flag from `data.result`, where the sh-review step stores it, so the "review dispatches started no reviewer" stall fires on real runs. Rows with the flag at the top level still count.
+
 ## 0.12.0
 
 ### Minor Changes

@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from "react";
 
-/** The rail of six, in rail order. */
-export const VIEW_KEYS = ["home", "initiatives", "tasks", "sessions", "agents", "knowledge"] as const;
+/** The rail, in rail order. */
+export const VIEW_KEYS = ["home", "initiatives", "tasks", "sessions", "agents", "knowledge", "rounds"] as const;
 export type ViewKey = (typeof VIEW_KEYS)[number];
 
 export interface Route {
   view: ViewKey;
-  /** The record a detail route names: an initiative slug, task id, session id, agent name or knowledge ref. */
+  /** The record a detail route names: an initiative slug, task id, session id, agent name, knowledge ref or round id. */
   id?: string;
   /** The text after `?`, kept whole so deep links such as `?task=` and `?tab=graph` reach the page. */
   query?: string;
