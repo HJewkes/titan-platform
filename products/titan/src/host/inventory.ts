@@ -3,8 +3,8 @@ import type { HostDoctorRow } from "./doctor.js";
 import type { HostPorts } from "./ports.js";
 
 /** The centralization design's section 2 key: code, per-owner config, secret, per-host delta. */
-export type InventoryCategory = "a" | "b" | "c" | "d";
-export type InventoryPlatform = "darwin" | "linux" | "both";
+type InventoryCategory = "a" | "b" | "c" | "d";
+type InventoryPlatform = "darwin" | "linux" | "both";
 
 export interface InventoryEntry {
   /** `~`-relative; a whole `*` segment expands to every directory under its parent. */
