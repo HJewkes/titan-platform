@@ -816,7 +816,7 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.15.1`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.16.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
 
@@ -933,7 +933,7 @@ Key exports:
 
 ### [`throughput`](/reference/throughput)
 
-Tier 2, `@titan-design/throughput@0.1.1`. Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals
+Tier 2, `@titan-design/throughput@0.2.0`. Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals
 
 **Use this when:** You have per-task actuals (agent-hours, USD) and need deterministic per-class p10/p50/p80/p90 for planning, keyed kind x size band with recency weighting and a named back-off level. Producing the actuals from sessions belongs to session-analytics.
 
