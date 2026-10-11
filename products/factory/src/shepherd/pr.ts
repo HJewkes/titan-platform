@@ -26,14 +26,15 @@ import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
 import { LeaveLand } from "./leave-land.js";
-import { observePr, observeRoute, type ObservedPr } from "./observe.js";
+import { observePr, observeRoute } from "./observe.js";
 import { recordedRoute } from "./recorded-route.js";
 import { newCauseTrail, noteCarryStep, takeCause, tapped, type CarryProbe, type CauseTrail } from "./review-cause.js";
 import { clearSuperseded, expireStaleGates, supersedingGates } from "./stale-gates.js";
 import { recordingOverrides } from "./override-gate.js";
 import { outcomeRoutes, recordLanded, recordOverride, recordStopped } from "./outcome.js";
 import { leaveTrain } from "./train.js";
-import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, routeFor, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
+import { countRound, endedOutcome, type Routed } from "./routed.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
 import { awaitedPast, conflictGate, type PrTarget, type WakeRun } from "./gates.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
@@ -242,28 +243,6 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
   }
 }
 
-interface Routed {
-  headSha: string;
-  verdict: Verdict;
-  observed: ObservedPr;
-  outcome: ReviewOutcome;
-  route: Route;
-}
-
-/** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
-function countRound(run: ShepherdRun, routed: Routed): Escalated | undefined {
-  const { route, outcome, headSha } = routed;
-  const kind = roundKind(route, outcome);
-  run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
-  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.closer.streak, headSha);
-  if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
-  if (kind !== "stuck" && kind !== "throttled") return undefined;
-  run.failedRounds += 1;
-  if (route === "wake-fixer" || run.failedRounds < MAX_FAILED_ROUNDS) return undefined;
-  const ended = (routed.verdict.kind === "none" && routed.verdict.reason) || (FAILED_ROUND_WORDS[outcome] ?? outcome);
-  return { escalation: "failed-rounds", detail: `the last at ${headSha} ended with ${ended}` };
-}
-
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
@@ -293,12 +272,6 @@ async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
       if (route === "update-branch" && behindAt(run.lastCi, headSha) && (routed.outcome === "MERGE" || run.lastCi?.baseMoved !== true)) return true;
       throw new LeaveLand();
   }
-}
-
-function endedOutcome({ observed, headSha }: Routed): LandOutcome {
-  if (observed.runState === "merged-elsewhere") return { kind: "merged", headSha: observed.headSha, mergeSha: observed.mergeSha };
-  if (observed.runState === "closed-elsewhere") return { kind: "stopped", reason: "closed", headSha, detail: "the pull request was closed outside Shepherd" };
-  return { kind: "stopped", reason: "not-mergeable", headSha, detail: "the pull request is a draft" };
 }
 
 /** A tree-equal update of a reviewed head carries its MERGE; otherwise a verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
