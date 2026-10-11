@@ -44,12 +44,14 @@ function fakePorts(script: Script): HostPorts {
       if (text === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
       return text;
     },
+    stat: async () => "dir",
+    list: async () => ["default"],
     which: async (command) => (command === "titan-factory" ? "/opt/factory/dist/bin.js" : null),
   };
 }
 
 async function run(script: Script) {
-  const report = await hostDoctor(fakePorts(script), { host: "h", platform: "linux", projectsRoot: ROOT });
+  const report = await hostDoctor(fakePorts(script), { host: "h", platform: "linux", home: "/srv/me", projectsRoot: ROOT });
   const row = (id: string): HostDoctorRow => {
     const found = report.rows.find((r) => r.id === id);
     if (!found) throw new Error(`no row ${id}`);
