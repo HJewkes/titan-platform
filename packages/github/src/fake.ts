@@ -141,7 +141,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, autoMerge: false, ...fields };
       if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
