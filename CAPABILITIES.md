@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof run` bin does the git worktree, build and vitest runs and prints that line. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -312,16 +312,19 @@ Key exports:
 
 Tier 0, `@titan-design/fix-proof@0.3.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof run` bin does the git worktree, build and vitest runs and prints that line. To decide who may merge afterwards, use authority.
 
 Key exports:
 
-- `config`: `CONFIG_PATH`, `DEFAULT_CARRY_GLOBS`, `DEFAULT_TEST_GLOBS`, `parseFixProofConfig`
+- `config`: `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
 - `plan`: `planFixProof`
-- `classify`: `classifyReports`, `TEST_CLASSES`
+- `classify`: `classifyReports`
 - `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- +18 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
+- `cli`: `runCli`
+- `exec`: `spawnExec`
+- `run`: `errorLine`, `run`
+- +30 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
