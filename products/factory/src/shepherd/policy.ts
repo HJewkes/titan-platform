@@ -15,7 +15,7 @@ export type MergeMode = (typeof MERGE_ORDER)[number];
 
 export const OWNER_GATE_REASONS = ["gate-2-visual", "g10-security", "proof-fixture", "owner-asked"] as const;
 
-type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
+export type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
 
 /** The request's fields alone, so an argument parser accepts a request that `resolveEffectivePolicy` then refuses as a registration. */
 export const RequestedPolicyFields = z.strictObject({

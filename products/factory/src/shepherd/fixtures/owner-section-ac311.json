@@ -1,0 +1,41 @@
+{
+  "pr": {
+    "repo": "HJewkes/agent-chat",
+    "number": 311,
+    "url": "https://github.com/HJewkes/agent-chat/pull/311",
+    "title": "Let Shepherd mark its human sends with source shepherd",
+    "head": "38d98b62",
+    "summary": "Shepherd wakes an implementer (\"CI failed, fix it\") through the same path your typed messages use, so today the event log and the receiving agent both read those wakes as you typing. After this PR, a Shepherd wake is labelled `wake_source=\"shepherd\"`, beside the existing `watchdog`, and a labelled wake never carries your `human-endorsed` provenance. A message with no source renders exactly as before.\n- The broker records the source on the message event and on every delivery path (live push, inbox replay, seat hold).\n- The receiving agent sees the source in its channel tag.\n- `agent-chat debug send <to> <text> --source shepherd` sends one by hand; an unknown source is refused by the CLI and dropped by the broker.",
+    "additions": 152,
+    "deletions": 37,
+    "changedFiles": 11,
+    "ci": "green",
+    "openDays": 3,
+    "ui": false
+  },
+  "taskId": "CC-436",
+  "gate": {
+    "rule": { "table": "authority", "rowId": "MRG-AU" },
+    "reason": "the authority policy did not allow an automated merge: MRG-AU gates merge by automation; MRG-AU-RV unmet: merge-tree-clean; MRG-AU-RC unmet: verdict-merge-carried-tree-equal, merge-tree-clean",
+    "head": "2bbd21a"
+  },
+  "verdict": {
+    "verdict": "MERGE",
+    "head": "2bbd21a",
+    "reviewer": "tc-cc-436-review",
+    "ownerBrief": {
+      "what": "Shepherd's automated wakes are labelled as Shepherd's, so agents stop reading them as the owner typing.",
+      "why": "It changes how every agent tells the owner's messages from automated ones.",
+      "pros": [
+        "Agents stop mistaking Shepherd's automated wakes for your instructions, which today carry your authority.",
+        "The event log can count Shepherd wakes apart from your messages.",
+        "It only narrows authority: a source label removes the \"human typed this\" reading and never adds provenance."
+      ],
+      "cons": [
+        "Any local process that can run `agent-chat debug send` can label a message `shepherd`. That lowers its trust rather than raising it.",
+        "It goes live only after a broker restart."
+      ],
+      "doorType": "one-way"
+    }
+  }
+}
