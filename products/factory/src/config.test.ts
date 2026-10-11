@@ -103,6 +103,15 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
+    const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));
+
+    expect(load(repos).shepherd?.repos).toEqual(repos);
+    expect(() => load({ "acme/w": { pth: "x" } })).toThrow(/invalid config .*repos.*pth/);
+    expect(() => load({ widgets: { path: "/src/widgets" } })).toThrow(/repos/);
+  });
+
   it("reads the review-check App, and rejects a relative key path, a non-integer id and an unknown key", () => {
     const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
