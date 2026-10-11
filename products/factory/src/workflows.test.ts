@@ -100,6 +100,10 @@ interface ReviewSceneOptions {
   /** What a resume appends to the transcript as the reviewer's reply; absent makes `agent resume` fail. */
   reply?: string;
   repo?: string;
+  /** False leaves `shepherd.seatsDir` out of the config. */
+  seatsDir?: boolean;
+  /** The `shepherd.repos` value, built from the scene's checkout. */
+  repos?: (checkout: string) => object;
 }
 
 interface ReviewScene {
@@ -161,7 +165,7 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   writeFileSync(join(dir, "roster.template"), JSON.stringify([row]));
   const review = options.review === undefined ? { profile: PROFILE } : options.review;
   if (options.reply !== undefined) writeFileSync(join(dir, "reply.jsonl"), jsonl([{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-2", timestamp: "2026-09-30T10:06:00Z", message: { role: "user", content: "correct it" } }, assistantSaid(2, "2026-09-30T10:07:00Z", options.reply)]));
-  const shepherd = { seatsDir: join(dir, "seats"), agentChatBin: fakeAgentChat(dir, options.starts ?? true, transcript), ...(review !== null && { review }) };
+  const shepherd = { ...(options.seatsDir !== false && { seatsDir: join(dir, "seats") }), ...(options.repos && { repos: options.repos(checkout) }), agentChatBin: fakeAgentChat(dir, options.starts ?? true, transcript), ...(review !== null && { review }) };
   mkdirSync(join(dir, "titan-factory"));
   writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ shepherd }));
   const calls = (): string[] => (existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trimEnd().split("\n") : []);
@@ -362,6 +366,27 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
 
   it("leaves every wake unhandled when no binary is configured", async () => {
     expect(await wakeResult(configHome(undefined))).toEqual({ kind: "unhandled", reason: "shepherd.agentChatBin is not configured" });
+  });
+});
+
+describe("configuredRoutes with shepherd.repos", () => {
+  it("spawns the reviewer in the repos checkout when no seatsDir is configured", async () => {
+    const scene = reviewScene({ seatsDir: false, repos: (checkout) => ({ [REPO]: { path: checkout } }) });
+
+    const { result } = await reviewWith(scene);
+
+    expect(result(REVIEW)).toMatchObject({ kind: "dispatched", mode: "spawn" });
+    expect(readFileSync(join(scene.dir, "spawn-cwd"), "utf8").trim()).toBe(scene.checkout);
+  });
+
+  it("keeps the seat's checkout over a repos path for the same repo", async () => {
+    const elsewhere = realpathSync(mkdtempSync(join(tmpdir(), "factory-elsewhere-")));
+    dirs.push(elsewhere);
+    const scene = reviewScene({ repos: () => ({ [REPO.toUpperCase()]: { path: elsewhere } }) });
+
+    await reviewWith(scene);
+
+    expect(readFileSync(join(scene.dir, "spawn-cwd"), "utf8").trim()).toBe(scene.checkout);
   });
 });
 
