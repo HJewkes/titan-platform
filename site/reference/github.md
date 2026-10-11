@@ -138,6 +138,26 @@ or classic protection when the rulesets require none) and drops the `unapproved`
 approval lives in Shepherd. `pr-context` lists no files past GitHub's 3,000-file cap and gives
 the count instead. A bad verb or ref prints usage and exits 64.
 
+The gate before a merge is `titan-gh premerge`. The caller owns verdicts and passes the head its
+approval named:
+
+```sh
+titan-gh premerge octo/widgets#42 "$HEAD" --approved-head "$REVIEWED" --clone ~/src/widgets
+# OK octo/widgets#42 head=1a2b... base=main req=[validate] strict=true behind=0   (exit 0)
+# FAIL octo/widgets#42: checks red: validate=failure                              (exit 1)
+titan-gh premerge octo/widgets#42 "$HEAD" --approved-head "$HEAD" --json
+# { repo, number, ok, reasons, head, base, required, strict, behindBy }
+```
+
+It fails on a closed, merged or draft PR, a head other than the given sha, a required check
+that is not green as `ciVerdict` judges it, a strict ruleset with the head behind, a conflict
+GitHub reports, or an approved head that `approvedHeadWalk` cannot reach through base merges.
+GitHub's lazily computed `unknown` mergeability does not fail it. The walk's tree proof runs
+`git merge-tree --write-tree` in the `--clone` directory, which must already hold both commits;
+the bin is the only place that runs git. Without `--clone`, an approved head other than the PR
+head fails. Bad arguments, including a sha that is not 40 lower-case hex characters, print usage
+and exit 2.
+
 ## What it deliberately does not do
 
 - No `gh pr view`, and no GraphQL but for `listReviewComments` and `listForcePushes`. Every

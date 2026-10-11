@@ -133,6 +133,18 @@ files and body for a reviewer; past GitHub's 3,000-file cap it gives the count a
 `--json` prints either as one object; an unknown verb or a ref that is not `owner/repo#N` prints
 usage and exits 64.
 
+`titan-gh premerge <owner/repo#N> <sha> --approved-head <sha> [--clone <dir>] [--json]` is the
+read-only half of agent-chat's `scripts/seat/premerge`; the caller looks up the verdict and passes
+the head it approved. It reads the PR, the base's required contexts, the head's check runs and
+statuses, and the compare, then fails on a PR that is closed, merged or a draft, a head other than
+`<sha>`, a red or pending required check (judged as `ciVerdict` judges them), a strict ruleset with
+the head behind, a conflict GitHub reports, or an approved head `approvedHeadWalk` cannot reach.
+That walk needs `--clone <dir>`, a local clone holding both commits, where the bin runs
+`git merge-tree --write-tree`; without it an approved head other than the PR head fails. It prints
+`OK <repo>#<N> head=<sha> base=<base> req=[<contexts>] strict=<bool> behind=<n>` or
+`FAIL <repo>#<N>: <reason>; ...`, and exits 0, 1, or 2 on usage. `--json` prints
+`{ repo, number, ok, reasons, head, base, required, strict, behindBy }`.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).

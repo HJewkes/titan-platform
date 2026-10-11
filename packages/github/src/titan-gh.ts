@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { ghCliWire } from "./gh-cli.js";
+import { gitMergeTree } from "./git-merge-tree.js";
 import { githubPort } from "./port.js";
 import { runTitanGh } from "./titan-gh-cli.js";
 
@@ -9,4 +10,5 @@ process.exitCode = await runTitanGh(process.argv.slice(2), {
   err: (line) => process.stderr.write(`${line}\n`),
   now: () => Date.now(),
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  mergeTree: gitMergeTree,
 });

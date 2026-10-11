@@ -175,6 +175,8 @@ interface PullRequest {
     mergeableState: string;
     /** The head lacks commits the base has. */
     behind: boolean;
+    /** How many base commits the head lacks; `getPr` reports it for an open PR, list rows never do. */
+    behindBy?: number;
     /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
     autoMerge: boolean;
 }

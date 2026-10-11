@@ -45,7 +45,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
     revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
-    createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
+    createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request))),
     getPr: (repo, number) => getPr(api, repo, number),
     getBranchRules: (repo, branch) => branchRules(api, repo, branch),
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
@@ -126,7 +126,7 @@ interface GhPull {
   base: { ref: string };
 }
 
-function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
+function toPullRequest(pr: GhPull, behindBy?: number): PullRequest {
   return {
     number: pr.number,
     state: pr.state,
@@ -139,7 +139,8 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
     baseRef: pr.base.ref,
     draft: pr.draft ?? false,
     mergeableState: pr.mergeable_state ?? "unknown",
-    behind,
+    behind: (behindBy ?? 0) > 0,
+    ...(behindBy === undefined ? {} : { behindBy }),
     autoMerge: pr.auto_merge != null,
   };
 }
@@ -159,20 +160,20 @@ function splitMessage(message: string): SquashSource["commits"][number] {
 
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {
   const prs = await api.pages(`repos/${repo}/pulls`, { ...fields, per_page: "100" }, (page: GhPull[]) => page);
-  return prs.map((pr) => toPullRequest(pr, false));
+  return prs.map((pr) => toPullRequest(pr));
 }
 
 async function revalidateOpenPulls(api: Rest, repo: string, etag: string | null): Promise<OpenPrList> {
   const read = await api.revalidatePages(`repos/${repo}/pulls`, { state: "open", per_page: "100" }, etag, (page: GhPull[]) => page);
-  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr, false)), etag: read.etag };
+  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr)), etag: read.etag };
 }
 
 /** `behind` comes from the compare API, which is exact, not from the lazily computed `mergeable_state`. */
 async function getPr(api: Rest, repo: string, number: number): Promise<PullRequest> {
   const pr = await api.get<GhPull>(`repos/${repo}/pulls/${number}`);
-  if (pr.state !== "open") return toPullRequest(pr, false);
+  if (pr.state !== "open") return toPullRequest(pr, 0);
   const compare = await api.get<{ behind_by: number }>(`repos/${repo}/compare/${pr.base.ref}...${pr.head.sha}`, { per_page: "1" });
-  return toPullRequest(pr, compare.behind_by > 0);
+  return toPullRequest(pr, compare.behind_by);
 }
 
 async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
