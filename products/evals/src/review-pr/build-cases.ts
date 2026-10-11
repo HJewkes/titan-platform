@@ -17,7 +17,7 @@ const DESCRIPTION_CHARS = 200;
 
 type CaseKind = "defect" | "clean" | "control";
 
-export interface BuildOptions {
+interface BuildOptions {
   outDir: string;
   policy: ExclusionPolicy;
   /** The local clone for `owner/repo`; a row whose repo has none is skipped as `no-clone`. */
@@ -63,7 +63,7 @@ const caseId = (heads: Heads, kind: string): string => `${repoSlug(heads.repo)}-
 const bump = (counts: Record<string, number>, key: string): void => void (counts[key] = (counts[key] ?? 0) + 1);
 
 /** A seeded hash, so a case keeps its split across rebuilds and a new seed reshuffles them all. */
-export function splitOf(seed: string, id: string): EvalCase["split"] {
+function splitOf(seed: string, id: string): EvalCase["split"] {
   const draw = parseInt(sha256Hex(`${seed}\0${id}`).slice(0, 8), 16) / 2 ** 32;
   return draw < 0.6 ? "dev" : draw < 0.8 ? "validation" : "holdout";
 }
@@ -77,7 +77,7 @@ function taskInitiativeOf(task: string | null): string | null {
 }
 
 /** Refuses an out dir inside any git work tree, so a private case can never be committed by accident. */
-export async function assertOutsideWorkTree(outDir: string): Promise<void> {
+async function assertOutsideWorkTree(outDir: string): Promise<void> {
   let probe = resolve(outDir);
   while (!existsSync(probe)) probe = dirname(probe);
   const inside = await run("git", ["-C", probe, "rev-parse", "--is-inside-work-tree"]).then(
