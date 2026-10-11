@@ -52,6 +52,7 @@ const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...succe
 interface Scene {
   kind?: string;
   branch?: string;
+  headRef?: string;
   runs?: CheckRun[];
   log?: string;
 }
@@ -76,7 +77,7 @@ describe("sh-fix-proof in reviewPhase", () => {
 
   async function review(scene: Scene) {
     const fake = fakeGitHub();
-    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge") });
+    fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }) });
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
     fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
@@ -151,6 +152,13 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(spawns).toEqual([]);
   });
 
+  it("runs the gate for a fix/ PR registered by number with kind feature, reading its branch from the PR", async () => {
+    const { verdicts, spawns } = await review({ kind: "feature", headRef: "fix/x", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")) });
+
+    expect(verdicts).toEqual([{ kind: "NO_REPRO", headSha: H, result: expect.objectContaining({ verdict: "vacuous" }) }]);
+    expect(spawns).toEqual([]);
+  });
+
   it("proceeds to review with the reason recorded when the head has no fix-proof check run", async () => {
     const { verdicts, spawns, proof, inputs } = await review({ kind: "correctness" });
 
@@ -173,25 +181,59 @@ describe("sh-fix-proof in reviewPhase", () => {
 describe("readFixProof", () => {
   const signal = new AbortController().signal;
 
-  function registered(kind: string, runs: CheckRun[]) {
+  interface Registered {
+    branch?: string;
+    headRef?: string;
+    timeoutMs?: number;
+  }
+
+  function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
     const fake = fakeGitHub();
+    if (options.headRef !== undefined) fake.addPr({ headSha: H, headRef: options.headRef });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
     const store = shepherdStoreRef();
     store.bind(db);
-    store.get().register({ repo: REPO, pr: 1, runId: "run-1", task: "demo: tidy", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind });
+    store.get().register({ repo: REPO, pr: 1, runId: "run-1", task: "demo: tidy", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind, ...(options.branch && { branch: options.branch }) });
     let clock = 0;
-    const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000, timeoutMs: 10_000 };
-    return { fake, read: () => readFixProof({ port: githubPort(fake.wire), store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
+    const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000, timeoutMs: options.timeoutMs ?? 10_000, noActionsGraceMs: 180_000 };
+    return { fake, elapsed: () => clock, read: () => readFixProof({ port: githubPort(fake.wire), store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
 
-  it("makes no GitHub call for a kind outside the gate", async () => {
-    const { fake, read } = registered("refactor", [fixProofRun()]);
+  it("makes no GitHub call for a kind outside the gate on a registered branch", async () => {
+    const { fake, read } = registered("refactor", [fixProofRun()], { branch: "feat/tidy" });
 
     expect(await read()).toEqual({ kind: "skipped", reason: "kind refactor" });
     expect(fake.calls).toEqual([]);
+  });
+
+  it("reads only the PR for a feature PR registered by number on a feat/ branch, and skips the gate", async () => {
+    const { fake, read } = registered("feature", [fixProofRun()], { headRef: "feat/x" });
+
+    expect(await read()).toEqual({ kind: "skipped", reason: "kind feature" });
+    expect(fake.calls).toEqual(["getPr"]);
+  });
+
+  it("skips the gate with the reason recorded when the PR's head branch cannot be read", async () => {
+    const { read } = registered("feature", [fixProofRun()]);
+
+    expect(await read()).toEqual({ kind: "skipped", reason: expect.stringContaining("head branch unreadable") });
+  });
+
+  it("settles as missing after the short grace when the head has no GitHub Actions run at all", async () => {
+    const { read, elapsed } = registered("correctness", [], { timeoutMs: 1_500_000 });
+
+    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("no GitHub Actions run") });
+    expect(elapsed()).toBeLessThan(200_000);
+  });
+
+  it("keeps polling past the grace while an Actions run that is not fix-proof is still in progress", async () => {
+    const { read, elapsed } = registered("correctness", [{ ...successRun("validate", 5), headSha: H, status: "in_progress", conclusion: null }], { timeoutMs: 1_500_000 });
+
+    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
+    expect(elapsed()).toBeGreaterThanOrEqual(1_500_000);
   });
 
   it("gives up as missing at the deadline while the fix-proof run is still in progress", async () => {
