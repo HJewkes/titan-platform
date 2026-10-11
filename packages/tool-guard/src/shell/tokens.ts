@@ -24,6 +24,8 @@ export interface WordToken {
   refs: VarRef[];
   /** Token lists of command substitutions, which run even when quoted. */
   subs: Token[][];
+  /** Where each `$( )` or backquote's output lands in `value`, which leaves it out, and which of `subs` it is. */
+  cuts?: Array<{ at: number; sub: number }>;
   /** The text before literal variables were expanded into it; absent when nothing was expanded. */
   typed?: string;
   /** Set on a word variable tracking adds itself, never by the lexer; only such a word can assign a hidden slot. */

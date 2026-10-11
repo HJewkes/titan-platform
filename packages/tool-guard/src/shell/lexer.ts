@@ -182,7 +182,12 @@ function readDouble(s: LexState): void {
 
 function readBacktick(s: LexState): void {
   const w = markComputed(ensureWord(s));
+  markCut(w);
   s.i = scanBacktick(s.src, s.i, w.subs, s.trials) + 1;
+}
+
+function markCut(w: WordToken): void {
+  (w.cuts ??= []).push({ at: w.value.length, sub: w.subs.length });
 }
 
 function markComputed(w: WordToken): WordToken {
@@ -227,6 +232,7 @@ function readSubstitution(s: LexState, start: number): Token[] {
 
 function pushSubstitution(s: LexState, w: WordToken, start: number): void {
   markComputed(w);
+  markCut(w);
   w.subs.push(readSubstitution(s, start));
 }
 

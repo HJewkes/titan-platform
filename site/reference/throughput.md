@@ -87,12 +87,45 @@ if (week.status === "scored") {
 }
 ```
 
+### Forecasting a set
+
+`forecastSet(tasks, table, { seed, draws, closure, weekEffect })` answers "how many
+agent-hours and dollars is this set of tasks". Each task is resolved with `classFor`, then
+each of `draws` (default 2000) simulated sets draws every task's implementer hours, reviewer
+hours and USD from its class p10/p50/p80/p90 and sums them. The result gives p10, p50, p80
+and p90 of the three totals, and per task the class, back-off level, `n` and closure rate.
+
+Two optional inputs, both fitted on the same rows as the table:
+
+- `closureRates(actuals, table)` is each level's recency-weighted share of rows flagged
+  `no-impl-session`. `closureFor(rates, facts)` backs a task off class, kind, size band,
+  initiative and global like `classFor`. In a draw a task closes with that probability and
+  adds 0 hours and $0.
+- `weekEffects(actuals, table)` groups eligible rows by the UTC ISO week of `firstImplAt`
+  (or `doneAt`), takes each week's sum of actuals over the sum of class p50s, and normalises
+  the ratios to mean 1. Each draw picks one week, and its multiplier applies to every task in
+  that draw, so the interval widens for the weeks that go badly together.
+
+```ts
+import { classTable, closureRates, forecastSet, weekEffects } from "@titan-design/throughput";
+
+const table = classTable(rows);
+const forecast = forecastSet(
+  [{ taskId: "TP-1", kind: "feature", estimate: 2 }, { taskId: "TP-2", kind: "docs", estimate: 1 }],
+  table,
+  { seed: "plan-1", closure: closureRates(rows, table), weekEffect: weekEffects(rows, table) },
+);
+forecast.totals.implAgentHours; // { p10, p50, p80, p90 } of the set's implementer hours
+forecast.tasks; // [{ taskId, kind, band, level, levelKey, n, closureRate, closureLevel }]
+forecast.unclassifiable; // tasks whose kind the table has never seen
+```
+
 ## What it deliberately does not do
 
 It reads no database and no task store; the caller passes rows in. It fits no parametric
 distribution: a log-normal fit is a later option, allowed only if it wins a back-test. It
-does not forecast a set of tasks or wall-clock time yet, and `backtest` measures a fit without changing it. Those land as `forecastSet` and
-`simulateWallClock` in later releases.
+does not forecast wall-clock time yet; that lands as `simulateWallClock`. `backtest` measures
+a fit without changing it.
 
 ## Gotchas
 
@@ -117,6 +150,22 @@ does not forecast a set of tasks or wall-clock time yet, and `backtest` measures
 - `backtest` skips rows with no `firstImplAt` and counts them in `missingFirstImplAt`. An
   origin with no training rows comes back with `status: "skipped"`. The `clean` stratum
   leaves out rows flagged `weak-link`, `multi-task` or `reopened`.
+
+- `forecastSet` draws each task through linear interpolation between (0, 0) and its four
+  quantiles, with an exponential tail above p90 matched to p80 and p90. The tail is unbounded
+  on purpose, because a set total is driven by its slowest tasks; a heavier real tail shows
+  up as low p90 coverage in a back-test.
+- One random draw drives a task's implementer hours and USD together; reviewer hours are
+  drawn independently. Tasks are independent apart from the shared week multiplier.
+- Without `closure`, no task closes and every `closureRate` is `null`. `closureRates` needs
+  the `no-impl-session` rows, so keep them in the rows you pass it. A set chosen by dispatch
+  (a seat's week, say) contains no closures, so forecast it without `closure`.
+- A task whose kind the table has never seen is listed in `unclassifiable` and still drawn
+  at its back-off level, so the totals are not understated. A duplicate `taskId` or a
+  non-positive `draws` throws `RangeError`. An empty `weekEffect.weeks` reports
+  `weekEffect: "none-available"` and draws as if none were passed.
+- Equal tasks, table and options give identical output in any task order. `forecastHash`
+  covers the table hash, seed, draws, closure rates and week effect.
 
 ## Where it came from
 

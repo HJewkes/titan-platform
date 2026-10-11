@@ -9,6 +9,7 @@ import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.j
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -407,6 +408,49 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
 
     expect(await supersedeMovedGates(host, services)).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
+
+/** `services` reading PR 1's snapshot row at `rowHead`, with every port PR read counted in `reads`. */
+function snapshotAt(services: Services, fake: FakeGitHub, rowHead: string): { services: Services; reads: number[] } {
+  const reads: number[] = [];
+  const snapshot: PrSnapshot = {
+    openPrs: async () => [{ ...fake.pr(1), headSha: rowHead }],
+    getPr: async () => Promise.reject(new Error("the sweep reads PRs through the port")),
+    checkRuns: async () => [],
+    invalidate: () => undefined,
+  };
+  const port = { ...services.port, getPr: async (repo: string, number: number) => (reads.push(number), services.port.getPr(repo, number)) };
+  return { services: { ...services, snapshot, port }, reads };
+}
+
+describe("a pending approve-merge gate read through the PR snapshot", () => {
+  it("a snapshot row still at the gated head costs no PR read and supersedes nothing", async () => {
+    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    const read = snapshotAt(services, fake, gated);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([]);
+    expect(read.reads).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a snapshot row behind the gate's head is confirmed through the port and the live gate stays", async () => {
+    const { host, fake, services, runId } = await runawayAtSixthHead("MERGE");
+    const read = snapshotAt(services, fake, SENT_BACK);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([]);
+    expect(read.reads).toEqual([1]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a snapshot row at a new head supersedes once the port agrees", async () => {
+    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    fake.pushHead(1, MOVED);
+    const read = snapshotAt(services, fake, MOVED);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: gated, to: MOVED, condition: "head-moved" }]);
+    expect(read.reads).toEqual([1]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
   });
 });
 

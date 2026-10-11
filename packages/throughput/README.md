@@ -17,6 +17,17 @@ classFor(table, { kind: "security", estimate: 2, initiative: "web" });
 // { level: "kind", levelKey: "security", n: 31, weightedN: 22.4, implAgentHours: { p10, p50, p80, p90 }, ... }
 ```
 
+`forecastSet(tasks, table, { seed, closure, weekEffect })` simulates a set of tasks from
+their class quantiles and returns p10/p50/p80/p90 of the set's total hours and USD.
+`closureRates` supplies each class's chance of closing with no agent work, and `weekEffects`
+a shared per-week multiplier, so tasks done in one bad week move together.
+
+```ts
+const closure = closureRates(rows, table);
+const weekEffect = weekEffects(rows, table);
+forecastSet(tasks, table, { seed: "plan-1", closure, weekEffect }).totals.implAgentHours; // { p10, p50, p80, p90 }
+```
+
 The table carries `modelHash` (config, watermark and package version), `watermark` and
 `packageVersion`. Equal inputs give equal output in any row order.
 
