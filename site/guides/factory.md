@@ -93,7 +93,8 @@ stays out of the repo.
       "verdictTimeoutMs": 1800000,
       "sessionStartTimeoutMs": 300000
     },
-    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" }
+    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" },
+    "repos": { "acme/widgets": { "path": "/srv/checkouts/widgets", "advisory": true } }
   }
 }
 ```
@@ -134,6 +135,16 @@ stays out of the repo.
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, and `advisory`.
+  Both keys are optional, and an unknown one fails the load. The reviewer and a red main's
+  fixer start in `path` when no seat binds the repo, so Shepherd can review with no
+  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+  spawn, as the seat book is.
+- `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
+  update the branch or push to it. The run waits held at its merge step, or at
+  `update-branch` when the PR is behind on a strict repo. Clear the flag and the held run
+  merges on its next poll. Under the hold, the GitHub port itself refuses every merge,
+  branch update and empty-commit push for the repo, whatever route asks for one.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
