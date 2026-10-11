@@ -1,9 +1,9 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 
 /** titan-platform's own `.node-version`, `packageManager` and `engines.node` are canonical (TP-2121). */
-export const CANONICAL_REPO: RepoSlug = "HJewkes/titan-platform";
+const CANONICAL_REPO: RepoSlug = "HJewkes/titan-platform";
 
-export interface ToolchainConsumer {
+interface ToolchainConsumer {
   repo: RepoSlug;
   /** GitHubPort cannot list a directory, so each workflow the fanout reads is named here. */
   workflows: string[];
@@ -36,7 +36,7 @@ export interface CanonicalToolchain {
   enginesNode: string | null;
 }
 
-export interface FetchedFile {
+interface FetchedFile {
   path: string;
   content: string;
   blobSha: string;
@@ -51,20 +51,20 @@ export interface ConsumerFiles {
   workflows: FetchedFile[];
 }
 
-export interface FileEdit {
+interface FileEdit {
   path: string;
   content: string;
   /** The blob the edit replaces, so a write over a moved file fails; null creates the file. */
   expectedBlobSha: string | null;
 }
 
-export interface LeftAlone {
+interface LeftAlone {
   path: string;
   line: number;
   reason: "matrix" | "reusable-workflow" | "expression";
 }
 
-export interface AdoptionPlan {
+interface AdoptionPlan {
   repo: RepoSlug;
   baseBranch: string;
   branch: string;
@@ -115,7 +115,7 @@ export function adoptionPlan(canonical: CanonicalToolchain, consumer: ConsumerFi
   return { repo: consumer.repo, baseBranch: consumer.baseBranch, branch: adoptionBranch(canonical), title: adoptionTitle(canonical), files, leftAlone };
 }
 
-export function adoptionBranch(canonical: CanonicalToolchain): string {
+function adoptionBranch(canonical: CanonicalToolchain): string {
   return `toolchain/node-${canonical.nodeVersion}-${canonical.packageManager.replace("@", "-")}`;
 }
 
@@ -205,7 +205,7 @@ function parseLine(line: string): YamlLine | null {
 }
 
 /** Rewrites each `actions/setup-node` literal `node-version:` to `node-version-file: .node-version` and reports the rest. */
-export function rewriteWorkflow(content: string): { content: string; leftAlone: Omit<LeftAlone, "path">[] } {
+function rewriteWorkflow(content: string): { content: string; leftAlone: Omit<LeftAlone, "path">[] } {
   const lines = content.split("\n");
   const parsed = lines.map(parseLine);
   const leftAlone: Omit<LeftAlone, "path">[] = [];
