@@ -4,7 +4,7 @@ import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
-import { SUPERSEDED, gateHead } from "./stale-gates.js";
+import { SUPERSEDED, cancelUnlessSettled, gateHead } from "./stale-gates.js";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const ROUTE_TABLE = "shepherd-route";
@@ -160,7 +160,7 @@ export async function supersedeMovedGates(host: FactoryHost, services: ShepherdS
     if (!asked) continue;
     const head = await openHead(services, runId);
     if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
-    if (!dryRun) host.gates.cancel(gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`);
+    if (!dryRun && !cancelUnlessSettled(host.gates, gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`)) continue;
     superseded.push({ runId, gateId: gate.id, from: asked, to: head, condition: "head-moved" });
   }
   return superseded;

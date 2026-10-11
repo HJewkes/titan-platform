@@ -1,5 +1,31 @@
 # @titan-design/factory
 
+## 0.15.0
+
+### Minor Changes
+
+- eba2ac7: Add the read-only `factory.gates-review` command: each pending gate with its PR, head, policy rule, the reviewer's verdict at that head, the required checks, and whether it may ride in a batch.
+
+### Patch Changes
+
+- bd74657: Gate sweeps skip a gate another host settled between listing and cancelling instead of throwing partway through.
+- eee55b5: Shepherd's errorClass now hides credential prefixes anywhere in an error name, in any case, and npm\_ tokens; consoleTextOf always returns a string; cleanup's retire refusals read through the safe text path.
+- Updated dependencies [369a00b]
+- Updated dependencies [1add3c6]
+- Updated dependencies [bd74657]
+  - @titan-design/github@0.7.1
+  - @titan-design/review-panel@0.4.0
+  - @titan-design/workflow@0.10.1
+
+## 0.14.2
+
+### Patch Changes
+
+- 8dd6807: Land's flaky rerun now respects the ci-wait deadline, stamps a red with the time it was read, and waits only on the runs GitHub accepted a rerun for.
+- 7fe216d: Every new `shepherd_event` row records its actor: the seat or owner name for a CLI hold or release, `owner` for a thaw from the owner gate, and `shepherd` for Shepherd's own holds, releases, freezes and thaws.
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
 ## 0.14.1
 
 ### Patch Changes

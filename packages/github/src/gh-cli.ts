@@ -118,6 +118,7 @@ interface GhPull {
   merge_commit_sha: string | null;
   draft?: boolean;
   mergeable_state?: string;
+  auto_merge?: object | null;
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
   base: { ref: string };
 }
@@ -136,6 +137,7 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
     draft: pr.draft ?? false,
     mergeableState: pr.mergeable_state ?? "unknown",
     behind,
+    autoMerge: pr.auto_merge != null,
   };
 }
 
