@@ -65,6 +65,8 @@ export interface MergeEvaluation {
   waiting: string;
 }
 
+const DEFAULT_KIND = "correctness";
+
 const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
 function servicesOf(ctx: FactoryContext): ShepherdServices {
@@ -163,12 +165,15 @@ async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: 
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
 }
 
-/** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
+/**
+ * Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back.
+ * A new run with no kind stores correctness here, never in the CLI, so a kindless repeat keeps whatever kind the run already has.
+ */
 async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Promise<Registered> {
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
-      registration = store.register({ ...args, branch, runId: started, policy });
+      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy });
     });
     return { runId, created: true, registration: registration! };
   } catch (error) {
@@ -197,7 +202,7 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
 export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, policy: { fixer: false } }, ctx);
+  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */

@@ -39,6 +39,7 @@ import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/forma
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { probeServe } from "./serve-probe.js";
 import { localEnvelope, unansweredMessage } from "./cli-shepherd-rpc.js";
+import { inferIdentity, type HeadRefRead } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -70,6 +71,8 @@ export interface CliDeps {
   presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
+  headRef?: HeadRefRead;
   /** How long a shepherd verb waits on a serve that holds the connection but does not answer; defaults to 20 s. */
   serveWaitMs?: number;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
@@ -173,7 +176,7 @@ interface ShepherdOpts extends TimelineView {
   deploy?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
+type RegisterOpts = ShepherdOpts & { branch?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 function registerShepherd(program: Command, verbs: Verbs): void {
@@ -186,8 +189,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
       .option("--json", "print the result as JSON");
   verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
     .option("--branch <name>", "the PR's head branch")
-    .requiredOption("--task <slug/id>", "the task this PR delivers")
-    .requiredOption("--implementer <name>", "the agent that pushes fixes")
+    .option("--task <slug/id>", "the task this PR delivers; defaults to the id in an agent-chat/<name> head branch")
+    .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
     .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
@@ -243,9 +246,11 @@ function parseTarget(target: string): { repo: string; pr?: number } {
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, implementer, reviewer, kind, slice } = opts;
-  const task = await qualifyTask(opts.task, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
-  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  const { branch, reviewer, kind, slice } = opts;
+  const parsed = parseTarget(target);
+  const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
+  const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
+  return { ...parsed, branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
