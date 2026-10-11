@@ -139,6 +139,43 @@ describe("endRunsGoneElsewhere", () => {
     expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
   });
 
+  it("a run that records its own merge while its PR read is in flight is not cancelled", async () => {
+    const { host, fake, runs, services } = await gatedRuns();
+    [1, 2].forEach((pr) => Object.assign(fake.pr(pr), { merged: true, state: "closed" }));
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const slow = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (await released, services.port.getPr(repo, pr)) } };
+    const status = host.runtime.status.bind(host.runtime);
+    let mergedMeanwhile = false;
+    vi.spyOn(host.runtime, "status").mockImplementation((runId) => {
+      const run = status(runId);
+      if (!run || !mergedMeanwhile || runId !== runs[0]) return run;
+      const landed = { stepId: "merge", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00.000Z", data: { result: { done: true } } };
+      return { ...run, stepResults: { ...run.stepResults, merge: landed } };
+    });
+
+    const sweeping = endRunsGoneElsewhere(host, slow);
+    mergedMeanwhile = true;
+    release();
+    const ended = await sweeping;
+
+    expect(ended.map((run) => run.runId)).toEqual([runs[1]]);
+    expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
+  });
+
+  it("an unreadable PR still leaves its run held while the other runs end", async () => {
+    const { host, fake, runs, services } = await gatedRuns();
+    Object.assign(fake.pr(2), { merged: true, state: "closed" });
+    const failing = { ...services, port: { ...services.port, getPr: async (repo: string, pr: number) => (pr === 1 ? Promise.reject(Object.assign(new Error("boom"), { status: 500 })) : services.port.getPr(repo, pr)) } };
+    const unreadable: string[] = [];
+
+    const ended = await endRunsGoneElsewhere(host, failing, { onUnreadable: (runId) => unreadable.push(runId) });
+
+    expect(unreadable).toEqual([runs[0]]);
+    expect(ended.map((run) => run.runId)).toEqual([runs[1]]);
+    expect(host.runtime.status(runs[0]!)?.status).toBe("paused");
+  });
+
   it("throws a non-lease cancel failure when no caller asked to hear of it", async () => {
     const { host, fake, services } = await gatedRuns();
     Object.assign(fake.pr(1), { merged: true, state: "closed" });

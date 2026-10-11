@@ -113,7 +113,7 @@ export interface WakeEventRow {
   cause: string;
   delivery: string;
   fromName: string | null;
-  /** The same `msg_id` reached more than one session. */
+  /** The channel tag's broadcast flag; for rows extracted before it was stored, the same `msg_id` reached more than one session. */
   broadcast: boolean;
 }
 
@@ -128,6 +128,7 @@ export interface AgentNameRow {
 const EPISODE_DELIVERIES = "('turn_start', 'mid_loop')";
 
 // A record with several blocks is one event; its last block decides, as the request rollup does.
+// A forked session copies a DM's msg_id, so fan-out only stands in for a NULL flag on pre-EXTRACT_VERSION 8 rows.
 const WAKE_EVENTS = `
   WITH event AS (
     SELECT transcript_id, byte_offset, MAX(block_index) AS block_index FROM inbound
@@ -139,7 +140,7 @@ const WAKE_EVENTS = `
     GROUP BY msg_id
   )
   SELECT i.transcript_id || ':' || i.byte_offset AS key, i.session_id AS sessionId, i.cause, i.delivery,
-    i.from_name AS fromName, COALESCE(f.receivers, 1) > 1 AS broadcast
+    i.from_name AS fromName, COALESCE(i.broadcast, COALESCE(f.receivers, 1) > 1) AS broadcast
   FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index)
   LEFT JOIN fanout f ON f.msg_id = i.msg_id
   ORDER BY i.transcript_id, i.byte_offset`;
