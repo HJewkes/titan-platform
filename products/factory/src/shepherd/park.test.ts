@@ -1,8 +1,9 @@
-import { DispatchError } from "@titan-design/agent-dispatch";
+import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import { parkImplementer, parkRoutes, parkStep, rearmRecorded, type ParkPort } from "./park.js";
 import { liveRetry, type LiveRetryDeps } from "./park-retry.js";
+import { createRosterReader, type RosterReader } from "./roster.js";
 import type { ShepherdStoreRef } from "./store.js";
 
 interface Registered {
@@ -10,12 +11,13 @@ interface Registered {
   branch?: string | null;
   seat?: string;
   successors?: string[];
+  reviewer?: string;
 }
 
-const storeWith = ({ implementer, branch = null, seat = "demo-seat", successors = [] }: Registered = {}) =>
+const storeWith = ({ implementer, branch = null, seat = "demo-seat", successors = [], reviewer }: Registered = {}) =>
   ({
     get: () => ({
-      byRun: () => (implementer ? { implementer, branch, repo: "o/r", pr: 7, runId: "run-1", policy: { seat } } : undefined),
+      byRun: () => (implementer ? { implementer, branch, repo: "o/r", pr: 7, runId: "run-1", policy: { seat, reviewer } } : undefined),
       authorsOf: () => successors.map((name) => ({ name, role: "successor" })),
     }),
   }) as unknown as ShepherdStoreRef;
@@ -175,5 +177,44 @@ describe("rearmRecorded", () => {
     rearmRecorded("run-1", recorded);
 
     expect(armed).toEqual(["impl-a"]);
+  });
+});
+
+describe("parkStep reviewer trees", () => {
+  const row = (name: string, presence: string, status = "finished") => ({ name, presence, status, generation: 1 }) as AgentRow;
+  const rosterOf = (rows: AgentRow[]): RosterReader => createRosterReader(async () => rows);
+  const wiringFor = (rows: AgentRow[], park: ParkPort, notice?: ExitNoticePorts) => ({ park, roster: rosterOf(rows), notice });
+  const ROUNDS = [row("rv-o-r-7", "exited"), row("rv-o-r-7-2", "exited"), row("rv-o-r-7-3", "live", "running"), row("rv-o-r-70", "exited"), row("rv-o-r-7-4", "exited", "retired")];
+
+  it("parks the exited reviewers of this pull request and leaves a running round's tree", async () => {
+    const asked: string[] = [];
+
+    const outcome = await parkStep(storeWith({ implementer: "impl-a" }), wiringFor(ROUNDS, refusing({}, asked)), input);
+
+    expect(asked).toEqual(["rv-o-r-7", "rv-o-r-7-2", "impl-a"]);
+    expect(outcome.reviewers.map((parked) => parked.kind)).toEqual(["parked", "parked"]);
+  });
+
+  it("tells the seat when a reviewer's tree is dirty and asks again at the next round end", async () => {
+    const notice = noticePorts("hub");
+    const refused = refusing({ "rv-o-r-7": "worktree has uncommitted changes" });
+    const wiring = wiringFor([row("rv-o-r-7", "exited")], refused, notice);
+
+    const first = await parkStep(storeWith({ implementer: "impl-a" }), wiring, input);
+    const second = await parkStep(storeWith({ implementer: "impl-a" }), wiring, input);
+
+    expect(first.reviewers).toMatchObject([{ kind: "not-parked", agent: "rv-o-r-7" }]);
+    expect(second.reviewers).toMatchObject([{ kind: "not-parked", agent: "rv-o-r-7" }]);
+    expect(notice.sent).toHaveLength(2);
+    expect(notice.sent[0]?.[1]).toContain("rv-o-r-7's worktree was not parked");
+  });
+
+  it("never parks the standing reviewer", async () => {
+    const asked: string[] = [];
+    const store = storeWith({ implementer: "impl-a", reviewer: "rv-o-r-7" });
+
+    await parkStep(store, wiringFor([row("rv-o-r-7", "exited")], refusing({}, asked)), input);
+
+    expect(asked).toEqual(["impl-a"]);
   });
 });
