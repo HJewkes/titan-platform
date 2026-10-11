@@ -17,6 +17,7 @@ import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
+import { startSweep, type Sweep } from "./sweep.js";
 import { rowsWithRuns, type ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
@@ -272,11 +273,6 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
   return startSweep(tickOnce, SEAT_DIGEST_MS, "seat digest", log);
 }
 
-interface Sweep {
-  tick(): Promise<void>;
-  stop(): Promise<void>;
-}
-
 /** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. */
 async function adopt(host: FactoryHost, services: ShepherdServices | undefined, held: Set<string>, log: Logger): Promise<void> {
   const exclude = services ? await recheckBeforeAdopt(host, services, held, log) : new Set<string>();
@@ -375,22 +371,4 @@ function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | 
   const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
   void sweep?.tick();
   return sweep;
-}
-
-/** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */
-function startSweep(tickOnce: () => Promise<void>, everyMs: number, name: string, log: Logger): Sweep {
-  let inFlight: Promise<void> | null = null;
-  const tick = (): Promise<void> =>
-    (inFlight ??= tickOnce()
-      .catch((err: unknown) => log.error({ err }, `${name} failed`))
-      .finally(() => (inFlight = null)));
-  const timer = setInterval(() => void tick(), everyMs);
-  timer.unref();
-  return {
-    tick,
-    stop: async () => {
-      clearInterval(timer);
-      await inFlight;
-    },
-  };
 }
