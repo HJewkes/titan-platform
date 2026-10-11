@@ -125,7 +125,7 @@ function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, ag
 }
 
 /** What a round's end did to the tree of a reviewer that is no longer running. */
-export type ReviewerPark = ParkOutcome;
+type ReviewerPark = ParkOutcome;
 
 /** Shepherd's own reviewers of this PR that have exited; a running one is a running round, and the standing reviewer is never Shepherd's to park. */
 async function exitedReviewers(roster: RosterReader, registration: Registration): Promise<string[]> {
