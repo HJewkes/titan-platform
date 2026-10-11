@@ -5,8 +5,10 @@ import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { buildSha } from "./build-info.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
+import { incidentDeposit, incidentMessage, type DeployIncident } from "./deploy-incident.js";
 import { deployWatch, type DeployWatch } from "./deploy-watch.js";
 import { AGENT_CALL_TIMEOUT_MS, agentChatAgents } from "./shepherd/agents.js";
+import { failureOf } from "./shepherd/error-class.js";
 import { REDEPLOY_LOG } from "./shepherd/redeploy.js";
 import { inspectIndexLock, nodeLockProbe } from "./stale-lock.js";
 
@@ -66,4 +68,24 @@ export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string):
     ...(shepherd.deployAlarm && { policy: shepherd.deployAlarm }),
     now: Date.now,
   });
+}
+
+function shepherdConfig(env: NodeJS.ProcessEnv): ShepherdConfig {
+  try {
+    return loadConfig(configPath(env)).shepherd ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/** The deployer's rollback notice: the hub seat when one is configured, and always an owner-queue item; throws with every path that failed. */
+export function configuredDeployIncident(env: NodeJS.ProcessEnv): (incident: DeployIncident) => Promise<void> {
+  const notify = hubNotify(shepherdConfig(env));
+  const inbox = ownerInboxDir(env);
+  return async (incident) => {
+    const failures: string[] = [];
+    if (notify) await notify(incidentMessage(incident)).catch((error: unknown) => failures.push(`hub seat: ${failureOf(error)}`));
+    await writeDeposit(inbox, incidentDeposit(incident)).catch((error: unknown) => failures.push(`owner queue: ${failureOf(error)}`));
+    if (failures.length > 0) throw new Error(failures.join("; "));
+  };
 }
