@@ -1,4 +1,4 @@
-import { acceptVerdict, boundedFindings, type AwaitVerdictInput, type AwaitVerdictResult, type Presence, type ReviewerReader } from "@titan-design/review-panel";
+import { acceptVerdict, boundedFindings, isUsageLimit, type AwaitVerdictInput, type AwaitVerdictResult, type Presence, type ReviewerReader } from "@titan-design/review-panel";
 import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 
@@ -96,7 +96,8 @@ export async function awaitVerdict(
   const poll = async () => (last = acceptVerdict(input, await reader.read(input).catch(() => [])));
   for (;;) {
     const result = await poll();
-    if (result.kind === "verdict") return result;
+    // A limit notice is the reviewer's last word, so waiting for its exit adds nothing.
+    if (result.kind === "verdict" || isUsageLimit(result)) return result;
     // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
     if (await silent(input)) return poll();
     if (clock.expired()) return last;
