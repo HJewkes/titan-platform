@@ -473,11 +473,18 @@ declare function ciWait(port: GitHubPort, options: CiWaitOptions): Promise<CiWai
 
 /** How many base merges may sit between the approved head and the PR head, as in agent-chat's `scripts/seat/premerge`. */
 declare const MAX_BASE_MERGES = 5;
+/**
+ * The tree of a clean merge of `baseParent` and `reviewed` (`git merge-tree --write-tree`), or null
+ * when they conflict. The package does no git, so the caller supplies it.
+ */
+type CleanMergeTree = (baseParent: string, reviewed: string) => Promise<string | null>;
 interface ApprovedHeadWalkInput {
     headSha: string;
     approvedHead: string;
     baseRef: string;
     maxBaseMerges?: number;
+    /** Absent, or failing, any head other than the approved one is refused: shape alone cannot rule out an evil merge. */
+    cleanMergeTree?: CleanMergeTree;
 }
 /**
  * Whether `headSha` is `approvedHead` plus only merges of the base branch. On success `baseParents`
@@ -496,8 +503,9 @@ type ApprovedHeadWalk = {
 /**
  * Follows first parents from the head through two-parent merges until one has the approved head
  * as a parent. Each merge's other parent must be on the base branch and inside the newest one, or
- * the newest merge could have dropped base commits an earlier one brought in. The caller still
- * owns proving the trees match; this reads only commits and compares through the port.
+ * the newest merge could have dropped base commits an earlier one brought in. Last, the head's tree
+ * must equal a clean merge of the newest base parent into the approved head, which proves no merge
+ * changed PR content, conflict resolutions included.
  */
 declare function approvedHeadWalk(port: GitHubPort, repo: RepoSlug, input: ApprovedHeadWalkInput): Promise<ApprovedHeadWalk>;
 
@@ -738,4 +746,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };
+export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };

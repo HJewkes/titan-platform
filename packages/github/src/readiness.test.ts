@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedHeadWalk, type ApprovedHeadWalk } from "./approved-head-walk.js";
+import { approvedHeadWalk, type ApprovedHeadWalk, type CleanMergeTree } from "./approved-head-walk.js";
 import { fakeGitHub, fakeSha, successRun as anyShaRun, type FakeGitHub } from "./fake.js";
 import { githubPort, type PullRequest, type RequiredChecks } from "./port.js";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness, type MergeReadinessInput } from "./readiness.js";
@@ -182,7 +182,7 @@ describe("approvedHeadWalk", () => {
 
   function world(commits: Record<string, string[]>): FakeGitHub {
     const fake = fakeGitHub();
-    for (const [sha, parents] of Object.entries(commits)) fake.commits.set(sha, { sha, parents });
+    for (const [sha, parents] of Object.entries(commits)) fake.commits.set(sha, { sha, parents, tree: treeOf(sha) });
     return fake;
   }
 
@@ -191,7 +191,12 @@ describe("approvedHeadWalk", () => {
     fake.compares.set(`${sha}...${target}`, { mergeBaseSha: fakeSha(`below:${sha}`), files: [] });
   }
 
-  const walk = (fake: FakeGitHub, maxBaseMerges?: number) => approvedHeadWalk(githubPort(fake.wire), "o/r", { headSha: S, approvedHead: R, baseRef: "main", maxBaseMerges });
+  const treeOf = (sha: string) => fakeSha(`tree:${sha}`);
+  /** A clean merge of any base parent into R gives exactly S's tree: the merges changed no PR content. */
+  const honestMerge: CleanMergeTree = async () => treeOf(S);
+
+  const walk = (fake: FakeGitHub, options: { maxBaseMerges?: number; cleanMergeTree?: CleanMergeTree } = { cleanMergeTree: honestMerge }) =>
+    approvedHeadWalk(githubPort(fake.wire), "o/r", { headSha: S, approvedHead: R, baseRef: "main", ...options });
 
   it("is ok without reading anything when the heads are equal", async () => {
     const fake = world({});
@@ -235,6 +240,39 @@ describe("approvedHeadWalk", () => {
   it("refuses a head more base merges past the approved head than the cap", async () => {
     const M2 = fakeSha("merge-2");
 
-    expect(await walk(world({ [S]: [M2, B2], [M2]: [M1, B1], [M1]: [R, fakeSha("base-0")] }), 2)).toMatchObject({ ok: false, reasons: [`head ${S} is more than 2 base merges past reviewed ${R}`] });
+    expect(await walk(world({ [S]: [M2, B2], [M2]: [M1, B1], [M1]: [R, fakeSha("base-0")] }), { maxBaseMerges: 2, cleanMergeTree: honestMerge })).toMatchObject({ ok: false, reasons: [`head ${S} is more than 2 base merges past reviewed ${R}`] });
+  });
+
+  it("refuses an evil merge whose tree differs from a clean merge of the base parent into the approved head", async () => {
+    const editedInMerge: CleanMergeTree = async () => fakeSha("tree:clean-merge");
+
+    expect(await walk(world({ [S]: [R, B1] }), { cleanMergeTree: editedInMerge })).toMatchObject({ ok: false, reasons: [`head ${S} differs from reviewed ${R} plus a base merge`] });
+  });
+
+  it("asks for the clean merge of the newest base parent and the approved head", async () => {
+    const asked: [string, string][] = [];
+    const recording: CleanMergeTree = async (baseParent, reviewed) => (asked.push([baseParent, reviewed]), treeOf(S));
+
+    await walk(world({ [S]: [M1, B2], [M1]: [R, B1] }), { cleanMergeTree: recording });
+
+    expect(asked).toEqual([[B2, R]]);
+  });
+
+  it("refuses when the approved head conflicts with the newest base parent", async () => {
+    expect(await walk(world({ [S]: [R, B1] }), { cleanMergeTree: async () => null })).toMatchObject({ ok: false, reasons: [`reviewed ${R} conflicts with merged parent ${B1}`] });
+  });
+
+  it("fails closed when no merge-tree proof is supplied", async () => {
+    expect(await walk(world({ [S]: [R, B1] }), {})).toMatchObject({ ok: false, reasons: [`no merge-tree proof that head ${S} is reviewed ${R} plus a base merge`] });
+  });
+
+  it("fails closed when the merge-tree proof cannot be computed", async () => {
+    const unavailable: CleanMergeTree = async () => Promise.reject(new Error("git exited 128"));
+
+    expect(await walk(world({ [S]: [R, B1] }), { cleanMergeTree: unavailable })).toMatchObject({ ok: false, reasons: [`merge-tree of reviewed ${R} and merged parent ${B1} failed: git exited 128`] });
+  });
+
+  it("refuses an octopus merge of the approved head", async () => {
+    expect(await walk(world({ [S]: [R, B1, B2] }))).toMatchObject({ ok: false, reasons: [`head ${S} is not a two-parent merge of reviewed ${R}`] });
   });
 });

@@ -3,11 +3,19 @@ import type { GitHubPort, RepoSlug } from "./port.js";
 /** How many base merges may sit between the approved head and the PR head, as in agent-chat's `scripts/seat/premerge`. */
 export const MAX_BASE_MERGES = 5;
 
+/**
+ * The tree of a clean merge of `baseParent` and `reviewed` (`git merge-tree --write-tree`), or null
+ * when they conflict. The package does no git, so the caller supplies it.
+ */
+export type CleanMergeTree = (baseParent: string, reviewed: string) => Promise<string | null>;
+
 export interface ApprovedHeadWalkInput {
   headSha: string;
   approvedHead: string;
   baseRef: string;
   maxBaseMerges?: number;
+  /** Absent, or failing, any head other than the approved one is refused: shape alone cannot rule out an evil merge. */
+  cleanMergeTree?: CleanMergeTree;
 }
 
 /**
@@ -19,28 +27,50 @@ export type ApprovedHeadWalk = { headSha: string; approvedHead: string } & ({ ok
 /**
  * Follows first parents from the head through two-parent merges until one has the approved head
  * as a parent. Each merge's other parent must be on the base branch and inside the newest one, or
- * the newest merge could have dropped base commits an earlier one brought in. The caller still
- * owns proving the trees match; this reads only commits and compares through the port.
+ * the newest merge could have dropped base commits an earlier one brought in. Last, the head's tree
+ * must equal a clean merge of the newest base parent into the approved head, which proves no merge
+ * changed PR content, conflict resolutions included.
  */
 export async function approvedHeadWalk(port: GitHubPort, repo: RepoSlug, input: ApprovedHeadWalkInput): Promise<ApprovedHeadWalk> {
   const { headSha, approvedHead } = input;
   if (headSha === approvedHead) return { headSha, approvedHead, ok: true, baseParents: [] };
   const walked = await walkToApproved(port, repo, input);
   if (typeof walked === "string") return { headSha, approvedHead, ok: false, reasons: [walked] };
-  const disorder = await baseOrderProblem(port, repo, walked, input.baseRef);
-  return disorder ? { headSha, approvedHead, ok: false, reasons: [disorder] } : { headSha, approvedHead, ok: true, baseParents: walked };
+  const problem = (await baseOrderProblem(port, repo, walked.baseParents, input.baseRef)) ?? (await treeProblem(input, walked));
+  return problem ? { headSha, approvedHead, ok: false, reasons: [problem] } : { headSha, approvedHead, ok: true, baseParents: walked.baseParents };
+}
+
+interface Walked {
+  baseParents: string[];
+  headTree: string | undefined;
+}
+
+async function treeProblem({ headSha, approvedHead, cleanMergeTree }: ApprovedHeadWalkInput, { baseParents, headTree }: Walked): Promise<string | undefined> {
+  const [newest] = baseParents;
+  const plus = baseParents.length > 1 ? "its base merges" : "a base merge";
+  if (cleanMergeTree === undefined || newest === undefined) return `no merge-tree proof that head ${headSha} is reviewed ${approvedHead} plus ${plus}`;
+  let tree: string | null;
+  try {
+    tree = await cleanMergeTree(newest, approvedHead);
+  } catch (error) {
+    return `merge-tree of reviewed ${approvedHead} and merged parent ${newest} failed: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (tree === null) return `reviewed ${approvedHead} conflicts with merged parent ${newest}`;
+  return headTree !== undefined && tree === headTree ? undefined : `head ${headSha} differs from reviewed ${approvedHead} plus ${plus}`;
 }
 
 /** The base-side parents, newest first, or the reason the chain does not reach the approved head. */
-async function walkToApproved(port: GitHubPort, repo: RepoSlug, { headSha, approvedHead, maxBaseMerges = MAX_BASE_MERGES }: ApprovedHeadWalkInput): Promise<string[] | string> {
+async function walkToApproved(port: GitHubPort, repo: RepoSlug, { headSha, approvedHead, maxBaseMerges = MAX_BASE_MERGES }: ApprovedHeadWalkInput): Promise<Walked | string> {
   const others: string[] = [];
   let sha = headSha;
+  let headTree: string | undefined;
   while (others.length < maxBaseMerges) {
-    const { parents } = await port.getCommit(repo, sha);
+    const { parents, tree } = await port.getCommit(repo, sha);
+    if (sha === headSha) headTree = tree;
     const [first, second] = parents;
     if (parents.length !== 2 || first === undefined || second === undefined) return chainFailure(others.length, sha, headSha, approvedHead);
-    if (first === approvedHead) return [...others, second];
-    if (second === approvedHead) return [...others, first];
+    if (first === approvedHead) return { baseParents: [...others, second], headTree };
+    if (second === approvedHead) return { baseParents: [...others, first], headTree };
     others.push(second);
     sha = first;
   }
