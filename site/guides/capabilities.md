@@ -939,9 +939,10 @@ Tier 2, `@titan-design/throughput@0.1.1`. Per-class throughput model: recency-we
 
 Key exports:
 
-- `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`, `BackoffLevel`, `ClassEntry`, `ClassTable`, `LevelStats`, `ThroughputConfig`, `Watermark`
-- `rows`: `sizeBand`, `CappedHoursLike`
-- +4 more in the [reference page](/reference/throughput)
+- `backtest`: `backtest`, `BacktestMetric`, `BacktestOptions`, `BacktestResult`, `Censoring`, `ClassScore`, `ContextLineScore`
+- `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`
+- `rows`: `sizeBand`
+- +19 more in the [reference page](/reference/throughput)
 
 <a id="cap-workflow"></a>
 

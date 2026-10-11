@@ -18,6 +18,10 @@ export interface ThroughputRow {
   kind?: string | null;
   estimate?: number | null;
   flags?: readonly string[];
+  /** When the first implementer session started; `backtest` splits train and test on it. */
+  firstImplAt?: string | null;
+  /** The implementer's peak context in tokens, when the miner recorded it. */
+  peakContextTokens?: number | null;
 }
 
 /** The plan-time facts that place a task in a class. */
