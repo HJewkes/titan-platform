@@ -18,6 +18,8 @@ export interface StepUsage {
   costUsd: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
+  costUnknown?: true;
 }
 
 /** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */

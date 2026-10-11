@@ -14,13 +14,19 @@ import {
   loadHistoryMetrics,
   type HistoryMetricsOptions,
 } from "./history-metrics.js";
+import type { FileDigest } from "./file-digest.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "./types.js";
 
 export interface IndexerMetricsInput {
   nodes: Map<string, GraphNode>;
   edges: Map<string, GraphEdge>;
   /** Files (re)parsed this run — source metrics are computed fresh for these. */
-  parsedFiles: ParsedFile[];
+  parsedFiles?: ParsedFile[];
+  /**
+   * Digests of the files (re)parsed this run, used in place of `parsedFiles` so
+   * their trees can be deleted before metrics run (TP-747).
+   */
+  fileDigests?: readonly FileDigest[];
   /** Source metrics carried forward verbatim for reused (unchanged) files. */
   reusedSourceMetrics: GraphMetric[];
   idRoot: string;
@@ -72,21 +78,49 @@ export function assembleIndexerMetrics(input: IndexerMetricsInput): AssembledInd
   const nodeList = [...input.nodes.values()];
   const edgeList = [...input.edges.values()];
   const history = input.history ? loadHistoryMetrics(nodeList, input.idRoot, input.history) : null;
-  const sourceMetrics = [
-    ...computeSourceMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p), symbolNamesByFile(nodeList)),
-    ...input.reusedSourceMetrics,
-  ];
+  const fresh = input.fileDigests ? metricsFromDigests(input.fileDigests, input.nodes) : metricsFromParsed(input, nodeList);
+  const sourceMetrics = [...fresh.source, ...input.reusedSourceMetrics];
   const metrics = [
     ...computeMetrics(nodeList, edgeList),
     ...computeCallMetrics(nodeList, edgeList),
     ...sourceMetrics,
-    ...computeDeadCodeMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
-    ...computeGrowthRiskMetrics(input.parsedFiles, (p) => fileId(input.idRoot, p)),
+    ...fresh.deadCode,
+    ...fresh.growthRisk,
     ...(history?.metrics ?? []),
     ...computeTestCoverage(nodeList, history?.primaryEntries ?? null, input.history?.churnWindowDays),
     ...computeTestKindMetrics({ edges: edgeList, sourceMetrics, entryPoints: input.entryPoints }),
   ];
   return { metrics, warnings: history?.warnings ?? [] };
+}
+
+interface FreshFileMetrics {
+  source: GraphMetric[];
+  deadCode: GraphMetric[];
+  growthRisk: GraphMetric[];
+}
+
+function metricsFromParsed(input: IndexerMetricsInput, nodeList: readonly GraphNode[]): FreshFileMetrics {
+  const files = input.parsedFiles ?? [];
+  const idOf = (p: string) => fileId(input.idRoot, p);
+  return {
+    source: computeSourceMetrics(files, idOf, symbolNamesByFile(nodeList)),
+    deadCode: computeDeadCodeMetrics(files, idOf),
+    growthRisk: computeGrowthRiskMetrics(files, idOf),
+  };
+}
+
+/**
+ * A digest carries symbol metrics for every symbol its file extracted; keep
+ * only those whose node survived merge and pruning, which is the set the
+ * parsed-file path derives from the final nodes.
+ */
+function metricsFromDigests(digests: readonly FileDigest[], nodes: ReadonlyMap<string, GraphNode>): FreshFileMetrics {
+  const kept = (d: FileDigest) => d.sourceMetrics.filter((m) => m.nodeId === d.fileId || nodes.has(m.nodeId));
+  return {
+    source: digests.flatMap(kept),
+    deadCode: digests.flatMap((d) => d.deadCodeMetrics),
+    growthRisk: digests.flatMap((d) => d.growthRiskMetrics),
+  };
 }
 
 /**
