@@ -48,6 +48,30 @@ describe("shepherd event history", () => {
     expect(eventsSince(db).map((event) => event.kind)).toEqual(["hold", "release"]);
   });
 
+  it("records an actor on every hold, release, freeze and thaw, naming Shepherd where no caller does", () => {
+    const { db, store, freezes } = open();
+
+    store.hold("run-1", "r1", undefined, { actor: "seat-a" });
+    store.release("run-1", { actor: "seat-b" });
+    store.hold("run-1", "r2");
+    store.releaseIfHeld("run-1", "r2");
+    freezes.freeze(REPO, "red1");
+    freezes.release(REPO, 1, "owner");
+    freezes.freeze(REPO, "red2");
+    freezes.unfreeze(REPO, "green");
+
+    expect(eventsSince(db).map((event) => [event.kind, event.actor])).toEqual([
+      ["hold", "seat-a"],
+      ["release", "seat-b"],
+      ["hold", "shepherd"],
+      ["release", "shepherd"],
+      ["freeze", "shepherd"],
+      ["thaw", "owner"],
+      ["freeze", "shepherd"],
+      ["thaw", "shepherd"],
+    ]);
+  });
+
   it("writes no event when the state change fails", () => {
     const { db, store } = open();
 
