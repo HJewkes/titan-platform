@@ -424,8 +424,9 @@ Key exports:
 - `claude-print`: `buildClaudePrintArgs`, `claudePrintCapabilities`, `resolveClaudeBin`
 - `preflight`: `dispatchHarnessRun`, `preflightHarnessRun`
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
-- `failures`: `classifyResult`, `sumModelCost`
-- +81 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent)
+- `codex-prices`: `priceCodexUsage`
+- `failures`: `classifyResult`
+- +83 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 

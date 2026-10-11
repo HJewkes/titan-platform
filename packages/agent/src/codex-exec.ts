@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { runCodexExecSession } from "./codex-exec-session.js";
+import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
   inspectCodexVersion,
@@ -32,6 +33,8 @@ export interface CodexExecAdapterOptions {
   executablePath?: string;
   env?: NodeJS.ProcessEnv;
   killGraceMs?: number;
+  /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
+  prices?: readonly CodexPriceRow[];
 }
 
 export interface CodexExecDeps {
@@ -63,7 +66,8 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        return await runSupervised(request, { executablePath, env, killGraceMs: options.killGraceMs }, deps);
+        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices };
+        return await runSupervised(request, config, deps);
       } catch (error) {
         return failed({ kind: "runtime_error", reason: messageOf(error), native: error });
       }
@@ -137,6 +141,7 @@ function validateOptions(options: CodexExecAdapterOptions): void {
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
+  if (options.prices !== undefined) validateCodexPrices(options.prices);
 }
 
 function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailure | undefined {
@@ -175,6 +180,7 @@ async function runSupervised<T>(
     executablePath: string;
     env: Record<string, string>;
     killGraceMs?: number;
+    prices?: readonly CodexPriceRow[];
   },
   deps: CodexExecDeps,
 ): Promise<HarnessRunResult<T, "codex">> {
@@ -227,6 +233,7 @@ async function runSupervised<T>(
       config.killGraceMs,
       processWallTimeMs,
       cleanup,
+      config.prices,
     );
   } catch (error) {
     if (request.signal?.aborted) return failed(abortFailure(request.signal));
