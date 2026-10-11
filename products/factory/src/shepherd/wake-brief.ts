@@ -37,8 +37,25 @@ export interface WakeFacts {
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
-async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
-  const failing = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun[]> {
+  return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+}
+
+/** What reproduces each failing CI job locally; a job named here fails in seconds on the implementer's machine, before a push spends a CI cycle. */
+const LOCAL_REPRO: Readonly<Record<string, string>> = {
+  "dag-check": "`pnpm dag:check` and `pnpm dead:check`",
+  validate: "`pnpm capabilities:check` and the tests the log names (`timeout 300 npx vitest run <files>`)",
+  "lint-types": "`pnpm lint:types`",
+  "egress-scan": "`pnpm egress:scan range <base sha> <head sha>`",
+};
+
+function localRepro(failing: readonly CheckRun[]): string {
+  const known = failing.flatMap((run) => (LOCAL_REPRO[run.name] === undefined ? [] : [`${run.name}: ${LOCAL_REPRO[run.name]}`]));
+  if (known.length === 0) return "";
+  return ` Reproduce it locally and run it before you push: ${known.join("; ")}.`;
+}
+
+async function ciLogs(port: GitHubPort, input: WakeFacts, failing: readonly CheckRun[]): Promise<string> {
   if (failing.length === 0) return "No failing check run was found at this head.";
   const budget = Math.floor((LOG_BUDGET_BYTES - (failing.length - 1)) / failing.length);
   const sections = await Promise.all(failing.map((run) => logSection(port, input.repo, run, budget)));
@@ -218,8 +235,11 @@ export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullR
 async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
   const head = input.headSha;
   switch (input.kind) {
-    case "ci-red":
-      return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
+    case "ci-red": {
+      const failing = await failingRuns(port, input);
+      const jobs = failing.length === 0 ? "" : ` Failing: ${failing.map((run) => run.name).join(", ")}.`;
+      return { reason: `CI failed at head ${head}.${jobs}${localRepro(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+    }
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {

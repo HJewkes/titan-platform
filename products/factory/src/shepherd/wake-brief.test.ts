@@ -170,6 +170,17 @@ describe("review wake brief: the PR's review comments", () => {
     expectNoLeak(wake);
   });
 
+  it("names the failing dag-check job and the local commands that reproduce it, to run before pushing", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const port = { ...githubPort(fake.wire), latestCheckRuns: async () => [successRun("dag-check", 1, undefined, "failure")], jobLogTail: async () => "unused exports" };
+
+    const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(wake.reason).toContain("Failing: dag-check.");
+    expect(wake.reason).toContain("run it before you push: dag-check: `pnpm dag:check` and `pnpm dead:check`");
+  });
+
   it("has no unreadable line when the read succeeds with no comments", async () => {
     const { wake } = scene([]);
 
