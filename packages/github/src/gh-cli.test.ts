@@ -72,6 +72,16 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(open.exec).getPr(REPO, 7)).toMatchObject({ merged: false, mergedAt: null });
   });
 
+  it("reads an armed auto_merge as autoMerge true, and an absent or null one as false", async () => {
+    const armed = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: { merge_method: "squash" } }) });
+    const nulled = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: null }) });
+    const absent = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+
+    expect((await ghCliWire(armed.exec).getPr(REPO, 7)).autoMerge).toBe(true);
+    expect((await ghCliWire(nulled.exec).getPr(REPO, 7)).autoMerge).toBe(false);
+    expect((await ghCliWire(absent.exec).getPr(REPO, 7)).autoMerge).toBe(false);
+  });
+
   it("reads behind from the compare API and never passes a token", async () => {
     const gh = scriptedGh({ [`compare/main...${H1}`]: JSON.stringify({ behind_by: 3 }), "pulls/7": openPr });
 
