@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { runCodexExecSession } from "./codex-exec-session.js";
-import { priceCodexUsage, validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
+import { validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
   inspectCodexVersion,
@@ -66,22 +66,13 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        const result = await runSupervised(request, { executablePath, env, killGraceMs: options.killGraceMs }, deps);
-        return withPricedUsage(result, options.prices, deps.now ?? Date.now);
+        const config = { executablePath, env, killGraceMs: options.killGraceMs, prices: options.prices };
+        return await runSupervised(request, config, deps);
       } catch (error) {
         return failed({ kind: "runtime_error", reason: messageOf(error), native: error });
       }
     },
   };
-}
-
-function withPricedUsage<T>(
-  result: HarnessRunResult<T, "codex">,
-  prices: readonly CodexPriceRow[] | undefined,
-  now: () => number,
-): HarnessRunResult<T, "codex"> {
-  if (!prices || result.usage.length === 0) return result;
-  return { ...result, usage: priceCodexUsage(result.usage, prices, now()) };
 }
 
 export function prepareCodexEnv(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -189,6 +180,7 @@ async function runSupervised<T>(
     executablePath: string;
     env: Record<string, string>;
     killGraceMs?: number;
+    prices?: readonly CodexPriceRow[];
   },
   deps: CodexExecDeps,
 ): Promise<HarnessRunResult<T, "codex">> {
@@ -241,6 +233,7 @@ async function runSupervised<T>(
       config.killGraceMs,
       processWallTimeMs,
       cleanup,
+      config.prices,
     );
   } catch (error) {
     if (request.signal?.aborted) return failed(abortFailure(request.signal));

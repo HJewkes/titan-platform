@@ -234,7 +234,9 @@ Turn usage carries `cost: null` unless the caller passes `prices`, a dated table
 `CodexPriceRow` entries (`model`, `effectiveFrom` as a UTC `YYYY-MM-DD` date, and
 input, cached-input and output rates in USD per million tokens). The adapter then
 fills `cost: { usd, kind: "estimate" }` from the row for the run's model with the
-latest `effectiveFrom` not after the run time. Cached input is billed at the cached
+latest `effectiveFrom` not after the time the turn completed, on both the
+returned result and the live `usage` progress events. Pricing needs a pinned model:
+the adapter already requires `native.model`, and that name must match a row. Cached input is billed at the cached
 rate and the rest of input at the full rate; reasoning tokens are already inside
 output. A model with no row in force keeps `cost: null`, so budgets see the cost as
 unknown rather than zero. The package ships no rates: pricing is the product's

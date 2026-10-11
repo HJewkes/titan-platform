@@ -212,12 +212,17 @@ describe("Codex exec results", () => {
     const prices = [
       { model: "caller-selected", effectiveFrom: "1970-01-01", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.5, outputUsdPerMTok: 8 },
     ];
-    const ok = await harness(fakeProcess({ stdout: events() }).processHandle, {}, { prices }).adapter.run(request());
+    const progress: HarnessRunProgress[] = [];
+    const ok = await harness(fakeProcess({ stdout: events() }).processHandle, {}, { prices }).adapter.run(
+      request({ onProgress: (event) => progress.push(event) }),
+    );
     const failedExit = fakeProcess({ stdout: events(), exit: { exitCode: 1, signal: null } });
     const failed = await harness(failedExit.processHandle, {}, { prices }).adapter.run(request());
     // 6 uncached * 2 + 4 cached * 0.5 + 6 output * 8, per million tokens
     const expected = { usd: 62 / 1_000_000, kind: "estimate" };
     expect(ok.usage[0]?.cost).toEqual(expected);
+    const emitted = progress.flatMap((event) => (event.kind === "usage" ? [event.measurement] : []));
+    expect(emitted).toEqual(ok.usage);
     expect(failed).toMatchObject({ ok: false });
     expect(failed.usage[0]?.cost).toEqual(expected);
   });
