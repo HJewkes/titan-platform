@@ -28,7 +28,7 @@ Before adding code:
 | [`embed`](#cap-embed) | 0 | You need embedding vectors and a model download must not be a hard requirement. Pair it with retrieval, which takes the same `Embedder`. |
 | [`eslint-plugin`](#cap-eslint-plugin) | 0 | You want ESLint to enforce the titan code-quality limits in a repo: `max-function-lines` (at most 30 non-blank lines per function), `no-commented-code` (no code in comments), `no-chained-type-assertions` (no `as unknown as T`), `no-internal-module-mock` (tests mock only external dependencies) and `todo-needs-issue` (every TODO names a task id). To run ESLint against a style profile and normalize its output, use `style-checker` instead. |
 | [`evidence`](#cap-evidence) | 0 | A model returns cited evidence (file and line claims) and code must verify the citations, group overlapping findings or score planted controls before trusting it. Its `./stats` subpath puts honest intervals and paired tests on eval pass rates at 20 to 50 cases. |
-| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority. |
+| [`fix-proof`](#cap-fix-proof) | 0 | You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof run` bin does the git worktree, build and vitest runs and prints that line. To decide who may merge afterwards, use authority. |
 | [`locator`](#cap-locator) | 0 | You read an append-mostly file (a transcript, a log, a JSONL export) incrementally and need to resume exactly where you stopped, or to point back at the bytes that produced a row. |
 | [`rpc-protocol`](#cap-rpc-protocol) | 0 | You write a daemon client or server and need the shared envelope, exit codes, routes and SSE vocabulary. |
 | [`store-sqlite`](#cap-store-sqlite) | 0 | You are storing anything in SQLite and want an edge graph, a contentless FTS5 index, a content-hash cache, an ingest watermark or migrations, without writing the DDL yourself. |
@@ -241,7 +241,7 @@ Key exports:
 
 ### [`egress-scan`](/reference/egress-scan)
 
-Tier 0, `@titan-design/egress-scan@0.6.2`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
+Tier 0, `@titan-design/egress-scan@0.6.3`. Scan git diff text for home paths, private-workspace paths, private terms and credential tokens, reporting location and rule id only
 
 **Use this when:** Text is about to leave the machine for a public repo and you must refuse absolute home paths, active-work data directory paths, terms from a private list or credential tokens (GitHub, Anthropic, AWS, Slack, PEM private keys), reporting only `file:line`, the rule id and the token kind. The library scans git patch text you supply and spawns nothing; the `titan-egress-scan` bin runs git for a pre-push hook (`install-hook`) or a CI range. To mask secrets for display, use the redactors in queue-mirror instead.
 
@@ -310,18 +310,21 @@ Key exports:
 
 ### [`fix-proof`](/reference/fix-proof)
 
-Tier 0, `@titan-design/fix-proof@0.3.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
+Tier 0, `@titan-design/fix-proof@0.4.0`. Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line
 
-**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line; it runs nothing itself. To decide who may merge afterwards, use authority.
+**Use this when:** You must decide whether a fix pull request's added or changed tests fail on the merge base and pass at head. It plans the overlay from a `git diff -M --name-status` and the base config, classifies two vitest JSON reports per test into a `reproduced`, `unproven`, `vacuous`, `no-tests` or `error` verdict, and encodes it as a 4 KB `fix-proof/v1` line. Its `fix-proof run` bin does the git worktree, build and vitest runs and prints that line. To decide who may merge afterwards, use authority.
 
 Key exports:
 
-- `config`: `CONFIG_PATH`, `DEFAULT_CARRY_GLOBS`, `DEFAULT_TEST_GLOBS`, `parseFixProofConfig`
+- `config`: `parseFixProofConfig`
 - `glob`: `compileGlobs`, `expandBraces`
 - `plan`: `planFixProof`
-- `classify`: `classifyReports`, `TEST_CLASSES`
+- `classify`: `classifyReports`
 - `result-line`: `formatResultLine`, `parseResultLine`, `toResult`
-- +18 more in the [reference page](/reference/fix-proof)
+- `cli`: `runCli`
+- `exec`: `spawnExec`
+- `run`: `errorLine`, `run`
+- +30 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
@@ -421,8 +424,9 @@ Key exports:
 - `claude-print`: `buildClaudePrintArgs`, `claudePrintCapabilities`, `resolveClaudeBin`
 - `preflight`: `dispatchHarnessRun`, `preflightHarnessRun`
 - `codex-exec`: `buildCodexExecArgs`, `codexExecCapabilities`, `createCodexExecAdapter`, `prepareCodexEnv`
-- `failures`: `classifyResult`, `sumModelCost`
-- +81 more in the [reference page](/reference/agent)
+- `codex-prices`: `priceCodexUsage`
+- `failures`: `classifyResult`
+- +83 more in the [reference page](/reference/agent)
 
 <a id="cap-agent-dispatch"></a>
 
@@ -653,7 +657,7 @@ Modules that know about a subject: transcripts, code, rules.
 
 ### [`code-graph`](/reference/code-graph)
 
-Tier 2, `@titan-design/code-graph@0.17.0`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
+Tier 2, `@titan-design/code-graph@0.17.1`. TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit
 
 **Use this when:** A tool reasons about code structure (layering checks, dead code, impact analysis, metrics, findings) over TypeScript, TSX or Python.
 
@@ -794,7 +798,7 @@ Key exports:
 
 ### [`review-panel`](/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.5.1`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.5.2`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, and `aggregate` to turn the members' verdicts into one fail-closed panel verdict. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
@@ -846,7 +850,7 @@ Key exports:
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`
-- +94 more in the [reference page](/reference/session-graph)
+- +95 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
@@ -943,7 +947,7 @@ Key exports:
 
 ### [`workflow`](/reference/workflow)
 
-Tier 2, `@titan-design/workflow@0.12.0`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
+Tier 2, `@titan-design/workflow@0.12.1`. Durable imperative workflows: memoized steps, agent dispatch, human gates, replay on restart
 
 **Use this when:** Multi-step agent work (branches, loops, fan-out with `mapItems`, human gates) must survive a restart without losing progress. Its runners carry the credential needs listed under Proven runtime paths.
 
