@@ -28,7 +28,7 @@ const NEXT: Record<SeatNotice, string> = {
   "ci-failed": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "sh-sent-back": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
-  held: "Nothing pushes while the run is held. Release the hold and Shepherd resumes the fix round at this head, or push a fix yourself, or close the PR to end the run.",
+  held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
