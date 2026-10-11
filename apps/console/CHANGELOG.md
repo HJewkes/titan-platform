@@ -1,5 +1,12 @@
 # titan-console
 
+## 0.3.12
+
+### Patch Changes
+
+- Updated dependencies [cd830c1]
+  - @titan-design/github@0.9.0
+
 ## 0.3.11
 
 ### Patch Changes
