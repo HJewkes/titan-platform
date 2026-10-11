@@ -1,5 +1,11 @@
 # @titan-design/workflow
 
+## 0.12.1
+
+### Patch Changes
+
+- 3977860: `durableHarnessRunner` reports the usage on a failed durable terminal, so `StepFailedError.usage` and the `mapItems` budget count what a failed durable step spent.
+
 ## 0.12.0
 
 ### Minor Changes
