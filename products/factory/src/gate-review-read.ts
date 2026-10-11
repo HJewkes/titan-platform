@@ -1,17 +1,17 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { checksAt, verdictAt, type ChecksState, type EvidenceSources } from "./coordinator-evidence-read.js";
+import { checksAt, verdictAt, type EvidenceSources } from "./coordinator-evidence-read.js";
 import { landGate } from "./coordinator-evidence.js";
 import { batchRefusal } from "./gate-batch-plan.js";
 import type { FactoryHost } from "./host.js";
 
-export interface ReviewVerdict {
+interface ReviewVerdict {
   verdict: string;
   reviewer: string;
 }
 
-export interface ReviewChecks {
-  state: ChecksState;
+interface ReviewChecks {
+  state: "green" | "failing" | "pending" | "unreadable";
   failing: string[];
 }
 

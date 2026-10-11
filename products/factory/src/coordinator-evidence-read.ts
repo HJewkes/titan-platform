@@ -115,7 +115,7 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
 }
 
-export type ChecksState = "green" | "failing" | "pending" | "unreadable";
+type ChecksState = "green" | "failing" | "pending" | "unreadable";
 
 /** What the required checks of the base say about the head, for a human to read; a failing run outranks a pending one. */
 export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, head: string): Promise<{ state: ChecksState; failing: string[] }> {
