@@ -29,17 +29,18 @@ interface ParkInput {
 }
 
 const NOT_ON_DISK = /is not on disk; nothing to park/;
+const NO_WORKTREE = /holds no worktree agent-chat allocated/;
 const NO_AGENT = /no agent named/;
 const LIVE = /park takes only an agent whose process has exited/;
 const AGENT_CHAT_BRANCH = "agent-chat/";
 
-/** A tree already removed is the state parking wants; a live agent is asked again once it exits. */
+/** A tree already removed, or one agent-chat never allocated, is the state parking wants; a live agent is asked again once it exits. */
 function attemptPark(park: ParkPort, agent: string): ParkOutcome {
   try {
     return { kind: "parked", agent, lines: park(agent).lines };
   } catch (error) {
     const reason = redactForEvidence(error instanceof Error ? error.message : String(error));
-    if (NOT_ON_DISK.test(reason)) return { kind: "parked", agent, lines: [reason], alreadyGone: true };
+    if (NOT_ON_DISK.test(reason) || NO_WORKTREE.test(reason)) return { kind: "parked", agent, lines: [reason], alreadyGone: true };
     return { kind: "not-parked", agent, reason, brokerDown: error instanceof BrokerUnavailableError, ...(LIVE.test(reason) && { retry: "at-exit" as const }) };
   }
 }
@@ -136,13 +137,22 @@ async function exitedReviewers(roster: RosterReader, registration: Registration)
   return [...new Set(exited.map((row) => row.name))];
 }
 
+/** Reviewers whose tree is already gone, so no later round end asks the broker about them again. */
+const goneReviewers = new Set<string>();
+
+/** A reviewer the broker no longer knows has no tree left to park, the same answer as a tree off disk. */
+function settleRetired(outcome: ParkOutcome): ParkOutcome {
+  return outcome.kind === "not-parked" && NO_AGENT.test(outcome.reason) ? { kind: "parked", agent: outcome.agent, lines: [outcome.reason], alreadyGone: true } : outcome;
+}
+
 /** A finished round leaves its reviewer's tree behind; a refusal is told to the seat loudly and asked again at the next round end. */
 async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string): Promise<ReviewerPark[]> {
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
-  const names = await exitedReviewers(wiring.roster, registration).catch(() => []);
-  const outcomes = names.map((name) => attemptPark(wiring.park, name));
+  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !goneReviewers.has(`${runId}:${name}`));
+  const outcomes = names.map((name) => settleRetired(attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {
+    if (outcome.kind === "parked" && outcome.alreadyGone) goneReviewers.add(`${runId}:${outcome.agent}`);
     if (outcome.kind !== "not-parked") continue;
     console.error(`shepherd: ${registration.repo}#${registration.pr}: reviewer ${outcome.agent}'s worktree was not parked: ${outcome.reason}`);
     await tellParkRefusal(wiring.notice, registration, outcome.agent, outcome.reason);

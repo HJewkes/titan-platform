@@ -119,6 +119,24 @@ describe("parkImplementer", () => {
     });
   });
 
+  it("counts a tree agent-chat never allocated as parked", () => {
+    const park = refusing({
+      "impl-a": "impl-a holds no worktree agent-chat allocated",
+    });
+
+    const outcome = parkImplementer(
+      storeWith({ implementer: "impl-a" }),
+      park,
+      input
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "parked",
+      agent: "impl-a",
+      alreadyGone: true,
+    });
+  });
+
   it("parks the successor and the agent its agent-chat branch was allocated to when the registered name is unknown", () => {
     const asked: string[] = [];
     const park = refusing(
@@ -392,6 +410,30 @@ describe("parkStep reviewer trees", () => {
     ]);
     expect(notice.sent).toHaveLength(2);
     expect(notice.sent[0]?.[1]).toContain("rv-o-r-7's worktree was not parked");
+  });
+
+  it.each([
+    ["a retired agent", 'no agent named "rv-o-r-7"'],
+    ["a tree outside agent-chat", "rv-o-r-7 holds no worktree agent-chat allocated"],
+  ])("records %s once as already gone, sends no notice and never asks again", async (label, reason) => {
+    const notice = noticePorts("hub");
+    const asked: string[] = [];
+    const wiring = wiringFor(
+      [row("rv-o-r-7", "exited")],
+      refusing({ "rv-o-r-7": reason }, asked),
+      notice
+    );
+
+    const own = { ...input, runId: `run-${label}` };
+    const first = await parkStep(storeWith({ implementer: "impl-a" }), wiring, own);
+    const second = await parkStep(storeWith({ implementer: "impl-a" }), wiring, own);
+
+    expect(first.reviewers).toMatchObject([
+      { kind: "parked", agent: "rv-o-r-7", alreadyGone: true },
+    ]);
+    expect(second.reviewers).toEqual([]);
+    expect(asked.filter((name) => name === "rv-o-r-7")).toHaveLength(1);
+    expect(notice.sent).toEqual([]);
   });
 
   it("never parks the standing reviewer", async () => {
