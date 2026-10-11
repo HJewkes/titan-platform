@@ -481,10 +481,25 @@ fast-forwards, runs `pnpm install --frozen-lockfile` under the `setupEnv` pin, b
 closure, and restarts drained as `service restart` does. Success means launchd's pid answers
 `/health` with `github` `ok`, and then `build.sha` equals the target. The sha read polls
 `/health` up to 10 times with a 5 s timeout each, so a slow answer under load is not a
-failure; only a wrong sha, or no sha in the whole poll, fails. A failed install or build
-restores the snapshot and leaves the old process running, untouched. A failed restart or sha
-check restores the snapshot and kickstarts again. Both record `rolled-back`, and that sha is
-then held until a newer one arrives.
+failure; only a wrong sha, or no sha in the whole poll, fails. Once the sha checks out, the
+deployer watches the new build for `--watch-window` (default `service.deployWatchMs`, else
+2 minutes), probing `/health` every 10 s. The watch fails when three probes in a row get no
+answer, when the build sha or the pid changes, or when the `failed` plus `recovery_required`
+run counts rise above the answer that confirmed the sha. A failed install or build restores
+the snapshot and leaves the old process running, untouched; it records `rolled-back`, and that
+sha is then held until a newer one arrives.
+
+A failed restart, sha check or watch pauses every deploy. The deployer writes
+`deploy-pause.json` beside `deploy.json` before it restores anything, so a deployer killed
+mid-rollback still leaves the pause. It then restores the snapshot, kickstarts once, and
+checks that `/health` answers as the build that ran before. The pause records the rollback as
+`verified`, or as `failed` when the old sha does not answer or was unknown. Either way the
+deployer sends one incident notice, to the hub seat when `shepherd.hubSeat` is set and always as
+an owner-queue item. A failed rollback also prints an `ALERT:` line, and nothing retries it.
+While the file exists, every `service deploy` is refused with `deploy held: deploys are
+paused`, whatever its sha, and a pause file that does not parse still pauses. `titan-factory
+service pause` shows the pause. `titan-factory service pause --clear` removes it under the
+deploy lock, so it is refused while a deployer runs.
 
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
@@ -522,7 +537,7 @@ a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `servi
 with `no hub seat`.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
-It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
+It exits 1 on a refusal, a held sha, a pause, a lock held by a live deployer, or a rollback. The
 refusal names its cause, such as `deploy refused: checkout not clean main: HEAD is feature/x,
 not main`. A rollback cannot undo a `node_modules` change that the old `dist` cannot load.
 The native-build refusal closes the known case. Any other such change leaves the service down
