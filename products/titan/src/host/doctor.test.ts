@@ -50,7 +50,11 @@ function fakePorts(script: Script): HostPorts {
 
 async function run(script: Script) {
   const report = await hostDoctor(fakePorts(script), { host: "h", platform: "linux", projectsRoot: ROOT });
-  const row = (id: string) => report.rows.find((r) => r.id === id) as HostDoctorRow;
+  const row = (id: string): HostDoctorRow => {
+    const found = report.rows.find((r) => r.id === id);
+    if (!found) throw new Error(`no row ${id}`);
+    return found;
+  };
   return { report, row };
 }
 

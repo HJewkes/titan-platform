@@ -2,7 +2,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { isEnoent, type ExecResult, type HostPorts } from "./ports.js";
 
-export const hostDoctorRowSchema = z.object({
+const hostDoctorRowSchema = z.object({
   id: z.string(),
   group: z.enum(["product", "cli", "inventory"]),
   status: z.enum(["ok", "warn", "fail", "missing"]),
@@ -43,7 +43,7 @@ const PRODUCTS: Product[] = [
 
 const TOOLS = ["claude", "chezmoi", "gh", "git", "node", "pnpm"];
 
-export interface HostDoctorOptions {
+interface HostDoctorOptions {
   host: string;
   platform: NodeJS.Platform;
   /** Where the product checkouts live (`~/projects` unless overridden). */
@@ -59,7 +59,7 @@ export async function hostDoctor(ports: HostPorts, options: HostDoctorOptions): 
   return { host: options.host, platform: options.platform, ok: rows.every(isPassing), rows };
 }
 
-export function isPassing(row: HostDoctorRow): boolean {
+function isPassing(row: HostDoctorRow): boolean {
   return row.status === "ok" || row.status === "warn";
 }
 
