@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { createRegistry, type CommandRegistry } from "@titan-design/registry";
 import { drainIngest, drainTemplates } from "./commands/drain.js";
+import { memoryReport, memoryScan } from "./commands/memory.js";
 import { playbookAdd, playbookRecall, playbookReflect, playbookStatus } from "./commands/playbook.js";
 import { refresh } from "./commands/refresh.js";
 import { search } from "./commands/search.js";
@@ -17,7 +18,7 @@ export const TOOL_PREFIX = "miner__";
 /** Every command the miner exposes, on every surface. Serve/mcp are wired by the CLI, not registered. */
 export function createMinerRegistry(): CommandRegistry<MinerContext> {
   const registry = createRegistry<MinerContext>();
-  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus];
+  const commands = [refresh, status, search, sessionList, sessionShow, drainIngest, drainTemplates, seatContextCommand, playbookAdd, playbookRecall, playbookReflect, playbookStatus, memoryScan, memoryReport];
   for (const cmd of [...commands, ...[...INSIGHT_QUESTIONS, ...AGENT_CHAT_QUESTIONS, ...TRANSCRIPT_QUESTIONS].map(insightCommand)]) registry.register(cmd);
   return registry;
 }
