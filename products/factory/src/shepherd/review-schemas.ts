@@ -78,4 +78,6 @@ const Awaited = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
-export { Awaited, Dispatched, Intended };
+/** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */
+const StopRead = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("clear") }), z.looseObject({ kind: z.literal("stopped"), reason: z.string(), lifted: z.boolean() })]);
+export { Awaited, Dispatched, Intended, StopRead };
