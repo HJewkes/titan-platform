@@ -6,7 +6,7 @@ import { z } from "zod";
  * from `agent-chat machine status --json`, so Shepherd goes quiet under a hold even when the machine shows no pressure.
  * `unreadable` is its own state: the spawn gate fails closed on it, and the machine-stop watch keeps its previous answer.
  */
-export type OperatorHoldRead = { state: "clear" } | { state: "held"; reason: string } | { state: "unreadable"; reason: string };
+type OperatorHoldRead = { state: "clear" } | { state: "held"; reason: string } | { state: "unreadable"; reason: string };
 
 const Hold = z.looseObject({ by: z.string(), since: z.string(), reason: z.string() });
 /** Only `holds` and `errors`: `machine.stop` is the readings Shepherd already reads itself, and owner stops hold one seat each. */
@@ -28,7 +28,7 @@ const EXEC_TIMEOUT_MS = 5000;
 const execStatus: Exec = (bin, args) => execFileSync(bin, args, { encoding: "utf8", timeout: EXEC_TIMEOUT_MS });
 
 /** Pure: the answer one status document gives; a source agent-chat could not read makes the whole answer unreadable. */
-export function holdFromStatus(json: string): OperatorHoldRead {
+function holdFromStatus(json: string): OperatorHoldRead {
   const status = Status.parse(JSON.parse(json));
   if (status.errors.length > 0) return { state: "unreadable", reason: `agent-chat could not read ${status.errors.join(", ")}` };
   const hold = status.holds[0];
