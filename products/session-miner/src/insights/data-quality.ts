@@ -17,7 +17,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { defineInsight } from "./define.js";
 
-export const DATA_QUALITY_FAULTS = [
+const DATA_QUALITY_FAULTS = [
   "graph-stale",
   "transcripts-unindexed",
   "facet-backlog",
@@ -35,9 +35,9 @@ const faultSchema = z.object({
   suggestedTitle: z.string(),
 });
 
-export type DataQualityFault = z.infer<typeof faultSchema>;
+type DataQualityFault = z.infer<typeof faultSchema>;
 
-export const dataQualitySchema = costReportSchema.pick({ window: true, priceTableVersion: true, totals: true, coverage: true }).extend({
+const dataQualitySchema = costReportSchema.pick({ window: true, priceTableVersion: true, totals: true, coverage: true }).extend({
   asOf: z.string(),
   maxLagMinutes: z.number(),
   newestRequest: z.string().nullable(),
@@ -49,7 +49,7 @@ export type DataQualityReport = z.infer<typeof dataQualitySchema>;
 const DEFAULT_MAX_LAG_MINUTES = 60;
 
 /** A parsed `--assignments` file: the lines that failed, and the rows that passed. */
-export interface AssignmentFile {
+interface AssignmentFile {
   invalidLines: number[];
   assignments: Assignment[];
 }
@@ -130,13 +130,16 @@ function countBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string
   return new Map([...counts].sort(([a], [b]) => a.localeCompare(b)));
 }
 
+const newestRow = z.object({ ts: z.string().nullable() });
+const sourceKeyRows = z.array(z.object({ source_key: z.string() }));
+
 function readNewestRequest(db: Db, asOf: string): string | null {
-  return (db.prepare("SELECT MAX(ts) AS ts FROM request WHERE ts < ?").get(asOf) as { ts: string | null }).ts;
+  return newestRow.parse(db.prepare("SELECT MAX(ts) AS ts FROM request WHERE ts < ?").get(asOf)).ts;
 }
 
 /** Compared by path, not by count, since Codex sources are indexed without being discovered here. */
 async function discoverUnindexed(db: Db, corpusRoot: string): Promise<{ discovered: number; unindexed: string[] }> {
-  const indexed = new Set((db.prepare(`SELECT source_key FROM "${KIT.watermark}"`).all() as { source_key: string }[]).map((row) => row.source_key));
+  const indexed = new Set(sourceKeyRows.parse(db.prepare(`SELECT source_key FROM "${KIT.watermark}"`).all()).map((row) => row.source_key));
   const discovered = (await discoverTranscripts(corpusRoot)).map((t) => t.displayPath);
   return { discovered: discovered.length, unindexed: discovered.filter((key) => !indexed.has(key)) };
 }
@@ -148,7 +151,7 @@ function readAssignmentFaults(db: Db, report: CostReportOptions, path: string, e
   return assignmentFaults(file, known, unmatchedAgents);
 }
 
-export function renderDataQualityText(data: DataQualityReport, full: CostReport): string {
+function renderDataQualityText(data: DataQualityReport, full: CostReport): string {
   const lines = data.faults.map((f) => `${f.severity.toUpperCase()} ${f.fault}: ${f.evidence}\n  task: ${f.suggestedTitle}`);
   const body = lines.length === 0 ? "Data quality: no faults" : [`Data quality: ${lines.length} faults`, ...lines].join("\n");
   return `${body}\n\n${renderCostReportSections(full, [])}`;

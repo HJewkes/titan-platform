@@ -2,10 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { resolveConfig, type MinerConfig } from "../config.js";
 import { createMinerContext } from "../context.js";
-import { assignmentFaults, graphFaults, parseAssignments, type DataQualityReport, type GraphFacts } from "./data-quality.js";
+import { assignmentFaults, dataQuality, graphFaults, parseAssignments, type DataQualityReport, type GraphFacts } from "./data-quality.js";
 import { seedEventsDb, seedInsightGraph } from "./fixture.js";
 
 let dir: string;
@@ -24,7 +25,9 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const NEWEST_REQUEST = "2026-09-10T03:01:00Z";
 
-async function dataQuality(flags: string[]): Promise<{ code: number; answer: DataQualityReport; text: string }> {
+const envelope = z.object({ data: z.object({ answer: dataQuality.schema }) });
+
+async function askDataQuality(flags: string[]): Promise<{ code: number; answer: DataQualityReport; text: string }> {
   const run = async (format: string[]) => {
     let stdout = "";
     const io = { stdout: (t: string) => void (stdout += t), stderr: () => undefined, env };
@@ -33,7 +36,7 @@ async function dataQuality(flags: string[]): Promise<{ code: number; answer: Dat
   };
   const json = await run(["--json"]);
   const text = await run([]);
-  return { code: json.code, answer: (JSON.parse(json.stdout) as { data: { answer: DataQualityReport } }).data.answer, text: text.stdout };
+  return { code: json.code, answer: envelope.parse(JSON.parse(json.stdout)).data.answer, text: text.stdout };
 }
 
 function assignment(overrides: Record<string, unknown>): string {
@@ -42,7 +45,7 @@ function assignment(overrides: Record<string, unknown>): string {
 
 describe("insights data-quality on the graph", () => {
   it("reports no faults on a fresh, priced, fully indexed graph", async () => {
-    const { code, answer, text } = await dataQuality(["--until", "2026-09-10T03:31:00Z"]);
+    const { code, answer, text } = await askDataQuality(["--until", "2026-09-10T03:31:00Z"]);
 
     expect(code).toBe(0);
     expect(answer.faults).toEqual([]);
@@ -51,13 +54,13 @@ describe("insights data-quality on the graph", () => {
   });
 
   it("flags a graph whose newest request trails --until by more than the default 60 minutes", async () => {
-    const { answer } = await dataQuality(["--until", "2026-09-10T04:31:00Z"]);
+    const { answer } = await askDataQuality(["--until", "2026-09-10T04:31:00Z"]);
 
     expect(answer.faults).toMatchObject([{ fault: "graph-stale", severity: "error" }]);
   });
 
   it("honours --max-lag", async () => {
-    expect((await dataQuality(["--until", "2026-09-10T04:31:00Z", "--max-lag", "120"])).answer.faults).toEqual([]);
+    expect((await askDataQuality(["--until", "2026-09-10T04:31:00Z", "--max-lag", "120"])).answer.faults).toEqual([]);
   });
 
   it("flags a discovered transcript the graph never indexed", async () => {
@@ -65,7 +68,7 @@ describe("insights data-quality on the graph", () => {
     mkdirSync(project, { recursive: true });
     writeFileSync(path.join(project, "11111111-1111-1111-1111-111111111111.jsonl"), "");
     try {
-      const { answer } = await dataQuality(["--until", "2026-09-10T03:31:00Z"]);
+      const { answer } = await askDataQuality(["--until", "2026-09-10T03:31:00Z"]);
 
       expect(answer.faults).toMatchObject([{ fault: "transcripts-unindexed", severity: "warn" }]);
       expect(answer.coverage.transcriptsDiscovered).toBe(1);
@@ -79,7 +82,7 @@ describe("insights data-quality on the graph", () => {
     const lines = [assignment({}), assignment({ agent: undefined }), "not json", assignment({ outcome: "merged-ish", agent: "ghost-1" }), ""];
     writeFileSync(file, lines.join("\n"));
 
-    const { answer } = await dataQuality(["--until", "2026-09-10T03:31:00Z", "--assignments", file]);
+    const { answer } = await askDataQuality(["--until", "2026-09-10T03:31:00Z", "--assignments", file]);
 
     expect(answer.faults.map((f) => f.fault)).toEqual(["assignment-invalid", "assignment-outcome-unknown", "agent-unmatched"]);
     expect(answer.faults[0]!.evidence).toMatch(/^2 lines .*: 2, 3$/);
