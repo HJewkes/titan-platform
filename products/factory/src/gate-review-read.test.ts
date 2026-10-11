@@ -20,13 +20,14 @@ const OLD_HEAD = fakeSha("old");
 const TIP = fakeSha("tip");
 const NOW = Date.parse("2026-10-07T18:00:00Z");
 
-interface Scenario {
-  gate: "merge" | "ci-failed";
-  pr: number;
-  rule?: string;
+const Scenario = z.object({
+  gate: z.enum(["merge", "ci-failed"]),
+  pr: z.number(),
+  rule: z.string().optional(),
   /** The head the recorded verdict is for; defaults to the gate's own head. */
-  verdictHead?: string;
-}
+  verdictHead: z.string().optional(),
+});
+type Scenario = z.infer<typeof Scenario>;
 
 const Verdict = z.looseObject({ kind: z.string(), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
 
@@ -34,8 +35,8 @@ const shepherdPr = defineWorkflow({
   name: "shepherd-pr",
   steps: [{ id: "sh-await-verdict", kind: "dispatch" }, { id: "approve-merge", kind: "assisted" }, { id: "ci-failed", kind: "assisted" }],
   run: async (ctx) => {
-    const scenario = JSON.parse(ctx.param("scenario")!) as Scenario;
-    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: scenario.pr, headSha: HEAD, failing: [{ name: "validate", url: "https://example.test/job/1" }] as never })));
+    const scenario = Scenario.parse(JSON.parse(ctx.param("scenario")!));
+    if (scenario.gate === "ci-failed") return void (await ctx.assisted("ci-failed", "CI failed.", ciFailedDecision({ repo: REPO, pr: scenario.pr, headSha: HEAD, failing: [{ name: "validate", conclusion: "failure", url: "https://example.test/job/1", workflowRunId: null }] })));
     const verdictHead = scenario.verdictHead ?? HEAD;
     await step(ctx, `sh-await-verdict:${verdictHead}`, { kind: "verdict", verdict: "MERGE", head: verdictHead, reviewer: { agentId: "rv-synthetic" } }, Verdict);
     const [table, rowId] = (scenario.rule ?? "authority/MRG-AU").split("/");
