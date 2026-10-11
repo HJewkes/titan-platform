@@ -83,6 +83,7 @@ interface Scene {
   onSleep?: (ms: number, fake: FakeGitHub, agents: ReturnType<typeof fakeAgents>) => void;
   /** Whether the woken agent's transcript shows a turn since the ask; unset, every wake starts one at once. */
   turnSince?: (agents: ReturnType<typeof fakeAgents>) => boolean;
+  advisory?: (repo: string) => boolean;
 }
 
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
@@ -95,7 +96,7 @@ function wakeStep(scene: Scene = {}) {
   const clock = { now: T0, sleeps: [] as number[] };
   const sleep = async (ms: number) => void (clock.sleeps.push(ms), (clock.now += ms), scene.onSleep?.(ms, fake, agents));
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
-  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }) };
+  const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.advisory && { advisory: scene.advisory }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
   const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
@@ -131,6 +132,15 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(spawn!.message).toContain(`Before editing, fetch the PR's head branch \`feat/demo-fix\` and check it out at the PR head ${H1}.`);
     expect(spawn!.message).toContain("titan-factory shepherd register");
     expect(spawn!.message).toContain("Head: <full sha>");
+  });
+
+  it("starts no successor on an advisory repo, though its checkout is bound", async () => {
+    const { agents, run } = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(50) }, advisory: (repo) => repo === REPO });
+
+    const { result } = await run("review", fixFirst("fix the parser"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "octo/demo is advisory, so Shepherd starts no successor to push to it" });
+    expect(agents.asked).toEqual([]);
   });
 
   it("spawns a successor under the configured Claude config directory", async () => {
