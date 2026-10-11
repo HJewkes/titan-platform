@@ -1,0 +1,31 @@
+{
+  "schema": "titan.variant/v1",
+  "unit": {
+    "id": "review-pr",
+    "version": "1.0.0"
+  },
+  "id": "live-brief",
+  "topology": {
+    "module": "topologies/single-agent.ts",
+    "export": "singleAgent",
+    "sourceSha256": "afb81c09bb02ba7d69a154b4cc65ff635c46e4760bc52e71da24725f919ae75d"
+  },
+  "steps": {
+    "review": {
+      "kind": "agent",
+      "runner": { "via": "agent", "harness": "claude-code" },
+      "model": "claude-opus-5-5",
+      "effort": "high",
+      "prompt": {
+        "path": "prompts/review.md",
+        "sha256": "778f0d909c4c8b4fadde2ab57c27d87c003fce116dabdb5f00dab181d57aed1b"
+      },
+      "maxTurns": 80,
+      "maxBudgetUsd": 5,
+      "disallowedTools": ["Write", "Edit", "Bash(git push:*)", "Bash(gh:*)"],
+      "skills": [],
+      "onRestart": "repeat"
+    }
+  },
+  "notes": "Baseline: the live reviewer model on the production reviewer brief, checkout lines swapped for bundle paths (reviewPrBrief). Read-only: no Write, Edit, git push or gh."
+}

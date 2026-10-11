@@ -5,6 +5,7 @@ import {
   isTerminalExecutionPhase,
   type ExecutionTerminal,
   type SurfaceIdentity,
+  type UsageMeasurement,
 } from "./index.js";
 import { T2, T3, T4, apply, dispatching, event, expectCode, fence, prepare, running } from "./test-fixtures.js";
 
@@ -37,6 +38,32 @@ describe("ended terminal outcome", () => {
     for (const phase of EXECUTION_PHASES) {
       expect(isTerminalExecutionPhase(phase)).toBe((TERMINAL_EXECUTION_PHASES as readonly string[]).includes(phase));
     }
+  });
+});
+
+describe("failed terminal usage", () => {
+  const spend: UsageMeasurement = {
+    model: "gpt-6",
+    tokens: { input: 900, output: 100, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: 1_000 },
+    cost: { usd: 0.07, kind: "reported" },
+    source: "codex-exec",
+    kind: "delta",
+    responseId: "response-1",
+  };
+
+  it("keeps the spend a failed execution reported on its record", () => {
+    const terminal: ExecutionTerminal<string> = { outcome: "failed", reason: "output_invalid: schema", retryable: false, usage: [spend] };
+
+    const record = apply(running(), event("finish", 3, T3, { fence, terminal }));
+
+    expect(record).toMatchObject({ phase: "failed", terminal: { outcome: "failed", usage: [spend] } });
+  });
+
+  it("rejects usage that is not a list of measurements", () => {
+    const terminal: ExecutionTerminal<string> = { outcome: "failed", reason: "output_invalid: schema", retryable: false };
+    Reflect.set(terminal, "usage", "x");
+
+    expectCode(() => apply(running(), event("finish", 3, T3, { fence, terminal })), "invalid_transition");
   });
 });
 
