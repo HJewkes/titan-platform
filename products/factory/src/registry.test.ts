@@ -40,7 +40,7 @@ describe("factory registry", () => {
     const tools = listTools({ registry: createFactoryRegistry(), createContext: () => ({ warnings: [], format: "json" }) as never, toolPrefix: TOOL_PREFIX, name: "titan-factory", version: "0" });
 
     const shepherd = ["hold", "list", "merge", "register", "release", "resync", "review", "status", "timeline", "waiting"].map((verb) => `shepherd__${verb}`);
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__land", "factory__status", "needs__count", "needs__list", ...shepherd]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["factory__gates", "factory__gates-review", "factory__land", "factory__status", "needs__count", "needs__list", ...shepherd]);
   });
 
   it("a second land on the same PR returns the unfinished run instead of starting another", async () => {

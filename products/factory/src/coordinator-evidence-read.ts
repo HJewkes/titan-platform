@@ -94,7 +94,7 @@ function runPolicy(run: WorkflowRun): EffectivePolicy {
 const VerdictRecord = z.looseObject({ kind: z.literal("verdict"), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
 
 /** The reviewer's verdict recorded at exactly this head; a correction or retry at the head must agree, or there is none. */
-function verdictAt(run: WorkflowRun, head: string): { step: string; verdict: string; head: string; reviewer: string } | undefined {
+export function verdictAt(run: WorkflowRun, head: string): { step: string; verdict: string; head: string; reviewer: string } | undefined {
   const step = `sh-await-verdict:${head}`;
   const results = Object.values(run.stepResults).filter((result) => result.stepId === step || result.stepId.startsWith(`${step}:`));
   const records = results.map((result) => VerdictRecord.safeParse(result.data?.result));
@@ -113,6 +113,19 @@ async function requiredGreenAt(port: GitHubPort, repo: RepoSlug, base: string, h
   const required = contexts.map((name) => runs.find((run) => run.name === name && run.headSha === head && run.appId === GITHUB_ACTIONS_APP_ID && run.conclusion === "success"));
   if (required.some((run) => run === undefined)) return undefined;
   return { base, required: contexts, runs: (required as CheckRun[]).map(runFact) };
+}
+
+type ChecksState = "green" | "failing" | "pending" | "unreadable";
+
+/** What the required checks of the base say about the head, for a human to read; a failing run outranks a pending one. */
+export async function checksAt(port: GitHubPort, repo: RepoSlug, base: string, head: string): Promise<{ state: ChecksState; failing: string[] }> {
+  const read = await readRequiredChecks(port, repo, base);
+  if (!read.readable || read.checks.contexts.length === 0) return { state: "unreadable", failing: [] };
+  const runs = await port.checkRuns(repo, head);
+  const findings = headCheckFindings({ headSha: head, contexts: read.checks.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const failing = [...new Set(findings.flatMap((finding) => (finding.kind === "failed" ? [finding.run.name] : [])))];
+  if (failing.length > 0) return { state: "failing", failing };
+  return { state: findings.length > 0 ? "pending" : "green", failing: [] };
 }
 
 /** The base branch's tip, when it contains the merge sha and every check that judges main passed (the required contexts when the base has them, else every Actions run). */
