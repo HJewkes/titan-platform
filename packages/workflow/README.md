@@ -281,7 +281,8 @@ hash. On `hydrate`, a run pinned to a different version, or to a version when
 the workflow is now registered without one, is not replayed: its row becomes
 `recovery_required` with evidence naming both versions, and the workflow
 function is never called. A run that is already `recovery_required` keeps its
-own evidence and stays parked. Unpinned runs, including rows written before
+own evidence and stays parked. A `cancelling` run is not parked: it finishes
+as cancelled through the usual path. Unpinned runs, including rows written before
 this option existed, hydrate as before.
 
 A fresh `workflowMigration` table has the `definition_version` column. An

@@ -27,9 +27,11 @@ function definitionDrift(run: WorkflowRun, registered: string | undefined): stri
 
 /**
  * Parks a claimed run whose pin differs from the registered version and reports whether it did. An already-parked run
- * keeps its own evidence; it is still checked, because reconciling it would otherwise replay the new definition.
+ * keeps its own evidence; it is still checked, because reconciling it would otherwise replay the new definition. A
+ * cancelling run is a recorded decision to stop, not a replay, so it is left to finish through the aborted launch.
  */
 export function parkOnDefinitionDrift(run: WorkflowRun, registered: string | undefined, hooks: DriftHooks): boolean {
+  if (run.status === "cancelling") return false;
   const evidence = definitionDrift(run, registered);
   if (!evidence) return false;
   if (run.status !== "recovery_required") {

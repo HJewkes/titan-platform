@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import type { WorkflowEvent, WorkflowFn } from "./types.js";
+import type { RecoverableStepRunner, StepRunner, WorkflowEvent, WorkflowFn } from "./types.js";
 
 const OWNER = { class: "owner-terminal", id: "owner", channel: "test" } as const;
 
@@ -19,9 +19,28 @@ function makeDb(): Db {
   return db;
 }
 
-function runtime(db: Db, events: WorkflowEvent[] = []): WorkflowRuntime {
+function runtime(db: Db, events: WorkflowEvent[] = [], runner: StepRunner = inlineRunner(() => "ok")): WorkflowRuntime {
   const gates = new SqliteGateStore(db, { migrate: false });
-  return new WorkflowRuntime({ db, gates, runner: inlineRunner(() => "ok"), onEvent: (e) => events.push(e), gatePollMs: 10 });
+  return new WorkflowRuntime({ db, gates, runner, onEvent: (e) => events.push(e), gatePollMs: 10 });
+}
+
+const oneDispatch: WorkflowFn = async (ctx) => {
+  await ctx.dispatch("work", "work");
+};
+
+/** Every dispatch stays in flight; reconcile reports the execution as terminally cancelled. */
+const cancelledOnReconcile: RecoverableStepRunner = {
+  dispatch: async (input) => ({ executionId: input.executionId, requestKey: input.requestKey, runnerRef: input.executionId, completion: new Promise(() => undefined) }),
+  reconcile: async () => ({ kind: "terminal", outcome: { kind: "cancelled", reason: "runner stopped" }, evidence: "ledger cancelled" }),
+};
+
+async function inFlightRun(db: Db): Promise<string> {
+  const first = runtime(db, [], cancelledOnReconcile);
+  first.register("wf", oneDispatch, { version: "1" });
+  const runId = first.start("wf");
+  await vi.waitFor(() => expect(first.status(runId)?.activeSteps.work).toBeDefined());
+  first.shutdown();
+  return runId;
 }
 
 async function pausedRun(db: Db, version?: string): Promise<string> {
@@ -81,6 +100,35 @@ describe("workflow definition version pinning", () => {
 
     expect(await second.hydrate()).toEqual([runId]);
     expect(second.status(runId)?.definitionVersion).toBeUndefined();
+  });
+
+  it("lets a run parked for drift with a step in flight be cancelled on the next hydrate", async () => {
+    const db = makeDb();
+    const runId = await inFlightRun(db);
+    const second = runtime(db, [], cancelledOnReconcile);
+    second.register("wf", oneDispatch, { version: "2" });
+    await second.hydrate();
+    expect(second.status(runId)?.status).toBe("recovery_required");
+
+    second.cancel(runId, "operator stop");
+    await second.hydrate();
+
+    expect(await second.wait(runId)).toMatchObject({ status: "cancelled", error: "operator stop" });
+  });
+
+  it("finishes a run that was already cancelling before the definition changed", async () => {
+    const db = makeDb();
+    const runId = await inFlightRun(db);
+    const stale = runtime(db, [], cancelledOnReconcile);
+    stale.register("wf", oneDispatch, { version: "1" });
+    stale.cancel(runId, "operator stop");
+    expect(stale.status(runId)?.status).toBe("cancelling");
+
+    const second = runtime(db, [], cancelledOnReconcile);
+    second.register("wf", oneDispatch, { version: "2" });
+    await second.hydrate();
+
+    expect(await second.wait(runId)).toMatchObject({ status: "cancelled", error: "operator stop" });
   });
 
   it("refuses an empty version at register", () => {
