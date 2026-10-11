@@ -273,6 +273,22 @@ return a confirmed terminal result after restart; missing or failed attachment
 requires recovery. Legacy work is never automatically redispatched after an
 unsafe restart.
 
+## Definition versions
+
+`register(name, fn, { version })` pins each run that `start` creates to
+`version`, an opaque non-empty string such as a semver, a git sha or a content
+hash. On `hydrate`, a run pinned to a different version, or to a version when
+the workflow is now registered without one, is not replayed: its row becomes
+`recovery_required` with evidence naming both versions, and the workflow
+function is never called. A run that is already `recovery_required` keeps its
+own evidence and stays parked. Unpinned runs, including rows written before
+this option existed, hydrate as before.
+
+A fresh `workflowMigration` table has the `definition_version` column. An
+existing table needs `workflowDefinitionVersionMigration(n)` once. Until then
+unpinned runs keep working, and starting a pinned run throws
+`WorkflowStoreSchemaOutdated` rather than dropping the pin.
+
 ## Ownership and cancellation
 
 Each live runtime claims a workflow with a leased owner generation and advances
