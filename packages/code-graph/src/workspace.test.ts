@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import { FIXTURE_TSCONFIG } from "./incremental.test-helpers.js";
 import { indexPaths } from "./indexer.js";
 import { openCodeGraph, type CodeGraphStore } from "./store.js";
 
@@ -32,6 +33,7 @@ describe.skipIf(!REGISTRY_BUILT)("indexing this workspace", () => {
       paths: [path.join(PACKAGES, "daemon/src"), path.join(PACKAGES, "registry/src")],
       ref: "wd",
       detectRenames: false,
+      tsConfig: FIXTURE_TSCONFIG,
     });
     snapshotId = result.snapshotId;
   }, 60_000);
