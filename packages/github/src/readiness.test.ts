@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fakeSha, successRun as anyShaRun } from "./fake.js";
-import type { PullRequest, RequiredChecks } from "./port.js";
+import { approvedHeadWalk, type ApprovedHeadWalk } from "./approved-head-walk.js";
+import { fakeGitHub, fakeSha, successRun as anyShaRun, type FakeGitHub } from "./fake.js";
+import { githubPort, type PullRequest, type RequiredChecks } from "./port.js";
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, mergeReadiness, type MergeReadinessInput } from "./readiness.js";
 
 const HEAD = fakeSha("head");
@@ -147,5 +148,93 @@ describe("headCheckFindings", () => {
 
     expect(findings).toEqual([{ kind: "missing", name: "build" }, { kind: "pending", run: running }, { kind: "failed", run: red }]);
     expect(headCheckFindings({ headSha: HEAD, contexts: ["check"], runs: [successRun("check", 1)], requiredApps: [GITHUB_ACTIONS_APP_ID] })).toEqual([]);
+  });
+});
+
+describe("mergeReadiness with an approved-head walk", () => {
+  const BASE_PARENT = fakeSha("base-parent");
+
+  it("lets an approval of an earlier head stand when the walk from the PR head reached it", () => {
+    const approvalWalk: ApprovedHeadWalk = { headSha: HEAD, approvedHead: OLD, ok: true, baseParents: [BASE_PARENT] };
+
+    expect(mergeReadiness(input({ approvedHead: OLD, approvalWalk }))).toEqual({ ready: true, blockers: [] });
+  });
+
+  it("reports the walk's reason as head-moved when the walk failed", () => {
+    const approvalWalk: ApprovedHeadWalk = { headSha: HEAD, approvedHead: OLD, ok: false, reasons: [`head ${HEAD} is not a two-parent merge of reviewed ${OLD}`] };
+
+    expect(mergeReadiness(input({ approvedHead: OLD, approvalWalk })).blockers).toEqual([{ reason: "head-moved", detail: `approved ${OLD} but the head is ${HEAD}: head ${HEAD} is not a two-parent merge of reviewed ${OLD}` }]);
+  });
+
+  it("ignores an ok walk that started from a head other than the PR's", () => {
+    const approvalWalk: ApprovedHeadWalk = { headSha: fakeSha("elsewhere"), approvedHead: OLD, ok: true, baseParents: [BASE_PARENT] };
+
+    expect(mergeReadiness(input({ approvedHead: OLD, approvalWalk })).blockers.map((blocker) => blocker.reason)).toEqual(["head-moved"]);
+  });
+});
+
+describe("approvedHeadWalk", () => {
+  const R = fakeSha("reviewed");
+  const S = fakeSha("pr-head");
+  const B1 = fakeSha("base-1");
+  const B2 = fakeSha("base-2");
+  const M1 = fakeSha("merge-1");
+
+  function world(commits: Record<string, string[]>): FakeGitHub {
+    const fake = fakeGitHub();
+    for (const [sha, parents] of Object.entries(commits)) fake.commits.set(sha, { sha, parents });
+    return fake;
+  }
+
+  /** Records that `sha` is not inside `target`: their merge base is some other commit. */
+  function notInside(fake: FakeGitHub, sha: string, target: string): void {
+    fake.compares.set(`${sha}...${target}`, { mergeBaseSha: fakeSha(`below:${sha}`), files: [] });
+  }
+
+  const walk = (fake: FakeGitHub, maxBaseMerges?: number) => approvedHeadWalk(githubPort(fake.wire), "o/r", { headSha: S, approvedHead: R, baseRef: "main", maxBaseMerges });
+
+  it("is ok without reading anything when the heads are equal", async () => {
+    const fake = world({});
+
+    expect(await approvedHeadWalk(githubPort(fake.wire), "o/r", { headSha: R, approvedHead: R, baseRef: "main" })).toEqual({ headSha: R, approvedHead: R, ok: true, baseParents: [] });
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("accepts one merge of the base branch into the approved head", async () => {
+    expect(await walk(world({ [S]: [R, B1] }))).toEqual({ headSha: S, approvedHead: R, ok: true, baseParents: [B1] });
+  });
+
+  it("accepts two base merges whose base parents are in order", async () => {
+    expect(await walk(world({ [S]: [M1, B2], [M1]: [R, B1] }))).toEqual({ headSha: S, approvedHead: R, ok: true, baseParents: [B2, B1] });
+  });
+
+  it("refuses two base merges when the earlier base parent is not in the newest", async () => {
+    const fake = world({ [S]: [M1, B2], [M1]: [R, B1] });
+    notInside(fake, B1, B2);
+
+    expect(await walk(fake)).toMatchObject({ ok: false, reasons: [`earlier merged parent ${B1} is not in newest merged parent ${B2}`] });
+  });
+
+  it("refuses a head that is not a merge at all", async () => {
+    expect(await walk(world({ [S]: [R] }))).toMatchObject({ ok: false, reasons: [`head ${S} is not a two-parent merge of reviewed ${R}`] });
+  });
+
+  it("refuses a first-parent chain that reaches a non-merge before the approved head", async () => {
+    const C = fakeSha("plain-commit");
+
+    expect(await walk(world({ [S]: [M1, B2], [M1]: [C, B1], [C]: [R] }))).toMatchObject({ ok: false, reasons: [`first-parent chain from ${S} reaches non-merge ${C} before reviewed ${R}`] });
+  });
+
+  it("refuses a merge whose other parent is off the base branch", async () => {
+    const fake = world({ [S]: [R, B1] });
+    notInside(fake, B1, "main");
+
+    expect(await walk(fake)).toMatchObject({ ok: false, reasons: [`merged parent ${B1} is not in main`] });
+  });
+
+  it("refuses a head more base merges past the approved head than the cap", async () => {
+    const M2 = fakeSha("merge-2");
+
+    expect(await walk(world({ [S]: [M2, B2], [M2]: [M1, B1], [M1]: [R, fakeSha("base-0")] }), 2)).toMatchObject({ ok: false, reasons: [`head ${S} is more than 2 base merges past reviewed ${R}`] });
   });
 });

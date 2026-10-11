@@ -1,3 +1,4 @@
+import type { ApprovedHeadWalk } from "./approved-head-walk.js";
 import { isPassing } from "./checks.js";
 import type { CheckRun, PullRequest, RequiredChecks } from "./port.js";
 
@@ -19,6 +20,8 @@ export interface MergeReadinessInput {
   requiredApps: readonly number[];
   /** The head the approval named; null when nothing is approved. */
   approvedHead: string | null;
+  /** `approvedHeadWalk` from the PR head to `approvedHead`; an ok walk lets an approval of an earlier head stand. */
+  approvalWalk?: ApprovedHeadWalk;
 }
 
 /** `ready` is true exactly when `blockers` is empty; every blocker says why. */
@@ -29,7 +32,7 @@ export interface MergeReadiness {
 
 /** Pure: decides from the snapshot it is given, so the caller controls when GitHub is read. */
 export function mergeReadiness(input: MergeReadinessInput): MergeReadiness {
-  const blockers = [...prBlockers(input.pr, input.rules), ...approvalBlockers(input.pr, input.approvedHead), ...checkBlockers(input)];
+  const blockers = [...prBlockers(input.pr, input.rules), ...approvalBlockers(input.pr, input.approvedHead, input.approvalWalk), ...checkBlockers(input)];
   return { ready: blockers.length === 0, blockers };
 }
 
@@ -44,11 +47,14 @@ function prBlockers(pr: PullRequest, rules: RequiredChecks): MergeBlocker[] {
   return blockers;
 }
 
-function approvalBlockers(pr: PullRequest, approvedHead: string | null): MergeBlocker[] {
+function approvalBlockers(pr: PullRequest, approvedHead: string | null, walk: ApprovedHeadWalk | undefined): MergeBlocker[] {
   if (pr.merged || pr.state === "closed") return [];
   if (approvedHead === null) return [{ reason: "unapproved", detail: `no approval names a head of #${pr.number}` }];
-  if (approvedHead !== pr.headSha) return [{ reason: "head-moved", detail: `approved ${approvedHead} but the head is ${pr.headSha}` }];
-  return [];
+  if (approvedHead === pr.headSha) return [];
+  const moved = `approved ${approvedHead} but the head is ${pr.headSha}`;
+  if (walk === undefined || walk.headSha !== pr.headSha || walk.approvedHead !== approvedHead) return [{ reason: "head-moved", detail: moved }];
+  if (walk.ok) return [];
+  return walk.reasons.map((reason) => ({ reason: "head-moved", detail: `${moved}: ${reason}` }));
 }
 
 function checkBlockers({ pr, rules, runs, requiredApps }: MergeReadinessInput): MergeBlocker[] {
