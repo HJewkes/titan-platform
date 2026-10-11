@@ -1,5 +1,11 @@
 # @titan-design/session-read
 
+## 0.12.1
+
+### Patch Changes
+
+- 15ede18: Add `decodeClaudeToolLines`, a sync, descriptor-free decode of Claude transcript lines into tool call and tool result records. It skips malformed lines, ignores session identity and leaves joining and dedup to the caller.
+
 ## 0.12.0
 
 ### Minor Changes

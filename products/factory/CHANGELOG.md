@@ -1,5 +1,13 @@
 # @titan-design/factory
 
+## 0.12.2
+
+### Patch Changes
+
+- 2c83ae0: `titan-factory service check` reports a stale build only when the deploy checkout a restart loads is at a commit newer than the running build, so it no longer advises a restart that would roll serve back.
+- Updated dependencies [15ede18]
+  - @titan-design/session-read@0.12.1
+
 ## 0.12.1
 
 ### Patch Changes
