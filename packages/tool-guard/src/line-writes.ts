@@ -10,7 +10,7 @@ const WRITE_OPS = new Set([">", ">|", ">>", "&>", "&>>", ">&"]);
 /** `>&2` and `>&-` move or close a descriptor rather than name a file. */
 const DUP_TARGET_RE = /^(\d+-?|-)$/;
 /** Each conditional append doubles a file's readings; past this many the line is refused rather than read. */
-export const MAX_WRITTEN_READINGS = 16;
+const MAX_WRITTEN_READINGS = 16;
 
 /**
  * Every text a script at `path` may hold at this point of the line: what the disk held, and what each earlier write on
