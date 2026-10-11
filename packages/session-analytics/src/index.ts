@@ -136,7 +136,7 @@ export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
 export type { Assignment, CostPerOutcomeOptions, CostPerOutcomeReport, OutcomeBucket } from "./cost-per-outcome.js";
-export { assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
+export { DEFAULT_DONE_OUTCOMES, DEFAULT_MERGED_OUTCOMES, assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
 export type { SuccessorReworkOptions, SuccessorReworkReport } from "./successor-rework.js";
 export { DEFAULT_BOOT_REQUESTS, successorReworkReport, successorReworkSchema } from "./successor-rework.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";

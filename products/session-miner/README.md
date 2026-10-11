@@ -98,6 +98,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
 | Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 | Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
+| Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -109,6 +110,14 @@ works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` and `published
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
 renderer. Both carry `LIST_PRICE_CAVEAT`: the figures are list prices, not a bill.
+
+Q12 runs first. The graph is stale when its newest request trails `--until` (or now) by more
+than `--max-lag` minutes. An `error` fault means the numbers it touches are wrong and no claim
+should rest on them; a `warn` fault means they are incomplete. `--assignments` takes JSONL in
+session-analytics' `assignmentSchema` shape: a line that fails the schema is counted, not thrown;
+an outcome outside `merged`, `done` and any `--known-outcome` is flagged; and agents the
+cost-per-outcome join cannot find in the graph are listed. The code only reports; the
+session-insights skill files the tasks.
 
 Q7 reads outside the graph, so it refuses `--session`, `--agent-prefix` and `--role`; narrow it
 with `--seat`. Reviewer verdicts come from agent-chat's events table, opened read-only at

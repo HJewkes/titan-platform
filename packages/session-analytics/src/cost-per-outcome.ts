@@ -19,6 +19,10 @@ export const assignmentSchema = z.object({
 
 export type Assignment = z.infer<typeof assignmentSchema>;
 
+/** The outcome words `costPerOutcome` counts when the caller names none; adapters normalise into these. */
+export const DEFAULT_MERGED_OUTCOMES: readonly string[] = ["merged"];
+export const DEFAULT_DONE_OUTCOMES: readonly string[] = ["done"];
+
 export interface CostPerOutcomeOptions extends ReportWindow {
   /** Outcomes that count as merged; defaults to `["merged"]`. */
   mergedOutcomes?: readonly string[];
@@ -76,8 +80,8 @@ export function costPerOutcome(db: Db, assignments: readonly Assignment[], optio
   const byName = readSessionsByName(db);
   const joins = joinAgents(db, rows, seats, byName);
   const shares = shareOf(rows, joins, costs);
-  const merged = new Set(options.mergedOutcomes ?? ["merged"]);
-  const done = new Set(options.doneOutcomes ?? ["done"]);
+  const merged = new Set(options.mergedOutcomes ?? DEFAULT_MERGED_OUTCOMES);
+  const done = new Set(options.doneOutcomes ?? DEFAULT_DONE_OUTCOMES);
   const group = (keyOf: (row: Assignment) => string | null) => buckets(rows, shares, keyOf, merged, done);
   return {
     window,
