@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 
-export const DEPLOY_PAUSE = "deploy-pause.json";
+const DEPLOY_PAUSE = "deploy-pause.json";
 
 /** Why every deploy is held after a rollback of a restarted build. */
 const DeployPauseSchema = z.object({
@@ -18,9 +18,9 @@ const DeployPauseSchema = z.object({
 export type DeployPause = z.infer<typeof DeployPauseSchema>;
 
 /** `pause` is undefined when the file exists but does not parse; that still pauses. */
-export type PauseState = { paused: false } | { paused: true; pause: DeployPause | undefined };
+type PauseState = { paused: false } | { paused: true; pause: DeployPause | undefined };
 
-export interface PauseReadPorts {
+interface PauseReadPorts {
   exists: (path: string) => boolean;
   readFile: (path: string) => string | undefined;
 }

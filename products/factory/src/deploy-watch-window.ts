@@ -11,7 +11,7 @@ export interface WatchWindow {
 export const DEFAULT_WATCH_WINDOW: WatchWindow = { windowMs: 120_000, intervalMs: 10_000, missLimit: 3 };
 
 /** What the watch reads; the deployer passes its own `/health` probe and clock. */
-export interface WatchPorts {
+interface WatchPorts {
   probe: () => Promise<Health | null>;
   sleep: (ms: number) => Promise<void>;
 }
