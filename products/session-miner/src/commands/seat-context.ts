@@ -19,7 +19,7 @@ const SeatContextArgs = z
 
 type Args = z.infer<typeof SeatContextArgs>;
 
-export interface SeatVerdict extends SeatContextRow {
+interface SeatVerdict extends SeatContextRow {
   /** Empty when the seat is within every given limit. */
   failures: string[];
 }
