@@ -1,5 +1,12 @@
 # @titan-design/coordinator
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [3199c5a]
+  - @titan-design/agent-dispatch@0.7.0
+
 ## 0.4.1
 
 ### Patch Changes
