@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/session-miner",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,6 +45,7 @@
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
     "commander": "^14.0.3",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "private": true,

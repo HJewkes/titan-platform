@@ -21,6 +21,8 @@ titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci --tag release
 titan-miner playbook recall "release job npm"
 titan-miner playbook reflect <session-id>   # renders the diary; applies nothing
 titan-miner playbook status
+titan-miner memory scan        # count auto-memory fact files by account and type
+titan-miner memory report      # dedupe and group them, write report.md and decisions.yml for review
 titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
@@ -185,6 +187,34 @@ curator rather than by the model.
 
 The playbook is strictly downstream. It reads the graph and never writes back, so the
 index stays valid with the playbook ignored, and a test asserts the row counts do not move.
+
+## Auto-memory review (TP-604)
+
+Claude Code writes auto-memory facts to `<config dir>/projects/<project>/memory/*.md`,
+indexed by a `MEMORY.md` beside them. These commands give the owner a view of all of it.
+
+- `memory scan` reads every memory directory under the roots `claudeTranscriptRoots()`
+  finds (`~/.claude`, each `~/.claude-profiles/<name>`, or `CLAUDE_CONFIG_DIRS`, plus
+  mirror roots). It returns counts by account and type, plus the files it could not parse.
+  A symlinked memory directory is skipped.
+- `memory report` runs the scan, then `@titan-design/memory`'s `dedupeFacts`, `groupFacts`
+  and `proposeDestination` against the skills under `--skills-root` (repeatable; default
+  `~/.claude/skills`). It writes `report.md` and `decisions.yml` to
+  `<state>/memory-miner/<reportId>/`, or under `--out`. The directory is mode 0700 and the
+  files are 0600, because memory bodies can hold anything. Every group starts as
+  `decision: pending`, with an editable `destination`, a `reason`, and each source's path
+  and content hash. The `reportId` is the UTC time plus a digest of the facts' content
+  hashes.
+
+The envelope carries paths and counts (groups, singletons, largest group, groups per
+destination), never fact text, so MCP and HTTP callers see no memory bodies.
+`--skills-root` and `--out` are accepted only on the CLI. Neither command opens the graph.
+
+`--group-threshold` (default 0.12) is the topic Jaccard that links two facts. Grouping is
+single-link, so a lower value chains most facts into one group, and a higher one leaves
+most facts on their own. The default was measured on a real corpus of about 300 facts.
+
+`memory apply`, which acts on accepted groups, is the next slice.
 
 ## Not yet here
 

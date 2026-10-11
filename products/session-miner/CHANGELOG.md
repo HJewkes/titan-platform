@@ -1,5 +1,11 @@
 # @titan-design/session-miner
 
+## 0.7.3
+
+### Patch Changes
+
+- ad09028: Name the build tasks TP-2315..2320 on their adoption-registry baselines, add `--task` to the shepherd status filters, and count `titan-gh` as one of Q9's CLIs.
+
 ## 0.7.2
 
 ### Patch Changes
