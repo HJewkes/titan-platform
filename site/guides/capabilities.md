@@ -812,7 +812,7 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.13.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.13.1`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
 

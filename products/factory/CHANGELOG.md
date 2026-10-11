@@ -1,5 +1,13 @@
 # @titan-design/factory
 
+## 0.16.1
+
+### Patch Changes
+
+- 77c1298: Open a gate naming sh-merge-evidence, instead of failing the run, when the merge-evidence comment post still answers an empty or unparseable body after its retries.
+- Updated dependencies [3873ce6]
+  - @titan-design/session-analytics@0.13.1
+
 ## 0.16.0
 
 ### Minor Changes
