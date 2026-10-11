@@ -1,4 +1,4 @@
-import type { AgentIdentity, ConversationIdentity, ExecutionIdentity, SurfaceIdentity } from "./index.js";
+import type { AgentIdentity, ConversationIdentity, ExecutionIdentity, SurfaceIdentity, UsageMeasurement } from "./index.js";
 import type { ExecutionCorrelations } from "./lifecycle-correlations.js";
 
 export const EXECUTION_PHASES = [
@@ -47,7 +47,8 @@ export type LifecycleExecutionTarget =
 
 export type ExecutionTerminal<TResult = unknown> =
   | { outcome: "succeeded"; result: TResult }
-  | { outcome: "failed"; reason: string; retryable: boolean }
+  /** usage is what the harness reported spending before it failed, so budgets can count it. */
+  | { outcome: "failed"; reason: string; retryable: boolean; usage?: readonly UsageMeasurement[] }
   | { outcome: "cancelled"; reason: string }
   | { outcome: "cancellation_unknown"; reason: string; evidence: string }
   /** The process was observed gone without a harness result, so success cannot be claimed. */

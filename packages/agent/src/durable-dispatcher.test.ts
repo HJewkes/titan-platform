@@ -4,6 +4,7 @@ import {
   reduceExecutionTransition,
   type ExecutionRecord,
   type ExecutionTransition,
+  type UsageMeasurement,
 } from "@titan-design/agent-protocol";
 import { describe, expect, it, vi } from "vitest";
 import { codexExecCapabilities } from "./codex-exec.js";
@@ -69,6 +70,16 @@ function success<T>(value: T): HarnessRunResult<T, "codex"> {
     conversation,
     output: { kind: "structured", value },
     usage: [],
+  };
+}
+
+function invalidOutput(usage: UsageMeasurement[]): HarnessRunResult<unknown, "codex"> {
+  return {
+    ok: false,
+    harness: "codex",
+    execution: { executionId: "adapter-execution" },
+    failure: { kind: "output_invalid", reason: "schema mismatch" },
+    usage,
   };
 }
 
@@ -266,6 +277,30 @@ describe("durable harness dispatch", () => {
     const ack = await dispatcher.dispatch({ executionId: "runtime-loss", requestKey: "request-loss", request: request() });
     await expect(ack.completion).resolves.toMatchObject({ kind: "recovery_required" });
     expect(ledger.get("runtime-loss")?.phase).toBe("recovery_required");
+  });
+
+  it("keeps the spend of a harness failure on the failed terminal", async () => {
+    const spend: UsageMeasurement = {
+      model: "gpt-6",
+      tokens: { input: 900, output: 100, cachedInput: null, cacheWriteInput: null, reasoningOutput: null, total: 1_000 },
+      cost: { usd: 0.07, kind: "reported" },
+      source: "codex-exec",
+      kind: "delta",
+      responseId: "response-1",
+    };
+    const { dispatcher, ledger } = setup(controlledAdapter(async () => invalidOutput([spend])));
+    const ack = await dispatcher.dispatch({ executionId: "spent", requestKey: "request-spent", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed", usage: [spend] } });
+    expect(ledger.get("spent")?.terminal).toMatchObject({ outcome: "failed", usage: [spend] });
+  });
+
+  it("stores no usage key on a failed terminal that spent nothing", async () => {
+    const { dispatcher, ledger } = setup(controlledAdapter(async () => invalidOutput([])));
+    const ack = await dispatcher.dispatch({ executionId: "unspent", requestKey: "request-unspent", request: request() });
+
+    await expect(ack.completion).resolves.toMatchObject({ kind: "terminal", terminal: { outcome: "failed" } });
+    expect(ledger.get("unspent")?.terminal).not.toHaveProperty("usage");
   });
 
   it("settles ownership lost when a failure-path ledger read throws", async () => {
