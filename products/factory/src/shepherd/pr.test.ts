@@ -61,7 +61,7 @@ interface World {
 }
 
 /** A fake GitHub whose `validate` check follows `validate`, and a host running every factory route over it. */
-function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => true, dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot, flakyChecks?: Record<string, FlakyChecks>): World {
+function world(phases: ShepherdPhases, validate: (headSha: string) => string = () => "success", fake = fakeGitHub(), park?: ParkPort, registry: PackageRegistry = async () => "trusted", dbPath = ":memory:", snapshotOf?: (port: GitHubPort) => PrSnapshot, flakyChecks?: Record<string, FlakyChecks>): World {
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, validate(pr.headSha)), successRun("dag-check", 2)].map((run) => (run.conclusion === "failure" ? outsideActions(run) : run)));
   let clock = 0;
   const ref = shepherdStoreRef();
@@ -76,6 +76,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
 
 const DENY_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "never", seat: "frozen-seat" };
 const AUTO_POLICY: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", fixer: true, seat: "trusted-seat" };
+const RELEASE_POLICY: EffectivePolicy = { ...AUTO_POLICY, release: "grant" };
 
 /** Start shepherd-pr on PR 1 and register it, as `shepherd.register` will; an undefined `param` starts it with no policy param. */
 function shepherdPr1(w: World, registered = OWNER_GATE_POLICY, param: EffectivePolicy | undefined = OWNER_GATE_POLICY): string {
@@ -933,13 +934,13 @@ describe("the Version Packages PR", () => {
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
     setWidgetManifest(w.fake, H1);
-    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(AUTO_POLICY) });
-    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: AUTO_POLICY });
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(RELEASE_POLICY) });
+    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: RELEASE_POLICY });
     return { w, runId, reviews };
   }
 
   it("lands on green after its release preflight, with no reviewer, no park and no gate", async () => {
-    const { w, runId, reviews } = releaseWorld(async () => true);
+    const { w, runId, reviews } = releaseWorld(async () => "trusted");
 
     await w.host.runtime.wait(runId);
 
@@ -949,10 +950,11 @@ describe("the Version Packages PR", () => {
     expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H1}`);
     expect(stepIds(w.host, runId).filter((id) => id.startsWith("sh-park"))).toEqual([]);
     expect(stepResult(w.host, runId, "merge-policy:0")).toMatchObject({ result: { outcome: "allow", rule: { table: "shepherd-release", rowId: "version-packages" } } });
+    expect(w.store.byRun(runId)?.releaseReady).toMatchObject({ head: H1 });
   });
 
   it("gates with the package's name when npm has never seen it", async () => {
-    const { w, runId } = releaseWorld(async () => false);
+    const { w, runId } = releaseWorld(async () => "missing");
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
@@ -988,15 +990,18 @@ describe("the Version Packages PR", () => {
     expect(w.host.runtime.status(runId)?.status).toBe("completed");
   });
 
-  it("never marks a release ready under an owner-gate seat, so another PR's merge is not deferred", async () => {
+  it.each([
+    ["an owner-gate seat", OWNER_GATE_POLICY],
+    ["an auto seat without the release-merge grant", AUTO_POLICY],
+  ])("never marks a release ready under %s, so another PR's merge is not deferred", async (_seat, releasePolicy) => {
     const w = world(fakePhases({}).phases);
     w.fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
     const release = w.fake.addPr({ headSha: H2, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO });
     w.fake.prFiles.set(release.number, RELEASE_FILES);
     setWidgetManifest(w.fake, H2);
-    const releaseRun = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: String(release.number), branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(OWNER_GATE_POLICY) });
-    w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: releaseRun, task: "demo/version-packages", implementer: "changesets", policy: OWNER_GATE_POLICY });
+    const releaseRun = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: String(release.number), branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(releasePolicy) });
+    w.store.register({ repo: REPO, pr: release.number, branch: VERSION_PACKAGES_BRANCH, runId: releaseRun, task: "demo/version-packages", implementer: "changesets", policy: releasePolicy });
 
     await gateOpened(w.host, gateId(releaseRun, "approve-merge"));
     const releaseReady = w.store.byRun(releaseRun)?.releaseReady;

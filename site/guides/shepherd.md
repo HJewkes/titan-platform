@@ -394,6 +394,8 @@ paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 titan-factory shepherd status                  # every registration
 titan-factory shepherd status owner/repo       # one repo
 titan-factory shepherd status owner/repo#123   # one pull request
+titan-factory shepherd status --active --branch-prefix pc-   # live runs on agent-chat/pc-* branches
+titan-factory shepherd status --phase review,merging --task TP-42
 titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
@@ -405,6 +407,14 @@ titan-factory shepherd wait owner/repo#123 --until merging,done --timeout 900
 owner/repo#123 ci 1a2b3c4 waiting for CI on 1a2b3c4
 owner/repo feat/example awaiting-pr - waiting for a PR on the registered branch
 ```
+
+`status` takes four filters, which combine with each other and with a target and narrow the
+text, `--json` and `--json --deploy` rows alike. `--active` drops runs that are `done`, `failed`
+or `cancelled`. `--phase a,b` keeps those phases; an unknown phase exits 2 and names the valid
+ones. `--branch-prefix p` matches the branch with or without its `agent-chat/` prefix. `--task id`
+takes a bare ID, matched in any initiative, or `slug/ID`, both case-insensitive. The CLI filters
+the rows it gets back, so the flags work against an older `serve`. Without them the output is
+unchanged.
 
 Each line is the target, the phase, the short head, the next action, and any blockers in
 brackets: `held: <reason>` or `stalled: <reason>`. A row reads as stalled for one of three
@@ -579,7 +589,10 @@ The ceiling comes from seat files. A repo that no seat lists gets `owner-gate`. 
 lists `visual_paths` also gets `auto`, but only for pull requests that change no visual file
 (see [Visual paths](#visual-paths)). A seat whose `grants_extra` includes
 `merge-into-feature-base` lets its runs merge into a base other than the default branch (see
-[Feature base](#feature-base)). `--policy`
+[Feature base](#feature-base)). A Version Packages pull request merges on its passed
+preflight only when the seat's `grants_extra` also includes `release-merge`, because that
+merge publishes to npm. Under `auto` without it, the release gates as
+`shepherd-release/no-release-grant`. `--policy`
 can only narrow the ceiling, never widen it: `{"merge":"auto"}` on an unlisted repo still
 resolves to `owner-gate`. The other `--policy` keys are `mergeMethod` (`merge`, `squash` or
 `rebase`; default `squash`), `reviewer`, `priority`, `fixer` and `ownerGateReason`. An unknown
@@ -833,13 +846,18 @@ Shepherd lands it with no human step (`products/factory/src/shepherd/release.ts`
    checks that every changed file is one `changeset version` writes, and that every public
    package in the release is already on registry.npmjs.org. A brand-new package cannot use
    trusted publishing until its first version is published by hand, so it blocks with its
-   name.
+   name. The package's latest version must also name a trusted publisher
+   (`_npmUser.trustedPublisher` with an `id`), read from `/<name>/latest` with a 10-second
+   timeout. Provenance attestations alone do not count, because a token publish can carry them. A hand-published latest version blocks, so the owner confirms the trusted
+   publisher is saved before `release.yml` tries to publish. An unreadable registry fails the
+   step, and the next sweep reads it again.
 4. **The `shepherd-release` decision.** A passed preflight at the exact head merges under an
-   `auto` seat (`shepherd-release/version-packages`). A blocked preflight
+   `auto` seat with the `release-merge` grant (`shepherd-release/version-packages`). An `auto`
+   seat without the grant gates (`no-release-grant`). A blocked preflight
    (`preflight-blocked`), a missing one (`no-preflight`) or an `owner-gate` seat
    (`owner-gate`) opens `approve-merge`, and a `never` seat denies.
 5. **A merge freeze.** Every main push regenerates the pull request. While its head is ready,
-   meaning the preflight passed under an `auto` seat, the repo's other Shepherd merges wait in
+   meaning the preflight passed under an `auto` seat with the `release-merge` grant, the repo's other Shepherd merges wait in
    `merging`, then read CI again. The freeze ends when the release merges, its head moves, or
    30 minutes pass.
 

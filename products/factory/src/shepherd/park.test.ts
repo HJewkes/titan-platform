@@ -1,7 +1,8 @@
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import {
+  parkOnce,
   parkImplementer,
   parkRoutes,
   parkStep,
@@ -104,6 +105,24 @@ describe("parkImplementer", () => {
   it("counts a tree that is already off disk as parked", () => {
     const park = refusing({
       "impl-a": "/tmp/tree is not on disk; nothing to park",
+    });
+
+    const outcome = parkImplementer(
+      storeWith({ implementer: "impl-a" }),
+      park,
+      input
+    );
+
+    expect(outcome).toMatchObject({
+      kind: "parked",
+      agent: "impl-a",
+      alreadyGone: true,
+    });
+  });
+
+  it("counts a tree agent-chat never allocated as parked", () => {
+    const park = refusing({
+      "impl-a": "impl-a holds no worktree agent-chat allocated",
     });
 
     const outcome = parkImplementer(
@@ -394,6 +413,31 @@ describe("parkStep reviewer trees", () => {
     expect(notice.sent[0]?.[1]).toContain("rv-o-r-7's worktree was not parked");
   });
 
+  it.each([
+    ["a retired agent", 'no agent named "rv-o-r-7"'],
+    ["a tree outside agent-chat", "rv-o-r-7 holds no worktree agent-chat allocated"],
+  ])("records %s once as already gone, sends no notice and never asks again", async (label, reason) => {
+    const notice = noticePorts("hub");
+    const asked: string[] = [];
+    const wiring = wiringFor(
+      [row("rv-o-r-7", "exited")],
+      refusing({ "rv-o-r-7": reason }, asked),
+      notice
+    );
+
+    const own = { ...input, runId: `run-${label}` };
+    const first = await parkStep(storeWith({ implementer: "impl-a" }), wiring, own);
+    const gone = first.reviewers.flatMap((parked) => (parked.kind === "parked" ? [parked.agent] : []));
+    const second = await parkStep(storeWith({ implementer: "impl-a" }), wiring, { ...own, gone });
+
+    expect(first.reviewers).toMatchObject([
+      { kind: "parked", agent: "rv-o-r-7", alreadyGone: true },
+    ]);
+    expect(second.reviewers).toEqual([]);
+    expect(asked.filter((name) => name === "rv-o-r-7")).toHaveLength(1);
+    expect(notice.sent).toEqual([]);
+  });
+
   it("never parks the standing reviewer", async () => {
     const asked: string[] = [];
     const store = storeWith({ implementer: "impl-a", reviewer: "rv-o-r-7" });
@@ -405,5 +449,54 @@ describe("parkStep reviewer trees", () => {
     );
 
     expect(asked).toEqual(["impl-a"]);
+  });
+});
+
+describe("an implementer retired while its park waited for its exit", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is recorded as parked and the seat is told nothing", async () => {
+    vi.useFakeTimers();
+    const notice = noticePorts("hub");
+    let live = true;
+    const park: ParkPort = (name) => {
+      if (live) throw new DispatchError(`agent-chat refused agent park: Not parked: ${LIVE(name)}`);
+      throw new DispatchError(`agent-chat refused agent park: Not parked: no agent named "${name}"`);
+    };
+    const [route] = parkRoutes(
+      {
+        store: storeWith({ implementer: "impl-a" }),
+        now: () => Date.now(),
+        agentChatBin: "agent-chat",
+        roster: createRosterReader(async () => []),
+        exitNotice: notice,
+      },
+      park
+    );
+    const step = { runId: "run-1", workflowName: "w", stepId: "sh-park:x", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+
+    const outcome = await route!.runner.run(step);
+    live = false;
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    if (!outcome.ok) throw new Error("the park step failed");
+    expect(JSON.parse(outcome.output).result).toMatchObject({ kind: "not-parked", retry: "at-exit" });
+    expect(notice.sent).toEqual([]);
+  });
+});
+
+describe("parkOnce", () => {
+  it("hands each later head the reviewers an earlier head's record found gone", async () => {
+    const key = {};
+    const seen: (string[] | undefined)[] = [];
+    const run = async (gone: string[] | undefined) => {
+      seen.push(gone);
+      return { kind: "parked" as const, reviewers: [{ kind: "parked", agent: "rv-o-r-7", alreadyGone: true }] };
+    };
+
+    await parkOnce(key, run);
+    await parkOnce(key, run);
+
+    expect(seen).toEqual([undefined, ["rv-o-r-7"]]);
   });
 });

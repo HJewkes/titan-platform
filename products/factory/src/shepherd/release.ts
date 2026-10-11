@@ -30,15 +30,26 @@ export function releaseTask(repo: RepoSlug): string {
   return `${repo.split("/")[1] ?? repo}/version-packages`;
 }
 
-/** True when the registry has the package, false when it answers 404; any other answer throws. */
-export type PackageRegistry = (name: string) => Promise<boolean>;
+/**
+ * `missing` when npm answers 404, `trusted` when its latest version was published by a trusted publisher, `untrusted`
+ * otherwise; any other answer throws. Only a trusted publisher shows that release.yml can publish the next version;
+ * provenance attestations do not, because a token publish can carry them too.
+ */
+type NpmPresence = "missing" | "untrusted" | "trusted";
+export type PackageRegistry = (name: string) => Promise<NpmPresence>;
+
+const REGISTRY_TIMEOUT_MS = 10_000;
+
+const LatestVersion = z.looseObject({ _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional() });
+const TrustedPublisher = z.looseObject({ id: z.string().min(1) });
 
 export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   return async (name) => {
-    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, { headers: { accept: "application/vnd.npm.install-v1+json" } });
-    if (response.status === 404) return false;
+    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) });
+    if (response.status === 404) return "missing";
     if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}`);
-    return true;
+    const latest = LatestVersion.parse(await response.json());
+    return TrustedPublisher.safeParse(latest._npmUser?.trustedPublisher).success ? "trusted" : "untrusted";
   };
 }
 
@@ -86,13 +97,16 @@ export interface ReleasePreflight {
   packages: string[];
   /** The packages npm answered 404 for; each is also one of `blockers`. */
   unpublished: string[];
+  /** The packages whose latest version no trusted publisher published; each is also one of `blockers`. */
+  untrusted?: string[];
   /** Each public package whose version this release bumps, to its head version: what npm must serve once it publishes. */
   versions: Record<string, string>;
 }
 
 /**
- * Every public package in the release must already exist on npm, because only a package that exists can use trusted
- * publishing. A registry that cannot be read throws, so no blocked result is stored for a head npm never answered for.
+ * Every public package in the release must already exist on npm with a trusted publisher, shown by its latest version,
+ * because release.yml publishes through one and has no token. A registry that cannot be read throws, so no blocked
+ * result is stored for a head npm never answered for.
  */
 export async function releasePreflight(port: GitHubPort, registry: PackageRegistry, target: ReleaseTarget): Promise<ReleasePreflight> {
   const pr = await port.getPr(target.repo, target.pr);
@@ -103,10 +117,21 @@ export async function releasePreflight(port: GitHubPort, registry: PackageRegist
   const manifests = await readManifests(port, target, pr.baseRef, files);
   blockers.push(...manifests.blockers, ...manifestEditBlockers(manifests.pairs));
   const packages = publicPackages(manifests.pairs);
-  const unpublished: string[] = [];
-  for (const name of packages) if (!(await registry(name))) unpublished.push(name);
+  const { unpublished, untrusted } = await npmPresence(registry, packages);
   blockers.push(...unpublished.map((name) => `${name} is not on registry.npmjs.org yet; publish its first version by hand (CLAUDE.md, Releasing)`));
-  return { head: target.head, blockers, packages, unpublished, versions: bumpedVersions(manifests.pairs) };
+  blockers.push(...untrusted.map((name) => `${name}'s latest version on registry.npmjs.org has no trusted publisher; the owner confirms one is saved (CLAUDE.md, Releasing)`));
+  return { head: target.head, blockers, packages, unpublished, ...(untrusted.length > 0 && { untrusted }), versions: bumpedVersions(manifests.pairs) };
+}
+
+async function npmPresence(registry: PackageRegistry, packages: readonly string[]): Promise<{ unpublished: string[]; untrusted: string[] }> {
+  const unpublished: string[] = [];
+  const untrusted: string[] = [];
+  for (const name of packages) {
+    const presence = await registry(name);
+    if (presence === "missing") unpublished.push(name);
+    if (presence === "untrusted") untrusted.push(name);
+  }
+  return { unpublished, untrusted };
 }
 
 function headBlockers(target: ReleaseTarget, headRef: string, headRepo: string | null, headSha: string): string[] {
@@ -191,6 +216,7 @@ function bumpedVersions(pairs: readonly ManifestPair[]): Record<string, string> 
 interface PreflightInput extends ReleaseTarget {
   runId: string;
   merge: MergeMode;
+  release?: "grant";
 }
 
 interface FollowInput {
@@ -201,12 +227,12 @@ interface FollowInput {
   versions: Record<string, string>;
 }
 
-/** Marks the head ready only under an auto policy, so a release the owner must approve never holds other merges; a run not yet registered marks nothing. */
+/** Marks the head ready only under an auto policy with the release-merge grant, so a release the owner must approve never holds other merges; a run not yet registered marks nothing. */
 export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry, versions: VersionRegistry = npmVersionRegistry(), tasks?: FixTasks): StepRoute[] {
   return [
     codeRoute(RELEASE_PREFLIGHT_STEP, deps.now, async (input: PreflightInput, signal) => {
       const preflight = await releasePreflight(deps.port, retryingRegistry(registry, deps.sleep, signal), input);
-      const ready = preflight.blockers.length === 0 && input.merge === "auto";
+      const ready = preflight.blockers.length === 0 && input.merge === "auto" && input.release === "grant";
       const store = deps.store.get();
       if (store.byRun(input.runId)) store.setReleaseReady(input.runId, ready ? input.head : null);
       return preflight;
@@ -237,7 +263,7 @@ export function blockedOnlyByNpm(stepResults: Readonly<Record<string, StepResult
 /** True once npm has every package that blocked the preflight; a registry that cannot be read is asked again on the next sweep. */
 export async function publishedSince(registry: PackageRegistry, preflight: ReleasePreflight): Promise<boolean> {
   try {
-    for (const name of preflight.unpublished) if (!(await registry(name))) return false;
+    for (const name of preflight.unpublished) if ((await registry(name)) === "missing") return false;
     return true;
   } catch {
     return false;
@@ -245,20 +271,21 @@ export async function publishedSince(registry: PackageRegistry, preflight: Relea
 }
 
 /** The Version Packages PR is reviewed by its preflight, not by an agent: changesets wrote it, and the preflight checks exactly that. */
-export async function releaseVerdict(ctx: WorkflowContext, target: ReleaseTarget, merge: MergeMode): Promise<Verdict> {
-  const preflight = await step(ctx, `${RELEASE_PREFLIGHT_STEP}:${target.head}`, { ...target, runId: ctx.runId, merge }, PreflightResult);
+export async function releaseVerdict(ctx: WorkflowContext, target: ReleaseTarget, { merge, release }: Pick<EffectivePolicy, "merge" | "release">): Promise<Verdict> {
+  const preflight = await step(ctx, `${RELEASE_PREFLIGHT_STEP}:${target.head}`, { ...target, runId: ctx.runId, merge, ...(release && { release }) }, PreflightResult);
   await publishReview(ctx, target, { outcome: "MERGE", verdictHead: preflight.head, head: target.head, releaseBlockers: preflight.blockers.length });
   return { kind: "MERGE", headSha: target.head, evidence: { release: preflight } };
 }
 
 const releaseRule = (rowId: string): PolicyRule => ({ table: "shepherd-release", rowId, version: 1 });
 
-/** The release gate: a passed preflight at this exact head merges under an auto seat; every other row is the owner's. */
+/** The release gate: a passed preflight at this exact head merges under an auto seat with the release-merge grant; every other row is the owner's. */
 export function decideRelease(effective: EffectivePolicy, headSha: string | undefined, preflight: ReleasePreflight | undefined): GateDecision {
   if (effective.merge === "never") return { outcome: "deny", rule: releaseRule("never"), reason: `seat ${effective.seat} policy never allows a merge` };
   if (headSha === undefined || preflight?.head !== headSha) return { outcome: "gate", rule: releaseRule("no-preflight"), reason: `no release preflight ran at ${headSha ?? "an unknown head"}` };
   if (preflight.blockers.length > 0) return { outcome: "gate", rule: releaseRule("preflight-blocked"), reason: `the release cannot land yet: ${preflight.blockers.join("; ")}` };
   if (effective.merge !== "auto") return { outcome: "gate", rule: releaseRule("owner-gate"), reason: `seat ${effective.seat} policy ${effective.merge} waits for the owner` };
+  if (effective.release !== "grant") return { outcome: "gate", rule: releaseRule("no-release-grant"), reason: `seat ${effective.seat} lacks the release-merge grant, so the release waits for the owner` };
   return { outcome: "allow", rule: releaseRule("version-packages"), reason: `the release preflight passed at ${headSha} for ${preflight.packages.length} public packages` };
 }
 

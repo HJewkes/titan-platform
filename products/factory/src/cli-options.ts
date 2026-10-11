@@ -1,5 +1,8 @@
 import { isAbsolute } from "node:path";
-import { InvalidArgumentError } from "commander";
+import { InvalidArgumentError, type Command } from "commander";
+import { filterRows, parsePhases, type StatusFilter } from "./shepherd/status-filter.js";
+
+export type { StatusFilter };
 
 /** node's directory goes on the job's PATH, where ":" separates entries. */
 export function parseNodePath(value: string): string {
@@ -30,4 +33,28 @@ export function parseDuration(value: string): number {
 export function parsePositiveInt(value: string): number {
   if (!/^[1-9][0-9]*$/.test(value)) throw new InvalidArgumentError("expected a positive whole number");
   return Number(value);
+}
+
+/** The `shepherd status` row filters, parsed onto the verb's options as a `StatusFilter`. */
+export function withStatusFilters(command: Command): Command {
+  return command
+    .option("--active", "only runs not done, failed or cancelled")
+    .option("--phase <a,b>", "only runs in one of these phases", phaseList)
+    .option("--branch-prefix <p>", "only runs whose branch starts with p, with or without the agent-chat/ prefix")
+    .option("--task <id>", "only runs for this task: a bare ID in any initiative, or slug/ID");
+}
+
+function phaseList(value: string): ReturnType<typeof parsePhases> {
+  try {
+    return parsePhases(value);
+  } catch (err) {
+    throw new InvalidArgumentError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Filters `status` rows here, not on serve, so an older serve that ignores unknown args still filters; no flag leaves the data untouched. */
+export function statusRows(name: string, data: unknown, { active, phase, branchPrefix, task }: StatusFilter): unknown {
+  const filter = { active, phase, branchPrefix, task };
+  if (name !== "shepherd.status" || !Array.isArray(data) || Object.values(filter).every((value) => value === undefined)) return data;
+  return filterRows(data, filter);
 }
