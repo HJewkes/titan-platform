@@ -394,6 +394,8 @@ paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
 titan-factory shepherd status                  # every registration
 titan-factory shepherd status owner/repo       # one repo
 titan-factory shepherd status owner/repo#123   # one pull request
+titan-factory shepherd status --active --branch-prefix pc-   # live runs on agent-chat/pc-* branches
+titan-factory shepherd status --phase review,merging --task TP-42
 titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
@@ -405,6 +407,14 @@ titan-factory shepherd wait owner/repo#123 --until merging,done --timeout 900
 owner/repo#123 ci 1a2b3c4 waiting for CI on 1a2b3c4
 owner/repo feat/example awaiting-pr - waiting for a PR on the registered branch
 ```
+
+`status` takes four filters, which combine with each other and with a target and narrow the
+text, `--json` and `--json --deploy` rows alike. `--active` drops runs that are `done`, `failed`
+or `cancelled`. `--phase a,b` keeps those phases; an unknown phase exits 2 and names the valid
+ones. `--branch-prefix p` matches the branch with or without its `agent-chat/` prefix. `--task id`
+takes a bare ID, matched in any initiative, or `slug/ID`, both case-insensitive. The CLI filters
+the rows it gets back, so the flags work against an older `serve`. Without them the output is
+unchanged.
 
 Each line is the target, the phase, the short head, the next action, and any blockers in
 brackets: `held: <reason>` or `stalled: <reason>`. A row reads as stalled for one of three

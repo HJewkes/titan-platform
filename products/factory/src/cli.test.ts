@@ -193,6 +193,43 @@ describe("shepherd waiting", () => {
   });
 });
 
+describe("shepherd status filters", () => {
+  async function registered(): Promise<{ dbPath: string; deps: CliDeps; ids: Record<string, string> }> {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture({ frozen: true });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const ids: Record<string, string> = {};
+    for (const [key, branch] of [["livePc", "agent-chat/pc-live"], ["cancelledPc", "agent-chat/pc-gone"], ["liveDc", "agent-chat/dc-live"]] as const) {
+      const run = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, branch, task: `demo/${key}`, implementer: "impl-a" });
+      if (!run.ok) throw new Error(run.error);
+      ids[key] = run.data.runId;
+    }
+    host.runtime.cancel(ids.cancelledPc!, "test");
+    await host.runtime.wait(ids.cancelledPc!);
+    host.close();
+    return { dbPath, deps, ids };
+  }
+
+  it("--active --branch-prefix pc- prints only the live pc- row", async () => {
+    const { dbPath, deps, ids } = await registered();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--active", "--branch-prefix", "pc-", "--json", "--port", String(await deadPort())], deps);
+
+    expect(status.code).toBe(EXIT.OK);
+    expect(JSON.parse(status.out)).toEqual([expect.objectContaining({ runId: ids.livePc })]);
+  });
+
+  it("an unknown --phase is a usage error naming the valid phases", async () => {
+    const { dbPath, deps } = await registered();
+
+    const status = await cli(["--db", dbPath, "shepherd", "status", "--phase", "mergd", "--port", String(await deadPort())], deps);
+
+    expect(status.code).toBe(EXIT.USAGE);
+    expect(status.err).toContain("expected one or more of awaiting-pr");
+  });
+});
+
 describe("shepherd timeline --last", () => {
   const Timeline = z.object({ entries: z.array(z.unknown()) });
 
