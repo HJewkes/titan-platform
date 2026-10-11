@@ -68,7 +68,9 @@ describe("roundKind", () => {
     ["wake-fixer", "not-started", "not-started"],
     ["fresh-reviewer", "throttled", "throttled"],
     ["retry-review", "throttled", "throttled"],
-    ["wake-fixer", "throttled", "throttled"],
+    ["wake-fixer", "throttled", "stuck"],
+    ["end-run", "throttled", "progress"],
+    ["new-cycle", "throttled", "progress"],
     ["await-account", "account-exhausted", "progress"],
   ] as const)("reads route %s on outcome %s as a %s round", (route, outcome, kind) => {
     expect(roundKind(route, outcome)).toBe(kind);

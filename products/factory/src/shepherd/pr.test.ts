@@ -549,6 +549,27 @@ describe("the route table in a run", () => {
     expect(w.fake.effects.merge).toBe(0);
   });
 
+  it("ends the run as merged, with no gate, when a throttled round past the cap finds the PR merged elsewhere", async () => {
+    const asked: ReviewRequest[] = [];
+    const late: { w?: World } = {};
+    const silent: Verdict[] = [{ kind: "none", cause: "throttled" }, { kind: "none", cause: "timeout" }, { kind: "none", cause: "timeout" }];
+    const w = autoWorld(async (_ctx, request) => {
+      asked.push(request);
+      if (asked.length <= silent.length) return silent[asked.length - 1]!;
+      Object.assign(late.w!.fake.pr(1), { merged: true, state: "closed", mergeSha: fakeSha("elsewhere") });
+      return { kind: "none", cause: "throttled" };
+    });
+    late.w = w;
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await w.host.runtime.wait(runId);
+
+    expect(asked).toHaveLength(4);
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(stepResult(w.host, runId, "sh-landed")).toMatchObject({ result: { mergeSha: fakeSha("elsewhere") } });
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
   it("does not count three reviews a busy broker never started, and merges on the review that runs, with no approve-merge gate", async () => {
     const asked: ReviewRequest[] = [];
     const w = autoWorld(async (ctx, request) => (asked.push(request), asked.length <= 3 ? { kind: "none", cause: "not-started" } : merges(ctx, request)));
