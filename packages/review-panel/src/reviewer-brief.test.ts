@@ -70,6 +70,20 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("ssh basement");
     expect(brief).not.toContain("on the Mac");
   });
+
+  it("names the green checks and the fix-proof line at the head and asks the reviewer not to rerun them", () => {
+    const fixProof = "fix-proof/v1 verdict=PROVEN";
+
+    const brief = reviewerBrief({ ...target, greenChecks: ["validate", "build"], fixProof });
+
+    expect(brief).toContain("green at this head: validate, build.");
+    expect(brief).toContain(`Fix-proof at this head: ${fixProof}`);
+    expect(brief).toContain("Do not rerun them");
+  });
+
+  it("adds no rerun paragraph when no check or fix-proof line is known", () => {
+    expect(reviewerBrief(target)).not.toContain("Do not rerun them");
+  });
 });
 
 describe("reviewerBrief Closer line", () => {
