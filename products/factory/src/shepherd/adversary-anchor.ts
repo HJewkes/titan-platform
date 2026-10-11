@@ -1,7 +1,7 @@
 import { SHEPHERD_ACTOR, type ShepherdEvent } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
 
-export const ADVERSARY_CLASS = "g10-adversary";
+const ADVERSARY_CLASS = "g10-adversary";
 
 const changesOf = (events: readonly ShepherdEvent[]): ShepherdEvent[] => events.filter((event) => event.kind === "hold" || event.kind === "release");
 

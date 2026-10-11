@@ -7,13 +7,13 @@ import { isCleanMergeUpOf } from "./merge-up-carry.js";
 import type { ShepherdStore } from "./store.js";
 import type { CarryInput, CarryResult } from "./tree-carry.js";
 
-export interface AdversaryGuardDeps {
+interface AdversaryGuardDeps {
   store: () => ShepherdStore;
   /** The `sh-carry` probe; one that throws or cannot say counts as a move. */
   carry: (input: CarryInput) => Promise<CarryResult>;
 }
 
-export interface AdversaryGuard extends FreezeGuard {
+interface AdversaryGuard extends FreezeGuard {
   /** Ends a merge wait once after this guard re-held the PR, so the run's next CI read tells the seat. */
   takeRehold: TakeRehold;
 }

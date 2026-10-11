@@ -12,7 +12,7 @@ export interface Routed {
 }
 
 /** The run's round counters `countRound` advances. */
-export interface RoundCounts {
+interface RoundCounts {
   failedRounds: number;
   throttledRounds: number;
   fixFirsts: number;
