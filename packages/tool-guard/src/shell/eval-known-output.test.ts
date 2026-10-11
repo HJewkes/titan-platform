@@ -40,12 +40,26 @@ const reachedThroughOutput = (cmd: string): [string, string][] => [
   ["the arithmetic form, X holding the command in a subscript", `X='a[$(${cmd})]'; eval "$(cat <<'E'\n$((X))\nE\n)"`],
 ];
 
-const denyRows = [...reachedThroughOutput(PUSH).map(([n, c]) => [`${n} (push)`, c]), ...reachedThroughOutput(MERGE).map(([n, c]) => [`${n} (merge)`, c])];
+/** Lines where the output lands inside a longer word, which the shell splices together before eval runs it. */
+const splicedIntoWord: [string, string][] = [
+  ["eval of a word around an echoed subcommand", `eval "git $(echo push) origin HEAD:main"`],
+  ["eval of a word after a cat heredoc", `eval "$(cat <<'E'\ngh pr\nE\n) merge 1 --squash"`],
+  ["eval of a word after an echoed command name", `eval "$(echo git) push origin HEAD:main"`],
+  ["bash -c of a word around a backquoted echo", `bash -c "git \`echo push\` origin HEAD:main"`],
+];
+
+const denyRows = [
+  ...reachedThroughOutput(PUSH).map(([n, c]) => [`${n} (push)`, c]),
+  ...reachedThroughOutput(MERGE).map(([n, c]) => [`${n} (merge)`, c]),
+  ...splicedIntoWord,
+];
 
 const passRows: [string, string][] = [
   ["a PR body heredoc that names a push", `gh pr create --title t --body "$(cat <<'E'\nRun ${PUSH} after review.\nE\n)"`],
   ["eval of a benign cat heredoc", `eval "$(cat <<'E'\necho ok\nE\n)"`],
   ["eval of a tool's output, unknowable statically (D6 residual)", `eval "$(ssh-agent -s)"`],
+  ["eval of an echo whose arguments are the spliced output", `eval "echo $(echo ${PUSH})"`],
+  ["eval of an assignment holding a cat heredoc's output", `eval "X='$(cat <<'E'\n${PUSH}\nE\n)'"`],
 ];
 
 function bash(command: string): string {

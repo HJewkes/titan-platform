@@ -3,12 +3,24 @@ import { printedText } from "./printed.js";
 import { unwrap } from "./unwrap.js";
 
 /**
- * Text the words' command substitutions print, where it is literal on the line: one `echo` or `printf` with static
- * arguments, or one `cat` reading a heredoc or here-string. `eval "$(cat <<'E' … E)"` runs that text, not the `cat`.
- * Any other substitution prints text only known at run time and yields nothing.
+ * The words with each command substitution's output spliced in where the substitution sits, as `eval` and `-c` read
+ * them. Output is known when literal on the line: one `echo` or `printf` with static arguments, or one `cat` reading a
+ * heredoc or here-string. Any other substitution prints text only known at run time and splices in nothing.
  */
-export function knownOutputs(words: WordToken[]): string[] {
-  return words.flatMap((word) => word.subs.flatMap((sub) => subOutput(sub) ?? []));
+export function splicedWords(words: WordToken[]): WordToken[] {
+  return words.map((word) => (word.cuts ? { ...word, value: spliced(word, word.cuts) } : word));
+}
+
+function spliced(word: WordToken, cuts: NonNullable<WordToken["cuts"]>): string {
+  let value = "";
+  let last = 0;
+  for (const { at, sub } of cuts) {
+    const tokens = word.subs[sub];
+    const output = tokens ? (subOutput(tokens) ?? "") : "";
+    value += word.value.slice(last, at) + output.replace(/\n+$/, "");
+    last = at;
+  }
+  return value + word.value.slice(last);
 }
 
 function subOutput(tokens: Token[]): string | null {

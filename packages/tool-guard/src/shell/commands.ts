@@ -3,7 +3,7 @@ import { NestingLimitError } from "./nesting.js";
 import type { RedirectToken, Token, WordToken } from "./lexer.js";
 import { resolvePath } from "./path.js";
 import { printedText } from "./printed.js";
-import { catOperands, knownOutputs, stdinScript } from "./sub-output.js";
+import { catOperands, splicedWords, stdinScript } from "./sub-output.js";
 import { findExecs, type Unwrapped } from "./unwrap.js";
 import { caseNamed, caseScripts } from "./case-script.js";
 import { foldCommandWords } from "./case-literal.js";
@@ -332,15 +332,15 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
 
 /**
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
- * text also counts what its substitutions print, when that is literal on the line.
+ * text carries what its substitutions print, when that is literal on the line.
  */
 function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: [...caseScripts(cmd.args), ...knownOutputs(cmd.args)], wrap: "eval" };
+  if (cmd.name === "eval") return { texts: caseScripts(splicedWords(cmd.args)), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? [...caseScripts([positional]), ...knownOutputs([positional])] : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? caseScripts(splicedWords([positional])) : stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
