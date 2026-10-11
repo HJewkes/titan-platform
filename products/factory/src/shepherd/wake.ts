@@ -2,7 +2,6 @@ import { isAbsolute } from "node:path";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
-import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
@@ -13,7 +12,7 @@ import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeReque
 import { failureOf } from "./error-class.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { boundCheckout, loadSeatBook } from "./seats.js";
+import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
@@ -70,14 +69,6 @@ export interface WakeWiring {
   checkoutFor?: (repo: string) => string | undefined;
   /** The home a `~/`, `$HOME/` or `${HOME}/` checkout path expands against; defaults to the OS home. */
   home?: string;
-}
-
-/** The checkout a seat binds to `repo`, else its `shepherd.repos` path, re-read per wake as the reviewer's spawn re-reads it. */
-export function seatCheckout(env: NodeJS.ProcessEnv = process.env): (repo: string) => string | undefined {
-  return (repo) => {
-    const shepherd = loadConfig(configPath(env)).shepherd ?? {};
-    return boundCheckout(loadSeatBook(shepherd), repo, shepherd.repos);
-  };
 }
 
 const WakeInputSchema = z.object({

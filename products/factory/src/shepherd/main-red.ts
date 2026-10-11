@@ -12,7 +12,8 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
 import { GITHUB_READ_GIVE_UP_MS } from "./timeouts.js";
-import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
+import { seatCheckout } from "./seat-checkout.js";
+import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
