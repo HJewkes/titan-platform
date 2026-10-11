@@ -1,5 +1,12 @@
 # @titan-design/session-miner
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
