@@ -1,5 +1,12 @@
 # @titan-design/session-read
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+
 ## 0.13.1
 
 ### Patch Changes

@@ -1,5 +1,17 @@
 # @titan-design/workflow
 
+## 0.12.0
+
+### Minor Changes
+
+- 790401a: Mark usage with an unpriced measurement as `costUnknown` instead of counting it as $0. `mapItems` with `budgetUsd` stops launching on such usage with `stoppedBy: "cost_unknown"`.
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/agent@0.4.7
+
 ## 0.11.0
 
 ### Minor Changes

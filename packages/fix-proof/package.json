@@ -4,6 +4,9 @@
   "description": "Proves a fix PR's new tests fail on the merge base and pass at head: diff plan, vitest report classification, fix-proof/v1 result line",
   "type": "module",
   "main": "./dist/index.js",
+  "bin": {
+    "fix-proof": "./dist/bin.js"
+  },
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
