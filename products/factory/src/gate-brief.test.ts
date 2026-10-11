@@ -1,7 +1,7 @@
 import { snapshotBrief } from "@titan-design/hitl";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { approveMergeDecision, ciEvidence, ciFailedDecision, conflictDecision, frozenDecision, mainEvidence, oneLine, prEvidence, sentBackDecision, stuckBehindDecision, verdictIsMergeAt } from "./gate-brief.js";
+import { approveMergeDecision, ciEvidence, ciFailedDecision, conflictDecision, frozenDecision, mainEvidence, oneLine, ownerBriefAt, prEvidence, sentBackDecision, stuckBehindDecision, verdictIsMergeAt } from "./gate-brief.js";
 
 const HEAD = "a".repeat(40);
 const OTHER = "b".repeat(40);
@@ -31,6 +31,23 @@ describe("a gate's question options and its answer schema's decision enum", () =
 });
 
 describe("approve-merge", () => {
+  const ownerBrief = { what: "w".repeat(500), why: "y".repeat(500), pros: ["p".repeat(200)], cons: ["c".repeat(200)], doorType: "one-way" as const };
+
+  it("lends a reviewer's owner brief only to a gate at the head the MERGE names", () => {
+    const merge = { kind: "MERGE", headSha: HEAD, evidence: {}, ownerBrief } as const;
+
+    expect(ownerBriefAt(merge, HEAD)).toEqual(ownerBrief);
+    expect(ownerBriefAt(merge, OTHER)).toBeUndefined();
+    expect(ownerBriefAt({ kind: "FIX_FIRST", headSha: HEAD, text: "x" }, HEAD)).toBeUndefined();
+  });
+
+  it("fits the longest owner brief into a question hitl accepts", () => {
+    const { brief } = approveMergeDecision({ ...pr, reason: "policy", reviewedMerge: true, ownerBrief });
+
+    expect(brief.questions![0]!.question).toMatch(/^Land a{40}\? Reviewer's owner brief: What: w+/);
+    expect(() => snapshotBrief("approve-merge", brief, true)).not.toThrow();
+  });
+
   const recommended = (reviewedMerge: boolean) =>
     approveMergeDecision({ ...pr, reason: "policy", reviewedMerge }).brief.questions![0]!.options.filter((option) => option.recommended).map((option) => option.id);
 
