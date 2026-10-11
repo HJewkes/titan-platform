@@ -2,6 +2,7 @@ import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } fro
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./origin-schema.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./episode-transcript-schema.js";
 import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./origin-task-link-schema.js";
+import { ORIGIN_EXPERIMENT_MIGRATION_NAME, applyOriginExperimentSchema } from "./origin-experiment-schema.js";
 import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./review-schema.js";
 import { REQUEST_COST_BOUNDARY_MIGRATION_NAME, applyRequestCostBoundary } from "./audit-schema-v10.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
@@ -198,4 +199,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 8, name: REVIEW_VERDICT_MIGRATION_NAME, up: applyReviewVerdictSchema },
   { version: 9, name: "stop storing bulk classes", up: stopStoringBulkClasses },
   { version: 10, name: REQUEST_COST_BOUNDARY_MIGRATION_NAME, up: applyRequestCostBoundary },
+  { version: 11, name: ORIGIN_EXPERIMENT_MIGRATION_NAME, up: applyOriginExperimentSchema },
 ];
