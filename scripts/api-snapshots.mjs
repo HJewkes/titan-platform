@@ -17,6 +17,8 @@ export class MissingDistError extends Error {
 }
 
 // rollup-plugin-dts names a chunk `<name>-<8 char base64url hash>`; a real hash has a capital, digit, `_` or `-`.
+// An all-lowercase hash (about 1 build in 1,400 per chunk) is kept, so it shows as a one-line rename in the diff;
+// matching it would also strip real lowercase names such as `-handlers`.
 const HASHED = /-(?=[a-z]*[A-Z0-9_-])[A-Za-z0-9_-]{8}(?=\.(?:d\.[cm]?ts|[cm]?js)\b)/;
 const RELATIVE_FROM = /(\bfrom\s*|\bimport\s*)(["'])(\.{1,2}\/[^"']+)\2/g;
 
