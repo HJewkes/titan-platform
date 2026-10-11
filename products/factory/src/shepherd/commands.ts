@@ -224,7 +224,7 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
 function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
   const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
 }
 
 /** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */

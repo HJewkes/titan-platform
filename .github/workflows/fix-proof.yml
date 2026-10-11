@@ -22,6 +22,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # The script comes from the workflow's own commit (the PR merge ref), not the PR head: a head branched before
+      # the script existed has no copy of it.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .fix-proof-workflow
+          sparse-checkout: scripts/fix-proof-run.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -44,11 +53,12 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
       # The verdict is the printed fix-proof/v1 line; the runner always exits 0, so this step passes whatever it says.
-      # A merge base that built no runner bin prints a skipped line instead of failing. The script comes from the PR
-      # head but only chooses between printing and running the merge-base bin; the judging code is still the base's.
+      # A merge base that built no runner bin prints a skipped line instead of failing. The script comes from the
+      # workflow's commit but only chooses between printing and running the merge-base bin; the judging code is still
+      # the base's.
       - name: Prove the fix
         env:
           MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TURBO_TELEMETRY_DISABLED: 1
-        run: bash scripts/fix-proof-run.sh "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA"
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA"
