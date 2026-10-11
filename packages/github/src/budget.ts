@@ -1,14 +1,16 @@
-/** Below this many remaining core calls, every call waits its share of the time left until reset. */
+/** Below this many remaining calls of a resource, every call waits its share of the time left until reset. */
 export const RATE_FLOOR = 500;
 
 /** One budget per GitHub login: every wire that shares it paces against the same remaining count. */
 export interface RateBudget {
-  /** Resolves when a call may go out. */
-  acquire(): Promise<void>;
-  /** Reads `x-ratelimit-*` from a response's lower-cased headers; other resources are ignored. */
+  /** Resolves when a call to `resource` may go out; GraphQL has its own quota, apart from core. */
+  acquire(resource?: BudgetResource): Promise<void>;
+  /** Reads `x-ratelimit-*` from a response's lower-cased headers; resources other than core and graphql are ignored. */
   observe(headers: ReadonlyMap<string, string>): void;
   readonly remaining: number | null;
 }
+
+export type BudgetResource = "core" | "graphql";
 
 export interface RateBudgetOptions {
   floor?: number;
@@ -20,20 +22,20 @@ export function rateBudget(options: RateBudgetOptions = {}): RateBudget {
   const floor = options.floor ?? RATE_FLOOR;
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  let remaining: number | null = null;
-  let resetAtMs = 0;
+  const windows: Record<BudgetResource, Window> = { core: { remaining: null, resetAtMs: 0 }, graphql: { remaining: null, resetAtMs: 0 } };
   return {
     get remaining() {
-      return remaining;
+      return windows.core.remaining;
     },
     observe(headers) {
       const observed = rateHeaders(headers);
-      if (observed) ({ remaining, resetAtMs } = observed);
+      if (observed) Object.assign(windows[observed.resource], { remaining: observed.remaining, resetAtMs: observed.resetAtMs });
     },
-    async acquire() {
-      const wait = backoffMs(remaining, resetAtMs, floor, now());
+    async acquire(resource = "core") {
+      const window = windows[resource];
+      const wait = backoffMs(window.remaining, window.resetAtMs, floor, now());
       if (wait > 0) await sleep(wait);
-      if (remaining !== null) remaining = now() >= resetAtMs ? null : Math.max(0, remaining - 1);
+      if (window.remaining !== null) window.remaining = now() >= window.resetAtMs ? null : Math.max(0, window.remaining - 1);
     },
   };
 }
@@ -44,13 +46,18 @@ export function backoffMs(remaining: number | null, resetAtMs: number, floor: nu
   return Math.ceil((resetAtMs - nowMs) / Math.max(remaining, 1));
 }
 
-function rateHeaders(headers: ReadonlyMap<string, string>): { remaining: number; resetAtMs: number } | null {
-  const resource = headers.get("x-ratelimit-resource");
-  if (resource !== undefined && resource !== "core") return null;
+interface Window {
+  remaining: number | null;
+  resetAtMs: number;
+}
+
+function rateHeaders(headers: ReadonlyMap<string, string>): { resource: BudgetResource; remaining: number; resetAtMs: number } | null {
+  const resource = headers.get("x-ratelimit-resource") ?? "core";
+  if (resource !== "core" && resource !== "graphql") return null;
   const remaining = Number(headers.get("x-ratelimit-remaining"));
   const reset = Number(headers.get("x-ratelimit-reset"));
   if (!headers.has("x-ratelimit-remaining") || !Number.isFinite(remaining) || !Number.isFinite(reset)) return null;
-  return { remaining, resetAtMs: reset * 1000 };
+  return { resource, remaining, resetAtMs: reset * 1000 };
 }
 
 /** The default for every `ghCliWire` in this process, because GitHub counts calls per login, not per wire. */
