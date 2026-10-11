@@ -26,6 +26,8 @@ export type ParkOutcome =
 interface ParkInput {
   runId: string;
   headSha: string;
+  /** Reviewers an earlier park step recorded as gone; omitted when none, so a replayed record's input is unchanged. */
+  gone?: string[];
 }
 
 const NOT_ON_DISK = /is not on disk; nothing to park/;
@@ -115,8 +117,12 @@ interface ParkWiring {
   retry?: LiveRetry;
 }
 
-const asAttempt = (outcome: ParkOutcome): ParkAttempt =>
-  outcome.kind === "not-parked" ? (outcome.retry ? { done: false } : { done: true, parked: false, detail: outcome.reason }) : { done: true, parked: true, detail: outcome.kind };
+/** An agent retired while the retry waited took its tree with it: nothing is left to park, so the seat is not told. */
+const asAttempt = (outcome: ParkOutcome): ParkAttempt => {
+  if (outcome.kind !== "not-parked") return { done: true, parked: true, detail: outcome.kind };
+  if (NO_AGENT.test(outcome.reason)) return { done: true, parked: true, detail: "already gone" };
+  return outcome.retry ? { done: false } : { done: true, parked: false, detail: outcome.reason };
+};
 
 /** Waits out a live agent in the background, and tells the seat only if the tree still stands at the end. */
 function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, agent: string): void {
@@ -137,22 +143,18 @@ async function exitedReviewers(roster: RosterReader, registration: Registration)
   return [...new Set(exited.map((row) => row.name))];
 }
 
-/** Reviewers whose tree is already gone, so no later round end asks the broker about them again. */
-const goneReviewers = new Set<string>();
-
 /** A reviewer the broker no longer knows has no tree left to park, the same answer as a tree off disk. */
 function settleRetired(outcome: ParkOutcome): ParkOutcome {
   return outcome.kind === "not-parked" && NO_AGENT.test(outcome.reason) ? { kind: "parked", agent: outcome.agent, lines: [outcome.reason], alreadyGone: true } : outcome;
 }
 
 /** A finished round leaves its reviewer's tree behind; a refusal is told to the seat loudly and asked again at the next round end. */
-async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string): Promise<ReviewerPark[]> {
+async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, gone: readonly string[]): Promise<ReviewerPark[]> {
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
-  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !goneReviewers.has(`${runId}:${name}`));
+  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !gone.includes(name));
   const outcomes = names.map((name) => settleRetired(attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {
-    if (outcome.kind === "parked" && outcome.alreadyGone) goneReviewers.add(`${runId}:${outcome.agent}`);
     if (outcome.kind !== "not-parked") continue;
     console.error(`shepherd: ${registration.repo}#${registration.pr}: reviewer ${outcome.agent}'s worktree was not parked: ${outcome.reason}`);
     await tellParkRefusal(wiring.notice, registration, outcome.agent, outcome.reason);
@@ -162,7 +164,7 @@ async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId:
 
 /** Parks, then either arms the exit retry or tells the seat; the step records which, with the round's reviewers. */
 export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, input: ParkInput): Promise<ParkOutcome & { reviewers: ReviewerPark[] }> {
-  const reviewers = await parkReviewers(store, wiring, input.runId);
+  const reviewers = await parkReviewers(store, wiring, input.runId, input.gone ?? []);
   const outcome = parkImplementer(store, wiring.park, input);
   if (outcome.kind !== "not-parked") return { ...outcome, reviewers };
   if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), { ...outcome, reviewers });
@@ -186,7 +188,8 @@ export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
 };
 
-const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]) });
+const GoneReviewer = z.looseObject({ kind: z.literal("parked"), agent: z.string(), alreadyGone: z.literal(true) });
+const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]), reviewers: z.array(z.unknown()).optional() });
 const LiveRefusal = z.looseObject({ kind: z.literal("not-parked"), agent: z.string(), retry: z.literal("at-exit") });
 
 /** A first run's refusal is already armed and ignored here; a replayed one is armed again, since the restart lost its wait. */
@@ -195,7 +198,26 @@ export function rearmRecorded(runId: string, recorded: unknown): void {
   if (live.success) rearm?.(runId, live.data.agent);
 }
 
+/**
+ * Reviewers a recorded park step found gone, per run context. A restart replays the run's steps and rebuilds this from
+ * their recorded results, so no round end after the first asks the broker about a reviewer again.
+ */
+const goneByContext = new WeakMap<object, Set<string>>();
+
+/** Runs one park step with the gone reviewers known so far and folds the ones its record adds back in. */
+export async function parkOnce(key: object, runStep: (gone: string[] | undefined) => Promise<z.infer<typeof ParkOutcomeResult>>): Promise<z.infer<typeof ParkOutcomeResult>> {
+  const gone = goneByContext.get(key) ?? new Set<string>();
+  goneByContext.set(key, gone);
+  const recorded = await runStep(gone.size > 0 ? [...gone] : undefined);
+  for (const reviewer of recorded.reviewers ?? []) {
+    const parsed = GoneReviewer.safeParse(reviewer);
+    if (parsed.success) gone.add(parsed.data.agent);
+  }
+  return recorded;
+}
+
 /** Once per green head, before its review: a fix round's resume re-creates the tree, so the next green head parks it again. */
 export async function parkAtGreen(ctx: WorkflowContext, headSha: string): Promise<void> {
-  rearmRecorded(ctx.runId, await step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha }, ParkOutcomeResult));
+  const run = (gone: string[] | undefined) => step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha, ...(gone && { gone }) }, ParkOutcomeResult);
+  rearmRecorded(ctx.runId, await parkOnce(ctx, run));
 }

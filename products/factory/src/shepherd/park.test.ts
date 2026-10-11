@@ -1,7 +1,8 @@
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExitNoticePorts } from "./exit-notice.js";
 import {
+  parkOnce,
   parkImplementer,
   parkRoutes,
   parkStep,
@@ -426,7 +427,8 @@ describe("parkStep reviewer trees", () => {
 
     const own = { ...input, runId: `run-${label}` };
     const first = await parkStep(storeWith({ implementer: "impl-a" }), wiring, own);
-    const second = await parkStep(storeWith({ implementer: "impl-a" }), wiring, own);
+    const gone = first.reviewers.flatMap((parked) => (parked.kind === "parked" ? [parked.agent] : []));
+    const second = await parkStep(storeWith({ implementer: "impl-a" }), wiring, { ...own, gone });
 
     expect(first.reviewers).toMatchObject([
       { kind: "parked", agent: "rv-o-r-7", alreadyGone: true },
@@ -447,5 +449,54 @@ describe("parkStep reviewer trees", () => {
     );
 
     expect(asked).toEqual(["impl-a"]);
+  });
+});
+
+describe("an implementer retired while its park waited for its exit", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is recorded as parked and the seat is told nothing", async () => {
+    vi.useFakeTimers();
+    const notice = noticePorts("hub");
+    let live = true;
+    const park: ParkPort = (name) => {
+      if (live) throw new DispatchError(`agent-chat refused agent park: Not parked: ${LIVE(name)}`);
+      throw new DispatchError(`agent-chat refused agent park: Not parked: no agent named "${name}"`);
+    };
+    const [route] = parkRoutes(
+      {
+        store: storeWith({ implementer: "impl-a" }),
+        now: () => Date.now(),
+        agentChatBin: "agent-chat",
+        roster: createRosterReader(async () => []),
+        exitNotice: notice,
+      },
+      park
+    );
+    const step = { runId: "run-1", workflowName: "w", stepId: "sh-park:x", iteration: 0, prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+
+    const outcome = await route!.runner.run(step);
+    live = false;
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    if (!outcome.ok) throw new Error("the park step failed");
+    expect(JSON.parse(outcome.output).result).toMatchObject({ kind: "not-parked", retry: "at-exit" });
+    expect(notice.sent).toEqual([]);
+  });
+});
+
+describe("parkOnce", () => {
+  it("hands each later head the reviewers an earlier head's record found gone", async () => {
+    const key = {};
+    const seen: (string[] | undefined)[] = [];
+    const run = async (gone: string[] | undefined) => {
+      seen.push(gone);
+      return { kind: "parked" as const, reviewers: [{ kind: "parked", agent: "rv-o-r-7", alreadyGone: true }] };
+    };
+
+    await parkOnce(key, run);
+    await parkOnce(key, run);
+
+    expect(seen).toEqual([undefined, ["rv-o-r-7"]]);
   });
 });
