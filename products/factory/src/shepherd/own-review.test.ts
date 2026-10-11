@@ -6,6 +6,7 @@ import { H1, REPO } from "../test-support/land.js";
 import { callCommand } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { MachineStopWatch } from "./machine-stop.js";
 import type { ReviewAsk } from "./review-request.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -81,10 +82,11 @@ interface Options {
   say?: Say;
   standing?: boolean;
   branch?: string;
+  machineStop?: MachineStopWatch;
 }
 
 /** One green, clean head H1 under `hold`, with the hold's named reviewer when one is given. */
-function heldRun(hold: string, reviewer?: string, { seatSilent = false, say, standing = false, branch }: Options = {}): World {
+function heldRun(hold: string, reviewer?: string, { seatSilent = false, say, standing = false, branch, machineStop }: Options = {}): World {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge"), mergeableState: "clean" });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
@@ -94,7 +96,7 @@ function heldRun(hold: string, reviewer?: string, { seatSilent = false, say, sta
   const wake: ShepherdPhases["wake"] = async () => ({ kind: "unhandled", reason: "no fixer in this test" });
   const ref = shepherdStoreRef();
   const waits = say ? { timeoutMs: 20, lateVerdictMs: 5, exitGraceMs: 1 } : {};
-  const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" }, ...waits };
+  const review = { dispatch: reviewers.dispatch, reader: reviewers.reader, roles: { g10: "bd-reviewer", standard: "bd-reviewer" }, ...waits, ...(machineStop && { machineStop }) };
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: say ? Date.now : () => 0, sleep: async (_ms, signal) => sleep(1, signal), holdPollMs: 1, review });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake })], routes, gatePollMs: 5 });
   hosts.push(host);
@@ -167,6 +169,35 @@ describe("an ask whose review escalates", () => {
 
     expect(w.fake.pr(1).merged).toBe(false);
     expect(gatePrompt(w)).toContain("fix-first-runaway");
+  });
+});
+
+describe("Shepherd's own reviewer under the machine stop", () => {
+  const STOP = "load5 40 (limit 28)";
+  /** Every round saw the stop while its reviewer ran, and the machine reads clear by the time the round ends. */
+  const stoppedEachRound: MachineStopWatch = { note: () => undefined, sample: () => undefined, stoppedSince: () => STOP };
+  const healthy: MachineStopWatch = { note: () => undefined, sample: () => undefined, stoppedSince: () => undefined };
+  const silentThenMerge: Say = (spawn, head) => (spawn < 3 ? undefined : block("MERGE", head));
+
+  it("reviews the head a fourth time after three silent rounds under the stop, and merges with no approve-merge gate", async () => {
+    const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: silentThenMerge, machineStop: stoppedEachRound });
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
+
+    expect(w.spawned).toHaveLength(4);
+    expect(gatePrompt(w)).toBeUndefined();
+    expect(w.fake.pr(1).merged).toBe(true);
+    expect(resultsOf(w, "sh-review-stop")).toEqual([0, 1, 2].map(() => ({ kind: "stopped", reason: STOP, lifted: true })));
+  });
+
+  it("opens the failed-rounds gate after three silent rounds on a healthy machine, as before", async () => {
+    const w = heldRun(G10_ADVERSARY, SEAT_REVIEWER, { say: silentThenMerge, machineStop: healthy });
+
+    await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
+
+    expect(w.spawned).toHaveLength(3);
+    expect(gatePrompt(w)).toContain("failed-rounds");
+    expect(w.fake.pr(1).merged).toBe(false);
   });
 });
 

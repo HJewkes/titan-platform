@@ -401,7 +401,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `shell`: `ParseError`, `tokenize`
-- +48 more in the [reference page](/reference/tool-guard)
+- +47 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
