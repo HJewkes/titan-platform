@@ -1,13 +1,13 @@
 import { booleanOrNull, str, type Json } from "./text.js";
 
-export interface ToolUseBlock {
+interface ToolUseBlock {
   callId: string;
   name: string;
   input: unknown;
   hasInput: boolean;
 }
 
-export interface ToolResultBlock {
+interface ToolResultBlock {
   callId: string;
   output: unknown;
   isError: boolean | null;
