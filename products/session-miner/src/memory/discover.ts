@@ -3,7 +3,7 @@ import path from "node:path";
 import { parseMemoryFile, type MemorySourceRef, type ParseFailure, type ParsedFact } from "@titan-design/memory";
 import { claudeTranscriptRoots, type TranscriptRoot } from "@titan-design/session-read";
 
-export const MEMORY_INDEX = "MEMORY.md";
+const MEMORY_INDEX = "MEMORY.md";
 
 export interface MemoryScan {
   facts: ParsedFact[];
@@ -13,7 +13,7 @@ export interface MemoryScan {
 }
 
 function isMissing(error: unknown): boolean {
-  const code = (error as NodeJS.ErrnoException).code;
+  const code = error instanceof Error && "code" in error ? error.code : undefined;
   return code === "ENOENT" || code === "ENOTDIR";
 }
 

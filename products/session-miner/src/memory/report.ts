@@ -4,7 +4,7 @@ import path from "node:path";
 import { dedupeFacts, groupFacts, proposeDestination, type FactGroup, type MemoryDestination, type ParsedFact, type SkillSummary } from "@titan-design/memory";
 import { stringify } from "yaml";
 
-export interface ReportSource {
+interface ReportSource {
   account: string;
   project: string;
   path: string;
@@ -12,7 +12,7 @@ export interface ReportSource {
   contentHash: string;
 }
 
-export interface ReportGroup {
+interface ReportGroup {
   id: string;
   label: string;
   destination: MemoryDestination;
@@ -26,7 +26,7 @@ export interface MemoryReport {
   groups: ReportGroup[];
 }
 
-export interface WrittenReport {
+interface WrittenReport {
   dir: string;
   report: string;
   decisions: string;
@@ -41,7 +41,7 @@ function compactUtc(now: Date): string {
 }
 
 /** The UTC time plus a digest of every fact's content hash, so the same memory at the same instant gives the same id. */
-export function reportIdFor(facts: readonly ParsedFact[], now: Date): string {
+function reportIdFor(facts: readonly ParsedFact[], now: Date): string {
   const digest = createHash("sha256").update(facts.map((fact) => fact.contentHash).sort().join("\n")).digest("hex");
   return `${compactUtc(now)}-${digest.slice(0, 8)}`;
 }
@@ -88,12 +88,12 @@ function renderGroup(group: ReportGroup): string {
   ].join("\n");
 }
 
-export function renderReportMarkdown(report: MemoryReport): string {
+function renderReportMarkdown(report: MemoryReport): string {
   const intro = `# Memory report ${report.reportId}\n\n${report.groups.length} groups. Edit decisions.yml beside this file: set each group's decision to accept or reject, and change its destination if you want.\n`;
   return [intro, ...report.groups.map(renderGroup)].join("\n");
 }
 
-export function renderDecisions(report: MemoryReport): string {
+function renderDecisions(report: MemoryReport): string {
   const groups = report.groups.map(({ id, label, destination, reason, sources }) => ({ id, label, decision: "pending", destination, reason, sources }));
   return stringify({ reportId: report.reportId, groups });
 }

@@ -8,7 +8,7 @@ import { scanMemory, type MemoryScan } from "../memory/discover.js";
 import { buildMemoryReport, DEFAULT_GROUP_THRESHOLD, writeMemoryReport, type MemoryReport } from "../memory/report.js";
 import { defaultSkillsRoots, readSkills } from "../memory/skills.js";
 
-export interface Unparsed {
+interface Unparsed {
   path: string;
   error: string;
 }

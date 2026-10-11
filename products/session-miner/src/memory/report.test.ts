@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseMemoryFile, type ParsedFact } from "@titan-design/memory";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { z } from "zod";
 import { fact } from "./home.fixture.js";
 import { buildMemoryReport, writeMemoryReport } from "./report.js";
 
@@ -21,6 +22,8 @@ const FACTS = [
   parsed("release-tags", "Release jobs push npm tags", "Release jobs push tags after npm publish."),
   parsed("lint-zero", "Keep lint warnings at zero", "Zero lint warnings in modified files."),
 ];
+
+const Decisions = z.object({ groups: z.array(z.object({ decision: z.string(), destination: z.string(), sources: z.array(z.object({ contentHash: z.string() })) })) });
 
 let out: string;
 
@@ -61,7 +64,7 @@ describe("writeMemoryReport", () => {
   it("starts every group in decisions.yml as pending, with a destination and hashed sources", () => {
     const written = writeMemoryReport(out, buildMemoryReport(FACTS, [], NOW));
 
-    const decisions = parse(readFileSync(written.decisions, "utf8")) as { groups: { decision: string; destination: string; sources: { contentHash: string }[] }[] };
+    const decisions = Decisions.parse(parse(readFileSync(written.decisions, "utf8")));
     expect(decisions.groups.length).toBeGreaterThan(0);
     for (const group of decisions.groups) {
       expect(group.decision).toBe("pending");

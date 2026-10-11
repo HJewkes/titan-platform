@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../config.js";
 import { createMinerContext, type MinerContext } from "../context.js";
 import { fact, useTempHome, writeMemory, type TempHome } from "../memory/home.fixture.js";
-import { memoryReport, memoryScan, type MemoryReportResult, type MemoryScanResult } from "./memory.js";
+import { memoryReport, memoryScan } from "./memory.js";
 
 const SENTINEL = "zebra-sentinel-body-text";
 
@@ -18,8 +18,6 @@ function context(surface?: "cli"): MinerContext {
   return ctx;
 }
 
-const run = <R>(cmd: Parameters<typeof invokeCommand<MinerContext>>[0], args: unknown, ctx: MinerContext) =>
-  invokeCommand(cmd, args, ctx) as Promise<{ envelope: { ok: boolean; data?: R; error?: string }; exitCode: number }>;
 
 beforeEach(() => {
   temp = useTempHome();
@@ -44,10 +42,10 @@ describe("memory scan", () => {
   it("counts facts by account and type, lists unparsed files, and never opens the graph", async () => {
     const ctx = context();
 
-    const { envelope } = await run<MemoryScanResult>(memoryScan, {}, ctx);
+    const { envelope } = await invokeCommand(memoryScan, {}, ctx);
 
-    expect(envelope.data).toMatchObject({ files: 3, indexes: 1, byAccount: { default: 2, work: 1 }, byType: { feedback: 1, user: 1 } });
-    expect(envelope.data?.unparsed.map((u) => path.basename(u.path))).toEqual(["broken.md"]);
+    expect(envelope).toMatchObject({ data: { files: 3, indexes: 1, byAccount: { default: 2, work: 1 }, byType: { feedback: 1, user: 1 } } });
+    expect(envelope).toMatchObject({ data: { unparsed: [{ path: expect.stringMatching(/\/broken\.md$/) }] } });
     expect(ctx.graph).not.toHaveBeenCalled();
     expect(ctx.playbook).not.toHaveBeenCalled();
   });
@@ -57,18 +55,21 @@ describe("memory report", () => {
   it("writes the report under the state dir and returns no fact text", async () => {
     const ctx = context();
 
-    const { envelope } = await run<MemoryReportResult>(memoryReport, {}, ctx);
+    const { envelope } = await invokeCommand(memoryReport, {}, ctx);
 
-    expect(envelope.ok).toBe(true);
-    expect(envelope.data?.dir.startsWith(path.join(temp.home, "state", "memory-miner"))).toBe(true);
-    expect(envelope.data).toMatchObject({ files: 3, skillsIndexed: 1, groups: 2, singletons: 2, largestGroup: 1 });
-    expect(envelope.data?.byDestination.skill).toBe(1);
+    expect(envelope).toMatchObject({
+      ok: true,
+      data: {
+        dir: expect.stringContaining(path.join(temp.home, "state", "memory-miner")),
+        files: 3, skillsIndexed: 1, groups: 2, singletons: 2, largestGroup: 1, byDestination: { skill: 1 },
+      },
+    });
     expect(JSON.stringify(envelope)).not.toContain(SENTINEL);
     expect(ctx.graph).not.toHaveBeenCalled();
   });
 
   it("refuses --skills-root off the CLI", async () => {
-    const { envelope, exitCode } = await run<MemoryReportResult>(memoryReport, { skillsRoot: [temp.home] }, context());
+    const { envelope, exitCode } = await invokeCommand(memoryReport, { skillsRoot: [temp.home] }, context());
 
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.DATAERR);
@@ -77,9 +78,8 @@ describe("memory report", () => {
   it("accepts --skills-root and --out on the CLI", async () => {
     const out = path.join(temp.home, "out");
 
-    const { envelope } = await run<MemoryReportResult>(memoryReport, { skillsRoot: [path.join(temp.home, "nowhere")], out }, context("cli"));
+    const { envelope } = await invokeCommand(memoryReport, { skillsRoot: [path.join(temp.home, "nowhere")], out }, context("cli"));
 
-    expect(envelope.data?.dir.startsWith(out)).toBe(true);
-    expect(envelope.data?.skillsIndexed).toBe(0);
+    expect(envelope).toMatchObject({ data: { dir: expect.stringContaining(out), skillsIndexed: 0 } });
   });
 });
