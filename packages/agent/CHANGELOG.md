@@ -1,5 +1,14 @@
 # @titan-design/agent
 
+## 0.4.7
+
+### Patch Changes
+
+- ea3d34c: A failed `ExecutionTerminal` carries optional `usage`, and the durable dispatcher keeps the spend a harness reported before it failed, so budgets can count failed steps.
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/agent-lifecycle@0.1.7
+
 ## 0.4.6
 
 ### Patch Changes
