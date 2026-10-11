@@ -599,6 +599,33 @@ describe("service deploy rollback pause", () => {
     expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
   });
 
+  it("rolls back when serve answers through the window and then misses its last probes, instead of deploying on an open miss", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && ++answered > 11 ? null : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.serving()).toBe(BASE);
+    expect(machine.record()).toMatchObject({ outcome: "rolled-back", why: expect.stringContaining("serve stopped answering /health (3 probes in a row)") });
+    expect(machine.pause()).toMatchObject({ paused: true, pause: { rollback: "verified" } });
+  });
+
+  it("deploys when a miss near the window's end is followed by an answer", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    let answered = 0;
+    machine.ports.healthWithin = async (port, timeoutMs) => (machine.serving() === TIP && [12, 13].includes(++answered) ? null : health(port, timeoutMs));
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(machine.pause()).toEqual({ paused: false });
+  });
+
   it("deploys a build that stays healthy through the whole watch window without pausing or filing an incident", async () => {
     const machine = fakeMachine();
 

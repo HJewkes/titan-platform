@@ -37,12 +37,15 @@ function drift(baseline: Health, health: Health, target: string): string | undef
   return added > 0 ? `${added} more run(s) failed or need recovery` : undefined;
 }
 
-/** Undefined when serve held steady for the whole window, else why not; `baseline` is the answer that confirmed the sha. */
+/**
+ * Undefined when serve held steady for the whole window, else why not; `baseline` is the answer that confirmed the sha.
+ * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies late is not deployed.
+ */
 export async function watchServe(ports: WatchPorts, baseline: Health, target: string, window: WatchWindow): Promise<string | undefined> {
   const interval = Math.max(1, window.intervalMs);
   const during = `during the ${Math.round(window.windowMs / 1000)} s watch`;
   let misses = 0;
-  for (let waited = 0; waited < window.windowMs; waited += interval) {
+  for (let waited = 0; waited < window.windowMs || misses > 0; waited += interval) {
     await ports.sleep(interval);
     const health = await ports.probe();
     misses = health === null ? misses + 1 : 0;
