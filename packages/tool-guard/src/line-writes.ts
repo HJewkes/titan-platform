@@ -9,14 +9,24 @@ import type { ClassifyContext } from "./types.js";
 const WRITE_OPS = new Set([">", ">|", ">>", "&>", "&>>", ">&"]);
 /** `>&2` and `>&-` move or close a descriptor rather than name a file. */
 const DUP_TARGET_RE = /^(\d+-?|-)$/;
-/** Each conditional append doubles a file's readings; past this many the line is refused rather than read. */
+/**
+ * Each conditional append doubles a file's readings. Past this many a file stops tracking them, and a script run from it
+ * refuses the line; a file nothing runs, such as a PR body built up with appends, costs nothing.
+ */
 const MAX_WRITTEN_READINGS = 16;
 
 /**
  * Every text a script at `path` may hold at this point of the line: what the disk held, and what each earlier write on
- * the line may have left there.
+ * the line may have left there. Throws `ReadingLimitError` when the line left more than it tracks.
  */
 export function scriptReadings(ctx: ClassifyContext, path: string): string[] {
+  const readings = trackedReadings(ctx, path);
+  if (readings === null) throw new ReadingLimitError();
+  return readings;
+}
+
+/** The readings of `path`, null once the line has left more than `MAX_WRITTEN_READINGS`. */
+function trackedReadings(ctx: ClassifyContext, path: string): string[] | null {
   if (ctx.scriptReadings) return ctx.scriptReadings(path);
   const text = diskText(ctx, path);
   return text === null ? [] : [text];
@@ -33,11 +43,15 @@ export function afterWrites(cmd: SimpleCommand, line: ClassifyContext): Classify
   const path = target ? resolvePath(cmd.dir, target.target, line.home) : null;
   const text = path === null ? null : written(cmd);
   if (path === null || !text) return line;
-  const prior = scriptReadings(line, path);
-  const added = target?.op.endsWith(">>") && prior.length > 0 ? prior.map((p) => p + text) : [text];
+  const readings = withWrite(trackedReadings(line, path), text, target?.op.endsWith(">>") === true);
+  return { ...line, scriptReadings: (p) => (p === path ? readings : trackedReadings(line, p)) };
+}
+
+function withWrite(prior: string[] | null, text: string, append: boolean): string[] | null {
+  if (prior === null) return null;
+  const added = append && prior.length > 0 ? prior.map((p) => p + text) : [text];
   const readings = [...new Set([...prior, ...added])];
-  if (readings.length > MAX_WRITTEN_READINGS) throw new ReadingLimitError();
-  return { ...line, scriptReadings: (p) => (p === path ? readings : scriptReadings(line, p)) };
+  return readings.length > MAX_WRITTEN_READINGS ? null : readings;
 }
 
 /** The file stdout ends at: only the last redirect of stdout receives the output, and a dup sends it to no file. */

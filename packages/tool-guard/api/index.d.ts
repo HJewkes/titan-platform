@@ -73,6 +73,11 @@ interface ClassifyContext {
     readHead(dir: string): string | null;
     /** Text of a script run by path, null when it cannot be read. */
     readScript(path: string): string | null;
+    /**
+     * Set by the classifier once a line writes a script: every text the script may then hold, the disk's included, or
+     * null once the line left more than the classifier tracks.
+     */
+    scriptReadings?(path: string): string[] | null;
     /** Whether a PATH lookup finds a program whatever the case of its name, so `GIT push` runs git. */
     foldCase?: boolean;
 }

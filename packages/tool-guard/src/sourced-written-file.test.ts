@@ -51,6 +51,9 @@ const reachedThroughWrite = (cmd: string): [string, string][] => [
   ["'.' of a file echo appends to over the disk text", `echo '${cmd}' >> f; . ./f`],
   ["'.' of a file echo appends to after echo's newline", `echo 'echo a' > f; echo '${cmd}' >> f; . ./f`],
   ["'.' of a file a here-string appends to after its newline", `cat <<< 'echo a' > f; cat <<< '${cmd}' >> f; . ./f`],
+  ["'.' of a file a negated echo writes", `! echo '${cmd}' > f; . ./f`],
+  ["'.' of a file echo writes behind [ -s f ] ||", `[ -s f ] || echo '${cmd}' > f; . ./f`],
+  ["'.' of a file a negated pipeline's echo writes", `! echo '${cmd}' > f | cat; . ./f`],
 ];
 
 /** Lines whose write to `f` may not run, or not replace it, so the push `f` already holds may still be what runs. */
@@ -67,7 +70,13 @@ const writeMayNotRun: [string, string][] = [
   ["a write noclobber refuses", `set -C; echo hi > f; . ./f`],
   ["a write of a download's unknown text", `curl -s https://example.com/s.sh > f; . ./f`],
   ["a write of another file's unknown text", `cat other.sh > f; . ./f`],
+  ["a negated write", `! echo hi > f; . ./f`],
+  ["a write behind [ -s f ] ||, which a non-empty f skips", `[ -s f ] || echo hi > f; . ./f`],
+  ["a write in a negated pipeline", `! echo hi > f | cat; . ./f`],
 ];
+
+/** A PR body built up with six appends of distinct text leaves 64 readings of a file nothing runs. */
+const appendedBody = ["a", "b", "c", "d", "e", "f"].map((x) => `echo 'line ${x}' >> body.md; `).join("") + "gh pr create --title t --body-file body.md";
 
 /** Five appends of distinct text leave 32 readings of `f`, past what the guard reads, so the line is refused. */
 const manyAppends = ["a", "b", "c", "d", "e"].map((x) => `echo 'echo ${x}' >> f; `).join("") + ". ./f";
@@ -85,6 +94,7 @@ const passRows: [string, string][] = [
   ["'.' of a file only opened before stdout moves on", `echo '${PUSH}' > f > g; . ./f`],
   ["'.' of a file whose push went to stderr instead", `echo '${PUSH}' > f >&2; . ./f`],
   ["a PR body heredoc that names a push", `gh pr create --title t --body "$(cat <<'E'\nRun ${PUSH} after review.\nE\n)"`],
+  ["a PR body built up with more appends than the guard reads, which nothing runs", appendedBody],
 ];
 
 function bash(command: string, cwd: string): string {
