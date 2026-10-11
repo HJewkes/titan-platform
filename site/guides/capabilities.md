@@ -846,7 +846,7 @@ Key exports:
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`
-- +94 more in the [reference page](/reference/session-graph)
+- +95 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
