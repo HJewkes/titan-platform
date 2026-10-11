@@ -8,7 +8,7 @@ import { shepherdStoreRef } from "./store.js";
 import { WAKE_STEPS, wakeRoutes } from "./wake.js";
 
 const WAKE_FAMILIES = ["sh-wake", "sh-await-new-head", "sh-repair", "sh-flake-check", "sh-exit-notice"];
-const REVIEW_FAMILIES = ["sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-carry", "sh-publish-review"];
+const REVIEW_FAMILIES = ["sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-carry", "sh-publish-review", "sh-account"];
 const target = { repo: "octo/demo", pr: 1, round: 0, headSha: "abc123" };
 const deps: ShepherdDeps = { port: githubPort(fakeGitHub().wire), store: shepherdStoreRef(), now: () => 0, sleep: async () => {}, agentChatBin: "agent-chat" };
 
@@ -33,8 +33,8 @@ describe("shepherd phase step families", () => {
     expect(wakeRoutes(deps).map((route) => route.match)).toEqual(ids);
   });
 
-  it("pins sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review and sh-review-request to review.ts, declared and routed there", () => {
-    const ids = ["sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-review-request"];
+  it("pins sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait and sh-review-request to review.ts, declared and routed there", () => {
+    const ids = ["sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request"];
     expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
     expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids.filter((id) => id !== "sh-merge-evidence-gate"));
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");
