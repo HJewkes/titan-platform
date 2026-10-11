@@ -3184,9 +3184,6 @@
   "products/factory/src/shepherd/pr.test.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/factory/src/shepherd/presence.ts": {

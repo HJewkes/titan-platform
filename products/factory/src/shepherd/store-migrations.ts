@@ -19,6 +19,16 @@ export function holdSatisfiedMigration(version = 11): Migration {
   return { version, name: "factory:shepherd_registration_hold_satisfied", up: (db) => db.exec(TP779_DDL) };
 }
 
+const TP2254_DDL = `
+  ALTER TABLE shepherd_registration ADD COLUMN review_request_head TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN review_request_at TEXT;
+  ALTER TABLE shepherd_registration ADD COLUMN review_request_taken_at TEXT;`;
+
+/** The head a seat asked Shepherd's own reviewer to review, when it asked, and when a run's review intent took the ask. */
+export function reviewRequestMigration(version = 18): Migration {
+  return { version, name: "factory:shepherd_registration_review_request", up: (db) => db.exec(TP2254_DDL) };
+}
+
 const LINEAGE_DDL = `
   CREATE TABLE shepherd_lineage (
     run_id      TEXT NOT NULL,

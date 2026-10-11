@@ -53,11 +53,18 @@ function isWord(t: Token | undefined, test: (w: WordToken) => boolean): boolean 
   return t?.type === "word" && !t.quoted && test(t);
 }
 
+/**
+ * Where each `$( )` or `${ }` in one source ends, by the position of its `$`. An unsure span is read again one
+ * character at a time, which meets every span inside it a second time, so without this the cost doubles per level.
+ */
+type SpanEnds = Map<number, number>;
+
 /** Index of the `]` matching the `[` at `open`, skipping quoted text; -1 when it never closes. */
 function matchingBracket(src: string, open: number): number {
+  const spans: SpanEnds = new Map();
   let depth = 0;
   for (let j = open; j < src.length; j++) {
-    const end = skipQuoted(src, j);
+    const end = skipQuoted(src, j, spans);
     if (end === -1) return -1;
     const c = end === j ? src[j] : "";
     if (c === "[") depth++;
@@ -68,16 +75,24 @@ function matchingBracket(src: string, open: number): number {
 }
 
 /** Index of the last character of the escape or quoted run starting at `j`, `j` itself for any other character. */
-function skipQuoted(src: string, j: number): number {
+function skipQuoted(src: string, j: number, spans: SpanEnds): number {
   const c = src[j];
   if (c === "\\") return j + 1;
   if (c === "'") return src.indexOf("'", j + 1);
   if (c === '"') return closingQuote(src, j + 1, '"');
   if (c === "$" && src[j + 1] === "'") return closingQuote(src, j + 2, "'");
   if (c === "`") return skippedSpan(j, closingBacktick(src, j));
-  if (c === "$" && src[j + 1] === "(") return skippedSpan(j, closingSubstitution(src, j + 2, "(", ")"));
-  if (c === "$" && src[j + 1] === "{") return skippedSpan(j, closingSubstitution(src, j + 2, "{", "}"));
+  if (c === "$" && (src[j + 1] === "(" || src[j + 1] === "{")) return skippedSpan(j, substitutionEnd(src, j, spans));
   return j;
+}
+
+function substitutionEnd(src: string, j: number, spans: SpanEnds): number {
+  const known = spans.get(j);
+  if (known !== undefined) return known;
+  const paren = src[j + 1] === "(";
+  const end = closingSubstitution(src, j + 2, paren ? "(" : "{", paren ? ")" : "}", spans);
+  spans.set(j, end);
+  return end;
 }
 
 /** An unsure span is not skipped: the bracket scan reads its characters one by one, as it did before spans were skipped. */
@@ -90,10 +105,10 @@ function skippedSpan(j: number, end: number): number {
  * it never closes. A `#` in `$( )` may open a comment that hides the closer, and a `[` may open a nested spaced
  * subscript whose `)` or `}` is no closer, so the scan cannot be sure and returns UNSURE.
  */
-function closingSubstitution(src: string, from: number, open: string, close: string): number {
+function closingSubstitution(src: string, from: number, open: string, close: string, spans: SpanEnds): number {
   let depth = 1;
   for (let k = from; k < src.length; k++) {
-    const end = skipQuoted(src, k);
+    const end = skipQuoted(src, k, spans);
     if (end === -1) return UNSURE;
     const c = end === k ? src[k] : "";
     if (c === "[" || (c === "#" && open === "(")) return UNSURE;

@@ -1,0 +1,11 @@
+{
+  "schema": "titan-review/round@1",
+  "unit": "garden-beds",
+  "round": 1,
+  "storybookUrl": "http://127.0.0.1:6006",
+  "widths": [1280],
+  "variants": [],
+  "questions": [
+    { "id": "bed-width", "kind": "pick-one", "prompt": "How wide should a bed be?", "options": ["Narrow", "Wide"] }
+  ]
+}

@@ -1,5 +1,19 @@
 # @titan-design/session-analytics
 
+## 0.11.0
+
+### Minor Changes
+
+- 5c659a3: Add `taskActuals(minerDb, tasks, options)`: one row per done task with implementer and reviewer agent-hours (request gaps capped at 15 minutes, with the 5 and 60 minute values alongside), list-price cost, implementer session count and first and last request, linked PRs with merge time, and the flags `no-impl-session`, `weak-link`, `multi-task`, `reopened` and `unpriced`. Initiatives come from an allowlist option. A session's role comes from its spawn profile (`fable-implementer` and `fable-reviewer` included); a linked session that counts toward neither total is reported in `unmappedSessions` and raises `unmapped-role`.
+
+### Patch Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+- dcf8e04: Read task-actuals query rows through type guards instead of type assertions.
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+
 ## 0.10.0
 
 ### Minor Changes

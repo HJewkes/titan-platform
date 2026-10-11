@@ -1,5 +1,19 @@
 # @titan-design/review-panel
 
+## 0.3.0
+
+### Minor Changes
+
+- d7102a6: Add brief overlays for the adversary, tests, visual and perf panel shapes. Each has a stable id and a sha256 content hash, and `shapeBrief` puts it on top of the base reviewer brief. The tests brief reads a `fix-proof/v1` result line for the head when one is given.
+- 73683d7: `ReviewerFacts` gains an optional `intentAt`, the epoch-ms the run's review intent was recorded, so a spawn gate can admit deferred reviews oldest-first.
+- 7d52415: Add `aggregate(plan, results, input)`, the fail-closed panel verdict for one head. Any blocking FIX_FIRST blocks, MERGE needs every blocking member's MERGE at the head, and a missing blocking member is `no-verdict` or `timeout`, never MERGE. Advisory findings ride along only when their `path:line` citations exist at the head (checked with `@titan-design/evidence`), findings are bounded per member, and `satisfiesG10` is false when any member is degraded. Exports the `MemberResult` and `AggregateInput` types.
+- 446c60a: Move Shepherd review checkouts to the titan-factory app data dir. `reviewerBrief` now requires `checkoutRoot`, puts the head and base checkouts under `<checkoutRoot>/<run>`, and tells the reviewer to remove that whole dir. Shepherd also removes the run dir when the verdict step ends, and the stale-checkout sweep reads the same root.
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+
 ## 0.2.0
 
 ### Minor Changes

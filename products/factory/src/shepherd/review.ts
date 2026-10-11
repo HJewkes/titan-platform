@@ -12,7 +12,7 @@ import { AWAIT_VERDICT_STEP, HEAD, awaitLateVerdict, awaitVerdict, bounded, pars
 import { ACCOUNT_STEPS, accountHeld, accountRoutes, accountWithHeadroom, type AccountsView } from "./account-hold.js";
 import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
-import { awaitExternalVerdict, externalReviewer, isExternalVerdictInput, seatVetoed } from "./external-review.js";
+import { adoptedReviewer, awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
 import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema } from "./review-schemas.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
@@ -25,6 +25,7 @@ import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles
 import { withReviewerProfile } from "./g10-release.js";
 import { provablyIndependent } from "./lineage.js";
 import { isRepoKey } from "./seats.js";
+import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
 
@@ -42,6 +43,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
   ...ACCOUNT_STEPS,
+  ...REVIEW_REQUEST_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -106,10 +108,16 @@ function freshName(target: ReviewTarget, implementer: string | undefined, roster
   }
 }
 
-/** A hold that names a reviewer waits for that reviewer; `fresh` skips the standing reviewer, which may be the one that went silent. */
+/**
+ * A hold that names a reviewer waits for that reviewer, unless its class needs Shepherd's own review too or a seat asked for
+ * one at this head, taken or not, so a retry of the asked review is Shepherd's own too; `fresh` skips the standing reviewer,
+ * which may be the one that went silent.
+ */
 function chooseReviewer(target: ReviewTarget, registration: Registration | undefined, roster: readonly ReviewerAgent[], fresh = false): Omit<ReviewIntent, "head" | "at"> {
-  const external = externalReviewer(registration);
+  const asked = registration?.reviewRequest?.head === target.head;
+  const external = asked ? undefined : adoptedReviewer(registration);
   if (external) return { mode: "external", reviewer: external };
+  if (asked) return { mode: "spawn", reviewer: freshName(target, registration.implementer, roster) };
   const standing = fresh ? undefined : standingReviewer(registration, roster);
   if (standing) return { mode: "resume", reviewer: standing.name, agentId: standing.agentId };
   return { mode: "spawn", reviewer: freshName(target, registration?.implementer, roster) };
@@ -198,18 +206,19 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  * The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing; it records
  * why the head is reviewed. With accounts wired it names the account the reviewer bills, which lifts the run's own account
  * hold; a standing reviewer is resumed only on the first account, and with no account left it names the first as exhausted,
- * so the phase holds instead of spawning.
+ * so the phase holds instead of spawning. Any review of Shepherd's own at a head takes a seat's ask there, so the ask spends
+ * one review; an exhausted intent spawns nothing, so it leaves the ask standing.
  */
 const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch, accounts }, input, signal) => {
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
-  const registration = deps.store.get().byRun(input.runId);
+  const store = deps.store.get();
+  const registration = store.byRun(input.runId);
   const choice = chooseReviewer(input, registration, roster, input.fresh);
-  const cause = input.cause && { cause: input.cause };
-  if (!accounts || choice.mode === "external") return { kind: "intent", head: input.head, ...choice, at: deps.now(), ...cause };
-  const account = accountWithHeadroom(deps, accounts.dirs, input.runId);
-  if (account === null) return { kind: "none", reason: "every review account is exhausted", exhausted: accounts.dirs[0] ?? DEFAULT_ACCOUNT };
-  const chosen = account === accounts.dirs[0] ? choice : chooseReviewer(input, registration, roster, true);
-  return { kind: "intent", head: input.head, ...chosen, at: deps.now(), account, ...cause };
+  const billed = accounts && choice.mode !== "external" ? accountWithHeadroom(deps, accounts.dirs, input.runId) : undefined;
+  if (billed === null) return { kind: "none", reason: "every review account is exhausted", exhausted: accounts?.dirs[0] ?? DEFAULT_ACCOUNT };
+  const chosen = billed === undefined || billed === accounts?.dirs[0] ? choice : chooseReviewer(input, registration, roster, true);
+  const requested = chosen.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
+  return { kind: "intent", head: input.head, ...chosen, at: deps.now(), ...(billed && { account: billed }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }) };
 };
 
 /** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
@@ -308,6 +317,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     carryRoute(deps.now, wiring?.carry),
     publishReviewRoute(deps),
     ...accountRoutes(deps, accountsView(wiring)),
+    reviewRequestRoute(deps),
   ];
 };
 

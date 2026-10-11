@@ -8,7 +8,15 @@ export const MAX_NOT_STARTED_REVIEWS = 3;
 /** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
 export function notStartedStreak(steps: readonly StepResult[]): number {
   const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
-  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
+  return reviews.reduce((streak, result) => (wasNotStarted(result) ? streak + 1 : 0), 0);
+}
+
+const NestedNotStarted = z.object({ result: z.object({ notStarted: z.unknown() }) });
+
+/** The writer nests the dispatch outcome under data.result; rows written before that kept it at the top level. */
+function wasNotStarted(step: StepResult): boolean {
+  const nested = NestedNotStarted.safeParse(step.data);
+  return (nested.success && nested.data.result.notStarted === true) || step.data?.notStarted === true;
 }
 
 const DispatchedReviewData = z.object({ result: z.object({ kind: z.literal("dispatched"), reviewer: z.string().min(1) }) });
