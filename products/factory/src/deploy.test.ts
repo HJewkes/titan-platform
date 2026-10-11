@@ -59,6 +59,10 @@ interface MachineInit {
   unitElsewhere?: boolean;
   /** `git clone` fails with this output. */
   cloneFails?: string;
+  /** Paths each commit changes, in place of CHANGES. */
+  changes?: Record<string, string[]>;
+  /** What `git show <sha>:<path>` prints, keyed by `<sha>:<path>`. */
+  blobs?: Record<string, string>;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -84,9 +88,9 @@ function fakeGit(state: { head: string }, init: MachineInit): (args: readonly st
     diff: (args) => {
       const [from, to] = [at(args[3]!), at(args[4]!)];
       if (from < 0 || to < 0) return failed(128, "fatal: bad object");
-      return ok(HISTORY.slice(from + 1, to + 1).flatMap((sha) => CHANGES[sha] ?? []).join("\n"));
+      return ok(HISTORY.slice(from + 1, to + 1).flatMap((sha) => (init.changes ?? CHANGES)[sha] ?? []).join("\n"));
     },
-    show: (args) => ok(init.lockfiles?.[args[1]!.split(":")[0]!] ?? lockfile("13.0.3")),
+    show: (args) => ok(init.blobs?.[args[1]!] ?? init.lockfiles?.[args[1]!.split(":")[0]!] ?? lockfile("13.0.3")),
     merge: (args) => {
       if (at(args[2]!) > at(state.head)) state.head = args[2]!;
       return ok();
@@ -314,6 +318,31 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations()).toEqual([`git merge --ff-only ${DOCS}`]);
     expect(machine.state.head).toBe(DOCS);
     expect(machine.record()).toMatchObject({ outcome: "skipped", target: DOCS, from: BASE, touched: [] });
+  });
+
+  const RELEASE = { [CORE]: ["products/factory/package.json", "products/factory/CHANGELOG.md"] };
+  const factoryManifest = (version: string, dependencies: Record<string, string> = {}): string => JSON.stringify({ name: "@titan-design/factory", version, dependencies });
+
+  it("records a Version Packages merge as skipped without building or restarting", async () => {
+    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: factoryManifest("0.19.0") };
+    const machine = fakeMachine({ changes: RELEASE, blobs });
+
+    const { code } = await deploy(machine, CORE);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toEqual([`git merge --ff-only ${CORE}`]);
+    expect(machine.record()).toMatchObject({ outcome: "skipped", target: CORE, from: BASE, touched: [] });
+  });
+
+  it("still deploys a package.json change that adds a dependency", async () => {
+    const blobs = { [`${BASE}:products/factory/package.json`]: factoryManifest("0.18.0"), [`${CORE}:products/factory/package.json`]: factoryManifest("0.19.0", { zod: "^4.0.0" }) };
+    const machine = fakeMachine({ changes: RELEASE, blobs });
+
+    const { code } = await deploy(machine, CORE);
+
+    expect(code).toBe(0);
+    expect(machine.mutations()).toContain(`launchctl kickstart -k ${TARGET}`);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: CORE, touched: ["products/factory/package.json"] });
   });
 
   it.each([
