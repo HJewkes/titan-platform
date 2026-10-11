@@ -18,6 +18,7 @@ import type { ShepherdDeps, ShepherdPhases, Verdict, WakeRequest } from "./phase
 import { verdictIsMergeAt } from "../gate-brief.js";
 import { runPolicyCeiling, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
+import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
 import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
@@ -219,6 +220,7 @@ async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   if (!ci.success) return;
   run.lastCi = ci.data;
   expireStaleGates(run.ctx, ci.data.headSha);
+  await reholdMovedHead(run, ci.data.headSha);
   if (!reviewable(ci.data)) return;
   if (ci.data.verdict === "green") run.conflictWakes = 0;
   await routeGreenHead(run, ci.data.headSha);
@@ -361,6 +363,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     seatNoticeRoute(deps.now, deps.exitNotice),
     ...freezeHoldRoutes(deps, wiring.mainRed?.freezes),
     ...g10ReleaseRoutes(deps),
+    ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
   ];
 }

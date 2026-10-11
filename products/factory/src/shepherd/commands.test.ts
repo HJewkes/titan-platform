@@ -482,6 +482,17 @@ describe("shepherd.merge", () => {
     expect(released).toMatchObject({ ok: true, data: { held: null } });
   });
 
+  it("records the head a release was made at, so a later move off it is known", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: trust rule; TP-1" });
+    await w.call("shepherd.release", { repo: REPO, pr: 1 });
+
+    expect(w.routes.shepherd!.store.get().eventsOf(runId).at(-1)).toMatchObject({ kind: "release", headSha: H1 });
+  });
+
   it("records a hold's --reviewer and refuses one with whitespace", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });

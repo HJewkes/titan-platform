@@ -30,8 +30,13 @@ function reviewedLine(reviews: ReadonlyMap<string, Verdict>, fromHead: string): 
  * rebase fails one of these.
  */
 function isCleanMergeUp(result: CarryResult, fromHead: string, reviews: ReadonlyMap<string, Verdict>): boolean {
+  return isCleanMergeUpOf(result, reviewedLine(reviews, fromHead));
+}
+
+/** The same test against a line of heads already vouched for, for a caller that keeps no verdict map. */
+export function isCleanMergeUpOf(result: CarryResult, line: ReadonlySet<string>): boolean {
   const { equal, base, firstParent, headTree, mergeTree } = result;
-  return equal && base !== undefined && firstParent !== undefined && !!headTree && headTree === mergeTree && reviewedLine(reviews, fromHead).has(firstParent);
+  return equal && base !== undefined && firstParent !== undefined && !!headTree && headTree === mergeTree && line.has(firstParent);
 }
 
 /** A replay whose record took another step here ran before this rule; following the record keeps its history as it was. */
