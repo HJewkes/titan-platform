@@ -248,6 +248,21 @@ function approveThenMerge(): WorkflowDefinition {
   });
 }
 
+/** A merge step that recorded no landing, as a held merge leaves, and then the owner's approve-merge gate. */
+function unlandedMergeThenGate(): WorkflowDefinition {
+  return defineWorkflow({
+    name: SHEPHERD_WORKFLOW,
+    steps: [
+      { id: "merge", kind: "dispatch" },
+      { id: "approve-merge", kind: "assisted" },
+    ],
+    run: async (ctx) => {
+      await step(ctx, "merge:r1:0:0", { repo: REPO, pr: 1, sha: HEAD, method: "squash" }, MergeResultResult);
+      await ctx.assisted("approve-merge", "merge this head?", { brief: TEST_BRIEF });
+    },
+  });
+}
+
 describe("resyncShepherd when superseding moved gates throws", () => {
   it("still reports the runs it ended and the error class, never its text", async () => {
     const w = world();
@@ -350,6 +365,25 @@ describe("resyncShepherd", () => {
     expect(report.ended).toEqual([]);
     expect(swept).toEqual([]);
     expect(w.seed.gates.get(gateId(runId, "main-red"))?.status).toBe("pending");
+  });
+
+  it("ends a held run parked on an approve-merge gate whose recorded merge step landed nothing once its PR is merged by hand (tp#844)", async () => {
+    const w = world({ workflows: [unlandedMergeThenGate()] });
+    w.fake.addPr({ headSha: HEAD });
+    merge(w.fake, 1);
+    const runId = w.seed.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    w.routes.shepherd!.store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
+    w.routes.shepherd!.store.get().hold(runId, "g10-adversary: two independent MERGEs needed");
+    await gateOpened(w.seed, gateId(runId, "approve-merge"));
+    const recorded = Object.entries(w.seed.runtime.status(runId)!.stepResults).filter(([key]) => key.startsWith("merge:"));
+    expect(recorded.map(([, result]) => result.data?.result)).toEqual([expect.objectContaining({ done: false })]);
+
+    const report = await resyncShepherd(w.seed, w.routes.shepherd!);
+
+    const reason = `${LANDED_ELSEWHERE}${REPO}#1 was merged outside Shepherd`;
+    expect(report.ended).toEqual([{ runId, reason }]);
+    expect(w.seed.runtime.status(runId)?.error).toBe(reason);
+    expect(w.seed.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
   });
 
   it("cancels a pending gate of a failed run as orphaned", async () => {
