@@ -1,5 +1,19 @@
 # @titan-design/session-analytics
 
+## 0.15.0
+
+### Minor Changes
+
+- f640f72: `taskActuals` rows carry `peakContext`, the largest main-thread context over the task's implementer sessions, and `contextAtFirstDeliverable`, the context of the first implementer request at or after the earliest `status_report` or `pr_create` signal (null when there is none).
+- 3ecb1c7: Add `costPerOutcome`, `assignmentSchema`, `costPerOutcomeSchema` and `renderCostPerOutcomeText`: cost generic seat/agent assignment records against `request_cost` over a window and report what each merged and done outcome cost per seat, kind, initiative and value tag. An agent in several assignments is costed once, an agent with no name match joins by `session_origin.task_ids`, unmatched agents are listed rather than dropped, and seat sessions are reported apart in `seatCostUsd`.
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
 ## 0.14.0
 
 ### Minor Changes

@@ -1,5 +1,31 @@
 # @titan-design/factory
 
+## 0.18.3
+
+### Patch Changes
+
+- 60d8aa5: `service deploy` no longer rebuilds or restarts for a merge whose changes inside the factory closure are only test files, markdown, or version-only `package.json` bumps (a Version Packages merge); it records `skipped` instead.
+- 0891776: Shepherd's resync reads each run's PR with up to six reads in flight (`RESYNC_CONCURRENCY`) instead of one at a time, so a restart with dozens of live runs starts adopting in seconds. The gone-elsewhere sweep, moved-gate, stale-review and stale-merge supersedes read first, then act one run at a time in input order, re-reading each run or gate before acting as before; an unreadable PR still leaves its run held. `ResyncReport` gains `phaseMs`, the wall time of each phase.
+- Updated dependencies [3977860]
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/workflow@0.12.1
+  - @titan-design/fix-proof@0.4.0
+  - @titan-design/review-panel@0.5.2
+
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [ea3d34c]
+- Updated dependencies [790401a]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/agent@0.4.7
+  - @titan-design/workflow@0.12.0
+  - @titan-design/session-read@0.13.2
+
 ## 0.18.1
 
 ### Patch Changes

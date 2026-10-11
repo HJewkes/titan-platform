@@ -23,7 +23,8 @@ export function terminalFromHarnessResult<T, H extends Harness>(
     return { outcome: "cancellation_unknown", reason, evidence: cancellationEvidence(result.failure) };
   }
   // The shared failure contract does not prove the native invocation was absent.
-  return { outcome: "failed", reason, retryable: false };
+  // Omitting empty usage keeps stored records for spend-free failures unchanged.
+  return { outcome: "failed", reason, retryable: false, ...(result.usage.length > 0 ? { usage: result.usage } : {}) };
 }
 
 function cancellationEvidence(failure: HarnessRunFailure): string {

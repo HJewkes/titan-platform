@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Node } from "web-tree-sitter";
-import { getLanguageFromPath, type ParsedFile } from "@titan-design/code-parser";
+import { getLanguageFromPath, parseFile, type ParsedFile } from "@titan-design/code-parser";
 import type { CodeGraphStore } from "./store.js";
 import { workingTreeSource, type IndexSource } from "./index-source.js";
 import { fileId, parseSymbolId } from "./extractors/ids.js";
@@ -8,6 +8,7 @@ import { SOURCE_METRIC_NAMES } from "./source-metrics.js";
 import { DEAD_CODE_METRIC_NAMES } from "./analysis/dead-code.js";
 import { GROWTH_RISK_METRIC_NAMES } from "./analysis/growth-risk.js";
 import { reconstructCosmetic, reconstructFragment } from "./reconstruct.js";
+import { digestParsedFile, type FileDigest } from "./file-digest.js";
 import type { Extractor } from "@titan-design/code-parser";
 import type {
   FileFingerprint,
@@ -97,82 +98,100 @@ export function classifyForReuse(
   return { toParse, reusedFileIds };
 }
 
-/** COSMETIC/structural split of the freshly-parsed files, plus every parsed and
- *  reused file's structural signature (to persist for the next run). */
-export interface ParsedClassification {
+/** What the per-file stream leaves behind once every tree it parsed is deleted. */
+export interface StreamedFiles {
+  /** Every file's fragments in walk order, so the merge dedup resolves shared nodes as a full index does. */
+  fragments: GraphFragment[];
   /** Parsed files whose structure matches the basis — reuse edges, skip extract. */
   cosmeticFileIds: Set<string>;
   /** fileId → structural signature, for every parsed file and every reused file. */
   structuralByFileId: Map<string, string>;
+  /** Tree-derived metrics and qualified names of each parsed file, in walk order; empty unless asked for. */
+  digests: FileDigest[];
 }
 
-/**
- * Split freshly-parsed files into COSMETIC (structure unchanged vs the basis —
- * only comments/whitespace moved) and STRUCTURAL (a real token change), by
- * comparing each file's structural signature against the basis (C-18). Also
- * carries reused (NONE-tier) files' signatures forward so they survive across
- * generations rather than decaying to NULL after their first reuse.
- */
-export function classifyParsed(
-  parsedByPath: Map<string, ParsedFile>,
-  idRoot: string,
-  reuse: ReuseBasis | null,
-  reusedFileIds: readonly string[],
-  affected: ReadonlySet<string> = new Set(),
-): ParsedClassification {
-  const cosmeticFileIds = new Set<string>();
-  const structuralByFileId = new Map<string, string>();
-  for (const [filePath, parsed] of parsedByPath) {
-    const id = fileId(idRoot, filePath);
-    const sig = structuralSignature(parsed);
-    structuralByFileId.set(id, sig);
-    // A file affected by a membership delta (C-20) has a stale basis edge set even
-    // though its structure is unchanged, so it must NOT take the cosmetic path.
-    if (reuse && !affected.has(id) && reuse.structuralHashes.get(id) === sig) {
-      cosmeticFileIds.add(id);
-    }
-  }
-  if (reuse) {
-    for (const id of reusedFileIds) {
-      const sig = reuse.structuralHashes.get(id);
-      if (sig !== undefined) structuralByFileId.set(id, sig);
-    }
-  }
-  return { cosmeticFileIds, structuralByFileId };
-}
-
-/**
- * Build fragments for all files in walk order — extracting STRUCTURAL freshly-
- * parsed files, reconstructing NONE-tier reused ones, and (C-18) reconstructing
- * COSMETIC files from the basis edges while refreshing their symbol line spans
- * from the fresh parse, skipping the expensive ts-morph extract. Walk order is
- * preserved so the merge dedup resolves shared nodes identically to a full index.
- */
-export function assembleFragments(input: {
+export interface StreamFilesInput {
   readFiles: readonly ReadFile[];
   idRoot: string;
-  parsedByPath: Map<string, ParsedFile>;
+  toParse: readonly ReadFile[];
   reuse: ReuseBasis | null;
-  cosmeticFileIds: ReadonlySet<string>;
+  reusedFileIds: readonly string[];
+  affected: ReadonlySet<string>;
   extractor: Extractor<GraphFragment>;
-}): GraphFragment[] {
-  const fragments: GraphFragment[] = [];
+  /** Digest each parsed file; skip when neither metrics nor requalify aliases will read the digests. */
+  digest: boolean;
+}
+
+/**
+ * Build fragments for all files in walk order. Each file to parse is parsed,
+ * structurally signed (C-18), extracted — or, when COSMETIC, reconstructed from
+ * the basis with refreshed line spans — digested, and its tree deleted before
+ * the next parse, so at most one web-tree-sitter tree is alive at a time
+ * (TP-747: WASM memory never shrinks, so the peak is set by live trees). Reused
+ * files are reconstructed from the basis without a parse.
+ */
+export async function streamFiles(input: StreamFilesInput): Promise<StreamedFiles> {
+  const toParse = new Set(input.toParse.map((rf) => rf.filePath));
+  const out: StreamedFiles = { fragments: [], cosmeticFileIds: new Set(), structuralByFileId: new Map(), digests: [] };
   for (const rf of input.readFiles) {
-    const parsed = input.parsedByPath.get(rf.filePath);
     const id = fileId(input.idRoot, rf.filePath);
-    if (parsed && input.reuse && input.cosmeticFileIds.has(id)) {
-      fragments.push(
-        reconstructCosmetic(input.idRoot, rf.filePath, id, input.reuse, parsed),
-      );
-    } else if (parsed) {
-      fragments.push(...input.extractor.extract(parsed));
+    if (toParse.has(rf.filePath)) {
+      await streamParsedFile(input, rf, id, out);
     } else if (input.reuse) {
-      fragments.push(
-        reconstructFragment(input.idRoot, rf.filePath, id, input.reuse),
-      );
+      out.fragments.push(reconstructFragment(input.idRoot, rf.filePath, id, input.reuse));
     }
   }
-  return fragments;
+  carryReusedSignatures(input.reuse, input.reusedFileIds, out.structuralByFileId);
+  return out;
+}
+
+async function streamParsedFile(input: StreamFilesInput, rf: ReadFile, id: string, out: StreamedFiles): Promise<void> {
+  const parsed = await parseFile(rf.content, rf.filePath, rf.language);
+  try {
+    const sig = structuralSignature(parsed);
+    out.structuralByFileId.set(id, sig);
+    const basis = cosmeticBasis(input, id, sig);
+    const fragments = basis
+      ? [reconstructCosmetic(input.idRoot, rf.filePath, id, basis, parsed)]
+      : input.extractor.extract(parsed);
+    if (basis) out.cosmeticFileIds.add(id);
+    out.fragments.push(...fragments);
+    if (input.digest) out.digests.push(digestParsedFile(parsed, id, ownSymbolNames(fragments, id)));
+  } finally {
+    parsed.tree.delete();
+  }
+}
+
+/**
+ * The basis to reconstruct from when the file is COSMETIC, else null. A file
+ * affected by a membership delta (C-20) has a stale basis edge set even though
+ * its structure is unchanged, so it must NOT take the cosmetic path.
+ */
+function cosmeticBasis(input: StreamFilesInput, id: string, sig: string): ReuseBasis | null {
+  const { reuse, affected } = input;
+  return reuse && !affected.has(id) && reuse.structuralHashes.get(id) === sig ? reuse : null;
+}
+
+/** Names of the symbol nodes a file's own fragments declare; symbols always hang off their declaring file. */
+function ownSymbolNames(fragments: readonly GraphFragment[], id: string): Set<string> {
+  const names = new Set<string>();
+  for (const fragment of fragments) {
+    for (const n of fragment.nodes) if (n.kind === "symbol" && n.parentId === id) names.add(n.name);
+  }
+  return names;
+}
+
+/** Reused (NONE-tier) files keep their signatures, so they survive across generations rather than decaying to NULL. */
+function carryReusedSignatures(
+  reuse: ReuseBasis | null,
+  reusedFileIds: readonly string[],
+  structuralByFileId: Map<string, string>,
+): void {
+  if (!reuse) return;
+  for (const id of reusedFileIds) {
+    const sig = reuse.structuralHashes.get(id);
+    if (sig !== undefined) structuralByFileId.set(id, sig);
+  }
 }
 
 /**

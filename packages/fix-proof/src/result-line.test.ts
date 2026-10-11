@@ -57,6 +57,18 @@ describe("formatResultLine and parseResultLine", () => {
     expect(parsed.ok && parsed.result.verdict).toBe("reproduced");
   });
 
+  it("keeps a reproducing test listed last when trimming many passing tests to 4 KB", () => {
+    const passing = Array.from({ length: 200 }, (_, index) => ({ file: "src/a.test.ts", name: `case ${index}`, class: "passes-on-base" as const }));
+    const reproducing = { file: "src/a.test.ts", name: "the bug", class: "reproduces" as const };
+    const many = { ...result(), tests: [...passing, reproducing] };
+
+    const parsed = parseResultLine(formatResultLine(many));
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.result.truncated).toBe(true);
+    expect(parsed.ok && parsed.result.tests).toContainEqual(reproducing);
+  });
+
   it("refuses to format a result that would not parse back", () => {
     expect(() => formatResultLine({ ...result(), head: "HEAD" })).toThrow(/head/);
   });
