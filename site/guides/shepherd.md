@@ -737,9 +737,10 @@ A `g10-adversary:` hold the seat released is re-applied by the `sh-g10-rehold` s
 CI read, when the head then moves off the released one: a fix round, a fixer's push, a rebase, or
 a merge-up whose conflicts were resolved by hand. The hold event names the old and new head and
 the seat is told. A pure merge-up keeps the release: the head's first parent is the released head
-(or a head already shown pure), its second parent is on the base branch, and its tree equals
+(or a head already shown pure, so a chain of merge-ups stays released), its second parent is on the base branch, and its tree equals
 `git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
-show, including a failed probe, counts as a move and re-holds. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
+show, including a failed probe, counts as a move and re-holds. Each head the probe shows pure is
+recorded in the factory database, so the CI read and the merge check read the same line of heads. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
 hold or release landed since the step read the run, and when one did, the step reads the run again.
 
 The merge enforces the same rule, so it does not depend on a CI read seeing the head. Every merge
@@ -755,8 +756,13 @@ a recorded head, the rule holds for the rest of the run. Later holds of other cl
 written with no head, such as Shepherd's own `g10-review` auto-release, do not switch it off. Later
 heads are compared against the head the seat last released a `g10-adversary` hold at. A release of
 another class leaves that head where it was, even one made with `--head` at a newer head: lifting a
-stall is not an adversary review. While a `g10-adversary` hold is in force, `shepherd hold` with
-another class leaves it in place and records nothing, so that class's release cannot drop it. A run whose only
+stall is not an adversary review.
+
+A run keeps two holds at once: the `g10-adversary` hold and one hold of any other class. Each
+`shepherd hold` replaces only the hold of its own kind, and both are recorded. While both are in
+force, the `g10-adversary` hold gates and shows; a `release` lifts it, and the other hold, with its
+`--reviewer`, then gates until it is released in turn. So an owner's or another seat's hold survives
+the seat's adversary release, and an adversary hold placed over another hold never drops it. A run whose only
 `g10-adversary` release has no head (made before `--head` was required) is never re-held.
 
 ### Ask for Shepherd's own review {#own-review}
