@@ -7,7 +7,7 @@ import { awaitLift, type MachineStopWatch } from "./machine-stop.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { StopRead } from "./review-schemas.js";
 
-export const REVIEW_STOP_STEP = "sh-review-stop";
+const REVIEW_STOP_STEP = "sh-review-stop";
 export const REVIEW_STOP_STEPS: readonly StepDeclaration[] = [{ id: REVIEW_STOP_STEP, kind: "dispatch" }];
 
 /** `since` is epoch ms: when the reviewer started, or was dispatched when no start was read. */
