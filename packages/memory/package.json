@@ -37,7 +37,8 @@
   "dependencies": {
     "@titan-design/embed": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
-    "@titan-design/store-sqlite": "workspace:^"
+    "@titan-design/store-sqlite": "workspace:^",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "zod": "^4.4.3"
