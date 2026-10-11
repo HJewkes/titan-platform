@@ -28,6 +28,11 @@ function insertRequest(db: Db, r: Request): void {
   ).run({ ...row, requestId: `req-${offset}`, offset, context: 10 + row.cacheRead + row.cacheWrite1h });
 }
 
+/** One request with default usage, so a day counts as covered by the graph. */
+export function seedRequest(db: Db, sessionId: string, ts: string): void {
+  insertRequest(db, { sessionId, ts });
+}
+
 function insertSession(db: Db, sessionId: string, profile: string, agentName: string): void {
   db.prepare("INSERT INTO session (session_id, cwd, start_type, account, seed_prompt) VALUES (?, '/tmp/demo', 'sdk-cli', 'demo', NULL)").run(sessionId);
   db.prepare(

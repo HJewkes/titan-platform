@@ -21,10 +21,10 @@ const EVENTS: FixtureMessage[] = [
   send(at(13), "coord-a", "impl-a", "Here are the reviewer's notes for the widgets PR."),
   send(at(13), "impl-a", "coord-a", "Status: DONE\nPR: acme/widgets#2. Stop here, I was wrong earlier."),
   send(at(13), "rev-1", "impl-a", "Stop, do not merge yet."),
-  send(at(9), "rev-1", "coord-a", verdict("MERGE", "acme/widgets#1")),
+  send(at(10), "rev-1", "coord-a", verdict("MERGE", "acme/widgets#1")),
   send(at(10), "rev-1", "coord-a", verdict("FIX_FIRST", "acme/widgets#2")),
   send(at(14), "rev-1", "coord-a", verdict("MERGE", "https://github.com/acme/widgets/pull/2")),
-  send(at(15), "rev-1", "coord-a", verdict("MERGE", null)),
+  send(at(14), "rev-1", "coord-a", verdict("MERGE", null)),
   send("2026-09-13T12:00:00Z", "coord-a", "impl-a", "Any update?"),
   send("2026-09-13T12:00:00Z", "rev-1", "coord-a", verdict("FIX_FIRST", "acme/widgets#1")),
 ];
