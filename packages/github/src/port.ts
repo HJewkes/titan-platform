@@ -41,6 +41,8 @@ export interface PullRequest {
   mergeableState: string;
   /** The head lacks commits the base has. */
   behind: boolean;
+  /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
+  autoMerge: boolean;
 }
 
 export interface RequiredChecks {
