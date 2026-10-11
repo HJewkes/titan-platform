@@ -230,6 +230,19 @@ requested cause and process exit evidence. Temporary schema cleanup completes
 before the terminal progress event, so cleanup failure cannot follow a reported
 successful finish.
 
+Turn usage carries `cost: null` unless the caller passes `prices`, a dated table of
+`CodexPriceRow` entries (`model`, `effectiveFrom` as a UTC `YYYY-MM-DD` date, and
+input, cached-input and output rates in USD per million tokens). The adapter then
+fills `cost: { usd, kind: "estimate" }` from the row for the run's model with the
+latest `effectiveFrom` not after the run time. Cached input is billed at the cached
+rate and the rest of input at the full rate; reasoning tokens are already inside
+output. A model with no row in force keeps `cost: null`, so budgets see the cost as
+unknown rather than zero. The package ships no rates: pricing is the product's
+policy and a checked-in table would go stale. `createCodexExecAdapter` rejects a
+negative or non-finite rate, a bad date, or a duplicate `(model, effectiveFrom)` row.
+`priceCodexUsage(measurements, prices, atMs)` applies the same rule to any
+measurements.
+
 ## Ending a run
 
 Every run ends cleanly. The inactivity watchdog resets on each streamed message

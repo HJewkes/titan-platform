@@ -5,6 +5,7 @@ import {
   buildCodexExecArgs,
   createCodexExecAdapter,
   prepareCodexEnv,
+  type CodexExecAdapterOptions,
   type CodexExecDeps,
 } from "./codex-exec.js";
 import type { CodexProcessExit, CodexProcessInput, SupervisedCodexProcess } from "./codex-process.js";
@@ -65,7 +66,11 @@ function events(text = "done") {
   ];
 }
 
-function harness(processHandle: SupervisedCodexProcess, overrides: Partial<CodexExecDeps> = {}) {
+function harness(
+  processHandle: SupervisedCodexProcess,
+  overrides: Partial<CodexExecDeps> = {},
+  adapterOptions: Partial<CodexExecAdapterOptions> = {},
+) {
   const inspectVersion = vi.fn(async () => `codex-cli ${SUPPORTED_CODEX_EXEC_VERSION}`);
   const start = vi.fn((_input: CodexProcessInput) => processHandle);
   const deps: CodexExecDeps = {
@@ -76,7 +81,7 @@ function harness(processHandle: SupervisedCodexProcess, overrides: Partial<Codex
     ...overrides,
   };
   const adapter = createCodexExecAdapter(
-    { auth: "cached-cli", env: { PATH: "/bin", CODEX_API_KEY: "secret" }, killGraceMs: 100 },
+    { auth: "cached-cli", env: { PATH: "/bin", CODEX_API_KEY: "secret" }, killGraceMs: 100, ...adapterOptions },
     deps,
   );
   return { adapter, inspectVersion, start };
@@ -124,6 +129,12 @@ describe("Codex exec command and policy", () => {
     { auth: "cached-cli", executablePath: " " },
     { auth: "cached-cli", executablePath: "relative/codex" },
     { auth: "cached-cli", killGraceMs: Number.NaN },
+    {
+      auth: "cached-cli",
+      prices: [
+        { model: "m", effectiveFrom: "not-a-date", inputUsdPerMTok: 1, cachedInputUsdPerMTok: 1, outputUsdPerMTok: 1 },
+      ],
+    },
   ])("rejects malformed adapter option %#", (options) => {
     expect(() => createCodexExecAdapter(options as never)).toThrow(TypeError);
   });
@@ -195,6 +206,25 @@ describe("Codex exec results", () => {
       "execution_finished",
     ]);
     expect(runner.start.mock.calls[0]?.[0].env.CODEX_API_KEY).toBeUndefined();
+  });
+
+  it("prices turn usage from the caller's table on success and on failure after turn completion", async () => {
+    const prices = [
+      { model: "caller-selected", effectiveFrom: "1970-01-01", inputUsdPerMTok: 2, cachedInputUsdPerMTok: 0.5, outputUsdPerMTok: 8 },
+    ];
+    const ok = await harness(fakeProcess({ stdout: events() }).processHandle, {}, { prices }).adapter.run(request());
+    const failedExit = fakeProcess({ stdout: events(), exit: { exitCode: 1, signal: null } });
+    const failed = await harness(failedExit.processHandle, {}, { prices }).adapter.run(request());
+    // 6 uncached * 2 + 4 cached * 0.5 + 6 output * 8, per million tokens
+    const expected = { usd: 62 / 1_000_000, kind: "estimate" };
+    expect(ok.usage[0]?.cost).toEqual(expected);
+    expect(failed).toMatchObject({ ok: false });
+    expect(failed.usage[0]?.cost).toEqual(expected);
+  });
+
+  it("keeps cost null when the caller supplies no price table", async () => {
+    const result = await harness(fakeProcess({ stdout: events() }).processHandle).adapter.run(request());
+    expect(result.usage[0]?.cost).toBeNull();
   });
 
   it("requires native turn completion before reporting success", async () => {

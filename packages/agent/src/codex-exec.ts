@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { performance } from "node:perf_hooks";
 import { runCodexExecSession } from "./codex-exec-session.js";
+import { priceCodexUsage, validateCodexPrices, type CodexPriceRow } from "./codex-prices.js";
 import {
   createCodexSchemaFile,
   inspectCodexVersion,
@@ -32,6 +33,8 @@ export interface CodexExecAdapterOptions {
   executablePath?: string;
   env?: NodeJS.ProcessEnv;
   killGraceMs?: number;
+  /** Dated rates used to estimate turn cost; without a row for the model, cost stays null. */
+  prices?: readonly CodexPriceRow[];
 }
 
 export interface CodexExecDeps {
@@ -63,12 +66,22 @@ export function createCodexExecAdapter(
       const invalid = validateAdapterRequest(request);
       if (invalid) return failed(invalid);
       try {
-        return await runSupervised(request, { executablePath, env, killGraceMs: options.killGraceMs }, deps);
+        const result = await runSupervised(request, { executablePath, env, killGraceMs: options.killGraceMs }, deps);
+        return withPricedUsage(result, options.prices, deps.now ?? Date.now);
       } catch (error) {
         return failed({ kind: "runtime_error", reason: messageOf(error), native: error });
       }
     },
   };
+}
+
+function withPricedUsage<T>(
+  result: HarnessRunResult<T, "codex">,
+  prices: readonly CodexPriceRow[] | undefined,
+  now: () => number,
+): HarnessRunResult<T, "codex"> {
+  if (!prices || result.usage.length === 0) return result;
+  return { ...result, usage: priceCodexUsage(result.usage, prices, now()) };
 }
 
 export function prepareCodexEnv(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -137,6 +150,7 @@ function validateOptions(options: CodexExecAdapterOptions): void {
   if (options.killGraceMs !== undefined && (!Number.isFinite(options.killGraceMs) || options.killGraceMs < 0)) {
     throw new TypeError("killGraceMs must be a finite nonnegative number");
   }
+  if (options.prices !== undefined) validateCodexPrices(options.prices);
 }
 
 function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailure | undefined {
