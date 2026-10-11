@@ -365,18 +365,14 @@ async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promis
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
   const fixFirst = await countFixFirst(ctx, request);
   const woke = await wakeStep(ctx, request, fixFirst);
-  if (woke.kind === "woken") return redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst);
-  return notWoken(woke);
+  return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);
 };
 
-function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): WakeOutcome {
-  if (woke.held === undefined) return { kind: "unhandled", reason: woke.reason };
-  const heldWake: HeldWake = { kind: "unhandled", reason: woke.reason, held: woke.held };
-  return heldWake;
+function notWoken(woke: Extract<z.infer<typeof Woke>, { kind: "unhandled" }>): WakeOutcome | HeldWake {
+  return woke.held === undefined ? { kind: "unhandled", reason: woke.reason } : { kind: "unhandled", reason: woke.reason, held: woke.held };
 }
 
-const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) =>
-  step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
+const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number | undefined) => step(ctx, `${WAKE_STEP}:${request.round}`, { ...request, runId: ctx.runId, ...(fixFirst !== undefined && { fixFirst }) }, Woke);
 
 /**
  * A live agent can end its turn before it reads a chat-sent wake, so the wake is asked once more after its exit: the
