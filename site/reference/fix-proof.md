@@ -26,10 +26,33 @@ This package is the pure core of that gate. It adds three primitives:
 
 ## When to reach for it
 
-Use it to decide whether a fix PR's tests prove the fix, given a diff and two vitest reports
-you already hold. The package runs no git, vitest or filesystem calls. The runner that checks
-out the overlay, builds and runs vitest is a separate slice (TP-538 S2). To decide who may merge
-once a check passes, use [authority](./authority.md).
+Use it to decide whether a fix PR's tests prove the fix. Call the pure functions when you
+already hold a diff and two vitest reports, or run the `fix-proof` bin in CI to produce them.
+To decide who may merge once a check passes, use [authority](./authority.md).
+
+## The runner
+
+```sh
+fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+```
+
+1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config. With no
+   changed test it prints a `no-tests` line.
+2. Adds a detached worktree at the merge base and checks out the head's tests and carried
+   files over it, removing `overlayRemovals`. Nothing else from head reaches it, so the base
+   run lacks the fix.
+3. Adds a second worktree at head. In each, it runs `pnpm install --frozen-lockfile` when a
+   `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+4. Runs the config's `command` (default `pnpm exec vitest run`) with
+   `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended, at head and then
+   on base. A `vacuous` verdict runs the base once more, to rule out a reproducer that flaked
+   green.
+5. Prints one `fix-proof/v1` line and exits 0 whatever the verdict. A failed git call, install
+   or build, a missing report or the `--budget-ms` deadline (default 18 minutes) gives an
+   `error` line instead; the deadline's error is `timeout`. Worktrees are removed either way.
+
+`command` and `build` run under `sh -c`, so they come from the merge base's config only. Build
+the runner itself from the merge base too, never from the PR's tree.
 
 ## Example
 
@@ -109,9 +132,10 @@ Every ambiguous, missing or malformed input classifies away from `reproduced`.
 
 ## What it deliberately does not do
 
-No git, no vitest, no filesystem and no network calls. It does not decide whether a task
-needs the gate; that is the caller's policy (TP-538 section 4). It does not re-run a vacuous
-base to rule out a flake; the runner does that.
+The pure functions make no git, vitest, filesystem or network calls; only `run` and the bin do.
+It does not decide whether a task
+needs the gate; that is the caller's policy (TP-538 section 4). `classifyReports` does not re-run
+a vacuous base to rule out a flake; `run` does that.
 
 ## Gotchas
 
@@ -125,5 +149,5 @@ base to rule out a flake; the runner does that.
 
 ## Where it came from
 
-New in TP-541, the first slice of TP-538. Before it, only a reviewer reverting the fix by
+New in TP-541, the first slice of TP-538; the runner and bin came in TP-542. Before them, only a reviewer reverting the fix by
 hand could tell a reproducing test from a vacuous one.

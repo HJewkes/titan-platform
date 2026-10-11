@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closureDirs, lockedVersions, nativeBuildChanges, readWorkspace, touchedPaths, UNKNOWN_DIFF, workspaceDirs, type WorkspaceReader } from "./deploy-closure.js";
+import { closureDirs, lockedVersions, nativeBuildChanges, readWorkspace, touchedPaths, UNKNOWN_DIFF, versionOnlyManifestChange, workspaceDirs, type WorkspaceReader } from "./deploy-closure.js";
 
 const WORKSPACE_YAML = 'packages:\n  - "packages/*"\n  - "products/*"\n  - "deploy/hub"\n  - "!packages/ignored"\n';
 
@@ -60,6 +60,44 @@ describe("touched paths", () => {
 
   it("counts an unknown diff as touched", () => {
     expect(touchedPaths(undefined, closure)).toEqual([UNKNOWN_DIFF]);
+  });
+
+  it("does not count a test file, a spec or a README inside the closure as a build input", () => {
+    const changed = ["products/factory/src/deploy.test.ts", "packages/store/src/open.spec.tsx", "packages/workflow/CHANGELOG.md", "packages/store/README.md"];
+
+    expect(touchedPaths(changed, closure)).toEqual([]);
+  });
+
+  it("still counts a source file next to a test file", () => {
+    const changed = ["products/factory/src/deploy.test.ts", "products/factory/src/deploy.ts", "products/factory/src/testing.ts"];
+
+    expect(touchedPaths(changed, closure)).toEqual(["products/factory/src/deploy.ts", "products/factory/src/testing.ts"]);
+  });
+
+  it("always counts the root package.json and lockfile", () => {
+    expect(touchedPaths(["package.json", "pnpm-lock.yaml"], closure)).toEqual(["package.json", "pnpm-lock.yaml"]);
+  });
+});
+
+describe("version-only manifest changes", () => {
+  const pkg = (fields: Record<string, unknown>): string => JSON.stringify({ name: "@titan-design/store", version: "1.0.0", scripts: { build: "tsc" }, dependencies: { zod: "^4.0.0" }, ...fields }, null, 2);
+
+  it("is a version-only change when nothing but the version moves", () => {
+    expect(versionOnlyManifestChange(pkg({}), pkg({ version: "1.1.0" }))).toBe(true);
+  });
+
+  it("is a real change when a dependency is added", () => {
+    expect(versionOnlyManifestChange(pkg({}), pkg({ version: "1.1.0", dependencies: { zod: "^4.0.0", yaml: "^2.0.0" } }))).toBe(false);
+  });
+
+  it("is a real change when a script changes", () => {
+    expect(versionOnlyManifestChange(pkg({}), pkg({ scripts: { build: "tsc -b" } }))).toBe(false);
+  });
+
+  it("is a real change when either side is missing or does not parse", () => {
+    expect(versionOnlyManifestChange(pkg({}), "{ not json")).toBe(false);
+    expect(versionOnlyManifestChange(undefined, pkg({}))).toBe(false);
+    expect(versionOnlyManifestChange("[]", "[]")).toBe(false);
   });
 });
 

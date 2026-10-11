@@ -116,14 +116,18 @@ export interface InboundFixture {
   transcriptId?: number;
   fromName?: string | null;
   msgId?: string | null;
+  broadcast?: boolean | null;
 }
+
+/** SQLite has no boolean, and an absent flag is a row extracted before session-read stored it. */
+const flag = (value: boolean | null | undefined) => (value == null ? null : Number(value));
 
 export function insertInbound(db: Db, inbound: InboundFixture): void {
   nextOffset += 1;
   db.prepare(
-    `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, from_name, msg_id, content_hash, chars)
-     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @cause, @delivery, @fromName, @msgId, 'h', 1)`,
-  ).run({ delivery: "turn_start", transcriptId: 1, fromName: null, msgId: null, ...inbound, offset: nextOffset });
+    `INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, from_name, msg_id, broadcast, content_hash, chars)
+     VALUES (@transcriptId, @offset, 0, @sessionId, @ts, @cause, @delivery, @fromName, @msgId, @broadcast, 'h', 1)`,
+  ).run({ delivery: "turn_start", transcriptId: 1, fromName: null, msgId: null, ...inbound, broadcast: flag(inbound.broadcast), offset: nextOffset });
 }
 
 export interface SignalFixture {

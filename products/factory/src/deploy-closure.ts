@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 
 export const FACTORY_PACKAGE = "@titan-design/factory";
@@ -7,6 +8,8 @@ const ROOT_TSCONFIG = /^tsconfig[^/]*\.json$/;
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
 /** Stands in for the changed paths when git could not list them, so an unknown diff deploys. */
 export const UNKNOWN_DIFF = "<unknown diff>";
+/** Files inside a closure package that the build never compiles into dist. */
+const NON_RUNTIME = /(\.(test|spec)\.[cm]?tsx?|\.md)$/;
 
 export interface WorkspacePackage {
   /** Relative to the checkout root, with forward slashes. */
@@ -68,7 +71,25 @@ function isRootInput(path: string): boolean {
 /** The changed paths a factory build reads; `undefined` means git could not list them, which counts as touched. */
 export function touchedPaths(changed: readonly string[] | undefined, closure: readonly string[]): string[] {
   if (changed === undefined) return [UNKNOWN_DIFF];
-  return changed.filter((path) => isRootInput(path) || closure.some((dir) => path.startsWith(`${dir}/`)));
+  return changed.filter((path) => isRootInput(path) || (!NON_RUNTIME.test(path) && closure.some((dir) => path.startsWith(`${dir}/`))));
+}
+
+function manifestWithoutVersion(text: string | undefined): Record<string, unknown> | undefined {
+  try {
+    const value = JSON.parse(text ?? "") as unknown;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const rest: Record<string, unknown> = { ...value };
+    delete rest.version;
+    return rest;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A release bump changes only the version, which no build reads; anything unreadable counts as a real change. */
+export function versionOnlyManifestChange(before: string | undefined, after: string | undefined): boolean {
+  const [was, now] = [manifestWithoutVersion(before), manifestWithoutVersion(after)];
+  return was !== undefined && now !== undefined && isDeepStrictEqual(was, now);
 }
 
 /** Packages in the factory closure whose install script compiles a native addon; setupEnv's ignore_scripts skips that compile. */

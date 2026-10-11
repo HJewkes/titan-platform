@@ -63,6 +63,8 @@ export {
   createCodexExecAdapter,
   prepareCodexEnv,
 } from "./codex-exec.js";
+export type { CodexPriceRow } from "./codex-prices.js";
+export { priceCodexUsage } from "./codex-prices.js";
 export { DEFAULT_CODEX_KILL_GRACE_MS } from "./codex-exec-session.js";
 export type {
   AgentFailure,

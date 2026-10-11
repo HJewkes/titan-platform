@@ -155,7 +155,7 @@ rather than regexes over tool input, so the default action rules and a seat's ow
 decide it the same way they decide `byAction`.
 
 **From.** Each episode has a sender kind. `broker` is agent-chat itself, the sender of the
-lifecycle notice. `broadcast` is a message whose `msg_id` reached more than one session. `seat`
+lifecycle notice. `broadcast` is a message whose channel tag carries `broadcast="true"`. `seat`
 is a name carried by a top-level session or by a session spawned with a coordinator profile.
 `agent` is any other named sender, and `none` is an arrival with no sender. `pairs` is the
 sender-by-receiver matrix. A seat sender is named, and every other sender collapses to its kind,
@@ -336,9 +336,12 @@ default rules classify that head as `merge`. Other `gh api` heads stay `other`, 
 A tool call belongs to the latest request at or before it in its transcript, the request that
 issued it. The `context_contribution` view maps the other way, to the request a block feeds.
 
-session-read keeps `from` and `msg_id` from a channel tag but not its `broadcast` attribute, so
-a broadcast is inferred from its `msg_id` reaching more than one session. A multicast to named
-recipients counts as a broadcast too.
+session-read keeps `from`, `msg_id` and `broadcast` from a channel tag, and session-graph stores
+the flag in `inbound.broadcast`. A tag without the attribute is a direct message, even when a
+forked or resumed session copied it into a second transcript. Rows extracted before session-read's
+`EXTRACT_VERSION` 8 hold NULL there; for those a broadcast is still inferred from the `msg_id`
+reaching more than one session, which miscounts a copied direct message, until session-graph's
+`backfillFacets` re-extracts them.
 
 Coordinator seats spawned with the `opus-coordinator` profile report as `worker:coordinator`.
 Before that profile was mapped they fell into `worker:unknown`, and the `coordinator` role held
