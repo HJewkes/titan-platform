@@ -1,5 +1,13 @@
 # @titan-design/titan
 
+## 0.2.0
+
+### Minor Changes
+
+- 2c309ee: Add `titan host doctor [--json]`: runs the active-work, agent-chat and titan-factory doctors and
+  reports presence and version for the product and tool CLIs, warning when a linked product CLI's
+  version differs from its checkout's package.json.
+
 ## 0.1.0
 
 ### Minor Changes

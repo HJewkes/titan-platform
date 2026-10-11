@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { daemonPaths, probeHealth, readPidFile, silentLogger } from "@titan-design/daemon";
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { EXIT, formatResume, runCli, type CliDeps } from "./cli.js";
 import { openFactoryHost } from "./host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -226,6 +227,30 @@ describe("shepherd status filters", () => {
 
     expect(status.code).toBe(EXIT.USAGE);
     expect(status.err).toContain("expected one or more of awaiting-pr");
+  });
+});
+
+describe("shepherd timeline --last", () => {
+  const Timeline = z.object({ entries: z.array(z.unknown()) });
+
+  it("with --json slices entries to the last n, oldest first", async () => {
+    const dbPath = dbFile();
+    const fixture = shepherdFixture();
+    fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const deps: CliDeps = { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger };
+    const host = openFactoryHost({ dbPath, workflows: fixture.workflows, routes: fixture.routes, gatePollMs: 5 });
+    const registered = await callCommand<{ runId: string }>(host, fixture.routes, "shepherd.register", { repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    await gateOpened(host, gateId(registered.data.runId, "approve-merge"));
+    host.close();
+    const argv = ["--db", dbPath, "shepherd", "timeline", `${REPO}#1`, "--json", "--port", String(await deadPort())];
+    const full = Timeline.parse(JSON.parse((await cli(argv, deps)).out));
+
+    const last = await cli([...argv, "--last", "2"], deps);
+
+    expect(full.entries.length).toBeGreaterThan(2);
+    expect(last.code).toBe(EXIT.OK);
+    expect(Timeline.parse(JSON.parse(last.out)).entries).toEqual(full.entries.slice(-2));
   });
 });
 

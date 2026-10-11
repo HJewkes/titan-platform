@@ -3,6 +3,7 @@ import type { DeployRecord } from "../deploy.js";
 import {
   DEPLOY_MAX_WAIT_MS,
   DEPLOY_QUIET_MS,
+  DEPLOY_STALE_SPAWN_MS,
   DEPLOY_WANTED,
   noteWanted,
   paceDecision,
@@ -38,7 +39,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord } = {}) {
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
-  const world = { now: 0, busy: options.busy ?? 0, runningSha: RUNNING, lastDeploy: options.lastDeploy };
+  const world = { now: 0, busy: options.busy ?? 0, paused: false, runningSha: RUNNING, lastDeploy: options.lastDeploy };
   const merge = (sha: string) => writeWanted(STATE, store, noteWanted(readWanted(STATE, store), sha, world.now));
   const tick = (spawn = (sha: string) => (spawns.push([world.now / MIN, sha]), { pid: 1 })) =>
     pacerTick({
@@ -48,6 +49,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord } = {}) {
       runningSha: () => world.runningSha,
       lastDeploy: () => world.lastDeploy,
       busy: () => world.busy,
+      paused: () => world.paused,
       spawn,
       log: (line) => void logs.push(line),
     });
@@ -67,8 +69,18 @@ const wantedAt = (sha: string, firstMin: number, lastMin: number, extra: Partial
   ...extra,
 });
 
-const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string } = {}) =>
-  paceDecision({ wanted, now: nowMin * MIN, runningSha: extra.runningSha ?? RUNNING, lastDeploy: extra.lastDeploy, busy: extra.busy ?? 0, quietMs: DEPLOY_QUIET_MS, maxWaitMs: DEPLOY_MAX_WAIT_MS });
+const decide = (wanted: DeployWanted | undefined, nowMin: number, extra: { busy?: number; lastDeploy?: DeployRecord; runningSha?: string; paused?: boolean } = {}) =>
+  paceDecision({
+    wanted,
+    now: nowMin * MIN,
+    runningSha: extra.runningSha ?? RUNNING,
+    lastDeploy: extra.lastDeploy,
+    busy: extra.busy ?? 0,
+    paused: extra.paused ?? false,
+    quietMs: DEPLOY_QUIET_MS,
+    maxWaitMs: DEPLOY_MAX_WAIT_MS,
+    staleSpawnMs: DEPLOY_STALE_SPAWN_MS,
+  });
 
 describe("deploy pacer", () => {
   it("a burst of merges deploys once, for the newest sha, after the quiet window", () => {
@@ -139,7 +151,7 @@ describe("deploy pacer", () => {
     const wanted = wantedAt("a", 0, 0, { spawnedSha: "a", spawnedAt: new Date(15 * MIN).toISOString() });
     const stale = { outcome: "rolled-back" as const, target: "a", from: RUNNING, at: new Date(14 * MIN).toISOString() };
 
-    expect(decide(wanted, 17, { lastDeploy: stale })).toEqual({ kind: "wait", why: "deployer already started for a" });
+    expect(decide(wanted, 17, { lastDeploy: stale })).toEqual({ kind: "wait", why: "deployer already started for a", until: 15 * MIN + DEPLOY_STALE_SPAWN_MS });
   });
 
   it("a step replay does not extend the wait", () => {
@@ -182,6 +194,29 @@ describe("deploy pacer", () => {
     expect(p.spawns).toEqual([]);
   });
 
+  it("an unreadable wanted file that exists is logged and removed instead of idling silently", () => {
+    const p = pacer();
+    p.store.files.set(PATH, '{"sha":"a","firstAt":');
+
+    p.tick();
+    p.tick();
+
+    expect(p.logs).toEqual([expect.stringMatching(/removed an unreadable deploy-wanted\.json/)]);
+    expect(p.store.files.has(PATH)).toBe(false);
+  });
+
+  it("a wanted file that cannot be read at all is logged", () => {
+    const p = pacer();
+    p.store.readFile = () => {
+      throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    };
+
+    const decision = p.tick();
+
+    expect(decision).toEqual({ kind: "idle" });
+    expect(p.logs).toEqual([expect.stringMatching(/removed an unreadable deploy-wanted\.json/)]);
+  });
+
   it("a torn wanted file reads as none and is rewritten on the next request", () => {
     const p = pacer();
     p.store.files.set(PATH, '{"sha":"a","firstAt":');
@@ -210,5 +245,57 @@ describe("deploy pacer", () => {
   it("reports the wanted sha and its cap for /health, or null when none is wanted", () => {
     expect(pacerStatus(undefined)).toBeNull();
     expect(pacerStatus(wantedAt("a", 0, 5))).toEqual({ sha: "a", since: new Date(0).toISOString(), deploysBy: new Date(90 * MIN).toISOString() });
+  });
+
+  it("a paused deploy is never spawned, even past the cap, and spawns once the pause is cleared", () => {
+    const p = pacer();
+    p.merge("a");
+    p.world.paused = true;
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 30);
+
+    const pausedSpawns = [...p.spawns];
+    p.world.paused = false;
+    p.ticksUntil(DEPLOY_MAX_WAIT_MS / MIN + 31);
+
+    expect(pausedSpawns).toEqual([]);
+    expect(p.spawns).toEqual([[DEPLOY_MAX_WAIT_MS / MIN + 31, "a"]]);
+  });
+
+  it("a deployer that records nothing is asked once more after the stale timeout, then the sha is dropped", () => {
+    const p = pacer();
+    const stale = DEPLOY_STALE_SPAWN_MS / MIN;
+    p.merge("a");
+
+    p.ticksUntil(15 + 2 * stale + 1);
+
+    expect(p.spawns).toEqual([[15, "a"], [15 + stale, "a"]]);
+    expect(p.wanted()).toBeUndefined();
+    expect(p.logs.filter((line) => line.includes("recorded nothing"))).toHaveLength(2);
+  });
+});
+
+describe("the wanted record write", () => {
+  it("writes a temp file beside the record and renames it over the record", () => {
+    const store = memoryStore();
+    const writes: string[] = [];
+    const write = store.writeFile;
+    store.writeFile = (path, text) => (writes.push(path), write(path, text));
+
+    writeWanted(STATE, store, wantedAt("a", 0, 0));
+
+    expect(writes).toEqual([`${PATH}.${process.pid}.tmp`]);
+    expect([...store.files.keys()]).toEqual([PATH]);
+    expect(readWanted(STATE, store)).toEqual(wantedAt("a", 0, 0));
+  });
+
+  it("a write that fails before the rename leaves the previous record whole", () => {
+    const store = memoryStore();
+    writeWanted(STATE, store, wantedAt("a", 0, 0));
+    store.rename = () => {
+      throw new Error("EXDEV");
+    };
+
+    expect(() => writeWanted(STATE, store, wantedAt("b", 1, 1))).toThrow("EXDEV");
+    expect(readWanted(STATE, store)).toEqual(wantedAt("a", 0, 0));
   });
 });

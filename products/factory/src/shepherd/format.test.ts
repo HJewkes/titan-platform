@@ -83,6 +83,30 @@ describe("the shepherd text view of each verb", () => {
     );
   });
 
+  it("with --last keeps the row line and the last entries, noting how many earlier ones it cut", () => {
+    const entries = ["a", "b", "c"].map((stepId) => ({ kind: "signal", stepId }));
+
+    const text = formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries }, { last: 2 });
+
+    expect(text).toBe("acme/widgets#1 merging - merging task demo/T-1\n  … 1 earlier entries\n  signal b\n  signal c\n");
+  });
+
+  it("with --last larger than the timeline prints every entry and no note", () => {
+    const entries = [{ kind: "signal", stepId: "a" }];
+
+    const text = formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries }, { last: 5 });
+
+    expect(text).toBe("acme/widgets#1 merging - merging task demo/T-1\n  signal a\n");
+  });
+
+  it("with --width cuts every longer line to that many characters, ending in an ellipsis", () => {
+    const entries = [{ kind: "signal", stepId: "wake" }, { kind: "signal", stepId: "x".repeat(40) }];
+
+    const text = formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries }, { width: 20 });
+
+    expect(text).toBe("acme/widgets#1 merg…\n  signal wake\n  signal xxxxxxxxxx…\n");
+  });
+
   it("prints a hold, release, freeze and thaw event with its reason and actor", () => {
     const at = "2026-01-01T00:00:00.000Z";
     const entries = [

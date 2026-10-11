@@ -102,6 +102,26 @@ author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads
 input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
 with `--json`; bad input exits 2 naming the field.
 
+`ciVerdict({ rules, runs, statuses })` is pure and folds a sha's check-runs and commit statuses
+into `{ verdict: "green" | "red" | "pending", reasons }`. With required contexts, each must be
+`success` from its pinned app, else from GitHub Actions (15368) or a commit status; a skipped or
+neutral required context is red, and runs that are not required are ignored. With none, every
+run and status must pass and at least one check-run must exist. `loadRequiredContexts(port,
+repo, branch)` reads rulesets, then classic protection; both reads treat a free-plan 403
+("Upgrade to GitHub Pro") as no rules and throw on any other 403. `resolveCommit(repo, sha)`
+expands an abbreviation (null when GitHub has no such commit) and `commitStatuses(repo, sha)`
+reads the combined status. `ciWait(port, options)` polls those until green, red or the deadline,
+reading the rules once and retrying a failed read. The `titan-gh` bin wraps it:
+
+```
+titan-gh ci-wait <owner/repo> <sha> [--base <branch>] [--timeout <seconds>] [--interval <seconds>]
+```
+
+It prints `GREEN <repo> <sha>`, `RED <repo> <sha>: <name>=<conclusion>; ...` or
+`TIMEOUT <repo> <sha> after <n>s: pending <names>`, and exits 0 green, 1 red, 2 timeout (run it
+again) and 64 on bad arguments or a sha GitHub does not have. Defaults: 540 second timeout,
+30 second interval, the repo's default branch.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).

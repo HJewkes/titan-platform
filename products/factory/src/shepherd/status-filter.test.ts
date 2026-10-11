@@ -34,7 +34,7 @@ describe("shepherd status filters", () => {
   });
 
   it("--phase keeps only the listed phases", () => {
-    const kept = filterRows(ROWS, { phases: parsePhases("review,done") });
+    const kept = filterRows(ROWS, { phase: parsePhases("review,done") });
 
     expect(ids(kept)).toEqual(["done-pc", "review-dc"]);
   });

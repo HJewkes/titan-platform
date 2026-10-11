@@ -4,32 +4,15 @@ import type { WatchRow } from "./view.js";
 /** The phases a run never leaves; `--active` drops them. */
 const TERMINAL_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
-interface StatusFilter {
+/** The `shepherd status` filters as commander parses them onto the verb's options. */
+export interface StatusFilter {
   active?: boolean;
-  phases?: readonly Phase[];
+  phase?: readonly Phase[];
   branchPrefix?: string;
   task?: string;
 }
-
-/** The `shepherd status` flags as commander parses them. */
-export interface StatusFlags {
-  active?: boolean;
-  phase?: string;
-  branchPrefix?: string;
-  task?: string;
-}
-
-export type Narrow = (data: unknown) => unknown;
-export const unfiltered: Narrow = (data) => data;
 
 const AGENT_CHAT_BRANCH = "agent-chat/";
-
-/** No flag leaves the data untouched, so a script reading plain `status` sees exactly what serve sent. */
-export function statusNarrow({ active, phase, branchPrefix, task }: StatusFlags): Narrow {
-  const filter: StatusFilter = { active, phases: phase === undefined ? undefined : parsePhases(phase), branchPrefix, task };
-  if (Object.values(filter).every((value) => value === undefined)) return unfiltered;
-  return (data) => (Array.isArray(data) ? filterRows(data, filter) : data);
-}
 
 /** Parses `--phase a,b`; an unknown phase throws naming the valid ones, so a typo never silently matches nothing. */
 export function parsePhases(list: string): Phase[] {
@@ -45,14 +28,13 @@ export function parsePhases(list: string): Phase[] {
   return phases;
 }
 
-/** Applied by the CLI after the rows come back, so an older serve that ignores unknown args still filters. */
 export function filterRows<Row extends Pick<WatchRow, "phase" | "branch" | "task">>(rows: readonly Row[], filter: StatusFilter): Row[] {
   return rows.filter((row) => keeps(row, filter));
 }
 
-function keeps(row: Pick<WatchRow, "phase" | "branch" | "task">, { active, phases, branchPrefix, task }: StatusFilter): boolean {
+function keeps(row: Pick<WatchRow, "phase" | "branch" | "task">, { active, phase, branchPrefix, task }: StatusFilter): boolean {
   if (active && TERMINAL_PHASES.has(row.phase)) return false;
-  if (phases && !phases.includes(row.phase)) return false;
+  if (phase && !phase.includes(row.phase)) return false;
   if (branchPrefix !== undefined && !branchMatches(row.branch, branchPrefix)) return false;
   return task === undefined || taskMatches(row.task, task);
 }
