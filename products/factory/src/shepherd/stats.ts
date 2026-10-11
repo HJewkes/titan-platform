@@ -57,7 +57,7 @@ export function mergeVerdictAt(run: WorkflowRun, before: number): number | undef
 /** The cancel reason ends this way with or without the `landed elsewhere: ` prefix, which the ledger's older runs lack. */
 const MERGED_OUTSIDE = /was merged outside Shepherd$/;
 
-const outsideAt = (run: WorkflowRun): number | undefined =>
+export const outsideAt = (run: WorkflowRun): number | undefined =>
   run.status === "cancelled" && run.error !== null && MERGED_OUTSIDE.test(run.error) && run.completedAt ? Date.parse(run.completedAt) : undefined;
 
 interface Event {

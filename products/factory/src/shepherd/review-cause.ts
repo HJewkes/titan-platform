@@ -14,7 +14,7 @@ export type { ReviewCause } from "./review-schemas.js";
 type CarryRefusal = "base-unknown" | "not-one-merge" | "base-off-branch" | "remerge-touched" | "probe-failed" | "seat";
 
 /** Why the same head was reviewed again, for `retry`. */
-type RetryReason = "timeout" | "no-verdict" | "depth-floor" | "malformed" | "not-started";
+type RetryReason = "timeout" | "no-verdict" | "depth-floor" | "malformed" | "not-started" | "machine-stop";
 
 /** The run's previous review: the head it was at, what it came to, and its verdict. */
 export interface LastReview {
@@ -77,12 +77,13 @@ function carryRefusal(probe: CarryProbe): { kind: string } | { reason: CarryRefu
 function retryReason({ outcome, verdict }: LastReview): RetryReason {
   const reason = verdict.kind === "none" ? verdict.reason : undefined;
   if (outcome === "not-started") return "not-started";
+  if (outcome === "throttled") return "machine-stop";
   if (reason === DEPTH_FLOOR_REASON) return "depth-floor";
   if (isCorrectionFailure(reason)) return "malformed";
   return outcome === "timeout" ? "timeout" : "no-verdict";
 }
 
-const RETRIED: ReadonlySet<ReviewOutcome> = new Set(["no-verdict", "timeout", "not-started"]);
+const RETRIED: ReadonlySet<ReviewOutcome> = new Set(["no-verdict", "timeout", "not-started", "throttled"]);
 
 /** A retry of a seat's asked review is still a retry; only the review that answers the ask is named for it. */
 function sameHeadCause(last: LastReview, ownerAsked: boolean, seatAsked: boolean): ReviewCause {

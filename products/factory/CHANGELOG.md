@@ -1,5 +1,12 @@
 # @titan-design/factory
 
+## 0.17.1
+
+### Patch Changes
+
+- 546ff9c: Shepherd's ci-red wake brief for a failing `dag-check` job reads a wider log tail and quotes every dead:check NEW and GROWN line above the tail, so the implementer sees which exports to fix instead of only the `<n> new, <m> baselined` summary. `dead:check` now prints its NEW lines after the CARRY lines, next to the verdict.
+  - @titan-design/session-analytics@0.13.3
+
 ## 0.17.0
 
 ### Minor Changes

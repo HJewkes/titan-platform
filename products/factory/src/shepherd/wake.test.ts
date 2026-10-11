@@ -20,6 +20,7 @@ import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import type { Warmth } from "./warmth.js";
+import { WAKE_ASK_MS } from "./wake-wait.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("head-1");
@@ -475,6 +476,51 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
 
     expect(resumes).toBe(2);
     expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
+  });
+
+  it("fails the wake within 5 minutes when every resume of an exited implementer times out, as a parked tree's did", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => Promise.reject(new DispatchTimeoutError(LEAKY_MESSAGE));
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 5 minutes: agent-chat timed out" });
+    expect(scene.clock.now - T0).toBeGreaterThanOrEqual(WAKE_ASK_MS);
+    expect(scene.clock.now - T0).toBeLessThan(WAKE_ASK_MS + 2_000);
+  });
+
+  it("fails the wake within 5 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => Promise.reject(new SpawnDeferred(LEAKY_MESSAGE));
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 5 minutes: the spawn gate deferred it" });
+    expectNoLeak(result);
+  });
+
+  it("stays woken when a resume that timed out shows the agent live on the next roster read", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+    scene.agents.resume = async () => {
+      scene.agents.rows[0] = row("impl-a", { presence: "live" });
+      throw new DispatchTimeoutError("agent-chat did not answer");
+    };
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
+  });
+
+  it("counts a fallback resume the spawn gate defers past 5 minutes as failed", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, turnSince: () => false });
+    const resume = scene.agents.resume;
+    let resumes = 0;
+    scene.agents.resume = async (...args) => (++resumes > 1 ? Promise.reject(new SpawnDeferred("load5 40 is past the limit 28")) : resume(...args));
+
+    const { result } = await scene.run("review", fixFirst("fix it"));
+
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a started no turn after the wake, and the resume fallback failed: SpawnDeferred" });
+    expect(resumes).toBeGreaterThan(2);
   });
 
   it("holds with the refusal named when agent-chat refuses the successor, and the step itself succeeds", async () => {

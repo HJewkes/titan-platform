@@ -84,7 +84,7 @@ list-price caveat. Each question is also an MCP tool, `miner__insights__<questio
 | `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
 | `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
 | `tool-gaps` | post-filters piped after our CLIs, by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top` |
-| `tool-adoption` | per shipped flag or verb in the adoption registry, weekly uses of the new form against the old pipelines, flagged unadopted or unused two weeks after ship | none |
+| `tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 
 The first four read the session graph and take the shared filters `--session`,
 `--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow` and `liveness` read

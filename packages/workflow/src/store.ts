@@ -20,7 +20,8 @@ export function workflowRunTableDdl(name: string = DEFAULT_RUN_TABLE): string {
       revision            INTEGER NOT NULL DEFAULT 0,
       owner_generation    INTEGER NOT NULL DEFAULT 0,
       owner_runtime_id    TEXT,
-      owner_lease_until   TEXT
+      owner_lease_until   TEXT,
+      definition_version  TEXT
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_status`)} ON ${t}(status);
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_owner_lease`)} ON ${t}(owner_lease_until);
@@ -48,6 +49,23 @@ export function workflowOwnershipMigration(version: number, name: string = DEFAU
   };
 }
 
+/** Adds the run's pinned definition version when an earlier workflowMigration already created the table. */
+export function workflowDefinitionVersionMigration(version: number, name: string = DEFAULT_RUN_TABLE): Migration {
+  return {
+    version,
+    name: `workflow-definition-version:${name}`,
+    up: (db) => addColumn(db, name, "definition_version", `${quoteIdent(name)} ADD COLUMN definition_version TEXT`),
+  };
+}
+
+/** A pinned run cannot be stored in a table that would silently drop its pin. */
+export class WorkflowStoreSchemaOutdated extends Error {
+  constructor(readonly table: string) {
+    super(`workflow table ${table} has no definition_version column; run workflowDefinitionVersionMigration`);
+    this.name = "WorkflowStoreSchemaOutdated";
+  }
+}
+
 export class WorkflowOwnershipLostError extends Error {
   constructor(readonly runId: string) {
     super(`workflow ownership lost for ${runId}`);
@@ -70,6 +88,7 @@ interface RawRunRow {
   owner_generation: number;
   owner_runtime_id: string | null;
   owner_lease_until: string | null;
+  definition_version?: string | null;
 }
 
 /** The statuses of a run still owed work: a runtime may claim it, and everything else is final. */
@@ -79,18 +98,20 @@ export const ACTIVE_STATUSES: readonly WorkflowStatus[] = ["running", "paused", 
 export class WorkflowRunStore {
   private readonly table: string;
 
-  constructor(private readonly db: Db, name: string = DEFAULT_RUN_TABLE) {
+  constructor(private readonly db: Db, private readonly name: string = DEFAULT_RUN_TABLE) {
     this.table = quoteIdent(name);
   }
 
   create(run: WorkflowRun): void {
+    const pinnable = hasColumn(this.db, this.name, "definition_version");
+    if (!pinnable && run.definitionVersion !== undefined) throw new WorkflowStoreSchemaOutdated(this.name);
     this.db.prepare(
       `INSERT INTO ${this.table}
        (id, workflow_name, params, status, current_step, step_results, active_steps, started_at, completed_at, error,
-        revision, owner_generation, owner_runtime_id, owner_lease_until)
+        revision, owner_generation, owner_runtime_id, owner_lease_until${pinnable ? ", definition_version" : ""})
        VALUES (@id, @workflowName, @params, @status, @currentStep, @stepResults, @activeSteps, @startedAt, @completedAt,
-        @error, @revision, @ownerGeneration, NULL, NULL)`,
-    ).run(columns(run));
+        @error, @revision, @ownerGeneration, NULL, NULL${pinnable ? ", @definitionVersion" : ""})`,
+    ).run(pinnable ? { ...columns(run), definitionVersion: run.definitionVersion ?? null } : columns(run));
   }
 
   get(id: string): WorkflowRun | undefined {
@@ -170,10 +191,11 @@ export class WorkflowRunStore {
   }
 }
 
-export function newRun(id: string, workflowName: string, params: Record<string, string>): WorkflowRun {
+export function newRun(id: string, workflowName: string, params: Record<string, string>, definitionVersion?: string): WorkflowRun {
   return {
     id,
     workflowName,
+    ...(definitionVersion === undefined ? {} : { definitionVersion }),
     params: { ...params },
     status: "running",
     currentStep: null,
@@ -192,6 +214,7 @@ function toRun(raw: RawRunRow): WorkflowRun {
   return {
     id: raw.id,
     workflowName: raw.workflow_name,
+    ...(raw.definition_version == null ? {} : { definitionVersion: raw.definition_version }),
     params: JSON.parse(raw.params) as Record<string, string>,
     status: raw.status,
     currentStep: raw.current_step,

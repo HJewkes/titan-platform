@@ -6,6 +6,8 @@ import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
+import { ShepherdStore } from "./shepherd/store.js";
 import { openFactoryHost } from "./host.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -25,6 +27,34 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], reviewCauses: [] });
+  });
+
+  it("prints one record per run with --per-run --json, its kind read from the registration", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    const merge = { stepId: "merge", iteration: 0, agentId: null, signal: null, completedAt: "2026-10-07T09:30:00.000Z", data: { result: { done: true } } };
+    new WorkflowRunStore(store).create({ id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "3", task: "demo/T-9" }, status: "completed", currentStep: null, stepResults: { "merge:0": merge }, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-07T09:00:00.000Z", completedAt: "2026-10-07T09:31:00.000Z", error: null });
+    new ShepherdStore(store).register({ repo: "acme/widgets", pr: 3, runId: "run-1", task: "demo/T-9", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "refactor" });
+    store.close();
+    const { out, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--per-run", "--json"], io);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.join(""))).toEqual({
+      perRun: [{ runId: "run-1", task: "demo/T-9", repo: "acme/widgets", pr: 3, kind: "refactor", status: "completed", startedAt: "2026-10-07T09:00:00.000Z", completedAt: "2026-10-07T09:31:00.000Z", stageMinutes: { land: 30 }, reviewRounds: 0, mergedAt: "2026-10-07T09:30:00.000Z", mergePath: "shepherd" }],
+    });
+  });
+
+  it("refuses --per-run without --json", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const { out, err, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--per-run"], io);
+
+    expect([code, out, err.join("")]).toEqual([2, [], "error: --per-run prints JSON only; add --json\n"]);
   });
 
   it("prints only the review causes with --rereviews", async () => {
