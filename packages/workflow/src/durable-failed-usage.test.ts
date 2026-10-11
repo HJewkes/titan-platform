@@ -19,7 +19,7 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 type Measurement = DurableHarnessSuccess["usage"][number];
-type Result = HarnessRunResult<string, "codex">;
+type Result = HarnessRunResult<never, "codex">;
 const conversation = { harness: "codex", namespace: "test", nativeId: "conversation" };
 const execution = { executionId: "native-invocation", conversation };
 
@@ -46,7 +46,9 @@ function durableRuntime(results: Record<string, Result>, workflow: WorkflowFn) {
   const ledger = new SqliteExecutionLedger<DurableHarnessSuccess<unknown, "codex">>(db);
   const run: HarnessAdapter<"codex">["run"] = async request => {
     request.onProgress?.({ kind: "execution_started", harness: "codex", atMs: Date.now(), execution });
-    return results[request.prompt] as HarnessRunResult<never, "codex">;
+    const result = results[request.prompt];
+    if (!result) throw new Error(`no result for prompt ${request.prompt}`);
+    return result;
   };
   const adapter: HarnessAdapter<"codex"> = { descriptor: codexExecCapabilities(), run };
   const dispatcher = createDurableHarnessDispatcher(adapter, { ledger, supervisorId: "supervisor", leaseMs: 60_000 });
@@ -60,11 +62,11 @@ function durableRuntime(results: Record<string, Result>, workflow: WorkflowFn) {
   return runtime;
 }
 
-async function stepFailure(result: Result): Promise<unknown> {
-  let caught: unknown;
+async function stepFailure(result: Result): Promise<StepFailedError | undefined> {
+  let caught: StepFailedError | undefined;
   const runtime = durableRuntime({ work: result }, async ctx => {
     try { await ctx.dispatch("work", "work"); }
-    catch (error) { caught = error; throw error; }
+    catch (error) { if (error instanceof StepFailedError) caught = error; throw error; }
   });
   await runtime.wait(runtime.start("work"));
   return caught;
@@ -75,14 +77,14 @@ describe("a durable step that fails after spending", () => {
     const error = await stepFailure(failure([spent("r1", 0.07, 900, 60)]));
 
     expect(error).toBeInstanceOf(StepFailedError);
-    expect((error as StepFailedError).usage).toEqual({ costUsd: 0.07, inputTokens: 900, outputTokens: 60 });
+    expect(error?.usage).toEqual({ costUsd: 0.07, inputTokens: 900, outputTokens: 60 });
   });
 
   it("leaves StepFailedError.usage undefined when the harness reported no spend", async () => {
     const error = await stepFailure(failure([]));
 
     expect(error).toBeInstanceOf(StepFailedError);
-    expect((error as StepFailedError).usage).toBeUndefined();
+    expect(error?.usage).toBeUndefined();
   });
 
   it("is counted once in the mapItems budget alongside a succeeding item", async () => {
