@@ -95,7 +95,8 @@ function entryLine(entry: TimelineEntry): string {
 }
 
 function formatTimeline({ row, entries }: PrTimeline): string {
-  return `${[rowLine(row), ...entries.map(entryLine)].join("\n")}\n`;
+  const header = `${rowLine(row)} task ${row.task}${row.slice ? ` slice ${row.slice}` : ""}`;
+  return `${[header, ...entries.map(entryLine)].join("\n")}\n`;
 }
 
 function formatMerge({ runId, phase, decision, held, waiting }: MergeEvaluation): string {

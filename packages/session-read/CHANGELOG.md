@@ -1,5 +1,18 @@
 # @titan-design/session-read
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+
+## 0.13.1
+
+### Patch Changes
+
+- 662f42b: Add an agent-chat consumer contract test that pins activity rendering, the truncation marker, the synthetic model skip and the observed branch.
+
 ## 0.13.0
 
 ### Minor Changes

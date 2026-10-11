@@ -1,5 +1,23 @@
 # @titan-design/workflow
 
+## 0.12.0
+
+### Minor Changes
+
+- 790401a: Mark usage with an unpriced measurement as `costUnknown` instead of counting it as $0. `mapItems` with `budgetUsd` stops launching on such usage with `stoppedBy: "cost_unknown"`.
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/agent@0.4.7
+
+## 0.11.0
+
+### Minor Changes
+
+- dda3272: Pin a definition version on each run: `register(name, fn, { version })` stores the version on the run row, and `hydrate` parks a run pinned to a different version as `recovery_required` with evidence naming both versions instead of replaying the new definition over its memos. Existing tables add the column with the new `workflowDefinitionVersionMigration`; a pinned run in a table without it throws `WorkflowStoreSchemaOutdated`.
+
 ## 0.10.1
 
 ### Patch Changes
