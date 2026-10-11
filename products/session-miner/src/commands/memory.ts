@@ -103,7 +103,7 @@ export const memoryReport = defineCommand<z.infer<typeof ReportArgs>, MemoryRepo
   async run(args, ctx) {
     refuseOffCli([...(args.skillsRoot.length > 0 ? ["--skills-root"] : []), ...(args.out ? ["--out"] : [])], ctx);
     const scan = scanMemory();
-    const skills = readSkills(args.skillsRoot.length > 0 ? args.skillsRoot.map(expandHome) : defaultSkillsRoots());
+    const skills = readSkills(args.skillsRoot.length > 0 ? args.skillsRoot.map((root) => expandHome(root)) : defaultSkillsRoots());
     const report = buildMemoryReport(scan.facts, skills, new Date(), args.groupThreshold);
     const written = writeMemoryReport(args.out ? expandHome(args.out) : path.join(ctx.config.stateDir, "memory-miner"), report);
     return { ...summarizeReport(scan, report, skills.length), ...written };
