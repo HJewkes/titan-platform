@@ -12,7 +12,7 @@ import {
 } from "./dispatch.js";
 import { dataFence } from "./fence.js";
 import { resumeAgent } from "./resume.js";
-import { installExecutable } from "./test-support.js";
+import { installExecutable, installProfiles } from "./test-support.js";
 
 let dir: string;
 
@@ -53,6 +53,7 @@ const spawnRequest = (bin: string, over: Record<string, unknown> = {}) => ({
   profile: "implementer",
   brief: "Fix CI. BRIEF-SENTINEL-4f2a",
   cwd: dir,
+  profilesDir: installProfiles(dir, { implementer: "headless" }),
   ...over,
 });
 

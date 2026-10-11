@@ -1,14 +1,12 @@
-import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
+import { GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
-import { readRequiredChecks } from "../required-checks.js";
 import { deadline } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import { actionsRunsAt, withoutSupersededCancels } from "./freeze.js";
-import { judgeMain, mainRulesReader, warningOf, type MainRules, type RulesReader } from "./main-verdict.js";
+import { judgeMain, mainRulesReader, readMainRules, warningOf, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -223,37 +221,31 @@ function failedPoll(watch: Watch, error: unknown): undefined {
 }
 
 /**
- * Reads the base branch's required contexts once they are readable, then answers the base tip when it is or contains the
- * merge sha and is green on every one of them. No PR, unreadable or empty rules, or a tip that does not contain the merge
- * answers undefined, so nothing is acknowledged on a guess.
+ * Reads the base branch's required contexts and app pins once they are readable, then answers the base tip when it is or
+ * contains the merge sha and judgeMain finds nothing on it. No PR, unreadable or empty rules, or a tip that does not
+ * contain the merge answers undefined, so nothing is acknowledged on a guess.
  */
 function greenContainingReader(port: GitHubPort, input: MainCiInput): () => Promise<string | undefined> {
-  let rules: { base: string; contexts: readonly string[] } | undefined;
+  let rules: { base: string; rules: MainRules } | undefined;
   return async () => {
     if (input.pr === undefined) return undefined;
-    rules ??= await requiredRules(port, input.repo, input.pr);
+    rules ??= await baseMainRules(port, input.repo, input.pr);
     if (rules === undefined) return undefined;
     const tip = await port.getHeadSha(input.repo, rules.base);
     if (tip === null || !(await contains(port, input.repo, tip, input.mergeSha))) return undefined;
-    return greenOnRequired(tip, rules.contexts, await port.checkRuns(input.repo, tip)) ? tip : undefined;
+    return judgeMain(tip, await port.checkRuns(input.repo, tip), rules.rules).findings.length === 0 ? tip : undefined;
   };
 }
 
-async function requiredRules(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ base: string; contexts: readonly string[] } | undefined> {
+async function baseMainRules(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ base: string; rules: MainRules } | undefined> {
   const { baseRef } = await port.getPr(repo, pr);
-  const read = await readRequiredChecks(port, repo, baseRef);
-  return read.readable && read.checks.contexts.length > 0 ? { base: baseRef, contexts: read.checks.contexts } : undefined;
+  const { rules } = await readMainRules(port, repo, baseRef);
+  return rules === undefined ? undefined : { base: baseRef, rules };
 }
 
 /** True when `tip` is `sha`, or compare reads `sha` as the merge base, so `tip` is ahead of it. */
 async function contains(port: GitHubPort, repo: RepoSlug, tip: string, sha: string): Promise<boolean> {
   return tip === sha || (await port.compareFiles(repo, sha, tip)).mergeBaseSha === sha;
-}
-
-/** Only required contexts judge, as land does: every one needs a passing Actions run at `sha`, and none of their runs may fail. */
-function greenOnRequired(sha: string, contexts: readonly string[], runs: readonly CheckRun[]): boolean {
-  const required = withoutSupersededCancels(actionsRunsAt(runs, sha)).filter((run) => contexts.includes(run.name));
-  return headCheckFindings({ headSha: sha, contexts, runs: required, requiredApps: [GITHUB_ACTIONS_APP_ID] }).length === 0;
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
