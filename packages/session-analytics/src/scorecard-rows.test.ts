@@ -172,11 +172,12 @@ describe("absent or empty sources", () => {
 });
 
 describe("readDispatchJournal", () => {
-  it("takes the seat from the directory, reads offsets with or without a colon and skips unparseable lines", () => {
-    const records = readDispatchJournal(writeLogs("logs", { "x-coord": LOGS["seat-coord"]!.slice(1, 3) }, "not json\n{\"task\":\"no-ts\"}\n"));
+  it("takes the seat from the directory, reads offsets with or without a colon and skips unparseable lines; a wrong-typed field reads as absent", () => {
+    const records = readDispatchJournal(writeLogs("logs", { "x-coord": LOGS["seat-coord"]!.slice(1, 3) }, "not json\n{\"task\":\"no-ts\"}\n{\"ts\":\"2026-10-03T21:00:00\",\"task\":5}\n"));
     expect(records.map((r) => [r.seat, r.task, new Date(r.at).toISOString()])).toEqual([
       ["x-coord", "T-7", "2026-10-03T19:00:00.000Z"],
       ["x-coord", "T-8", "2026-10-03T20:00:00.000Z"],
+      ["x-coord", undefined, "2026-10-03T21:00:00.000Z"],
     ]);
   });
 });

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 /** One line of a seat's `dispatch.jsonl`, with the seat taken from its directory and `at` in epoch ms. */
 export interface DispatchRecord {
@@ -48,14 +49,30 @@ function parseTs(text: string): number {
   return Date.parse(/[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`);
 }
 
+const optionalText = z.string().optional().catch(undefined);
+
+/** A field of the wrong type reads as absent rather than dropping the line, as the Python script tolerates it. */
+const journalLineSchema = z.object({
+  ts: z.string(),
+  task: optionalText,
+  pr: optionalText,
+  outcome: optionalText,
+  milestone: optionalText,
+  note: optionalText,
+  usd_est: z.unknown().optional(),
+});
+
 function parseJournalLine(line: string, seat: string): DispatchRecord | null {
+  let value: unknown;
   try {
-    const record = JSON.parse(line) as Omit<DispatchRecord, "seat" | "at">;
-    const at = typeof record.ts === "string" ? parseTs(record.ts) : Number.NaN;
-    return Number.isNaN(at) ? null : { ...record, seat, at };
+    value = JSON.parse(line);
   } catch {
     return null;
   }
+  const record = journalLineSchema.safeParse(value);
+  if (!record.success) return null;
+  const at = parseTs(record.data.ts);
+  return Number.isNaN(at) ? null : { ...record.data, seat, at };
 }
 
 /** Every record of each `<dir>/<seat>/dispatch.jsonl`; an absent dir or journal reads as none, and an unparseable line is skipped. */
@@ -85,17 +102,15 @@ function lineValue(body: string, label: string): string | null {
   return new RegExp(`^${label}:\\s*(\\S+)`, "m").exec(body)?.[1] ?? null;
 }
 
-interface VerdictRow {
-  actor: string;
-  body: string;
-  ts: number;
-}
+const verdictRowsSchema = z.array(z.object({ actor: z.string(), body: z.string(), ts: z.number() }));
+
+type VerdictRow = z.infer<typeof verdictRowsSchema>[number];
 
 /** Verdict messages in [since, now]; a missing events table reads as none, like an absent file. */
 function verdictRows(db: Db | null, prefix: string, since: number, now: number): VerdictRow[] {
   if (!db) return [];
   try {
-    const rows = db.prepare("SELECT actor, body, ts FROM events WHERE kind = 'message' AND body LIKE ? ORDER BY id").all(`${prefix}%`) as VerdictRow[];
+    const rows = verdictRowsSchema.parse(db.prepare("SELECT actor, body, ts FROM events WHERE kind = 'message' AND body LIKE ? ORDER BY id").all(`${prefix}%`));
     return rows.filter((row) => row.ts >= since && row.ts <= now);
   } catch {
     return [];
