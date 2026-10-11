@@ -22,7 +22,7 @@ const noFs: ReadFs = {
   isFile: () => false,
 };
 
-const port: HookPort = { context: nodeContext(HOME, noFs), now: () => new Date(0), loadDecide: async () => decide };
+const port: HookPort = { context: nodeContext(HOME, noFs), now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
 
 async function decision(command: string): Promise<string> {
   const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });

@@ -36,7 +36,7 @@ whether a pull request may merge), call [authority](./authority.md) directly.
 Verified against 0.1.0 (unreleased).
 
 ```ts
-import { classify, decide, nodeContext, observeActor, parseHookEvent } from "@titan-design/tool-guard";
+import { classify, decide, nodeContext, observeActor, parseHookEvent, readAncestry } from "@titan-design/tool-guard";
 
 const event = parseHookEvent({
   tool_name: "Bash",
@@ -46,7 +46,7 @@ const event = parseHookEvent({
 if (event.kind !== "malformed" && event.kind !== "other") {
   const actions = classify(event, nodeContext("/home/you"));
   // [{ action: "secret-read", spelling: "bash.secret.redirect-in", subject: { pattern: "home:.npmrc" }, remedy: "..." }]
-  const decision = decide(actions, observeActor({}, null));
+  const decision = decide(actions, observeActor({}, null, readAncestry));
   // { outcome: "deny", ruleId: "SEC-CO", action: "secret-read", spelling: "bash.secret.redirect-in", reason: "authority-guard denied ..." }
 }
 ```
@@ -71,7 +71,7 @@ and appends one log line; otherwise it prints nothing. It never answers `ask` or
 | a Bash command that cannot be parsed | deny if its text, as typed or with quotes and backslashes removed and whitespace collapsed, names a guarded path, credential file name, `gh pr merge`, `/merge`, `publish`, `deploy` or `gist`; otherwise silent with an `error parse` line. A name spelled through a variable or glob is not seen |
 | a Bash command over 8 KiB | not classified; always denies, asking for shorter commands or a script file |
 | an authority table that cannot load | deny every classified call; unclassified calls are silent |
-| `TITAN_TOOL_GUARD_BYPASS=1` in the hook's launch environment | evaluated as `owner-terminal`; a guarded call is logged as `bypass` |
+| `TITAN_TOOL_GUARD_BYPASS=1` in the hook's launch environment, with exactly one `claude` among the hook's ancestors and that one on a terminal | evaluated as `owner-terminal`; a guarded call is logged as `bypass` |
 
 The log is `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`: tab-separated `ts`, `kind`,
@@ -99,6 +99,11 @@ through a symlinked parent, is refused just before the append.
   denies as a credential read.
 - Only the hook's launch environment counts for the bypass. `TITAN_TOOL_GUARD_BYPASS=1 cmd`
   typed by the model sets it for `cmd` alone and still denies.
+- The bypass also needs the session started from a terminal by something other than Claude
+  Code: a `claude` an agent starts, by any route, has the agent's own `claude` above it, and one
+  detached with `setsid` or `systemd-run` has no terminal. A `claude` an agent starts inside a
+  new pseudo-terminal it detaches (`tmux new -d`, `screen -d`, `script`) is not told apart from
+  the owner's.
 - Claude Code treats a hook that times out or exits non-zero as a non-blocking error and runs
   the call, so the bin exits 0 on every path.
 

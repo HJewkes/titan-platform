@@ -62,7 +62,12 @@ the hook cannot check a resolved gate yet, and the reason names the gate rule.
 **Bypass.** `TITAN_TOOL_GUARD_BYPASS=1 claude` starts a session with owner authority: calls are
 evaluated as `owner-terminal` and each guarded one is logged as `bypass` (owner decision D3).
 Only the hook's own environment at launch counts; `TITAN_TOOL_GUARD_BYPASS=1 gh pr merge 3`
-typed by the model still denies. Never export it from a shell rc file.
+typed by the model still denies. The session must also run at the owner's terminal: the hook
+reads its ancestors from `ps` and honours the variable only when exactly one is `claude` and that
+one has a controlling terminal. So a `claude` started by any command an agent runs, however it
+spells the variable (a script it just wrote, an interpreter, `env`), runs with agent authority,
+and so does one detached with `setsid`. A `claude` started inside a new detached pseudo-terminal
+(`tmux new -d`) is not told apart from the owner's. Never export it from a shell rc file.
 
 **Log.** `$TITAN_TOOL_GUARD_LOG`, else
 `${XDG_STATE_HOME:-$HOME/.local/state}/titan-tool-guard/guard.log`, mode 0600 in a 0700

@@ -17,7 +17,7 @@ const port: HookPort = {
     isFile: () => false,
   }),
   now: () => new Date("2026-01-02T03:04:05.000Z"),
-  loadDecide: async () => decide,
+  loadDecide: async () => decide, ancestry: () => [],
 };
 
 async function verdict(command: string): Promise<"deny" | "pass"> {

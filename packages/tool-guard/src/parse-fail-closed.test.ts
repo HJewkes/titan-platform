@@ -22,7 +22,7 @@ const noFs: ReadFs = {
   },
   isFile: () => false,
 };
-const port: HookPort = { context: nodeContext(HOME, noFs), now: () => ts, loadDecide: async () => decide };
+const port: HookPort = { context: nodeContext(HOME, noFs), now: () => ts, loadDecide: async () => decide, ancestry: () => [{ claude: true, tty: true }] };
 
 /** `$(` nested `depth` deep, then the push on the next line. */
 const deepThenPush = (depth: number) => `echo ${"$(".repeat(depth)}x${")".repeat(depth)}\ngit push origin HEAD:main`;

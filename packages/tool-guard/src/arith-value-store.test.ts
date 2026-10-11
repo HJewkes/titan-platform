@@ -20,7 +20,7 @@ const PAYLOAD = `'a[$(${PUSH})]'`;
 const port: HookPort = {
   context: nodeContext(home, { realpath: (p) => p, readHead: () => { throw new Error("ENOENT"); }, isFile: () => false }),
   now: () => new Date("2026-01-02T03:04:05.000Z"),
-  loadDecide: async () => decide,
+  loadDecide: async () => decide, ancestry: () => [],
 };
 
 const input = (command: string) => JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });

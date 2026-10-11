@@ -78,8 +78,6 @@ export interface ExtractOptions {
    * `ReadingLimitError`. For a script the line runs, which the user cannot split further.
    */
   stopPastCap?: boolean;
-  /** Receives every variable name the walk assigns, a bare assignment or a command prefix, whatever its value. */
-  assigned?: Set<string>;
 }
 
 interface Scope {
@@ -114,8 +112,6 @@ interface Walk {
   unsure: UnsureBudget;
   /** What the line stores and whether it evaluates arithmetic, shared by every walk of it. */
   marks: ValueMarks;
-  /** Where each assigned name is recorded for the caller; null when it asked for none. */
-  assigned: Set<string> | null;
 }
 
 /**
@@ -128,7 +124,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
   const unsure = { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
-  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks(), assigned: options.assigned ?? null };
+  const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
   return out;
@@ -265,7 +261,6 @@ function decider(guarded: ReadonlySet<string> | undefined): (cmd: Unwrapped) => 
 function run(raw: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null): void {
   if (raw.name === null && raw.args.length === 0 && !raw.xargs?.words.length) {
     for (const assignment of raw.assigned) assign(w.scope.vars, assignment);
-    for (const [name] of raw.assigned) w.assigned?.add(name);
     if (redirects.length === 0) return;
   }
   if (raw.name === "cd" || raw.name === "pushd") {
@@ -301,7 +296,6 @@ function addedReading(w: Walk, read: (copy: Walk) => void): void {
 
 function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: string | null, stdin: string | null): void {
   trackVars(cmd, w.scope.vars);
-  for (const [name] of cmd.assigned) w.assigned?.add(name);
   // A prefix assignment stores its value only for the command, which the variables do not hold; an element is heard where typed.
   if (cmd.name !== null || cmd.args.length > 0) for (const [, value, kind] of cmd.assigned) if (kind !== "hidden" && kind !== "element") hear(w, value);
   const wrapping: Wrapping[] = cmd.xargs ? [...w.scope.wrapping, "xargs"] : w.scope.wrapping;

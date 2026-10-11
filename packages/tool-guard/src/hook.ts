@@ -1,5 +1,6 @@
 import { observeActor } from "./actor.js";
 import type { ActorObservation } from "./actor.js";
+import type { Ancestor } from "./ancestry.js";
 import { classify } from "./classify.js";
 import type { GuardDecision, Matched } from "./decide.js";
 import { parseHookEvent } from "./event.js";
@@ -21,6 +22,8 @@ export interface HookPort {
   now(): Date;
   /** Loads the authority table lazily, so a broken table fails closed only for events that classify. */
   loadDecide(): Promise<DecideFn>;
+  /** The hook's ancestor processes, nearest first; read only to check a bypass. */
+  ancestry(): readonly Ancestor[];
 }
 
 /** What the bin prints on stdout (empty, or one deny answer) and the lines it appends to the log. */
@@ -94,7 +97,7 @@ async function answer(input: string, env: Env, port: HookPort): Promise<HookResu
   const event = parseInput(input);
   if (event.kind === "malformed") return logged(formatErrorLine({ ts: port.now(), cls: "shape", tool: event.toolName, session: null }));
   if (event.kind === "other") return PASS;
-  const actor = observeActor(env, event.sessionId);
+  const actor = observeActor(env, event.sessionId, port.ancestry);
   if (event.kind === "bash" && Buffer.byteLength(event.command) > MAX_COMMAND_BYTES) return oversized(event, actor, OVERSIZE_REASON, port);
   const result = classifyEvent(event, port.context);
   if (!result.ok && result.limit) return oversized(event, actor, result.limit, port);

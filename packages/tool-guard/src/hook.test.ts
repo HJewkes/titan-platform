@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BYPASS_VAR } from "./actor.js";
+import type { Ancestor } from "./ancestry.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
@@ -29,8 +30,15 @@ function fakeFs(links: Record<string, string> = {}): ReadFs {
   };
 }
 
+/** The hook's shell, the session's `claude`, and the login shell at the owner's terminal. */
+const OWNER_TERMINAL: readonly Ancestor[] = [
+  { claude: false, tty: true },
+  { claude: true, tty: true },
+  { claude: false, tty: true },
+];
+
 function port(overrides: Partial<HookPort> = {}): HookPort {
-  return { context: nodeContext(HOME, fakeFs()), now: () => ts, loadDecide: async () => decide, ...overrides };
+  return { context: nodeContext(HOME, fakeFs()), now: () => ts, loadDecide: async () => decide, ancestry: () => OWNER_TERMINAL, ...overrides };
 }
 
 function bash(command: string, extra: Record<string, unknown> = {}): string {
@@ -340,6 +348,22 @@ describe("handle: what passes", () => {
 
   it("ignores the bypass variable written inline in the command", async () => {
     const result = await handle(bash(`${BYPASS_VAR}=1 gh pr merge 3`), {}, port());
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  it("denies under a bypass set by a command an agent ran, since that agent's claude is above the session", async () => {
+    const underAgent = [{ claude: false, tty: false }, { claude: true, tty: false }, { claude: false, tty: false }, { claude: true, tty: true }];
+
+    const result = await handle(bash("gh pr merge 3"), { [BYPASS_VAR]: "1" }, port({ ancestry: () => underAgent }));
+
+    expect(decisionOf(result.stdout)).toBe("deny");
+  });
+
+  it("denies under a bypass whose session has no terminal, as one detached from an agent with setsid has not", async () => {
+    const detached = [{ claude: false, tty: false }, { claude: true, tty: false }];
+
+    const result = await handle(bash("gh pr merge 3"), { [BYPASS_VAR]: "1" }, port({ ancestry: () => detached }));
 
     expect(decisionOf(result.stdout)).toBe("deny");
   });

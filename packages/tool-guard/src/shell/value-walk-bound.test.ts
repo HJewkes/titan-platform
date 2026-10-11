@@ -14,7 +14,7 @@ const context: ClassifyContext = {
   readHead: (dir) => (dir === REPO ? "main" : null),
   readScript: () => null,
 };
-const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide, ancestry: () => [] };
 
 const event = (command: string) =>
   JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
