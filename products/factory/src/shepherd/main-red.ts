@@ -13,7 +13,8 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
 import { GITHUB_READ_GIVE_UP_MS } from "./timeouts.js";
-import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
+import { seatCheckout } from "./seat-checkout.js";
+import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
@@ -195,6 +196,7 @@ const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> =>
 /** One fixer per episode: the freeze row's fixer is reused, and a name already on the roster is never spawned twice. */
 export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: FixerInput, signal: AbortSignal): Promise<z.infer<typeof FixerResult>> {
   if (!input.fixer) return noFixer("notify only: the policy grants no fixer");
+  if (deps.advisory?.(input.repo)) return noFixer(`notify only: ${input.repo} is advisory, so Shepherd starts no fixer to push to it`);
   const live = wiring?.freezes().live(input.repo, input.episode);
   if (!wiring || !live) return noFixer(THAWED, true);
   if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };

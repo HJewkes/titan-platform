@@ -33,6 +33,17 @@ describe("reviewerBrief", () => {
     expect(brief).not.toContain("OWNER-BRIEF");
     expect(brief.endsWith(`Head: ${target.head}`)).toBe(true);
   });
+  it.each([false, true])("tells the reviewer its final message is the verdict and that it needs no chat_send (ownerBrief %s)", (ownerBrief) => {
+    const brief = reviewerBrief({ ...target, ownerBrief });
+
+    expect(brief).toContain("Write your verdict as text in your final message; Shepherd reads it from your session, so it needs no chat_send.");
+  });
+
+  it("never asks the reviewer to send its verdict", () => {
+    expect(reviewerBrief(target)).not.toMatch(/send your verdict/i);
+    expect(reviewerBrief({ ...target, ownerBrief: true })).not.toMatch(/send your verdict/i);
+  });
+
   it("extracts head and base under one run dir and removes that whole dir", () => {
     const brief = reviewerBrief(target);
     const runDir = `/data/titan-factory/checkouts/reviews/${reviewCheckoutName(target.pr, target.head)}`;

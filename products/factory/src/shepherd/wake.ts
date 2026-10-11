@@ -2,7 +2,6 @@ import { isAbsolute } from "node:path";
 import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import type { GitHubPort, PullRequest } from "@titan-design/github";
 import { z } from "zod";
-import { configPath, loadConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { AwaitHeadResult, awaitNewHeadRoute } from "../workflows/await-head.js";
@@ -13,7 +12,7 @@ import type { ShepherdDeps, ShepherdPhases, WakeEvidence, WakeOutcome, WakeReque
 import { failureOf } from "./error-class.js";
 import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
-import { loadSeatBook, lookupSeat } from "./seats.js";
+import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
 import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
@@ -72,14 +71,6 @@ export interface WakeWiring {
   home?: string;
 }
 
-/** The checkout a seat binds to `repo`, re-read per wake as the reviewer's spawn re-reads it. */
-export function seatCheckout(env: NodeJS.ProcessEnv = process.env): (repo: string) => string | undefined {
-  return (repo) => {
-    const found = lookupSeat(loadSeatBook(loadConfig(configPath(env)).shepherd ?? {}), repo);
-    return found.kind === "seat" ? found.seat.paths[repo.toLowerCase()] : undefined;
-  };
-}
-
 const WakeInputSchema = z.object({
   kind: z.enum(["ci-red", "review", "conflict", "fix-proof"]),
   repo: z.string().min(1),
@@ -134,6 +125,7 @@ async function choose(deps: ShepherdDeps, wiring: WakeWiring, task: WakeTask, ne
   if (isWarm(warmth, deps.now(), wiring.limits ?? DEFAULT_WARMTH_LIMITS)) {
     return { mode: "resume", agent: newest.name, message: resumeMessage(task), sessionId: newest.sessionId };
   }
+  if (deps.advisory?.(task.input.repo)) return `${task.input.repo} is advisory, so Shepherd starts no successor to push to it`;
   const checkout = resolveCheckout(task.input.repo, (wiring.checkoutFor ?? seatCheckout())(task.input.repo), wiring.home);
   if ("problem" in checkout) return `${checkout.problem}, so a successor has no checkout to start in`;
   const agent = successorName(task, roster);

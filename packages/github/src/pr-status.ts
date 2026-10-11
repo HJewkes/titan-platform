@@ -1,4 +1,5 @@
 import { latestPerName } from "./checks.js";
+import { loadRequiredContexts } from "./ci-verdict.js";
 import type { CheckRun, GitHubPort, PullRequest, RepoSlug, RequiredChecks } from "./port.js";
 import { GITHUB_ACTIONS_APP_ID, mergeReadiness, type MergeBlocker } from "./readiness.js";
 
@@ -23,7 +24,7 @@ interface PrStatus {
 /** Reads the PR, its base's required checks and the head's runs, then judges them with `mergeReadiness`. */
 export async function prStatus(port: GitHubPort, repo: RepoSlug, number: number): Promise<PrStatus> {
   const pr = await port.getPr(repo, number);
-  const [rules, runs] = await Promise.all([baseRequiredChecks(port, repo, pr.baseRef), port.checkRuns(repo, pr.headSha)]);
+  const [rules, runs] = await Promise.all([loadRequiredContexts(port, repo, pr.baseRef), port.checkRuns(repo, pr.headSha)]);
   const requiredApps = appsOf(rules);
   // Approval lives in Shepherd, not on GitHub, so this reader treats the head as approved and never reports `unapproved`.
   const readiness = mergeReadiness({ pr, rules, runs, requiredApps, approvedHead: pr.headSha });
@@ -46,12 +47,6 @@ export function formatPrStatus(status: PrStatus): string {
   const failing = status.checks.filter((check) => check.state !== "success").map((check) => `${check.name}:${check.state}`);
   const verdict = status.ready ? "ready" : `blocked: ${[...new Set(status.blockers.map((blocker) => blocker.reason))].join(", ")}`;
   return [`${status.repo}#${status.number}`, status.state, status.headSha.slice(0, 7), status.mergeableState, `checks ${passing.length}/${status.checks.length}`, ...failing, verdict].join(" ");
-}
-
-/** Rulesets first, then classic protection only when the rulesets require nothing, as premerge reads them. */
-async function baseRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecks> {
-  const rulesets = await port.requiredChecks(repo, base);
-  return rulesets.contexts.length > 0 ? rulesets : port.classicRequiredChecks(repo, base);
 }
 
 function appsOf(rules: RequiredChecks): number[] {
