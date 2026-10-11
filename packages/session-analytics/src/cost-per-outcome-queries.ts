@@ -17,10 +17,15 @@ const TASK_SESSIONS = `
 /** Each of `tasks` to the sessions whose spawn record names it in `task_ids`. */
 export function readSessionsByTask(db: Db, tasks: readonly string[]): Map<string, string[]> {
   const sessions = new Map<string, string[]>();
-  for (const row of db.prepare(TASK_SESSIONS).all({ tasks: JSON.stringify(tasks) }) as { taskId: string; sessionId: string }[]) {
+  for (const row of db.prepare(TASK_SESSIONS).all({ tasks: JSON.stringify(tasks) }).filter(isTaskSession)) {
     sessions.set(row.taskId, [...(sessions.get(row.taskId) ?? []), row.sessionId]);
   }
   return sessions;
+}
+
+function isTaskSession(row: unknown): row is { taskId: string; sessionId: string } {
+  if (typeof row !== "object" || row === null) return false;
+  return "taskId" in row && typeof row.taskId === "string" && "sessionId" in row && typeof row.sessionId === "string";
 }
 
 /** List-price spend per session over requests in the window. */
