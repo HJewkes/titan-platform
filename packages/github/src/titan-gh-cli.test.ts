@@ -121,7 +121,7 @@ async function titanGhPremerge(args: string[], setup: (fake: ReturnType<typeof f
   const out: string[] = [];
   const err: string[] = [];
   const clones: string[] = [];
-  const mergeTree = (clone: string) => async () => (clones.push(clone), fakeSha(`tree:${SHA}`));
+  const mergeTree = (clone: string) => (clones.push(clone), async () => fakeSha(`tree:${SHA}`));
   const code = await runTitanGh(args, { port: githubPort(fake.wire), out: (line) => out.push(line), err: (line) => err.push(line), now: () => 0, sleep: async () => {}, mergeTree });
   return { code, out, err, fake, clones };
 }

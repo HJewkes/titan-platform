@@ -20,6 +20,12 @@ export interface LoggedCommit {
   message: string;
 }
 
+export interface RepoFile {
+  path: string;
+  blobSha: string;
+  content: string;
+}
+
 export interface PutFileRequest {
   path: string;
   branch: string;

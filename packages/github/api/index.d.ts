@@ -126,6 +126,11 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
+interface RepoFile {
+    path: string;
+    blobSha: string;
+    content: string;
+}
 interface PutFileRequest {
     path: string;
     branch: string;
@@ -152,11 +157,6 @@ interface SquashSource {
 /** `owner/name`. */
 type RepoSlug = string;
 type MergeMethod = "merge" | "squash" | "rebase";
-interface RepoFile {
-    path: string;
-    blobSha: string;
-    content: string;
-}
 interface PullRequest {
     number: number;
     state: "open" | "closed";

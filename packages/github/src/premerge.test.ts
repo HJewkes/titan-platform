@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { CleanMergeTree } from "./approved-head-walk.js";
 import { fakeGitHub, fakeSha, successRun, type FakeGitHub } from "./fake.js";
 import { githubPort, type PullRequest } from "./port.js";
-import { formatPremerge, premerge } from "./premerge.js";
+import { formatPremerge, MERGEABILITY_RETRY_MS, premerge } from "./premerge.js";
 
 const S = fakeSha("pr-head");
 const R = fakeSha("reviewed");
@@ -66,9 +66,60 @@ describe("premerge", () => {
 
     expect(result.reasons[0]).toBe(`head ${S} != ${R}`);
   });
+});
 
-  it("ignores GitHub's not-yet-computed mergeability", async () => {
-    expect(await check(world({ mergeableState: "unknown" }))).toMatchObject({ ok: true });
+describe("premerge conflicts", () => {
+  const sleeps: number[] = [];
+  const sleep = async (ms: number) => void sleeps.push(ms);
+  const gate = (fake: FakeGitHub, cleanMergeTree?: CleanMergeTree) => premerge(githubPort(fake.wire), { repo: "o/r", number: 1, headSha: S, approvedHead: S, sleep, ...(cleanMergeTree ? { cleanMergeTree } : {}) });
+
+  beforeEach(() => void sleeps.splice(0));
+
+  it("fails a PR GitHub reports as conflicting", async () => {
+    expect(await gate(world({ mergeableState: "dirty" }))).toMatchObject({ ok: false, reasons: ["topic-1 conflicts with main"] });
+  });
+
+  it("re-reads unknown mergeability and fails when it resolves to a conflict", async () => {
+    const fake = world({ mergeableState: "unknown" });
+    fake.onGetPr = (pr, reads) => void (reads === 3 && (pr.mergeableState = "dirty"));
+
+    expect(await gate(fake)).toMatchObject({ ok: false, reasons: ["topic-1 conflicts with main"] });
+    expect(sleeps).toEqual(MERGEABILITY_RETRY_MS.slice(0, 2));
+  });
+
+  it("is ok once unknown mergeability resolves clean", async () => {
+    const fake = world({ mergeableState: "unknown" });
+    fake.onGetPr = (pr, reads) => void (reads === 2 && (pr.mergeableState = "clean"));
+
+    expect(await gate(fake)).toMatchObject({ ok: true });
+  });
+
+  it("fails closed when mergeability stays unknown after every re-read", async () => {
+    expect(await gate(world({ mergeableState: "unknown" }))).toMatchObject({ ok: false, reasons: ["GitHub has not computed mergeability of topic-1, so a conflict cannot be ruled out"] });
+    expect(sleeps).toEqual([...MERGEABILITY_RETRY_MS]);
+  });
+
+  it("with a clone, merges the head into origin/<base> instead of waiting on GitHub", async () => {
+    const asked: [string, string][] = [];
+    const result = await gate(world({ mergeableState: "unknown" }), async (base, head) => (asked.push([base, head]), fakeSha("tree")));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(asked).toEqual([["origin/main", S]]);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("with a clone, fails a head that conflicts with origin/<base> while GitHub's mergeability is unknown", async () => {
+    expect(await gate(world({ mergeableState: "unknown" }), async () => null)).toMatchObject({ ok: false, reasons: ["merge-tree conflict vs origin/main"] });
+  });
+
+  it("with a clone, fails when the merge-tree cannot be computed", async () => {
+    const result = await gate(world(), async () => Promise.reject(new Error("git merge-tree exited 128: bad revision")));
+
+    expect(result).toMatchObject({ ok: false, reasons: [`merge-tree of ${S} and origin/main failed: git merge-tree exited 128: bad revision`] });
+  });
+
+  it("with a clone, still fails a PR GitHub reports as conflicting", async () => {
+    expect(await gate(world({ mergeableState: "dirty" }), async () => fakeSha("tree"))).toMatchObject({ ok: false, reasons: ["topic-1 conflicts with main"] });
   });
 });
 

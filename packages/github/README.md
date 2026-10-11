@@ -138,9 +138,11 @@ read-only half of agent-chat's `scripts/seat/premerge`; the caller looks up the 
 the head it approved. It reads the PR, the base's required contexts, the head's check runs and
 statuses, and the compare, then fails on a PR that is closed, merged or a draft, a head other than
 `<sha>`, a red or pending required check (judged as `ciVerdict` judges them), a strict ruleset with
-the head behind, a conflict GitHub reports, or an approved head `approvedHeadWalk` cannot reach.
-That walk needs `--clone <dir>`, a local clone holding both commits, where the bin runs
-`git merge-tree --write-tree`; without it an approved head other than the PR head fails. It prints
+the head behind, a conflict, or an approved head `approvedHeadWalk` cannot reach. With
+`--clone <dir>`, a fetched local clone, the bin runs `git merge-tree --write-tree` there: once to
+prove the walk, and once to merge the head into `origin/<base>`, failing on a conflict or a git
+error. Without it, an approved head other than the PR head fails, and a conflict rests on GitHub's
+mergeability: `unknown` is re-read after 1, 2 and 4 seconds and fails if it never resolves. It prints
 `OK <repo>#<N> head=<sha> base=<base> req=[<contexts>] strict=<bool> behind=<n>` or
 `FAIL <repo>#<N>: <reason>; ...`, and exits 0, 1, or 2 on usage. `--json` prints
 `{ repo, number, ok, reasons, head, base, required, strict, behindBy }`.

@@ -75,7 +75,7 @@ async function runPremerge(args: readonly string[], io: TitanGhIo): Promise<numb
     return PREMERGE_EXIT.usage;
   }
   const { json, clone, ...input } = parsed;
-  const result = await premerge(io.port, { ...input, ...(clone !== undefined && io.mergeTree ? { cleanMergeTree: io.mergeTree(clone) } : {}) });
+  const result = await premerge(io.port, { ...input, sleep: io.sleep, ...(clone !== undefined && io.mergeTree ? { cleanMergeTree: io.mergeTree(clone) } : {}) });
   io.out(json ? JSON.stringify(result) : formatPremerge(result));
   return result.ok ? PREMERGE_EXIT.ok : PREMERGE_EXIT.fail;
 }

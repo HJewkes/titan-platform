@@ -9,19 +9,13 @@ import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
-export type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
+import type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+export type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
 
 export type MergeMethod = "merge" | "squash" | "rebase";
-
-export interface RepoFile {
-  path: string;
-  blobSha: string;
-  content: string;
-}
 
 export interface PullRequest {
   number: number;

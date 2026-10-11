@@ -150,12 +150,14 @@ titan-gh premerge octo/widgets#42 "$HEAD" --approved-head "$HEAD" --json
 ```
 
 It fails on a closed, merged or draft PR, a head other than the given sha, a required check
-that is not green as `ciVerdict` judges it, a strict ruleset with the head behind, a conflict
-GitHub reports, or an approved head that `approvedHeadWalk` cannot reach through base merges.
-GitHub's lazily computed `unknown` mergeability does not fail it. The walk's tree proof runs
-`git merge-tree --write-tree` in the `--clone` directory, which must already hold both commits;
-the bin is the only place that runs git. Without `--clone`, an approved head other than the PR
-head fails. Bad arguments, including a sha that is not 40 lower-case hex characters, print usage
+that is not green as `ciVerdict` judges it, a strict ruleset with the head behind, a conflict,
+or an approved head that `approvedHeadWalk` cannot reach through base merges. A merge gate
+fails closed on conflicts. With `--clone`, the bin runs `git merge-tree --write-tree` in that
+clone, which must be fetched and hold the commits: once for the walk's tree proof, and once to
+merge the head into `origin/<base>`, where a conflict or a git error fails. The bin is the only
+place that runs git. Without `--clone`, an approved head other than the PR head fails, and
+conflicts rest on GitHub's mergeability: `dirty` fails, and `unknown` is re-read after 1, 2 and
+4 seconds and fails if it is still unknown. Bad arguments, including a sha that is not 40 lower-case hex characters, print usage
 and exit 2.
 
 ## What it deliberately does not do
