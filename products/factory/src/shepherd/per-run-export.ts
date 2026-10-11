@@ -5,7 +5,7 @@ import { inRange, mergedAt, outsideAt, stepName, type StatsRange } from "./stats
 type Stage = (typeof STAGES)[number];
 
 /** One shepherd-pr run as `shepherd stats --per-run --json` prints it; session-analytics' taskActuals reads this shape. */
-export interface PerRunRecord {
+interface PerRunRecord {
   runId: string;
   task: string | null;
   repo: string;
