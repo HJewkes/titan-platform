@@ -35,13 +35,16 @@ interface GoneOptions {
   onCancelFailed?: (runId: string, cause: string) => void;
 }
 
-const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
+const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
 const stepName = (key: string): string => key.split(":")[0]!;
 export const LIVE: ReadonlySet<string> = new Set(["running", "paused"]);
 
-/** A run that merged its PR itself, recorded it landed, or started what follows a merge reads merged on GitHub and is still Shepherd's. */
+/**
+ * A run that merged its PR itself, recorded it landed, or started what follows a merge reads merged on GitHub and is still
+ * Shepherd's. A merge step that recorded no landing, such as one a hold refused, does not make it so.
+ */
 export function mergedByShepherd(run: WorkflowRun): boolean {
-  return [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
+  return mergedItself(run) || [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
 }
 
 /**
