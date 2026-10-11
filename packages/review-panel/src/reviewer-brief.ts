@@ -1,3 +1,5 @@
+import { parseResultLine } from "@titan-design/fix-proof";
+import { fixProofLines } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 
 type RepoSlug = string;
@@ -38,7 +40,7 @@ export interface ReviewerBriefInput {
   testRule?: string;
   /** Names of the checks already green at this head; the brief asks the reviewer not to rerun them. */
   greenChecks?: readonly string[];
-  /** The fix-proof result line for this head, when the PR has one. */
+  /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
   fixProof?: string;
 }
 
@@ -50,15 +52,24 @@ function questionLines(questions: readonly string[]): string[] {
   return asked.length === 0 ? [] : ["", "Answer each of these in your review:", ...asked];
 }
 
-/** Checks CI already ran at this head cost build slots when a reviewer reruns them. */
+/** CI check names come from workflow files a PR can edit, so only short plain names reach the prompt. */
+const CHECK_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._/-]{0,39}$/;
+
+/** True only for a result that parses, is for this head and reproduced the bug; any other verdict leaves the judging to the reviewer. */
+function fixProofReproduced(head: string, line: string | undefined): boolean {
+  const parsed = line === undefined ? undefined : parseResultLine(line);
+  return parsed?.ok === true && parsed.result.head === head && parsed.result.verdict === "reproduced";
+}
+
+/** Checks CI already ran at this head cost build slots when a reviewer reruns them; the fix-proof text is rebuilt from the parsed result, never echoed. */
 function greenCheckLines(input: ReviewerBriefInput): string[] {
-  const checks = (input.greenChecks ?? []).map((name) => name.replace(/\s+/g, " ").trim()).filter((name) => name !== "");
-  const proof = input.fixProof?.replace(/\s+/g, " ").trim();
-  if (checks.length === 0 && !proof) return [];
+  const checks = (input.greenChecks ?? []).filter((name) => CHECK_NAME.test(name));
+  const proof = input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
+  const rerun = checks.length > 0 || fixProofReproduced(input.head, input.fixProof);
   return [
     ...(checks.length > 0 ? [`These checks are green at this head: ${checks.join(", ")}.`] : []),
-    ...(proof ? [`Fix-proof at this head: ${proof}`] : []),
-    "Do not rerun them; read their results and spend your time on the diff.",
+    ...proof,
+    ...(rerun ? ["Do not rerun the checks named here, including typecheck, lint and the full suite when they are named; read their results and spend your time on the diff."] : []),
   ];
 }
 
