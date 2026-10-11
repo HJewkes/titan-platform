@@ -396,12 +396,13 @@ Key exports:
 - `classify`: `classify`
 - `families/preference`: `checkPreferences`
 - `actor`: `observeActor`
+- `ancestry`: `readAncestry`
 - `decide`: `decide`
 - `log`: `formatDecisionLine`, `formatErrorLine`, `logPath`
 - `hook`: `handle`
 - `context`: `nodeContext`
-- `shell`: `ParseError`, `tokenize`
-- +48 more in the [reference page](/reference/tool-guard)
+- `shell`: `ParseError`
+- +50 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
