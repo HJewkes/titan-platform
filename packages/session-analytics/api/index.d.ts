@@ -119,7 +119,7 @@ interface WakeEventRow {
     cause: string;
     delivery: string;
     fromName: string | null;
-    /** The same `msg_id` reached more than one session. */
+    /** The channel tag's broadcast flag; for rows extracted before it was stored, the same `msg_id` reached more than one session. */
     broadcast: boolean;
 }
 /** One agent-chat identity: the name a session carries and how it came to carry it. */

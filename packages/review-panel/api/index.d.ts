@@ -419,7 +419,10 @@ interface AggregateInput {
     head: string;
     /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
     source: LineSource;
-    /** fix-proof's verdict for the PR when one ran; `vacuous` or `no-tests` makes the tests member blocking. */
+    /**
+     * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, a line naming another head,
+     * or anything unreadable makes the tests member blocking.
+     */
     fixProof?: string;
     /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
     sonnetFor?: Record<string, string>;

@@ -438,6 +438,22 @@ declare function packageId(name: string): string;
 
 declare function externalId(specifier: string): string;
 
+/**
+ * Everything the metrics and alias passes need from one file's syntax tree,
+ * computed while that tree is alive so the tree can be deleted right after
+ * (TP-747: web-tree-sitter WASM memory never shrinks, so peak memory is set by
+ * how many trees are alive at once).
+ */
+interface FileDigest {
+    fileId: string;
+    /** File-level metrics on `fileId` plus symbol-level metrics for every name in `symbolNames`. */
+    sourceMetrics: GraphMetric[];
+    deadCodeMetrics: GraphMetric[];
+    growthRiskMetrics: GraphMetric[];
+    /** Bare declared name to the qualified names that share it, for requalify aliases. */
+    qualifiedByName: Map<string, Set<string>>;
+}
+
 /** SHA-256 of file content. The fingerprint that gates per-file reuse. */
 declare function hashContent(content: string): string;
 /**
@@ -768,22 +784,6 @@ interface TestCoverageOwnershipOptions {
  * sources with at least one linked test that has churn in the window.
  */
 declare function computeTestCoverageOwnership(entries: readonly ChurnEntry[], links: readonly TestSourceLink[], options?: TestCoverageOwnershipOptions): GraphMetric[];
-
-/**
- * Everything the metrics and alias passes need from one file's syntax tree,
- * computed while that tree is alive so the tree can be deleted right after
- * (TP-747: web-tree-sitter WASM memory never shrinks, so peak memory is set by
- * how many trees are alive at once).
- */
-interface FileDigest {
-    fileId: string;
-    /** File-level metrics on `fileId` plus symbol-level metrics for every name in `symbolNames`. */
-    sourceMetrics: GraphMetric[];
-    deadCodeMetrics: GraphMetric[];
-    growthRiskMetrics: GraphMetric[];
-    /** Bare declared name to the qualified names that share it, for requalify aliases. */
-    qualifiedByName: Map<string, Set<string>>;
-}
 
 interface IndexerMetricsInput {
     nodes: Map<string, GraphNode>;

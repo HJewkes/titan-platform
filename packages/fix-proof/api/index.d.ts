@@ -123,4 +123,46 @@ declare function formatResultLine(result: FixProofResult): string;
 /** Decodes a result line, refusing anything over 4 KB, of another version, with unknown fields or with duplicate or reordered keys. */
 declare function parseResultLine(line: string): ParsedResultLine;
 
-export { CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_CARRY_GLOBS, DEFAULT_TEST_GLOBS, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, TEST_CLASSES, type TestClass, type TestOutcome, VERDICTS, type Verdict, classifyReports, compileGlobs, expandBraces, formatResultLine, parseFixProofConfig, parseResultLine, planFixProof, toResult };
+interface ExecOptions {
+    cwd: string;
+    timeoutMs: number;
+}
+interface ExecResult {
+    /** Exit code, or null when a signal or the timeout ended the process. */
+    status: number | null;
+    stdout: string;
+    stderr: string;
+}
+/** Runs one program without a shell; a runner swaps it in tests to observe or fail commands. */
+type Exec = (file: string, args: readonly string[], options: ExecOptions) => Promise<ExecResult>;
+/** The default Exec: node's spawn in its own process group, all of it killed at the timeout, never rejecting on a non-zero exit. */
+declare const spawnExec: Exec;
+
+/** Leaves headroom under the CI job's 20-minute timeout so the runner, not the job, reports the overrun. */
+declare const DEFAULT_BUDGET_MS: number;
+declare const DEFAULT_BUILD = "pnpm build";
+/** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
+declare const DEFAULT_COMMAND = "pnpm exec vitest run";
+interface RunOptions {
+    /** The git checkout holding both commits. */
+    repo: string;
+    /** The merge base of the pull request, as a sha or ref. */
+    base: string;
+    /** The pull request head, as a sha or ref. */
+    head: string;
+    budgetMs?: number;
+    exec?: Exec;
+}
+/** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */
+declare function errorLine(refs: {
+    base: string;
+    head: string;
+}, error: string): string;
+/** Runs the head's tests over the merge base and at head and returns one fix-proof/v1 line; failures become a verdict error line, never a throw. */
+declare function run(options: RunOptions): Promise<string>;
+
+declare const USAGE = "usage: fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
+/** Parses `fix-proof run` arguments and returns the one result line to print; bad arguments give a verdict error line too. */
+declare function runCli(argv: readonly string[], cwd: string, runner?: typeof run): Promise<string>;
+
+export { CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_TEST_GLOBS, type Exec, type ExecOptions, type ExecResult, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, classifyReports, compileGlobs, errorLine, expandBraces, formatResultLine, parseFixProofConfig, parseResultLine, planFixProof, run, runCli, spawnExec, toResult };

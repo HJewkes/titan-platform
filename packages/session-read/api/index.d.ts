@@ -46,6 +46,8 @@ interface Inbound {
     readonly originServer: string | null;
     readonly fromName: string | null;
     readonly msgId: string | null;
+    /** The channel tag's own broadcast flag; null when the arrival carries no channel tag. */
+    readonly broadcast: boolean | null;
     readonly toolUseId: string | null;
     readonly isError: boolean;
     readonly contentHash: string;
@@ -62,7 +64,7 @@ declare function classifyInbound(record: Json): Inbound;
  * Bumped whenever a classification rule below changes, so a consumer can tell
  * rows extracted under an older rule set apart and re-index them.
  */
-declare const EXTRACT_VERSION = 7;
+declare const EXTRACT_VERSION = 8;
 /** Where the characters in one context block came from. */
 type ContextSource = "tool_result" | "human" | "channel" | "assistant_text" | "assistant_thinking" | "assistant_tool_input" | "attachment" | "skill_listing" | "system_reminder" | "compaction_summary" | "image";
 /** A recognisable act read from a single `tool_use` block. */
@@ -100,6 +102,7 @@ type AuditEvent = (AuditEventBase & {
     originServer: string | null;
     fromName: string | null;
     msgId: string | null;
+    broadcast: boolean | null;
     toolUseId: string | null;
     isError: boolean;
     contentHash: string;
@@ -1399,6 +1402,8 @@ interface ChannelTag {
     readonly from: string | null;
     readonly msgId: string | null;
     readonly isSystem: boolean;
+    /** agent-chat writes `broadcast="true"` on a broadcast and omits it on a DM. */
+    readonly broadcast: boolean;
 }
 declare function parseChannelTag(text: string): ChannelTag | null;
 
