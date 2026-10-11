@@ -1,5 +1,11 @@
 # @titan-design/workflow
 
+## 0.10.1
+
+### Patch Changes
+
+- bd74657: Gate sweeps skip a gate another host settled between listing and cancelling instead of throwing partway through.
+
 ## 0.10.0
 
 ### Minor Changes

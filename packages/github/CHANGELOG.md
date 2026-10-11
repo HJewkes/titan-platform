@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.7.1
+
+### Patch Changes
+
+- 369a00b: The rate budget now tracks GraphQL rate headers apart from core and paces `listReviewComments` against them, and a GraphQL call times out after 30 seconds instead of hanging.
+
 ## 0.7.0
 
 ### Minor Changes

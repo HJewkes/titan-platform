@@ -1,5 +1,11 @@
 # @titan-design/review-panel
 
+## 0.4.0
+
+### Minor Changes
+
+- 1add3c6: The reviewer brief can name the checks already green at the head and the fix-proof line, and asks the reviewer not to rerun them.
+
 ## 0.3.0
 
 ### Minor Changes

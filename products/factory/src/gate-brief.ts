@@ -4,6 +4,7 @@ import type { Verdict } from "./shepherd/phases.js";
 import type { FailingCheck } from "./workflows/land-ci.js";
 
 const MAX_SUMMARY = 280;
+const MAX_EVIDENCE_REF = 500;
 
 interface DecisionOption<Id extends string> {
   id: Id;
@@ -65,7 +66,8 @@ interface PrHead {
 
 const where = ({ repo, pr, headSha }: PrHead): string => `${repo}#${pr} at ${headSha}`;
 
-export function approveMergeDecision(target: PrHead & { reason: string; reviewedMerge: boolean }) {
+/** `carriedFrom` is the reviewed head whose MERGE stands at this tree-equal head, so the owner is not told the reviewer saw this one. */
+export function approveMergeDecision(target: PrHead & { reason: string; reviewedMerge: boolean; carriedFrom?: string }) {
   const { schema, questions } = decisionGate({
     question: `Land ${target.headSha}?`,
     options: [
@@ -74,7 +76,8 @@ export function approveMergeDecision(target: PrHead & { reason: string; reviewed
     ],
     shape: { headSha: z.literal(target.headSha) },
   });
-  const verdict = target.reviewedMerge ? "Reviewer said MERGE at this head; recommend merge." : "No reviewer MERGE at this head; no recommendation.";
+  const said = target.carriedFrom ? `Reviewer said MERGE at ${target.carriedFrom}, carried from a tree-equal head` : "Reviewer said MERGE at this head";
+  const verdict = target.reviewedMerge ? `${said}; recommend merge.` : "No reviewer MERGE at this head; no recommendation.";
   const summary = summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict);
   return { schema, brief: brief(summary, prEvidence(target.repo, target.pr), questions) };
 }
@@ -150,5 +153,5 @@ export function acknowledgeBrief(target: { repo: string; mergeSha: string; headl
 }
 
 function brief(summary: string, evidenceRef: string, questions?: GateQuestion[]): GateBrief {
-  return { summary, evidenceRef, ...(questions && { questions }) };
+  return { summary, evidenceRef: oneLine(evidenceRef, MAX_EVIDENCE_REF), ...(questions && { questions }) };
 }
