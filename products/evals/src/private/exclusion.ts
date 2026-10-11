@@ -2,11 +2,11 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /** Layer 1: cases come only from these repos (bare names; `owner/` is ignored). */
-export const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work"] as const;
+const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work"] as const;
 /** Layer 1: a task is joined only from these initiatives. */
-export const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels"] as const;
+const ENGINEERING_INITIATIVES = ["titan-platform", "codewatch", "relay", "claude-channels"] as const;
 /** Task-id prefix to its engineering initiative; a prefix not listed is never joined. */
-export const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
+const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
   TP: "titan-platform",
   AW: "titan-platform",
   C: "codewatch",
@@ -15,7 +15,7 @@ export const ENGINEERING_TASK_PREFIXES: Readonly<Record<string, string>> = {
 };
 
 /** Layer 2: every initiative outside the allowlist, and the task-id prefixes its task files use. */
-export interface PrivateMarkers {
+interface PrivateMarkers {
   slugs: readonly string[];
   prefixes: readonly string[];
 }
@@ -27,14 +27,14 @@ export interface ExclusionPolicy {
 }
 
 /** What the exclusion reads of a case: where it came from, and everything it would write. */
-export interface ExclusionSubject {
+interface ExclusionSubject {
   id: string;
   repo: string;
   taskInitiative?: string | null;
   body: unknown;
 }
 
-export type ExclusionReason = "private-repo" | "private-task" | "private-marker";
+type ExclusionReason = "private-repo" | "private-task" | "private-marker";
 
 const repoName = (repo: string): string => repo.slice(repo.lastIndexOf("/") + 1);
 
@@ -74,13 +74,13 @@ export function privateHits(text: string, markers: PrivateMarkers): string[] {
   return [...slugHits, ...new Set(text.match(ids) ?? [])];
 }
 
-export function exclusionReason(subject: ExclusionSubject, policy: ExclusionPolicy): ExclusionReason | undefined {
+function exclusionReason(subject: ExclusionSubject, policy: ExclusionPolicy): ExclusionReason | undefined {
   if (!policy.repos.includes(repoName(subject.repo))) return "private-repo";
   if (subject.taskInitiative != null && !policy.initiatives.includes(subject.taskInitiative)) return "private-task";
   return privateHits(JSON.stringify(subject.body), policy.markers).length > 0 ? "private-marker" : undefined;
 }
 
-export interface Filtered<T extends ExclusionSubject> {
+interface Filtered<T extends ExclusionSubject> {
   kept: T[];
   excluded: Partial<Record<ExclusionReason, number>>;
 }
@@ -105,12 +105,12 @@ export function assertNoPrivate(subjects: readonly ExclusionSubject[], policy: E
   }
 }
 
-export interface ExclusionLayers {
+interface ExclusionLayers {
   filter: typeof filterPrivate;
   assert: typeof assertNoPrivate;
 }
 
-export interface SelfTestResult {
+interface SelfTestResult {
   ok: boolean;
   /** Ids the filter let through; only the clean case should be here. */
   survivors: string[];

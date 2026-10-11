@@ -12,12 +12,12 @@ export interface BundleGit {
   git(args: readonly string[]): Promise<Buffer>;
 }
 
-export interface BundleCommits {
+interface BundleCommits {
   head: string;
   base: string;
 }
 
-export interface Bundle {
+interface Bundle {
   head: string;
   base: string;
   diff: string;
