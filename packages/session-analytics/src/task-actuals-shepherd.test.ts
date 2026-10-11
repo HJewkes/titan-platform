@@ -1,3 +1,4 @@
+import { prRef } from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFixtureGraph, insertOrigin, insertPrices, insertRequest, type FixtureGraph } from "./fixture.js";
 import { taskActuals, type ActualsTask } from "./task-actuals.js";
@@ -71,13 +72,22 @@ describe("taskActuals with Shepherd runs", () => {
 
   it("joins a run by its PR ref case-insensitively", () => {
     addImplSession("s1", "T-1");
-    linkPr("s1", "Acme/Widget#7", "2026-10-05T13:00:00Z");
+    linkPr("s1", prRef("Acme/Widget", 7), "2026-10-05T13:00:00Z");
     const runs = [run({ pr: 7, mergedAt: "2026-10-05T13:00:00Z", mergePath: "shepherd" })];
 
     const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], { ...OPTIONS, shepherdRuns: runs });
 
     expect(row!.mergePath).toBe("shepherd");
     expect(row!.reviewRounds).toBe(1);
+  });
+
+  it("does not join a run whose task names the same id in another initiative", () => {
+    addImplSession("s1", "T-1");
+    const runs = [run({ task: "beta/T-1", mergedAt: "2026-10-05T13:00:00Z", mergePath: "shepherd" })];
+
+    const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], { ...OPTIONS, shepherdRuns: runs });
+
+    expect(row).toMatchObject({ reviewRounds: null, mergePath: null });
   });
 
   it("sums review rounds and stage minutes over every joined run", () => {
@@ -95,7 +105,7 @@ describe("taskActuals with Shepherd runs", () => {
 
   it("marks a merged PR with no Shepherd run as merged outside", () => {
     addImplSession("s1", "T-1");
-    linkPr("s1", "acme/widget#8", "2026-10-05T11:00:00Z");
+    linkPr("s1", prRef("acme/widget", 8), "2026-10-05T11:00:00Z");
     const runs = [run({ task: "alpha/T-other", pr: 99 })];
 
     const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], { ...OPTIONS, shepherdRuns: runs });
@@ -106,7 +116,7 @@ describe("taskActuals with Shepherd runs", () => {
 
   it("gives null Shepherd facts to a row merged before the ledger began", () => {
     addImplSession("s1", "T-1");
-    linkPr("s1", "acme/widget#8", "2026-10-05T11:00:00Z");
+    linkPr("s1", prRef("acme/widget", 8), "2026-10-05T11:00:00Z");
     const runs = [run({ task: "alpha/T-other" })];
 
     const [row] = taskActuals(fixture.openReadOnly(), [task("T-1")], { ...OPTIONS, shepherdRuns: runs, shepherdSince: "2026-10-05T12:00:00Z" });

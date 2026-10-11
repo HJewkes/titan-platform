@@ -1,3 +1,5 @@
+import { prRef } from "@titan-design/session-read";
+
 const MS_PER_HOUR = 3_600_000;
 
 const STAGES = ["queued", "ci", "review", "re-review", "hold", "land"] as const;
@@ -27,6 +29,7 @@ export interface ShepherdRunRecord {
 /** What a row needs from `taskActuals` to join Shepherd runs onto it. */
 interface ShepherdJoinRow {
   taskId: string;
+  initiative: string;
   firstImplAt: string | null;
   prs: readonly { prRef: string; mergedAt: string | null }[];
 }
@@ -65,9 +68,9 @@ export function shepherdFactsFor(row: ShepherdJoinRow, runs: readonly ShepherdRu
 }
 
 function joins(run: ShepherdRunRecord, row: ShepherdJoinRow): boolean {
-  if (run.task !== null && (run.task === row.taskId || run.task.endsWith(`/${row.taskId}`))) return true;
+  if (run.task === row.taskId || run.task === `${row.initiative}/${row.taskId}`) return true;
   if (run.pr === null) return false;
-  const ref = `${run.repo}#${run.pr}`.toLowerCase();
+  const ref = prRef(run.repo, run.pr).toLowerCase();
   return row.prs.some((p) => p.prRef.toLowerCase() === ref);
 }
 
