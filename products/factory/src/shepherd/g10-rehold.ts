@@ -18,13 +18,18 @@ const ADVERSARY_CLASS = "g10-adversary";
 const ReholdInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), cleared: z.array(z.string()) });
 const ReholdResult = z.looseObject({ reheld: z.boolean(), reason: z.string().optional(), seat: z.string().optional(), clear: z.boolean().optional() });
 
-/** The head a seat released a `g10-adversary` hold at, when that release is the run's latest hold change; a re-hold or another class has none. */
-function releasedAdversaryAt(events: readonly ShepherdEvent[]): { head: string; reason: string } | undefined {
+/**
+ * The head the run was last released at with a recorded head, once any `g10-adversary` hold has been released that way.
+ * The trust rule stays in force for the rest of the run, so a later hold of another class, or a headless release such as
+ * Shepherd's own `g10-review` auto-release, does not switch it off. A run that is held now has none: the hold already gates it.
+ */
+function releasedAdversaryAt(events: readonly ShepherdEvent[]): string | undefined {
   const changes = events.filter((event) => event.kind === "hold" || event.kind === "release");
-  const release = changes.at(-1);
-  const hold = changes.at(-2);
-  if (release?.kind !== "release" || release.headSha === null || hold?.kind !== "hold" || holdClassOf(hold.reason) !== ADVERSARY_CLASS) return undefined;
-  return { head: release.headSha, reason: hold.reason ?? ADVERSARY_CLASS };
+  if (changes.at(-1)?.kind !== "release") return undefined;
+  const firstAdversary = changes.findIndex((event) => event.kind === "hold" && holdClassOf(event.reason) === ADVERSARY_CLASS);
+  if (firstAdversary === -1) return undefined;
+  const headed = changes.slice(firstAdversary + 1).filter((event) => event.kind === "release" && event.headSha !== null);
+  return headed.at(-1)?.headSha ?? undefined;
 }
 
 const reholdReason = (from: string, to: string): string => `${ADVERSARY_CLASS}: head moved from ${from} to ${to} after the seat released the hold; the seat's fail-open review does not cover it`;
@@ -42,11 +47,11 @@ export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now
       const store = deps.store.get();
       const mark = store.changeMark(input.runId);
       const released = releasedAdversaryAt(store.eventsOf(input.runId));
-      if (!released || released.head === input.head || input.cleared.includes(input.head)) return { reheld: false };
+      if (!released || released === input.head || input.cleared.includes(input.head)) return { reheld: false };
       const baseRef = await deps.port.getPr(input.repo, input.pr).then((read) => read.baseRef, () => undefined);
-      const result = baseRef === undefined ? { equal: false } : await carry({ repo: input.repo, baseRef, fromHead: released.head, head: input.head }, { ...probe, signal });
-      if (isCleanMergeUpOf(result, new Set([released.head, ...input.cleared]))) return { reheld: false, clear: true };
-      const reason = reholdReason(released.head, input.head);
+      const result = baseRef === undefined ? { equal: false } : await carry({ repo: input.repo, baseRef, fromHead: released, head: input.head }, { ...probe, signal });
+      if (isCleanMergeUpOf(result, new Set([released, ...input.cleared]))) return { reheld: false, clear: true };
+      const reason = reholdReason(released, input.head);
       if (!store.holdIfUnchanged(input.runId, mark, reason, { actor: SHEPHERD_ACTOR, headSha: input.head })) return { reheld: false };
       const seat = singleSeat(store.byRun(input.runId)?.policy.seat);
       return { reheld: true, reason, ...(seat && { seat }) };

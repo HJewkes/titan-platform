@@ -740,8 +740,11 @@ the seat is told. A pure merge-up keeps the release: the head's first parent is 
 (or a head already shown pure), its second parent is on the base branch, and its tree equals
 `git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
 show, including a failed probe, counts as a move and re-holds. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
-hold or release landed since the step read the run. A release recorded without a head
-(made before `--head` was required) is never re-held.
+hold or release landed since the step read the run. Once a `g10-adversary` hold has been released at
+a recorded head, the rule holds for the rest of the run. Later holds of other classes, and releases
+written with no head, such as Shepherd's own `g10-review` auto-release, do not switch it off. Later
+heads are compared against the most recent release that recorded a head. A run whose only
+`g10-adversary` release has no head (made before `--head` was required) is never re-held.
 
 ### Ask for Shepherd's own review {#own-review}
 
@@ -979,4 +982,4 @@ These limits remain:
 | `error: gh api … failed …` | `gh` cannot reach GitHub; a verb that looks a pull request up needs it |
 | a row with `[stalled: <error or status>]` | the run failed or is parked as `recovery_required`; `titan-factory resume` reports it |
 | a row with `[stalled: 3 review dispatches in a row started no reviewer]` | the run is live, but the agent-chat broker keeps refusing to start a reviewer; check the broker, and `timeline` shows each refused `sh-review` |
-| a row with `[stalled: <n> min in <phase>, over the <limit> min limit]` | the run is live but slow; `titan-factory shepherd timeline` shows the step it waits on. Per phase:<br>`ci`: a required check has not finished; open it on GitHub, where a hung run can be cancelled or rerun<br>`fixing`: the implementer pushed no new head; resume it with `agent-chat agent resume <name> --message <text>`<br>`review`: no verdict yet; `timeline` shows the `sh-review` dispatch, and the reviewer's agent-chat row shows whether it is still running<br>`merging`: `titan-factory shepherd status` shows a `held:` blocker, which `titan-factory shepherd release` lifts, or the run ahead of it in the merge train |
+| a row with `[stalled: <n> min in <phase>, over the <limit> min limit]` | the run is live but slow; `titan-factory shepherd timeline` shows the step it waits on. Per phase:<br>`ci`: a required check has not finished; open it on GitHub, where a hung run can be cancelled or rerun<br>`fixing`: the implementer pushed no new head; resume it with `agent-chat agent resume <name> --message <text>`<br>`review`: no verdict yet; `timeline` shows the `sh-review` dispatch, and the reviewer's agent-chat row shows whether it is still running<br>`merging`: `titan-factory shepherd status` shows a `held:` blocker, which `titan-factory shepherd release <pr> --head <sha>` lifts, or the run ahead of it in the merge train |

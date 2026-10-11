@@ -102,10 +102,28 @@ describe("a g10-adversary hold the seat released", () => {
     expect(store.eventsOf("run-1")).toHaveLength(holds);
   });
 
-  it("ignores a release of another hold class", async () => {
+  it("is still re-held after a hold of another class was placed and released at the reviewed head", async () => {
     const { store, run } = rig("fix-push");
     store.hold("run-1", "g10-review: auth change");
     store.release("run-1", { headSha: REVIEWED });
+
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
+  it("is still re-held after Shepherd's own auto-release wrote a release with no head", async () => {
+    const { store, run } = rig("fix-push");
+    store.hold("run-1", "g10-review: auth change");
+    store.releaseIfHeld("run-1", "g10-review: auth change");
+
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
+  it("compares against the most recent headed release", async () => {
+    const { store, run } = rig("fix-push", MOVED);
+    store.hold("run-1", "stalled: no progress");
+    store.release("run-1", { headSha: MOVED });
 
     expect(await run({ head: MOVED })).toEqual({ reheld: false });
   });

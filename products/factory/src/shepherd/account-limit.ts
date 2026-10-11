@@ -31,7 +31,7 @@ const resetWords = (resetsAt: number | null): string => (resetsAt === null ? "an
 export const accountHoldReason = (configDir: string, resetsAt: number | null): string => `${HOLD_PREFIX}${configDir} until ${resetWords(resetsAt)}; ${TASK_REF}`;
 
 export function accountAlertText(configDir: string, resetsAt: number | null): string {
-  const lift = resetsAt === null ? "Release a held run with `titan-factory shepherd release` once it has headroom." : "Held runs resume on their own after the reset.";
+  const lift = resetsAt === null ? "Release a held run with `titan-factory shepherd release <pr> --head <sha>` once it has headroom." : "Held runs resume on their own after the reset.";
   return `Shepherd: the review account ${configDir} hit its usage limit and resets at ${resetWords(resetsAt)}. Reviews that would bill it are held (account-exhausted). ${lift}`;
 }
 
