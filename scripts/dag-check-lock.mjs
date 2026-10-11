@@ -13,6 +13,10 @@ export const DEFAULT_LOCK_DIR = path.join(homedir(), ".cache", "titan-platform",
 // basement-suite reads 75 as "busy, retry later".
 export const BUSY_EXIT_CODE = 75;
 const DEFAULT_WAIT_MS = 8 * 60 * 1000;
+// Only the holder appends, so the log needs no lock of its own; the tail bounds both its size and a stale median.
+const LOG_KEEP_LINES = 200;
+const ESTIMATE_LINES = 20;
+const ESTIMATE_MIN_LINES = 3;
 
 const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
 
@@ -85,9 +89,66 @@ export function tryAcquire(lockDir) {
   }
 }
 
-/** Remove the lock if this process holds it. Safe to call more than once. */
-export function release(lockDir) {
-  if (readHolder(lockDir) === process.pid) rmSync(lockDir, { recursive: true, force: true });
+export function holdLogPath(lockDir) {
+  return `${lockDir}.log`;
+}
+
+/** The parseable hold records in the log, oldest first; a corrupt or partial line is skipped. */
+export function readHolds(lockDir) {
+  let text;
+  try {
+    text = readFileSync(holdLogPath(lockDir), "utf8");
+  } catch {
+    return [];
+  }
+  const holds = [];
+  for (const line of text.split("\n")) {
+    try {
+      const hold = JSON.parse(line);
+      if (Number.isFinite(hold?.acquiredAt) && Number.isFinite(hold?.releasedAt)) holds.push(hold);
+    } catch {
+      // A line cut short by a killed writer carries no hold time.
+    }
+  }
+  return holds;
+}
+
+function appendHold(lockDir, hold) {
+  const line = JSON.stringify({ ...hold, pid: process.pid, releasedAt: Date.now() });
+  const kept = readHolds(lockDir).slice(-(LOG_KEEP_LINES - 1)).map((h) => JSON.stringify(h));
+  writeFileSync(holdLogPath(lockDir), `${[...kept, line].join("\n")}\n`);
+}
+
+/**
+ * Remove the lock if this process holds it. Safe to call more than once. Given the hold acquire returned, first
+ * appends one line to the hold log; set hold.exit beforehand to record the check's exit code.
+ */
+export function release(lockDir, hold) {
+  if (readHolder(lockDir) !== process.pid) return;
+  if (hold) appendHold(lockDir, { check: null, exit: null, ...hold });
+  rmSync(lockDir, { recursive: true, force: true });
+}
+
+/** The median hold in ms over the recent log, or null with too little history to estimate from. */
+export function medianHoldMs(lockDir) {
+  const held = readHolds(lockDir)
+    .slice(-ESTIMATE_LINES)
+    .map((h) => h.releasedAt - h.acquiredAt)
+    .sort((a, b) => a - b);
+  if (held.length < ESTIMATE_MIN_LINES) return null;
+  const mid = Math.floor(held.length / 2);
+  return held.length % 2 ? held[mid] : (held[mid - 1] + held[mid]) / 2;
+}
+
+/** The fail-fast message when the waiters ahead cannot clear within the budget at the median hold, else null. */
+export function queueTooDeep(lockDir, ahead, budgetMs) {
+  const median = medianHoldMs(lockDir);
+  if (median === null || ahead * median <= budgetMs) return null;
+  const minutes = Math.round((ahead * median) / 60000);
+  return (
+    `dag-check lock: ${ahead} ahead, about ${minutes} min at the median hold of ${Math.round(median / 1000)} s; ` +
+    `exit ${BUSY_EXIT_CODE}. CI's dag-check job runs dag:check and dead:check on the PR.`
+  );
 }
 
 /** The wait bound in ms: eight minutes by default, so a waiter fails before an agent's ten-minute tool limit. */
@@ -129,18 +190,25 @@ function dropTicket(lockDir, name) {
 }
 
 /**
- * Wait for the lock in arrival order. Logs the holder and queue position on the first wait and every logEveryMs after,
- * and throws LockTimeoutError once timeoutMs has passed.
+ * Wait for the lock in arrival order and return the hold record for release. Logs the holder and queue position on the
+ * first wait and every logEveryMs after. Throws LockTimeoutError once timeoutMs has passed, or at once on joining when
+ * the hold log says the queue ahead cannot clear within timeoutMs.
  */
-export async function acquire({ lockDir = DEFAULT_LOCK_DIR, timeoutMs, pollMs = 2000, logEveryMs = 30000, log }) {
+export async function acquire({ lockDir = DEFAULT_LOCK_DIR, check = null, timeoutMs, pollMs = 2000, logEveryMs = 30000, log }) {
   const start = Date.now();
   const ticket = takeTicket(lockDir);
   let lastLog = -Infinity;
+  let aheadAtJoin = null;
   try {
     for (;;) {
       const ahead = liveTickets(lockDir).indexOf(ticket);
+      if (aheadAtJoin === null) {
+        aheadAtJoin = ahead;
+        const tooDeep = queueTooDeep(lockDir, ahead, timeoutMs);
+        if (tooDeep) throw new LockTimeoutError(tooDeep);
+      }
       const holder = ahead === 0 ? tryAcquire(lockDir) : (readHolder(lockDir) ?? "unknown");
-      if (ahead === 0 && holder === null) return;
+      if (ahead === 0 && holder === null) return { check, joinedAt: start, acquiredAt: Date.now(), aheadAtJoin };
       const waited = Date.now() - start;
       if (waited >= timeoutMs) {
         throw new LockTimeoutError(`dag-check lock busy (held by ${holder}, ${ahead} ahead of you); retry later`);
