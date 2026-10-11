@@ -34,9 +34,9 @@ describe("shepherd phase step families", () => {
   });
 
   it("pins sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait and sh-review-request to review.ts, declared and routed there", () => {
-    const ids = ["sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request"];
+    const ids = ["sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request"];
     expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
-    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids);
+    expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids.filter((id) => id !== "sh-merge-evidence-gate"));
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");
   });
 
