@@ -8,7 +8,7 @@ import { isCleanMergeUpOf } from "./merge-up-carry.js";
 import type { ShepherdDeps } from "./phases.js";
 import { singleSeat } from "./held-repair.js";
 import { carry, type CarryOptions } from "./tree-carry.js";
-import type { ShepherdEvent } from "./events.js";
+import { SHEPHERD_ACTOR, type ShepherdEvent } from "./events.js";
 
 export const G10_REHOLD_STEP = "sh-g10-rehold";
 export const G10_REHOLD_STEPS: readonly StepDeclaration[] = [{ id: G10_REHOLD_STEP, kind: "dispatch" }];
@@ -32,20 +32,22 @@ const reholdReason = (from: string, to: string): string => `${ADVERSARY_CLASS}: 
 /**
  * A hold the seat released at one head stays released only across a clean merge-up of it: the new head's first parent is
  * a vouched head and its tree is the merge-tree of its parents. Any other move (a fix push, a hand-resolved merge) is
- * re-held, and a probe that cannot say counts as a move. The hold is written only while the release is still the run's latest change.
+ * re-held, and a probe or a PR read that cannot say counts as a move. The probe can take minutes, so the hold is written by a
+ * compare-and-swap on the run's change mark: a hold or release made meanwhile stands, and nothing is written over it.
  */
 export function g10ReholdRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, probe?: Omit<CarryOptions, "signal">) {
   return [
     codeRoute(G10_REHOLD_STEP, deps.now, async (raw: unknown, signal) => {
       const input = ReholdInput.parse(raw);
       const store = deps.store.get();
+      const mark = store.changeMark(input.runId);
       const released = releasedAdversaryAt(store.eventsOf(input.runId));
       if (!released || released.head === input.head || input.cleared.includes(input.head)) return { reheld: false };
-      const { baseRef } = await deps.port.getPr(input.repo, input.pr);
-      const result = await carry({ repo: input.repo, baseRef, fromHead: released.head, head: input.head }, { ...probe, signal });
+      const baseRef = await deps.port.getPr(input.repo, input.pr).then((read) => read.baseRef, () => undefined);
+      const result = baseRef === undefined ? { equal: false } : await carry({ repo: input.repo, baseRef, fromHead: released.head, head: input.head }, { ...probe, signal });
       if (isCleanMergeUpOf(result, new Set([released.head, ...input.cleared]))) return { reheld: false, clear: true };
       const reason = reholdReason(released.head, input.head);
-      store.hold(input.runId, reason, undefined, { actor: "shepherd", headSha: input.head });
+      if (!store.holdIfUnchanged(input.runId, mark, reason, { actor: SHEPHERD_ACTOR, headSha: input.head })) return { reheld: false };
       const seat = singleSeat(store.byRun(input.runId)?.policy.seat);
       return { reheld: true, reason, ...(seat && { seat }) };
     }),

@@ -5,7 +5,7 @@ import { shepherdEventMigration } from "./events.js";
 import { z } from "zod";
 import { G10_REHOLD_STEP, g10ReholdRoutes } from "./g10-rehold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { shepherdStoreRef, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
+import { shepherdStoreRef, type ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import type { Git, GitResult } from "./tree-carry.js";
 
 const REPO = "octo/demo";
@@ -22,9 +22,13 @@ const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 /** How the moved head came to be: a clean merge of main, a merge whose conflict was resolved by hand, or a plain fix push. */
 type Shape = "clean" | "conflict-resolved" | "fix-push";
 
-function scriptedGit(shape: Shape): Git {
+/** `during` runs once, at the probe's first git call: the window in which the world can change under the route. */
+function scriptedGit(shape: Shape, during: () => void = () => undefined): Git {
+  let first = true;
   return async (_dir, args) => {
     const [command] = args;
+    if (first) during();
+    first = false;
     if (command === "rev-list") return ok(shape === "fix-push" ? `${args.at(-1)} ${REVIEWED}` : `${args.at(-1)} ${REVIEWED} ${MAIN}`);
     if (command === "merge-tree") return ok(`${MERGED_TREE}\n`);
     if (command === "rev-parse") return ok(shape === "conflict-resolved" ? fakeSha("resolved-tree") : MERGED_TREE);
@@ -33,7 +37,7 @@ function scriptedGit(shape: Shape): Git {
 }
 
 /** A run whose seat released a g10-adversary hold at REVIEWED, with the PR now at `head`. */
-function rig(shape: Shape, head = MOVED) {
+function rig(shape: Shape, head = MOVED, during: (store: ShepherdStore) => void = () => undefined) {
   const db = openDatabase(":memory:");
   runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
   const ref = shepherdStoreRef();
@@ -45,14 +49,14 @@ function rig(shape: Shape, head = MOVED) {
   store.hold("run-1", ADVERSARY);
   store.release("run-1", { headSha: REVIEWED });
   const deps = { port: githubPort(fake.wire), store: ref, now: () => 0 };
-  const [route] = g10ReholdRoutes(deps, { git: scriptedGit(shape) });
+  const [route] = g10ReholdRoutes(deps, { git: scriptedGit(shape, () => during(store)) });
   const run = async (input: { head: string; cleared?: string[] }) => {
     const prompt = JSON.stringify({ runId: "run-1", repo: REPO, pr, cleared: [], ...input });
     const result = await route!.runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: G10_REHOLD_STEP, iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });
     if (!result.ok) throw new Error(result.error);
     return Outcome.parse(JSON.parse(result.output)).result;
   };
-  return { store, run };
+  return { store, run, fake };
 }
 
 describe("a g10-adversary hold the seat released", () => {
@@ -105,5 +109,31 @@ describe("a g10-adversary hold the seat released", () => {
 
     expect(await run({ head: MOVED })).toEqual({ reheld: false });
   });
-});
 
+  it("is re-held, failing closed, when the PR cannot be read for the probe", async () => {
+    const { store, run, fake } = rig("clean");
+    fake.onGetPr = () => {
+      throw new Error("github is down");
+    };
+
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.byRun("run-1")?.held).toBe(true);
+  });
+
+  it("leaves a hold another seat placed during the probe, with its reviewer, and writes no re-hold", async () => {
+    const other = "g10-review: auth change; TP-9";
+    const { store, run } = rig("fix-push", MOVED, (s) => void s.hold("run-1", other, "sec-audit-review"));
+
+    expect(await run({ head: MOVED })).toEqual({ reheld: false });
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: other, holdReviewer: "sec-audit-review" });
+    expect(store.eventsOf("run-1").filter((event) => event.kind === "hold")).toHaveLength(2);
+  });
+
+  it("does not re-hold over a release the seat made at the new head during the probe", async () => {
+    const { store, run } = rig("fix-push", MOVED, (s) => void s.release("run-1", { headSha: MOVED }));
+
+    expect(await run({ head: MOVED })).toEqual({ reheld: false });
+    expect(store.byRun("run-1")?.held).toBe(false);
+    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold", "release", "release"]);
+  });
+});

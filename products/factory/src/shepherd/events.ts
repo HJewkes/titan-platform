@@ -1,4 +1,5 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 const EVENT_DDL = `
   CREATE TABLE shepherd_event (
@@ -73,6 +74,11 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
 export function eventsFor(db: Db, runId: string, repo: string): ShepherdEvent[] {
   const rows = db.prepare("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase()) as EventRow[];
   return rows.map(fromRow);
+}
+
+/** The id of a run's latest hold or release event, 0 when it has none. */
+export function latestChangeId(db: Db, runId: string): number {
+  return z.object({ id: z.number().nullable() }).parse(db.prepare("SELECT MAX(id) AS id FROM shepherd_event WHERE run_id = ? AND kind IN ('hold', 'release')").get(runId)).id ?? 0;
 }
 
 /** Every event at or after `since` (an ISO time), oldest first; what stats reads to attribute hold time. */

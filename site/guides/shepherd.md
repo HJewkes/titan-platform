@@ -730,8 +730,8 @@ seat releases it.
 
 `release` takes the head the seat reviewed, as `--head <40-character sha>`, and refuses with exit 65
 when the pull request is at another head, or with exit 69 when the head cannot be read: a seat
-that reviewed one head must not release a later one. A release at the wrong head is the
-`sh-g10-rehold` step's concern too, so the recorded head is always the reviewed one.
+that reviewed one head must not release a later one. The release records that head, and the
+`sh-g10-rehold` step compares later heads against it.
 
 A `g10-adversary:` hold the seat released is re-applied by the `sh-g10-rehold` step, read at every
 CI read, when the head then moves off the released one: a fix round, a fixer's push, a rebase, or
@@ -739,7 +739,8 @@ a merge-up whose conflicts were resolved by hand. The hold event names the old a
 the seat is told. A pure merge-up keeps the release: the head's first parent is the released head
 (or a head already shown pure), its second parent is on the base branch, and its tree equals
 `git merge-tree` of those two parents, as the `sh-carry` probe computes. Anything the probe cannot
-show, including a failed probe, counts as a move and re-holds. A release recorded without a head
+show, including a failed probe, counts as a move and re-holds. A hold or release made while the probe runs is never overwritten: the re-hold is written only if no
+hold or release landed since the step read the run. A release recorded without a head
 (made before `--head` was required) is never re-held.
 
 ### Ask for Shepherd's own review {#own-review}

@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { appendEvent, eventsFor, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
+import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -94,35 +94,8 @@ export function sliceMigration(version = 8): Migration {
 
 export { holdReviewerMigration, holdSatisfiedMigration, lineageMigration, reviewRequestMigration } from "./store-migrations.js";
 
-export const AUTHOR_ROLES = ["implementer", "successor"] as const;
-
-export type AuthorRole = (typeof AUTHOR_ROLES)[number];
-
-/** An agent that wrote a run's code: the implementer, or a successor that took the work over from `predecessor`. */
-export interface AuthorInput {
-  agentId: string;
-  name: string;
-  role: AuthorRole;
-  predecessor?: string;
-}
-
-export interface Author {
-  runId: string;
-  agentId: string;
-  name: string;
-  role: AuthorRole;
-  predecessor: string | null;
-  at: string;
-}
-
-interface AuthorRow {
-  run_id: string;
-  agent_id: string;
-  name: string;
-  role: AuthorRole;
-  predecessor: string | null;
-  at: string;
-}
+import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
+export { AUTHOR_ROLES, type Author, type AuthorInput, type AuthorRole } from "./author-types.js";
 
 interface Row {
   repo: string;
@@ -258,6 +231,16 @@ export class ShepherdStore implements HoldLookup {
       return changed === 1;
     });
     return release();
+  }
+
+  /** The id of the run's latest hold or release event, 0 when it has none; a reader keeps it to learn, at its write, whether any change landed since. */
+  changeMark(runId: string): number {
+    return latestChangeId(this.db, runId);
+  }
+
+  /** Compare-and-swap: holds only while no hold or release has landed since `mark` was read, so a hold or release made meanwhile stands untouched; false when one did. */
+  holdIfUnchanged(runId: string, mark: number, reason: string, by: EventContext = {}): boolean {
+    return this.db.transaction(() => latestChangeId(this.db, runId) === mark && (this.setHeld(runId, true, reason, null, by), true))();
   }
 
   /** The run's hold and release events and its repo's freeze and thaw events, oldest first. */
