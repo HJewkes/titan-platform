@@ -120,12 +120,13 @@ duplicate and bad counts.
 titan host doctor [--json]
 ```
 
-One row per check, in two groups:
+One row per check, in three groups:
 
 | Group | Rows |
 |---|---|
 | `product` | `active-work doctor --json`, `agent-chat doctor`, `titan-factory service check --json` |
 | `cli` | presence and version of `active-work`, `agent-chat`, `titan-factory`, `claude`, `chezmoi`, `gh`, `git`, `node`, `pnpm` |
+| `inventory` | presence of every path in the coordination design's section 2 inventory for this platform (`INVENTORY` in `src/host/inventory.ts`) |
 
 - A row is `ok`, `warn`, `fail` or `missing`. A CLI that is not on PATH is `missing`; a
   product doctor that exits non-zero is `fail` with the product's own cause (the factory's
@@ -137,6 +138,14 @@ One row per check, in two groups:
   under `$TITAN_PROJECTS_ROOT` (default `~/projects`; the factory's is
   `titan-platform/products/factory`). When the linked bin differs, the row is `warn`
   "version mismatch": the stale linked bin a host can keep after a checkout moves on.
+- An inventory row is a `stat`, never a read, so a secret's contents are never touched. Its
+  detail names the design's categories: (a) code, (b) per-owner configuration, (c) secret,
+  (d) per-host delta. A row marked darwin or linux appears on that platform only. An absent
+  path is `missing`, or `warn` when the path only exists on some hosts or roles. A `*`
+  segment, as in `~/.claude-profiles/*/settings.json`, gives one row per directory under it.
+- The inventory leaves out runtime state (each host recreates it), the leak-guard term list
+  (any command naming its path is denied), and the active-work and autonomy roots, which the
+  product doctors check against their own configured paths.
 - It exits 0 when every row is `ok` or `warn`, else 1. `--json` prints
   `{ host, platform, ok, rows: [{ id, group, status, detail, version?, expected? }] }`;
   `hostDoctorReportSchema` in `src/host/doctor.ts` is its schema.

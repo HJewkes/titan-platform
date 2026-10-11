@@ -12,6 +12,8 @@ function ports(missing: string[]): HostPorts {
       return { code: 0, stdout: "fine\n", stderr: "" };
     },
     readFile: async () => '{"version":"1.2.3"}',
+    stat: async () => "dir",
+    list: async () => ["default"],
     which: async () => null,
   };
 }
@@ -37,7 +39,10 @@ describe("titan host doctor", () => {
     expect(code).toBe(0);
     expect(report.ok).toBe(true);
     expect(report.platform).toBe("linux");
-    expect(report.rows.map((row) => row.group)).toEqual([...Array(3).fill("product"), ...Array(9).fill("cli")]);
+    const groups = report.rows.map((row) => row.group);
+    expect(groups.slice(0, 12)).toEqual([...Array(3).fill("product"), ...Array(9).fill("cli")]);
+    expect(groups.length).toBeGreaterThan(12);
+    expect(groups.slice(12).every((group) => group === "inventory")).toBe(true);
   });
 
   it("exits 1 with ok false when a CLI is missing", async () => {

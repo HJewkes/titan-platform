@@ -1,5 +1,11 @@
 # titan-console
 
+## 0.3.11
+
+### Patch Changes
+
+- b0fd912: Document the phone login-link flow, and that a console sign-in survives a daemon restart: the session cookie is signed with `lan.token`, so only an unspent login link dies with the process.
+
 ## 0.3.10
 
 ### Patch Changes
