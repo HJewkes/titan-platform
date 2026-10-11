@@ -301,7 +301,7 @@ function endedOutcome({ observed, headSha }: Routed): LandOutcome {
 
 /** A tree-equal update of a reviewed head carries its MERGE; otherwise a verdict about another head is ignored, so a stale review can neither send back nor vouch for this head. */
 async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
-  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy.merge);
+  if (run.release) return releaseVerdict(run.ctx, { ...run.target, head: headSha }, run.policy);
   const probe: CarryProbe = {};
   const carried = run.trail.seatAsked.has(headSha) ? undefined : await carriedVerdict(tapped(run.ctx, (stepId, result) => noteCarryStep(probe, stepId, result)), run.target, run.reviews, headSha, run.carryScopeReads++);
   if (carried) return carried;

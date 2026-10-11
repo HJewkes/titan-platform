@@ -10,6 +10,9 @@ export { isRepo as isRepoKey } from "@titan-design/github";
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 
+/** Lets Shepherd merge a Version Packages PR, and so publish, on a passed preflight; merge-on-green alone does not. */
+export const RELEASE_MERGE_GRANT = "release-merge";
+
 /** Lets a run merge into a base other than the repo's default branch, as a stacked PR's is; only a seat can grant it. */
 export const FEATURE_BASE_GRANT = "merge-into-feature-base";
 

@@ -116,7 +116,7 @@ describe("sweepVersionPackages and the release preflight", () => {
     const w = await releaseRepo(async () => {
       reads += 1;
       if (reads <= REGISTRY_BACKOFF_MS.length + 1) throw new Error("registry.npmjs.org answered 503 for @demo/widget");
-      return true;
+      return "trusted";
     });
 
     await w.sweepNow();
@@ -132,7 +132,7 @@ describe("sweepVersionPackages and the release preflight", () => {
 
   it("re-reads npm for a head blocked only by an unpublished package, and starts a fresh run once it is published by hand", async () => {
     const published = new Set<string>();
-    const w = await releaseRepo(async (name) => published.has(name));
+    const w = await releaseRepo(async (name) => (published.has(name) ? "trusted" : "missing"));
     await w.sweepNow();
     const blocked = w.runOf();
     await gateOpened(w.host, gateId(blocked, "approve-merge"));
@@ -150,7 +150,7 @@ describe("sweepVersionPackages and the release preflight", () => {
   });
 
   it("gates a malformed manifest once, and the next sweep leaves that run waiting on the owner", async () => {
-    const w = await releaseRepo(async () => true, "{ not json");
+    const w = await releaseRepo(async () => "trusted", "{ not json");
     await w.sweepNow();
     const runId = w.runOf();
     await gateOpened(w.host, gateId(runId, "approve-merge"));

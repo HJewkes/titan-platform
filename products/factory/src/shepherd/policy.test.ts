@@ -87,6 +87,27 @@ describe("a feature base", () => {
   });
 });
 
+describe("the release-merge grant", () => {
+  const RELEASER: Seat = { name: "release-seat", remotes: ["acme/releases"], paths: {}, grants: ["merge-on-green-approve", "release-merge"] };
+  const releaser = (requested?: unknown) => resolveEffectivePolicy(lookupSeat({ seats: [RELEASER], denied: [] }, "acme/releases"), requested);
+
+  it("comes only from a seat's release-merge grant, not from merge-on-green", () => {
+    expect(effective("acme/gizmos")).not.toHaveProperty("release");
+    expect(releaser().release).toBe("grant");
+    expect(EffectivePolicySchema.parse(JSON.parse(JSON.stringify(releaser())))).toEqual(releaser());
+  });
+
+  it("refuses a registration that asks for it, so an implementer cannot widen its seat", () => {
+    expect(() => effective("acme/gizmos", { release: "grant" })).toThrow(RegistrationRefused);
+  });
+
+  it("reads a stored run policy written before the field as having no grant", () => {
+    const stored = EffectivePolicySchema.parse({ merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" });
+
+    expect(stored).not.toHaveProperty("release");
+  });
+});
+
 describe("shepherdGatePolicy", () => {
   it("denies a merge under never, gates it under owner-gate, and gates auto with no merge facts", () => {
     const decide = (repo: string, merge?: "never") => shepherdGatePolicy(effective(repo, merge && { merge })).decide("merge", { headSha: "a".repeat(40) });
@@ -166,6 +187,14 @@ describe("stricterPolicy", () => {
     expect(stricterPolicy(featureBase, featureBase).featureBase).toBe(true);
     expect(stricterPolicy(featureBase, policy("auto", "o"))).not.toHaveProperty("featureBase");
     expect(stricterPolicy(policy("auto", "t"), featureBase)).not.toHaveProperty("featureBase");
+  });
+
+  it("keeps a release grant only when both policies carry one", () => {
+    const granted = { ...policy("auto", "t"), release: "grant" as const };
+
+    expect(stricterPolicy(granted, granted).release).toBe("grant");
+    expect(stricterPolicy(granted, policy("auto", "o"))).not.toHaveProperty("release");
+    expect(stricterPolicy(policy("auto", "t"), granted)).not.toHaveProperty("release");
   });
 
   it("names the seat whose mode won, and keeps a fixer only when both allow one", () => {

@@ -186,7 +186,7 @@ function openReplay(replay: Replay): FactoryHost {
   spaceUpdates(replay.fake, (ms) => void (clock += ms), replay.updateGapMs);
   const port = mainCi(replay.fake, replay.fixture.main ?? "green");
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => true, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay) });
+  const routes = factoryRoutesFor({ port, store, freeze: freezeStoreRef(() => clock), now: () => clock, sleep: tick, registry: async () => "trusted" as const, mainRed: fixerWiring(replay.trace.fixers), review: heldReviewer(replay) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(scriptedPhases(replay)), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   replay.store = store.get();
