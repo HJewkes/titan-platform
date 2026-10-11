@@ -147,6 +147,8 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "factory-review-")));
   dirs.push(dir);
   vi.stubEnv("HOME", dir);
+  mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
+  for (const profile of [PROFILE, "rv-other"]) writeFileSync(join(dir, ".agent-chat", "profiles", `${profile}.json`), JSON.stringify({ surface: "headless" }));
   const checkout = join(dir, "checkouts", "demo");
   mkdirSync(checkout, { recursive: true });
   mkdirSync(join(dir, "seats"));
@@ -154,7 +156,7 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   const deny = options.denied ? `deny_repos:\n  - ${checkout}\n` : "";
   if (seatRemote !== null) writeFileSync(join(dir, "seats", "demo.md"), `---\nschema: autonomy-seat/v1\nname: demo-seat\nrepos:\n  - path: ${checkout}\n    remote: ${seatRemote}\n${deny}---\n`);
   const transcript = writeTranscript(dir, options.lastWords ?? `Read it all.\n\nVerdict: MERGE\nPR: ${options.repo ?? REPO}#1\nHead: ${H1}\n`);
-  const row = { name: "@NAME@", ...REVIEWER, state: "exited", presence: "exited", status: "finished", profile: PROFILE, cwd: checkout, transcriptPath: transcript, transcriptExists: true };
+  const row = { name: "@NAME@", ...REVIEWER, state: "exited", presence: "exited", status: "finished", profile: PROFILE, surface: "headless", cwd: checkout, transcriptPath: transcript, transcriptExists: true, generation: 1 };
   writeFileSync(join(dir, "roster.template"), JSON.stringify([row]));
   const review = options.review === undefined ? { profile: PROFILE } : options.review;
   if (options.reply !== undefined) writeFileSync(join(dir, "reply.jsonl"), jsonl([{ type: "user", sessionId: REVIEWER.sessionId, uuid: "user-2", timestamp: "2026-09-30T10:06:00Z", message: { role: "user", content: "correct it" } }, assistantSaid(2, "2026-09-30T10:07:00Z", options.reply)]));
@@ -388,7 +390,7 @@ async function fakeActiveWork(): Promise<{ port: number; calls: string[] }> {
 /** A fake `agent-chat` whose roster holds `impl-a`, exited, until `agent retire` removes it. */
 function fakeRetiringAgentChat(dir: string): string {
   const bin = join(dir, "agent-chat");
-  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", cwd: dir, sessionId: "session-impl-a" }]);
+  const row = JSON.stringify([{ name: "impl-a", agentId: "agent-impl-a", state: "exited", presence: "exited", status: "finished", profile: "implementer", surface: "headless", cwd: dir, sessionId: "session-impl-a", generation: 1 }]);
   writeFileSync(join(dir, "roster.json"), row);
   const lines = ["#!/bin/sh", `printf '%s\\n' "$*" >>"${dir}/calls"`, 'case "$2" in', `  ls) cat "${dir}/roster.json" ;;`, `  retire) printf '[]' >"${dir}/roster.json"; echo "Retired $3" ;;`, "esac"];
   writeFileSync(bin, `${lines.join("\n")}\n`);

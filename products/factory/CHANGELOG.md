@@ -1,5 +1,36 @@
 # @titan-design/factory
 
+## 0.16.1
+
+### Patch Changes
+
+- 77c1298: Open a gate naming sh-merge-evidence, instead of failing the run, when the merge-evidence comment post still answers an empty or unparseable body after its retries.
+- Updated dependencies [3873ce6]
+  - @titan-design/session-analytics@0.13.1
+
+## 0.16.0
+
+### Minor Changes
+
+- 3d3cc58: Hold a Shepherd run as account-exhausted when its reviewer hits the account's usage limit, instead of re-spawning reviewers and falling to approve-merge. Only Claude Code's own `<synthetic>` limit record counts, never a reviewer's words. The run waits inside the review under the store hold (`account-exhausted: <configDir> until <reset>; TP-1955`), which is matched exactly so an owner's hold is never touched. The repo's seat gets one alert per exhaustion of an account. No reviewer is spawned on an exhausted account until its reset (believed only within 8 days, else re-checked after an hour) or an owner release, and the review runs again at the PR's current head when the hold lifts. The new optional `shepherd.review.fallbackConfigDirs` list moves the review to the next account with headroom. The restart drain does not wait on a held run.
+
+### Patch Changes
+
+- 9a842b3: The Shepherd ci-red wake counts the failing check runs and, for the known CI jobs (validate, lint-types, dag-check, egress-scan), names the scripts that reproduce each and asks the implementer to rerun them before pushing, as the brief's test rule says. Check-run names stay inside the fenced CI log and never reach the instruction text.
+- 703c716: Cap a gate brief's evidence link at 500 characters so a long CI URL no longer makes the brief invalid, and say a carried MERGE was carried from a tree-equal head.
+- 579886b: `PullRequest` now carries `autoMerge`, read from the REST `auto_merge` field. Shepherd's `shepherd/review` publish reads it, so a PR with auto-merge armed gets `action_required` rather than `success`; an unreadable PR is treated as armed.
+- 4823243: Shepherd retires a main-red fixer and parks its clean pushed worktree once the red main is over; a dirty or unpushed tree and a fixer still running are left.
+- 37fb5d0: On systemd, Shepherd's redeploy now starts `service deploy` in its own transient user unit (`systemd-run --user --collect`), so restarting the service no longer kills the deployer before it confirms health, records the outcome or rolls back. darwin keeps the setsid path. If systemd-run is missing or fails, the deployer falls back to setsid and logs why.
+- d5fe1a2: Move the branch-holder lookup out of shepherd/commands.ts so the file fits the 350-loc dag-check limit; no behaviour change.
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/review-panel@0.5.0
+  - @titan-design/session-read@0.12.2
+
 ## 0.15.0
 
 ### Minor Changes

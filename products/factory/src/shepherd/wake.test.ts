@@ -5,7 +5,7 @@ import { SpawnDeferred } from "./spawn-gate.js";
 import { BrokerUnavailableError, DispatchError, DispatchTimeoutError, type AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub, type PullRequest } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
@@ -138,11 +138,19 @@ describe("sh-wake-implementer: who is woken", () => {
     const rows = JSON.stringify([row("impl-a")]);
     writeFileSync(bin, `#!/bin/sh\nif [ "$2" = "spawn" ]; then for a in "$@"; do printf '%s\\0' "$a" >>"${argvFile}"; done; fi\ncat >/dev/null\nprintf '%s' '${rows}'\n`);
     chmodSync(bin, 0o755);
-    const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
+    // agent-dispatch refuses a spawn unless $HOME/.agent-chat/profiles/<profile>.json is headless.
+    mkdirSync(join(SCRATCH, ".agent-chat", "profiles"), { recursive: true });
+    writeFileSync(join(SCRATCH, ".agent-chat", "profiles", "bd-implementer.json"), JSON.stringify({ surface: "headless" }));
+    vi.stubEnv("HOME", SCRATCH);
+    try {
+      const { run } = wakeStep({ noAgents: true, agentChatBin: bin, agentChatConfigDir: "/srv/claude-second", warmth: { "/transcripts/impl-a.jsonl": warmAt(50) } });
 
-    await run("review", fixFirst("fix the parser"));
+      await run("review", fixFirst("fix the parser"));
 
-    expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
+      expect(readFileSync(argvFile, "utf8").split("\0")).toContain("/srv/claude-second");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("resumes a parked implementer on FIX_FIRST though its tree is gone, since resuming re-creates it at the same path", async () => {

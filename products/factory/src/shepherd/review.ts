@@ -14,7 +14,8 @@ import { DEFAULT_ACCOUNT, type ReviewAccounts } from "./account-limit.js";
 import { consoleTextOf, failureOf } from "./error-class.js";
 import { adoptedReviewer, awaitExternalVerdict, isExternalVerdictInput, seatVetoed } from "./external-review.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
-import { Awaited, Dispatched, Intended, MergeEvidenceSchema, ReviewCauseSchema } from "./review-schemas.js";
+import { Awaited, Dispatched, Intended, ReviewCauseSchema } from "./review-schemas.js";
+import { MERGE_EVIDENCE_STEPS, evidenceOrGate } from "./merge-evidence-gate.js";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, registeredKind, type IsFrozen, type MergeEvidenceInput } from "./merge-facts.js";
 import type { NoVerdictCause, ShepherdDeps, ShepherdPhases, Verdict } from "./phases.js";
 import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
@@ -39,7 +40,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   { id: AWAIT_VERDICT_STEP, kind: "dispatch" },
   { id: LATE_VERDICT_STEP, kind: "dispatch" },
   { id: CORRECT_VERDICT_STEP, kind: "dispatch" },
-  { id: MERGE_EVIDENCE_STEP, kind: "dispatch" },
+  ...MERGE_EVIDENCE_STEPS,
   { id: CARRY_STEP, kind: "dispatch" },
   ...PUBLISH_REVIEW_STEPS,
   ...ACCOUNT_STEPS,
@@ -327,7 +328,7 @@ export async function mergeVerdict(ctx: WorkflowContext, input: Omit<MergeEviden
   await publishReview(ctx, input, { outcome: "MERGE", verdictHead: input.verdict.head, head: input.head, ...(input.carry && { carriedFrom: input.carry.fromHead, carryRule: input.carry.rule ?? "tree-equal" }) });
   const { visualPaths } = effectivePolicy(ctx);
   const request: MergeEvidenceInput = { ...input, runId: ctx.runId, ...(visualPaths && { visualPaths }) };
-  const evidence = await step(ctx, `${MERGE_EVIDENCE_STEP}:${input.head}`, request, MergeEvidenceSchema);
+  const evidence = await evidenceOrGate(ctx, input.head, request);
   return { kind: "MERGE", headSha: input.head, evidence };
 }
 

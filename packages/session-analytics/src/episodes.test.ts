@@ -434,6 +434,22 @@ describe("readEpisodeInput", () => {
     ]);
   });
 
+  it("a session mirrored into two transcripts counts each inbound once, as one file would", () => {
+    const db = fixture.graph.db;
+    insertInbound(db, { sessionId: "mirrored", ts: at(1), cause: "human_typed", transcriptId: 2 });
+    insertInbound(db, { sessionId: "mirrored", ts: at(1), cause: "human_typed", transcriptId: 1 });
+    insertInbound(db, { sessionId: "mirrored", ts: at(5), cause: "human_typed", transcriptId: 2 });
+
+    const humanTurnCount = readSessionContexts(db, ["mirrored"]).get("mirrored")!.facts.humanTurnCount;
+    const inbounds = readEpisodeInput(db, "mirrored", false).inbounds;
+
+    expect(humanTurnCount).toBe(2);
+    expect([...inbounds].sort((a, b) => a.ts.localeCompare(b.ts)).map(({ ts, transcriptId }) => ({ ts, transcriptId }))).toEqual([
+      { ts: at(1), transcriptId: 1 },
+      { ts: at(5), transcriptId: 2 },
+    ]);
+  });
+
   it("episode input for one session does not scan every request", () => {
     const plan = fixture.graph.db.prepare(`EXPLAIN QUERY PLAN ${EPISODE_REQUESTS_SQL}`).all({ sessionId: "s" }) as { detail: string }[];
     const details = plan.map((row) => row.detail);
