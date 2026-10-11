@@ -17,6 +17,7 @@ import { landPrWorkflow } from "../workflows/land-pr.js";
 import { prSnapshot, type PrSnapshot } from "../workflows/pr-snapshot.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
 import type { ParkPort } from "./park.js";
+import type { Git } from "./tree-carry.js";
 import type { ReviewRequest, ShepherdPhases, Verdict, WakeOutcome, WakeRequest } from "./phases.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -1604,5 +1605,78 @@ describe("a failed required check at a pull request head", () => {
 
     expect(second.fake.effects.rerunFailedJobs).toBe(0);
     expect(stepIds(second.w.host, runId).filter((id) => id.startsWith("rerun:"))).toEqual([]);
+  });
+});
+
+describe("merge steps allocate no worktree (CC-276 S3)", () => {
+  const reviewer = { agentId: "agent-rv-1", sessionId: "session-rv-1" };
+  const merged = fakeSha("merge-tree");
+  const ok = (stdout = "") => ({ code: 0, stdout, stderr: "" });
+  /** The carry probe's git for an update-branch that is a clean merge of main into the reviewed head. */
+  const cleanMergeUp: Git = async (_dir, args) => {
+    if (args[0] === "rev-list") return ok(`${args.at(-1)} ${H1} ${fakeSha("main-tip")}`);
+    if (args[0] === "merge-tree") return ok(`${merged}\n`);
+    if (args[0] === "rev-parse") return ok(merged);
+    if (args[0] === "diff-tree") return ok("src/a.ts\0");
+    return ok();
+  };
+
+  /** Each call a worktree could come from, with the effect counts at the moment it was made. */
+  interface Call {
+    kind: "wake" | "review" | "park";
+    updateBranch: number;
+    merge: number;
+  }
+
+  /** A correctness PR that goes behind during its MERGE review, under a seat with merge-on-green-approve. */
+  function behindDuringReview(): { host: FactoryHost; fake: FakeGitHub; runId: string; calls: Call[] } {
+    const fake = fakeGitHub();
+    const calls: Call[] = [];
+    const record = (kind: Call["kind"]) => calls.push({ kind, updateBranch: fake.effects.updateBranch, merge: fake.effects.merge });
+    const phases: ShepherdPhases = {
+      wake: async () => (record("wake"), UNHANDLED),
+      review: async (ctx, request) => {
+        record("review");
+        if (request.headSha === H1) Object.assign(fake.pr(1), { mergeableState: "behind", behind: true });
+        return mergeVerdict(ctx, { ...request, head: request.headSha, verdict: { value: "MERGE", head: request.headSha, locator: transcriptLocator() }, resolver: reviewer, dispatchedReviewer: reviewer, seatGrants: ["merge-on-green-approve"] });
+      },
+    };
+    fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
+    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), pr.headSha !== H1 && (pr.mergeableState = "clean"));
+    const ref = shepherdStoreRef();
+    const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")), git: cleanMergeUp };
+    const park: ParkPort = () => (record("park"), { lines: [] });
+    const port = githubPort(fake.wire);
+    const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
+    const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry } });
+    const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+    hosts.push(host);
+    const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO_POLICY) });
+    ref.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO_POLICY, kind: "correctness" });
+    return { host, fake, runId, calls };
+  }
+
+  it("updates the branch and merges on the carried verdict with no wake, no further review and no park outside sh-park", async () => {
+    const { host, fake, runId, calls } = behindDuringReview();
+
+    await host.runtime.wait(runId);
+
+    const updatedHead = fake.pr(1).headSha;
+    expect(stepIds(host, runId)).toContainEqual(expect.stringMatching(/^update-branch:(r\d+:)?0$/));
+    expect(stepResult(host, runId, `sh-merge-evidence:${updatedHead}`)).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: expect.stringMatching(/^MRG-AU-R[CM]$/) } } } } });
+    expect(fake.effects).toMatchObject({ updateBranch: 1, merge: 1 });
+    expect(calls.filter((call) => call.kind === "wake")).toEqual([]);
+    expect(calls.filter((call) => call.kind === "review" && call.updateBranch > 0)).toEqual([]);
+    expect(calls.filter((call) => call.kind === "park")).toHaveLength(stepIds(host, runId).filter((id) => id.startsWith("sh-park")).length);
+  });
+
+  it("calls no agent phase and no park from sh-cleanup or any other step after the merge", async () => {
+    const { host, runId, calls } = behindDuringReview();
+
+    await host.runtime.wait(runId);
+
+    expect(stepIds(host, runId)).toContain("sh-cleanup");
+    expect(calls.filter((call) => call.merge > 0)).toEqual([]);
   });
 });
