@@ -1,6 +1,6 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import type { JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { userInfo } from "node:os";
 import { parsePort, parsePositiveInt } from "./cli-options.js";
@@ -21,7 +21,7 @@ import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
-import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
+import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import { isRepo } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
@@ -37,7 +37,8 @@ import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
 import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
-import { probeServe, type ServeProbe } from "./serve-probe.js";
+import { probeServe } from "./serve-probe.js";
+import { localEnvelope, unansweredMessage } from "./cli-shepherd-rpc.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -268,29 +269,8 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
   verbs.setExit(printShepherd(verbs.io, name, envelope, opts, deploy));
 }
 
-/** The status rows for owner/repo#N: from titan-factory serve when one answers, else from the database here. */
-export async function statusRows(verbs: Verbs, args: { repo: string; pr: number }, port: number): Promise<JsonEnvelope<unknown>> {
-  const probe = await probeServe(port, verbs.deps.serveWaitMs);
-  return probe.state === "up" ? postRpc(port, "shepherd.status", args) : localEnvelope(verbs, "shepherd.status", args);
-}
-
-async function localEnvelope(verbs: Verbs, name: ShepherdCommandName, args: object): Promise<JsonEnvelope<unknown>> {
-  let result: JsonEnvelope<unknown> | undefined;
-  await verbs.withHost(async (host, routes) => {
-    result = (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
-    return EXIT.OK;
-  });
-  return result!;
-}
-
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
 const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
-
-function unansweredMessage(probe: ServeProbe, port: number): string {
-  if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
-  if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
-  return `no titan-factory serve answered on port ${port}: connection refused, so serve is down`;
-}
 
 /** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
@@ -320,7 +300,7 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 
-async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
+export async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
   const res = await fetch(`http://127.0.0.1:${port}/rpc/${name}`, {
     method: "POST",
     headers: { "content-type": "application/json", [CLIENT_HEADER]: "titan-factory" },

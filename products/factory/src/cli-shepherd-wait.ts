@@ -2,7 +2,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError, type Command } from "commander";
 import { parsePort, parsePositiveInt } from "./cli-options.js";
-import { statusRows, type Verbs } from "./cli.js";
+import type { Verbs } from "./cli.js";
+import { statusRows } from "./cli-shepherd-rpc.js";
 import { EXIT } from "./exit-codes.js";
 import { parsePrRef } from "./registry.js";
 import { FACTORY_PORT } from "./serve.js";
@@ -17,7 +18,7 @@ export interface WaitOptions {
 }
 
 /** What one wait reads the run's status through and keeps time with; tests swap in their own. */
-export interface WaitPorts {
+interface WaitPorts {
   readRows: () => Promise<JsonEnvelope<unknown>>;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
