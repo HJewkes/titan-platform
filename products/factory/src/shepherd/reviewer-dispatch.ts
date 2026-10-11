@@ -37,6 +37,8 @@ export interface AgentChatReviewerDispatchOptions {
   gate?: SpawnGate;
   /** True for the PR that fixes its repo's red main, whose review the gate admits ahead of the others; absent means none is. */
   isFixer?: (target: ReviewTarget) => boolean;
+  /** Told when the broker refuses a spawn because its machine stop holds, which the factory's own reading may not see (swap, tuned limits). */
+  onMachineHold?: (at: number, reason: string) => void;
 }
 
 export interface AgentChatReviewerDispatch extends ReviewerDispatch {
@@ -91,14 +93,17 @@ function busyReason(message: string): { reason: string; code?: string } | undefi
 }
 
 /** Only an unreachable broker or a refusal that clears with time is safe to ask again; every other failure, a timeout included, stays a refusal. */
-async function askBroker<T>(ask: () => T | Promise<T>): Promise<T> {
+async function askBroker<T>(ask: () => T | Promise<T>, onMachineHold?: AgentChatReviewerDispatchOptions["onMachineHold"]): Promise<T> {
   try {
     return await ask();
   } catch (error) {
     if (error instanceof BrokerUnavailableError) throw new ReviewerBrokerDown(error.message, { cause: error });
     if (error instanceof SpawnDeferred) throw new ReviewerSpawnQueued(`spawn gate: ${error.message}`, { cause: error });
     const busy = error instanceof DispatchError ? busyReason(error.message) : undefined;
-    if (busy?.code === MACHINE_HOLD_CODE) throw new ReviewerMachineHold(busy.reason, { cause: error });
+    if (busy?.code === MACHINE_HOLD_CODE) {
+      onMachineHold?.(Date.now(), busy.reason);
+      throw new ReviewerMachineHold(busy.reason, { cause: error });
+    }
     if (busy !== undefined) throw new ReviewerBrokerBusy(busy.reason, { cause: error });
     throw error;
   }
@@ -172,7 +177,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt)),
-    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer))),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
+    resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };
 }
