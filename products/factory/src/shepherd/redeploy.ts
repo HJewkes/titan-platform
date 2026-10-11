@@ -97,7 +97,7 @@ export const SYSTEMD_RUN = "systemd-run";
 export const deployUnitName = (mergeSha: string, at: Date): string => `titan-factory-deploy-${mergeSha.slice(0, 8)}-${at.getTime().toString(36)}`;
 
 /** A transient unit sits in its own cgroup, so `systemctl restart titan-factory` (KillMode=control-group) no longer kills the deployer mid-deploy. */
-export function systemdRunArgs(unit: string, log: string, cwd: string, command: readonly string[]): string[] {
+function systemdRunArgs(unit: string, log: string, cwd: string, command: readonly string[]): string[] {
   const output = [`--property=StandardOutput=append:${log}`, `--property=StandardError=append:${log}`];
   return ["--user", "--collect", "--quiet", "--unit", unit, `--working-directory=${cwd}`, "--setenv=PATH", ...output, "--", ...command];
 }
