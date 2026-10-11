@@ -57,7 +57,7 @@ describe("approve-merge", () => {
 describe("brief bounds and carried wording", () => {
   it("cuts an evidence link over 500 characters so the brief still validates", () => {
     const url = `https://ci.example.com/run/${"x".repeat(600)}`;
-    const { brief } = ciFailedDecision({ ...pr, failing: [{ name: "build", url }] as never });
+    const { brief } = ciFailedDecision({ ...pr, failing: [{ name: "build", conclusion: "failure", url, workflowRunId: 2 }] });
 
     expect(brief.evidenceRef.length).toBe(500);
     expect(() => snapshotBrief("g", brief, true)).not.toThrow();
