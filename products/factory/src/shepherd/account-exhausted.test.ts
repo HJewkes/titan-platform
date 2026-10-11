@@ -9,7 +9,8 @@ import type { ReviewAccounts } from "./account-limit.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage } from "./review.js";
-import { shepherdStoreRef } from "./store.js";
+import { accountLimitStoreRef, type AccountLimitStore } from "./account-store.js";
+import { shepherdStoreRef, type ShepherdStore } from "./store.js";
 
 const REPO = "octo/demo";
 const H1 = fakeSha("account-head-1");
@@ -75,6 +76,8 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 interface SceneHooks {
   /** Called at every sleep with the new time, so a test can move the head or the CI mid-run. */
   onTick?: (now: number, scene: { fake: FakeGitHub; ci: { greenFrom: number } }) => void;
+  /** Runs once the run is registered and before its first step, with the account marks and the registration to seed. */
+  seed?: (limits: AccountLimitStore, store: ShepherdStore, runId: string) => void;
 }
 
 /**
@@ -103,13 +106,16 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
     await sleep(1, signal);
   };
   const review = { reader: reviewers.reader, dispatch: reviewers.dispatch, accounts: reviewers.accounts, timeoutMs: 5 * 60_000 };
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: tick, review });
+  const accountLimits = accountLimitStoreRef(() => clock);
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, accountLimits, now: () => clock, sleep: tick, review });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow({ review: reviewPhase, wake: async () => ({ kind: "unhandled", reason: "no fixer here" }) })], routes, gatePollMs: 5 });
   hosts.push(host);
   runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: AUTO });
+  hooks.seed?.(accountLimits.get(), store.get(), runId);
   const stepIds = () => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
-  return { runId, store, reviewers, holds, stepIds, approveAtSpawn, fake };
+  const intents = () => Object.values(host.runtime.status(runId)!.stepResults).flatMap((result) => (result.stepId.startsWith("sh-review-intent") ? [result.data?.["result"]] : []));
+  return { runId, store, reviewers, holds, stepIds, intents, approveAtSpawn, fake };
 }
 
 describe("a reviewer account out of usage", () => {
@@ -188,6 +194,47 @@ describe("a reviewer account out of usage", () => {
       expect(scene.stepIds().filter((id) => id.startsWith("sh-account-hold"))).toHaveLength(1);
       expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`);
       expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
+    });
+  });
+
+  describe("a review that is not the default spawn", () => {
+    const exhaustedUntilReset = (account: string) => (limits: AccountLimitStore) => void limits.markExhausted(account, RESET, NOTICE);
+    const fresh = () => false;
+
+    it("leaves a seat's ask standing while every account is exhausted, and spends it on the review after the reset", async () => {
+      const scene = shepherdWith([PRIMARY], fresh, "client", {
+        seed: (limits, store, runId) => (exhaustedUntilReset(PRIMARY)(limits), void store.requestReview(runId, H1)),
+      });
+
+      await vi.waitFor(() => expect(scene.reviewers.spawns).toHaveLength(1), { timeout: 20_000 });
+
+      expect(scene.reviewers.spawns[0]!.at).toBeGreaterThanOrEqual(RESET);
+      const intents = scene.intents();
+      expect(intents.length).toBeGreaterThan(1);
+      expect(intents.slice(0, -1)).toEqual(intents.slice(0, -1).map(() => expect.objectContaining({ kind: "none", exhausted: PRIMARY })));
+      expect(intents.at(-1)).toMatchObject({ kind: "intent", mode: "spawn", account: PRIMARY, requested: true });
+    });
+
+    it("bills Shepherd's own g10-adversary reviewer to an account with headroom, never the exhausted one", async () => {
+      const scene = shepherdWith([PRIMARY, SPARE], fresh, "client", {
+        seed: (limits, store, runId) => (exhaustedUntilReset(PRIMARY)(limits), void store.hold(runId, "g10-adversary: merge-policy change; TP-1", "seat-rv")),
+      });
+
+      await vi.waitFor(() => expect(scene.reviewers.spawns).toHaveLength(1), { timeout: 20_000 });
+
+      expect(scene.reviewers.spawns.map((row) => row.account)).toEqual([SPARE]);
+      expect(scene.intents()[0]).toMatchObject({ kind: "intent", mode: "spawn", account: SPARE });
+    });
+
+    it("spawns no g10-adversary reviewer before the reset when every account is exhausted", async () => {
+      const scene = shepherdWith([PRIMARY], fresh, "client", {
+        seed: (limits, store, runId) => (exhaustedUntilReset(PRIMARY)(limits), void store.hold(runId, "g10-adversary: merge-policy change; TP-1", "seat-rv")),
+      });
+
+      await vi.waitFor(() => expect(scene.reviewers.spawns).toHaveLength(1), { timeout: 20_000 });
+
+      expect(scene.reviewers.spawns[0]!.at).toBeGreaterThanOrEqual(RESET);
+      expect(scene.intents()[0]).toMatchObject({ kind: "none", exhausted: PRIMARY });
     });
   });
 });
