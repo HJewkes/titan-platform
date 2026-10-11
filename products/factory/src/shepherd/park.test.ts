@@ -1,10 +1,8 @@
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
 import type { ExitNoticePorts } from "./exit-notice.js";
-import type { WorkflowContext } from "@titan-design/workflow";
-import { parkAtGreen, parkImplementer, parkRoutes, parkStep, type ParkPort } from "./park.js";
+import { parkImplementer, parkRoutes, parkStep, rearmRecorded, type ParkPort } from "./park.js";
 import { liveRetry, type LiveRetryDeps } from "./park-retry.js";
-import type { ShepherdDeps } from "./phases.js";
 import type { ShepherdStoreRef } from "./store.js";
 
 interface Registered {
@@ -168,14 +166,13 @@ describe("liveRetry", () => {
   });
 });
 
-describe("parkAtGreen", () => {
+describe("rearmRecorded", () => {
   it("re-arms the exit retry when a restart replays a live agent's recorded refusal", async () => {
     const armed: string[] = [];
-    parkRoutes({ store: storeWith({ implementer: "impl-a" }), now: () => 0, agentChatBin: "agent-chat" } as unknown as ShepherdDeps, refusing({}), { arm: (agent) => void armed.push(agent) });
+    parkRoutes({ store: storeWith({ implementer: "impl-a" }), now: () => 0, agentChatBin: "agent-chat" }, refusing({}), { arm: (agent) => void armed.push(agent) });
     const recorded = { kind: "not-parked", agent: "impl-a", reason: LIVE("impl-a"), brokerDown: false, retry: "at-exit" };
-    const ctx = { runId: "run-1", dispatch: async () => ({ data: { result: recorded } }) } as unknown as WorkflowContext;
 
-    await parkAtGreen(ctx, input.headSha);
+    rearmRecorded("run-1", recorded);
 
     expect(armed).toEqual(["impl-a"]);
   });

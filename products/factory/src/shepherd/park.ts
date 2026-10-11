@@ -133,12 +133,15 @@ export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, inpu
 /** The serve process's one retry, so a restart's replay re-arms what the step before it armed. */
 let rearm: ((runId: string, agent: string) => void) | undefined;
 
-function rosterRetry(deps: ShepherdDeps, park: ParkPort): LiveRetry {
+/** Only what parking reads, so a test wires it without a GitHub port. */
+type ParkDeps = Pick<ShepherdDeps, "store" | "now" | "agentChatBin" | "roster" | "exitNotice">;
+
+function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
   const roster = deps.roster ?? agentChatRoster(deps.agentChatBin);
   return liveRetry({ attempt: (name) => asAttempt(attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
 }
 
-export const parkRoutes = (deps: ShepherdDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
+export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
   const wiring: ParkWiring = { park, notice: deps.exitNotice, retry };
   rearm = (runId, agent) => armRetry(deps.store, wiring, runId, agent);
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
@@ -147,9 +150,13 @@ export const parkRoutes = (deps: ShepherdDeps, park: ParkPort = (name) => parkAg
 const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]) });
 const LiveRefusal = z.looseObject({ kind: z.literal("not-parked"), agent: z.string(), retry: z.literal("at-exit") });
 
+/** A first run's refusal is already armed and ignored here; a replayed one is armed again, since the restart lost its wait. */
+export function rearmRecorded(runId: string, recorded: unknown): void {
+  const live = LiveRefusal.safeParse(recorded);
+  if (live.success) rearm?.(runId, live.data.agent);
+}
+
 /** Once per green head, before its review: a fix round's resume re-creates the tree, so the next green head parks it again. */
 export async function parkAtGreen(ctx: WorkflowContext, headSha: string): Promise<void> {
-  const result = await step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha }, ParkOutcomeResult);
-  const live = LiveRefusal.safeParse(result);
-  if (live.success) rearm?.(ctx.runId, live.data.agent);
+  rearmRecorded(ctx.runId, await step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha }, ParkOutcomeResult));
 }
