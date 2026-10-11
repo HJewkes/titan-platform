@@ -120,12 +120,34 @@ describe("a g10-adversary hold the seat released", () => {
     expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
   });
 
-  it("compares against the most recent headed release", async () => {
-    const { store, run } = rig("fix-push", MOVED);
-    store.hold("run-1", "stalled: no progress");
+  it("is re-held at a new head where the seat lifted only a stall", async () => {
+    const { store, run } = rig("fix-push");
+    store.hold("run-1", "stalled: no progress; TP-1");
+    store.release("run-1", { headSha: MOVED });
+
+    expect(await run({ head: MOVED })).toMatchObject({ reheld: true });
+    expect(store.byRun("run-1")?.holdReason).toContain(`from ${REVIEWED} to ${MOVED}`);
+  });
+
+  it("stays released at the head where the seat released the re-hold", async () => {
+    const { store, run } = rig("fix-push");
+    await run({ head: MOVED });
     store.release("run-1", { headSha: MOVED });
 
     expect(await run({ head: MOVED })).toEqual({ reheld: false });
+    expect(store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("keeps a re-hold in force when a hold of another class is placed over it", async () => {
+    const { store, run } = rig("fix-push");
+    await run({ head: MOVED });
+    const reheld = store.byRun("run-1")?.holdReason;
+    const events = store.eventsOf("run-1").length;
+
+    store.hold("run-1", "stalled: no progress; TP-1", "stall-reviewer");
+
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: reheld, holdReviewer: null });
+    expect(store.eventsOf("run-1")).toHaveLength(events);
   });
 
   it("is re-held, failing closed, when the PR cannot be read for the probe", async () => {

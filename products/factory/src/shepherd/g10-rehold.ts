@@ -19,17 +19,21 @@ const ReholdInput = z.looseObject({ runId: z.string(), repo: z.string(), pr: z.n
 const ReholdResult = z.looseObject({ reheld: z.boolean(), reason: z.string().optional(), seat: z.string().optional(), clear: z.boolean().optional() });
 
 /**
- * The head the run was last released at with a recorded head, once any `g10-adversary` hold has been released that way.
- * The trust rule stays in force for the rest of the run, so a later hold of another class, or a headless release such as
- * Shepherd's own `g10-review` auto-release, does not switch it off. A run that is held now has none: the hold already gates it.
+ * The head the seat last released a `g10-adversary` hold at, the only head its review vouches for. A release of another
+ * class, headed or not, leaves it where it was: lifting a stall at a new head is no adversary review of that head. A run
+ * that is held now has none, because the hold already gates it.
  */
 function releasedAdversaryAt(events: readonly ShepherdEvent[]): string | undefined {
-  const changes = events.filter((event) => event.kind === "hold" || event.kind === "release");
-  if (changes.at(-1)?.kind !== "release") return undefined;
-  const firstAdversary = changes.findIndex((event) => event.kind === "hold" && holdClassOf(event.reason) === ADVERSARY_CLASS);
-  if (firstAdversary === -1) return undefined;
-  const headed = changes.slice(firstAdversary + 1).filter((event) => event.kind === "release" && event.headSha !== null);
-  return headed.at(-1)?.headSha ?? undefined;
+  let held = false;
+  let inForce: string | null = null;
+  let anchor: string | undefined;
+  for (const event of events) {
+    if (event.kind === "hold") [held, inForce] = [true, event.reason];
+    if (event.kind !== "release") continue;
+    if (event.headSha !== null && holdClassOf(inForce) === ADVERSARY_CLASS) anchor = event.headSha;
+    [held, inForce] = [false, null];
+  }
+  return held ? undefined : anchor;
 }
 
 const reholdReason = (from: string, to: string): string => `${ADVERSARY_CLASS}: head moved from ${from} to ${to} after the seat released the hold; the seat's fail-open review does not cover it`;

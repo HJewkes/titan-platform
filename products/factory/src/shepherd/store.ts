@@ -127,6 +127,9 @@ const KindSchema = z.enum(TASK_KINDS);
 /** GitHub treats repo names case-insensitively, so a hold on one spelling must hold every spelling. */
 const repoKey = (repo: RepoSlug): string => repo.toLowerCase();
 
+/** Reads the class the way `holdClassOf` does, the text before the first colon, without importing the g10 release step. */
+const isAdversaryHold = (reason: string | null): boolean => reason?.startsWith("g10-adversary:") ?? false;
+
 const REFS_HEADS = "refs/heads/";
 
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
@@ -211,9 +214,17 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(newRunId)!;
   }
 
-  /** A hold or a release clears any satisfaction, so a re-hold waits for its own reviewer again. */
+  /**
+   * A hold or a release clears any satisfaction, so a re-hold waits for its own reviewer again. A hold of another class
+   * leaves a `g10-adversary` hold in force untouched and is not recorded: overwriting it would let that class's release
+   * drop the adversary review.
+   */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
-    return this.setHeld(runId, true, reason, reviewer ?? null, by);
+    return this.db.transaction(() => {
+      const current = this.byRun(runId);
+      if (current?.held && isAdversaryHold(current.holdReason) && !isAdversaryHold(reason)) return current;
+      return this.setHeld(runId, true, reason, reviewer ?? null, by);
+    })();
   }
 
   release(runId: string, by: EventContext = {}): Registration {

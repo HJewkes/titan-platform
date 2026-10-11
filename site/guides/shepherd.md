@@ -743,7 +743,10 @@ show, including a failed probe, counts as a move and re-holds. A hold or release
 hold or release landed since the step read the run. Once a `g10-adversary` hold has been released at
 a recorded head, the rule holds for the rest of the run. Later holds of other classes, and releases
 written with no head, such as Shepherd's own `g10-review` auto-release, do not switch it off. Later
-heads are compared against the most recent release that recorded a head. A run whose only
+heads are compared against the head the seat last released a `g10-adversary` hold at. A release of
+another class leaves that head where it was, even one made with `--head` at a newer head: lifting a
+stall is not an adversary review. While a `g10-adversary` hold is in force, `shepherd hold` with
+another class leaves it in place and records nothing, so that class's release cannot drop it. A run whose only
 `g10-adversary` release has no head (made before `--head` was required) is never re-held.
 
 ### Ask for Shepherd's own review {#own-review}
