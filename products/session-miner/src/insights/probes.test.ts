@@ -103,9 +103,10 @@ describe("insights probes (Q11)", () => {
   });
 
   it("refuses the session filters, since probes measure the whole fleet", async () => {
-    const { code } = await cli(["--json", "insights", "probes", "--probes", writeProbes("probes.json", PROBES), "--agent-prefix", "impl-"]);
+    const { code, stdout } = await cli(["--json", "insights", "probes", "--probes", writeProbes("probes.json", PROBES), "--agent-prefix", "impl-"]);
 
     expect(code).not.toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false, error: expect.stringMatching(/probes does not take/) });
   });
 
   it("prints one row per probe per day with the list-price caveat", async () => {
