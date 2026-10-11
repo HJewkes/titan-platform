@@ -114,6 +114,34 @@ sha256 of the file's base name and the raw line, so importing the same file twic
 same row count. Lines that do not parse are skipped and counted; it prints the imported,
 duplicate and bad counts.
 
+## `titan host doctor`
+
+```sh
+titan host doctor [--json]
+```
+
+One row per check, in two groups:
+
+| Group | Rows |
+|---|---|
+| `product` | `active-work doctor --json`, `agent-chat doctor`, `titan-factory service check --json` |
+| `cli` | presence and version of `active-work`, `agent-chat`, `titan-factory`, `claude`, `chezmoi`, `gh`, `git`, `node`, `pnpm` |
+
+- A row is `ok`, `warn`, `fail` or `missing`. A CLI that is not on PATH is `missing`; a
+  product doctor that exits non-zero is `fail` with the product's own cause (the factory's
+  `cause: message`, active-work's failing checks, agent-chat's last line). active-work
+  warnings make its row `warn`.
+- A version comes from `--version`. A CLI without one (`titan-factory`) falls back to the
+  `package.json` beside its linked bin.
+- For the three product CLIs, `expected` is the `version` in the checkout's `package.json`
+  under `$TITAN_PROJECTS_ROOT` (default `~/projects`; the factory's is
+  `titan-platform/products/factory`). When the linked bin differs, the row is `warn`
+  "version mismatch": the stale linked bin a host can keep after a checkout moves on.
+- It exits 0 when every row is `ok` or `warn`, else 1. `--json` prints
+  `{ host, platform, ok, rows: [{ id, group, status, detail, version?, expected? }] }`;
+  `hostDoctorReportSchema` in `src/host/doctor.ts` is its schema.
+- It never reads a secret and changes nothing.
+
 ## What it deliberately does not do
 
 - It does not run as a daemon. A scheduler starts it each minute.

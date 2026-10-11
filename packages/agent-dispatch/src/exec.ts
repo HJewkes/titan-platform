@@ -113,7 +113,7 @@ export interface SafeExecResult {
  * `input` is stdin for the child, and exists for exactly one reason: argv is
  * world-readable via `ps`, so anything relay did not author itself — an item
  * body captured by voice — must not travel that way (R-68). It is the same
- * one-call-site rule as `cwd`; a caller with nothing to hide passes nothing.
+ * opt-in rule as `cwd`; a caller with nothing to hide passes nothing.
  */
 export function execSafe(
   bin: string,
@@ -158,13 +158,14 @@ export function execSafe(
 /**
  * `execSafe` without blocking the event loop: same timeout, no-shell and
  * error mapping, for callers (a long-lived server) that cannot afford to
- * stall while a slow child answers.
+ * stall while a slow child answers. `input` follows `execSafe`'s rule.
  */
 export function execSafeAsync(
   bin: string,
   args: string[],
   env: Record<string, string>,
   timeoutMs: number,
+  input?: string,
 ): Promise<SafeExecResult> {
   return new Promise((resolve, reject) => {
     const child = execFile(
@@ -182,6 +183,6 @@ export function execSafeAsync(
       },
     );
     // execFileSync closes the child's stdin; a child that reads it would otherwise wait forever.
-    child.stdin?.end();
+    child.stdin?.end(input);
   });
 }

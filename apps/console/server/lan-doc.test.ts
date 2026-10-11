@@ -45,4 +45,11 @@ describe("the documented checks", () => {
     expect(doc).toContain("curl -sS http://<tailnet-ip>:7500/");
     expect(doc).toContain("https://<fqdn>:7500/` | `401`");
   });
+
+  it("walks the phone login-link flow and says a session survives a restart", () => {
+    const phone = readFileSync(DOC, "utf8").split("### On a phone")[1] ?? "";
+
+    expect(phone).toContain("login-link");
+    expect(phone).toMatch(/survives `systemctl --user restart titan-console`/);
+  });
 });
