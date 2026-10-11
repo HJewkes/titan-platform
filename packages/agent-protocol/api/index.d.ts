@@ -56,10 +56,13 @@ type LifecycleExecutionTarget = {
 type ExecutionTerminal<TResult = unknown> = {
     outcome: "succeeded";
     result: TResult;
-} | {
+}
+/** usage is what the harness reported spending before it failed, so budgets can count it. */
+ | {
     outcome: "failed";
     reason: string;
     retryable: boolean;
+    usage?: readonly UsageMeasurement[];
 } | {
     outcome: "cancelled";
     reason: string;

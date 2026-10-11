@@ -17,6 +17,8 @@ interface StepUsage {
     costUsd: number;
     inputTokens?: number;
     outputTokens?: number;
+    /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
+    costUnknown?: true;
 }
 /** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
 type StepOperation = "seed" | "dispatch" | "assisted" | "authorize";
@@ -489,6 +491,7 @@ interface MapOptions<T> {
     /**
      * Stop launching items once finished items have spent this much. In-flight
      * items are not counted, so a run can overshoot by up to `concurrency - 1` items.
+     * An item whose usage is `costUnknown` also stops launches, with `stoppedBy: "cost_unknown"`.
      */
     budgetUsd?: number;
     /** Retryable item failures tolerated before launches stop. Defaults to 3. A non-retryable failure always stops launches. */
@@ -520,7 +523,8 @@ interface MapResult<T> {
     }[];
     /** Cost reported by finished and failed items. */
     spentUsd: number;
-    stoppedBy: "budget" | "failure" | null;
+    /** `cost_unknown`: with `budgetUsd` set, an item reported unpriced usage, so spend can no longer be checked. */
+    stoppedBy: "budget" | "failure" | "cost_unknown" | null;
 }
 /**
  * Run `fn` over `items` with a concurrency cap and a budget cap. Each item runs

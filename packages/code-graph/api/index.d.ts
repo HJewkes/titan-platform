@@ -769,11 +769,32 @@ interface TestCoverageOwnershipOptions {
  */
 declare function computeTestCoverageOwnership(entries: readonly ChurnEntry[], links: readonly TestSourceLink[], options?: TestCoverageOwnershipOptions): GraphMetric[];
 
+/**
+ * Everything the metrics and alias passes need from one file's syntax tree,
+ * computed while that tree is alive so the tree can be deleted right after
+ * (TP-747: web-tree-sitter WASM memory never shrinks, so peak memory is set by
+ * how many trees are alive at once).
+ */
+interface FileDigest {
+    fileId: string;
+    /** File-level metrics on `fileId` plus symbol-level metrics for every name in `symbolNames`. */
+    sourceMetrics: GraphMetric[];
+    deadCodeMetrics: GraphMetric[];
+    growthRiskMetrics: GraphMetric[];
+    /** Bare declared name to the qualified names that share it, for requalify aliases. */
+    qualifiedByName: Map<string, Set<string>>;
+}
+
 interface IndexerMetricsInput {
     nodes: Map<string, GraphNode>;
     edges: Map<string, GraphEdge>;
     /** Files (re)parsed this run — source metrics are computed fresh for these. */
-    parsedFiles: ParsedFile[];
+    parsedFiles?: ParsedFile[];
+    /**
+     * Digests of the files (re)parsed this run, used in place of `parsedFiles` so
+     * their trees can be deleted before metrics run (TP-747).
+     */
+    fileDigests?: readonly FileDigest[];
     /** Source metrics carried forward verbatim for reused (unchanged) files. */
     reusedSourceMetrics: GraphMetric[];
     idRoot: string;
