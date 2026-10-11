@@ -34,7 +34,7 @@
     "docs:build": "node scripts/gen-docs-reference.mjs --check && vitepress build site",
     "docs:preview": "vitepress preview site",
     "changeset": "changeset",
-    "version-packages": "changeset version && node scripts/gen-capabilities.mjs",
+    "version-packages": "changeset version && node scripts/gen-capabilities.mjs --catalog-only",
     "release": "pnpm -r run build && changeset publish",
     "smoke:codex": "node scripts/smoke-codex.mjs",
     "factory:install": "pnpm install && pnpm --filter \"@titan-design/factory...\" build && node scripts/factory-build-helper.mjs && node scripts/factory-link-bin.mjs",
