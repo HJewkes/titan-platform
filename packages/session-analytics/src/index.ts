@@ -133,3 +133,5 @@ export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { SeatContextOptions, SeatContextRow, SeatSessions } from "./seat-context.js";
+export { seatContext, seatContextSchema } from "./seat-context.js";
