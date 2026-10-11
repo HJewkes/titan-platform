@@ -102,6 +102,17 @@ author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads
 input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
 with `--json`; bad input exits 2 naming the field.
 
+The `titan-gh` bin reads one PR over the caller's `gh` login, in place of `gh pr view --json`
+piped to `jq`. `titan-gh pr-status <owner/repo#N>` prints one line: state (`open`, `draft`,
+`closed` or `merged`), the head's first seven characters, `mergeableState`, how many required
+checks passed with each non-passing one as `name:state`, and `ready` or the `mergeReadiness`
+blocker reasons. Required checks come from the base's rulesets, or from classic protection when
+the rulesets require none. Approval lives in Shepherd, not on GitHub, so it never reports
+`unapproved`. `titan-gh pr-context <owner/repo#N>` prints the title, base, head sha, changed
+files and body for a reviewer; past GitHub's 3,000-file cap it gives the count and lists none.
+`--json` prints either as one object; an unknown verb or a ref that is not `owner/repo#N` prints
+usage and exits 2.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).
