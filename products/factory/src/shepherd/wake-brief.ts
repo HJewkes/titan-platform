@@ -15,6 +15,12 @@ export const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
+/** dead:check prints its NEW lines above one CARRY line per baselined finding, so the default tail never reaches them. */
+const DEAD_CHECK_TAIL_LINES = 2000;
+const DEAD_CHECK_MAX_FINDINGS = 40;
+const DEAD_CHECK_JOB = "dag-check";
+const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
+const DEAD_CHECK_FINDING = /^\s*(?:NEW|GROWN)\s{2,}\S/;
 
 /**
  * Files a script rewrites whole (`pnpm capabilities`, `pnpm docs:reference`); a conflict confined to them is settled by
@@ -71,8 +77,20 @@ async function ciLogs(port: GitHubPort, input: WakeFacts, failing: readonly Chec
 
 async function logSection(port: GitHubPort, repo: RepoSlug, run: CheckRun, budget: number): Promise<string> {
   const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
-  return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header)));
+  const lines = run.name === DEAD_CHECK_JOB ? DEAD_CHECK_TAIL_LINES : LOG_TAIL_LINES;
+  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, lines).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
+  const findings = headBytes(run.name === DEAD_CHECK_JOB ? deadCheckFindings(log) : "", Math.max(0, budget - Buffer.byteLength(header)));
+  const tail = log.split("\n").slice(-LOG_TAIL_LINES).join("\n");
+  return header + findings + tailBytes(tail, Math.max(0, budget - Buffer.byteLength(header + findings)));
+}
+
+/** dead:check's NEW and GROWN lines, lifted above the tail so the implementer sees which exports to fix; empty when there are none. */
+function deadCheckFindings(log: string): string {
+  const found = log.split("\n").map((line) => line.replace(ACTIONS_TIMESTAMP, "")).filter((line) => DEAD_CHECK_FINDING.test(line));
+  if (found.length === 0) return "";
+  const shown = found.slice(0, DEAD_CHECK_MAX_FINDINGS);
+  const more = found.length > shown.length ? [`and ${found.length - shown.length} more`] : [];
+  return ["dead:check findings:", ...shown, ...more, "-- log tail --", ""].join("\n");
 }
 
 /** The last `max` bytes, dropping a character the cut split; a log's error is at its end. */

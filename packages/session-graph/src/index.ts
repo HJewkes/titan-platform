@@ -5,6 +5,7 @@ export { DERIVED_TABLES, DOMAIN_DDL, KIT, MIGRATIONS, NORMALIZED_TABLES, derived
 export { AUDIT_DDL, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, SIGNAL_COPY_RANK } from "./audit-schema.js";
 export { EPISODE_TABLE, ORIGIN_DDL, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_VIEWS } from "./origin-schema.js";
 export { ORIGIN_TASK_LINK_MIGRATION_NAME } from "./origin-task-link-schema.js";
+export { ORIGIN_EXPERIMENT_MIGRATION_NAME } from "./origin-experiment-schema.js";
 export { REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME } from "./review-schema.js";
 export { applyAudit } from "./audit-apply.js";
 export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions, type BackfillSummary } from "./facet.js";
