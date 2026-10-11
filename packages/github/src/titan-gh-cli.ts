@@ -2,7 +2,7 @@ import { ciWait, type CiWaitOutcome } from "./ci-wait.js";
 import type { GitHubPort } from "./port.js";
 import { isRepo } from "./validate.js";
 
-export interface TitanGhIo {
+interface TitanGhIo {
   port: GitHubPort;
   out(line: string): void;
   err(line: string): void;
