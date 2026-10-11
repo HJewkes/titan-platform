@@ -52,7 +52,7 @@ function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdP
   let clock = 0;
   spaceUpdates(fake, (ms) => void (clock += ms));
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports, park: () => ({ lines: [] }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1 });
