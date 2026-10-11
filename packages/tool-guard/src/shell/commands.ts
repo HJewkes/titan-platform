@@ -17,7 +17,7 @@ import type { Vars } from "./vars.js";
 import { newMarks, noteRedirect, recordValue, settle } from "./value-marks.js";
 import { noteCommand, noteWord } from "./stored-words.js";
 import type { ValueMarks } from "./value-marks.js";
-import { MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
+import { chargeSpliced, MAX_UNSURE_WORDS, NestingReadingError, ReadingLimitError, SPLICED_WEIGHT, SplitReadingError, unsureReadings, ValueWalkError } from "./unsure-readings.js";
 import type { UnsureBudget } from "./unsure-readings.js";
 
 const MAX_DEPTH = 8;
@@ -124,7 +124,7 @@ export function extractCommands(src: string, options: ExtractOptions = {}): Simp
   const out: SimpleCommand[] = [];
   const scope = { dir: options.cwd ?? null, vars: new Map(), wrapping: [] };
   const foldCase = options.foldCase === true;
-  const unsure = { left: MAX_UNSURE_WORDS, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
+  const unsure = { left: MAX_UNSURE_WORDS, splicedLeft: SPLICED_WEIGHT * src.length, decides: decider(options.guarded), stopPastCap: options.stopPastCap === true };
   const w: Walk = { scope, stack: [], out, home: options.home ?? null, depth: 0, stdin: null, prev: null, chain: { start: null }, negated: false, foldCase, walked: null, unsure, marks: newMarks() };
   walk(tokenizeLine(src), observed(w));
   settle(w.marks);
@@ -297,7 +297,7 @@ function runOnce(cmd: Unwrapped, redirects: RedirectToken[], w: Walk, next: stri
   w.negated ||= cmd.negated === true;
   const links = { next, prev: w.prev, negated: w.negated, chain: w.chain };
   w.out.push({ name, path, args, env: literalEnv(cmd), redirects, dir: w.scope.dir, wrapping, ...links });
-  const script = inlineScript(cmd, redirects, stdin);
+  const script = inlineScript(cmd, redirects, stdin, w.unsure);
   if (script !== null) walkScript(script, w, wrapping);
   if (cmd.name !== "find") return;
   for (const exec of findExecs(cmd.args).flatMap((words) => caseNamed(folded(words, w)))) run(exec, [], child(w, [...wrapping, "find-exec"]), null);
@@ -334,23 +334,27 @@ function literalEnv(cmd: Unwrapped): Record<string, string> {
  * The script a shell or `eval` runs: a `-c` string, else a heredoc, here-string or literal pipe on stdin. Eval and `-c`
  * text is read with and without what its substitutions print, when that is literal on the line.
  */
-function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null): Inline | null {
+function inlineScript(cmd: Unwrapped, redirects: RedirectToken[], stdin: string | null, budget: UnsureBudget): Inline | null {
   if (cmd.script !== undefined) return { texts: [cmd.script], wrap: "sh-c" };
-  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args), wrap: "eval" };
+  if (cmd.name === "eval") return { texts: splicedReadings(cmd.args, budget), wrap: "eval" };
   if (cmd.name === null || !SHELLS.has(cmd.name)) return null;
   const { hasC, positional } = shellOperands(cmd.args);
   // A bare `-c` takes the pipe too: `xargs sh -c` turns the piped text into the string.
-  const text = hasC ? (positional ? splicedReadings([positional]) : stdin) : positional ? null : stdinScript(redirects);
+  const text = hasC ? (positional ? splicedReadings([positional], budget) : stdin) : positional ? null : stdinScript(redirects);
   if (text !== null) return { texts: hasC ? [text].flat() : [text].flat().flatMap((t) => pipedShellTexts(cmd.name, t)), wrap: hasC ? "sh-c" : "heredoc-shell" };
   return hasC || positional || stdin === null ? null : { texts: pipedShellTexts(cmd.name, stdin), wrap: "piped-shell" };
 }
 
 /**
  * Splicing only adds a reading: where the model of a substitution's output is wrong (`printf '%d' '#'` prints `0`,
- * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too.
+ * not `#`), the spliced text could hide what follows, so the text with substitutions left out is walked too. Only the
+ * texts splicing adds are charged, so a line that nests eval walks them in time linear in its length or is refused.
  */
-function splicedReadings(words: WordToken[]): string[] {
-  return [...new Set([...caseScripts(words), ...caseScripts(splicedWords(words))])];
+function splicedReadings(words: WordToken[], budget: UnsureBudget): string[] {
+  const plain = caseScripts(words);
+  const added = [...new Set(caseScripts(splicedWords(words)))].filter((text) => !plain.includes(text));
+  chargeSpliced(budget, added);
+  return [...new Set([...plain, ...added])];
 }
 
 function shellOperands(args: WordToken[]): { hasC: boolean; positional: WordToken | null } {
