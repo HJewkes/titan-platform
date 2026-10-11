@@ -297,6 +297,23 @@ as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
 `discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
 `readSessionSourceText`.
 
+## Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` decodes raw Claude transcript lines synchronously, with no
+source descriptor. It skips blank and malformed lines, ignores session identity and does
+not dedupe a repeated call id; a block without a call id is skipped.
+
+```ts
+import { decodeClaudeToolLines } from "@titan-design/session-read";
+
+const results = new Map<string, unknown>();
+const calls = [];
+for (const line of decodeClaudeToolLines(rawLines)) {
+  if (line.kind === "tool_result") results.set(line.callId, line.output);
+  else calls.push(line);
+}
+```
+
 ## Graph-free consumer views
 
 The normalized reader dispatches both Claude and Codex source descriptors through

@@ -852,7 +852,7 @@ Key exports:
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.12.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.12.1`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -862,7 +862,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +203 more in the [reference page](/reference/session-read)
+- +207 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
