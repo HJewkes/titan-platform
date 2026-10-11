@@ -3,7 +3,7 @@ import { registerAudit } from "./audit/command.js";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
 import { userInfo } from "node:os";
-import { parsePort } from "./cli-options.js";
+import { parsePort, parsePositiveInt } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
@@ -27,14 +27,15 @@ import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
+import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
-import type { ShepherdCommandName } from "./shepherd/commands.js";
+import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/commands.js";
 import type { MainWatchPorts } from "./shepherd/main-watch.js";
 import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
-import { formatShepherd } from "./shepherd/format.js";
+import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
@@ -164,7 +165,7 @@ function registerLand(program: Command, verbs: Verbs): void {
     .action((ref: string, opts: { task?: string; port: number }) => landVerb(verbs, ref, opts));
 }
 
-interface ShepherdOpts {
+interface ShepherdOpts extends TimelineView {
   port: number;
   json?: boolean;
   offline?: boolean;
@@ -211,6 +212,11 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
+  registerShepherdWait(shepherd, verbs);
+  verb("timeline <ref>", "every step and gate the run for owner/repo#N recorded")
+    .option("--last <n>", "only the last n entries, noting how many earlier ones it cut; with --json, entries holds only those", parsePositiveInt)
+    .option("--width <n>", "cut every text line to n characters", parsePositiveInt)
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.timeline", () => parsePrRef(ref), opts));
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => (name === "release" ? { ...parsePrRef(ref), actor: callerOf(verbs.io.env) } : parsePrRef(ref)), opts));
   }
@@ -222,7 +228,6 @@ function callerOf(env: NodeJS.ProcessEnv): string {
 }
 
 const PR_VERBS = [
-  ["timeline", "every step and gate the run for owner/repo#N recorded"],
   ["release", "release the hold on owner/repo#N"],
   ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
   ["review", "ask for Shepherd's own fresh review of owner/repo#N at its current head; a repeat at the same head asks nothing"],
@@ -258,11 +263,24 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
+  const envelope = await localEnvelope(verbs, name, args);
+  if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
+  verbs.setExit(printShepherd(verbs.io, name, envelope, opts, deploy));
+}
+
+/** The status rows for owner/repo#N: from titan-factory serve when one answers, else from the database here. */
+export async function statusRows(verbs: Verbs, args: { repo: string; pr: number }, port: number): Promise<JsonEnvelope<unknown>> {
+  const probe = await probeServe(port, verbs.deps.serveWaitMs);
+  return probe.state === "up" ? postRpc(port, "shepherd.status", args) : localEnvelope(verbs, "shepherd.status", args);
+}
+
+async function localEnvelope(verbs: Verbs, name: ShepherdCommandName, args: object): Promise<JsonEnvelope<unknown>> {
+  let result: JsonEnvelope<unknown> | undefined;
   await verbs.withHost(async (host, routes) => {
-    const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
-    if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
-    return printShepherd(verbs.io, name, envelope, opts, deploy);
+    result = (await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes))).envelope;
+    return EXIT.OK;
   });
+  return result!;
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
@@ -280,9 +298,14 @@ function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvel
     io.stderr(`error: ${envelope.error}\n`);
     return exitOf(envelope.code);
   }
-  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
-  else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
+  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data, opts)}${deploy ? deploySummary(deploy) : ""}`);
+  else io.stdout(`${JSON.stringify(jsonOf(name, envelope.data, opts, deploy), null, 2)}\n`);
   return name === "shepherd.waiting" && overdueOwnerGates(WaitingSchema.parse(envelope.data)).length > 0 ? EXIT.FAILURE : EXIT.OK;
+}
+
+function jsonOf(name: ShepherdCommandName, data: unknown, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): unknown {
+  if (name === "shepherd.timeline" && opts.last !== undefined) return lastEntries(SHEPHERD_COMMAND_MAP[name].result.parse(data), opts.last).timeline;
+  return opts.deploy && deploy !== undefined ? { rows: data, deploy } : data;
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {

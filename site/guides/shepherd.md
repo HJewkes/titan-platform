@@ -391,6 +391,8 @@ titan-factory shepherd status owner/repo#123   # one pull request
 titan-factory shepherd waiting                 # pending gates, oldest first
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
+titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
+titan-factory shepherd wait owner/repo#123 --until merging,done --timeout 900
 ```
 
 ```
@@ -420,7 +422,17 @@ The clock starts when the run entered the phase. The other phases wait on a pers
 agent by design and have no limit. With nothing registered the verbs print
 `no shepherded PRs`. `timeline` prints the same row and then every step, CI read and gate
 the run recorded, oldest first. `--json` returns the `WatchRow` and `PrTimeline` shapes the
-factory UI reads.
+factory UI reads. `--last N` keeps only the last N entries and prints `… <k> earlier entries`
+under the row line when it cut any; with `--json` it slices `entries` the same way.
+`--width W` cuts every text line to W characters, ending a cut line in `…`. Both replace
+piping `timeline` through `tail` and `cut -c`.
+
+`shepherd wait <ref> --until <phase[,phase]>` polls the PR's status row, through serve when one
+answers, else the database here, every `--interval` seconds (default 15). It exits 0 once the
+row's phase is one of `--until`. It exits 1, with the reason on stderr, when the run ends in
+`done`, `failed` or `cancelled` and that phase is not in `--until`, or when `--timeout` seconds
+(default 900) pass; the timeout message names the last phase seen. An unknown phase in
+`--until` exits 2 before any poll.
 
 `shepherd waiting [--json]` lists every pending gate, oldest first, with its gate ID, repo and
 PR, head, task, age in hours and held reason. It builds on the same rows as `status` and writes

@@ -26,7 +26,7 @@ import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
-import type { Phase } from "./step-phase.js";
+import { FINISHED_PHASES, type Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
 
@@ -265,7 +265,6 @@ const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
-const FINISHED: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
@@ -292,7 +291,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
   run: async ({ state }, ctx) =>
-    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED.has(row.phase) === (state === "finished")),
+    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED_PHASES.has(row.phase) === (state === "finished")),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
