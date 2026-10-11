@@ -143,12 +143,15 @@ stays out of the repo.
 - `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
   update the branch, push to it or delete its head ref. The run waits held at its merge
   step, or at `update-branch` when the PR is behind on a strict repo. A wake still resumes or
-  messages the PR's own implementer, but never spawns a successor. Clear the flag and the
+  messages the PR's own implementer, but never spawns a successor, and a red main never
+  spawns a fixer. Clear the flag and the
   held run merges on its next poll. Under the hold, the GitHub port itself refuses every
   merge, branch update, empty-commit push and ref delete for the repo, whatever route asks.
   The flag fails closed: the serve process reads it at start and on every check, and only
   a config file that loads cleanly and leaves it off clears it. A file that is missing, half written or invalid
-  keeps the repo advisory. If two keys differ only in case, the repo is advisory when
+  keeps the repo advisory, but only if this serve process has already read the flag. A serve
+  that starts while the file is missing has no flag to keep, and treats every repo as not
+  advisory until the file reads cleanly. If two keys differ only in case, the repo is advisory when
   either sets the flag.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
