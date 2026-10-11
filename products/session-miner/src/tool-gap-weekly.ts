@@ -9,46 +9,46 @@ export interface WeekSnapshot {
   adoption: ToolAdoptionReport;
 }
 
-export type GapChangeKind = "new" | "grown" | "shrunk" | "same" | "gone";
+type GapChangeKind = "new" | "grown" | "shrunk" | "same" | "gone";
 
-export interface GapChange {
+interface GapChange {
   kind: GapChangeKind;
   row: ToolGapRow;
   /** Last week's calls, null when the row is new. */
   previousCalls: number | null;
 }
 
-export interface AdoptionChange {
+interface AdoptionChange {
   row: AdoptionRow;
   previousFlags: AdoptionRow["flags"];
 }
 
-export interface WeekDiff {
+interface WeekDiff {
   gaps: GapChange[];
   adoption: AdoptionChange[];
 }
 
-export interface GapThreshold {
+interface GapThreshold {
   minCalls: number;
   minSessions: number;
 }
 
-export const DEFAULT_GAP_THRESHOLD: GapThreshold = { minCalls: 50, minSessions: 10 };
+const DEFAULT_GAP_THRESHOLD: GapThreshold = { minCalls: 50, minSessions: 10 };
 
 /** An open active-work task, as far as dedupe needs it. */
-export interface OpenTask {
+interface OpenTask {
   id: string;
   tags: readonly string[];
 }
 
-export type TaskAction =
+type TaskAction =
   | { kind: "add"; patternId: string; title: string; tags: string[]; body: string }
   | { kind: "note"; patternId: string; taskId: string; text: string };
 
 const TOOL_GAP_TAG = "tool-gap";
 const REMOVAL_AFTER_DAYS = 28;
 
-export const toolGapTag = (id: string) => `${TOOL_GAP_TAG}:${id}`;
+const toolGapTag = (id: string) => `${TOOL_GAP_TAG}:${id}`;
 
 /** Q9 rows are one per head and pattern; the pattern id alone repeats across heads. */
 const rowKey = (row: Pick<ToolGapRow, "head" | "patternId">) => `${row.head}\u0000${row.patternId}`;
