@@ -1,5 +1,20 @@
 # @titan-design/factory
 
+## 0.21.0
+
+### Minor Changes
+
+- 5fd8ea4: Add `shepherd.repos`: a per-repo `path` the reviewer starts in when no seat binds the repo, and an `advisory` flag under which Shepherd reviews, watches CI and notifies but never merges, updates the branch, pushes, deletes the head ref, or spawns a successor or a red-main fixer. The flag fails closed when the config file is missing or invalid.
+- a598a25: `titan-factory shepherd timeline` takes `--last <n>` (only the last n entries, noting how many earlier ones it cut; with `--json` it slices `entries`) and `--width <n>` (cut every text line to n characters). New `titan-factory shepherd wait <ref> --until <phase[,phase]> [--timeout s] [--interval s]` polls the PR's status row until it reaches one of those phases: exit 0 when it does, 1 when the run ends in another phase or the timeout passes, 2 on an unknown phase.
+- 46339ef: Pace Shepherd's self-deploys. The `sh-redeploy` step now queues the merge sha in `deploy-wanted.json` instead of spawning a deployer per merge, and `serve` runs a 60 s deploy pacer sweep that spawns the deployer through the same systemd-run path once merges have been quiet for 15 min, or 90 min after the first queued merge. Busy review and merge runs hold the spawn until that cap, and a rollback pause (`deploy-pause.json`) holds it until cleared. A deployer that records nothing is asked once more after 2 h, then the sha is dropped until the next merge. `/health` gains `deployPending`.
+
+### Patch Changes
+
+- Updated dependencies [5985f32]
+- Updated dependencies [cd830c1]
+  - @titan-design/review-panel@0.5.4
+  - @titan-design/github@0.9.0
+
 ## 0.20.0
 
 ### Minor Changes
