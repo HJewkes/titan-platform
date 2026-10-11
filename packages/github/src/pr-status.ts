@@ -2,13 +2,13 @@ import { latestPerName } from "./checks.js";
 import type { CheckRun, GitHubPort, PullRequest, RepoSlug, RequiredChecks } from "./port.js";
 import { GITHUB_ACTIONS_APP_ID, mergeReadiness, type MergeBlocker } from "./readiness.js";
 
-export interface RequiredCheckState {
+interface RequiredCheckState {
   name: string;
   /** The latest counted run's conclusion, its status while it runs, or `missing` when none ran at the head. */
   state: string;
 }
 
-export interface PrStatus {
+interface PrStatus {
   repo: RepoSlug;
   number: number;
   state: "open" | "closed" | "merged" | "draft";

@@ -3,7 +3,7 @@ import { formatPrStatus, prStatus } from "./pr-status.js";
 import type { GitHubPort, RepoSlug } from "./port.js";
 import { isRepo } from "./validate.js";
 
-export interface TitanGhIo {
+interface TitanGhIo {
   out(text: string): void;
   err(line: string): void;
 }
@@ -43,7 +43,7 @@ function withText<T>(value: T, format: (value: T) => string): { value: T; text: 
 }
 
 /** `owner/repo#N`; anything else is undefined, so the caller prints usage before any GitHub read. */
-export function parsePrRef(ref: string): { repo: RepoSlug; number: number } | undefined {
+function parsePrRef(ref: string): { repo: RepoSlug; number: number } | undefined {
   const match = /^([^#]+)#([1-9][0-9]*)$/.exec(ref);
   if (!match || !isRepo(match[1]!)) return undefined;
   const number = Number(match[2]);

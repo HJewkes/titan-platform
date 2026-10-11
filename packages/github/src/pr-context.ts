@@ -1,6 +1,6 @@
 import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "./port.js";
 
-export interface PrContext {
+interface PrContext {
   repo: RepoSlug;
   number: number;
   title: string;
