@@ -17,7 +17,8 @@ import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import { startSweep, type Sweep } from "./sweep.js";
+import { rowsWithRuns, type ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { supersedeMovedGates } from "./shepherd/head-moved.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
@@ -25,6 +26,7 @@ import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
 import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
+import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
@@ -66,6 +68,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   mainWatch?: MainWatchPorts;
   /** Reclaims a main-red fixer once its red main is over; absent means fixers stay until the owner retires them. */
   fixerRetire?: FixerRetirePorts;
+  /** Where each seat's digest of open gates, told fix rounds and finished runs goes on a change; absent means serve sends none. */
+  seatDigest?: SeatDigestPorts;
   /** The audience an owner proof must name; defaults to this machine's hostname. */
   aud?: string;
   /** Replaces the root-owned key directory read at start; tests inject it. No flag or config reaches this. */
@@ -117,11 +121,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const mainWatch = services && options.mainWatch && openMainWatch(services, options.mainWatch, stateDir, log);
   const mainSweep = mainWatch && startSweep(mainWatch.tick, MAIN_WATCH_MS, "main CI watch", log);
   void mainSweep?.tick();
+  const digestSweep = startSeatDigest(host, services, options.seatDigest, stateDir, log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep]) await later?.stop();
+    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -257,9 +262,15 @@ function heldRun(services: ShepherdServices | undefined): HoldPredicate | undefi
   });
 }
 
-interface Sweep {
-  tick(): Promise<void>;
-  stop(): Promise<void>;
+function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefined, ports: SeatDigestPorts | undefined, stateDir: string, log: Logger): Sweep | undefined {
+  if (services === undefined || ports === undefined) return undefined;
+  const memory = fileSeatDigestMemory(stateDir);
+  const tickOnce = async (): Promise<void> => {
+    const { sent, failed } = await sendSeatDigests(rowsWithRuns(host, services), ports, memory);
+    if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
+    for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
+  };
+  return startSweep(tickOnce, SEAT_DIGEST_MS, "seat digest", log);
 }
 
 /** Runs resync could not end are rechecked against their PR just before they are claimed, then dropped once claimed or settled. */
@@ -360,22 +371,4 @@ function startDeployWatch(watch: DeployWatch | undefined, log: Logger): Sweep | 
   const sweep = watch && startSweep(watch.tick, DEPLOY_WATCH_MS, "deploy watch", log);
   void sweep?.tick();
   return sweep;
-}
-
-/** One tick at a time, every `everyMs`; adoption picks up runs whose owning process exited without releasing. */
-function startSweep(tickOnce: () => Promise<void>, everyMs: number, name: string, log: Logger): Sweep {
-  let inFlight: Promise<void> | null = null;
-  const tick = (): Promise<void> =>
-    (inFlight ??= tickOnce()
-      .catch((err: unknown) => log.error({ err }, `${name} failed`))
-      .finally(() => (inFlight = null)));
-  const timer = setInterval(() => void tick(), everyMs);
-  timer.unref();
-  return {
-    tick,
-    stop: async () => {
-      clearInterval(timer);
-      await inFlight;
-    },
-  };
 }

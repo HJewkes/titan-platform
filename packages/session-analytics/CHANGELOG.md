@@ -1,5 +1,37 @@
 # @titan-design/session-analytics
 
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-graph@0.15.1
+
+## 0.13.1
+
+### Patch Changes
+
+- 3873ce6: Count each inbound once when a session is held in two transcripts: `humanTurnCount`, `inboundKinds` and episode inbounds now keep only the first copy (`INBOUND_COPY_RANK`, the inbound twin of `SIGNAL_COPY_RANK`).
+
+## 0.13.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [3d3cc58]
+  - @titan-design/session-read@0.12.2
+
 ## 0.12.0
 
 ### Minor Changes

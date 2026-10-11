@@ -1,5 +1,11 @@
 # @titan-design/github
 
+## 0.8.0
+
+### Minor Changes
+
+- 579886b: `PullRequest` now carries `autoMerge`, read from the REST `auto_merge` field. Shepherd's `shepherd/review` publish reads it, so a PR with auto-merge armed gets `action_required` rather than `success`; an unreadable PR is treated as armed.
+
 ## 0.7.1
 
 ### Patch Changes

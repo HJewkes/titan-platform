@@ -51,6 +51,8 @@ export {
   DEFAULT_RUN_TABLE,
   WorkflowOwnershipLostError,
   WorkflowRunStore,
+  WorkflowStoreSchemaOutdated,
+  workflowDefinitionVersionMigration,
   workflowMigration,
   workflowOwnershipMigration,
   workflowRunTableDdl,

@@ -11,7 +11,9 @@ import type { ExitNoticePorts } from "./exit-notice.js";
 import type { ShepherdPhases, Verdict, WakeOutcome } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
-import { shepherdStoreRef } from "./store.js";
+import { sendSeatDigests, type SeatState } from "./seat-digest.js";
+import { shepherdStoreRef, type ShepherdStoreRef } from "./store.js";
+import { watchRow } from "./view.js";
 
 const H2 = fakeSha("head2");
 const GONE = "no agent of impl-a's lineage is on the roster, so no checkout is known to start a successor in";
@@ -58,27 +60,29 @@ function host(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases
   return { host: opened, store };
 }
 
-function world(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, dbPath = ":memory:"): FactoryHost {
+type World = FactoryHost & { runId: string; store: ShepherdStoreRef };
+
+function world(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, dbPath = ":memory:"): World {
   const { host: opened, store } = host(fake, ports, shepherd, dbPath);
   fake.addPr({ headSha: H1 });
   const runId = opened.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
-  return Object.assign(opened, { runId });
+  return Object.assign(opened, { runId, store });
 }
 
-const runOf = (host: FactoryHost): string => (host as FactoryHost & { runId: string }).runId;
+const runOf = (host: World): string => host.runId;
 const seatGates = (host: FactoryHost): string[] => host.pendingGates().flatMap((gate) => (SEAT_GATES.some((step) => gate.stepId.startsWith(step)) ? [gate.gate.id] : []));
 
 /** H1 is red, every later head green. */
 const redAtH1 = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, pr.headSha === H1 ? "failure" : "success")), successRun("dag-check", 2)]));
 const green = (fake: FakeGitHub) => (fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]));
 
-async function waitingForHead(host: FactoryHost): Promise<void> {
+async function waitingForHead(host: World): Promise<void> {
   await vi.waitFor(() => expect(host.runtime.status(runOf(host))?.currentStep).toMatch(/^await-new-head/));
 }
 
 /** The pushed fix lands through the normal path: the owner's approve-merge gate opens at the new head, as before. */
-async function ownerGateAtFix(host: FactoryHost, fake: FakeGitHub): Promise<void> {
+async function ownerGateAtFix(host: World, fake: FakeGitHub): Promise<void> {
   fake.pushHead(1, H2);
   await gateOpened(host, gateId(runOf(host), "approve-merge"));
   expect(host.gates.get(gateId(runOf(host), "approve-merge"))?.prompt).toContain(`at head ${H2}`);
@@ -145,6 +149,29 @@ describe("the 2026-10-08 owner-queue replay: seat work goes to the registering s
     expect(sends[0]).toContain("still behind its base");
     expect(sends[0]).toContain("update-branch");
     expect(fake.effects.updateBranch).toBe(12);
+  });
+});
+
+describe("a told fix round reaches the seat digest", () => {
+  it("records the notice's gate and head, so the digest lists the ci-failed fix round from the real record", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const host = world(fake, seat().ports, phases({ kind: "unhandled", reason: GONE }));
+    await waitingForHead(host);
+    const run = host.runtime.status(runOf(host))!;
+    const notice = Object.values(run.stepResults).find((result) => result.stepId.startsWith("sh-seat-notice"));
+    const digests: string[] = [];
+    const states = new Map<string, SeatState>();
+
+    await sendSeatDigests(
+      host.store.get().all().map((registration) => ({ row: watchRow({ registration, run }), run })),
+      { seatLookup: () => () => "demo-coord", send: async (_seat, text) => void digests.push(text) },
+      { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) },
+    );
+
+    expect(notice?.data).toMatchObject({ result: { sent: true, gate: "ci-failed", headSha: H1 } });
+    expect(digests).toHaveLength(1);
+    expect(digests[0]).toContain(`${REPO}#1 ci-failed at ${H1.slice(0, 7)}, no fixer woken`);
   });
 });
 

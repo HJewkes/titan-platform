@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { BYPASS_VAR } from "./actor.js";
 import { nodeContext } from "./context.js";
 import type { ReadFs } from "./context.js";
 import { decide } from "./decide.js";
@@ -106,10 +105,10 @@ describe("handle: a command that fails to parse", () => {
     expect(result.log[0]?.split("\t").slice(1, 5)).toEqual(["deny", "none", "unparsed", "bash.unparsed"]);
   });
 
-  it("lets the owner's bypass through an unparseable command, with an error line", async () => {
-    const result = await handle(bash(`${D}git push origin HEAD:main`), { [BYPASS_VAR]: "1" }, port);
+  it("denies an unparseable command with the retired bypass variable in the hook's env", async () => {
+    const result = await handle(bash(`${D}git push origin HEAD:main`), { TITAN_TOOL_GUARD_BYPASS: "1" }, port);
 
-    expect(result).toEqual({ stdout: "", log: ["2026-01-02T03:04:05.000Z\terror\tparse\tBash\ts"] });
+    expect(decisionOf(result.stdout)).toBe("deny");
   });
 });
 

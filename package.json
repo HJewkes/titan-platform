@@ -54,9 +54,10 @@
     "turbo": "2.11.7",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.46.0",
+    "vite": "^8.0.3",
     "vitepress": "^1.6.4",
     "vitepress-plugin-mermaid": "^2.0.17",
-    "vitest": "^3.0.0",
+    "vitest": "^4.1.11",
     "yaml": "^2.9.1"
   }
 }

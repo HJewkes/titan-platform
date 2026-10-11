@@ -47,9 +47,9 @@ export interface ReviewRequest extends PhaseTarget {
 
 /**
  * Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, a busy broker
- * started nobody, or the reviewer's Claude account is out of usage.
+ * started nobody, the reviewer's Claude account is out of usage, or the reviewer went silent while the machine stop held.
  */
-export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted";
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
 
 export type Verdict =
   | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string }

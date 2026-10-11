@@ -36,9 +36,10 @@
  * Two things that are deliberately NOT claimed here, because a reviewer found
  * both overstated on 2026-08-10:
  *
- * - Headless is the profile DEFAULT, not an enforced invariant. The check below
- *   validates the profile NAME; `launch-plan.ts` still argv's the brief on its
- *   interactive branch, which a runtime surface change could reach (R-71).
+ * - Headless is checked, not guaranteed. `assertInstalledHeadless` reads the
+ *   installed profile just before the spawn (R-71 slice A), but the broker
+ *   re-reads it afterwards, so a write in between still reaches
+ *   `launch-plan.ts`'s interactive branch until agent-chat's surface lock lands.
  * - The initiative SLUG still travels in argv behind `--briefing`. It derives
  *   from an item tag, so it is item-derived text — bounded to a strict slug by
  *   `initiative.ts` before it gets here, but not nothing.
@@ -62,11 +63,13 @@
 
 import {
   ExecError,
+  ExecTimeoutError,
   execSafe,
   minimalEnv,
   resolveBinaryPath,
   type SafeExecResult,
 } from "./exec.js";
+import { assertInstalledHeadless } from "./profile-guard.js";
 
 /** Each class carries a fixed `name`, so a caller can record which kind of failure it was without its message. */
 export class DispatchError extends Error {
@@ -76,6 +79,11 @@ export class DispatchError extends Error {
 /** The CLI could not connect to the broker, so nothing was asked of it; retrying later is safe. */
 export class BrokerUnavailableError extends DispatchError {
   override readonly name: string = "BrokerUnavailableError";
+}
+
+/** The CLI did not answer in time, so the spawn or retire may already have happened. */
+export class DispatchTimeoutError extends DispatchError {
+  override readonly name: string = "DispatchTimeoutError";
 }
 
 /** Same shape agent-chat's own registry enforces, checked before we spend a spawn. */
@@ -122,6 +130,8 @@ export interface DispatchRequest {
   cwd: string;
   /** Claude config directory for the agent, such as a second account's; omitted means agent-chat's default. */
   configDir?: string;
+  /** Where agent-chat's installed profiles live; omitted means `installedProfilesDir()`. */
+  profilesDir?: string;
 }
 
 export interface DispatchResult {
@@ -181,6 +191,7 @@ export function dispatchToAgentChat(
   if (!allowedProfiles.includes(req.profile)) {
     throw new DispatchError(`unknown profile: '${req.profile}'`);
   }
+  assertInstalledHeadless(req.profile, req.profilesDir);
 
   // Resolution is INSIDE the try: a missing or non-executable `agent-chat`
   // throws `ExecError` too, and letting that escape would crash `loop.ts`'s
@@ -198,6 +209,7 @@ export function dispatchToAgentChat(
       req.brief,
     );
   } catch (err) {
+    if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);
     if (err instanceof ExecError) throw new DispatchError(err.message);
     throw err;
   }

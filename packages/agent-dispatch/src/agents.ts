@@ -12,6 +12,7 @@
 
 import {
   DispatchError,
+  DispatchTimeoutError,
   PEER_NAME_PATTERN,
   agentChatEnv,
   brokerUnavailable,
@@ -26,12 +27,11 @@ import {
   type SafeExecResult,
 } from "./exec.js";
 
-/** The CLI did not answer in time, so a retire may already have happened. */
-export class DispatchTimeoutError extends DispatchError {
-  override readonly name: string = "DispatchTimeoutError";
-}
-
-/** One `agent ls --json` row, as agent-chat's `lsJsonRow` writes it. */
+/**
+ * One `agent ls --json` row, as agent-chat's `lsJsonRow` writes it. The
+ * optional fields are dropped when a row carries them with the wrong type,
+ * so a consumer never sees a value the type does not describe.
+ */
 export interface AgentRow {
   name: string;
   agentId: string;
@@ -43,16 +43,16 @@ export interface AgentRow {
   status: string;
   profile: string;
   surface: string;
-  model: string | null;
+  model?: string | null;
   cwd: string;
   /** Empty until the agent's Claude Code session has started. */
   sessionId: string;
-  transcriptPath: string | null;
-  transcriptExists: boolean;
-  spawnedBy: string | null;
-  account: string | null;
+  transcriptPath?: string | null;
+  transcriptExists?: boolean;
+  spawnedBy?: string | null;
+  account?: string | null;
   generation: number;
-  teleportFrom: string | null;
+  teleportFrom?: string | null;
 }
 
 export interface RetireResult {
@@ -114,24 +114,67 @@ export function parseAgentRows(stdout: string): AgentRow[] {
   if (!Array.isArray(parsed)) {
     throw new DispatchError("agent-chat agent ls --json did not print an array");
   }
-  return parsed.filter(isAgentRow);
+  return parsed.flatMap((value: unknown) => {
+    const row = toAgentRow(value);
+    return row === undefined ? [] : [row];
+  });
 }
 
-const REQUIRED_STRINGS = [
-  "name",
-  "agentId",
-  "state",
-  "presence",
-  "status",
-  "profile",
-  "cwd",
-  "sessionId",
-] as const;
+type FieldCheck = (value: unknown) => boolean;
 
-function isAgentRow(value: unknown): value is AgentRow {
+const isString: FieldCheck = (value) => typeof value === "string";
+const isStringOrNull = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+
+type RequiredKey = { [K in keyof AgentRow]-?: undefined extends AgentRow[K] ? never : K }[keyof AgentRow];
+type OptionalKey = Exclude<keyof AgentRow, RequiredKey>;
+type RawRow = Record<string, unknown> & Pick<AgentRow, RequiredKey>;
+
+/** A row failing any of these is skipped: an invented status could strand or resume the wrong agent. */
+const REQUIRED_FIELDS: Record<RequiredKey, FieldCheck> = {
+  name: isString,
+  agentId: isString,
+  state: isString,
+  presence: isString,
+  status: isString,
+  profile: isString,
+  surface: isString,
+  cwd: isString,
+  sessionId: isString,
+  generation: (value) => Number.isSafeInteger(value),
+};
+
+function hasRequiredFields(value: unknown): value is RawRow {
   if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
-  return REQUIRED_STRINGS.every((key) => typeof row[key] === "string");
+  return Object.entries(REQUIRED_FIELDS).every(([key, check]) => check(row[key]));
+}
+
+/** An optional field with the wrong type is dropped rather than costing the whole row. */
+function optionalField<K extends OptionalKey>(
+  row: RawRow,
+  key: K,
+  check: (value: unknown) => value is Exclude<AgentRow[K], undefined>,
+): Partial<Pick<AgentRow, K>> {
+  const picked: Partial<Pick<AgentRow, K>> = {};
+  const value = row[key];
+  if (check(value)) picked[key] = value;
+  return picked;
+}
+
+function toAgentRow(value: unknown): AgentRow | undefined {
+  if (!hasRequiredFields(value)) return undefined;
+  const { name, agentId, state, presence, status, profile, surface, cwd, sessionId, generation } = value;
+  return {
+    ...{ name, agentId, state, presence, status, profile, surface, cwd, sessionId, generation },
+    ...optionalField(value, "model", isStringOrNull),
+    ...optionalField(value, "transcriptPath", isStringOrNull),
+    ...optionalField(value, "transcriptExists", isBoolean),
+    ...optionalField(value, "spawnedBy", isStringOrNull),
+    ...optionalField(value, "account", isStringOrNull),
+    ...optionalField(value, "teleportFrom", isStringOrNull),
+  };
 }
 
 export function runAgentChat(
