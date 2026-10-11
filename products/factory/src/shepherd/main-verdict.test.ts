@@ -7,6 +7,7 @@ import { readMainCi, SH_MAIN_CI_TIMEOUT_MS } from "./post-merge.js";
 
 const MERGE = fakeSha("merge");
 const RED = fakeSha("red");
+const TIP = fakeSha("tip");
 const OTHER_APP = 999;
 const PINNED_APP = 777;
 
@@ -25,6 +26,25 @@ function readMain(fake: FakeGitHub) {
 }
 
 const failed = (name: string, id: number, app?: number) => successRun(name, id, undefined, "failure", app);
+
+/** Main sits at the merge sha, red on its pinned run, until the first sleep, then at TIP, which contains the merge and carries `tipRuns`. */
+function readWithLaterMain(fake: FakeGitHub, tipRuns: ReturnType<typeof successRun>[]) {
+  fake.setRuns(MERGE, [failed("validate", 1, PINNED_APP)]);
+  fake.refs.set("main", MERGE);
+  fake.compares.set(`${MERGE}...${TIP}`, { mergeBaseSha: MERGE, files: [] });
+  fake.setRuns(TIP, tipRuns);
+  let clock = 0;
+  const timing = {
+    now: () => clock,
+    sleep: async (ms: number) => {
+      clock += ms;
+      fake.refs.set("main", TIP);
+    },
+    pollMs: 30_000,
+    timeoutMs: SH_MAIN_CI_TIMEOUT_MS,
+  };
+  return readMainCi(githubPort(fake.wire), { repo: REPO, pr: 1, mergeSha: MERGE, after: [] }, timing, new AbortController().signal);
+}
 
 describe("main CI judged by the base branch's required contexts", () => {
   it("is green with a warning when every required context passes and only release is red", async () => {
@@ -92,6 +112,30 @@ describe("main CI judged by the base branch's required contexts", () => {
     fake.setRuns(MERGE, [successRun("validate", 1, undefined, "success", PINNED_APP), failed("validate", 2)]);
 
     expect((await readMain(fake)).verdict).toBe("green");
+  });
+
+  describe("acknowledged on a later main commit containing a red merge", () => {
+    const pinned = () => world({ required: ["validate"], pins: { validate: [PINNED_APP] } });
+
+    it("never acknowledges a later commit whose pinned app's run is red, even with Actions green", async () => {
+      const result = await readWithLaterMain(pinned(), [successRun("validate", 2), failed("validate", 3, PINNED_APP)]);
+
+      expect(result.acknowledgedSha).toBeUndefined();
+      expect(result.verdict).not.toBe("green");
+    });
+
+    it("never acknowledges a later commit with no run from the pinned app", async () => {
+      const result = await readWithLaterMain(pinned(), [successRun("validate", 2)]);
+
+      expect(result.acknowledgedSha).toBeUndefined();
+      expect(result.verdict).not.toBe("green");
+    });
+
+    it("acknowledges a later commit whose pinned app's run is green", async () => {
+      const result = await readWithLaterMain(pinned(), [successRun("validate", 2, undefined, "success", PINNED_APP)]);
+
+      expect(result).toMatchObject({ verdict: "green", acknowledgedSha: TIP });
+    });
   });
 
   it("waits on a required context with no run yet", async () => {

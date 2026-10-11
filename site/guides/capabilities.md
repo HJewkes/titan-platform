@@ -401,7 +401,7 @@ Key exports:
 - `hook`: `handle`
 - `context`: `nodeContext`
 - `shell`: `ParseError`, `tokenize`
-- +48 more in the [reference page](/reference/tool-guard)
+- +47 more in the [reference page](/reference/tool-guard)
 
 ## Tier 1 — engines
 
@@ -428,16 +428,16 @@ Key exports:
 
 ### [`agent-dispatch`](/reference/agent-dispatch)
 
-Tier 1, `@titan-design/agent-dispatch@0.5.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
+Tier 1, `@titan-design/agent-dispatch@0.6.0`. Start and resume agent-chat agents through the agent-chat CLI, with the brief kept out of argv
 
 **Use this when:** Code must start an agent-chat agent through the `agent-chat` CLI (brief on stdin, never argv), resume an ended agent's session with a message, read the agent roster, retire an agent, park an exited agent's worktree, or run any binary by absolute path with a minimal environment. It shells out and spawns nothing itself; to run one headless Claude turn in-process, use agent instead. Its `./limits` subpath holds the per-pool, per-profile and per-seat spend limits a budget gate reads, with time-boxed overrides that expire by themselves.
 
 Key exports:
 
-- `dispatch`: `BrokerUnavailableError`, `DispatchError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
-- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`, `minimalEnv`, `resolveBinaryPath`
-- `resume`: `ResumeError`
-- +23 more in the [reference page](/reference/agent-dispatch)
+- `dispatch`: `BrokerUnavailableError`, `DispatchError`, `DispatchTimeoutError`, `agentChatEnv`, `buildSpawnArgs`, `dispatchToAgentChat`
+- `profile-guard`: `assertInstalledHeadless`, `installedProfilesDir`
+- `exec`: `ExecError`, `ExecTimeoutError`, `execSafe`, `execSafeAsync`
+- +25 more in the [reference page](/reference/agent-dispatch)
 
 <a id="cap-agent-lifecycle"></a>
 
@@ -690,7 +690,7 @@ Key exports:
 
 ### [`coordinator`](/reference/coordinator)
 
-Tier 2, `@titan-design/coordinator@0.4.0`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
+Tier 2, `@titan-design/coordinator@0.4.1`. Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types).
 
 **Use this when:** You need to validate or type a seat's front matter (`autonomy-seat/v1`): name, prefix, pool, config dir, concurrency, spend, repos. Pure zod schema and inferred types; it reads no files and talks to no broker, so parse the front matter in the host and hand the object over. For the host that loads and runs seats, use the product that owns it, not this package. Fold a seat's event log (spawn, retire, teleport, claim, release, hold, unhold, background, authored) into `SeatState` with `foldSeatEvents`: it never throws, counts unknown kinds and refuses background commands in temp or scratchpad space. Validate the charter front matter (`autonomy-charter/v1`: seats, hub, hard stops, scorer defaults; pools and funds pass through untyped) with `parseCharterPolicy`: it never throws and returns the typed policy or errors that name the missing or invalid key path. Validate a whole `titan-coordinator/v1` document (owner, repos, seats, limits, policy) with `checkCoordinatorConfig`: it reuses the seat, charter and agent-dispatch limits schemas, never throws, and names the key path of each cross-reference error (unknown pool, repo or hard stop, duplicate prefix, seat `config_dir`, not exactly one attended seat). Project one seat generation to a `SessionFacts` record per initiative with `projectSeatGeneration`: merged PRs, closed tasks and filed tasks, mapped by task-id prefix; it is given the activity and drops work no scope claims.
 
@@ -707,7 +707,7 @@ Key exports:
 
 ### [`decider`](/reference/decider)
 
-Tier 2, `@titan-design/decider@0.6.2`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
+Tier 2, `@titan-design/decider@0.6.3`. Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source
 
 **Use this when:** You record owner answers to agent questions and need one ledger row shape (v2, still reading active-work's v1 precedent rows), the accept/amend/other/redirect outcome of an answer, the human-only and personal-data exclusion check before a row is written, or an append-only ledger store with watermarked sources (Claude Code `AskUserQuestion` answers and active-work decision notes included). It also maps owner answers to helpful or harmful feedback on principles stored as `memory` bullets, renders one principle doc per domain, and holds the fixed always-ask list.
 
@@ -794,7 +794,7 @@ Key exports:
 
 ### [`review-panel`](/reference/review-panel)
 
-Tier 2, `@titan-design/review-panel@0.5.0`. Review-panel types and the reviewer ports a caller satisfies
+Tier 2, `@titan-design/review-panel@0.5.1`. Review-panel types and the reviewer ports a caller satisfies
 
 **Use this when:** You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, and `aggregate` to turn the members' verdicts into one fail-closed panel verdict. It runs nothing; to start an agent use agent-dispatch, and to parse a transcript use session-read.
 
@@ -812,7 +812,7 @@ Key exports:
 
 ### [`session-analytics`](/reference/session-analytics)
 
-Tier 2, `@titan-design/session-analytics@0.13.0`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
+Tier 2, `@titan-design/session-analytics@0.13.3`. Pricing, session classification, banding, the cost report and the session timeline over mined session data
 
 **Use this when:** You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). Also for agent-chat operations: it reads agent-chat's events.db through a connection the caller opened, parses broker.log lines, transcript denials and seat journals the caller reads, and reports blocked merges, dark agents and review fill. Also for a coordinator duty meter over seat transcript lines the caller reads. Session parsing is session-read; storage is session-graph.
 
@@ -832,7 +832,7 @@ Key exports:
 
 ### [`session-graph`](/reference/session-graph)
 
-Tier 2, `@titan-design/session-graph@0.15.0`. Fold session events into the activity graph on store-sqlite
+Tier 2, `@titan-design/session-graph@0.16.0`. Fold session events into the activity graph on store-sqlite
 
 **Use this when:** You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph.
 
@@ -846,13 +846,13 @@ Key exports:
 - `purge`: `purgeTranscript`
 - `rollup`: `reconcile`, `rollupSessions`
 - `refresh`: `indexTranscript`
-- +93 more in the [reference page](/reference/session-graph)
+- +94 more in the [reference page](/reference/session-graph)
 
 <a id="cap-session-read"></a>
 
 ### [`session-read`](/reference/session-read)
 
-Tier 2, `@titan-design/session-read@0.12.2`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
+Tier 2, `@titan-design/session-read@0.13.0`. Claude Code and Codex transcript parse: JSONL lines to typed session events with byte-offset locators
 
 **Use this when:** You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage.
 
@@ -951,7 +951,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +73 more in the [reference page](/reference/workflow)
+- +75 more in the [reference page](/reference/workflow)
 
 ## UI
 
