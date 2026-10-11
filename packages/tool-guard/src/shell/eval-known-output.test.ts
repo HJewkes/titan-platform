@@ -48,10 +48,18 @@ const splicedIntoWord: [string, string][] = [
   ["bash -c of a word around a backquoted echo", `bash -c "git \`echo push\` origin HEAD:main"`],
 ];
 
+/** Lines whose substitution prints differently in bash and zsh, or than written, so its output stays unknown. */
+const outputUnsure: [string, string][] = [
+  ["eval after an echo of an escape bash prints as written", `eval "$(echo '\\0043');${PUSH}"`],
+  ["bash -c after an echo of an escape bash prints as written", `bash -c "$(echo '\\0043');${PUSH}"`],
+  ["eval of an unquoted heredoc whose \\\\ the shell reduces to \\", `eval "$(cat <<E\necho \\\\'\n${PUSH}\necho '\nE\n)"`],
+];
+
 const denyRows = [
   ...reachedThroughOutput(PUSH).map(([n, c]) => [`${n} (push)`, c]),
   ...reachedThroughOutput(MERGE).map(([n, c]) => [`${n} (merge)`, c]),
   ...splicedIntoWord,
+  ...outputUnsure,
 ];
 
 const passRows: [string, string][] = [
@@ -60,6 +68,7 @@ const passRows: [string, string][] = [
   ["eval of a tool's output, unknowable statically (D6 residual)", `eval "$(ssh-agent -s)"`],
   ["eval of an echo whose arguments are the spliced output", `eval "echo $(echo ${PUSH})"`],
   ["eval of an assignment holding a cat heredoc's output", `eval "X='$(cat <<'E'\n${PUSH}\nE\n)'"`],
+  ["eval of a quoted heredoc that keeps \\\\, quoting the push", `eval "$(cat <<'E'\necho \\\\'\n${PUSH}\necho '\nE\n)"`],
 ];
 
 function bash(command: string): string {
