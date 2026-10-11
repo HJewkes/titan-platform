@@ -12,7 +12,7 @@ interface Registered {
   successors?: string[];
 }
 
-const storeWith = ({ implementer, branch = null, seat = "titan-coord", successors = [] }: Registered = {}) =>
+const storeWith = ({ implementer, branch = null, seat = "demo-seat", successors = [] }: Registered = {}) =>
   ({
     get: () => ({
       byRun: () => (implementer ? { implementer, branch, repo: "o/r", pr: 7, runId: "run-1", policy: { seat } } : undefined),
@@ -82,8 +82,8 @@ describe("parkStep", () => {
 
     const outcome = await parkStep(storeWith({ implementer: "impl-a" }), { park, notice }, input);
 
-    expect(notice.sent).toEqual([["titan-coord", "Shepherd: o/r#7: impl-a's worktree was not parked: agent-chat refused agent park: Not parked: uncommitted or untracked changes in /tmp/tree"]]);
-    expect(outcome).toMatchObject({ kind: "not-parked", notice: "sent to titan-coord" });
+    expect(notice.sent).toEqual([["demo-seat", "Shepherd: o/r#7: impl-a's worktree was not parked: agent-chat refused agent park: Not parked: uncommitted or untracked changes in /tmp/tree"]]);
+    expect(outcome).toMatchObject({ kind: "not-parked", notice: "sent to demo-seat" });
   });
 
   it("falls back to the hub seat when the run's policy names no seat", async () => {
@@ -115,7 +115,7 @@ describe("parkStep", () => {
     await parkStep(storeWith({ implementer: "impl-a" }), { park: refusing({ "impl-a": LIVE("impl-a") }), notice, retry }, input);
     await settling;
 
-    expect(notice.sent).toEqual([["titan-coord", "Shepherd: o/r#7: impl-a's worktree was not parked: still dirty"]]);
+    expect(notice.sent).toEqual([["demo-seat", "Shepherd: o/r#7: impl-a's worktree was not parked: still dirty"]]);
   });
 });
 
