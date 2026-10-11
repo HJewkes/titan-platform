@@ -1,4 +1,5 @@
 import type { GitHubPort, MergeMethod, RepoSlug } from "@titan-design/github";
+import type { OwnerBrief } from "@titan-design/review-panel";
 import type { RoutedStepInput, StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
@@ -80,6 +81,8 @@ export interface LandOptions {
   allowEvidence?: (merge: MergeAllowContext) => Record<string, unknown>;
   /** True when the reviewer's verdict at exactly this head is MERGE; only then does the approve-merge brief recommend merging. */
   reviewedMerge?: (headSha: string) => boolean;
+  /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
+  ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -283,7 +286,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
-  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge);
+  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge, options.ownerBriefAt);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, () => trust(state, ci.headSha, "human", base));
 }
 

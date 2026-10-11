@@ -1323,9 +1323,6 @@
   },
   "packages/github/src/gh-cli.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },

@@ -127,7 +127,7 @@ describe("sweepVersionPackages and the release preflight", () => {
     expect([first.status, first.error]).toEqual(["failed", expect.stringContaining("answered 503")]);
     expect(w.preflightOf(first.id)).toBeUndefined();
     expect(notes).toEqual([{ repo: REPO, pr: w.vp, registered: w.runOf() }]);
-    expect(w.preflightOf(w.runOf())).toEqual({ head: VP_HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [] });
+    expect(w.preflightOf(w.runOf())).toEqual({ head: VP_HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [], versions: { "@demo/widget": "1.1.0" } });
   });
 
   it("re-reads npm for a head blocked only by an unpublished package, and starts a fresh run once it is published by hand", async () => {

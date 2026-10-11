@@ -158,6 +158,14 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
 }
 
+/** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */
+export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<Record<string, { path?: string }>> = {}): string | undefined {
+  const found = lookupSeat(book, repo);
+  if (found.kind === "seat") return found.seat.paths[repo.toLowerCase()];
+  if (found.kind === "denied") return undefined;
+  return Object.entries(unseated).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1].path;
+}
+
 function narrowest(seats: Seat[]): Seat {
   if (seats.length === 1) return seats[0]!;
   const grants = seats[0]!.grants.filter((g) => seats.every((s) => s.grants.includes(g)));

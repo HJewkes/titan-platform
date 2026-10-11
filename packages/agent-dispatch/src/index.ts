@@ -43,3 +43,12 @@ export {
   type AgentRow,
   type RetireResult,
 } from "./agents.js";
+export {
+  ASK_LABEL_PATTERN,
+  askHuman,
+  dismissAsk,
+  readAnswers,
+  type AnswersPage,
+  type AskRequest,
+  type ServiceAnswer,
+} from "./ask.js";

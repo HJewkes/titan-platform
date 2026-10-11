@@ -75,7 +75,17 @@ describe("isReleaseFile", () => {
 
 describe("releasePreflight", () => {
   it("passes when every public package in the release is on npm, and skips private ones", async () => {
-    expect(await preflight(versionPackagesPr())).toEqual({ head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [] });
+    expect(await preflight(versionPackagesPr())).toEqual({ head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [], versions: { "@demo/widget": "1.2.0" } });
+  });
+
+  it("records the head version of each bumped public package, and leaves out a private one and an unbumped one", async () => {
+    const fake = versionPackagesPr([{ path: "packages/steady/package.json", status: "modified" }]);
+    const steady = { name: "@demo/steady", version: "2.0.0", dependencies: { "@demo/widget": "^1.1.0" } };
+    setManifest(fake, "packages/steady/package.json", steady, { ...steady, dependencies: { "@demo/widget": "^1.2.0" } });
+
+    const result = await preflight(fake, onNpm("@demo/widget", "@demo/steady"));
+
+    expect(result.versions).toEqual({ "@demo/widget": "1.2.0" });
   });
 
   it("blocks a package npm has never seen and names it", async () => {
@@ -141,7 +151,7 @@ describe("releasePreflight", () => {
 });
 
 describe("decideRelease", () => {
-  const passed: ReleasePreflight = { head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [] };
+  const passed: ReleasePreflight = { head: HEAD, blockers: [], packages: ["@demo/widget"], unpublished: [], versions: {} };
 
   it.each<[string, EffectivePolicy, string | undefined, ReleasePreflight | undefined, string, string]>([
     ["a never seat", { ...AUTO, merge: "never" }, HEAD, passed, "deny", "never"],
@@ -281,7 +291,7 @@ describe("retryingRegistry", () => {
 });
 
 describe("blockedOnlyByNpm", () => {
-  const unpublished: ReleasePreflight = { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"], unpublished: ["@demo/widget"] };
+  const unpublished: ReleasePreflight = { head: HEAD, blockers: ["@demo/widget is not on registry.npmjs.org yet"], packages: ["@demo/widget"], unpublished: ["@demo/widget"], versions: {} };
   const results = (result: object) => ({ [`dispatch:sh-release-preflight:${HEAD}#0`]: { stepId: `sh-release-preflight:${HEAD}`, iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:00Z", data: { result } } });
   const prompt = `Merge PR #1 in ${REPO} at head ${HEAD}? CI is green. Policy shepherd-release/preflight-blocked: the release cannot land yet`;
 
@@ -301,7 +311,7 @@ describe("blockedOnlyByNpm", () => {
 });
 
 describe("publishedSince", () => {
-  const preflight: ReleasePreflight = { head: HEAD, blockers: ["a", "b"], packages: ["@demo/a", "@demo/b"], unpublished: ["@demo/a", "@demo/b"] };
+  const preflight: ReleasePreflight = { head: HEAD, blockers: ["a", "b"], packages: ["@demo/a", "@demo/b"], unpublished: ["@demo/a", "@demo/b"], versions: {} };
 
   it("is true only once npm has every package that blocked the release", async () => {
     expect([await publishedSince(onNpm("@demo/a"), preflight), await publishedSince(onNpm("@demo/a", "@demo/b"), preflight)]).toEqual([false, true]);

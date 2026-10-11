@@ -6,7 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "titan-squash-message": "./dist/bin.js"
+    "titan-squash-message": "./dist/bin.js",
+    "titan-gh": "./dist/titan-gh.js"
   },
   "exports": {
     ".": {

@@ -6,10 +6,12 @@ import type { StepDeclaration } from "../definition.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { codeRoute, step, type LandOptions } from "../workflows/land.js";
 import type { FreezeGuard } from "./freeze.js";
+import type { FixTasks } from "./main-red.js";
 import { isGithubPath } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { publishReview } from "./publish-review.js";
 import type { EffectivePolicy, MergeMode } from "./policy.js";
+import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import type { ShepherdStore } from "./store.js";
 
 /** The branch the changesets action opens its "Version Packages" pull request from. */
@@ -17,7 +19,10 @@ export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
 /** The registration's implementer: no agent writes this PR, so a wake for it is never handled. */
 export const RELEASE_IMPLEMENTER = "changesets";
 export const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
-export const RELEASE_STEPS: readonly StepDeclaration[] = [{ id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" }];
+export const RELEASE_STEPS: readonly StepDeclaration[] = [
+  { id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" },
+  { id: RELEASE_FOLLOW_STEP, kind: "dispatch" },
+];
 /** How long a ready Version Packages head holds the repo's other Shepherd merges; a stuck release cannot hold them longer. */
 export const RELEASE_FREEZE_MS = 30 * 60_000;
 
@@ -94,6 +99,8 @@ export interface ReleasePreflight {
   unpublished: string[];
   /** The packages whose latest version no trusted publisher published; each is also one of `blockers`. */
   untrusted?: string[];
+  /** Each public package whose version this release bumps, to its head version: what npm must serve once it publishes. */
+  versions: Record<string, string>;
 }
 
 /**
@@ -113,7 +120,7 @@ export async function releasePreflight(port: GitHubPort, registry: PackageRegist
   const { unpublished, untrusted } = await npmPresence(registry, packages);
   blockers.push(...unpublished.map((name) => `${name} is not on registry.npmjs.org yet; publish its first version by hand (CLAUDE.md, Releasing)`));
   blockers.push(...untrusted.map((name) => `${name}'s latest version on registry.npmjs.org has no trusted publisher; the owner confirms one is saved (CLAUDE.md, Releasing)`));
-  return { head: target.head, blockers, packages, unpublished, ...(untrusted.length > 0 && { untrusted }) };
+  return { head: target.head, blockers, packages, unpublished, ...(untrusted.length > 0 && { untrusted }), versions: bumpedVersions(manifests.pairs) };
 }
 
 async function npmPresence(registry: PackageRegistry, packages: readonly string[]): Promise<{ unpublished: string[]; untrusted: string[] }> {
@@ -201,14 +208,27 @@ function publicPackages(pairs: readonly ManifestPair[]): string[] {
   return pairs.flatMap(({ head }) => (head.private !== true && head.name !== undefined ? [head.name] : [])).sort();
 }
 
+function bumpedVersions(pairs: readonly ManifestPair[]): Record<string, string> {
+  const bumped = pairs.filter(({ base, head }) => head.private !== true && head.name !== undefined && head.version !== undefined && head.version !== base.version);
+  return Object.fromEntries(bumped.map(({ head }) => [head.name, head.version]));
+}
+
 interface PreflightInput extends ReleaseTarget {
   runId: string;
   merge: MergeMode;
   release?: "grant";
 }
 
+interface FollowInput {
+  repo: RepoSlug;
+  pr: number;
+  mergeSha: string;
+  runId: string;
+  versions: Record<string, string>;
+}
+
 /** Marks the head ready only under an auto policy with the release-merge grant, so a release the owner must approve never holds other merges; a run not yet registered marks nothing. */
-export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): StepRoute[] {
+export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry, versions: VersionRegistry = npmVersionRegistry(), tasks?: FixTasks): StepRoute[] {
   return [
     codeRoute(RELEASE_PREFLIGHT_STEP, deps.now, async (input: PreflightInput, signal) => {
       const preflight = await releasePreflight(deps.port, retryingRegistry(registry, deps.sleep, signal), input);
@@ -217,10 +237,14 @@ export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry): St
       if (store.byRun(input.runId)) store.setReleaseReady(input.runId, ready ? input.head : null);
       return preflight;
     }),
+    codeRoute(RELEASE_FOLLOW_STEP, deps.now, async (input: FollowInput, signal) => {
+      const task = deps.store.get().byRun(input.runId)?.task;
+      return followRelease({ ...deps, registry: versions, tasks }, { ...input, task }, signal);
+    }),
   ];
 }
 
-const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()), unpublished: z.array(z.string()).default([]) });
+const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()), unpublished: z.array(z.string()).default([]), versions: z.record(z.string(), z.string()).default({}) });
 
 const NPM_BLOCKED_ROW = "Policy shepherd-release/preflight-blocked:";
 
@@ -265,7 +289,7 @@ export function decideRelease(effective: EffectivePolicy, headSha: string | unde
   return { outcome: "allow", rule: releaseRule("version-packages"), reason: `the release preflight passed at ${headSha} for ${preflight.packages.length} public packages` };
 }
 
-function preflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
+function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
   const verdict = verdictFor(headSha);
   const parsed = verdict?.kind === "MERGE" ? PreflightResult.safeParse((verdict.evidence as { release?: unknown } | null)?.release) : undefined;
   return parsed?.success ? parsed.data : undefined;
@@ -274,9 +298,9 @@ function preflightAt(headSha: string, verdictFor: (headSha: string) => Verdict |
 export function releaseLandOptions(effective: () => EffectivePolicy, verdictFor: (headSha: string) => Verdict | undefined): LandOptions {
   const decide = (_action: string, target?: { headSha?: string }): GateDecision => {
     const headSha = target?.headSha;
-    return decideRelease(effective(), headSha, headSha === undefined ? undefined : preflightAt(headSha, verdictFor));
+    return decideRelease(effective(), headSha, headSha === undefined ? undefined : releasePreflightAt(headSha, verdictFor));
   };
-  return { policy: { decide }, allowEvidence: (merge) => ({ release: preflightAt(merge.headSha, verdictFor) }) };
+  return { policy: { decide }, allowEvidence: (merge) => ({ release: releasePreflightAt(merge.headSha, verdictFor) }) };
 }
 
 /** Each main push regenerates the Version Packages PR, so while one is ready the repo's other Shepherd merges wait for it to land. */
