@@ -1,5 +1,24 @@
 # @titan-design/coordinator
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [2b1640a]
+  - @titan-design/agent-dispatch@0.6.0
+
+## 0.4.0
+
+### Minor Changes
+
+- 7f4b402: Add `resolveSeatPolicy`: a seat's effective hard stops and scorer defaults. A seat may override a charter default through the new seat `defaults` key, and its `kind_weights` and `share_caps` merge key by key. A seat can only add hard stops and only lower `stop_short_factor`, so a global hard stop is never removed.
+
+## 0.3.0
+
+### Minor Changes
+
+- 7a03e62: Add `HARD_STOPS` and `hardStopsIn`: one detection pattern for each of the twelve hard-stop classes, so hosts share a single detector.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -365,6 +365,16 @@ describe("the report", () => {
     expect(report).not.toContain("not failing");
   });
 
+  it("prints the NEW lines after every CARRY line, directly before the status line", () => {
+    const fresh = ["x", "y"].map((name) => ({ id: `a.ts#${name}`, name, file: "a.ts" }));
+    const carried = ["p", "q", "r"].map((name) => ({ id: `b.ts#${name}` }));
+
+    const lines = formatReport({ fresh, carried, fixed: [] }, { reportOnly: false }).split("\n");
+
+    expect(lines.map((line) => line.trim().split(/\s+/)[0])).toEqual(["CARRY", "CARRY", "CARRY", "NEW", "NEW", "2"]);
+    expect(lines.at(-1)).toBe("2 new, 3 baselined dead export(s) — failed.");
+  });
+
   it("says a report-only run does not fail", () => {
     const fresh = [{ id: "a.ts#x", name: "x", file: "a.ts" }];
     expect(formatReport({ fresh, carried: [], fixed: [] }, { reportOnly: true })).toContain("report-only, not failing");

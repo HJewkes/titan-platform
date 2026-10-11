@@ -1,4 +1,4 @@
-import type { GateRecord, GateStore } from "@titan-design/hitl";
+import { GateAlreadySettled, type GateRecord, type GateStore } from "@titan-design/hitl";
 import type { StepOperation, StepResult, WorkflowRun } from "./types.js";
 
 export function gateIdFor(runId: string, stepId: string): string {
@@ -52,8 +52,16 @@ export function isOwnGate(runId: string, gateId: string): boolean {
   return gateId.startsWith(`${runId}/`);
 }
 
-/** Cancels the pending gates a run opened that `isStale` picks, and returns their ids. */
+/** Cancels the pending gates a run opened that `isStale` picks, and returns the ids it cancelled; a gate settled meanwhile is skipped. */
 export function cancelOwnPending(gates: GateStore, runId: string, reason: string, isStale: (gate: Readonly<GateRecord>) => boolean): string[] {
   const own = gates.listPending().filter((gate) => isOwnGate(runId, gate.id) && isStale(gate));
-  return own.map((gate) => gates.cancel(gate.id, reason).id);
+  return own.flatMap((gate) => {
+    try {
+      return [gates.cancel(gate.id, reason).id];
+    } catch (error) {
+      // Another host settled it after listPending; it is no longer pending, so the sweep moves on.
+      if (error instanceof GateAlreadySettled) return [];
+      throw error;
+    }
+  });
 }

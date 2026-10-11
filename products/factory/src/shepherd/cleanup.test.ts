@@ -305,6 +305,19 @@ describe("sh-cleanup retire", () => {
     expect(w.agents.retires[0]!.at).toBeGreaterThanOrEqual(SH_CLEANUP_GIVE_UP_MS + 180_000);
   });
 
+  it("reports the fixed class fallback when a retire refusal's message getter throws", async () => {
+    const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0 }] });
+    w.agents.retire = async () => {
+      const refusal = new Error("x");
+      Object.defineProperty(refusal, "message", { get: () => { throw new Error(LEAKY_MESSAGE); } });
+      throw refusal;
+    };
+
+    const result = await w.run();
+
+    expect(result.caveats).toEqual([`retire ${IMPLEMENTER}: Error`]);
+  });
+
   it("retries a refusal at most every 10 minutes and finishes with a caveat after an hour", async () => {
     const refusals = Array.from({ length: 20 }, () => "worktree has unpushed commits");
     const w = world({ agents: [{ name: IMPLEMENTER, exitAt: 0, refusals }] });

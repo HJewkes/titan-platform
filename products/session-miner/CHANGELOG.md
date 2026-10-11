@@ -1,5 +1,43 @@
 # @titan-design/session-miner
 
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-analytics@0.13.2
+  - @titan-design/session-graph@0.15.1
+
+## 0.6.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/session-read@0.12.2
+
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [df3e9c3]
+  - @titan-design/memory@0.2.0
+
 ## 0.5.2
 
 ### Patch Changes

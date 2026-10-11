@@ -1,5 +1,84 @@
 # @titan-design/factory
 
+## 0.17.0
+
+### Minor Changes
+
+- 20e426a: Add the Shepherd seat digest: `titan-factory serve` sends each seat one agent-chat message whenever its state changes, listing every open gate with its exact `titan-factory gate resolve` command, every `ci-failed` or `sh-sent-back` fix round the seat was told about with no fixer woken, and runs that finished since the last digest. An unchanged state sends nothing, and what each seat was last told is kept in `seat-digest.json` beside the factory database so a restart does not resend. The seat notice record now carries its gate and head.
+
+### Patch Changes
+
+- 452b194: Shepherd's main-red acknowledgement now judges a later main commit with `judgeMain` on `readMainRules`, the same path that greenAfterRed, unfreezeStep and readMainGreen use. A context pinned to a non-Actions app is judged by that app's runs, and classic protection contexts count as well.
+- Updated dependencies [2b1640a]
+- Updated dependencies [7c73654]
+  - @titan-design/agent-dispatch@0.6.0
+  - @titan-design/session-read@0.13.0
+  - @titan-design/review-panel@0.5.1
+  - @titan-design/session-analytics@0.13.2
+
+## 0.16.1
+
+### Patch Changes
+
+- 77c1298: Open a gate naming sh-merge-evidence, instead of failing the run, when the merge-evidence comment post still answers an empty or unparseable body after its retries.
+- Updated dependencies [3873ce6]
+  - @titan-design/session-analytics@0.13.1
+
+## 0.16.0
+
+### Minor Changes
+
+- 3d3cc58: Hold a Shepherd run as account-exhausted when its reviewer hits the account's usage limit, instead of re-spawning reviewers and falling to approve-merge. Only Claude Code's own `<synthetic>` limit record counts, never a reviewer's words. The run waits inside the review under the store hold (`account-exhausted: <configDir> until <reset>; TP-1955`), which is matched exactly so an owner's hold is never touched. The repo's seat gets one alert per exhaustion of an account. No reviewer is spawned on an exhausted account until its reset (believed only within 8 days, else re-checked after an hour) or an owner release, and the review runs again at the PR's current head when the hold lifts. The new optional `shepherd.review.fallbackConfigDirs` list moves the review to the next account with headroom. The restart drain does not wait on a held run.
+
+### Patch Changes
+
+- 9a842b3: The Shepherd ci-red wake counts the failing check runs and, for the known CI jobs (validate, lint-types, dag-check, egress-scan), names the scripts that reproduce each and asks the implementer to rerun them before pushing, as the brief's test rule says. Check-run names stay inside the fenced CI log and never reach the instruction text.
+- 703c716: Cap a gate brief's evidence link at 500 characters so a long CI URL no longer makes the brief invalid, and say a carried MERGE was carried from a tree-equal head.
+- 579886b: `PullRequest` now carries `autoMerge`, read from the REST `auto_merge` field. Shepherd's `shepherd/review` publish reads it, so a PR with auto-merge armed gets `action_required` rather than `success`; an unreadable PR is treated as armed.
+- 4823243: Shepherd retires a main-red fixer and parks its clean pushed worktree once the red main is over; a dirty or unpushed tree and a fixer still running are left.
+- 37fb5d0: On systemd, Shepherd's redeploy now starts `service deploy` in its own transient user unit (`systemd-run --user --collect`), so restarting the service no longer kills the deployer before it confirms health, records the outcome or rolls back. darwin keeps the setsid path. If systemd-run is missing or fails, the deployer falls back to setsid and logs why.
+- d5fe1a2: Move the branch-holder lookup out of shepherd/commands.ts so the file fits the 350-loc dag-check limit; no behaviour change.
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/review-panel@0.5.0
+  - @titan-design/session-read@0.12.2
+
+## 0.15.0
+
+### Minor Changes
+
+- eba2ac7: Add the read-only `factory.gates-review` command: each pending gate with its PR, head, policy rule, the reviewer's verdict at that head, the required checks, and whether it may ride in a batch.
+
+### Patch Changes
+
+- bd74657: Gate sweeps skip a gate another host settled between listing and cancelling instead of throwing partway through.
+- eee55b5: Shepherd's errorClass now hides credential prefixes anywhere in an error name, in any case, and npm\_ tokens; consoleTextOf always returns a string; cleanup's retire refusals read through the safe text path.
+- Updated dependencies [369a00b]
+- Updated dependencies [1add3c6]
+- Updated dependencies [bd74657]
+  - @titan-design/github@0.7.1
+  - @titan-design/review-panel@0.4.0
+  - @titan-design/workflow@0.10.1
+
+## 0.14.2
+
+### Patch Changes
+
+- 8dd6807: Land's flaky rerun now respects the ci-wait deadline, stamps a red with the time it was read, and waits only on the runs GitHub accepted a rerun for.
+- 7fe216d: Every new `shepherd_event` row records its actor: the seat or owner name for a CLI hold or release, `owner` for a thaw from the owner gate, and `shepherd` for Shepherd's own holds, releases, freezes and thaws.
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.14.1
+
+### Patch Changes
+
+- 2ee3abf: Shepherd parks the worktree of each exited `rv-<owner>-<repo>-<pr>` reviewer at every green head, so finished review rounds no longer leave trees behind. A refusal is logged, sent to the seat, and retried at the next round end.
+
 ## 0.14.0
 
 ### Minor Changes

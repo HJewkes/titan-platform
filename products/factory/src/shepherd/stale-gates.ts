@@ -1,3 +1,4 @@
+import { GateAlreadySettled, type GateStore } from "@titan-design/hitl";
 import { GATE_CANCELLED_SIGNAL, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
 import { resetBound, type UpdateBound } from "../workflows/land-budget.js";
@@ -79,5 +80,17 @@ export function clearSuperseded(run: SupersededRun, rereview: string | undefined
     const escalated = run.carried ?? here;
     if (here?.escalation === "failed-rounds") run.failedRounds = 0;
     else if (escalated) run.carried = { ...escalated, carriedFrom: gated };
+  }
+}
+
+/** Cancels `gateId` unless another host settled it after the sweep listed it; true when this call cancelled it. */
+export function cancelUnlessSettled(gates: GateStore, gateId: string, reason: string, warn: (line: string) => void = console.warn): boolean {
+  try {
+    gates.cancel(gateId, reason);
+    return true;
+  } catch (error) {
+    if (!(error instanceof GateAlreadySettled)) throw error;
+    warn(`shepherd sweep: gate ${gateId} was already ${error.status}; skipped`);
+    return false;
   }
 }
