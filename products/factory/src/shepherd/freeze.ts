@@ -1,5 +1,6 @@
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, isPassing, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { consoleTextOf } from "./error-class.js";
 import { appendEvent, SHEPHERD_ACTOR } from "./events.js";
 import { actionsRunsAt, judgeMain, readMainRules } from "./main-verdict.js";
@@ -45,17 +46,18 @@ export interface Freeze {
   cancelOnly: boolean;
 }
 
-interface Row {
-  repo: string;
-  red_sha: string;
-  fix_task: string | null;
-  fixer: string | null;
-  red_count: number;
-  frozen_at: string;
-  episode: number;
-  thawed_at: string | null;
-  cancel_only: number;
-}
+const Row = z.object({
+  repo: z.string(),
+  red_sha: z.string(),
+  fix_task: z.string().nullable(),
+  fixer: z.string().nullable(),
+  red_count: z.number(),
+  frozen_at: z.string(),
+  episode: z.number(),
+  thawed_at: z.string().nullable(),
+  cancel_only: z.number(),
+});
+type Row = z.infer<typeof Row>;
 
 /** A listener runs after the thaw has committed, so its failure is only logged: the thaw stands and the next listener still runs. */
 function notifyThaw(listener: (repo: RepoSlug) => void, repo: RepoSlug): void {
@@ -122,6 +124,11 @@ export class FreezeStore {
     return freeze?.episode === episode ? freeze : undefined;
   }
 
+  /** Every repo's live freeze, so a caller can tell which fixers still have a red main to fix. */
+  activeFreezes(): Freeze[] {
+    return this.db.prepare("SELECT * FROM shepherd_freeze WHERE thawed_at IS NULL").all().map((row) => fromRow(Row.parse(row)));
+  }
+
   isFrozen(repo: RepoSlug): boolean {
     return this.active(repo) !== undefined;
   }
@@ -159,7 +166,8 @@ export class FreezeStore {
   }
 
   private row(repo: RepoSlug): Row | undefined {
-    return this.db.prepare("SELECT * FROM shepherd_freeze WHERE repo = ?").get(repoKey(repo)) as Row | undefined;
+    const row = this.db.prepare("SELECT * FROM shepherd_freeze WHERE repo = ?").get(repoKey(repo));
+    return row === undefined ? undefined : Row.parse(row);
   }
 
   private active(repo: RepoSlug): Freeze | undefined {
