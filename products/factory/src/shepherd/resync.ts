@@ -6,7 +6,7 @@ import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";
 import { approveMergeRun, authorityGate, openHead, supersedeMovedGates, type SupersededGate } from "./head-moved.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
-import { REREVIEW } from "./stale-gates.js";
+import { REREVIEW, cancelUnlessSettled } from "./stale-gates.js";
 import { supersedeStaleMerges, type SupersededMerge } from "./stale-merges.js";
 import { supersedeStaleReviews, type SupersededReview } from "./stale-reviews.js";
 import { markRevertedRuns, type RevertedRun, type RevertSweep } from "./reverts.js";
@@ -119,7 +119,7 @@ export async function supersedeTransientGates(host: FactoryHost, services: Sheph
     const gate = await transientGate(host, services, pending, { dryRun, repo });
     if (!gate) continue;
     if ((await openHead(services, pending.runId, () => onUnreadable?.(pending.runId))) !== gate.head || host.gates.get(pending.gate.id)?.status !== "pending") continue;
-    if (!dryRun) host.gates.cancel(pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`);
+    if (!dryRun && !cancelUnlessSettled(host.gates, pending.gate.id, `${REREVIEW}${onlyUnmet(gate.conditions)} at head ${gate.head}`)) continue;
     const condition = gate.conditions.join() === "merge-tree-clean" ? "merge-tree-only" : "transient-only";
     superseded.push({ runId: pending.runId, gateId: pending.gate.id, from: gate.head, to: gate.head, condition });
   }
@@ -142,7 +142,7 @@ export async function resyncShepherd(host: FactoryHost, services: ShepherdServic
   };
   const ended = await endRunsGoneElsewhere(host, services, { scope: "live", dryRun, onHeld: (runId) => held.push(runId), onUnreadable: (runId) => held.push(runId), onCancelFailed });
   const orphans = orphanGates(host);
-  if (!dryRun) for (const gateId of orphans) host.gates.cancel(gateId, ORPHANED);
+  if (!dryRun) for (const gateId of orphans) cancelUnlessSettled(host.gates, gateId, ORPHANED);
   const { reverted, errors: revertErrors } = await markRevertedRuns(host, services, { dryRun });
   const report: ResyncReport = { dryRun, ended, held, cancelErrors, orphanGates: orphans, superseded: [], supersededReviews: [], supersededMerges: [], reverted, revertErrors };
   try {
