@@ -79,7 +79,7 @@ describe("the shepherd text view of each verb", () => {
       { kind: "signal", stepId: "wake" },
     ];
     expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(
-      "acme/widgets#1 merging - merging\n  step ci completed 2026-01-01T00:00:00.000Z\n  ci ci aaaaaaa success\n  gate run-1/merge resolved by owner\n  signal wake\n",
+      "acme/widgets#1 merging - merging task demo/T-1\n  step ci completed 2026-01-01T00:00:00.000Z\n  ci ci aaaaaaa success\n  gate run-1/merge resolved by owner\n  signal wake\n",
     );
   });
 
@@ -89,7 +89,7 @@ describe("the shepherd text view of each verb", () => {
       { kind: "event", event: "hold", reason: "g10-review", actor: "coord", at, headSha: null },
       { kind: "event", event: "release", reason: null, actor: null, at, headSha: null },
     ];
-    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(`acme/widgets#1 merging - merging\n  hold ${at}: g10-review (by coord)\n  release ${at}\n`);
+    expect(formatShepherd("shepherd.timeline", { row: { ...row(null), headSha: null }, entries })).toBe(`acme/widgets#1 merging - merging task demo/T-1\n  hold ${at}: g10-review (by coord)\n  release ${at}\n`);
   });
 
   it("prints hold and release by the run's hold state", () => {
