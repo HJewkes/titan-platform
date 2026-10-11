@@ -1,9 +1,9 @@
 import type { RosterReader } from "./roster.js";
 
 /** A roster read is shared and cached, so a minute between looks costs one `agent ls` per minute across every waiting park. */
-export const PARK_RETRY_POLL_MS = 60_000;
+const PARK_RETRY_POLL_MS = 60_000;
 /** A run held for review can keep its implementer live for a day or more; past two, the seat is told instead. */
-export const PARK_RETRY_GIVE_UP_MS = 48 * 3_600_000;
+const PARK_RETRY_GIVE_UP_MS = 48 * 3_600_000;
 
 /** One park attempt for a name: `live` means the agent still runs and the attempt is worth repeating after it exits. */
 export type ParkAttempt = { done: true; detail: string; parked: boolean } | { done: false };
@@ -19,7 +19,7 @@ export interface LiveRetryDeps {
 }
 
 /** What the retry ends with; `parked: false` is a refusal or a give-up the caller tells the seat about. */
-export interface RetrySettled {
+interface RetrySettled {
   agent: string;
   parked: boolean;
   detail: string;

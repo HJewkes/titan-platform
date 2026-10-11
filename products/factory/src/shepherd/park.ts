@@ -48,7 +48,7 @@ function attemptPark(park: ParkPort, agent: string): ParkOutcome {
  * agent an `agent-chat/<name>` branch was allocated to, which differs from the implementer when a seat registered the PR
  * under a name of its own.
  */
-export function parkCandidates(registration: Pick<Registration, "implementer" | "branch">, successors: readonly string[]): string[] {
+function parkCandidates(registration: Pick<Registration, "implementer" | "branch">, successors: readonly string[]): string[] {
   const branch = registration.branch;
   const allocatedTo = branch?.startsWith(AGENT_CHAT_BRANCH) ? [branch.slice(AGENT_CHAT_BRANCH.length)] : [];
   return [...new Set([...[...successors].reverse(), registration.implementer, ...allocatedTo])];
@@ -93,7 +93,7 @@ function noticeSeat(ports: ExitNoticePorts, registration: Registration): string 
 }
 
 /** One line per tree left standing; never throws, and records whether the line went out. */
-export async function tellParkRefusal(ports: ExitNoticePorts | undefined, registration: Registration | undefined, agent: string, reason: string): Promise<string> {
+async function tellParkRefusal(ports: ExitNoticePorts | undefined, registration: Registration | undefined, agent: string, reason: string): Promise<string> {
   if (ports === undefined || registration === undefined) return "unsent: no seat notice is wired";
   const seat = noticeSeat(ports, registration);
   if (seat === undefined) return "unsent: the policy names no single seat and no hub seat is set";
@@ -106,7 +106,7 @@ export async function tellParkRefusal(ports: ExitNoticePorts | undefined, regist
   }
 }
 
-export interface ParkWiring {
+interface ParkWiring {
   park: ParkPort;
   notice?: ExitNoticePorts;
   retry?: LiveRetry;
