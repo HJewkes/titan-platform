@@ -66,8 +66,19 @@ function encode(result: FixProofResult): string {
   return RESULT_PREFIX + JSON.stringify(canonical(result));
 }
 
+// Reproducing entries are the evidence the verdict rests on, so they are the last tests dropped.
+function dropTest(tests: TestOutcome[]): void {
+  for (let index = tests.length - 1; index >= 0; index -= 1) {
+    if (tests[index]?.class !== "reproduces") {
+      tests.splice(index, 1);
+      return;
+    }
+  }
+  tests.pop();
+}
+
 function shrink(result: FixProofResult): boolean {
-  if (result.tests.length > 0) result.tests.pop();
+  if (result.tests.length > 0) dropTest(result.tests);
   else if (result.deletedTests.length > 0) result.deletedTests.pop();
   else if (result.notCollected.length > 0) result.notCollected.pop();
   else if (result.error !== undefined && result.error.length > MAX_ERROR_CHARS) result.error = result.error.slice(0, MAX_ERROR_CHARS);
