@@ -16,7 +16,7 @@ export interface FixerRetirePorts {
   retire(name: string): Promise<void>;
 }
 
-export interface FixerRetireNote {
+interface FixerRetireNote {
   fixer: string;
   outcome: "retired" | "left";
   detail: string;
