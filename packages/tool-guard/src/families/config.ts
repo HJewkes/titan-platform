@@ -90,27 +90,27 @@ function unreadableName(word: WordToken): boolean {
 
 const operands = (cmd: SimpleCommand) => cmd.args.filter((a) => !a.value.startsWith("-"));
 
-/** A nameref makes the next `export r=1` set whatever `r` points at, so a `-n` declaration may not point at the bypass or at anything unread. */
+/** A nameref makes the next `export r=1` set whatever `r` points at, so a `-n` declaration may not point at anything unread; a literal bypass name is denied wherever it appears. */
 function pointsAtBypass(cmd: SimpleCommand): boolean {
   if (!cmd.args.some((a) => /^-[a-zA-Z]*n/.test(a.value))) return false;
-  return operands(cmd).some((a) => a.value.includes("=") && (a.value.split("=").slice(1).join("=") === BYPASS_VAR || a.dynamic));
+  return operands(cmd).some((a) => a.value.includes("=") && a.dynamic);
 }
 
 /** `export X=1` stores no prefix assignment, so a declaration builtin's arguments are read for the name. */
 function declaresBypass(cmd: SimpleCommand): boolean {
-  return operands(cmd).some((a) => assignedName(a) === BYPASS_VAR || unreadableName(a)) || pointsAtBypass(cmd);
+  return operands(cmd).some((a) => unreadableName(a)) || pointsAtBypass(cmd);
 }
 
 /** Under `set -a` any of these stores into the environment; they are denied by name wherever they appear. */
 function storesBypass(cmd: SimpleCommand): boolean {
   const targets = cmd.name === "printf" ? cmd.args.slice(cmd.args.findIndex((a) => a.value === "-v") + 1).slice(0, 1) : operands(cmd);
   const named = cmd.name === "printf" && !cmd.args.some((a) => a.value === "-v") ? [] : targets;
-  return named.some((a) => assignedName(a) === BYPASS_VAR || (cmd.name !== "let" && unreadableName(a)));
+  return cmd.name !== "let" && named.some(unreadableName);
 }
 
 /** `env $N=1 claude` reads as a command with no name, so an assignment-shaped word whose name is unread is checked there too. */
 function envsBypass(cmd: SimpleCommand): boolean {
-  return cmd.args.some((a) => a.value.includes("=") && (assignedName(a) === BYPASS_VAR || unreadableName(a)));
+  return cmd.args.some((a) => a.value.includes("=") && (unreadableName(a)));
 }
 
 function setsBypass(cmd: SimpleCommand): boolean {

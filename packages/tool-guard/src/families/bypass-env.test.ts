@@ -43,6 +43,16 @@ const settingTheBypass = [
   "set -a; printf -v TITAN_TOOL_GUARD_BYPASS 1; claude",
   "set -a; read TITAN_TOOL_GUARD_BYPASS <<< 1; claude",
   "set -a; mapfile TITAN_TOOL_GUARD_BYPASS <<< 1; claude",
+  "export TITAN_TOOL_GUARD_BYPASS+=1; claude",
+  "set -a; printf -vTITAN_TOOL_GUARD_BYPASS 1; claude",
+  "set -a; for TITAN_TOOL_GUARD_BYPASS in 1; do claude; done",
+  "set -a; : ${TITAN_TOOL_GUARD_BYPASS:=1}; claude",
+  "set -a; getopts 1 TITAN_TOOL_GUARD_BYPASS -1; claude",
+  "set -a; let 'TITAN_TOOL_GUARD_BYPASS = 1'; claude",
+  "tmux new -e TITAN_TOOL_GUARD_BYPASS=1 claude",
+  "systemd-run --setenv=TITAN_TOOL_GUARD_BYPASS=1 claude",
+  "python3 -c 'import os; os.environ[\"TITAN_TOOL_GUARD_BYPASS\"]=\"1\"; os.execvp(\"claude\", [\"claude\"])'",
+  "echo $((TITAN_TOOL_GUARD_BYPASS=1)); claude",
   "bash -c 'export TITAN_TOOL_GUARD_BYPASS=1; claude'",
 ];
 
@@ -66,6 +76,9 @@ describe("an agent setting the tool-guard bypass variable", () => {
 
   it.each([
     "echo $TITAN_TOOL_GUARD_BYPASS",
+    'echo "${TITAN_TOOL_GUARD_BYPASS}"',
+    'test -n "$TITAN_TOOL_GUARD_BYPASS"',
+    "rg TITAN_TOOL_GUARD_BYPASS packages",
     "unset TITAN_TOOL_GUARD_BYPASS",
     "grep TITAN_TOOL_GUARD_BYPASS src/actor.ts",
     'export PATH="$PATH:/x"',

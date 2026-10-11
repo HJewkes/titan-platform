@@ -45,7 +45,7 @@ interface ScriptMemo {
 function classifyCommand(src: string, cwd: string | null, ctx: ClassifyContext, scripts: ScriptMemo | null): ClassifiedAction[] {
   const assigned = new Set<string>();
   const asWritten = classifyLine(extractCommands(src, { ...extractOptions(cwd, ctx, scripts, false), assigned }), ctx, scripts);
-  const bypass = assigned.has(BYPASS_VAR) ? [classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` })] : [];
+  const bypass = assigned.has(BYPASS_VAR) ? [bypassAction()] : [];
   return ctx.foldCase ? unique([...asWritten, ...bypass, ...foldedActions(src, cwd, ctx, scripts)]) : unique([...asWritten, ...bypass]);
 }
 
@@ -94,8 +94,25 @@ function addedActions(cmd: SimpleCommand, line: ClassifyContext, scripts: Script
   }
 }
 
+function bypassAction(): ClassifiedAction {
+  return classified("bash.config.bypass-env", { pattern: `env:${BYPASS_VAR}` });
+}
+/** Commands that only look at a name: a literal word naming the bypass is a pattern or an operand, not an assignment. */
+const NAME_READERS = new Set(["unset", "grep", "rg", "echo"]);
+const PLAIN_READ = new RegExp(`^\\$\\{?${BYPASS_VAR}\\}?$`);
+
+/**
+ * Bash assigns in too many ways to list (`export`, `printf -v`, `getopts`, `${X:=1}`, `for X in`, a child's own `-e X=1`), so any
+ * decoded word that carries the bypass name is denied unless it is a plain `$NAME` read. A literal word is let through only for
+ * a command that merely names it; a dynamic one can still hold `$((NAME=1))`.
+ */
+function mentionsBypass(cmd: SimpleCommand): boolean {
+  const readsOnly = cmd.name !== null && NAME_READERS.has(cmd.name);
+  return cmd.args.some((w) => w.value.includes(BYPASS_VAR) && !PLAIN_READ.test(w.value) && !(readsOnly && !w.dynamic));
+}
+
 function classifySimple(cmd: SimpleCommand, ctx: ClassifyContext): ClassifiedAction[] {
-  const direct = FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : []));
+  const direct = [...FAMILIES.flatMap((f) => (f.bash && handles(f, cmd) ? f.bash(cmd, ctx) : [])), ...(mentionsBypass(cmd) ? [bypassAction()] : [])];
   return hasDynamicName(cmd) ? [...direct, ...dynamicActions(cmd, ctx)] : direct;
 }
 
