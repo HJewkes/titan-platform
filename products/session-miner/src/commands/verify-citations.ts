@@ -30,16 +30,18 @@ function readFindings(file: string): Finding[] {
   return parsed.data;
 }
 
+const insightEnvelope = z.object({ answer: z.unknown() });
+
 /** Runs a question by name through its registered command, so flags parse and normalize exactly as on the CLI. */
-export function insightRunner(questions: readonly AnyInsight[], ctx: MinerContext): CitationRunner {
+function insightRunner(questions: readonly AnyInsight[], ctx: MinerContext): CitationRunner {
   return async (name, args) => {
     const question = questions.find((q) => q.name === name);
     if (!question) return undefined;
     const command = insightCommand(question);
     const parsed = command.args.safeParse(Object.fromEntries(Object.entries(args).map(([flag, value]) => [optionKey(flag), value])));
     if (!parsed.success) throw new Error(`invalid args: ${z.prettifyError(parsed.error)}`);
-    const result = (await command.run(parsed.data, { ...ctx, format: "json" })) as { answer: unknown };
-    return { answer: result.answer };
+    const result: unknown = await command.run(parsed.data, { ...ctx, format: "json" });
+    return { answer: insightEnvelope.parse(result).answer };
   };
 }
 

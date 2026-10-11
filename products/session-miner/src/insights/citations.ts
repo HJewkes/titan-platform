@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const citedValue = z.union([z.number(), z.string(), z.boolean(), z.null()]);
 
-export const citationSchema = z
+const citationSchema = z
   .object({
     question: z.string().min(1).describe("a registered insight name, such as spend-by-action"),
     args: z.record(z.string(), z.unknown()).default({}).describe("the question's CLI flags as an object, such as { since, agent-prefix }"),
@@ -25,12 +25,11 @@ export const findingSchema = z
 export type Citation = z.infer<typeof citationSchema>;
 export type Finding = z.infer<typeof findingSchema>;
 
-export const CITATION_STATUSES = ["ok", "mismatch", "missing-field", "unknown-question", "error"] as const;
-export type CitationStatus = (typeof CITATION_STATUSES)[number];
+const CITATION_STATUSES = ["ok", "mismatch", "missing-field", "unknown-question", "error"] as const;
 
-export const DEFAULT_TOLERANCE = 0.01;
+const DEFAULT_TOLERANCE = 0.01;
 
-export const citationCheckSchema = citationSchema.extend({
+const citationCheckSchema = citationSchema.extend({
   status: z.enum(CITATION_STATUSES),
   /** The value the re-run found at `field`; absent when the field, question or run is missing. */
   actual: z.unknown().optional(),
@@ -86,18 +85,18 @@ function checkCitation(citation: Citation, outcome: RunOutcome): CitationCheck {
 }
 
 /** Numbers match within a tolerance relative to the cited value; anything else matches exactly. */
-export function matches(cited: unknown, actual: unknown, tolerance: number): boolean {
+function matches(cited: unknown, actual: unknown, tolerance: number): boolean {
   if (typeof cited === "number" && typeof actual === "number") return Math.abs(actual - cited) <= tolerance * Math.abs(cited);
   return Object.is(cited, actual);
 }
 
 /** RFC 6901: "" is the whole document, and ~1 and ~0 unescape to / and ~. */
-export function resolvePointer(document: unknown, pointer: string): { present: true; value: unknown } | { present: false } {
+function resolvePointer(document: unknown, pointer: string): { present: true; value: unknown } | { present: false } {
   if (pointer === "") return { present: true, value: document };
   let node = document;
   for (const token of pointer.slice(1).split("/").map((t) => t.replaceAll("~1", "/").replaceAll("~0", "~"))) {
     if (node === null || typeof node !== "object" || !Object.hasOwn(node, token)) return { present: false };
-    node = (node as Record<string, unknown>)[token];
+    node = Reflect.get(node, token);
   }
   return { present: true, value: node };
 }
