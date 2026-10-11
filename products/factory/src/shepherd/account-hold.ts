@@ -1,9 +1,9 @@
-import type { ReviewTarget } from "@titan-design/review-panel";
+import type { ReviewTarget, ReviewerDispatch } from "@titan-design/review-panel";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
+import { DEFAULT_ACCOUNT, accountAlertText, accountHoldReason, believedReset, parseLimitReset, type ReviewAccounts } from "./account-limit.js";
 import type { AccountLimitStore } from "./account-store.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 
@@ -19,6 +19,21 @@ export const ACCOUNT_WAIT_LIMIT_MS = 60 * 60_000;
 
 /** The accounts the hold and the wait read: only the dirs, so a review with no accounts wired holds its one default account. */
 export type AccountsView = Pick<ReviewAccounts, "dirs" | "alert">;
+
+/**
+ * The account a review intent bills: none when no accounts are wired or a seat's reviewer is adopted. A choice made for the
+ * first account is re-made with `rechoose` on any other, since a standing reviewer is resumed only on the first; with no
+ * account left the first is named as exhausted, so the phase holds instead of spawning.
+ */
+export function billIntent<C extends { mode: string }>(deps: ShepherdDeps, accounts: AccountsView | undefined, runId: string, choice: C, rechoose: () => C): { exhausted: string } | { choice: C; account?: string } {
+  if (!accounts || choice.mode === "external") return { choice };
+  const account = accountWithHeadroom(deps, accounts.dirs, runId);
+  if (account === null) return { exhausted: accounts.dirs[0] ?? DEFAULT_ACCOUNT };
+  return { choice: account === accounts.dirs[0] ? choice : rechoose(), account };
+}
+
+/** The dispatch that bills the intent's account; with none named, the one dispatch. */
+export const dispatchFor = (accounts: Pick<ReviewAccounts, "dispatchUnder"> | undefined, fallback: ReviewerDispatch, account: string | undefined): ReviewerDispatch => (account !== undefined && accounts ? accounts.dispatchUnder(account) : fallback);
 
 /** The account a review would bill, and the reviewer's limit notice when one ended its turn. */
 interface Exhausted {
@@ -155,7 +170,7 @@ async function awaitHeadroom(deps: ShepherdDeps, accounts: AccountsView, input: 
   }
 }
 
-export function accountRoutes(deps: ShepherdDeps, accounts: AccountsView): StepRoute[] {
+export function accountRoutes(deps: ShepherdDeps, accounts: AccountsView = { dirs: [DEFAULT_ACCOUNT] }): StepRoute[] {
   return [
     codeRoute(ACCOUNT_HOLD_STEP, deps.now, async (input: HoldInput) => holdOrFailClosed(deps, accounts, input)),
     codeRoute(ACCOUNT_WAIT_STEP, deps.now, async (input: WaitInput, signal) => awaitHeadroom(deps, accounts, input, signal)),
