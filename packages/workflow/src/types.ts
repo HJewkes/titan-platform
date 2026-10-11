@@ -66,6 +66,8 @@ export type ActiveStep = LegacyActiveStep | RecoverableActiveStep;
 export interface WorkflowRun {
   id: string;
   workflowName: string;
+  /** The registered definition version the run started under; absent means unpinned. */
+  definitionVersion?: string;
   /** Workflow parameters plus anything seed steps merged in. */
   params: Record<string, string>;
   status: WorkflowStatus;
