@@ -28,7 +28,8 @@ import type {
 } from "./normalized.js";
 import { decodeLines, parseRecord } from "./decode-lines.js";
 import { SessionIdentityError } from "./recent-claude.js";
-import { asObject, booleanOrNull, str, type Json } from "./text.js";
+import { claudeRecordTimestamp, readToolResult, readToolUse } from "./claude-tool-blocks.js";
+import { asObject, str, type Json } from "./text.js";
 
 export const CLAUDE_DECODER_ID = "claude-code-transcript";
 export const CLAUDE_CHECKPOINT_VERSION = "1";
@@ -160,37 +161,35 @@ class ClaudeContext {
   }
 
   private toolCall(block: Json | null, index: number): void {
-    const callId = str(block, "id");
-    if (!callId) return this.unknown("claude.content.tool_use", block, ["message", "content", index]);
-    const input = block?.input;
+    const use = readToolUse(block);
+    if (!use) return this.unknown("claude.content.tool_use", block, ["message", "content", index]);
     const base = this.base(["message", "content", index]);
     const rowItem = str(this.record, "uuid");
     this.observe({
       ...base,
       kind: "tool_call",
-      call: this.item("call", callId),
+      call: this.item("call", use.callId),
       item: rowItem ? this.item("item", rowItem) : null,
-      name: str(block, "name") ?? "unknown",
+      name: use.name,
       namespace: null,
-      input,
-      inputLocator: block && "input" in block ? this.locator(["message", "content", index, "input"], base.evidence) : null,
+      input: use.input,
+      inputLocator: use.hasInput ? this.locator(["message", "content", index, "input"], base.evidence) : null,
     });
   }
 
   private toolResult(block: Json | null, index: number): void {
-    const callId = str(block, "tool_use_id");
-    if (!callId) return this.unknown("claude.content.tool_result", block, ["message", "content", index]);
-    const output = block?.content;
+    const result = readToolResult(block);
+    if (!result) return this.unknown("claude.content.tool_result", block, ["message", "content", index]);
     const base = this.base(["message", "content", index]);
     const rowItem = str(this.record, "uuid");
     this.observe({
       ...base,
       kind: "tool_result",
-      call: this.item("call", callId),
+      call: this.item("call", result.callId),
       item: rowItem ? this.item("item", rowItem) : null,
-      output,
-      outputLocator: block && "content" in block ? this.locator(["message", "content", index, "content"], base.evidence) : null,
-      isError: booleanOrNull(block?.is_error),
+      output: result.output,
+      outputLocator: result.hasOutput ? this.locator(["message", "content", index, "content"], base.evidence) : null,
+      isError: result.isError,
     });
   }
 
@@ -288,7 +287,7 @@ class ClaudeContext {
       conversation: this.source.conversation,
       turn: this.activeTurnId ? this.item("turn", this.activeTurnId) : null,
       historyOrigin: null,
-      timestamp: str(this.record, "timestamp") || null,
+      timestamp: claudeRecordTimestamp(this.record),
       evidence,
     };
   }

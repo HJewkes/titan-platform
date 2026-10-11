@@ -219,6 +219,15 @@ separate bounded filesystem window. It reports byte/turn truncation, malformed
 complete records, and unknown model/branch/error fields when the evidence is outside
 that window. It never runs the replay-prefix reader behind a purported tail read.
 
+### Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` is a sync generator over raw Claude JSONL lines that yields
+`tool_call` and `tool_result` records (`callId`, `name`, `input`, `output`, `isError`,
+`timestamp`, `sessionId`, `lineIndex`). It needs no source descriptor, skips blank and
+malformed lines, ignores session identity (forked and concatenated transcripts decode), and
+yields a repeated call id every time. Joining results to calls and dedup stay with the
+caller. A block without a call id is skipped.
+
 ### Reading back what an agent said
 
 A voice or chat readback of a live agent needs the last few things said, not its tool
