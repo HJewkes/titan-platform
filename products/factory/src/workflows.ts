@@ -25,6 +25,7 @@ import { reviewCheckoutRoot } from "./shepherd/review-checkout.js";
 import { reviewCheckoutDisk } from "./shepherd/review-checkout-disk.js";
 import { fixersOver, type MainRedWiring } from "./shepherd/main-red.js";
 import { releaseGuard, type PackageRegistry } from "./shepherd/release.js";
+import type { VersionRegistry } from "./shepherd/release-follow.js";
 import type { IsFrozen } from "./shepherd/merge-facts.js";
 import type { ParkPort } from "./shepherd/park.js";
 import { retryingGhServerErrors } from "./shepherd/gh-retry.js";
@@ -85,6 +86,8 @@ export interface FactoryRouteDeps extends LandPrDeps {
   park?: ParkPort;
   /** Where the release preflight looks packages up; defaults to registry.npmjs.org. */
   registry?: PackageRegistry;
+  /** Where a merged release's versions are looked up; defaults to registry.npmjs.org. */
+  versions?: VersionRegistry;
   /** The fix-task and fixer ports a red main uses; absent ports still freeze, and leave the rest to the owner. */
   mainRed?: Omit<MainRedWiring, "freezes">;
   /** The App-token port `sh-publish-review` posts through; absent means it records `published: false`. */
@@ -135,7 +138,7 @@ export function factoryRoutesFor(given: FactoryRouteDeps): FactoryRoutes {
   });
   const shepherdDeps = { port: deps.port, advisory: isAdvisory, store: deps.store, now: deps.now ?? Date.now, sleep: pause, pollMs: deps.pollMs, agentChatBin: deps.agentChatBin ?? "agent-chat", agentChatConfigDir: deps.agentChatConfigDir, roster: deps.roster, spawnGate: deps.spawnGate, cleanup: deps.cleanup, snapshot: deps.snapshot, reviewCheck: deps.reviewCheck, exitNotice: deps.exitNotice, suiteRules: deps.suiteRules, accountLimits };
   const review = deps.review && { ...deps.review, isFrozen: deps.isFrozen ?? recheckedFrozen(deps.port, () => freeze.get(), holds, deps.now) };
-  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
+  const shepherd = shepherdRoutes(shepherdDeps, { review, park: deps.park, registry: deps.registry, versions: deps.versions, mainRed: { ...deps.mainRed, freezes: () => freeze.get() } });
   const database: DatabaseTenant = { extraMigrations: SHEPHERD_MIGRATIONS, bind: (db) => bindAll(db, deps.store, freeze, train, accountLimits) };
   const services: ShepherdServices = { store: deps.store, port: deps.port, seats: deps.seats ?? (() => NO_SEATS), train, freeze, snapshot: deps.snapshot, pacing: deps.pacing };
   return Object.assign([...retryingGhServerErrors([...land, ...shepherd], { sleep: pause }), trainLeaveRoute(train, shepherdDeps.now), redeployRoute(shepherdDeps.now, deps.redeploy), ...auditRoutes(deps.audit ?? systemAuditPorts(ownCheckout()))], { database, shepherd: services });

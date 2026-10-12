@@ -244,6 +244,13 @@ export function releaseRoutes(deps: ShepherdDeps, registry: PackageRegistry, ver
   ];
 }
 
+const FollowResult = z.looseObject({ outcome: z.enum(["published", "failed", "timeout", "nothing"]), versions: z.record(z.string(), z.string()), missing: z.array(z.string()), task: z.string().nullable(), detail: z.string() });
+
+/** Follows a merged release to npm and records how it ended; a failure or timeout is the result, never a gate. */
+export async function releaseFollowStep(ctx: WorkflowContext, target: { repo: RepoSlug; pr: number; mergeSha: string }, versions: Record<string, string>): Promise<z.infer<typeof FollowResult>> {
+  return step(ctx, RELEASE_FOLLOW_STEP, { ...target, runId: ctx.runId, versions }, FollowResult);
+}
+
 const PreflightResult = z.looseObject({ head: z.string(), blockers: z.array(z.string()), packages: z.array(z.string()), unpublished: z.array(z.string()).default([]), versions: z.record(z.string(), z.string()).default({}) });
 
 const NPM_BLOCKED_ROW = "Policy shepherd-release/preflight-blocked:";
@@ -289,7 +296,8 @@ export function decideRelease(effective: EffectivePolicy, headSha: string | unde
   return { outcome: "allow", rule: releaseRule("version-packages"), reason: `the release preflight passed at ${headSha} for ${preflight.packages.length} public packages` };
 }
 
-function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
+/** The passed preflight a MERGE verdict at `headSha` carries; a merged release reads its bumped versions here. */
+export function releasePreflightAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): ReleasePreflight | undefined {
   const verdict = verdictFor(headSha);
   const parsed = verdict?.kind === "MERGE" ? PreflightResult.safeParse((verdict.evidence as { release?: unknown } | null)?.release) : undefined;
   return parsed?.success ? parsed.data : undefined;

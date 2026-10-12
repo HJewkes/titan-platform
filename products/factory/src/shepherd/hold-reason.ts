@@ -3,7 +3,8 @@ import { holdClassOf } from "./g10-release.js";
 
 /**
  * The closed list of break-glass hold classes in charter section 8; add a class here when the charter adds it, or seats
- * holding under it are refused. The check runs at the `shepherd.hold` command only, so Shepherd's own holds never pass through it.
+ * holding under it are refused. The check runs at the `shepherd.hold` command only, so Shepherd's own holds never pass through it;
+ * the G10 holds Shepherd places at registration (`registration-hold.ts`) still use the g10 classes, so its release reads them.
  */
 export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary"] as const;
 type HoldClass = (typeof HOLD_CLASSES)[number];
