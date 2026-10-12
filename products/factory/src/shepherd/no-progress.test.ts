@@ -1,11 +1,10 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
-import { z } from "zod";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
-import { sleep, step } from "../workflows/land.js";
+import { sleep } from "../workflows/land.js";
 import type { ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -14,7 +13,6 @@ import { acceptExternalVerdict } from "./external-review.js";
 import { reviewPhase, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
 import type { Presence } from "./presence.js";
 import { shepherdStoreRef } from "./store.js";
-import { FIX_FIRST_STEP } from "./wake-brief.js";
 
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
@@ -109,9 +107,8 @@ describe("the Closer signal through the real review phase", () => {
     const reader: ReviewerReader = {
       read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Not yet.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${input.head}\nCloser: no\n`)),
     };
-    // The real wake records its FIX_FIRST iteration, which is what makes the next brief a re-review.
-    const wake: ShepherdPhases["wake"] = async (ctx, request) => {
-      await step(ctx, FIX_FIRST_STEP, { repo: request.repo, pr: request.pr, headSha: request.headSha, fixFirst: ctx.iteration(FIX_FIRST_STEP) + 1 }, z.looseObject({}));
+    // The round records its FIX_FIRST before this wake, which is what makes the next brief a re-review.
+    const wake: ShepherdPhases["wake"] = async () => {
       fake.pushHead(1, fakeSha(`fix-${briefs.length}`));
       return { kind: "woken", agent: "impl-a" };
     };

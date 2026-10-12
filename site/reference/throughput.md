@@ -120,6 +120,37 @@ forecast.tasks; // [{ taskId, kind, band, level, levelKey, n, closureRate, closu
 forecast.unclassifiable; // tasks whose kind the table has never seen
 ```
 
+### Back-testing set forecasts
+
+`backtestSets(actuals, { origins, horizonDays, memberships, seed, draws, open, config })`
+checks whether a set's 80% interval holds 80%. The caller says which sets each task belongs
+to in `memberships`, keyed by `taskId`: a `seat` (the dispatch agent-name prefix), `parents`
+and `milestones`. That gives three kinds of group: one per seat and UTC ISO week, one per
+parent and one per milestone, each with at least `minSetSize` (default 2) members.
+
+A row starts at `firstImplAt`, or at `doneAt` for a closure. At each origin the table,
+`closureRates` and `weekEffects` are refitted on rows done and started before it. A group is
+scored at the origin whose horizon (default 7 days) holds its first member's start, and every
+member is forecast, even those starting later, because that is what a planner at the origin
+would ask. Each group is forecast twice, without and with the week effect, seeded by origin
+and group key. Seat-week groups are forecast without closure, because dispatch chose them.
+The actual total sums the members, closures counted as 0.
+
+```ts
+import { backtestSets } from "@titan-design/throughput";
+
+const result = backtestSets(rows, {
+  origins: ["2026-09-07", "2026-09-14", "2026-09-21"],
+  memberships: { "TP-1": { seat: "tc", parents: ["TP-2150"] }, "TP-2": { parents: ["TP-2150"], milestones: ["m3"] } },
+  seed: "bt-1",
+  open: [{ taskId: "TP-3", firstImplAt: "2026-09-15T10:00:00Z" }],
+});
+result.kinds.parent.independent.implAgentHours; // { hits, n, rate } with a Wilson interval
+result.kinds.parent.weekEffect.pinballImpl; // { p10, p50, p90 } pinball loss on implementer hours
+result.kinds["seat-week"].censored; // groups holding an open task, counted, not scored
+result.groups; // per scored group: kind, key, origin, size, actual and both arms' quantiles
+```
+
 ## What it deliberately does not do
 
 It reads no database and no task store; the caller passes rows in. It fits no parametric
@@ -166,6 +197,11 @@ a fit without changing it.
   `weekEffect: "none-available"` and draws as if none were passed.
 - Equal tasks, table and options give identical output in any task order. `forecastHash`
   covers the table hash, seed, draws, closure rates and week effect.
+- `backtestSets` counts a group holding any `open` task as `censored` and never scores it.
+  An open task joins its seat-week group only when it carries `firstImplAt`. Origins with no
+  eligible training row come back `skipped`. The week multipliers at an origin are measured
+  against the table fitted on the same training weeks, which is mildly optimistic but uses no
+  future row.
 
 ## Where it came from
 

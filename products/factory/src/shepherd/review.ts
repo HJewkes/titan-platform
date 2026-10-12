@@ -26,7 +26,7 @@ import { withReviewerProfile } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
-import { FIX_FIRST_STEP } from "./wake-brief.js";
+import { fixFirstCount } from "./wake-brief.js";
 import { FIX_PROOF_STEP, FIX_PROOF_STEPS, FixProofReadSchema, fixProofRoute, fixProofVerdict } from "./fix-proof.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STOP_STEPS, dispatchedNone, reviewStopRoute } from "./review-stop.js";
@@ -323,7 +323,7 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
-  const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
+  const fixFirsts = fixFirstCount(ctx);
   const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(proof.kind === "result" && { fixProof: proof.line }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };

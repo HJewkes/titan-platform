@@ -28,6 +28,10 @@ const weekEffect = weekEffects(rows, table);
 forecastSet(tasks, table, { seed: "plan-1", closure, weekEffect }).totals.implAgentHours; // { p10, p50, p80, p90 }
 ```
 
+`backtestSets(rows, { origins, memberships, seed, open })` checks those set intervals: it
+refits at each origin and scores [p10, p90] coverage on seat-week, parent and milestone sets,
+with and without the week effect.
+
 The table carries `modelHash` (config, watermark and package version), `watermark` and
 `packageVersion`. Equal inputs give equal output in any row order.
 
