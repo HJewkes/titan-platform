@@ -907,6 +907,9 @@ importers:
       '@titan-design/decider':
         specifier: workspace:^
         version: link:../../packages/decider
+      '@titan-design/test-kit':
+        specifier: workspace:*
+        version: link:../../packages/test-kit
 
   products/retrieval-eval:
     dependencies:

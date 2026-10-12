@@ -1,8 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync, sign, verify } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { confirmOwner, defaultHelperPath, helperSearchOrder, ROOT_HELPER_PATH, type HelperRunner, type StatPort } from "./owner-presence.js";
+import { confirmOwner, defaultHelperPath, helperSearchOrder, ROOT_HELPER_PATH, signStatement, type HelperRunner, type StatPort } from "./owner-presence.js";
 
 const helperPath = "/synthetic/owner-presence";
 const PROOF = "0b6f2c1e-6f1d-4c3a-9e1b-2d4c6a8e0f13";
@@ -176,6 +177,79 @@ describe("confirmOwner with the real lstat", () => {
       expect(reports[1]).toMatch(/failed with (EACCES|EPERM)\n$/);
     } finally {
       chmodSync(join(root, "locked"), 0o700);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("signStatement", () => {
+  const statement = new TextEncoder().encode('{"v":1,"type":"titan-factory.gate-resolve","nonce":"00"}');
+  // A software P-256 key stands in for the Secure Enclave; the helper prints base64url DER and a newline.
+  const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const enclave: HelperRunner = async (_file, _args, input) => `${sign("sha256", input!, { key: privateKey, dsaEncoding: "der" }).toString("base64url")}\n`;
+  const options = (run: HelperRunner) => ({ run, stat: fakeStat(), getuid: () => OWNER, helperPaths: [helperPath] });
+
+  it("returns a signature node:crypto verifies over the exact statement bytes with the SPKI PEM", async () => {
+    const signature = await signStatement(statement, "resolve 1 gate", options(enclave));
+    const spkiPem = publicKey.export({ type: "spki", format: "pem" });
+    expect(verify("sha256", statement, { key: spkiPem, dsaEncoding: "der" }, Buffer.from(signature!, "base64url"))).toBe(true);
+    expect(verify("sha256", Buffer.concat([statement, Buffer.from(" ")]), { key: spkiPem, dsaEncoding: "der" }, Buffer.from(signature!, "base64url"))).toBe(false);
+  });
+
+  it("passes the statement on stdin and the escaped reason after --", async () => {
+    const calls: { args: string[]; input?: Uint8Array }[] = [];
+    const run: HelperRunner = async (file, args, input) => (calls.push({ args: [...args], input }), enclave(file, args, input));
+    await signStatement(statement, "--resolve\x1b[2J", options(run));
+    expect(calls).toEqual([{ args: ["sign", "--", "--resolve\\x1b[2J"], input: statement }]);
+  });
+
+  it.each([
+    ["a proof id", PROOF],
+    ["standard base64", "MAYC+QEC/QE="],
+    ["DER that is not a SEQUENCE", Buffer.from([0x31, 6, 2, 1, 1, 2, 1, 1]).toString("base64url")],
+    ["more than 72 bytes", Buffer.concat([Buffer.from([0x30]), Buffer.alloc(72)]).toString("base64url")],
+    ["nothing", ""],
+  ])("refuses %s as a signature", async (_name, printed) => {
+    expect(await signStatement(statement, "r", options(async () => `${printed}\n`))).toBeUndefined();
+  });
+
+  it("returns undefined when the owner cancels", async () => {
+    const run: HelperRunner = async () => {
+      throw Object.assign(new Error("Command failed"), { code: 1 });
+    };
+    expect(await signStatement(statement, "r", options(run))).toBeUndefined();
+  });
+
+  it("refuses a helper on a group-writable path without running it", async () => {
+    const runs: string[] = [];
+    const reports: string[] = [];
+    const run: HelperRunner = async (file) => (runs.push(file), "");
+    const stat = fakeStat({ "/synthetic": { uid: OWNER, mode: 0o040775 } });
+    const signature = await signStatement(statement, "r", { run, stat, getuid: () => OWNER, helperPaths: [helperPath], report: (line) => reports.push(line) });
+    expect([signature, runs, reports]).toEqual([undefined, [], ["owner presence refused: /synthetic is group or other writable\n"]]);
+  });
+
+  it("writes the statement to a real helper's stdin", async () => {
+    const root = mkdtempSync(join(tmpdir(), "owner-presence-sign-"));
+    try {
+      const helper = join(root, "helper");
+      writeFileSync(helper, `#!/bin/sh\ncat > "${join(root, "seen")}"\necho MAYCAQECAQE\n`, { mode: 0o755 });
+      const stat: StatPort = (path) => ({ uid: OWNER, mode: path === helper ? FILE : DIR });
+      expect(await signStatement(statement, "r", { stat, getuid: () => OWNER, helperPaths: [helper] })).toBe("MAYCAQECAQE");
+      expect(new Uint8Array(readFileSync(join(root, "seen")))).toEqual(statement);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns undefined when a real helper exits without reading a statement larger than the pipe buffer", async () => {
+    const root = mkdtempSync(join(tmpdir(), "owner-presence-sign-"));
+    try {
+      const helper = join(root, "helper");
+      writeFileSync(helper, "#!/bin/sh\nexit 64\n", { mode: 0o755 });
+      const stat: StatPort = (path) => ({ uid: OWNER, mode: path === helper ? FILE : DIR });
+      expect(await signStatement(new Uint8Array(1 << 20), "r", { stat, getuid: () => OWNER, helperPaths: [helper] })).toBeUndefined();
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

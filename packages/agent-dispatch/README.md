@@ -7,7 +7,8 @@ with one more message, and runs binaries by absolute path with a minimal environ
 
 Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency,
 used by `readAnswers` and the `./limits` subpath). Ported unchanged from relay's
-`daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460.
+`daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460. relay's
+daemon now depends on this package and its own copy is deleted.
 
 ```ts
 import { dispatchToAgentChat, resumeArgs, execSafe, minimalEnv } from "@titan-design/agent-dispatch";
