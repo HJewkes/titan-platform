@@ -1,6 +1,7 @@
 import { conversationRef, type ConversationIdentity, type ExecutionRecord, type UsageMeasurement } from "@titan-design/agent-protocol";
 import { TRACE_SCHEMA_VERSION, TraceAttemptSchema, TraceRunSchema, type TraceAttempt, type TraceRecord, type TraceRun } from "@titan-design/agent-protocol/trace";
 import type { GateStore } from "@titan-design/hitl";
+import { pendingGateRecords, stepArtifactRecords, stepGateRecords } from "./trace-projection-gates.js";
 import { usageFromMeasurements } from "./usage.js";
 import { workflowStepRequestKey, type ActiveStep, type StepOperation, type StepResult, type StepUsage, type WorkflowRun } from "./types.js";
 
@@ -15,11 +16,17 @@ export interface RunTraceSources {
 type AttemptFields = Omit<TraceAttempt, "schema" | "kind" | "id" | "runId" | "at" | "stepId" | "iteration" | "attempt" | "stepKind">;
 interface AttemptSlot { stepId: string; iteration: number; attempt: number; stepKind: StepOperation }
 
-/** Projects a stored run into strict trace records: the run first, then each recorded step's attempts, then in-flight steps. */
+/**
+ * Projects a stored run into strict trace records: the run first, then each recorded step's attempts, gates and
+ * artifacts in recording order, then in-flight steps and the gate a paused run waits on.
+ */
 export function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[] {
   const records: TraceRecord[] = [runRecord(run, sources)];
-  for (const result of Object.values(run.stepResults)) records.push(...resultAttempts(run, result, sources));
+  for (const [key, result] of Object.entries(run.stepResults)) {
+    records.push(...resultAttempts(run, result, sources), ...stepGateRecords(run, key, result, stepKindOf(result), sources), ...stepArtifactRecords(key, result));
+  }
   for (const step of Object.values(run.activeSteps)) records.push(...activeAttempts(run, step, sources));
+  records.push(...pendingGateRecords(run, records, sources));
   return records;
 }
 
