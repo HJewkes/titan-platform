@@ -8,6 +8,7 @@ const DEPLOY_CHECKOUT = `${HOME}/.local/share/titan-factory/deploy/titan-platfor
 const DEPLOY_BIN = `${DEPLOY_CHECKOUT}/products/factory/dist/bin.js`;
 const UNIT = unitPath(HOME);
 const OLD_PID = 100;
+const HOLDER_PID = 4242;
 const TOOLS: Record<string, string> = { gh: "/opt/tools/bin/gh", "agent-chat": "/srv/agents/bin/agent-chat", claude: "/opt/claude/bin/claude" };
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
 const failed = (code: number, stderr: string): CommandResult => ({ code, stdout: "", stderr });
@@ -25,6 +26,8 @@ interface MachineInit {
   stopMs?: number;
   /** ms the new main takes to answer /health. */
   healthMs?: number;
+  /** argv of a process outside the unit that holds the port until SIGTERM. */
+  holder?: readonly string[];
 }
 
 /** A systemd --user manager that only knows a unit file as of its last daemon-reload, as the real one does. */
@@ -35,6 +38,7 @@ function fakeSystemd(init: MachineInit = {}) {
   let known = init.running === true;
   let pid: number | undefined = init.running ? OLD_PID : undefined;
   let nextPid = OLD_PID + 1;
+  let holder = init.holder;
   let clock = 0;
   let startedAt = 0;
   let stopDueAt: number | undefined;
@@ -106,6 +110,14 @@ function fakeSystemd(init: MachineInit = {}) {
     remove: (path) => void files.delete(path),
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
+    portOwner: {
+      listeners: async () => (holder ? [{ pid: HOLDER_PID }] : []),
+      processInfo: async () => (holder ? { argv: holder, cgroupUnit: "session-3.scope", startedAt: "8800" } : undefined),
+      signal: (target, signal) => {
+        calls.push(`kill -${signal} ${target}`);
+        holder = undefined;
+      },
+    },
   };
   return { ports, files, calls, elapsed: () => clock, mutations: () => calls.filter((call) => !call.includes(" show ")) };
 }
@@ -261,6 +273,27 @@ describe("titan-factory service uninstall and restart on Linux", () => {
     expect(machine.mutations()).toEqual([`systemctl --user restart --no-block ${UNIT_NAME}`]);
     expect(out).toContain(`restarted ${UNIT_NAME}; /health answers on port 7410\n`);
     expect(machine.elapsed()).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it("SIGTERMs a titan-factory serve outside the unit off the port before restarting", async () => {
+    const machine = fakeSystemd({ running: true, holder: ["/usr/bin/node", DEPLOY_BIN, "serve"] });
+
+    const { code, out, err } = await service(["restart", "--no-drain"], machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(EXIT.OK);
+    expect(machine.mutations()).toEqual([`kill -SIGTERM ${HOLDER_PID}`, `systemctl --user restart --no-block ${UNIT_NAME}`]);
+    expect(out).toContain(`fenced pid ${HOLDER_PID} (titan-factory serve outside ${UNIT_NAME}, held :7410): SIGTERM, exited after 0 s\n`);
+  });
+
+  it("refuses to restart over a port holder that is not titan-factory serve, and signals nothing", async () => {
+    const machine = fakeSystemd({ running: true, holder: ["python3", "-m", "http.server", "7410"] });
+
+    const { code, err } = await service(["restart", "--no-drain"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toBe(`error: port 7410 is held by pid ${HOLDER_PID} (python3 -m), which is not titan-factory serve; nothing was signalled\n`);
+    expect(machine.mutations()).toEqual([]);
   });
 
   it("points at install when no unit is loaded", async () => {

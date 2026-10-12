@@ -1,6 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 import { DIRTY_SUFFIX, PROBE_PENDING } from "./build-info.js";
 import { drainForRestart, type DrainOptions } from "./restart-drain.js";
+import { fenceForeignServe, type PortOwnerReaders } from "./port-owner.js";
 import { fencedRestart, type RestartFencePorts } from "./restart-fence.js";
 import { plistPath, renderPlist, renderUnit, serviceLabel, UNIT_NAME, unitPath, type PlistOptions } from "./service.js";
 
@@ -37,6 +38,8 @@ export interface ServicePorts {
   remove: (path: string) => void;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
+  /** Who holds the service port and what it is; a fake that omits it skips the foreign-serve fence. */
+  portOwner?: PortOwnerReaders;
 }
 
 export interface ServiceIo {
@@ -153,7 +156,7 @@ async function probeJob(ports: ServicePorts, port: number): Promise<Probe> {
   if (health?.ok !== true) return { state: "waiting", why: `titan-factory serve did not answer /health on port ${port}` };
   const { pid } = await jobState(ports);
   if (pid !== undefined && health.pid === pid) return githubProbe(health, port);
-  return { state: "waiting", why: `port ${port} is answered by pid ${String(health.pid)}, not by ${serviceName(ports)}; stop that process, then run titan-factory service restart` };
+  return { state: "waiting", why: `port ${port} is answered by pid ${String(health.pid)}, not by ${serviceName(ports)}; titan-factory service restart fences it when it is a titan-factory serve and refuses any other holder` };
 }
 
 /** A failed GitHub check ends the wait at once: serve caches it for a minute, so polling on cannot change it. */
@@ -352,10 +355,21 @@ async function restartJob(ports: ServicePorts, io: ServiceIo): Promise<{ fenced?
   return failure === undefined ? {} : { why: withInstallHint(failure) };
 }
 
+/** A serve outside the service holds the port the restarted one must bind, so it is cleared first; the service's own process is left to its manager. */
+async function fenceForeignHolder(ports: ServicePorts, io: ServiceIo, port: number): Promise<string | undefined> {
+  if (ports.portOwner === undefined) return undefined;
+  const { pid } = await jobState(ports);
+  const service = { name: serviceName(ports), ...(pid === undefined ? {} : { pid }) };
+  const fenced = await fenceForeignServe({ ...ports.portOwner, sleep: ports.sleep, now: ports.now, log: io.stdout }, port, service);
+  return fenced.ok ? undefined : fenced.why;
+}
+
 /** The /health budget starts only once the new main process exists, so a slow stop cannot spend it. */
 export async function restartService(ports: ServicePorts, io: ServiceIo, port: number, logDir: string, drain: RestartDrain): Promise<number> {
   const drained = await drainForRestart(ports, io.stdout, { ...drain, port });
   if (!drained.proceed) return fail(io, drained.why);
+  const foreign = await fenceForeignHolder(ports, io, port);
+  if (foreign !== undefined) return fail(io, foreign);
   const restarted = await restartJob(ports, io);
   if ("why" in restarted) return fail(io, restarted.why);
   if (!(await awaitHealthy(ports, io, port, logDir))) return FAILURE;
