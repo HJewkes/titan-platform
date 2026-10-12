@@ -1671,7 +1671,7 @@ describe("a failed required check at a pull request head", () => {
     const db = openDatabase(dbPath);
     const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
     const entries = Object.entries(StoredStepResults.parse(JSON.parse(row.step_results)));
-    const heldAt = entries.findIndex(([, result]) => result.stepId === "sh-held-check");
+    const heldAt = entries.findIndex(([, result]) => result.stepId.startsWith("sh-held-check"));
     const repair = entries.find(([, result]) => result.stepId === "sh-repair")!;
     const old = [...entries.slice(0, withHeldCheck ? heldAt + 1 : heldAt), repair];
     db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(old)), runId);
