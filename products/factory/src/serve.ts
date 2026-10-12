@@ -14,13 +14,14 @@ import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
-import { openFactoryHost, type FactoryHost, type FactoryHostOptions } from "./host.js";
+import type { FactoryHost, FactoryHostOptions } from "./host.js";
 import type { NeedsSources } from "./needs/rpc.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import type { ShepherdServices } from "./shepherd/commands.js";
+import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
@@ -44,7 +45,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, FramedHostOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -100,12 +101,12 @@ export interface FactoryServer {
 /** Owns the factory database for as long as it runs, so runs outlive the shell that started them. */
 export async function startFactoryServer(options: FactoryServerOptions): Promise<FactoryServer> {
   const stateDir = stateDirOf(options);
-  const host = openFactoryHost(options);
+  const { host, frames } = openFramedHost(options);
   const github = options.github ?? githubHealth();
   void github.refresh();
   const build = buildHealth(options);
   const log = options.logger ?? consoleLogger;
-  const daemon = await startCountedDaemon(host, options, github, build, log);
+  const daemon = frames.started(await startCountedDaemon(host, options, github, build, log));
   const unbindCarry = bindCarryStateDir(stateDir);
   const services = options.routes.shepherd;
   const held = new Set<string>();
@@ -136,7 +137,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
+    for (const later of [frames, goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
