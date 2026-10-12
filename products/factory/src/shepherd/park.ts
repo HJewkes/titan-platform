@@ -16,7 +16,7 @@ export const PARK_STEP = "sh-park";
 export const PARK_STEPS: readonly StepDeclaration[] = [{ id: PARK_STEP, kind: "dispatch" }];
 
 /** Parks the named agent's worktree and keeps its branch; throws when the broker refuses or cannot be reached. */
-export type ParkPort = (name: string) => { lines: string[] };
+export type ParkPort = (name: string) => Promise<{ lines: string[] }>;
 
 export type ParkOutcome =
   | { kind: "parked"; agent: string; lines: string[]; alreadyGone?: true }
@@ -37,9 +37,9 @@ const LIVE = /park takes only an agent whose process has exited/;
 const AGENT_CHAT_BRANCH = "agent-chat/";
 
 /** A tree already removed, or one agent-chat never allocated, is the state parking wants; a live agent is asked again once it exits. */
-function attemptPark(park: ParkPort, agent: string): ParkOutcome {
+async function attemptPark(park: ParkPort, agent: string): Promise<ParkOutcome> {
   try {
-    return { kind: "parked", agent, lines: park(agent).lines };
+    return { kind: "parked", agent, lines: (await park(agent)).lines };
   } catch (error) {
     const reason = redactForEvidence(error instanceof Error ? error.message : String(error));
     if (NOT_ON_DISK.test(reason) || NO_WORKTREE.test(reason)) return { kind: "parked", agent, lines: [reason], alreadyGone: true };
@@ -61,10 +61,10 @@ function parkCandidates(registration: Pick<Registration, "implementer" | "branch
 const unknownName = (outcome: ParkOutcome): boolean => outcome.kind === "not-parked" && NO_AGENT.test(outcome.reason);
 
 /** Parks each candidate until the broker is down; a refusal outranks a park, so the run records what still holds a tree. */
-function parkAll(park: ParkPort, names: readonly string[]): ParkOutcome[] {
+async function parkAll(park: ParkPort, names: readonly string[]): Promise<ParkOutcome[]> {
   const outcomes: ParkOutcome[] = [];
   for (const name of names) {
-    const outcome = attemptPark(park, name);
+    const outcome = await attemptPark(park, name);
     outcomes.push(outcome);
     if (outcome.kind === "not-parked" && outcome.brokerDown) break;
   }
@@ -81,12 +81,12 @@ function summarize(outcomes: readonly ParkOutcome[], names: readonly string[]): 
 }
 
 /** A refusal is an answer, not a failure: the tree stays and the run moves on to review. */
-export function parkImplementer(store: ShepherdStoreRef, park: ParkPort, input: ParkInput): ParkOutcome {
+export async function parkImplementer(store: ShepherdStoreRef, park: ParkPort, input: ParkInput): Promise<ParkOutcome> {
   const registration = store.get().byRun(input.runId);
   if (!registration?.implementer) return { kind: "skipped", reason: "no registration names the implementer" };
   const successors = store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
   const names = parkCandidates(registration, successors);
-  const outcomes = parkAll(park, names);
+  const outcomes = await parkAll(park, names);
   return summarize(outcomes, names);
 }
 
@@ -153,7 +153,8 @@ async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId:
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
   const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !gone.includes(name));
-  const outcomes = names.map((name) => settleRetired(attemptPark(wiring.park, name)));
+  const outcomes: ReviewerPark[] = [];
+  for (const name of names) outcomes.push(settleRetired(await attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {
     if (outcome.kind !== "not-parked") continue;
     console.error(`shepherd: ${registration.repo}#${registration.pr}: reviewer ${outcome.agent}'s worktree was not parked: ${outcome.reason}`);
@@ -165,7 +166,7 @@ async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId:
 /** Parks, then either arms the exit retry or tells the seat; the step records which, with the round's reviewers. */
 export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, input: ParkInput): Promise<ParkOutcome & { reviewers: ReviewerPark[] }> {
   const reviewers = await parkReviewers(store, wiring, input.runId, input.gone ?? []);
-  const outcome = parkImplementer(store, wiring.park, input);
+  const outcome = await parkImplementer(store, wiring.park, input);
   if (outcome.kind !== "not-parked") return { ...outcome, reviewers };
   if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), { ...outcome, reviewers });
   return { ...outcome, reviewers, notice: await tellParkRefusal(wiring.notice, store.get().byRun(input.runId), outcome.agent, outcome.reason) };
@@ -179,7 +180,7 @@ type ParkDeps = Pick<ShepherdDeps, "store" | "now" | "agentChatBin" | "roster" |
 
 function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
   const roster = deps.roster ?? agentChatRoster(deps.agentChatBin);
-  return liveRetry({ attempt: (name) => asAttempt(attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
+  return liveRetry({ attempt: async (name) => asAttempt(await attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
 }
 
 export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
