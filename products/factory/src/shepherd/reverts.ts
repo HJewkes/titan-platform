@@ -1,6 +1,7 @@
 import type { GitHubPort, LoggedCommit } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
+import { sliceClock } from "../loop-slice.js";
 import type { ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
 import { payloadOf, stepName } from "./stats.js";
@@ -95,8 +96,32 @@ export async function sweepReverts({ runs, port, mark, now }: RevertDeps): Promi
   return sweep;
 }
 
-/** The resync pass over the host's completed runs; `dryRun` reports the same marks and writes none. */
-export function markRevertedRuns(host: FactoryHost, services: ShepherdServices, { dryRun = false, now = Date.now } = {}): Promise<RevertSweep> {
+/** Small enough that one page of runs parses well inside a slice of the event loop. */
+const REVERT_PAGE = 20;
+
+const landedOnly = (run: WorkflowRun): WorkflowRun => ({
+  ...run,
+  stepResults: Object.fromEntries(Object.entries(run.stepResults).filter(([key, result]) => stepName(key) === REVERTED_STEP || result.stepId === "sh-landed")),
+});
+
+/**
+ * The completed runs that could have merged inside the revert window, cut to the results `landedOf` reads. A run lands
+ * before it completes, so its completion bounds the merge; the runs are read a page at a time, yielding between pages.
+ */
+async function recentlyCompleted(host: FactoryHost, now: number): Promise<WorkflowRun[]> {
+  const window = { limit: REVERT_PAGE, completedSince: new Date(now - REVERT_WINDOW_MS).toISOString() };
+  const pause = sliceClock();
+  const runs: WorkflowRun[] = [];
+  for (let page = host.runtime.page(["completed"], window); page.length > 0; page = host.runtime.page(["completed"], { ...window, after: page.at(-1)!.id })) {
+    runs.push(...page.map(landedOnly));
+    await pause();
+  }
+  return runs;
+}
+
+/** The resync pass over the host's recently completed runs; `dryRun` reports the same marks and writes none. */
+export async function markRevertedRuns(host: FactoryHost, services: ShepherdServices, { dryRun = false, now = Date.now } = {}): Promise<RevertSweep> {
   const mark = (runId: string, data: { mergeSha: string; revertSha: string }): void => void (dryRun || host.runtime.annotate(runId, REVERTED_STEP, data));
-  return sweepReverts({ runs: host.runtime.list(["completed"]), port: services.port, mark, now: now() });
+  const at = now();
+  return sweepReverts({ runs: await recentlyCompleted(host, at), port: services.port, mark, now: at });
 }

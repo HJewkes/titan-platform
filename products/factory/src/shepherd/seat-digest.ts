@@ -4,6 +4,7 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { resolveCommand } from "../registry.js";
+import { FINISHED_PHASES } from "./step-phase.js";
 import type { WatchRow } from "./view.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
@@ -38,6 +39,8 @@ interface Item {
 interface SeatView {
   open: Item[];
   finished: Item[];
+  /** Every finished run read, with or without an outcome to report, so the next sweep need not read it again. */
+  settled: string[];
 }
 
 const SEAT_FIX_GATES: ReadonlySet<string> = new Set(["ci-failed", "sh-sent-back"]);
@@ -77,11 +80,12 @@ function seatViews(inputs: readonly DigestInput[], seatFor: (repo: string) => st
   for (const input of inputs) {
     const seat = seatFor(input.row.repo);
     if (seat === undefined) continue;
-    const view = views.get(seat) ?? views.set(seat, { open: [], finished: [] }).get(seat)!;
+    const view = views.get(seat) ?? views.set(seat, { open: [], finished: [], settled: [] }).get(seat)!;
     const open = gateItem(input.row) ?? seatFixItem(input);
     if (open) view.open.push(open);
     const finished = finishedItem(input.row);
     if (finished) view.finished.push(finished);
+    if (FINISHED_PHASES.has(input.row.phase)) view.settled.push(input.row.runId);
   }
   return views;
 }
@@ -102,7 +106,31 @@ function digestText(seat: string, view: SeatView, last: SeatState | undefined): 
   return lines.join("\n");
 }
 
-const stateOf = (view: SeatView): SeatState => ({ open: view.open.map((item) => item.key).sort(), finished: view.finished.map((item) => item.key).sort() });
+/** Finished runs stay known once heard of, because a sweep reads only the finished runs its seat has not heard of. */
+const stateOf = (view: SeatView, last: SeatState | undefined): SeatState => ({
+  open: view.open.map((item) => item.key).sort(),
+  finished: [...new Set([...(last?.finished ?? []), ...view.finished.map((item) => item.key), ...view.settled])].sort(),
+});
+
+/**
+ * Whether a sweep must read a run: an unfinished one whose repo has a seat, and a finished one only until that seat
+ * has heard of it. A seat with no memory yet reads every run once, so its first sweep can take them all as known.
+ */
+export function digestReads(memory: SeatDigestMemory, seatFor: (repo: string) => string | undefined): (repo: string, runId: string, finished: boolean) => boolean {
+  const known = new Map<string, ReadonlySet<string> | undefined>();
+  const knownBy = (seat: string): ReadonlySet<string> | undefined => {
+    if (!known.has(seat)) {
+      const last = memory.get(seat);
+      known.set(seat, last && new Set(last.finished));
+    }
+    return known.get(seat);
+  };
+  return (repo, runId, finished) => {
+    const seat = seatFor(repo);
+    if (seat === undefined) return false;
+    return !finished || !(knownBy(seat)?.has(runId) ?? false);
+  };
+}
 
 /** One message per seat whose state changed. A failed send leaves its memory alone, so the next sweep tries again. */
 export async function sendSeatDigests(inputs: readonly DigestInput[], ports: SeatDigestPorts, memory: SeatDigestMemory): Promise<{ sent: string[]; failed: { seat: string; cause: string }[] }> {
@@ -111,7 +139,7 @@ export async function sendSeatDigests(inputs: readonly DigestInput[], ports: Sea
   for (const [seat, view] of seatViews(inputs, ports.seatLookup())) {
     const last = memory.get(seat);
     const text = digestText(seat, view, last);
-    const state = stateOf(view);
+    const state = stateOf(view, last);
     try {
       if (text !== undefined) await ports.send(seat, text);
       if (JSON.stringify(state) !== JSON.stringify(last)) memory.set(seat, state);

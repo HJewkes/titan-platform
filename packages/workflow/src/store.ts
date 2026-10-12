@@ -91,6 +91,9 @@ interface RawRunRow {
   definition_version?: string | null;
 }
 
+const STATUSES: ReadonlySet<string> = new Set<WorkflowStatus>(["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"]);
+const isStatus = (value: unknown): value is WorkflowStatus => typeof value === "string" && STATUSES.has(value);
+
 /** The statuses of a run still owed work: a runtime may claim it, and everything else is final. */
 export const ACTIVE_STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required"];
 
@@ -177,6 +180,26 @@ export class WorkflowRunStore {
        WHERE id = ? AND status IN ('completed', 'failed', 'cancelled') AND json_type(step_results, ?) IS NULL`,
     ).run(path, JSON.stringify(result), id, path).changes;
     return changed === 1;
+  }
+
+  /** Every run's status by id, read without a run's step results, so a caller can pick the few runs it must load. */
+  statuses(): Map<string, WorkflowStatus> {
+    const rows = this.db.prepare(`SELECT id, status FROM ${this.table}`).raw().all();
+    return new Map(rows.flatMap((row) => (Array.isArray(row) && typeof row[0] === "string" && isStatus(row[1]) ? [[row[0], row[1]] as const] : [])));
+  }
+
+  /**
+   * Up to `limit` runs of `statuses` with ids after `after`, in id order, finished at or after `completedSince` when
+   * given; a caller reads a long history a page at a time instead of holding every run at once.
+   */
+  page(statuses: readonly WorkflowStatus[], { after = "", limit, completedSince }: { after?: string; limit: number; completedSince?: string }): WorkflowRun[] {
+    // `+status` keeps SQLite off the status index: through it, every page sorted all matching runs and read each one's
+    // completed_at past its step results, so a page cost as much as the whole history. The id walk stops at `limit`.
+    const ids = this.db.prepare(
+      `SELECT id FROM ${this.table} WHERE +status IN (SELECT value FROM json_each(?)) AND id > ?
+       AND (? IS NULL OR completed_at >= ?) ORDER BY id LIMIT ?`,
+    ).pluck().all(JSON.stringify(statuses), after, completedSince ?? null, completedSince ?? null, limit);
+    return ids.flatMap((id) => (typeof id === "string" ? (this.get(id) ?? []) : []));
   }
 
   release(run: WorkflowRun, fence: WorkflowOwnerFence): void {
