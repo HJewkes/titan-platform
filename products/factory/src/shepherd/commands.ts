@@ -1,11 +1,10 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
-import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
+import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
-import type { FactoryHost, PendingGate } from "../host.js";
-import { sliceClock } from "../loop-slice.js";
+import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import {
@@ -30,7 +29,8 @@ import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 import type { Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
-import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
+import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
+import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -235,55 +235,7 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
   return run;
 }
 
-function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun, pendingGates: readonly PendingGate[] = host.pendingGates()): WatchRow {
-  const pending = pendingGates.find((gate) => gate.runId === run.id);
-  const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
-}
-
 const LIST_STATES = ["active", "finished", "all"] as const;
-
-const FINISHED_RUN: ReadonlySet<WorkflowStatus> = new Set(["completed", "failed", "cancelled"]);
-
-/** A run that ended, so its watch row reads done, failed or cancelled. */
-export const runFinished = (status: WorkflowStatus): boolean => FINISHED_RUN.has(status);
-
-/** Which registrations a read wants, judged from the registration and its run's status before the run is loaded. */
-export type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean;
-
-/**
- * Each wanted registration's watch row beside the run it was read from; a registration whose run is missing is left out.
- * Only the runs `keep` wants are loaded, since every run's step results together take most of a second to parse, and
- * the loop yields the event loop between slices so serve keeps answering while it reads.
- */
-export async function rowsWithRuns(host: FactoryHost, services: ShepherdServices, keep: RowFilter = () => true): Promise<{ row: WatchRow; run: WorkflowRun }[]> {
-  const pause = sliceClock();
-  const statuses = host.runtime.statuses();
-  const pendingGates = host.pendingGates();
-  const found: { row: WatchRow; run: WorkflowRun }[] = [];
-  for (const registration of services.store.get().all()) {
-    const status = statuses.get(registration.runId);
-    if (status === undefined || !keep(registration, status)) continue;
-    await pause();
-    const run = host.runtime.status(registration.runId);
-    if (run) found.push({ row: rowOf(host, services, registration, run, pendingGates), run });
-  }
-  return found;
-}
-
-const rows = async (host: FactoryHost, services: ShepherdServices, keep?: RowFilter): Promise<WatchRow[]> => (await rowsWithRuns(host, services, keep)).map(({ row }) => row);
-
-const LIST_FILTER: Record<(typeof LIST_STATES)[number], RowFilter> = {
-  active: (_registration, status) => !runFinished(status),
-  finished: (_registration, status) => runFinished(status),
-  all: () => true,
-};
-
-/** A finished run is read only while it still holds a pending gate, the one thing `waiting` reports; a gate id starts with its run's id. */
-function waitingFilter(host: FactoryHost): RowFilter {
-  const gated = new Set(host.gates.listPending().map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
-  return (registration, status) => !runFinished(status) || gated.has(registration.runId);
-}
 
 /** Every gate the run opened: the ones its results name, and the one it waits on now. */
 function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
@@ -328,10 +280,10 @@ const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], 
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional() }),
   result: z.custom<WatchRow[]>(),
   run: async ({ repo, pr }, ctx) =>
-    rows(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr)),
+    watchRows(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr)),
 });
 
-const waiting = waitingCommand((ctx) => rows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
+const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
 
 const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, WatchRow[], FactoryContext>({
   name: "shepherd.list",
@@ -339,7 +291,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
   run: async ({ state }, ctx) =>
-    rows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
+    watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({

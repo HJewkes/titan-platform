@@ -3,9 +3,12 @@ import { join } from "node:path";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
+import type { FactoryHost } from "../host.js";
 import { resolveCommand } from "../registry.js";
 import { FINISHED_PHASES } from "./step-phase.js";
+import type { ShepherdServices } from "./commands.js";
 import type { WatchRow } from "./view.js";
+import { rowsWithRuns, runFinished } from "./watch-rows.js";
 
 /** Often enough that a gate reaches its seat within a minute; the sweep reads only the local store, never GitHub. */
 export const SEAT_DIGEST_MS = 60_000;
@@ -149,6 +152,14 @@ export async function sendSeatDigests(inputs: readonly DigestInput[], ports: Sea
     }
   }
   return { sent, failed };
+}
+
+/** One sweep over the host: the seat book read once, and only the runs `digestReads` says the seats still need. */
+export async function sweepSeatDigests(host: FactoryHost, services: ShepherdServices, ports: SeatDigestPorts, memory: SeatDigestMemory): ReturnType<typeof sendSeatDigests> {
+  const seatFor = ports.seatLookup();
+  const reads = digestReads(memory, seatFor);
+  const inputs = await rowsWithRuns(host, services, (registration, status) => reads(registration.repo, registration.runId, runFinished(status)));
+  return sendSeatDigests(inputs, { ...ports, seatLookup: () => seatFor }, memory);
 }
 
 const MemoryFile = z.record(z.string(), SeatStateSchema);

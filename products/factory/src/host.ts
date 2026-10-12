@@ -15,6 +15,7 @@ import {
   workflowMigration,
   workflowOwnershipMigration,
   type WorkflowRun,
+  WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
 import type { ShepherdServices } from "./shepherd/commands.js";
@@ -66,6 +67,8 @@ export interface ResumeReport {
 
 export interface FactoryHost {
   readonly runtime: WorkflowRuntime;
+  /** The stored runs for reads that need no live run: statuses alone, or a page of history. */
+  readonly runs: WorkflowRunStore;
   readonly gates: SqliteGateStore;
   /** Signed batches of merge-gate resolves (`gate resolve-batch`). */
   readonly batches: GateBatchStore;
@@ -93,6 +96,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
   const host: FactoryHost = {
     runtime,
+    runs: new WorkflowRunStore(db),
     gates,
     batches: new GateBatchStore(db, options.now),
     asks: new GateAskStore(db, options.now),

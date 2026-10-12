@@ -112,7 +112,7 @@ async function recentlyCompleted(host: FactoryHost, now: number): Promise<Workfl
   const window = { limit: REVERT_PAGE, completedSince: new Date(now - REVERT_WINDOW_MS).toISOString() };
   const pause = sliceClock();
   const runs: WorkflowRun[] = [];
-  for (let page = host.runtime.page(["completed"], window); page.length > 0; page = host.runtime.page(["completed"], { ...window, after: page.at(-1)!.id })) {
+  for (let page = host.runs.page(["completed"], window); page.length > 0; page = host.runs.page(["completed"], { ...window, after: page.at(-1)!.id })) {
     runs.push(...page.map(landedOnly));
     await pause();
   }
