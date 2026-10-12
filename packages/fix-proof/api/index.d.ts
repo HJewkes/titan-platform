@@ -138,11 +138,37 @@ type Exec = (file: string, args: readonly string[], options: ExecOptions) => Pro
 /** The default Exec: node's spawn in its own process group, all of it killed at the timeout, never rejecting on a non-zero exit. */
 declare const spawnExec: Exec;
 
+interface Shas {
+    base: string;
+    head: string;
+}
+/** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */
+declare function errorLine(refs: Shas, error: string): string;
+
 /** Leaves headroom under the CI job's 20-minute timeout so the runner, not the job, reports the overrun. */
 declare const DEFAULT_BUDGET_MS: number;
 declare const DEFAULT_BUILD = "pnpm build";
 /** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
 declare const DEFAULT_COMMAND = "pnpm exec vitest run";
+type Side = "base" | "head";
+/** The reports each side writes, as `<name>.report` in its out dir; the base runs twice so a flaky reproducer can be ruled out. */
+declare const SIDE_REPORTS: Readonly<Record<Side, readonly string[]>>;
+interface ExecSideOptions {
+    /** The git checkout holding both commits. */
+    repo: string;
+    /** The merge base of the pull request, as a sha or ref. */
+    base: string;
+    /** The pull request head, as a sha or ref. */
+    head: string;
+    side: Side;
+    /** Directory the encoded reports are written to. */
+    out: string;
+    budgetMs?: number;
+    exec?: Exec;
+}
+/** Builds and tests one side of the proof and writes its encoded reports to out; a failure writes error markers, never throws. */
+declare function execSide(options: ExecSideOptions): Promise<void>;
+
 interface RunOptions {
     /** The git checkout holding both commits. */
     repo: string;
@@ -153,16 +179,65 @@ interface RunOptions {
     budgetMs?: number;
     exec?: Exec;
 }
-/** A verdict error line for the given commits, standing in a zero sha for any that is not a full sha. */
-declare function errorLine(refs: {
-    base: string;
-    head: string;
-}, error: string): string;
-/** Runs the head's tests over the merge base and at head and returns one fix-proof/v1 line; failures become a verdict error line, never a throw. */
+/**
+ * Runs both exec sides and the judge in this process and returns one fix-proof/v1 line; the local mode of the three CI jobs.
+ * Failures become a verdict error line, never a throw.
+ */
 declare function run(options: RunOptions): Promise<string>;
 
-declare const USAGE = "usage: fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
-/** Parses `fix-proof run` arguments and returns the one result line to print; bad arguments give a verdict error line too. */
-declare function runCli(argv: readonly string[], cwd: string, runner?: typeof run): Promise<string>;
+declare const USAGE = "usage: fix-proof run|exec|judge --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
+type Runner = typeof run;
+/**
+ * Parses `fix-proof run|exec|judge` arguments and returns the line to print: one result line for run and judge, and
+ * nothing for a successful exec, which writes its reports instead. Bad arguments and failures give a verdict error line.
+ */
+declare function runCli(argv: readonly string[], cwd: string, runner?: Runner): Promise<string>;
 
-export { CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_TEST_GLOBS, type Exec, type ExecOptions, type ExecResult, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, classifyReports, compileGlobs, errorLine, expandBraces, formatResultLine, parseFixProofConfig, parseResultLine, planFixProof, run, runCli, spawnExec, toResult };
+/** Git calls only, so a short budget; the judge's CI job allows 8 minutes. */
+declare const DEFAULT_JUDGE_BUDGET_MS: number;
+interface JudgeReports {
+    /** Encoded reports from the exec jobs, as `encodeReport` or `encodeError` wrote them; absent means the job wrote none. */
+    base?: string;
+    baseRerun?: string;
+    head?: string;
+}
+interface JudgeOptions {
+    /** The git checkout holding both commits; the judge reads it with git and never builds or runs it. */
+    repo: string;
+    base: string;
+    head: string;
+    reports: JudgeReports;
+    budgetMs?: number;
+    exec?: Exec;
+}
+/**
+ * Classifies the exec sides' encoded reports against a plan it derives from git itself and returns the one fix-proof/v1 line.
+ * It runs no code from either commit: every command it spawns is git, so a PR head cannot reach the verdict it prints.
+ */
+declare function judge(options: JudgeOptions): Promise<string>;
+
+/** Under GitHub's 1 MB per-job output limit, leaving room for the base job's second report. */
+declare const MAX_ENCODED_BYTES = 900000;
+declare const MAX_INFLATED_BYTES: number;
+/** `reported` marks an error the exec side wrote itself, as opposed to a report that failed to arrive or decode. */
+type DecodedReport = {
+    ok: true;
+    report: {
+        testResults: unknown[];
+    };
+} | {
+    ok: false;
+    error: string;
+    reported: boolean;
+};
+interface DecodeOptions {
+    maxBytes?: number;
+}
+/** A vitest JSON report reduced to the fields the classifier reads, gzipped and base64-encoded: no space, no newline. */
+declare function encodeReport(report: unknown): string;
+/** An encoded marker saying this side produced no report, carrying why; the judge turns it into a verdict error. */
+declare function encodeError(error: string): string;
+/** Decodes one encoded report under an encoded and an inflated byte cap; anything missing, oversized or malformed is an error, never a throw. */
+declare function decodeReport(text: string | undefined, options?: DecodeOptions): DecodedReport;
+
+export { CONFIG_PATH, type Classification, type ClassifyInput, type ConfigResult, DEFAULT_BUDGET_MS, DEFAULT_BUILD, DEFAULT_CARRY_GLOBS, DEFAULT_COMMAND, DEFAULT_JUDGE_BUDGET_MS, DEFAULT_TEST_GLOBS, type DecodeOptions, type DecodedReport, type Exec, type ExecOptions, type ExecResult, type ExecSideOptions, type FileOutcome, type FileState, type FixProofConfig, type FixProofPlan, type FixProofResult, type JudgeOptions, type JudgeReports, MAX_ENCODED_BYTES, MAX_INFLATED_BYTES, type ParsedResultLine, type PlanInput, type PlanResult, RESULT_LINE_MAX_BYTES, RESULT_PREFIX, type ReportRun, type RunOptions, SIDE_REPORTS, type Side, TEST_CLASSES, type TestClass, type TestOutcome, USAGE, VERDICTS, type Verdict, classifyReports, compileGlobs, decodeReport, encodeError, encodeReport, errorLine, execSide, expandBraces, formatResultLine, judge, parseFixProofConfig, parseResultLine, planFixProof, run, runCli, spawnExec, toResult };

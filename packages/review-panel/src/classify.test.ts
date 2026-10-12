@@ -1,6 +1,6 @@
 import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
-import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES } from "./classify.js";
+import { changedLineCount, classifyPr, DEFAULT_CLASS_RULES, SECURITY_SLICE_LINES, securitySliceFlag } from "./classify.js";
 import type { ChangedFile, PrFacts } from "./types.js";
 
 const file = (path: string, additions = 5, deletions = 1): ChangedFile => ({ path, additions, deletions });
@@ -125,5 +125,64 @@ describe("classifyPr", () => {
   it("lets rules override the default tables", () => {
     const rules = { ...DEFAULT_CLASS_RULES, policy: ["docs/**"], largeLines: 3 };
     expect(classifyPr(facts(["docs/a.md"]), rules).touches).toEqual(["policy", "large"]);
+  });
+});
+
+describe("securitySliceFlag", () => {
+  const guard = "packages/tool-guard/src/x.ts";
+
+  it("leaves changeset, API report and dead-export churn out of a guard slice's size", () => {
+    const changedFiles = [file(guard, 350, 0), file(".changeset/a.md", 5, 0), file("packages/tool-guard/api/index.d.ts", 40, 0), file(".codewatch/dead-exports.json", 20, 0)];
+    expect(changedLineCount(changedFiles)).toBe(350);
+    expect(securitySliceFlag({ changedFiles })).toBeUndefined();
+  });
+
+  it("flags a guard-area slice one line over the cap and not one at it", () => {
+    expect(SECURITY_SLICE_LINES).toBe(400);
+    expect(securitySliceFlag({ changedFiles: [file(guard, 300, 101)] })).toEqual({ lines: 401, cap: 400, guardPaths: [guard] });
+    expect(securitySliceFlag({ changedFiles: [file(guard, 300, 100)] })).toBeUndefined();
+  });
+
+  it("flags an oversize kind security slice whatever its paths", () => {
+    const changedFiles = [file("src/foo.ts", 450, 0)];
+    expect(securitySliceFlag({ kind: "security", changedFiles })).toEqual({ lines: 450, cap: 400, guardPaths: [] });
+    expect(securitySliceFlag({ changedFiles })).toBeUndefined();
+    expect(securitySliceFlag({ kind: "correctness", changedFiles })).toBeUndefined();
+  });
+
+  it("counts authority paths as a guard area", () => {
+    const path = "products/factory/src/shepherd/merge-facts.ts";
+    expect(securitySliceFlag({ changedFiles: [file(path, 500, 0)] })?.guardPaths).toEqual([path]);
+  });
+
+  it("does not treat a generated file under an authority glob as a guard path", () => {
+    expect(securitySliceFlag({ changedFiles: [file(".codewatch/check.json", 500, 0)] })).toBeUndefined();
+  });
+
+  it("flags nothing when a count is unreadable", () => {
+    const bare = partialFake<ChangedFile>({ path: guard });
+    expect(securitySliceFlag({ kind: "security", changedFiles: [file(guard, 900, 0), bare] })).toBeUndefined();
+  });
+});
+
+describe("classifyPr hand-editable paths", () => {
+  const std = (changedFiles: ChangedFile[]) => classifyPr(facts([], { kind: "correctness", changedFiles }));
+
+  it("classes a 300-line src change plus a lockfile change g10 with a dependency touch", () => {
+    const result = std([file("src/a.ts", 300, 0), file("pnpm-lock.yaml", 10, 0)]);
+    expect(result.class).toBe("g10");
+    expect(result.touches).toContain("dependency");
+  });
+
+  it("classes a package.json change g10", () => {
+    expect(std([file("packages/x/package.json", 1, 1)]).class).toBe("g10");
+  });
+
+  it("counts a lockfile as real lines rather than generated", () => {
+    expect(changedLineCount([file("src/a.ts", 300, 0), file("pnpm-lock.yaml", 200, 0)])).toBe(500);
+  });
+
+  it.each(["src/__snapshots__/evil.ts", "products/x/src/api/y.d.ts", "src/__snapshots__/x.snap"])("counts %s as real lines", (path) => {
+    expect(changedLineCount([file(path, 50, 0)])).toBe(50);
   });
 });

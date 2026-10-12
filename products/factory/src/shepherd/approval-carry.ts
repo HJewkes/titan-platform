@@ -2,8 +2,9 @@ import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { step } from "../workflows/land.js";
-import { APPROVAL_CARRY_STEP, carryingBase, type CarryTarget } from "./carry-merge.js";
+import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
+import { ownMergeUpStep } from "./own-merge-up.js";
 import { remergeStep } from "./remerge-carry.js";
 
 /** Land's own merge question; a conflict, release or other gate that shares the step id asks something else. */
@@ -42,11 +43,23 @@ async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: s
   return { rule: fix.rule, proof: { base: fix.base, headTree: fix.headTree, mergeTree: fix.mergeTree, changedLines: fix.changedLines, paths: fix.paths } };
 }
 
+/** Shepherd's own disjoint merge-up and nothing wider, for a kind that never follows the remerge or small-fix rules. */
+async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
+  const own = await ownMergeUpStep(ctx, { repo: target.repo, baseRef, fromHead, head });
+  if (!own.carries || !own.rule) return undefined;
+  return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths } };
+}
+
+/** The proof for the run's kind: the remerge and small-fix rules for a carrying kind, else the own-merge-up rule, else none. */
+async function followedProof(ctx: WorkflowContext, target: CarryTarget, fromHead: string, head: string): Promise<Followed | undefined> {
+  const bases = await followBases(ctx, target, `approve:${head}`);
+  if (bases.carrying !== undefined) return followProof(ctx, target, bases.carrying, fromHead, head);
+  return bases.ownMergeUp === undefined ? undefined : ownMergeUpProof(ctx, target, bases.ownMergeUp, fromHead, head);
+}
+
 /** The recorded answer, shaped as the gate's own: land reads only `data`, which names the head the follow was checked at. */
 async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHead: string, head: string): Promise<StepResult | undefined> {
-  const baseRef = await carryingBase(ctx, target, `approve:${head}`);
-  if (baseRef === undefined) return undefined;
-  const carried = await followProof(ctx, target, baseRef, fromHead, head);
+  const carried = await followedProof(ctx, target, fromHead, head);
   if (!carried) return undefined;
   const stepId = `${APPROVAL_CARRY_STEP}:${head}`;
   const followed = await step(ctx, stepId, { decision: "merge", headSha: head, fromHead, ...carried }, MergeAnswer);
@@ -56,8 +69,9 @@ async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHea
 /**
  * Wraps `assisted` so a merge answer at land's gate, the owner's or a review round's ship pick, follows to a later gate at a
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
- * files, or the approved head merged with the base plus a small fix (see `SMALL_FIX_LIMITS`). Any other head, a kind that does not carry, an escalation, a gate on another base or a head without a standing
- * MERGE asks again.
+ * files, or the approved head merged with the base plus a small fix (see `SMALL_FIX_LIMITS`). A security run follows only
+ * Shepherd's own clean merge-up whose base side touches none of the PR's files (`ownMergeUp`). Any other head, a kind that
+ * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again.
  */
 export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowContext["assisted"], carry: ApprovalCarry): WorkflowContext["assisted"] {
   let approved: { head: string; base: string | undefined } | undefined;

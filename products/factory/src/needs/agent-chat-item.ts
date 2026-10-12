@@ -72,11 +72,16 @@ function contextOf(row: QueueRow): string {
   return [row.text, ...notes].join("\n");
 }
 
+/** The gate notifier files its asks with `task: "gate:<id>"`, so the ask keys as the hitl gate item it merges with. */
+function taskKey(task: string): string {
+  return task.startsWith("gate:") ? task : `task:${task}`;
+}
+
 /** Task and run keys only: a PR named in free text has no head sha, so it could never merge. */
 function keysOf(row: QueueRow): string[] {
   const task = row.meta["task"];
   const runs = keysIn(row.text).filter((key) => key.startsWith("run:"));
-  return [...new Set([...(task ? [`task:${task}`] : []), ...runs])];
+  return [...new Set([...(task ? [taskKey(task)] : []), ...runs])];
 }
 
 export function toOwnerItem(row: QueueRow): OwnerItem {

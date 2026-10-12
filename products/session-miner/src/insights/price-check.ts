@@ -19,7 +19,12 @@ const publishedPriceSchema = z.object({
 });
 type PublishedPrice = z.infer<typeof publishedPriceSchema>;
 
-const priceRowSchema = publishedPriceSchema.omit({ model: true }).extend({ modelPrefix: z.string(), effectiveFrom: z.string() });
+const ratesSchema = publishedPriceSchema.omit({ model: true });
+const priceRowSchema = ratesSchema.extend({
+  modelPrefix: z.string(),
+  effectiveFrom: z.string(),
+  longPrompt: ratesSchema.extend({ abovePromptTokens: z.number().int().positive() }).optional(),
+});
 
 const mismatchSchema = z.object({
   model: z.string(),

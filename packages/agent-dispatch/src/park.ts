@@ -6,7 +6,7 @@
  * `DispatchError` carrying the broker's reason.
  */
 
-import { refusal, runAgentChat } from "./agents.js";
+import { refusal, runAgentChatAsync } from "./agents.js";
 import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
 
 /** Removing a worktree is a git call on the broker's side, so this allows more than a roster read. */
@@ -22,16 +22,19 @@ export function buildParkArgs(name: string): string[] {
   return ["agent", "park", name];
 }
 
-/** Remove the agent's worktree and keep its branch; throws `DispatchError` when the broker refuses. */
-export function parkAgent(
+/**
+ * Remove the agent's worktree and keep its branch; rejects with `DispatchError` when the broker refuses. Async because
+ * `agent park` may read the caller back (agent-chat asks Shepherd about a fix round), and a blocked caller cannot answer.
+ */
+export async function parkAgent(
   agentChatBinPath: string,
   name: string,
   timeoutMs = DEFAULT_PARK_TIMEOUT_MS,
-): ParkResult {
+): Promise<ParkResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
-  const result = runAgentChat(agentChatBinPath, buildParkArgs(name), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildParkArgs(name), timeoutMs);
   if (result.status !== 0) throw refusal("agent park", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, lines: lines.filter((line) => line !== "") };

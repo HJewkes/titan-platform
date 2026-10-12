@@ -48,6 +48,8 @@ interface MachineInit {
   unbuilt?: boolean;
   /** The factory config failed to load with this message. */
   configError?: string;
+  /** Every /health request takes this long, answered or not, as a loaded serve or a hung port does. */
+  healthMs?: number;
 }
 
 /** A launchd that refuses to bootstrap a loaded label, as the real one does, so an install that skips bootout fails. */
@@ -101,6 +103,7 @@ function fakeMachine(init: MachineInit = {}) {
     },
     isDirectory: (path) => init.dirs?.includes(path) ?? false,
     health: async (port) => {
+      clock += init.healthMs ?? 0;
       if (init.stranger !== undefined) return { ok: true, pid: init.stranger, port };
       if (!job?.healthy) return null;
       return { ok: true, ...(job.pid === undefined ? {} : { pid: job.pid }), port, version: "0.1.0", github: github.length > 1 ? github.shift() : github[0], pendingGates: 2, ...(init.build === undefined ? {} : { build: init.build }), ...(busy ? { busy: busy.length > 1 ? busy.shift() : busy[0] } : {}) };
@@ -192,6 +195,22 @@ describe("titan-factory service install", () => {
     expect(err).toContain(`tail -n 20 ${ERR_LOG}`);
     expectNoLeak(err);
     expect(machine.calls.some((call) => call.startsWith("claude"))).toBe(false);
+  });
+
+  it("installs when every /health answers after 1.5 s, as a loaded serve does", async () => {
+    const { code } = await service(["install"], fakeMachine({ healthMs: 1_500 }));
+
+    expect(code).toBe(EXIT.OK);
+  });
+
+  it("gives up on a hung /health within the nominal wait plus one probe, not once per poll", async () => {
+    const machine = fakeMachine({ serves: false, healthMs: 6_000 });
+
+    const { code, err } = await service(["install"], machine);
+
+    expect(code).toBe(EXIT.FAILURE);
+    expect(err).toContain("did not answer /health on port 7410");
+    expect(machine.elapsed()).toBeLessThanOrEqual(30_000 + 6_000 + 250);
   });
 
   it("says the error log is empty or missing when there is none to show", async () => {

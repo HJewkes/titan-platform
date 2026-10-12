@@ -35,7 +35,7 @@ function memoryStore(): WantedStore & { files: Map<string, string> } {
 }
 
 /** A pacer over an in-memory state dir and a settable clock, recording every spawn as `[minute, sha]`. */
-function pacer(options: { busy?: number; lastDeploy?: DeployRecord } = {}) {
+function pacer(options: { busy?: number; lastDeploy?: DeployRecord; runningHolds?: (sha: string) => boolean } = {}) {
   const store = memoryStore();
   const spawns: Array<[number, string]> = [];
   const logs: string[] = [];
@@ -47,6 +47,7 @@ function pacer(options: { busy?: number; lastDeploy?: DeployRecord } = {}) {
       store,
       now: () => world.now,
       runningSha: () => world.runningSha,
+      ...(options.runningHolds && { runningHolds: options.runningHolds }),
       lastDeploy: () => world.lastDeploy,
       busy: () => world.busy,
       paused: () => world.paused,
@@ -138,6 +139,19 @@ describe("deploy pacer", () => {
 
     expect(decision.kind).toBe("clear");
     expect(p.store.files.has(PATH)).toBe(false);
+  });
+
+  it("a running build that descends from the wanted sha clears the record, so the next merge starts a fresh window", () => {
+    const p = pacer({ runningHolds: (sha) => sha === "a" });
+    p.merge("a");
+    p.world.now = 60 * MIN;
+
+    const decision = p.tick();
+    p.world.now = 61 * MIN;
+    p.merge("b");
+
+    expect(decision).toEqual({ kind: "clear", why: `the service runs ${RUNNING}, which contains a` });
+    expect(p.wanted()?.firstAt).toBe(new Date(61 * MIN).toISOString());
   });
 
   it.each(["deployed", "skipped", "rolled-back"] as const)("a deploy.json record for the sha with outcome %s after the spawn clears it", (outcome) => {
