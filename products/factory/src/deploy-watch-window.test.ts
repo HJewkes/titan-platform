@@ -49,8 +49,8 @@ describe("watchServe slow versus down", () => {
     expect(timeouts).not.toContain(SLOW_PROBE_TIMEOUT_MS);
   });
 
-  it("does not count timed-out probes from the live pid toward the miss limit", async () => {
-    const { ports } = scripted(["answer", "stall", "stall", "stall", "stall", "answer"]);
+  it("does not count answers that needed the retry toward the miss limit", async () => {
+    const { ports } = scripted(["answer", "slow-answer", "slow-answer", "slow-answer", "slow-answer", "answer"]);
 
     const why = await watchServe(ports, baseline, TARGET, WINDOW);
 
@@ -65,8 +65,17 @@ describe("watchServe slow versus down", () => {
     expect(timeouts.slice(0, 4)).toEqual([FAST_PROBE_TIMEOUT_MS, FAST_PROBE_TIMEOUT_MS, SLOW_PROBE_TIMEOUT_MS, FAST_PROBE_TIMEOUT_MS]);
   });
 
+  it("rolls back after the miss limit when serve answers once and then hangs with its pid alive", async () => {
+    const { ports, timeouts } = scripted(["answer", "stall"]);
+
+    const why = await watchServe(ports, baseline, TARGET, WINDOW);
+
+    expect(why).toContain("serve stopped answering /health (3 probes in a row)");
+    expect(timeouts).toContain(SLOW_PROBE_TIMEOUT_MS);
+  });
+
   it("rolls back naming the latencies when every probe in the window was slow", async () => {
-    const { ports } = scripted(["slow-answer", "stall"]);
+    const { ports } = scripted(["slow-answer", "stall", "slow-answer"]);
 
     const why = await watchServe(ports, baseline, TARGET, WINDOW);
 
@@ -90,7 +99,7 @@ describe("watchServe slow versus down", () => {
     expect(await watchServe(ports, baseline, TARGET, WINDOW)).toBeUndefined();
   });
 
-  it("mixes: slow probes do not reset a down streak into a pass, and a dead pid after stalls still rolls back", async () => {
+  it("counts stalls from a live pid and refusals after it dies in one miss streak", async () => {
     const alive = { value: true };
     const { ports } = scripted(["answer", "stall", "stall"]);
     const dying = { ...ports, alive: () => alive.value, sleep: async (ms: number) => { await ports.sleep(ms); if (ports.now() > 30_000) alive.value = false; } };

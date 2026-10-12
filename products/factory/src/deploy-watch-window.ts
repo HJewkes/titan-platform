@@ -50,7 +50,7 @@ interface Reading {
   latencyMs: number;
 }
 
-/** A null from a live pid is a stall, not a death: the restarted process is still there to answer later. */
+/** A live pid earns a null a second, longer probe before the tick gives up; a dead pid cannot answer, so it gets none. */
 async function read(ports: WatchPorts, baseline: Health): Promise<Reading> {
   const started = ports.now();
   const quick = await ports.probe(FAST_PROBE_TIMEOUT_MS);
@@ -65,8 +65,9 @@ const describeLatency = ({ health, latencyMs }: Reading): string => (health === 
 
 /**
  * Undefined when serve held steady for the whole window, else why not; `baseline` is the answer that confirmed the sha.
- * Only a probe with no answer from a dead pid counts toward the miss limit; a timeout while the pid lives is slow, and a window of nothing but slow probes rolls back.
- * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies late is not deployed.
+ * Every tick with no answer counts toward the miss limit, whether or not the pid lives; a live pid only buys the slower retry first.
+ * An answer that needed the retry is slow, not a miss, and a window of nothing but slow probes rolls back.
+ * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies or hangs late is not deployed.
  */
 export async function watchServe(ports: WatchPorts, baseline: Health, target: string, window: WatchWindow): Promise<string | undefined> {
   const interval = Math.max(1, window.intervalMs);
@@ -78,7 +79,7 @@ export async function watchServe(ports: WatchPorts, baseline: Health, target: st
     const reading = await read(ports, baseline);
     readings.push(reading);
     const { health } = reading;
-    misses = health === null && !reading.slow ? misses + 1 : 0;
+    misses = health === null ? misses + 1 : 0;
     if (misses >= Math.max(1, window.missLimit)) return `serve stopped answering /health (${misses} probes in a row) ${during}`;
     const why = health === null ? undefined : drift(baseline, health, target);
     if (why !== undefined) return `${why} ${during}`;
