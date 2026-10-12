@@ -5,11 +5,6 @@ export const SANDBOX_USER_PATTERN = /^[a-z_][a-z0-9_-]{0,31}$/;
 // After the budget, timeout sends TERM and then KILL this many seconds later to a command that ignores TERM.
 const KILL_AFTER_S = 5;
 
-export interface SandboxCommand {
-  file: string;
-  args: string[];
-}
-
 export function assertSandboxUser(user: string): void {
   if (!SANDBOX_USER_PATTERN.test(user)) throw new Error(`sandbox user must match ${SANDBOX_USER_PATTERN.source}`);
 }
@@ -25,7 +20,7 @@ export function sandboxCommand(
   env: Readonly<Record<string, string>>,
   script: string,
   args: readonly string[],
-): SandboxCommand {
+): { file: string; args: string[] } {
   assertSandboxUser(user);
   const seconds = String(Math.max(1, Math.ceil(timeoutMs / 1000)));
   const pairs = Object.entries(env).map(([key, value]) => `${key}=${value}`);
