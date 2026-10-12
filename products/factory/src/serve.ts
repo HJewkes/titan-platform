@@ -20,7 +20,7 @@ import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
-import { rowsWithRuns, type ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
@@ -28,7 +28,7 @@ import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
 import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
-import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
+import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
@@ -276,7 +276,7 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
   if (services === undefined || ports === undefined) return undefined;
   const memory = fileSeatDigestMemory(stateDir);
   const tickOnce = async (): Promise<void> => {
-    const { sent, failed } = await sendSeatDigests(rowsWithRuns(host, services), ports, memory);
+    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory);
     if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
     for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
   };

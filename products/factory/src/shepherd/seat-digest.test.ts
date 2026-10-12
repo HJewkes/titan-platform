@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
-import { fileSeatDigestMemory, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
+import { digestReads, fileSeatDigestMemory, sendSeatDigests, type DigestInput, type SeatDigestMemory, type SeatDigestPorts, type SeatState } from "./seat-digest.js";
 import type { WatchRow } from "./view.js";
 
 const HEAD = "a".repeat(40);
@@ -54,6 +54,37 @@ function memoryMap(): SeatDigestMemory {
   const states = new Map<string, SeatState>();
   return { get: (seat) => states.get(seat), set: (seat, state) => void states.set(seat, state) };
 }
+
+describe("digest reads", () => {
+  const seatFor = (repo: string): string | undefined => SEATS[repo];
+  const reads = (memory: SeatDigestMemory) => (input: DigestInput): boolean => digestReads(memory, seatFor)(input.row.repo, input.row.runId, input.run.status === "completed");
+
+  it("reads every run of a seat with no memory, then only its unfinished runs and finished runs it has not heard of", async () => {
+    const memory = memoryMap();
+    const merged = finished(1, { kind: "merged", reason: null });
+    const settledWithoutOutcome = finished(2, null);
+    await sendSeatDigests([merged, settledWithoutOutcome].filter(reads(memory)), fakePorts(), memory);
+
+    const later = [merged, settledWithoutOutcome, plain(row(3)), finished(4, { kind: "merged", reason: null })];
+
+    expect(later.filter(reads(memory)).map((input) => input.row.runId)).toEqual(["run-3", "run-4"]);
+  });
+
+  it("reports a finished run once even though later sweeps no longer read it", async () => {
+    const ports = fakePorts();
+    const memory = memoryMap();
+    const sweep = (inputs: DigestInput[]) => sendSeatDigests(inputs.filter(reads(memory)), ports, memory);
+    await sweep([plain(row(1))]);
+
+    for (let n = 0; n < 3; n += 1) await sweep([plain(row(1)), finished(2, { kind: "merged", reason: null })]);
+
+    expect(ports.sent.map((message) => message.text.includes("acme/widgets#2 merged"))).toEqual([true]);
+  });
+
+  it("reads nothing for a repo no single seat owns", () => {
+    expect(reads(memoryMap())(plain(row(1, {}, "acme/orphan")))).toBe(false);
+  });
+});
 
 describe("seat digests", () => {
   it("sends one message per seat when a gate opens, carrying the exact gate resolve command", async () => {

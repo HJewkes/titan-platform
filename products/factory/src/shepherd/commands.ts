@@ -21,9 +21,10 @@ import type { SeatBook } from "./seats.js";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
-import { FINISHED_PHASES, type Phase } from "./step-phase.js";
+import type { Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
-import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
+import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
+import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -184,24 +185,7 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
   return run;
 }
 
-function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
-  const pending = host.pendingGates().find((gate) => gate.runId === run.id);
-  const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
-}
-
-/** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */
-export function rowsWithRuns(host: FactoryHost, services: ShepherdServices): { row: WatchRow; run: WorkflowRun }[] {
-  return services.store
-    .get()
-    .all()
-    .flatMap((registration) => {
-      const run = host.runtime.status(registration.runId);
-      return run ? [{ row: rowOf(host, services, registration, run), run }] : [];
-    });
-}
-
-const rows = (host: FactoryHost, services: ShepherdServices): WatchRow[] => rowsWithRuns(host, services).map(({ row }) => row);
+const LIST_STATES = ["active", "finished", "all"] as const;
 
 /** Every gate the run opened: the ones its results name, and the one it waits on now. */
 function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
@@ -232,8 +216,6 @@ const PrRefArgs = z.object({ repo: RepoArg, pr: PrArg });
 const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
-const LIST_STATES = ["active", "finished", "all"] as const;
-
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
   description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
@@ -248,10 +230,10 @@ const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], 
   args: z.object({ repo: RepoArg.optional(), pr: PrArg.optional() }),
   result: z.custom<WatchRow[]>(),
   run: async ({ repo, pr }, ctx) =>
-    rows(ctx.host, servicesOf(ctx)).filter((row) => (repo === undefined || row.repo === repo.toLowerCase()) && (pr === undefined || row.pr === pr)),
+    watchRows(ctx.host, servicesOf(ctx), (registration) => (repo === undefined || registration.repo === repo.toLowerCase()) && (pr === undefined || registration.pr === pr)),
 });
 
-const waiting = waitingCommand((ctx) => rows(ctx.host, servicesOf(ctx)));
+const waiting = waitingCommand((ctx) => watchRows(ctx.host, servicesOf(ctx), waitingFilter(ctx.host)));
 
 const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, WatchRow[], FactoryContext>({
   name: "shepherd.list",
@@ -259,7 +241,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
   run: async ({ state }, ctx) =>
-    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED_PHASES.has(row.phase) === (state === "finished")),
+    watchRows(ctx.host, servicesOf(ctx), LIST_FILTER[state]),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
