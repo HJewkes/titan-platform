@@ -1,7 +1,10 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnExec, type Exec } from "./exec.js";
 import { judge, type JudgeReports } from "./judge.js";
-import { FIXED, makeRepo, parsed, REAL_TEST, removeRepos, type Repo } from "./repo.test-helpers.js";
+import { GIT_SAFETY } from "./context.js";
+import { FIXED, git, makeRepo, parsed, REAL_TEST, removeRepos, type Repo } from "./repo.test-helpers.js";
 import { encodeError, encodeReport } from "./transport.js";
 
 afterEach(removeRepos);
@@ -15,6 +18,29 @@ function report(files: Record<string, "passed" | "failed">): string {
     })),
   });
 }
+
+function forgeOver(repo: Repo, at: string, edit: () => void): string {
+  git(repo.dir, ["checkout", "-q", "--detach", at]);
+  edit();
+  git(repo.dir, ["commit", "-q", "-m", "forged"]);
+  const forged = git(repo.dir, ["rev-parse", "HEAD"]);
+  git(repo.dir, ["checkout", "-q", "main"]);
+  return forged;
+}
+
+const forgeries: Record<string, (repo: Repo, head: string) => void> = {
+  "a head whose test is gone": (repo, head) => {
+    const forged = forgeOver(repo, head, () => git(repo.dir, ["rm", "-q", "src/math.test.ts"]));
+    git(repo.dir, ["replace", head, forged]);
+  },
+  "a base whose config selects no tests": (repo) => {
+    const forged = forgeOver(repo, repo.base, () => {
+      fs.writeFileSync(path.join(repo.dir, ".github/fix-proof.json"), JSON.stringify({ tests: ["nothing/**"] }));
+      git(repo.dir, ["add", "-A"]);
+    });
+    git(repo.dir, ["replace", repo.base, forged]);
+  },
+};
 
 function fixPr(): { repo: Repo; head: string } {
   const repo = makeRepo();
@@ -72,6 +98,31 @@ describe("judge", () => {
     const result = await verdictFor({ base: encodeError("base: build failed (exit 3)"), head: report({ "src/math.test.ts": "passed" }) });
 
     expect(result).toMatchObject({ verdict: "error", error: "base: build failed (exit 3)" });
+  });
+
+  it.each(Object.keys(forgeries))("a head that wrote refs/replace for %s before the judge runs cannot change the verdict", async (forgery) => {
+    const { repo, head } = fixPr();
+    forgeries[forgery]!(repo, head);
+    const failed = report({ "src/math.test.ts": "failed" });
+    const reports = { base: failed, baseRerun: failed, head: report({ "src/math.test.ts": "passed" }) };
+
+    const result = parsed(await judge({ repo: repo.dir, base: repo.base, head, reports }));
+
+    expect(result).toMatchObject({ verdict: "reproduced", head });
+  });
+
+  it("every git call the judge makes ignores replace refs and pathspec magic", async () => {
+    const calls: (readonly string[])[] = [];
+    const exec: Exec = (file, args, options) => {
+      calls.push(args);
+      return spawnExec(file, args, options);
+    };
+    const failed = report({ "src/math.test.ts": "failed" });
+
+    await verdictFor({ base: failed, baseRerun: failed, head: report({ "src/math.test.ts": "passed" }) }, exec);
+
+    expect(calls.length).toBeGreaterThan(0);
+    calls.forEach((args) => expect(args.slice(0, GIT_SAFETY.length)).toEqual([...GIT_SAFETY]));
   });
 
   it("prints a no-tests line without reading any report", async () => {
