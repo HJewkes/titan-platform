@@ -189,6 +189,35 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: hold history unread at registration (Error)" });
   });
 
+  it("keeps a seat's g10-adversary hold and its reviewer when the hold history cannot be read", async () => {
+    const r = rig([file("packages/x/src/a.ts", 10)]);
+    r.store.hold("run-1", "g10-adversary: merge-policy change", "sec-audit-review");
+    r.store.eventsOf = () => {
+      throw new Error("disk I/O error");
+    };
+
+    const reason = await applyRegistrationHold(r.port, r.store, "run-1");
+
+    expect(reason).toBeUndefined();
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: merge-policy change", holdReviewer: "sec-audit-review" });
+  });
+
+  it("holds g10-adversary over a non-adversary hold when the history cannot be read, and the other hold waits under it", async () => {
+    const r = rig([file("packages/x/src/a.ts", 10)]);
+    r.store.hold("run-1", "stalled: x; TP-1");
+    r.store.eventsOf = () => {
+      throw new Error("disk I/O error");
+    };
+
+    const reason = await applyRegistrationHold(r.port, r.store, "run-1");
+    const gating = r.store.byRun("run-1")?.holdReason;
+    r.store.releaseClass("run-1", "g10-adversary");
+
+    expect(reason).toBe("g10-adversary: hold history unread at registration (Error)");
+    expect(gating).toBe(reason);
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "stalled: x; TP-1" });
+  });
+
   it("leaves a commands.ts outside Shepherd unheld", async () => {
     const r = rig([file("packages/cli/src/commands.ts", 10)]);
 

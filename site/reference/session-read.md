@@ -161,6 +161,10 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 `Verdict:` is a second block and refuses the message, even when identical. Refusal reasons are `no_block`, `multiple_blocks`, `bad_verdict`, `missing_pr_line`,
 `bad_pr`, `missing_head_line` and `bad_head`. It shares no grammar with `parseReviewVerdicts`.
 
+`visibleLines(text)` is the visibility pass the parser runs first: one entry per line, its trimmed text, or
+`null` when the line is fenced, inside an HTML comment or indented as code. It is exported so other parsers
+of a reviewer's message (review-panel's `parseFollowUps`) agree with the verdict on what is visible.
+
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
