@@ -1,0 +1,77 @@
+import type { GateRecord } from "@titan-design/hitl";
+import { stepOf } from "../coordinator-evidence.js";
+import { groupBy, median, round } from "./owner-friction.js";
+
+const HOUR_MS = 3_600_000;
+
+/** Table and row names never hold a colon or a space, and row names may hold `+`, as in `design-coord+voltras-coord`. */
+const POLICY = /Policy ([\w-]+)\/([^:\s]+):/;
+
+export interface GateStatsRow {
+  /** `<table>/<row>` from the prompt's `Policy` line, else `step/<step id>` for a gate that names none. */
+  policyRow: string;
+  /** `owner-terminal`, `owner-remote`, `coordinator`, `delegate` (resolved under a grant) or `unanswered`; any other class reads as itself. */
+  resolver: string;
+  count: number;
+  /** Resolved gates counted by the decision they carried, such as `merge`, `abandon`, `approve` or `other`. */
+  decisions: Record<string, number>;
+  /** Gates cancelled or expired before anyone answered. */
+  cancelledUnanswered: number;
+  pending: number;
+  medianHours: number;
+  maxHours: number;
+}
+
+export function policyRow(gate: GateRecord): string {
+  const match = POLICY.exec(gate.prompt);
+  return match ? `${match[1]}/${match[2]}` : `step/${stepOf(gate.id)}`;
+}
+
+export function resolverBucket(gate: GateRecord): string {
+  if (gate.status !== "resolved") return "unanswered";
+  if (gate.resolvedEvidence?.kind === "delegate") return "delegate";
+  return gate.resolvedBy?.class ?? "unrecorded";
+}
+
+export function decisionOf(payload: unknown): string {
+  const answer = (payload ?? {}) as Record<string, unknown>;
+  if (typeof answer.decision === "string") return answer.decision;
+  if (typeof answer.approve === "boolean") return answer.approve ? "approve" : "decline";
+  return "other";
+}
+
+/** A closed gate waited until it closed; a pending one is still waiting at `now`. */
+function waitHours(gate: GateRecord, now: number): number {
+  const closed = gate.status === "pending" || gate.resolvedAt === undefined ? now : Date.parse(gate.resolvedAt);
+  return (closed - Date.parse(gate.createdAt)) / HOUR_MS;
+}
+
+function countBy(values: readonly string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+  return counts;
+}
+
+function row(key: string, gates: readonly GateRecord[], now: number): GateStatsRow {
+  const [policy, resolver] = key.split("\n") as [string, string];
+  const hours = gates.map((gate) => waitHours(gate, now)).sort((a, b) => a - b);
+  return {
+    policyRow: policy,
+    resolver,
+    count: gates.length,
+    decisions: countBy(gates.filter((gate) => gate.status === "resolved").map((gate) => decisionOf(gate.payload))),
+    cancelledUnanswered: gates.filter((gate) => gate.status === "cancelled" || gate.status === "expired").length,
+    pending: gates.filter((gate) => gate.status === "pending").length,
+    medianHours: round(median(hours)),
+    maxHours: round(hours.at(-1)!),
+  };
+}
+
+/** Gates created in the `sinceMinutes` before `now`, one row per policy row and resolver bucket. */
+export function gateStats(gates: readonly GateRecord[], now: number, sinceMinutes: number): GateStatsRow[] {
+  const start = now - sinceMinutes * 60_000;
+  const recent = gates.filter((gate) => Date.parse(gate.createdAt) >= start);
+  return [...groupBy(recent, (gate) => `${policyRow(gate)}\n${resolverBucket(gate)}`)]
+    .map(([key, items]) => row(key, items, now))
+    .sort((a, b) => a.policyRow.localeCompare(b.policyRow) || a.resolver.localeCompare(b.resolver));
+}
