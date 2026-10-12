@@ -114,7 +114,8 @@ const settledWithout = (runs: readonly CheckRun[], head: string): boolean => {
   return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head));
 };
 
-type Polled = { run: CheckRun; distrust?: string } | { missing: string };
+/** `stalled` is a fix-proof run that existed at the head but never completed, so its absence of a line is not believed. */
+type Polled = { run: CheckRun; distrust?: string } | { missing: string } | { stalled: string };
 
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
 async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
@@ -128,6 +129,7 @@ async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, bind
     const settled = settledWithout(runs, head);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
     if (actionsAt(runs, head).length === 0 && grace.expired()) return { missing: "no GitHub Actions run at this head" };
+    if (clock.expired() && chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
     if (clock.expired()) return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
     settledBefore = settled;
     await clock.sleep(timing.pollMs ?? DEFAULT_POLL_MS, signal);
@@ -148,9 +150,8 @@ export function lastResultLine(log: string, head: string): string | undefined {
 const inHarness = (path: string): boolean => FIX_PROOF_HARNESS.some((prefix) => path.startsWith(prefix));
 const harnessPathOf = (files: readonly PrFile[]): string | undefined => files.flatMap((file) => [file.path, file.previousPath ?? file.path]).find(inHarness);
 
-/** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
-async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
-  if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
+/** Why the PR may have chosen its own harness, or undefined when its changed files are read in full and leave the harness alone. */
+async function harnessTouch(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<string | undefined> {
   if (pr === null) return "the registration names no PR, so its changed files are unknown";
   let files: PrFile[];
   try {
@@ -163,12 +164,25 @@ async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, r
   return touched && `the PR changes the ${FIX_PROOF_CHECK} harness: ${touched}`;
 }
 
+/** Why a line from `run` cannot be trusted, or undefined when the run succeeded on a harness the PR left alone. */
+async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, run: CheckRun): Promise<string | undefined> {
+  if (run.conclusion !== "success") return `the ${FIX_PROOF_CHECK} run concluded ${run.conclusion ?? "nothing"}, not success`;
+  return harnessTouch(port, repo, pr);
+}
+
+/** A missing run is believed only when the PR left the harness alone; deleting the workflow is otherwise a way to dodge the gate. */
+async function missingRead(port: GitHubPort, repo: RepoSlug, pr: number | null, missing: string): Promise<FixProofRead> {
+  const touched = await harnessTouch(port, repo, pr);
+  return touched === undefined ? { kind: "missing", reason: missing } : { kind: "error", reason: `${missing}, and ${touched}` };
+}
+
 async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
   const binding = await bindingOf(port, input.repo, pr);
   const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
-  if ("missing" in polled) return { kind: "missing", reason: polled.missing };
+  if ("stalled" in polled) return { kind: "error", reason: polled.stalled };
+  if ("missing" in polled) return missingRead(port, input.repo, pr, polled.missing);
   const line = lastResultLine(await port.jobLogTail(input.repo, polled.run.id, LOG_TAIL_LINES), input.head);
-  if (line === undefined) return { kind: "missing", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
+  if (line === undefined) return { kind: "error", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
   const parsed = parseResultLine(line);
   if (!parsed.ok) return { kind: "error", reason: parsed.error };
   const distrust = polled.distrust ?? (await distrustOf(port, input.repo, pr, polled.run));
@@ -198,4 +212,19 @@ export function fixProofVerdict(read: z.infer<typeof FixProofReadSchema>, head: 
   const parsed = parseResultLine(read.line);
   if (!parsed.ok || parsed.result.head !== head || !NO_REPRO_VERDICTS.has(parsed.result.verdict)) return undefined;
   return { kind: "NO_REPRO", headSha: head, result: parsed.result };
+}
+
+export type FixProofUnverified = "error" | "untrusted" | "unread";
+
+/**
+ * Why a gated proof that is not NO_REPRO still proves nothing about `head`, or undefined when it stands or no proof was expected.
+ * A head can force each of these reads, so none may pass as if the bug were reproduced.
+ */
+export function fixProofStanding(read: z.infer<typeof FixProofReadSchema>, head: string): { unverified: FixProofUnverified } | undefined {
+  if (read.kind === "untrusted") return { unverified: "untrusted" };
+  if (read.kind === "error") return { unverified: "unread" };
+  if (read.kind !== "result") return undefined;
+  const parsed = typeof read.line === "string" ? parseResultLine(read.line) : undefined;
+  if (!parsed?.ok || parsed.result.head !== head) return { unverified: "unread" };
+  return parsed.result.verdict === "error" ? { unverified: "error" } : undefined;
 }
