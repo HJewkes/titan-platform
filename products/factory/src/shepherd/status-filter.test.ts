@@ -63,15 +63,15 @@ describe("shepherd status filters", () => {
   });
 
   it("--all keeps every row, terminal ones included", () => {
-    const kept = statusRows("shepherd.status", ROWS, { all: true }) as WatchRow[];
+    const kept = statusRows("shepherd.status", ROWS, { all: true });
 
-    expect(ids(kept)).toEqual(["live-pc", "done-pc", "review-dc", "failed-feat"]);
+    expect(kept).toEqual(ROWS);
   });
 
   it("no flag still keeps every row", () => {
-    const kept = statusRows("shepherd.status", ROWS, {}) as WatchRow[];
+    const kept = statusRows("shepherd.status", ROWS, {});
 
-    expect(ids(kept)).toEqual(["live-pc", "done-pc", "review-dc", "failed-feat"]);
+    expect(kept).toEqual(ROWS);
   });
 
   it("refuses an unknown phase, naming the valid ones", () => {
