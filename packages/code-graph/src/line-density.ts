@@ -36,7 +36,7 @@ function booleanOperatorCount(root: Node): number {
   let count = 0;
   const visit = (node: Node): void => {
     if (CONDITIONAL_TYPES.has(node.type) || isShortCircuit(node)) count++;
-    for (const child of node.namedChildren) if (child) visit(child);
+    for (const child of node.namedChildren) visit(child);
   };
   visit(root);
   return count;
