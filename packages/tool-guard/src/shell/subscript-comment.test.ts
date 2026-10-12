@@ -35,6 +35,16 @@ describe("a subscript bash may join but the guard splits", () => {
     ["holding a heredoc opener", "((1)); a[ <<E ]=x\ngit push origin HEAD:main\nE"],
     ["placeable with no = after the ]", "x[ # ]; git push origin HEAD:main"],
     ["ahead of gh pr merge", "((1)); a[ # ]=x; gh pr merge 1"],
+    ["split by bash, a ${ in the comment", "((1)); echo a[ # x ${\ngit push origin HEAD:main\n}]"],
+    ["split by bash, a double quote in the comment", '((1)); echo a[ # it"s\ngit push origin HEAD:main\n"]'],
+    ["split by bash, an ANSI-C quote in the comment", "((1)); echo a[ # x $'\ngit push origin HEAD:main\n']"],
+    ["split by bash after [[ ]]", "[[ 1 ]]; echo a[ # x ${\ngit push origin HEAD:main\n}]"],
+    ["split by bash after case … esac", "case 1 in 1) :;; esac; echo a[ # x ${\ngit push origin HEAD:main\n}]"],
+    ["split by bash after a heredoc", "cat <<E\nx\nE\necho a[ # x ${\ngit push origin HEAD:main\n}]"],
+    ["split by bash, a heredoc opener in the span", "((1)); echo a[ <<E ${\ngit push origin HEAD:main\n}]\nE"],
+    ["joined by bash, a ${ funsub after the #", "x[ # ${\ngit push origin HEAD:main\n}]"],
+    ["joined by bash, a ${ funsub after a heredoc opener", "x[ <<E ${\ngit push origin HEAD:main\n}]\nE"],
+    ["split by bash, a backquote in the comment", "((1)); echo a[ # x `\ngit push origin HEAD:main\n`]"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBe("deny");
   });
@@ -44,6 +54,9 @@ describe("a subscript bash may join but the guard splits", () => {
     ["a test then a subscript", "[[ -n $x ]] && a[0]=y"],
     ["a real comment after a command", "((1)); echo hi # git push origin HEAD:main"],
     ["a comment in a subscript bash splits as an argument", "echo a[ # git push origin HEAD:main ]"],
+    ["arithmetic then an append by length", "((n++)); a[${#a[@]}]=x; echo ok"],
+    ["arithmetic then a comment after a closed subscript", "((1)); echo a[0] # git push origin HEAD:main"],
+    ["a test then a spaced subscript argument", "[[ -n $x ]]; echo a[ $x ]"],
   ])("passes %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBeNull();
   });

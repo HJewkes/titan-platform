@@ -11,7 +11,7 @@ const COMMAND_STARTS = new Set(["{", "then", "do", "else", "elif", "if", "while"
  * Case statements, `[[ ]]`, `(( ))`, `$(( ))`, here-docs and extglob patterns such as `@(a|b)` hold operators and
  * newlines that start no command, so no token position can say where an assignment stands. Any of them before the
  * `[`, quoted or not, refuses the join. Bash lexes left to right, so one after it cannot move the `[` and leaves
- * the join alone. The split reading stays for such a `[`, but `ambiguousSubscriptEnd` keeps its body from hiding text.
+ * the join alone. The split reading stays for such a `[`, and `looseSubscriptEnd` keeps its body from hiding text.
  */
 const UNPLACEABLE_RE = /\b(?:case|esac)\b|\[\[|\]\]|\(\(|\)\)|<<|[?*+@!]\(/g;
 const IDENTIFIER_START = /[A-Za-z_]/;
@@ -33,11 +33,11 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
 }
 
 /**
- * Index of the `]` matching the `[` at `open` when bash may read `NAME[...]` as one word but the join above was
- * not taken: after an unplaceable form, or at an assignment position with no `=` after the `]`. Bash joins on
- * position alone, so `#` there starts no comment and `<<` opens no heredoc. Returns -1 when bash splits too.
+ * Index of the `]` matching the `[` at `open` when bash may read `NAME[...]` as one word but `assignmentSubscriptEnd`
+ * did not take the join: after an unplaceable form, where bash may join or split, or at an assignment position with no
+ * `=` after the `]`, where bash joins on position alone. -1 when bash splits for sure or the `[` never closes.
  */
-export function ambiguousSubscriptEnd(src: string, open: number, tokens: Token[]): number {
+export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
   const scan = scanOf(src);
   const mayJoin = open >= scan.unplaceableFrom || atAssignmentPosition(tokens);
   if (!mayJoin || assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
