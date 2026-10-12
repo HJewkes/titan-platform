@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReviewerBrokerBusy, ReviewerBrokerDown, type ReviewTarget } from "./review.js";
-import { ReviewerMachineHold } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerMachineHold } from "./review-wait.js";
 import { agentChatReviewerDispatch, expandHome, runningReviewStarts, type ReviewerRosterRow, type AgentChatReviewerDispatchOptions } from "./reviewer-dispatch.js";
 
 const PROFILE = "rv-readonly";
@@ -141,9 +141,10 @@ describe("agentChatReviewerDispatch roster", () => {
     expectRefusal(error, "the log is locked");
   });
 
-  it("gives up on a roster read that outlasts its timeout, without calling it a broker outage", async () => {
+  it("reports a roster read that outlasts its timeout as a timed-out ask, not a broker outage", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { rosterTimeoutMs: 200 }).roster());
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
   });
 });
@@ -310,9 +311,10 @@ describe("agentChatReviewerDispatch spawn", () => {
     expectRefusal(error, "no machine guard");
   });
 
-  it("keeps a spawn that timed out a refusal, because the reviewer may be running", async () => {
+  it("reports a spawn that timed out as a timed-out ask, not a broker outage, because the reviewer may be running", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).spawn("rv-demo-7", BRIEF, target));
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
   });
 
@@ -346,9 +348,10 @@ describe("agentChatReviewerDispatch resume", () => {
     expectRefusal(error, "rv-standing is live");
   });
 
-  it("keeps a resume that timed out a refusal", async () => {
+  it("reports a resume that timed out as a timed-out ask, not a broker outage", async () => {
     const error = await failure(dispatchOver("exec sleep 5\n", { spawnTimeoutMs: 200 }).resume("rv-standing", BRIEF));
 
+    expect(error).toBeInstanceOf(ReviewerAskTimedOut);
     expectRefusal(error, "timed out");
   });
 });
