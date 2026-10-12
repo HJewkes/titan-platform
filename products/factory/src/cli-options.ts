@@ -42,6 +42,7 @@ export function parsePositiveInt(value: string): number {
 export function withStatusFilters(command: Command): Command {
   return command
     .option("--active", "only runs not done, failed or cancelled")
+    .option("--all", "every run, done, failed and cancelled included")
     .option("--phase <a,b>", "only runs in one of these phases", phaseList)
     .option("--branch-prefix <p>", "only runs whose branch starts with p, with or without the agent-chat/ prefix")
     .option("--task <id>", "only runs for this task: a bare ID in any initiative, or slug/ID");

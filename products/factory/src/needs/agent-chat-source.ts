@@ -1,3 +1,4 @@
+import { CLIENT_HEADER } from "@titan-design/daemon";
 import type { OwnerAnswer, OwnerItem, QueueSource, ResolveResult } from "@titan-design/owner-queue";
 import { queueResponseSchema, toOwnerItem, type QueueRow } from "./agent-chat-item.js";
 import { pollTail } from "./poll-tail.js";
@@ -23,7 +24,8 @@ async function call(endpoint: BrokerEndpoint, path: string, init: RequestInit = 
   if (!baseUrl) throw new QueueReadError(SOURCE, "not-running", "no broker port to read (is the agent-chat broker running?)");
   const token = endpoint.token();
   if (!token) throw new QueueReadError(SOURCE, "unauthorized", "no ui.token to send");
-  const headers = { ...(init.headers as Record<string, string>), [TOKEN_HEADER]: token };
+  // The broker's daemon guard refuses an Origin-less write that names no client.
+  const headers = { ...(init.headers as Record<string, string>), [TOKEN_HEADER]: token, [CLIENT_HEADER]: "titan-factory" };
   let res: Response;
   try {
     res = await (endpoint.fetch ?? fetch)(`${baseUrl}${path}`, { ...init, headers });

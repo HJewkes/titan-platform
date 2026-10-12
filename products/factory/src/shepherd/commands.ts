@@ -13,6 +13,7 @@ import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { applyRegistrationHold } from "./registration-hold.js";
+import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -42,6 +43,8 @@ export interface ShepherdServices extends SnapshotServices {
   freeze?: FreezeStoreRef;
   /** Reads a registered head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
+  /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
+  now?: () => number;
 }
 
 export interface Registered {
@@ -313,6 +316,19 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
+/** Answers from the snapshot alone: a host with none wired refuses rather than reading GitHub per call. */
+const prsCommand = defineCommand<{ repo?: string }, PrRow[], FactoryContext>({
+  name: "shepherd.prs",
+  description: "Every open PR of each seat repo (or of --repo) from Shepherd's snapshot, plus the PRs Shepherd merged in the last 24 h, with head, base, run and cached CI; no GitHub call while the list is under a minute old",
+  args: z.object({ repo: RepoArg.optional() }),
+  result: z.custom<PrRow[]>(),
+  async run({ repo }, ctx) {
+    const services = servicesOf(ctx);
+    if (!services.snapshot) throw coded("shepherd prs reads the PR snapshot, and this host was opened without one", EXIT.UNAVAILABLE);
+    return shepherdPrs(hostPrsSources(ctx.host, services, services.snapshot), repo);
+  },
+});
+
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
 export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
@@ -325,6 +341,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
+  "shepherd.prs": prsCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

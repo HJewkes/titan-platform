@@ -12,6 +12,7 @@ import { shepherdStoreRef } from "../shepherd/store.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
+import { prSnapshot } from "../workflows/pr-snapshot.js";
 
 export const BRANCH = "agent-chat/demo-1";
 
@@ -37,6 +38,8 @@ export interface FixtureOptions {
   port?: GitHubPort;
   /** Answers every git file read; absent means the serve process's reader, which fetches from GitHub. */
   prFiles?: PrFilesRead;
+  /** Wires a PR snapshot over the port on the fixture's clock, as `configuredRoutes` does. */
+  snapshot?: boolean;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -46,8 +49,9 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
   let clock = 0;
   const tick = async (ms: number, signal: AbortSignal): Promise<void> => ((clock += ms), sleep(1, signal));
   const never = (_ms: number, signal: AbortSignal): Promise<void> => sleep(2 ** 31 - 1, signal);
+  const port = options.port ?? githubPort(fake.wire);
   const routes = factoryRoutesFor({
-    port: options.port ?? githubPort(fake.wire),
+    port,
     store: shepherdStoreRef(),
     now: () => clock,
     sleep: options.frozen ? never : tick,
@@ -55,6 +59,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     versions: async () => true,
     ...(options.seats && { seats: () => options.seats! }),
     ...(options.prFiles && { prFiles: options.prFiles }),
+    ...(options.snapshot && { snapshot: prSnapshot(port, { now: () => clock }) }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }
