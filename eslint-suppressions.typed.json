@@ -2916,7 +2916,7 @@
   },
   "products/factory/src/serve.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/service-check.ts": {

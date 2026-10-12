@@ -1,8 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
+import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findOnPath, runCommand, systemServicePorts } from "./service-ports.js";
+import { findOnPath, runCommand, SERVICE_CHECK_HEALTH_TIMEOUT_MS, systemServicePorts } from "./service-ports.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -95,4 +96,41 @@ describe("systemServicePorts label prefix", () => {
     expect(ports.configError).toMatch(/^invalid config .*config\.json: digest/);
   });
 
+});
+
+describe("systemServicePorts health", () => {
+  const servers: Server[] = [];
+  afterEach(() => {
+    servers.splice(0).forEach((server) => {
+      server.closeAllConnections();
+      server.close();
+    });
+  });
+
+  /** A /health server that answers after `delayMs`, or never when delayMs is undefined. */
+  async function healthServer(delayMs: number | undefined): Promise<number> {
+    const server = createServer((_req, res) => {
+      if (delayMs === undefined) return;
+      setTimeout(() => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true })), delayMs);
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("no tcp address");
+    return address.port;
+  }
+
+  it("accepts a /health answer that takes 1.5 s, as a loaded serve does", async () => {
+    const port = await healthServer(1500);
+
+    expect(await systemServicePorts().health(port)).toEqual({ ok: true });
+  });
+
+  it("gives up on a /health that never answers within the bounded timeout", async () => {
+    const port = await healthServer(undefined);
+    const started = Date.now();
+
+    expect(await systemServicePorts().health(port)).toBeNull();
+    expect(Date.now() - started).toBeLessThan(SERVICE_CHECK_HEALTH_TIMEOUT_MS + 2_000);
+  }, 15_000);
 });

@@ -582,6 +582,15 @@ describe("sh-review", () => {
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
     });
 
+    it("gives a small correctness PR that changes the lockfile the g10 profile", async () => {
+      const sized = await spawnSized([
+        { path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 },
+        { path: "pnpm-lock.yaml", status: "modified", additions: 4, deletions: 2 },
+      ]);
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 36, dependencyTouch: true }, profile: "bd-reviewer" });
+    });
+
     it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
       const sized = await spawnSized([
         { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },

@@ -56,10 +56,9 @@ async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun
  * Each entry names scripts, not commands; the appended test rule decides where and how they run.
  */
 const LOCAL_REPRO: Readonly<Record<string, string>> = {
-  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check`, `docs:build` or `egress:scan` (over the PR's commit range) script, or a missing changeset",
   "lint-types": "the `lint:types` script",
   "dag-check": "the `dag:check` and `dead:check` scripts",
-  "egress-scan": "the `egress:scan` script over the PR's commit range",
 };
 
 function failingJobsLine(failing: readonly CheckRun[]): string {
