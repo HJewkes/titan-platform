@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { nodeContext } from "../context.js";
 import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
@@ -47,22 +47,27 @@ describe("a long run of backslash-newlines", () => {
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 
-  it("is tokenized in time linear in its length", () => {
-    const fastest = (joins: number) => {
-      const src = `((${JOIN.repeat(joins)}1))`;
-      let best = Number.POSITIVE_INFINITY;
-      for (let run = 0; run < 3; run++) {
-        const start = performance.now();
-        tokenize(src);
-        best = Math.min(best, performance.now() - start);
+  it.each([
+    ["a (( arithmetic command", (run: string) => `((${run}1))`],
+    ["a $( ) substitution", (run: string) => `echo "$(${run}true)"`],
+    ["a plain word", (run: string) => `echo a${run}`],
+    ["a spaced subscript", (run: string) => `Y[ ${run}0 ]=x true`],
+  ])("tokenizes %s with work linear in its run of joins", (_name, shape) => {
+    // Every join test is a startsWith call, so counting them measures work without a clock a loaded runner skews.
+    const work = (joins: number) => {
+      const spy = vi.spyOn(String.prototype, "startsWith");
+      try {
+        tokenize(shape(JOIN.repeat(joins)));
+        return spy.mock.calls.length;
+      } finally {
+        spy.mockRestore();
       }
-      return best;
     };
 
-    const small = fastest(8_000);
-    const large = fastest(32_000);
+    const ratio = work(32_000) / work(8_000);
 
-    // Four times the input costs about four times as much when linear and sixteen times when quadratic.
-    expect(large).toBeLessThan(Math.max(small, 1) * 8);
+    // Four times the joins is about four times the work when linear and sixteen times when quadratic.
+    expect(ratio).toBeGreaterThan(3);
+    expect(ratio).toBeLessThan(6);
   });
 });
