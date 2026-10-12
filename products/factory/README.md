@@ -213,7 +213,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or `g10-adversary`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary` or `owner-asked`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
     configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
@@ -225,6 +225,14 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 
   Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
   hold of another class, `release` must name the hold it lifts with `--class <class>`.
+  - `owner-asked` is the owner saying "hold" or "discuss". It lives in its own slot on the registration, apart from
+    the gating hold, so no other hold replaces it and no other release lifts it: not `sh-g10-release`, not a
+    `--reviewer` MERGE (at the head or carried to a tree-equal one), and not `shepherd release`, which refuses
+    `--class owner-asked` with exit 65 and a bare release of a PR held by it alone. `shepherd hold` refuses it with
+    `--reviewer` (exit 65). Every merge route reads it first and holds whatever MERGE stands. Only the owner's own
+    release lifts it (`ShepherdStore.releaseOwnerHold`, and the forthcoming `shepherd owner-release` verb, TP-2408 b). A PR merged
+    outside Shepherd with one in force clears it at cleanup, with the release event `owner hold bypassed: merged
+    outside Shepherd`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 

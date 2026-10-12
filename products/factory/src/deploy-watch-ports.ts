@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { cachedAncestry, gitAncestry } from "./build-ancestry.js";
 import { buildSha } from "./build-info.js";
 import { configPath, factoryStateDir, loadConfig, type FactoryConfig } from "./config.js";
 import { incidentDeposit, incidentMessage, type DeployIncident } from "./deploy-incident.js";
@@ -62,6 +63,7 @@ export function configuredDeployWatch(env: NodeJS.ProcessEnv, checkout: string):
   return deployWatch({
     readLog: () => readTail(join(stateDir, REDEPLOY_LOG)),
     runningSha: () => sha,
+    isAncestor: cachedAncestry(gitAncestry(checkout)),
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
     ...(notify && { notify }),
     escalate: async (deposit: OwnerItemDeposit) => void (await writeDeposit(inbox, deposit)),

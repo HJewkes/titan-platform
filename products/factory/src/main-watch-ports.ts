@@ -18,5 +18,5 @@ export function configuredFixerRetire(env: NodeJS.ProcessEnv): FixerRetirePorts 
   const { agentChatBin } = loadConfig(configPath(env)).shepherd ?? {};
   if (!agentChatBin) return undefined;
   const agents = agentChatCleanupAgents(agentChatBin);
-  return { roster: () => agents.roster(), park: (name) => void parkAgent(agentChatBin, name), retire: (name) => agents.retire(name) };
+  return { roster: () => agents.roster(), park: async (name) => void (await parkAgent(agentChatBin, name)), retire: (name) => agents.retire(name) };
 }

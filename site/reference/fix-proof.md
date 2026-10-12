@@ -32,27 +32,68 @@ To decide who may merge once a check passes, use [authority](./authority.md).
 
 ## The runner
 
+The bin has three subcommands. In CI each runs in its own job, so code from the PR head never
+runs in the job that prints the verdict.
+
 ```sh
+fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 ```
 
-1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config. With no
-   changed test it prints a `no-tests` line.
-2. Adds a detached worktree at the merge base and checks out the head's tests and carried
-   files over it, removing `overlayRemovals`. Nothing else from head reaches it, so the base
-   run lacks the fix.
-3. Adds a second worktree at head. In each, it runs `pnpm install --frozen-lockfile` when a
-   `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+**`exec`** builds and tests one side and writes encoded reports to `<dir>`. It prints nothing
+when it succeeds.
+
+1. Plans the diff `git diff -M --name-status <base> <head>` with the base's config.
+2. Adds a detached worktree at that side's commit. It runs `pnpm install --frozen-lockfile`
+   when a `pnpm-lock.yaml` is present, then the config's `build` (default `pnpm build`).
+3. On the base side only, it then checks out the head's tests and carried files over the tree
+   and removes `overlayRemovals`. The base install and build finish before any head file lands,
+   so nothing the PR carries runs during them, and the base run still lacks the fix.
 4. Runs the config's `command` (default `pnpm exec vitest run`) with
-   `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended, at head and then
-   on base. A `vacuous` verdict runs the base once more, to rule out a reproducer that flaked
-   green.
-5. Prints one `fix-proof/v1` line and exits 0 whatever the verdict. A failed git call, install
-   or build, a missing report or the `--budget-ms` deadline (default 18 minutes) gives an
-   `error` line instead; the deadline's error is `timeout`. Worktrees are removed either way.
+   `--reporter=json --outputFile <tmp> --testTimeout 30000 <tests>` appended. The base side runs
+   it twice, as `base.report` and `base-rerun.report`, so a reproducer that flaked green once
+   can be ruled out. The head side writes `head.report`.
+5. Each report keeps only the fields the classifier reads, with repo-relative paths, and is
+   gzipped and base64-encoded: no space or newline, so it fits a job output and can never form a
+   `fix-proof/v1 ` log line. A failed git call, install or build, a missing vitest report or the
+   `--budget-ms` deadline (default 18 minutes) writes an error marker in place of each report.
+
+**`judge`** reads the report files and prints one `fix-proof/v1` line.
+
+- It plans the diff from git itself, so a report entry outside its own plan counts nowhere.
+- It decodes each file under a 900 KB encoded and an 8 MB inflated cap. A missing, oversized,
+  malformed or error-marker report gives an `error` verdict naming the side.
+- It spawns nothing but git (`rev-parse`, `diff`, `ls-tree`, `show`) and builds neither commit.
+- `dist/judge.js` is `fix-proof judge` as its own entry. It cannot run `exec` or `run`, and its
+  presence in a merge-base build tells the CI script that the base supports the split.
+
+**`run`** runs both sides and then the judge in one process: the local mode, with the same
+verdict as the three jobs.
+
+Every subcommand exits 0. Bad arguments or any failure give an `error` line instead; the
+deadline's error is `timeout`. Worktrees are removed either way.
 
 `command` and `build` run under `sh -c`, so they come from the merge base's config only. Build
 the runner itself from the merge base too, never from the PR's tree.
+
+### The three CI jobs
+
+| Job | Runs | Hands on |
+| --- | --- | --- |
+| `fix-proof-base` | `exec --side base` | `base.report` and `base-rerun.report` as job outputs |
+| `fix-proof-head` | `exec --side head` | `head.report` as a job output |
+| `fix-proof` | `judge` from a merge-base build, after both | the verdict line Shepherd reads |
+
+A head install or build can rewrite its own tree, its report or the vitest config of anything
+it can reach, and it can leave a detached process that prints a forged line later. None of that
+reaches another job's machine, outputs or log, and the judge job runs no head code. A repo that
+copied the old single-job workflow keeps that weaker model until it adopts the three jobs.
+
+**Accepted residual.** The head's tests and carried support files still run on the base side,
+because they are what is being proved. A test that detects the base and fails on purpose can
+fake `reproduces`. That is test content, for the reviewer who reads the tests; the runner cannot
+rule it out.
 
 ## Example
 
@@ -132,10 +173,10 @@ Every ambiguous, missing or malformed input classifies away from `reproduced`.
 
 ## What it deliberately does not do
 
-The pure functions make no git, vitest, filesystem or network calls; only `run` and the bin do.
+The pure functions make no git, vitest, filesystem or network calls; only `execSide`, `judge`, `run` and the bin do.
 It does not decide whether a task
 needs the gate; that is the caller's policy (TP-538 section 4). `classifyReports` does not re-run
-a vacuous base to rule out a flake; `run` does that.
+a vacuous base to rule out a flake; the base `exec` side runs it twice for that.
 
 ## Gotchas
 
@@ -149,5 +190,5 @@ a vacuous base to rule out a flake; `run` does that.
 
 ## Where it came from
 
-New in TP-541, the first slice of TP-538; the runner and bin came in TP-542. Before them, only a reviewer reverting the fix by
+New in TP-541, the first slice of TP-538; the runner and bin came in TP-542, and the exec and judge split in TP-2406. Before them, only a reviewer reverting the fix by
 hand could tell a reproducing test from a vacuous one.

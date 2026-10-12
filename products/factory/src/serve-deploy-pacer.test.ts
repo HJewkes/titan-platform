@@ -116,6 +116,16 @@ describe("serve's deploy pacer sweep", () => {
     expect(world.spawned).toEqual([]);
   });
 
+  it("clears a wanted sha the running build descends from instead of spawning a deployer, and /health shows none pending", async () => {
+    const world = pacerWorld();
+    world.clock.now = T0 + DEPLOY_MAX_WAIT_MS + MIN;
+    const server = await serve({ ...world, pacer: { ...world.pacer, isAncestor: async (ancestor) => ancestor === WANTED } });
+
+    await vi.waitFor(async () => expect((await health(server)).deployPending).toBeNull());
+
+    expect(world.spawned).toEqual([]);
+  });
+
   it("without a deploy pacer, /health has no deployPending", async () => {
     const server = await serve(undefined);
 

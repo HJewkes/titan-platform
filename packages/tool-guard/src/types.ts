@@ -1,4 +1,4 @@
-import type { SimpleCommand } from "./shell/commands.js";
+import type { Chain, SimpleCommand } from "./shell/commands.js";
 import type { ReadEvent, WriteEvent } from "./event.js";
 import type { SpellingId } from "./spellings.js";
 
@@ -11,8 +11,18 @@ export interface ClassifyContext {
   readHead(dir: string): string | null;
   /** Text of a script run by path, null when it cannot be read. */
   readScript(path: string): string | null;
+  /**
+   * Set by the classifier once a line writes a script: every text the script may then hold, the disk's included, or
+   * null once the line left more than the classifier tracks.
+   */
+  scriptReadings?(path: string): string[] | null;
   /** Whether a PATH lookup finds a program whatever the case of its name, so `GIT push` runs git. */
   foldCase?: boolean;
+  /**
+   * Set by the classifier inside an `&&` chain a branch switch guards: the chain, and the state every command outside it
+   * sees. A field rather than identity, so a step that copies the state keeps it.
+   */
+  chainTrust?: { chain: Chain; fallback: ClassifyContext };
 }
 
 export type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";

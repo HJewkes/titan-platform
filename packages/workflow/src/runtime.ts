@@ -4,7 +4,7 @@ import { parkOnDefinitionDrift, registration, type Registration } from "./defini
 import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
-import { announceRecovery, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
+import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
 import { fenceOf, messageOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
@@ -30,6 +30,7 @@ interface Live {
 export class WorkflowRuntime {
   private readonly workflows = new Map<string, Registration>();
   private readonly live = new Map<string, Live>();
+  private readonly held = new HeldRuns();
   private readonly store: WorkflowRunStore;
   private readonly runtimeId: string;
   private readonly leaseMs: number;
@@ -84,7 +85,7 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id));
+    const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id) && !this.held.has(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
@@ -171,10 +172,9 @@ export class WorkflowRuntime {
     if (abortReason instanceof RuntimeShutdown || abortReason instanceof WorkflowOwnershipLostError) return this.dropLive(run.id);
     const unfinished = Object.values(run.activeSteps)[0];
     if (unfinished) {
-      const evidence = `workflow returned while step ${unfinished.stepId} still required reconciliation`;
-      this.markRecovery(run, unfinished, "unknown", evidence);
+      this.markRecovery(run, unfinished, "unknown", `workflow returned while step ${unfinished.stepId} still required reconciliation`);
       this.save(run);
-      return this.park(run);
+      return this.park(run, true);
     }
     if (run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError || run.status === "cancelling") {
@@ -323,14 +323,14 @@ export class WorkflowRuntime {
   }
 
   private dropLive(runId: string): void {
-    const live = this.live.get(runId);
-    if (live) clearInterval(live.renewTimer);
+    clearInterval(this.live.get(runId)?.renewTimer);
     this.live.delete(runId);
   }
 
-  private park(run: WorkflowRun): void {
+  private park(run: WorkflowRun, hold = false): void {
     this.dropLive(run.id);
     this.release(run);
+    if (hold) this.held.hold(run);
   }
 
   private parkHydrationFailure(run: WorkflowRun, error: unknown): void {

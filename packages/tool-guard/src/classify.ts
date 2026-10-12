@@ -5,6 +5,7 @@ import { merge } from "./families/merge.js";
 import { release } from "./families/release.js";
 import { secret } from "./families/secret.js";
 import { hasDynamicName, namedReadings, wrappedReading } from "./dynamic-readings.js";
+import { afterWrites, scriptReadings } from "./line-writes.js";
 import { INTERPRETERS } from "./mentions.js";
 import { scriptTarget, SOURCERS } from "./scripts.js";
 import type { ScriptTarget } from "./scripts.js";
@@ -76,7 +77,7 @@ function classifyLine(commands: SimpleCommand[], ctx: ClassifyContext, scripts: 
     }
     out.push(...classifySimple(cmd, line));
     if (scripts) out.push(...scriptActions(cmd, line, scripts));
-    line = afterDynamic(cmd, afterAll(cmd, line));
+    line = afterDynamic(cmd, afterAll(cmd, afterWrites(cmd, line)));
   }
   return unique(out);
 }
@@ -143,11 +144,11 @@ function scriptActions(cmd: SimpleCommand, ctx: ClassifyContext, scripts: Script
  * interpreter's script it runs as written is not, as main reads that one unbudgeted.
  */
 function scriptVerdicts(cmd: SimpleCommand, target: ScriptTarget, ctx: ClassifyContext, budget: ScriptMemo): ClassifiedAction[] {
-  const text = readScript(ctx, target.path);
-  if (text === null) return [];
   const added = cmd.added === true;
-  if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
-  return scriptText(cmd, target, text, ctx);
+  return scriptReadings(ctx, target.path).flatMap((text) => {
+    if (added || target.kind === "shell") charge(budget, { script: target.path.slice(target.path.lastIndexOf("/") + 1), bytes: Buffer.byteLength(text), added });
+    return scriptText(cmd, target, text, ctx);
+  });
 }
 
 function charge(budget: ScriptMemo, script: Omit<ScriptOverrun, "total">): void {
@@ -189,14 +190,6 @@ function scriptText(cmd: SimpleCommand, target: ScriptTarget, text: string, ctx:
   const name = target.kind === "interpreter" ? cmd.name : null;
   const path = name === null ? null : cmd.path;
   return classifySimple({ name, path, args: [word], env: {}, redirects: [], dir: cmd.dir, wrapping: [], next: null, prev: null, negated: false, chain: { start: null } }, ctx);
-}
-
-function readScript(ctx: ClassifyContext, path: string): string | null {
-  try {
-    return ctx.readScript(path);
-  } catch {
-    return null;
-  }
 }
 
 function unique(actions: ClassifiedAction[]): ClassifiedAction[] {

@@ -591,11 +591,23 @@ const PUSHED = fakeSha("stale-gate-pushed");
 const RV = { agentId: "agent-rv-7", sessionId: "session-rv-7" };
 const AUTO: EffectivePolicy = { ...OWNER_GATE_POLICY, merge: "auto", seat: "trusted-seat" };
 
-/** MRG-AU-RV facts at `head` that hold in full unless `unmet` turns one off. */
-function evidenceAt(head: string, unmet: object): object {
+/** The rest of an evidence step's record, so the evidence reads as whole and a standing MERGE keeps it. */
+const wholeRecord = (head: string): object => ({
+  runId: "run",
+  head,
+  baseRef: "main",
+  testMergeSha: null,
+  checkRuns: [{ name: "validate", id: 1, appId: 1, conclusion: "success" }],
+  verdictLocator: {},
+  reviewer: RV,
+  decision: { outcome: "gate", rule: { table: "authority", rowId: "MRG-AU-RV", version: 1 }, reason: "test" },
+});
+
+/** MRG-AU-RV facts at `head` that hold in full unless `unmet` turns one off; `whole` adds the record a real evidence step writes. */
+function evidenceAt(head: string, unmet: object, whole = false): object {
   const checkRuns = [{ name: "validate", appId: 1, headSha: head, conclusion: "success" }];
   const merge = { head, resolver: RV, dispatchedReviewer: RV, verdict: { value: "MERGE", head }, requiredContexts: ["validate"], allowedApps: [1], checkRuns };
-  return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
+  return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1, ...(whole && wholeRecord(head)) } };
 }
 
 async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number, headMovedSweepMs?: number): Promise<FactoryHost> {
@@ -632,16 +644,18 @@ interface AuthorityOptions {
   headMovedSweepMs?: number;
   /** getPr rejects while `value` is set. */
   unreadable?: { value: boolean };
+  /** Each review's evidence is whole, as a real evidence step writes it. */
+  whole?: boolean;
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable, whole = false }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
   const phases: ShepherdPhases = {
     wake: async () => (wokenAgent ? { kind: "woken", agent: "impl-a" } : { kind: "unhandled", reason: "test" }),
-    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}) }),
+    review: async (_ctx, request) => ({ kind: "MERGE", headSha: request.headSha, evidence: evidenceAt(request.headSha, reviewed.push(request.headSha) <= unmetReviews ? unmet : {}, whole) }),
   };
   const store = shepherdStoreRef();
   const port = githubPort(fake.wire);
@@ -775,6 +789,22 @@ describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () =
     expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toBe(`superseded: review again: repo-not-frozen was the only unmet condition at head ${REVIEWED}`);
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
     expect(reviewed).toEqual([REVIEWED, REVIEWED]);
+  });
+
+  it("keeps the standing MERGE after a review-again cancel, reads its evidence again instead of a reviewer, and merges the same head", async () => {
+    const { host, fake, services, runId, reviewed } = await authorityGated({ repoFrozen: true }, { whole: true });
+    Object.assign(fake.pr(1), { mergeSha: fakeSha("test-merge") });
+    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+
+    const report = await resyncShepherd(host, services);
+
+    expect(report.superseded).toMatchObject([{ runId, condition: "transient-only" }]);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: REVIEWED }));
+    expect(reviewed).toEqual([REVIEWED]);
+    const results = Object.values(host.runtime.status(runId)!.stepResults);
+    expect(results.find((result) => result.stepId === `sh-review-refused:${REVIEWED}`)?.data?.["result"]).toEqual({ reason: "merge-standing", cause: { cause: "owner-request" } });
+    expect(results.filter((result) => result.stepId === `sh-merge-evidence:${REVIEWED}`)).toHaveLength(1);
+    expect(results.some((result) => result.stepId.startsWith("sh-review-intent"))).toBe(false);
   });
 
   it("cancels a gate whose only unmet conditions were merge-tree-clean and a freeze that has thawed", async () => {
