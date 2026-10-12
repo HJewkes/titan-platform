@@ -134,7 +134,11 @@ export function closureFor(rates: ClosureRates, facts: TaskClassFacts): ClosureL
 }
 
 function isoWeek(row: ThroughputRow): string {
-  const ms = parseMs(row.firstImplAt ?? row.doneAt, row.taskId);
+  return isoWeekOf(parseMs(row.firstImplAt ?? row.doneAt, row.taskId));
+}
+
+/** The UTC ISO week holding `ms`, as the date of its Monday. */
+export function isoWeekOf(ms: number): string {
   const dayStart = Math.floor(ms / MS_PER_DAY) * MS_PER_DAY;
   const daysSinceMonday = (new Date(dayStart).getUTCDay() + 6) % 7;
   return new Date(dayStart - daysSinceMonday * MS_PER_DAY).toISOString().slice(0, 10);

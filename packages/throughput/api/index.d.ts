@@ -330,4 +330,84 @@ interface SetForecast {
  */
 declare function forecastSet(tasks: readonly SetTask[], table: ClassTable, options: ForecastSetOptions): SetForecast;
 
-export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ClosureLookup, type ClosureRates, type ClosureStats, type ContextLineScore, type Coverage, DEFAULT_FORECAST_DRAWS, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, DEFAULT_WEEK_MIN_TASKS, type ForecastSetOptions, type GroupScore, type IntervalScore, type LevelStats, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type SetForecast, type SetTask, type SizeBand, type SkippedOrigin, type TaskClassFacts, type TaskForecast, type ThroughputConfig, type ThroughputRow, type UnclassifiableTask, type Watermark, type WeekEffect, type WeekEffectOptions, backtest, classFor, classTable, closureFor, closureRates, forecastSet, sizeBand, weekEffects };
+declare const DEFAULT_BACKTEST_SET_DRAWS = 1000;
+type SetGroupKind = "seat-week" | "parent" | "milestone";
+/** Which sets a task belongs to. The caller resolves them; `seat` is the dispatch agent-name prefix. */
+interface SetMembership {
+    seat?: string | null;
+    parents?: readonly string[];
+    milestones?: readonly string[];
+}
+/** A task dispatched but not done. A group holding one is counted as censored, never scored. */
+interface OpenSetTask {
+    taskId: string;
+    /** Lets an open task join its seat-week group; without it, only parent and milestone groups. */
+    firstImplAt?: string | null;
+}
+interface BacktestSetsOptions {
+    /** ISO dates; each one refits on rows done and started before it. */
+    origins: readonly string[];
+    horizonDays?: number;
+    /** By taskId. */
+    memberships: Readonly<Record<string, SetMembership>>;
+    seed: string | number;
+    /** Simulated sets per forecast. Defaults to 1000. */
+    draws?: number;
+    /** Groups with fewer members are dropped. Defaults to 2. */
+    minSetSize?: number;
+    open?: readonly OpenSetTask[];
+    /** Passed to classTable at each origin; `asOf` is always the origin. */
+    config?: Omit<ThroughputConfig, "asOf">;
+    /** Passed to weekEffects as `minTasks`. */
+    weekMinTasks?: number;
+}
+interface SetArmScore {
+    implAgentHours: Coverage;
+    reviewAgentHours: Coverage;
+    usd: Coverage;
+    pinballImpl: {
+        p10: number | null;
+        p50: number | null;
+        p90: number | null;
+    };
+}
+interface SetKindScore {
+    /** Scored groups. */
+    n: number;
+    /** Groups placed at a scored origin but holding an open task. */
+    censored: number;
+    independent: SetArmScore;
+    weekEffect: SetArmScore;
+}
+interface ScoredSetGroup {
+    kind: SetGroupKind;
+    key: string;
+    origin: string;
+    size: number;
+    /** Members' summed actuals, closures counted as 0. */
+    actual: Record<BacktestMetric, number>;
+    independent: Record<BacktestMetric, Quantiles>;
+    weekEffect: Record<BacktestMetric, Quantiles>;
+}
+interface SetOrigin {
+    origin: string;
+    trainN: number;
+    scored: number;
+    censored: number;
+    status: "scored" | "skipped";
+}
+interface BacktestSetsResult {
+    horizonDays: number;
+    kinds: Record<SetGroupKind, SetKindScore>;
+    origins: SetOrigin[];
+    groups: ScoredSetGroup[];
+}
+/**
+ * Rolling-origin back-test of forecastSet. At each origin it refits the class table, closure
+ * rates and week effects on rows done and started before it, then forecasts every seat-week,
+ * parent and milestone group whose first member starts in the next horizon, with and without
+ * the week effect, and scores [p10, p90] coverage of the groups' actual totals.
+ */
+declare function backtestSets(actuals: readonly ThroughputRow[], options: BacktestSetsOptions): BacktestSetsResult;
+
+export { type BackoffLevel, type BacktestMetric, type BacktestOptions, type BacktestResult, type BacktestSetsOptions, type BacktestSetsResult, type CappedHoursLike, type Censoring, type ClassEntry, type ClassScore, type ClassTable, type ClosureLookup, type ClosureRates, type ClosureStats, type ContextLineScore, type Coverage, DEFAULT_BACKTEST_SET_DRAWS, DEFAULT_FORECAST_DRAWS, DEFAULT_HALF_LIFE_DAYS, DEFAULT_MIN_N, DEFAULT_WEEK_MIN_TASKS, type ForecastSetOptions, type GroupScore, type IntervalScore, type LevelStats, type OpenSetTask, type OpenTask, type OriginResult, type PointScore, type Quantiles, type ScoredOrigin, type ScoredSetGroup, type SetArmScore, type SetForecast, type SetGroupKind, type SetKindScore, type SetMembership, type SetOrigin, type SetTask, type SizeBand, type SkippedOrigin, type TaskClassFacts, type TaskForecast, type ThroughputConfig, type ThroughputRow, type UnclassifiableTask, type Watermark, type WeekEffect, type WeekEffectOptions, backtest, backtestSets, classFor, classTable, closureFor, closureRates, forecastSet, sizeBand, weekEffects };
