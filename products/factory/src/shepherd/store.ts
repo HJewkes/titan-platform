@@ -220,9 +220,9 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Lifts the hold that gates, and records its reason; a hold parked under it gates in its place. */
-  release(runId: string, by: EventContext = {}): Registration {
-    this.lift(runId, liftTop, by);
+  /** Lifts the hold that gates, and records its reason, or `reason` when given; a hold parked under it gates in its place. `reason` goes to the event only, never to the row. */
+  release(runId: string, by: EventContext = {}, reason?: string): Registration {
+    this.lift(runId, (slots) => ({ ...liftTop(slots), ...(reason !== undefined && { reason }) }), by);
     return this.byRun(runId)!;
   }
 

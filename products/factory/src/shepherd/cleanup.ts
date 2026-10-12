@@ -98,11 +98,21 @@ async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput):
   return result.done ? "deleted" : result.skipped;
 }
 
-/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. */
+const CLEANUP_ACTOR = "shepherd:cleanup";
+
+/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. The release event keeps who satisfied it, since the release clears that from the row. */
 async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<void> {
   const store = deps.store.get();
   if (store.byRun(input.runId)?.held !== true) return;
-  if ((await deps.port.getPr(input.repo, input.pr)).merged) store.release(input.runId);
+  const pr = await deps.port.getPr(input.repo, input.pr);
+  if (pr.merged) store.release(input.runId, { actor: CLEANUP_ACTOR, headSha: pr.headSha }, satisfiedReason(store.byRun(input.runId)));
+}
+
+function satisfiedReason(registration: Registration | undefined): string | undefined {
+  const holdSatisfied = registration?.holdSatisfied;
+  if (!holdSatisfied) return undefined;
+  const { head, by } = holdSatisfied;
+  return `merged on ${by.reviewer}'s MERGE at ${head} (${by.agentId}/${by.sessionId})`;
 }
 
 /**

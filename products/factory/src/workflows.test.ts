@@ -36,7 +36,7 @@ function configHome(config: object | undefined): NodeJS.ProcessEnv {
     mkdirSync(join(home, "titan-factory"));
     writeFileSync(join(home, "titan-factory", "config.json"), JSON.stringify(config));
   }
-  return { XDG_CONFIG_HOME: home };
+  return { XDG_CONFIG_HOME: home, XDG_STATE_HOME: join(home, "state") };
 }
 
 async function landWith(env: NodeJS.ProcessEnv): Promise<{ argvs: (readonly string[])[]; record: unknown }> {
@@ -169,7 +169,7 @@ function reviewScene(options: ReviewSceneOptions = {}): ReviewScene {
   mkdirSync(join(dir, "titan-factory"));
   writeFileSync(join(dir, "titan-factory", "config.json"), JSON.stringify({ shepherd }));
   const calls = (): string[] => (existsSync(join(dir, "calls")) ? readFileSync(join(dir, "calls"), "utf8").trimEnd().split("\n") : []);
-  return { dir, env: { XDG_CONFIG_HOME: dir }, checkout, transcript, calls };
+  return { dir, env: { XDG_CONFIG_HOME: dir, XDG_STATE_HOME: join(dir, "state") }, checkout, transcript, calls };
 }
 
 interface Reviewed {
@@ -450,7 +450,7 @@ describe("configuredRoutes with shepherd.agentChatBin", () => {
     const base = githubPort(fake.wire);
     const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 5), successRun("dag-check", 6)]), base.checkRuns(repo, sha)) };
     let clock = 0;
-    const env = { XDG_CONFIG_HOME: dir, AW_PORT: String(activeWork.port) };
+    const env = { XDG_CONFIG_HOME: dir, XDG_STATE_HOME: join(dir, "state"), AW_PORT: String(activeWork.port) };
     const routes = configuredRoutes(env, { port, now: () => clock, sleep: async (ms) => void (clock += ms) });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow()], routes, gatePollMs: 5 });
     hosts.push(host);

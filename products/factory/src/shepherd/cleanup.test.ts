@@ -181,6 +181,31 @@ describe("sh-cleanup hold", () => {
     expect(w.store.byRun(RUN)).toMatchObject({ held: false, holdReviewer: null, holdSatisfied: null });
   });
 
+  it("keeps who satisfied the hold, and the merged head, in the release event", async () => {
+    const w = world();
+    w.store.hold(RUN, "awaiting a named review", "rv-sec");
+    w.store.satisfyHold(RUN, "rv-sec", fakeSha("head"), { agentId: "agent-rv", sessionId: "session-rv", locator: {} });
+
+    await w.run();
+
+    const release = w.store.eventsOf(RUN).find((event) => event.kind === "release");
+    expect(release).toMatchObject({
+      actor: "shepherd:cleanup",
+      headSha: fakeSha("head"),
+      reason: `merged on rv-sec's MERGE at ${fakeSha("head")} (agent-rv/session-rv)`,
+    });
+  });
+
+  it("records the lifted hold's reason when no reviewer satisfied it", async () => {
+    const w = world();
+    w.store.hold(RUN, "owner review");
+
+    await w.run();
+
+    const release = w.store.eventsOf(RUN).find((event) => event.kind === "release");
+    expect(release).toMatchObject({ actor: "shepherd:cleanup", headSha: fakeSha("head"), reason: "owner review" });
+  });
+
   it("keeps the hold on a PR that has not merged", async () => {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headRef: "feat/x", headSha: fakeSha("head") });
