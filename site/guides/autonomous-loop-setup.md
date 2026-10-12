@@ -85,7 +85,7 @@ steps are in the Releasing section of the repository `CLAUDE.md` and in
 Protect the default branch with a ruleset, not with the older branch protection rules.
 
 - Require the status checks that prove a pull request is safe: here `dag-check`,
-  `egress-scan`, `hub-compose` and `validate`.
+  `hub-compose` and `validate`. The egress scan runs inside `validate`.
 - Require a pull request, and set `require_extra_approval_for_unattributed_changes` if you
   want unattributed commits to need a review.
 - Give the ruleset no bypass actors where you can. Not the App, not an admin, not the owner.
