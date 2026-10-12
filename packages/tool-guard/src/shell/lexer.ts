@@ -1,6 +1,6 @@
 import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { ansiCEnd, backtickEnd, balancedEnd, type NestedReaders } from "./balanced.js";
+import { ansiCEnd, backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -173,7 +173,7 @@ function readDouble(s: LexState): void {
     if (c === "\\" && next !== undefined && '$`"\\\n'.includes(next)) {
       if (next !== "\n") w.value += next;
       s.i += 2;
-    } else if (c === "$" && next !== "'") readDollar(s);
+    } else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(next ?? "")) readDollar(s);
     else if (c === "`") readBacktick(s);
     else appendChar(s, c);
   }
@@ -196,13 +196,23 @@ function markComputed(w: WordToken): WordToken {
   return w;
 }
 
+const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> = {
+  pid: readVariable,
+  braced: (s, w) => refusingAs("unclosed-expansion", () => readBraced(s, w)),
+  bracket: (s, w) => refusingAs("unclosed-expansion", () => readBracketArithmetic(s, w)),
+  paren: (s, w) => (s.src[s.i + 2] === "(" ? refusingAs("unclosed-expansion", () => readArithmetic(s, w)) : pushSubstitution(s, w, s.i + 2)),
+  "ansi-c": readAnsiC,
+  locale: readLocale,
+};
+
 function readDollar(s: LexState): void {
-  const next = s.src[s.i + 1];
   const w = ensureWord(s);
-  if (next === "(" && s.src[s.i + 2] === "(") return refusingAs("unclosed-expansion", () => readArithmetic(s, w));
-  if (next === "(") return pushSubstitution(s, w, s.i + 2);
-  if (next === "{") return refusingAs("unclosed-expansion", () => readBraced(s, w));
-  if (next === "'") return readAnsiC(s, w);
+  const opener = dollarOpener(s.src, s.i);
+  if (opener) return DOLLAR_READERS[opener](s, w);
+  readVariable(s, w);
+}
+
+function readVariable(s: LexState, w: WordToken): void {
   VARIABLE_RE.lastIndex = s.i + 1;
   const name = VARIABLE_RE.exec(s.src)?.[0];
   if (!name) return appendChar(s, "$");
@@ -265,6 +275,15 @@ function readArithmetic(s: LexState, w: WordToken): void {
   const found: Token[][] = [];
   const end = arithmeticExpansionEnd(lineReading(s), s.i, found);
   if (end === -1) return pushSubstitution(s, w, s.i + 2);
+  markComputed(w).value += s.src.slice(s.i, end + 1);
+  w.subs.push(...found);
+  s.i = end + 1;
+}
+
+/** Reads a `$[ ]`, bash's older spelling of `$(( ))`, through the same matching as `${ }`. */
+function readBracketArithmetic(s: LexState, w: WordToken): void {
+  const found: Token[][] = [];
+  const end = balancedEnd(s.src, s.i + 1, nestedReaders(lineReading(s), found));
   markComputed(w).value += s.src.slice(s.i, end + 1);
   w.subs.push(...found);
   s.i = end + 1;
@@ -347,6 +366,13 @@ function readAnsiC(s: LexState, w: WordToken): void {
   w.quoted = true;
   w.spliced = true;
   s.i = end + 1;
+}
+
+/** A `$"…"` is translated through the locale's message catalog at run time, so its value is not the text. */
+function readLocale(s: LexState, w: WordToken): void {
+  markComputed(w);
+  s.i++;
+  readDouble(s);
 }
 
 function skipComment(s: LexState): void {
