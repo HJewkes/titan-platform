@@ -277,6 +277,42 @@ return a confirmed terminal result after restart; missing or failed attachment
 requires recovery. Legacy work is never automatically redispatched after an
 unsafe restart.
 
+## Trace projection
+
+`projectRunTrace(run, { gates, executions?, digest })` turns a stored run into
+strict `titan.trace/v1` records from `@titan-design/agent-protocol/trace`. It
+is pure: `gates` is the hitl gate store (only `get` is read), `executions` is
+anything with `findByRequestKey`, such as `SqliteExecutionLedger`, and `digest`
+returns the hex sha256 of a string. No id or timestamp comes from the clock, so
+projecting the same database again, after a restart or from a rebuilt runtime,
+gives JSON-byte-identical records.
+
+The records come out in this order:
+
+- One `run` record.
+- Per recorded step, in recording order:
+  - One `attempt` per dispatch attempt, retries included, each with its own
+    usage. With a ledger, each attempt carries its execution id, phase,
+    runner ref, conversation and outcome. Without one, a single attempt sits
+    at `StepResult.attempt`, the attempt that succeeded. Attempt ids are
+    `workflowStepRequestKey(runId, stepId, iteration, attempt)`.
+  - The policy `gate` records under `data["titan.trace.gates"]`
+    (`TRACE_GATES_KEY`, written by `ctx.authorize`).
+  - A human `gate` for an `assisted` step or an owner-gated `authorize`
+    step. `decidedBy` is `human:owner` for an `owner-*` resolver and
+    `agent:<id>` otherwise.
+  - The `artifact` records under `data["titan.trace.artifacts"]`
+    (`TRACE_ARTIFACTS_KEY`).
+- One `attempt` per in-flight step.
+- The pending `gate` of a paused run.
+
+Free text never enters a record. The run's params (canonical JSON, sorted
+keys), a step's output, and a gate's prompt and payload appear only as
+digests. Recovery evidence is dropped. Every record is parsed with its strict
+schema, so a malformed entry under either data key throws an error that names
+the step. A dispatch has `data` only when it passes a `schema`, so artifacts
+from an untyped dispatch are not projected.
+
 ## Definition versions
 
 `register(name, fn, { version })` pins each run that `start` creates to
