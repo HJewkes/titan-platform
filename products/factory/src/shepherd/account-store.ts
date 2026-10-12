@@ -23,6 +23,11 @@ export function accountLimitMigration(version = 17): Migration {
   return { version, name: "factory:shepherd_account_limit", up: (db) => db.exec(ACCOUNT_LIMIT_DDL) };
 }
 
+/** A replacing run inherits the account hold its registration carries, so its own next account pick can lift it. */
+export function moveAccountHold(db: Db, runId: string, newRunId: string): void {
+  db.prepare("UPDATE shepherd_account_hold SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+}
+
 /** A live exhaustion of one account: its reset, and whether its seat was told. */
 interface Exhaustion {
   resetsAt: number;
