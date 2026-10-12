@@ -34,6 +34,15 @@ export function freezeCancelOnlyMigration(version = 12): Migration {
   return { version, name: "factory:shepherd_freeze_cancel_only", up: (db) => db.exec("ALTER TABLE shepherd_freeze ADD COLUMN cancel_only INTEGER NOT NULL DEFAULT 0") };
 }
 
+/** The one PR a seat marked as this episode's fix, and who marked it; a new episode clears both. */
+export function freezeFixPrMigration(version = 23): Migration {
+  return {
+    version,
+    name: "factory:shepherd_freeze_fix_pr",
+    up: (db) => db.exec("ALTER TABLE shepherd_freeze ADD COLUMN fix_pr INTEGER; ALTER TABLE shepherd_freeze ADD COLUMN fix_pr_actor TEXT"),
+  };
+}
+
 export interface Freeze {
   repo: RepoSlug;
   redSha: string;
@@ -44,7 +53,13 @@ export interface Freeze {
   episode: number;
   /** Every run red at `redSha` was cancelled, so a later green run of each at that same sha clears it. */
   cancelOnly: boolean;
+  /** A seat's PR marked as this episode's fix; it passes the freeze like the fixer's own PR. */
+  fixPr: number | null;
+  fixPrActor: string | null;
 }
+
+/** `already` re-marks the same PR and writes nothing; `taken` means another PR is this episode's fix. */
+export type FixPrMark = "marked" | "already" | "taken" | "not-live";
 
 const Row = z.object({
   repo: z.string(),
@@ -56,6 +71,8 @@ const Row = z.object({
   episode: z.number(),
   thawed_at: z.string().nullable(),
   cancel_only: z.number(),
+  fix_pr: z.number().nullable(),
+  fix_pr_actor: z.string().nullable(),
 });
 type Row = z.infer<typeof Row>;
 
@@ -103,7 +120,7 @@ export class FreezeStore {
     this.db
       .prepare(
         `INSERT INTO shepherd_freeze (repo, red_sha, red_count, frozen_at, episode, cancel_only) VALUES (?, ?, 1, ?, ?, ?)
-         ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only`,
+         ON CONFLICT (repo) DO UPDATE SET red_sha = excluded.red_sha, fix_task = NULL, fixer = NULL, red_count = 1, frozen_at = excluded.frozen_at, episode = excluded.episode, thawed_at = NULL, cancel_only = excluded.cancel_only, fix_pr = NULL, fix_pr_actor = NULL`,
       )
       .run(repoKey(repo), redSha, at, (row?.episode ?? 0) + 1, flag);
     appendEvent(this.db, { repo, kind: "freeze", at, actor: SHEPHERD_ACTOR, headSha: redSha, reason: cancelOnly ? "main red from cancelled runs only" : "main red" });
@@ -116,6 +133,22 @@ export class FreezeStore {
 
   setFixer(repo: RepoSlug, episode: number, name: string): boolean {
     return this.setField(repo, episode, "fixer", name);
+  }
+
+  /** Marks `pr` as live `episode`'s fix, once per episode, and records the mark as a freeze event naming `actor`. */
+  markFixPr(repo: RepoSlug, episode: number, pr: number, actor: string, runId?: string): FixPrMark {
+    return this.db.transaction(() => this.markFixPrRow(repo, episode, pr, actor, runId)).immediate();
+  }
+
+  private markFixPrRow(repo: RepoSlug, episode: number, pr: number, actor: string, runId: string | undefined): FixPrMark {
+    const live = this.live(repo, episode);
+    if (!live) return "not-live";
+    if (live.fixPr === pr) return "already";
+    if (live.fixPr !== null) return "taken";
+    const at = new Date(this.now()).toISOString();
+    this.db.prepare("UPDATE shepherd_freeze SET fix_pr = ?, fix_pr_actor = ? WHERE repo = ? AND episode = ? AND thawed_at IS NULL AND fix_pr IS NULL").run(pr, actor, repoKey(repo), episode);
+    appendEvent(this.db, { repo, pr, runId, kind: "freeze", at, actor, headSha: live.redSha, reason: `fix PR #${pr} marked` });
+    return "marked";
   }
 
   /** The live freeze, only while it is still `episode`. */
@@ -186,6 +219,8 @@ function fromRow(row: Row): Freeze {
     frozenAt: row.frozen_at,
     episode: row.episode,
     cancelOnly: row.cancel_only === 1,
+    fixPr: row.fix_pr,
+    fixPrActor: row.fix_pr_actor,
   };
 }
 
@@ -259,8 +294,15 @@ export async function redOnlyFromCancels(port: GitHubPort, repo: RepoSlug, sha: 
   return red.length > 0 && red.every((run) => run.conclusion === "cancelled");
 }
 
+/** `pr` is the registration's own PR number, so only a registered PR can match a marked fix PR. */
+export interface FreezeRegistration {
+  task: string;
+  implementer: string;
+  pr?: number | null;
+}
+
 export interface RegistrationTasks {
-  byPr(repo: RepoSlug, pr: number): { task: string; implementer: string } | undefined;
+  byPr(repo: RepoSlug, pr: number): FreezeRegistration | undefined;
 }
 
 export interface FreezeGuardDeps {
@@ -289,12 +331,14 @@ export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {
 }
 
 /**
- * Both halves come from the freeze row, so only a registration naming this episode's fix task and its fixer passes.
- * `implementer` is caller-supplied, so this is no identity check: whoever can register can name the fixer, and still
- * gets only the exemption, never past the review and checks every merge needs.
+ * Passes a registration naming this episode's fix task and its fixer, both from the freeze row, or a registered PR a
+ * seat marked as this episode's fix. `implementer` and the mark's actor are caller-supplied, so this is no identity
+ * check: whoever can register or mark gets only the exemption, never past the review and checks every merge needs.
  */
-export function isFixersPr(freeze: Freeze, registration: { task: string; implementer: string } | undefined): boolean {
-  if (freeze.fixTask === null || freeze.fixer === null || registration === undefined) return false;
+export function isFixersPr(freeze: Freeze, registration: FreezeRegistration | undefined): boolean {
+  if (registration === undefined) return false;
+  if (freeze.fixPr !== null && registration.pr === freeze.fixPr) return true;
+  if (freeze.fixTask === null || freeze.fixer === null) return false;
   return registration.task === freeze.fixTask && registration.implementer === freeze.fixer;
 }
 
