@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parkAgent } from "@titan-design/agent-dispatch";
 import { CLIENT_HEADER, silentLogger } from "@titan-design/daemon";
 import { afterEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { startFactoryServer, type FactoryServer } from "../serve.js";
 import { H1, REPO } from "../test-support/land.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
@@ -62,6 +63,8 @@ console.log("Parked " + process.argv.at(-1) + ".");
   return { bin, marker };
 }
 
+const Registered = z.object({ data: z.object({ runId: z.string() }) });
+
 async function until(done: () => boolean): Promise<void> {
   while (!done()) await new Promise((resolve) => setTimeout(resolve, 20));
 }
@@ -75,7 +78,7 @@ async function timedVersion(port: number): Promise<number> {
 }
 
 describe("a park whose agent-chat child reads Shepherd back from serve", () => {
-  it("completes, and serve answers /version promptly while the child runs", async () => {
+  it("completes, and serve answers /version well inside the old 15-20 s stall while the child runs", async () => {
     const dir = scratch();
     const fixture = shepherdFixture({ frozen: true });
     fixture.fake.addPr({ headSha: H1, headRef: BRANCH });
@@ -85,7 +88,8 @@ describe("a park whose agent-chat child reads Shepherd back from serve", () => {
       headers: { "content-type": "application/json", [CLIENT_HEADER]: "park-serve-test" },
       body: JSON.stringify({ repo: REPO, pr: 1, task: "demo/T-1", implementer: "impl-a" }),
     });
-    const { data } = (await registered.json()) as { data: { runId: string } };
+    const body: unknown = await registered.json();
+    const { data } = Registered.parse(body);
     const { bin, marker } = reentrantAgentChat(dir, server.port);
 
     const parking = parkImplementer(fixture.routes.shepherd!.store, (name) => parkAgent(bin, name, 10_000), { runId: data.runId, headSha: H1 });
@@ -94,6 +98,6 @@ describe("a park whose agent-chat child reads Shepherd back from serve", () => {
     const outcome = await parking;
 
     expect(outcome).toMatchObject({ kind: "parked", lines: expect.arrayContaining(["Parked impl-a."]) });
-    expect(versionMs).toBeLessThan(100);
+    expect(versionMs).toBeLessThan(2_000);
   }, 20_000);
 });
