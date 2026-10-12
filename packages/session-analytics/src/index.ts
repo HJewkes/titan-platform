@@ -1,4 +1,4 @@
-export type { PriceRow } from "./prices.js";
+export type { LongPromptPrice, PriceRow } from "./prices.js";
 export { PRICE_TABLE, PRICE_TABLE_VERSION, findPrice } from "./prices.js";
 export type { PricedRequest, RequestTokens } from "./price-request.js";
 export { priceRequest } from "./price-request.js";
