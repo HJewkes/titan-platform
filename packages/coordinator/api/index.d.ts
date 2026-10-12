@@ -51,7 +51,7 @@ declare const charterDefaultsSchema: z.ZodObject<{
         planner: z.ZodNumber;
     }, z.core.$loose>;
     teleport_k: z.ZodNumber;
-    worktrees_per_repo_per_seat: z.ZodNumber;
+    worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
     worktrees_left_free_per_repo: z.ZodNumber;
     stale_pr_days: z.ZodOptional<z.ZodNumber>;
     heartbeat_cron: z.ZodOptional<z.ZodString>;
@@ -109,7 +109,7 @@ declare const charterPolicySchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>;
         teleport_k: z.ZodNumber;
-        worktrees_per_repo_per_seat: z.ZodNumber;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
         worktrees_left_free_per_repo: z.ZodNumber;
         stale_pr_days: z.ZodOptional<z.ZodNumber>;
         heartbeat_cron: z.ZodOptional<z.ZodString>;
@@ -265,7 +265,7 @@ declare const seatConfigSchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -445,7 +445,7 @@ declare const coordinatorSeatSchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -541,7 +541,7 @@ declare const coordinatorPolicySchema: z.ZodObject<{
             planner: z.ZodNumber;
         }, z.core.$loose>>;
         teleport_k: z.ZodOptional<z.ZodNumber>;
-        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+        worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
         stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
         heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -624,7 +624,7 @@ declare const coordinatorConfigSchema: z.ZodObject<{
                 planner: z.ZodNumber;
             }, z.core.$loose>>;
             teleport_k: z.ZodOptional<z.ZodNumber>;
-            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
             stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
@@ -793,7 +793,7 @@ declare const coordinatorConfigSchema: z.ZodObject<{
                 planner: z.ZodNumber;
             }, z.core.$loose>>;
             teleport_k: z.ZodOptional<z.ZodNumber>;
-            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodNumber>;
+            worktrees_per_repo_per_seat: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             worktrees_left_free_per_repo: z.ZodOptional<z.ZodNumber>;
             stale_pr_days: z.ZodOptional<z.ZodOptional<z.ZodNumber>>;
             heartbeat_cron: z.ZodOptional<z.ZodOptional<z.ZodString>>;
