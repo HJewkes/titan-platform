@@ -5,7 +5,7 @@ import { assistedGateId, gateIdFor, memoKey, pendingGateId } from "./gate-ids.js
 import { workflowStepRequestKey, type StepOperation, type StepResult, type WorkflowRun } from "./types.js";
 
 /** The slice of the projection's sources a gate record reads. */
-export interface GateTraceSources {
+interface GateTraceSources {
   gates: Pick<GateStore, "get">;
   digest(text: string): string;
 }
