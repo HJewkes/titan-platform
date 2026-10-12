@@ -3,6 +3,7 @@ import { parseVerdictBlock, type CiPolicy, type SourceTextLocator } from "@titan
 import { partialFake } from "@titan-design/test-kit";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { decisionClassOf } from "../decision-class.js";
 import { evidenceComment } from "./evidence-comment.js";
 import { MERGE_EVIDENCE_STEP, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
@@ -181,6 +182,8 @@ describe("a decision replayed on stored evidence", () => {
   });
 });
 
+const StepInput = z.record(z.string(), z.unknown());
+
 interface Asked {
   stepId: string;
   input: Record<string, unknown>;
@@ -189,7 +192,7 @@ interface Asked {
 /** A context whose evidence step answers with `evidence` and whose other steps answer unpublished; each step's input is recorded. */
 function recordingCtx(asked: Asked[], evidence: object): WorkflowContext {
   async function dispatch<T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
-    const stepInput = JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}") as Record<string, unknown>;
+    const stepInput = StepInput.parse(JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}"));
     asked.push({ stepId, input: stepInput });
     const result = stepId.startsWith(MERGE_EVIDENCE_STEP) ? evidence : { published: false };
     return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: options.schema?.parse({ result }) };

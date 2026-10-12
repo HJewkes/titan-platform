@@ -209,9 +209,10 @@ export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) =
     evidence.record !== null &&
     (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
   if (!wellFormed) return undefined;
+  const stored = evidence as MergeEvidence;
   // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
-  const ciPolicy = CiPolicySchema.parse(evidence.ciPolicy);
-  return ciPolicy ? { ...(evidence as MergeEvidence), ciPolicy } : (evidence as MergeEvidence);
+  const ciPolicy = CiPolicySchema.parse(stored.ciPolicy);
+  return ciPolicy ? { ...stored, ciPolicy } : stored;
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {
