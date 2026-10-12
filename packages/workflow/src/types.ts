@@ -40,6 +40,8 @@ export interface StepResult<TData extends Record<string, unknown> = Record<strin
   data?: TData;
   /** Summed over every attempt, retries included, when the runner reported cost; `mapItems` sums it against its budget. */
   usage?: StepUsage;
+  /** The dispatch attempt that produced this result, so a trace can name it; absent reads as 0. */
+  attempt?: number;
 }
 
 export interface ActiveStepBase {

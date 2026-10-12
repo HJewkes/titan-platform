@@ -5,7 +5,7 @@ import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKi
 import { moveAccountHold } from "./account-store.js";
 import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
-import { afterHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
+import { afterHold, isAdversaryHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
@@ -214,6 +214,11 @@ export class ShepherdStore implements HoldLookup {
   /** Compare-and-swap: holds only while no hold or release has landed since `mark` was read, so a hold or release made meanwhile stands untouched; false when one did. */
   holdIfUnchanged(runId: string, mark: number, reason: string, by: EventContext = {}): boolean {
     return this.changed(runId, this.db.transaction(() => latestChangeId(this.db, runId) === mark && (this.placeHold(runId, { reason, reviewer: null }, by), true))());
+  }
+
+  /** Holds unless a `g10-adversary` hold already gates, so that hold keeps its reason and reviewer; false, writing nothing, when one does. */
+  holdUnlessAdversary(runId: string, reason: string, by: EventContext = {}): boolean {
+    return this.changed(runId, this.db.transaction(() => !isAdversaryHold(readSlots(this.db, runId).top?.reason) && (this.placeHold(runId, { reason, reviewer: null }, by), true))());
   }
 
   /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
