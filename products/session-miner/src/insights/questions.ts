@@ -28,6 +28,7 @@ import { readBrokerLog } from "./liveness-sources.js";
 import { priceCheck } from "./price-check.js";
 import { probes } from "./probes.js";
 import { roundTrips } from "./round-trips.js";
+import { seatGenerations } from "./seat-generations.js";
 import { toolAdoption } from "./tool-adoption.js";
 import { toolErrors } from "./tool-errors.js";
 import { toolGaps } from "./tool-gaps.js";
@@ -187,7 +188,7 @@ export const liveness = defineInsight<{ seat?: string[]; brokerLog?: string }, L
 export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [priceCheck, spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow, dataQuality];
 
 /** Questions that read only agent-chat's files; insights.test.ts runs every INSIGHT_QUESTIONS entry but blocked-flow against the graph. */
-export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [roundTrips, liveness];
+export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [roundTrips, liveness, seatGenerations];
 
 /** Questions that read tool calls or results back from transcripts, probes among them; their own tests cover them. */
 export const TRANSCRIPT_QUESTIONS: readonly AnyInsight[] = [toolErrors, toolGaps, toolAdoption, probes];
