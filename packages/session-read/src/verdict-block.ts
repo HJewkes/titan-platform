@@ -16,12 +16,13 @@
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
- *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. A visible line is labelled
- *   when it folds to `cipolicy:` (see `isCiPolicyLabelled`): list and quote markers, markdown emphasis, case, and every
- *   Unicode dash, space and format character are folded away. With no labelled line `ciPolicy` is undefined. Any
- *   labelled line that is not exactly one well-formed line at Head+1 (an unknown or repeated key, an empty list, other casing, a second
- *   labelled line anywhere, or a line anywhere else) reads `{ kind: "malformed" }`, which the merge guard gates on
- *   any PR: a reviewer who wrote the line meant something, so a misspelt `weakened` never reads as silence.
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
+ *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
+ *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone).
+ *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
+ *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
+ *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
+ *   (keys merged) over malformed over unchanged. Both gate on any PR: a reviewer who wrote the line meant something.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -53,10 +54,11 @@ export type VerdictBlockResult =
 const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
 const CLOSER_LINE = /^Closer: (yes|no)$/;
-const CI_POLICY_LINE = /^CI-policy: (?:unchanged|weakened ([a-z_-]+(?:, [a-z_-]+)*))$/;
-/** Every character folded out of a line before its label is read; what is left must start `cipolicy:`. */
-const CI_POLICY_FOLDED = /[\s\p{Pd}\p{Zs}\p{Cf}*_`~>+]/gu;
-const CI_POLICY_FOLDED_LABEL = /^(?:\d{1,9}[.)])*cipolicy(?:[:=]|$)/;
+const CI_POLICY_UNCHANGED_LINE = "CI-policy: unchanged";
+const CI_POLICY_LABEL = "cipolicy";
+const CI_POLICY_WEAKENED = "weakened";
+const NOT_ALPHANUMERIC = /[^a-z0-9]/g;
+const LIST_NUMBER = /^[0-9]+/;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
 const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
@@ -70,7 +72,7 @@ export function parseVerdictBlock(text: string): VerdictBlockResult {
   });
   if (starts.length === 0) return { ok: false, reason: "no_block" };
   if (starts.length > 1) return { ok: false, reason: "multiple_blocks" };
-  return readBlock(lines, starts[0]!);
+  return readBlock(text, lines, starts[0]!);
 }
 
 /** One entry per line: its trimmed text, or null when fenced, commented out or indented as code; shared so every reviewer-message parser agrees on what is visible. */
@@ -119,7 +121,7 @@ function indentOf(raw: string): number {
   return width;
 }
 
-function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
+function readBlock(text: string, lines: (string | null)[], at: number): VerdictBlockResult {
   const verdict = lines[at] ?? "";
   if (verdict !== "Verdict: MERGE" && verdict !== "Verdict: FIX_FIRST" && verdict !== "Verdict: WAIT") return { ok: false, reason: "bad_verdict" };
   const prLine = lines[at + 1];
@@ -136,7 +138,7 @@ function readBlock(lines: (string | null)[], at: number): VerdictBlockResult {
   const named = { repo: `${pr[1]}/${pr[2]}`, pr: number, head: head[1]!, lineOffset: at };
   if (verdict === "Verdict: WAIT") return { ok: false, reason: "wait", ...named };
   if (verdict === "Verdict: MERGE") {
-    const ciPolicy = readCiPolicy(lines, at + 3);
+    const ciPolicy = readCiPolicy(text, lines[at + 3] === CI_POLICY_UNCHANGED_LINE ? at + 3 : -1);
     return { ok: true, verdict: "MERGE", ...named, ...(ciPolicy && { ciPolicy }) };
   }
   const closer = readCloser(lines, at + 3);
@@ -151,29 +153,49 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
   return match[1] === "yes" ? "yes" : "no";
 }
 
-/** Absent only when no visible line carries the label; anything labelled but not the one exact line at `at` is malformed. */
-function readCiPolicy(lines: (string | null)[], at: number): CiPolicy | undefined {
-  const labelled = lines.flatMap((line, index) => (line !== null && isCiPolicyLabelled(line) ? [index] : []));
-  if (labelled.length === 0) return undefined;
-  const match = labelled.length === 1 && labelled[0] === at ? CI_POLICY_LINE.exec(lines[at] ?? "") : null;
-  if (!match) return { kind: "malformed" };
-  if (match[1] === undefined) return { kind: "unchanged" };
-  const words = match[1].split(", ");
-  const keys = words.filter(isCiPolicyKey);
-  if (keys.length !== words.length || new Set(keys).size !== keys.length) return { kind: "malformed" };
-  return { kind: "weakened", keys };
-}
-
 /**
- * Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled: a reviewer
- * who wrote the line meant something, and only an exact canonical line is read as what it says.
+ * Scans raw lines, not visible ones: a weakening written in a fence, a comment or an indent is still the reviewer's
+ * word, and hiding it must never read as silence. `canonicalAt` is the Head+1 index when it holds the exact unchanged
+ * line, else -1.
  */
-function isCiPolicyLabelled(line: string): boolean {
-  return CI_POLICY_FOLDED_LABEL.test(line.normalize("NFKC").toLowerCase().replace(CI_POLICY_FOLDED, ""));
+function readCiPolicy(text: string, canonicalAt: number): CiPolicy | undefined {
+  const readings = text.split("\n").flatMap((raw, index) => {
+    const folded = foldCiPolicyLine(raw);
+    if (!folded.startsWith(CI_POLICY_LABEL)) return [];
+    return [readCiPolicyLabel(folded.slice(CI_POLICY_LABEL.length), index === canonicalAt)];
+  });
+  return readings.length === 0 ? undefined : strictestCiPolicy(readings);
 }
 
-function isCiPolicyKey(word: string): word is CiPolicyKey {
-  return CI_POLICY_KEYS.some((key) => key === word);
+/** Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled. */
+function foldCiPolicyLine(raw: string): string {
+  return raw.normalize("NFKC").toLowerCase().replace(NOT_ALPHANUMERIC, "").replace(LIST_NUMBER, "");
+}
+
+function readCiPolicyLabel(rest: string, canonicalUnchanged: boolean): CiPolicy {
+  if (rest.startsWith(CI_POLICY_WEAKENED)) {
+    const keys = foldedCiPolicyKeys(rest.slice(CI_POLICY_WEAKENED.length));
+    return keys ? { kind: "weakened", keys } : { kind: "malformed" };
+  }
+  return canonicalUnchanged ? { kind: "unchanged" } : { kind: "malformed" };
+}
+
+/** Greedy is exact because no folded key is a prefix of another; an unknown, repeated or missing key reads undefined. */
+function foldedCiPolicyKeys(rest: string): CiPolicyKey[] | undefined {
+  const keys: CiPolicyKey[] = [];
+  for (let remaining = rest; remaining.length > 0; ) {
+    const key = CI_POLICY_KEYS.find((candidate) => remaining.startsWith(foldCiPolicyLine(candidate)));
+    if (key === undefined || keys.includes(key)) return undefined;
+    keys.push(key);
+    remaining = remaining.slice(foldCiPolicyLine(key).length);
+  }
+  return keys.length > 0 ? keys : undefined;
+}
+
+function strictestCiPolicy(readings: CiPolicy[]): CiPolicy {
+  const keys = [...new Set(readings.flatMap((reading) => (reading.kind === "weakened" ? reading.keys : [])))];
+  if (keys.length > 0) return { kind: "weakened", keys };
+  return readings.some((reading) => reading.kind === "malformed") ? { kind: "malformed" } : { kind: "unchanged" };
 }
 
 function isDotName(name: string): boolean {

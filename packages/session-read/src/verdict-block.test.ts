@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVerdictBlock } from "./verdict-block.js";
+import { parseVerdictBlock, visibleLines } from "./verdict-block.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const block = (verdict = "MERGE", pr = "octo/demo#12", head = SHA) =>
@@ -312,48 +312,104 @@ describe("the optional CI-policy line", () => {
   });
 
   const malformed = { ...merge, ciPolicy: { kind: "malformed" } };
+  const weakened = (...keys: string[]) => ({ ...merge, ciPolicy: { kind: "weakened", keys } });
 
+  // Each spelling a reviewer could plausibly write: the label is read on raw lines, so none of them is ever absent.
   it.each([
-    ["an unknown key", "CI-policy: weakened branch-protection"],
-    ["a capitalised weakened", "CI-policy: Weakened secrets"],
-    ["a lower-case label", "ci-policy: weakened secrets"],
-    ["a label with a space before the colon", "CI-policy : weakened secrets"],
-    ["a label spelt with a space", "CI policy: weakened secrets"],
-    ["a known key beside an unknown one", "CI-policy: weakened required-check, tests"],
-    ["a trailing note", "CI-policy: weakened secrets (see ci.yml)"],
-    ["a blank line before", "\nCI-policy: weakened secrets"],
-    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nProse.\nci-policy: weakened secrets"],
-    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
-    ["a duplicated key", "CI-policy: weakened secrets, secrets"],
-    ["weakened with no key", "CI-policy: weakened"],
-    ["weakened with a trailing space", "CI-policy: weakened "],
-    ["a key list without a space", "CI-policy: weakened secrets,ruleset"],
-    ["a capitalised value", "CI-policy: Unchanged"],
-    ["trailing words", "CI-policy: unchanged I think"],
-    ["a duplicate", "CI-policy: unchanged\nCI-policy: unchanged"],
-    ["a later unchanged after weakened", "CI-policy: weakened permissions\nProse.\nCI-policy: unchanged"],
-    ["the line one line late", "\nCI-policy: unchanged"],
-    ["prose between", "Note.\nCI-policy: unchanged"],
+    ["a fenced line", "```\nCI-policy: weakened secrets\n```"],
+    ["a tilde-fenced line", "~~~\nCI-policy: weakened secrets\n~~~"],
+    ["an unterminated fence after Head", "```\nCI-policy: weakened secrets"],
+    ["a 4-space indent", "    CI-policy: weakened secrets"],
+    ["a tab indent", "\tCI-policy: weakened secrets"],
+    ["an HTML comment", "<!-- CI-policy: weakened secrets -->"],
+    ["a multi-line HTML comment", "<!--\nCI-policy: weakened secrets\n-->"],
+    ["a later fenced weakened after unchanged", "CI-policy: unchanged\n```\nCI-policy: weakened secrets\n```"],
+    ["a heading", "## CI-policy: weakened secrets"],
+    ["a slash", "CI/policy: weakened secrets"],
+    ["a dot", "CI.policy: weakened secrets"],
+    ["a table row", "| CI-policy | weakened secrets |"],
+    ["no colon", "CI-policy weakened secrets"],
     ["a bold label", "**CI-policy:** weakened secrets"],
+    ["an underscore-emphasised label", "__CI-policy__: weakened secrets"],
     ["a dash list marker", "- CI-policy: weakened secrets"],
     ["a star list marker", "* CI-policy: weakened secrets"],
     ["a numbered list marker", "1. CI-policy: weakened secrets"],
     ["a code span", "`CI-policy: weakened secrets`"],
+    ["a quoted line", "> CI-policy: weakened secrets"],
     ["an en dash", "CI\u2013policy: weakened secrets"],
     ["an em dash", "CI\u2014policy: weakened secrets"],
     ["a non-breaking space", "CI\u00a0policy: weakened secrets"],
     ["a zero-width joiner", "CI-\u200dpolicy: weakened secrets"],
     ["a fullwidth colon", "CI-policy\uff1a weakened secrets"],
-    ["a quoted line", "> CI-policy: weakened secrets"],
-    ["an underscore-emphasised label", "__CI-policy__: weakened secrets"],
+    ["a capitalised weakened", "CI-policy: Weakened secrets"],
+    ["upper case throughout", "CI-POLICY: WEAKENED SECRETS"],
+    ["a lower-case label", "ci-policy: weakened secrets"],
+    ["a space before the colon", "CI-policy : weakened secrets"],
+    ["a label spelt with a space", "CI policy: weakened secrets"],
+    ["a blank line before", "\nCI-policy: weakened secrets"],
+    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nProse.\nci-policy: weakened secrets"],
+    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
     ["a bold label after a canonical unchanged", "CI-policy: unchanged\n**CI-policy:** weakened secrets"],
+    ["a later unchanged after weakened", "CI-policy: weakened secrets\nProse.\nCI-policy: unchanged"],
+    ["a malformed line beside a weakened one", "CI-policy: weakened secrets\nCI-policy: weakened branch-protection"],
+  ])("reads weakened for %s", (_name, tail) => {
+    expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(weakened("secrets"));
+  });
+
+  // Mutation guard: these spellings are invisible to visibleLines, so a label scan over visible lines fails the table.
+  it.each([
+    "```\nCI-policy: weakened secrets\n```",
+    "```\nCI-policy: weakened secrets",
+    "    CI-policy: weakened secrets",
+    "<!--\nCI-policy: weakened secrets\n-->",
+  ])("hides %j from visibleLines", (tail) => {
+    expect(visibleLines(withLine("MERGE", tail)).filter((line) => line?.includes("policy"))).toEqual([]);
+  });
+
+  it("merges the keys of every weakened line, in first-seen order", () => {
+    const tail = "CI-policy: weakened permissions\n```\n**CI-policy:** weakened secrets, permissions\n```";
+    expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(weakened("permissions", "secrets"));
+  });
+
+  it("reads keys written without the comma-space separator", () => {
+    expect(parseVerdictBlock(withLine("MERGE", "CI-policy: weakened secrets,ruleset"))).toEqual(weakened("secrets", "ruleset"));
+  });
+
+  it("reads a fenced weakened line that sits before the Verdict line", () => {
+    const text = `\`\`\`\nCI-policy: weakened secrets\n\`\`\`\n${block("MERGE")}\nCI-policy: unchanged`;
+    expect(parseVerdictBlock(text)).toEqual({ ...weakened("secrets"), lineOffset: 3 });
+  });
+
+  it("finds no block when an unterminated fence before the Verdict line hides it", () => {
+    expect(parseVerdictBlock(`\`\`\`\n${block("MERGE")}\nCI-policy: unchanged`)).toEqual({ ok: false, reason: "no_block" });
+  });
+
+  it.each([
+    ["an unknown key", "CI-policy: weakened branch-protection"],
+    ["a known key beside an unknown one", "CI-policy: weakened required-check, tests"],
+    ["a trailing note", "CI-policy: weakened secrets (see ci.yml)"],
+    ["a duplicated key", "CI-policy: weakened secrets, secrets"],
+    ["weakened with no key", "CI-policy: weakened"],
+    ["weakened with a trailing space", "CI-policy: weakened "],
+    ["a negated weakened", "CI-policy: not weakened"],
+    ["a capitalised value", "CI-policy: Unchanged"],
+    ["trailing words", "CI-policy: unchanged I think"],
+    ["a duplicate", "CI-policy: unchanged\nCI-policy: unchanged"],
+    ["the line one line late", "\nCI-policy: unchanged"],
+    ["prose between", "Note.\nCI-policy: unchanged"],
+    ["a bold unchanged", "**CI-policy:** unchanged"],
+    ["a fenced unchanged", "```\nCI-policy: unchanged\n```"],
+    ["an indented unchanged", "    CI-policy: unchanged"],
+    ["an unchanged in an HTML comment", "<!-- CI-policy: unchanged -->"],
+    ["an unchanged followed by a hidden unchanged", "CI-policy: unchanged\n<!-- CI-policy: unchanged -->"],
+    ["prose that starts with the label", "CI policy changes look fine to me."],
   ])("reads as malformed for %s while the verdict still parses", (_name, tail) => {
     expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(malformed);
   });
 
   it.each([
-    ["an indented-code line", "    CI-policy: unchanged"],
-    ["a fenced line", "```\nCI-policy: unchanged\n```"],
+    ["prose naming CI policies", "The CI policies look fine."],
+    ["prose with the label mid-line", "Checked the CI-policy line twice."],
   ])("reads as missing for %s while the verdict still parses", (_name, tail) => {
     expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(merge);
   });

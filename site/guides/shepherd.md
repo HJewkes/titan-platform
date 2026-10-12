@@ -1124,9 +1124,12 @@ allows a merge; it only gates one:
 
 - `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
   a weaker CI policy.
-- A line that is present but malformed or repeated (any casing, decoration or dash in the label)
-  gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must not
-  read as silence. So does a stored line of an unknown shape.
+- The label is read on every raw line, fenced, indented or commented out, and with any casing,
+  decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
+  several lines the strictest reading wins.
+- A line that is present but malformed, or an `unchanged` that is not the one exact line after
+  `Head:`, gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must
+  not read as silence. So does a stored line of an unknown shape.
 - A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
   (class D6) when the line is missing. Evidence stored before the line existed reads as
   missing, so it fails closed; answer it with a fresh review.
