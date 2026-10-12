@@ -206,7 +206,10 @@ describe("readFixProof", () => {
     branch?: string;
     headRef?: string;
     unreadablePr?: boolean;
-    timeoutMs?: number;
+    /** "default" leaves the reader's own wait budget in force. */
+    timeoutMs?: number | "default";
+    /** Replaces the head's runs once the clock reaches `ms`, as a job behind `needs:` appears. */
+    later?: { ms: number; runs: CheckRun[] };
     logs?: Record<number, string>;
     files?: PrFile[];
     changedFiles?: number;
@@ -226,7 +229,12 @@ describe("readFixProof", () => {
     store.bind(db);
     store.get().register({ repo: REPO, pr: 1, runId: "run-1", task: "demo: tidy", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind, ...(options.branch && { branch: options.branch }) });
     let clock = 0;
-    const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: 1_000, timeoutMs: options.timeoutMs ?? 10_000, noActionsGraceMs: 180_000 };
+    const sleep = async (ms: number) => {
+      clock += ms;
+      if (options.later !== undefined && clock >= options.later.ms) fake.setRuns(H, options.later.runs);
+    };
+    const timeoutMs = options.timeoutMs ?? 10_000;
+    const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
     return { fake, elapsed: () => clock, read: () => readFixProof({ port: githubPort(fake.wire), store }, { repo: REPO, head: H, runId: "run-1" }, timing, signal) };
   }
 
@@ -324,6 +332,17 @@ describe("readFixProof", () => {
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("at the deadline") });
     expect(elapsed()).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("reads the judge run of a three-job fix-proof that completes 30 minutes in under the default wait", async () => {
+    const exec = (name: string, id: number): CheckRun => ({ ...successRun(name, id), headSha: H, status: "in_progress", conclusion: null });
+    const { read, elapsed } = registered("correctness", [exec("fix-proof-base", 81), exec("fix-proof-head", 82)], {
+      timeoutMs: "default",
+      later: { ms: 30 * 60_000, runs: [...[successRun("fix-proof-base", 81), successRun("fix-proof-head", 82)].map((run) => ({ ...run, headSha: H })), fixProofRun()] },
+    });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(elapsed()).toBeGreaterThanOrEqual(30 * 60_000);
   });
 
   it("reads a bound fix-proof run still in progress at the deadline as error, not missing", async () => {

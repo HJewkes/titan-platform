@@ -72,6 +72,14 @@ describe("classifyRole", () => {
     expect(classifyRole("src/fixtureLoader.ts")).toBe("source");
   });
 
+  it("recognizes *.fixtures.* files beside their test", () => {
+    expect(classifyRole("src/minify.fixtures.ts")).toBe("fixture");
+    expect(classifyRole("src/minify.fixtures")).toBe("fixture");
+    expect(classifyRole("src/fixturesque.ts")).toBe("source");
+    expect(classifyRole("src/data.fixturesque.ts")).toBe("source");
+    expect(classifyRole("src/minify.fixtures.test.ts")).toBe("test");
+  });
+
   it("recognizes barrel files (index.*)", () => {
     expect(classifyRole("packages/foo/src/index.ts")).toBe("barrel");
     expect(classifyRole("foo/index")).toBe("barrel");

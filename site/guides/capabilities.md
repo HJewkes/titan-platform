@@ -671,7 +671,7 @@ Key exports:
 - `git-tree-source`: `gitTreeSource`
 - `@titan-design/code-parser`: `getLanguageFromPath`, `getSupportedLanguages`, `parseFile`, `shouldIncludeFile`
 - `extractors/dispatch`: `LanguageExtractor`
-- +403 more in the [reference page](/reference/code-graph)
+- +404 more in the [reference page](/reference/code-graph)
 
 <a id="cap-code-read"></a>
 
@@ -813,7 +813,7 @@ Key exports:
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`
-- +77 more in the [reference page](/reference/review-panel)
+- +78 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

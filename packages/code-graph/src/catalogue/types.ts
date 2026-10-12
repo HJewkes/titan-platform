@@ -19,6 +19,7 @@ export type MetricSource =
   | "lcom"
   | "call-graph"
   | "exception-handling"
+  | "line-density"
   | "dead-code"
   | "growth-risk"
   | "history"
