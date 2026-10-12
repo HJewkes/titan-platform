@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
@@ -47,6 +47,10 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
   },
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 });
+
+const execRun = (name: string, id: number, overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(name, id), headSha: H, ...overrides });
+const execRuns = (overrides: Partial<CheckRun> = {}): CheckRun[] => [execRun("fix-proof-base", 81, overrides), execRun("fix-proof-head", 82, overrides)];
+const execPending = (): CheckRun[] => execRuns({ status: "in_progress", conclusion: null });
 
 const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
 
@@ -170,6 +174,14 @@ describe("sh-fix-proof in reviewPhase", () => {
     expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
   });
 
+  it("records an error proof, not missing, when the head's exec jobs ran but the judge never did", async () => {
+    const { verdicts, proof } = await review({ kind: "correctness", runs: execRuns() });
+
+    expect(proof).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
+    expect(fixProofStanding(FixProofReadSchema.parse(proof), H)).toEqual({ unverified: "unread" });
+    expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
+  });
+
   it("hands a reproduced line at the head to the reviewer brief", async () => {
     const line = resultLine(H, "reproduced");
 
@@ -208,8 +220,8 @@ describe("readFixProof", () => {
     unreadablePr?: boolean;
     /** "default" leaves the reader's own wait budget in force. */
     timeoutMs?: number | "default";
-    /** Replaces the head's runs once the clock reaches `ms`, as a job behind `needs:` appears. */
-    later?: { ms: number; runs: CheckRun[] };
+    /** Each stage replaces the head's runs once the clock reaches its `ms`, as a job behind `needs:` appears. */
+    later?: { ms: number; runs: CheckRun[] }[];
     logs?: Record<number, string>;
     files?: PrFile[];
     changedFiles?: number;
@@ -231,7 +243,8 @@ describe("readFixProof", () => {
     let clock = 0;
     const sleep = async (ms: number) => {
       clock += ms;
-      if (options.later !== undefined && clock >= options.later.ms) fake.setRuns(H, options.later.runs);
+      const stage = options.later?.filter((candidate) => clock >= candidate.ms).at(-1);
+      if (stage !== undefined) fake.setRuns(H, stage.runs);
     };
     const timeoutMs = options.timeoutMs ?? 10_000;
     const timing = { now: () => clock, sleep, pollMs: 1_000, noActionsGraceMs: 180_000, ...(timeoutMs !== "default" && { timeoutMs }) };
@@ -335,14 +348,44 @@ describe("readFixProof", () => {
   });
 
   it("reads the judge run of a three-job fix-proof that completes 30 minutes in under the default wait", async () => {
-    const exec = (name: string, id: number): CheckRun => ({ ...successRun(name, id), headSha: H, status: "in_progress", conclusion: null });
-    const { read, elapsed } = registered("correctness", [exec("fix-proof-base", 81), exec("fix-proof-head", 82)], {
-      timeoutMs: "default",
-      later: { ms: 30 * 60_000, runs: [...[successRun("fix-proof-base", 81), successRun("fix-proof-head", 82)].map((run) => ({ ...run, headSha: H })), fixProofRun()] },
-    });
+    const { read, elapsed } = registered("correctness", execPending(), { timeoutMs: "default", later: [{ ms: 30 * 60_000, runs: [...execRuns(), fixProofRun()] }] });
 
     expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
     expect(elapsed()).toBeGreaterThanOrEqual(30 * 60_000);
+  });
+
+  it("keeps polling when the exec jobs finish and the judge appears several polls later, and reads its result", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const execDone = 5 * 60_000;
+    const { read, elapsed } = registered("correctness", [validate, ...execPending()], {
+      timeoutMs: "default",
+      later: [
+        { ms: execDone, runs: [validate, ...execRuns()] },
+        { ms: execDone + 10_000, runs: [validate, ...execRuns(), fixProofRun()] },
+      ],
+    });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+    expect(elapsed()).toBeGreaterThanOrEqual(execDone + 10_000);
+  });
+
+  it.each([
+    ["succeeded", {}],
+    ["were cancelled", { conclusion: "cancelled" }],
+  ] as const)("reads error, not missing, when the exec jobs %s but no judge run exists at the deadline", async (_how, overrides) => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read, elapsed } = registered("correctness", [validate, ...execRuns(overrides)], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
+    expect(elapsed()).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("reads error, not missing, when the exec jobs drop out of the check-run list before any judge appears", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read, elapsed } = registered("correctness", [validate, ...execRuns()], { files: [{ path: "src/a.ts", status: "modified" }], later: [{ ms: 1_000, runs: [validate] }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
+    expect(elapsed()).toBeGreaterThanOrEqual(10_000);
   });
 
   it("reads a bound fix-proof run still in progress at the deadline as error, not missing", async () => {
