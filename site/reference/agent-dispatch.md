@@ -160,8 +160,9 @@ decide whether an agent is live before a resume, or talk to the broker's socket 
 ## Where it came from
 
 Ported unchanged from relay's `daemon/src/dispatch.ts`, `exec.ts` and the `resumeArgs`
-builder in `session.ts` (TP-460), with their tests. relay consumes the release and deletes
-its copy in a follow-up. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
+builder in `session.ts` (TP-460), with their tests. relay's daemon now depends on the
+package and its copy is deleted; relay keeps only its profile policy
+in `agent-profiles.ts`. `listAgents` and `retire` were added afterwards for Shepherd, then `resumeAgent`,
 `configDir`, `BrokerUnavailableError` and `dataFence` (ported from agent-chat's burndown
 brief) by TP-518, `parkAgent` by TP-548, `messageAgent` by TP-728, and
 `assertInstalledHeadless` (ported from relay's `daemon/src/profile-guard.ts`, PR #59) by
