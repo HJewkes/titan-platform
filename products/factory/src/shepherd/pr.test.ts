@@ -70,7 +70,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen), flakyChecks });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, versions: async () => true, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
