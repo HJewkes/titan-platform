@@ -10,13 +10,12 @@ import type { ShepherdDeps } from "./phases.js";
 export const HEAD_ORIGIN_STEP = "sh-head-origin";
 export const HEAD_ORIGIN_STEPS: readonly StepDeclaration[] = [{ id: HEAD_ORIGIN_STEP, kind: "dispatch" }];
 
-export const HEAD_ORIGIN_KINDS = ["merge-of-base", "merge-other", "push", "unknown"] as const;
-export type HeadOriginKind = (typeof HEAD_ORIGIN_KINDS)[number];
+const HEAD_ORIGIN_KINDS = ["merge-of-base", "merge-other", "push", "unknown"] as const;
 
 /** Fixed, so a failed read never copies a GitHub error into the ledger. */
 export const UNREAD_ORIGIN = "the commit or compare read failed";
 
-export interface HeadOriginInput {
+interface HeadOriginInput {
   repo: RepoSlug;
   /** The head the run read before this one. */
   fromHead: string;
