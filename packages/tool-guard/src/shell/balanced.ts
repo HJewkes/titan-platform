@@ -1,3 +1,4 @@
+import { joinedDollar, nextAfter } from "./joins.js";
 import { type Nesting, nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
 
@@ -48,17 +49,50 @@ function constructEnd(src: string, j: number, read: NestedReaders, braces: boole
   if (c === '"') return doubleQuoteEnd(src, j, read);
   if (c === "`") return read.backtick(j);
   if (c === "$") return dollarEnd(src, j, read);
-  if (braces && !read.bash32 && (c === "<" || c === ">") && src[j + 1] === "(") return processEnd(src, j, read);
+  if (braces && !read.bash32 && (c === "<" || c === ">") && src[nextAfter(src, j)] === "(") return processEnd(src, nextAfter(src, j), read);
   return j;
 }
 
+/** How bash reads what follows a `$`, keyed by that character; the lexer and `dollarEnd` both dispatch from it. */
+export type DollarOpener = "pid" | "braced" | "bracket" | "paren" | "ansi-c" | "locale";
+
+export const DOLLAR_OPENERS: Readonly<Record<string, DollarOpener>> = {
+  $: "pid",
+  "{": "braced",
+  "[": "bracket",
+  "(": "paren",
+  "'": "ansi-c",
+  '"': "locale",
+};
+
+/** Characters after a `$` that open an expansion; a reader handed one the table does not list refuses the line. */
+export const EXPANSION_OPENERS = "{[(";
+
+/** Inside double quotes `$'` and `$"` are a literal `$` and a quote, not the ANSI-C and locale openers. */
+export const QUOTED_LITERAL_OPENERS = "'\"";
+
+/** The opener after the `$` at `j`, or null when bash reads that `$` as a name, a special parameter or text. */
+export function dollarOpener(src: string, j: number): DollarOpener | null {
+  const next = src[j + 1] ?? "";
+  const opener = Object.hasOwn(DOLLAR_OPENERS, next) ? DOLLAR_OPENERS[next] : undefined;
+  if (opener) return opener;
+  if (next !== "" && EXPANSION_OPENERS.includes(next)) throw new SplitParseError(`no reader for $${next}`, "unclosed-expansion");
+  return null;
+}
+
+const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedReaders) => number> = {
+  pid: (_src, j) => j + 1,
+  braced: (src, j, read) => balancedEnd(src, j + 1, read),
+  bracket: (src, j, read) => balancedEnd(src, j + 1, read),
+  paren: (src, j, read) => sameIn32(src, j + 1, src[nextAfter(src, j + 1)] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read),
+  "ansi-c": (src, j) => ansiCEnd(src, j + 1),
+  locale: (_src, j) => j,
+};
+
 function dollarEnd(src: string, j: number, read: NestedReaders): number {
-  const next = src[j + 1];
-  if (next === "$") return j + 1;
-  if (next === "{" || next === "[") return balancedEnd(src, j + 1, read);
-  if (next === "(") return sameIn32(src, j + 1, src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read);
-  if (next === "'") return ansiCEnd(src, j + 1);
-  return j;
+  const at = joinedDollar(src, j);
+  const opener = dollarOpener(src, at);
+  return opener ? DOLLAR_ENDS[opener](src, at, read) : at;
 }
 
 function singleQuoteEnd(src: string, start: number, read: NestedReaders): number {
@@ -74,7 +108,7 @@ function doubleQuoteEnd(src: string, start: number, read: NestedReaders): number
     if (c === '"') return j;
     if (c === "\\") j++;
     else if (c === "`") j = read.backtick(j);
-    else if (c === "$" && src[j + 1] !== "'") j = dollarEnd(src, j, read);
+    else if (c === "$" && !QUOTED_LITERAL_OPENERS.includes(src[joinedDollar(src, j) + 1] ?? "")) j = dollarEnd(src, j, read);
   }
   throw new ParseError('unterminated "');
 }
@@ -105,9 +139,9 @@ function sameIn32(src: string, open: number, end: number, read: NestedReaders): 
 }
 
 /** Bash 5 reads a `<( )` inside `${ }` to its `)`; bash 3.2 reads its text as part of the parameter, so a `}` or a construct crossing that `)` splits them. */
-function processEnd(src: string, j: number, read: NestedReaders): number {
-  const end = read.substitution(j + 2);
-  if (in32(() => plainEnd(src, j + 2, end, read.nesting)) !== end) {
+function processEnd(src: string, paren: number, read: NestedReaders): number {
+  const end = read.substitution(paren + 1);
+  if (in32(() => plainEnd(src, paren + 1, end, read.nesting)) !== end) {
     throw new SplitParseError("bash 3.2 ends ${ } inside a process substitution", "procsub-brace");
   }
   return end;

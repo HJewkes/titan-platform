@@ -1,4 +1,5 @@
 import { sameSpend } from "./arith-trials.js";
+import { trailingBackslashes } from "./joins.js";
 import { type LexState, scanSubstitutions, SplitParseError } from "./lexer.js";
 
 /**
@@ -16,10 +17,7 @@ function readHeredocBodies(s: LexState): void {
     const delim = token.target?.value;
     let body = "";
     while (s.i < s.src.length) {
-      const newline = s.src.indexOf("\n", s.i);
-      const end = newline === -1 ? s.src.length : newline;
-      const line = stripTabs ? s.src.slice(s.i, end).replace(/^\t+/, "") : s.src.slice(s.i, end);
-      s.i = end + 1;
+      const line = bodyLine(s, stripTabs, !token.target?.quoted);
       if (line === delim) break;
       body += `${line}\n`;
     }
@@ -27,4 +25,30 @@ function readHeredocBodies(s: LexState): void {
     if (!token.target?.quoted) token.subs = scanSubstitutions(body, 0, body.length, sameSpend(s.trials));
   }
   s.heredocs = [];
+}
+
+/**
+ * The next line of a heredoc body. In an unquoted one bash joins a line ending in a backslash-newline to the next
+ * before it compares the delimiter, so `EO\<NL>F` ends `<<EOF`; `<<-` strips leading tabs from the joined line.
+ */
+function bodyLine(s: LexState, stripTabs: boolean, joins: boolean): string {
+  const line = joinedLine(s, joins);
+  return stripTabs ? line.replace(/^\t+/, "") : line;
+}
+
+/** Counts the trailing backslashes part by part, so a body of many joined lines is read in linear time. */
+function joinedLine(s: LexState, joins: boolean): string {
+  const parts: string[] = [];
+  let trailing = 0;
+  for (;;) {
+    const newline = s.src.indexOf("\n", s.i);
+    const end = newline === -1 ? s.src.length : newline;
+    const part = s.src.slice(s.i, end);
+    const own = trailingBackslashes(part);
+    trailing = own === part.length ? trailing + own : own;
+    s.i = end + 1;
+    if (!joins || newline === -1 || trailing % 2 === 0) return parts.join("") + part;
+    parts.push(part.slice(0, -1));
+    trailing--;
+  }
 }
