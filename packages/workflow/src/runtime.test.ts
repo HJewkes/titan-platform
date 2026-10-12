@@ -13,6 +13,7 @@ import { WorkflowRunStore, newRun, workflowMigration, workflowOwnershipMigration
 import type {
   DurableStepOutcome,
   RecoverableStepRunner,
+  StepReconcileOutcome,
   StepRunInput,
   StepRunOutcome,
   StepRunner,
@@ -1218,5 +1219,117 @@ describe("WorkflowRuntime.completeStep", () => {
     expect(rt.completeStep(runId, "plan", "superseded")).toBe(false);
     expect(Object.keys(rt.status(runId)!.activeSteps)).toEqual(["plan"]);
     rt.shutdown();
+  });
+});
+
+/** A runner whose steps succeed at once, except `stuck`, which never settles; reconcile reports the old work as `reconciled`. */
+function shepherdRunner(stuck: string, executionIds: () => string, reconciled: StepReconcileOutcome = STILL_POLLING): RecoverableStepRunner {
+  return {
+    dispatch: async (input) => ({
+      executionId: input.executionId,
+      requestKey: input.requestKey,
+      runnerRef: `ref-${executionIds()}`,
+      completion: input.stepId === stuck ? new Promise(() => undefined) : Promise.resolve({ kind: "succeeded", output: `${input.stepId} done` }),
+    }),
+    reconcile: async () => reconciled,
+  };
+}
+
+const STILL_POLLING: StepReconcileOutcome = { kind: "running", runnerRef: "ref-old", completion: new Promise(() => undefined), evidence: "still polling" };
+const FINISHED_WHILE_DOWN: StepReconcileOutcome = { kind: "terminal", outcome: { kind: "succeeded", output: "green" }, evidence: "ledger terminal" };
+
+/** Starts a run that blocks on `orphan`, restarts the runtime, and replays with `diverged` choosing whether it is reached again. */
+async function replayAfterRestart(options: { orphan: string; diverged: boolean; abandonsOrphan?: (stepId: string) => boolean; reconciled?: StepReconcileOutcome }) {
+  const db = makeDb();
+  let replaying = false;
+  const shepherd: WorkflowFn = async (ctx) => {
+    if (!(replaying && options.diverged)) await ctx.dispatch(options.orphan, "wait").catch(() => undefined);
+    await ctx.dispatch("merge:r4:0", "merge");
+    await ctx.dispatch("sh-landed", "landed");
+  };
+  let ids = 0;
+  const first = runtime(db, shepherdRunner(options.orphan, () => String(ids++)), [], { executionId: () => `exec-${ids++}` });
+  first.register("shepherd-pr", shepherd);
+  const runId = first.start("shepherd-pr");
+  await vi.waitFor(() => expect(first.status(runId)?.activeSteps[options.orphan]?.runnerRef).toBeDefined());
+  first.shutdown();
+
+  replaying = true;
+  const events: WorkflowEvent[] = [];
+  const reconciled = options.reconciled ?? (options.diverged ? STILL_POLLING : FINISHED_WHILE_DOWN);
+  const second = runtime(db, shepherdRunner("none", () => String(ids++), reconciled), events, { executionId: () => `exec-${ids++}` });
+  second.register("shepherd-pr", shepherd, options.abandonsOrphan ? { abandonsOrphan: options.abandonsOrphan } : {});
+  await second.hydrate();
+  return { run: await second.wait(runId), events, recoveredKey: Object.values(new WorkflowRunStore(db).get(runId)!.activeSteps)[0]?.iterKey };
+}
+
+describe("a recovered step the replay never reaches", () => {
+  const ciWaitIsSafe = (stepId: string): boolean => stepId.startsWith("ci-wait");
+
+  it("drops a declared-safe orphan and completes the run that returned", async () => {
+    const { run, events } = await replayAfterRestart({ orphan: "ci-wait:r3:17", diverged: true, abandonsOrphan: ciWaitIsSafe });
+
+    expect(run.status).toBe("completed");
+    expect(run.activeSteps).toEqual({});
+    expect(run.stepResults["sh-landed:0"]).toBeDefined();
+    expect(events.filter((e) => e.type === "step_abandoned")).toEqual([
+      { type: "step_abandoned", runId: run.id, stepId: "ci-wait:r3:17", reason: "replay never reached recovered step" },
+    ]);
+  });
+
+  it("parks naming the orphan when the registration does not allow dropping it", async () => {
+    const { run, events, recoveredKey } = await replayAfterRestart({ orphan: "merge:r3:0", diverged: true, abandonsOrphan: ciWaitIsSafe });
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe("replay never reached recovered step merge:r3:0");
+    expect(recoveredKey).toBe("merge:r3:0:0");
+    expect(events.some((e) => e.type === "step_abandoned")).toBe(false);
+  });
+
+  it("parks every orphan when the registration names no predicate", async () => {
+    const { run } = await replayAfterRestart({ orphan: "ci-wait:r3:17", diverged: true });
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe("replay never reached recovered step ci-wait:r3:17");
+  });
+
+  it("records a recovered step the replay does reach and abandons nothing", async () => {
+    const { run, events } = await replayAfterRestart({ orphan: "ci-wait:r3:17", diverged: false, abandonsOrphan: () => true });
+
+    expect(run.status).toBe("completed");
+    expect(run.stepResults["ci-wait:r3:17:0"]).toMatchObject({ output: "green" });
+    expect(events.some((e) => e.type === "step_abandoned")).toBe(false);
+  });
+
+  it("keeps parking a recovered step the replay reached but could not settle", async () => {
+    const lost: StepReconcileOutcome = { kind: "terminal", outcome: { kind: "cancellation_unknown", reason: "runner lost track" }, evidence: "ledger" };
+    const { run, events } = await replayAfterRestart({ orphan: "ci-wait:r3:17", diverged: false, abandonsOrphan: () => true, reconciled: lost });
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe("workflow returned while step ci-wait:r3:17 still required reconciliation");
+    expect(events.some((e) => e.type === "step_abandoned")).toBe(false);
+  });
+
+  it("still parks a step this drive left unfinished even when every orphan is safe", async () => {
+    const db = makeDb();
+    const runner: RecoverableStepRunner = {
+      dispatch: async (input) => ({
+        executionId: input.executionId,
+        requestKey: input.requestKey,
+        runnerRef: "ref-1",
+        completion: Promise.resolve({ kind: "cancellation_unknown", reason: "runner lost track" }),
+      }),
+      reconcile: async () => ({ kind: "unknown", evidence: "not used" }),
+    };
+    const rt = runtime(db, runner);
+    rt.register("swallows", async (ctx) => {
+      await ctx.dispatch("ci-wait:r1:0", "wait").catch(() => undefined);
+    }, { abandonsOrphan: () => true });
+
+    const run = await rt.wait(rt.start("swallows"));
+
+    expect(run.status).toBe("recovery_required");
+    expect(run.error).toBe("workflow returned while step ci-wait:r1:0 still required reconciliation");
+    expect(Object.keys(run.activeSteps)).toEqual(["ci-wait:r1:0"]);
   });
 });

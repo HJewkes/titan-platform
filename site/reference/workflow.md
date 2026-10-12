@@ -274,6 +274,34 @@ the active step as `recovery_required`. A success racing cancellation is memoize
 before the workflow finishes cancelled. Events — `step_started`, `step_complete`,
 `step_retry`, `step_failed`, `gate_opened`, `workflow_*` — go to `onEvent`.
 
+## Trace projection
+
+`projectRunTrace(run, { gates, executions?, digest })` projects a stored run into the
+strict [trace records](/reference/agent-protocol#trace-schemas) of `titan.trace/v1`. It reads
+the hitl gate store's `get`, optionally an execution ledger's `findByRequestKey`, and an
+injected sha256 `digest`, and never the clock. Re-projecting the same database, after a
+restart or from a rebuilt runtime, gives JSON-byte-identical records, so a consumer can
+upsert them by `id`.
+
+| Record | Source | One per |
+|---|---|---|
+| `run` | the `WorkflowRun` | run, first |
+| `attempt` | the ledger entry at `workflowStepRequestKey(runId, stepId, iteration, attempt)`, else the step result | dispatch attempt, retries included, each with its own usage |
+| `gate` (policy) | `StepResult.data["titan.trace.gates"]` (`TRACE_GATES_KEY`), written by `ctx.authorize` | policy decision |
+| `gate` (human) | the hitl gate an `assisted` step or an owner-gated `authorize` waited on | gate, plus a paused run's pending gate |
+| `artifact` | `StepResult.data["titan.trace.artifacts"]` (`TRACE_ARTIFACTS_KEY`) | entry |
+
+Records follow the run's recording order: each step's attempts, then its gates, then its
+artifacts. In-flight steps and a pending gate come last. Without a ledger, a step projects
+one attempt at `StepResult.attempt`, the attempt that succeeded. A human gate's
+`decidedBy` is `human:owner` for an `owner-*` resolver and `agent:<id>` otherwise.
+
+Free text stays out of the trace. The params (canonical JSON), a step's output, and a gate's
+prompt and payload are carried only as digests, and recovery evidence is dropped. Entries
+under the two data keys are parsed strictly; a malformed one throws an error naming the step
+rather than being dropped. A dispatch stores `data` only when it has a `schema`, so an
+untyped dispatch cannot carry artifacts.
+
 ## Gotchas
 
 **You cannot signal a gate before it opens.** `runtime.start` returns immediately, and the

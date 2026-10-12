@@ -75,5 +75,7 @@ export interface LexState {
   arithOutsideLoose: boolean;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
+  /** Index of the `)` matching a `((`'s second `(`, arithmetic or not; bash reads up to it whole, so no newline before it ends a line. */
+  wholeEnd: number;
   trials: ArithTrials;
 }

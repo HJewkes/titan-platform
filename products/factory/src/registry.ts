@@ -10,7 +10,8 @@ import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
 import { NEEDS_COMMANDS, type NeedsSources } from "./needs/rpc.js";
 import { logSlowRegister } from "./slow-register.js";
-import { SHEPHERD_COMMANDS, type ShepherdServices } from "./shepherd/commands.js";
+import { SHEPHERD_COMMANDS } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 
 /** The workflow `factory.land` starts. */
 export const LAND_WORKFLOW = "land-pr";

@@ -1,7 +1,7 @@
 import { GITHUB_ACTIONS_APP_ID, headCheckFindings, type CheckRun, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { GateRecord, GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { z } from "zod";
+import { verdictAt } from "./verdict-at.js";
 import {
   MAIN_GATES,
   MERGE_GATE,
@@ -19,7 +19,7 @@ import {
   type RunFacts,
 } from "./coordinator-evidence.js";
 import type { FactoryHost } from "./host.js";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { readRequiredChecks } from "./required-checks.js";
 import { actionsRunsAt, withoutSupersededCancels } from "./shepherd/freeze.js";
 import { judgeMain, readMainRules } from "./shepherd/main-verdict.js";
@@ -89,18 +89,6 @@ function runFacts(sources: EvidenceSources, run: WorkflowRun, gate: GateRecord, 
 
 function runPolicy(run: WorkflowRun): EffectivePolicy {
   return runPolicyCeiling(run.params.policy);
-}
-
-const VerdictRecord = z.looseObject({ kind: z.literal("verdict"), verdict: z.string(), head: z.string(), reviewer: z.looseObject({ agentId: z.string() }) });
-
-/** The reviewer's verdict recorded at exactly this head; a correction or retry at the head must agree, or there is none. */
-export function verdictAt(run: WorkflowRun, head: string): { step: string; verdict: string; head: string; reviewer: string } | undefined {
-  const step = `sh-await-verdict:${head}`;
-  const results = Object.values(run.stepResults).filter((result) => result.stepId === step || result.stepId.startsWith(`${step}:`));
-  const records = results.map((result) => VerdictRecord.safeParse(result.data?.result));
-  const base = records[results.findIndex((result) => result.stepId === step)];
-  if (!base?.success || !records.every((record) => record.success && record.data.verdict === "MERGE" && record.data.head === head)) return undefined;
-  return { step, verdict: base.data.verdict, head: base.data.head, reviewer: base.data.reviewer.agentId };
 }
 
 /** Every required context of the base has a successful Actions run at the head, and no counted run there is red or pending. */
