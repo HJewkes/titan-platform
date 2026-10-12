@@ -19,6 +19,7 @@ import {
 import { HOLD_CLASSES, HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
+import { applyRegistrationHold } from "./registration-hold.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
@@ -54,6 +55,8 @@ export interface Registered {
   previousRunId?: string;
   /** Why the replaced run stopped, when it completed rather than failed. */
   previousStop?: string;
+  /** The G10 hold Shepherd placed at this registration, when the PR's class needs one. */
+  g10Hold?: string;
 }
 
 export interface MergeEvaluation {
@@ -201,6 +204,15 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   return startRegistered(ctx, store, args, branch, policy);
 }
 
+/** Only a seat's registration is classed: the release and toolchain PRs Shepherd registers itself carry no seat to release a hold. */
+async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
+  const registered = await register(args, ctx);
+  if (!registered.created) return registered;
+  const services = servicesOf(ctx);
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId);
+  return g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
+}
+
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
 export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
   return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
@@ -289,7 +301,7 @@ const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>(
   description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed or stopped not-mergeable or on a conflict with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
-  run: register,
+  run: registerWithHold,
 });
 
 const statusCommand = defineCommand<{ repo?: string; pr?: number }, WatchRow[], FactoryContext>({
