@@ -147,11 +147,13 @@ function detailStale(cached: Detail, row: PullRequest, state: RepoState, timing:
   return timing.now() - cached.at >= ttl;
 }
 
-/** A head's runs are read when it is new, while a required check is still pending, and once per settled window. */
+/** A head's runs are read when it is new, while a required check is still pending, and once per settled window; a read an `invalidate` overtook is not kept. */
 async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState, sha: string, isSettled: (runs: readonly CheckRun[]) => boolean): Promise<CheckRun[]> {
   const cached = state.checks.get(sha);
   if (cached && timing.now() - cached.at < (cached.settled ? timing.settledMs : timing.pendingMs)) return [...cached.runs];
+  const generation = state.generation;
   const runs = await port.checkRuns(repo, sha);
+  if (generation !== state.generation) return [...runs];
   const settled = isSettled(runs);
   state.checks.set(sha, { runs, at: timing.now(), settled, version: nextVersion(cached, runs, settled) });
   return [...runs];

@@ -219,6 +219,25 @@ describe("PR snapshot", () => {
     expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "revalidateOpenPrs", "getPr", "listCheckRuns"]);
   });
 
+  it("does not cache a check read that an invalidate overtook, so a re-run's runs are read fresh", async () => {
+    const fake = fakeGitHub();
+    const sha = fakeSha("one");
+    fake.setRuns(sha, [successRun("validate", 1, "2026-01-01T00:00:00Z", "failure")]);
+    const port = githubPort(fake.wire);
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const slow = { ...port, checkRuns: async (repo: string, head: string) => { const runs = await port.checkRuns(repo, head); await held; return runs; } };
+    const snapshot = prSnapshot(slow, { now: () => 0 });
+
+    const inFlight = snapshot.checkRuns("o/r", sha, allCompleted);
+    fake.setRuns(sha, [successRun("validate", 1)]);
+    snapshot.invalidate("o/r");
+    release();
+    await inFlight;
+    const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
+
+    expect(runs.map((run) => run.conclusion)).toEqual(["success"]);
+  });
 
   it("lists again after an invalidate that lands while a list read is in flight", async () => {
     const { fake, snapshot } = etagSpy();
