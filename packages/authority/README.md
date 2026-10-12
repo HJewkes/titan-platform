@@ -26,7 +26,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a
   tainted request is refused by ANS-DC. Every other action by `decider`, and `answer-question`
   by every other actor, is denied. `decider` is never in `RESOLVER_CLASSES`.
-- A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM and ANS-DC-QA today) applies only when every condition holds on
+- A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
