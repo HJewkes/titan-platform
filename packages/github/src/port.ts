@@ -9,8 +9,8 @@ import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
-export type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+import type { CheckRun, Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+export type { CheckRun, CheckRunPr, Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
@@ -47,28 +47,6 @@ export interface RequiredChecks {
   strict: boolean;
   /** Apps a context is pinned to; a context absent here accepts a check from any app. */
   pins?: Record<string, number[]>;
-}
-
-export interface CheckRun {
-  id: number;
-  name: string;
-  status: string;
-  conclusion: string | null;
-  startedAt: string | null;
-  /** The commit the run checked; a run at any other sha says nothing about this head. */
-  headSha: string;
-  /** The GitHub App that posted the run; a required context counts only from an allowed app. */
-  appId: number | null;
-  /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
-  workflowRunId: number | null;
-  /** The pull requests GitHub ties the run to, so a run can be bound to one PR and base branch; empty for a fork's PR. */
-  pullRequests: CheckRunPr[];
-  url: string;
-}
-
-export interface CheckRunPr {
-  number: number;
-  baseRef: string;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
