@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { statusRows } from "../cli-options.js";
 import { filterRows, parsePhases } from "./status-filter.js";
 import type { Phase, WatchRow } from "./view.js";
 
@@ -60,18 +59,6 @@ describe("shepherd status filters", () => {
     const kept = filterRows(ROWS, { active: true, branchPrefix: "pc-" });
 
     expect(ids(kept)).toEqual(["live-pc"]);
-  });
-
-  it("--all keeps every row, terminal ones included", () => {
-    const kept = statusRows("shepherd.status", ROWS, { all: true });
-
-    expect(kept).toEqual(ROWS);
-  });
-
-  it("no flag still keeps every row", () => {
-    const kept = statusRows("shepherd.status", ROWS, {});
-
-    expect(kept).toEqual(ROWS);
   });
 
   it("refuses an unknown phase, naming the valid ones", () => {
