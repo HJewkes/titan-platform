@@ -206,6 +206,71 @@ describe("a head pushed while the run is held runs CI and review at it, with the
   });
 });
 
+/** H1 is red on validate until `rerun()` turns it green at the same head, as a rerun of the failed job does. */
+function redThenGreenAtH1(fake: FakeGitHub): { rerun: () => void } {
+  let rerunGreen = false;
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, pr.headSha === H1 && !rerunGreen ? "failure" : "success"), successRun("dag-check", 2)]);
+  return { rerun: () => void (rerunGreen = true) };
+}
+
+const heldWaitResults = ({ host, runId }: HeldWorld): unknown[] =>
+  Object.values(host.runtime.status(runId)!.stepResults)
+    .filter((result) => /^sh-held-wait/.test(result.stepId))
+    .map((result) => result.data?.["result"]);
+
+const ticksPast = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("a held ci-red wait also ends when the held head turns green, with the hold kept (TP-2523)", () => {
+  it("a rerun turning H1 green: review at H1 and the merge gate at H1, no release, no wake, unmerged", async () => {
+    const fake = fakeGitHub();
+    const ci = redThenGreenAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, wakes);
+    const world = heldWorld(fake, seatPorts().ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) });
+    await waitingOnHold(world);
+    const release = vi.spyOn(world.store.get(), "release");
+
+    ci.rerun();
+    await vi.waitFor(() => expect(reviewed).toContain(H1), { timeout: 5_000 });
+    await gateOpened(world.host, gateId(world.runId, "approve-merge"));
+
+    expect(heldWaitResult(world)).toEqual({ moved: false, green: true });
+    expect(world.host.gates.get(gateId(world.runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
+    expect(wakes).toEqual([]);
+    expect(release).not.toHaveBeenCalled();
+    expect(world.store.get().byRun(world.runId)).toMatchObject({ held: true, holdReason: HOLD });
+    expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("a held FIX_FIRST wait at a green head does not end on green", async () => {
+    const fake = fakeGitHub();
+    green(fake);
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, [], () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" }));
+    const world = heldWorld(fake, seatPorts().ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) });
+    await waitingOnHold(world);
+
+    await ticksPast(300);
+
+    expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^sh-held-wait/);
+    expect(reviewed).toEqual([H1]);
+    expect(heldWaitResults(world)).toEqual([]);
+  });
+
+  it("a held head that stays red keeps waiting", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const world = heldWorld(fake, seatPorts().ports, phases(fake, []));
+    await waitingOnHold(world);
+
+    await ticksPast(300);
+
+    expect(world.host.runtime.status(world.runId)?.currentStep).toMatch(/^sh-held-wait/);
+    expect(heldWaitResults(world)).toEqual([]);
+  });
+});
+
 const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
 
 /** Rewrites a stored run's step results; `edit` sees and returns them in recording order. Returns the rewritten keys. */
