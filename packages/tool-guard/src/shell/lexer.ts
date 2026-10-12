@@ -4,7 +4,7 @@ import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./join
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
-import { assignmentSubscriptEnd } from "./subscript.js";
+import { assignmentSubscriptEnd, isNameSoFar } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
@@ -14,7 +14,6 @@ export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordTo
 const OPERATORS = ["&&", "||", ";;", "|&", "|", ";", "&", "(", ")", "\n"];
 const REDIRECT_RE = /&>>?|<<<|<<-?|<>|>>|>&|<&|>\||>|</y;
 const BRACED_NAME_RE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
-const IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Characters that keep their meaning inside a subscript: quotes, escapes and expansions. */
 const SUBSCRIPT_ACTIVE = "\\'\"`$";
 
@@ -72,7 +71,7 @@ function step(s: LexState): void {
 
 function markSubscript(s: LexState): void {
   const w = s.word;
-  if (!w || w.quoted || w.dynamic || s.redirect || !IDENTIFIER_RE.test(w.value)) return;
+  if (!w || w.quoted || w.dynamic || s.redirect || !isNameSoFar(w)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
 }
 

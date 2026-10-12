@@ -48,6 +48,24 @@ export function readAhead(src: string, at: number, n: number): { text: string; e
   return { text, ends };
 }
 
+/** `src` with its joins dropped, as `dropJoins` gives it, and the raw index each kept character came from. */
+export function joinedWithIndex(src: string): { text: string; rawAt: Int32Array } {
+  const rawAt = new Int32Array(src.length);
+  const kept: string[] = [];
+  const keep = (i: number) => {
+    rawAt[kept.length] = i;
+    kept.push(src.charAt(i));
+  };
+  for (let i = 0; i < src.length; i++) {
+    if (src.startsWith("\\\n", i)) i++;
+    else {
+      keep(i);
+      if (src[i] === "\\" && i + 1 < src.length) keep(++i);
+    }
+  }
+  return { text: kept.join(""), rawAt };
+}
+
 /** `text` with the backslash-newlines bash drops removed; an escaped backslash before a newline stays. */
 export function dropJoins(text: string): string {
   return text.replace(/\\([\s\S])/g, (pair, next: string) => (next === "\n" ? "" : pair));

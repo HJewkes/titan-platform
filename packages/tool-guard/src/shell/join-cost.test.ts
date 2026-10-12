@@ -55,16 +55,38 @@ const SCRIPTS: Array<[string, string]> = [
   ["a heredoc of joined lines", `cat <<E\n${`x${JOIN}`.repeat(21_000)}\nE\n`],
 ];
 
+/** Each script is about 64 KB of `[`s, every one of which asks whether bash reads a subscript assignment there. */
+const SUBSCRIPTS: Array<[string, string]> = [
+  ["assignments each followed by a join", `${`a[0]=1 ${JOIN}`.repeat(7_000)}\n`],
+  ["commands each with a joined subscript", `${`a${JOIN}[0]=1;`.repeat(7_000)}\n`],
+  ["assignments with no joins", `${"a[0]=1 ".repeat(9_000)}\n`],
+  // Half size: handling 21 000 commands of any kind costs a few hundred ms; a scan per bracket would still cost seconds.
+  ["commands each with an unclosed subscript", `${"a[;".repeat(10_500)}\n`],
+  ["one long name before many brackets", `${"a".repeat(32_000)}${"[".repeat(32_000)}\n`],
+];
+
+async function timedHookStdout(script: string): Promise<{ stdout: string; ms: number }> {
+  const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
+  const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+  const start = performance.now();
+  const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
+  return { stdout: result.stdout, ms: performance.now() - start };
+}
+
+describe("a script of many subscripts", () => {
+  it.each(SUBSCRIPTS)("the hook denies a push after %s, within the budget", async (_name, script) => {
+    const { stdout, ms } = await timedHookStdout(script);
+
+    expect(stdout).toContain('"permissionDecision":"deny"');
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+});
+
 describe("a long run of backslash-newlines", () => {
   it.each(SCRIPTS)("the hook denies a push after a script holding %s, within the budget", async (_name, script) => {
-    const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${REPO}/a.sh` ? script : null) };
-    const port: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+    const { stdout, ms } = await timedHookStdout(script);
 
-    const start = performance.now();
-    const result = await handle(event("bash a.sh; git push origin HEAD:main"), { PATH: "/usr/bin" }, port);
-    const ms = performance.now() - start;
-
-    expect(result.stdout).toContain('"permissionDecision":"deny"');
+    expect(stdout).toContain('"permissionDecision":"deny"');
     expect(ms).toBeLessThan(BUDGET_MS);
   });
 
