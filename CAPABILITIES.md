@@ -945,8 +945,9 @@ Key exports:
 - `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`
 - `rows`: `sizeBand`
 - `forecast-set`: `DEFAULT_FORECAST_DRAWS`, `forecastSet`
-- `set-inputs`: `closureFor`, `closureRates`, `DEFAULT_WEEK_MIN_TASKS`, `weekEffects`
-- +35 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/throughput)
+- `set-inputs`: `closureFor`, `closureRates`, `weekEffects`
+- `backtest-sets`: `backtestSets`
+- +46 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/throughput)
 
 <a id="cap-workflow"></a>
 

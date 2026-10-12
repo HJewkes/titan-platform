@@ -1,7 +1,7 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { LANDED_ELSEWHERE } from "./gone-elsewhere.js";
-import { isoWeek, shepherdStats } from "./stats.js";
+import { isoWeek, shepherdStats, type StatsRow } from "./stats.js";
 
 const REPO = "acme/widgets";
 const MINUTE = 60_000;
@@ -26,6 +26,16 @@ function mergedRun(id: string, verdictAt: number, waitMinutes: number): Workflow
   return run;
 }
 
+const NO_MERGE_UPS = { mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, retry: 0 }, strictRounds: 0, slowOwnerGated: 0, foreignMergeUps: 0 };
+const row = (counts: Partial<StatsRow>): StatsRow => ({ repo: REPO, week: "2026-W38", merges: 0, slowMerges: 0, slowHours: 0, outsideMerges: 0, ...NO_MERGE_UPS, ...counts });
+
+/** A run whose steps are `[id, minutes after T0, result]`, in that order, merged by its last step if that is `merge:0`. */
+function stepsRun(id: string, steps: [string, number, Record<string, unknown>][]): WorkflowRun {
+  const run = newRun(id, "shepherd-pr", { repo: REPO });
+  run.stepResults = Object.assign({}, ...steps.map(([stepId, minutes, data]) => step(stepId, T0 + minutes * MINUTE, data)));
+  return run;
+}
+
 function outsideRun(id: string, at: number): WorkflowRun {
   return { ...newRun(id, "shepherd-pr", { repo: REPO }), status: "cancelled", completedAt: iso(at), error: `${LANDED_ELSEWHERE}${REPO}#9 was merged outside Shepherd` };
 }
@@ -34,7 +44,7 @@ describe("shepherdStats", () => {
   it("counts the two waits over 60 minutes with their hours, and not the one under", () => {
     const runs = [mergedRun("a", T0, 90), mergedRun("b", T0, 150), mergedRun("c", T0, 20)];
 
-    expect(shepherdStats(runs)).toEqual([{ repo: REPO, week: "2026-W38", merges: 3, slowMerges: 2, slowHours: 4, outsideMerges: 0 }]);
+    expect(shepherdStats(runs)).toEqual([row({ merges: 3, slowMerges: 2, slowHours: 4 })]);
   });
 
   it("does not count a wait of exactly 60 minutes as slow", () => {
@@ -44,13 +54,13 @@ describe("shepherdStats", () => {
   it("counts a merge made outside Shepherd and keeps it out of the wait figures", () => {
     const rows = shepherdStats([mergedRun("a", T0, 90), outsideRun("b", T0 + 5 * MINUTE)]);
 
-    expect(rows).toEqual([{ repo: REPO, week: "2026-W38", merges: 1, slowMerges: 1, slowHours: 1.5, outsideMerges: 1 }]);
+    expect(rows).toEqual([row({ merges: 1, slowMerges: 1, slowHours: 1.5, outsideMerges: 1 })]);
   });
 
   it("counts an older cancel reason without the landed-elsewhere prefix, and folds repo case", () => {
     const old = { ...outsideRun("a", T0), params: { repo: "Acme/Widgets" }, error: `${REPO}#9 was merged outside Shepherd` };
 
-    expect(shepherdStats([old])).toEqual([{ repo: REPO, week: "2026-W38", merges: 0, slowMerges: 0, slowHours: 0, outsideMerges: 1 }]);
+    expect(shepherdStats([old])).toEqual([row({ outsideMerges: 1 })]);
   });
 
   it("ignores a run closed elsewhere without a merge and a run that has not merged", () => {
@@ -65,6 +75,86 @@ describe("shepherdStats", () => {
     const rows = shepherdStats(runs, { from: "2026-09-15", to: "2026-09-22" });
 
     expect(rows.map((row) => row.week)).toEqual(["2026-W38", "2026-W39"]);
+  });
+});
+
+describe("shepherdStats merge-ups", () => {
+  const MERGE_VERDICT = { kind: "verdict", verdict: "MERGE" };
+
+  it("counts a refresh after a read that saw the base move past a green as a land-time merge-up", () => {
+    const run = stepsRun("a", [
+      ["sh-await-verdict:h1", 0, MERGE_VERDICT],
+      ["ci-wait:0", 1, { verdict: "behind", headSha: "h1", baseMoved: true }],
+      ["merge-policy:0", 2, { decision: "allow" }],
+      ["update-branch:0", 3, { headSha: "h2", own: true }],
+      ["ci-wait:1", 10, { verdict: "green", headSha: "h2" }],
+      ["merge:0", 11, { done: true }],
+    ]);
+
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 1, strictChase: 0, freezeHold: 0, retry: 0 });
+  });
+
+  it("counts an update off a behind read without baseMoved as the strict chase", () => {
+    const run = stepsRun("a", [
+      ["ci-wait:0", 1, { verdict: "behind", headSha: "h1" }],
+      ["update-branch:0", 2, { headSha: "h2", own: true }],
+    ]);
+
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 1, freezeHold: 0, retry: 0 });
+  });
+
+  it("counts the update after a thaw as freeze-hold and the update after a backoff as a retry", () => {
+    const run = stepsRun("a", [
+      ["ci-wait:0", 1, { verdict: "behind", headSha: "h1", baseMoved: true }],
+      ["update-branch:sh-freeze-hold:0", 2, { headSha: "h2", own: true }],
+      ["update-backoff:0", 3, { waitMs: 1000, retry: 1 }],
+      ["update-branch:1", 4, { headSha: "h3", own: true }],
+    ]);
+
+    expect(shepherdStats([run])[0]?.mergeUps).toEqual({ landTime: 0, strictChase: 0, freezeHold: 1, retry: 1 });
+  });
+
+  it("counts a land-rules read that found the repo strict as a strict round, and not a non-strict one", () => {
+    const run = stepsRun("a", [
+      ["land-rules", 0, { base: "main", contexts: [], strict: true }],
+      ["land-rules:r1", 5, { base: "main", contexts: [], strict: false }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ strictRounds: 1 })]);
+  });
+
+  it("buckets a merged run's merge-ups in its merge week", () => {
+    const run = stepsRun("a", [
+      ["ci-wait:0", 0, { verdict: "behind", headSha: "h1" }],
+      ["update-branch:0", 1, { headSha: "h2", own: true }],
+      ["merge:0", 7 * 24 * 60, { done: true }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ week: "2026-W39", merges: 1, mergeUps: { landTime: 0, strictChase: 1, freezeHold: 0, retry: 0 } })]);
+  });
+});
+
+describe("shepherdStats slow owner-gated merges", () => {
+  const MERGE_VERDICT = { kind: "verdict", verdict: "MERGE" };
+
+  it("counts a slow merge whose wait held an approve-merge gate", () => {
+    const run = stepsRun("a", [
+      ["sh-await-verdict:h1", 0, MERGE_VERDICT],
+      ["approve-merge:0", 80, { approved: true }],
+      ["merge:0", 90, { done: true }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ merges: 1, slowMerges: 1, slowHours: 1.5, slowOwnerGated: 1 })]);
+  });
+
+  it("does not count a gate resolved before the MERGE verdict", () => {
+    const run = stepsRun("a", [
+      ["approve-merge:0", 0, { approved: true }],
+      ["sh-await-verdict:h1", 5, MERGE_VERDICT],
+      ["merge:0", 95, { done: true }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ merges: 1, slowMerges: 1, slowHours: 1.5, slowOwnerGated: 0 })]);
   });
 });
 
