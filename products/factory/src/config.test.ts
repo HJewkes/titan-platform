@@ -181,6 +181,17 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", minFreeInodesPct: 101 } } })))).toThrow(/minFreeInodesPct/);
   });
 
+  it.each(["off", "shadow", "on"])("reads review.panel %s", (panel) => {
+    const review = { profile: "rv", panel };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review).toEqual(review);
+  });
+
+  it("leaves review.panel unset when the config names none, and rejects a misspelt mode", () => {
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv" } } }))).shepherd?.review?.panel).toBeUndefined();
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", panel: "shaddow" } } })))).toThrow(/panel/);
+  });
+
   it("rejects a role table naming a class that does not exist", () => {
     const review = { profile: "rv", roles: { critical: "bd-reviewer" } };
 
