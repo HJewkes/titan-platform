@@ -3,7 +3,7 @@ import type { OnSilence, OwnerItem } from "@titan-design/owner-queue";
 import { decisionClassOf, policyRowOf } from "../decision-class.js";
 
 /** What the owner card adds to a gate step's question: the cost of each answer and what cannot be undone. */
-export interface GateCard {
+interface GateCard {
   /** The option the weekly meter counts as approving what the factory proposed. */
   proceed: string;
   consequence: Record<string, string>;
@@ -26,7 +26,7 @@ const FROZEN: GateCard = {
 };
 
 /** Keyed by gate step; options and recommendations come from `gate-brief.ts`, so the card only annotates them. */
-export const GATE_CARDS: Readonly<Record<string, GateCard>> = {
+const GATE_CARDS: Readonly<Record<string, GateCard>> = {
   "approve-merge": {
     proceed: "merge",
     consequence: {
@@ -73,7 +73,7 @@ const SHOWN_REF = /^(https:\/\/\S+|\/[^\n]*|\$ [^\n]+)$/;
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 export const gateStepOf = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
 
-export type CardFields = Pick<OwnerItem, "class" | "irreversible" | "shown" | "onSilence">;
+type CardFields = Pick<OwnerItem, "class" | "irreversible" | "shown" | "onSilence">;
 
 /** The card fields a gate carries; a step with no card row gets only what its policy row says. */
 export function cardFields(gate: GateRecord): CardFields {

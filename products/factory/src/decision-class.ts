@@ -4,10 +4,10 @@ import type { Escalation } from "./shepherd/route-table.js";
 type OwnerGateReason = (typeof OWNER_GATE_REASONS)[number];
 
 /** A row of the decision-routing table; the owner card and the weekly meter group decisions by it. */
-export type DClass = `D${number}`;
+type DClass = `D${number}`;
 
 /** What a gate says about itself: the policy row its prompt names, if any, and its step. */
-export interface DecisionSubject {
+interface DecisionSubject {
   table?: string;
   rowId?: string;
   step: string;
@@ -32,13 +32,13 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "required-checks-unknown": "D5",
 };
 
-const ROUTE_CLASS: Partial<Record<Escalation, DClass>> = {
+const ROUTE_CLASS: Partial<Record<string, DClass>> = {
   "failed-rounds": "D7",
   "fix-first-runaway": "D8",
   "no-progress": "D8",
   conflict: "D9",
   "repair-budget": "D10",
-};
+} satisfies Partial<Record<Escalation, DClass>>;
 
 const STEP_CLASS: Record<string, DClass> = {
   "main-red": "D13",
@@ -61,7 +61,7 @@ function tableClass(table: string, rowId: string, prompt: string): DClass | unde
   if (table === "authority") return "D4";
   if (table === "shepherd-release") return "D11";
   if (table !== "shepherd-route") return undefined;
-  return rowId === "policy-denial" ? seatPolicyClass(prompt) : ROUTE_CLASS[rowId as Escalation];
+  return rowId === "policy-denial" ? seatPolicyClass(prompt) : ROUTE_CLASS[rowId];
 }
 
 /** The D-row a gate belongs to: by the policy row that opened it, else by its step; undefined when neither is known. */
