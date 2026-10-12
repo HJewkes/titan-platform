@@ -17,7 +17,6 @@ import {
   type ActiveStep,
   type WorkflowFn,
   type WorkflowRun,
-  type WorkflowStatus,
 } from "./types.js";
 
 interface Live {
@@ -224,10 +223,6 @@ export class WorkflowRuntime {
   }
   list(statuses: readonly WorkflowRun["status"][] = ACTIVE_STATUSES): WorkflowRun[] {
     return this.store.listByStatus(statuses);
-  }
-  /** What `list(statuses)` would return, counted per status without loading a run. */
-  count<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number> {
-    return this.store.countByStatus(statuses);
   }
 
   async wait(runId: string): Promise<WorkflowRun> {
