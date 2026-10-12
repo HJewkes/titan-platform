@@ -1,3 +1,4 @@
+import { CLIENT_HEADER, createRequestGuard } from "@titan-design/daemon";
 import { mergeByKeys, ownerItemSchema } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
 import { RUN_A, brokerSnapshot, gateSnapshot } from "../test-support/owner-queue.js";
@@ -26,7 +27,7 @@ describe("agentChatSource open", () => {
   it("reads every open row with the token header and yields schema-valid items", async () => {
     const { endpoint: source, fetchFake } = queueReply();
     const items = await agentChatSource(source).open();
-    expect(fetchFake).toHaveBeenCalledWith("http://127.0.0.1:7600/api/queue", expect.objectContaining({ headers: { [TOKEN_HEADER]: SECRET } }));
+    expect(fetchFake).toHaveBeenCalledWith("http://127.0.0.1:7600/api/queue", expect.objectContaining({ headers: { [TOKEN_HEADER]: SECRET, [CLIENT_HEADER]: "titan-factory" } }));
     expect(items).toHaveLength(brokerSnapshot().length);
     for (const item of items) expect(() => ownerItemSchema.parse(item)).not.toThrow();
   });
@@ -129,6 +130,19 @@ describe("agentChatSource resolve", () => {
     const { endpoint: source, fetchFake } = endpoint(() => json({ ok: true }));
     await agentChatSource(source).resolve("m-1", answer);
     expect(fetchFake.mock.calls[0]![0]).toBe("http://127.0.0.1:7600/api/dismiss");
+  });
+
+  it("sends answer and dismiss POSTs the broker's request guard lets through", async () => {
+    const { endpoint: source, fetchFake } = endpoint(() => json({ ok: true }));
+    await agentChatSource(source).resolve("m-30", { ...answer, text: "yes" });
+    await agentChatSource(source).resolve("m-1", answer);
+    const guard = createRequestGuard({}, () => 7600);
+    expect(fetchFake.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/api/answer", "/api/dismiss"]);
+    for (const [url, init] of fetchFake.mock.calls) {
+      const headers = init!.headers as Record<string, string>;
+      const request = { method: init!.method!, host: new URL(String(url)).host, origin: undefined, client: headers[CLIENT_HEADER], contentType: headers["content-type"] };
+      expect(guard(request)).toBeNull();
+    }
   });
 
   it("reports a second verdict as closed and a refusal as rejected", async () => {
