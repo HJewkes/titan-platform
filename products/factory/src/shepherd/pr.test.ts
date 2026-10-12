@@ -1540,6 +1540,8 @@ describe("the round after a wake's await-new-head", () => {
       },
       checkRuns: (repo, sha) => port.checkRuns(repo, sha),
       openPrs: (repo) => prSnapshot(port, { now: () => 0 }).openPrs(repo),
+      openList: (repo) => prSnapshot(port, { now: () => 0 }).openList(repo),
+      cachedRuns: () => undefined,
       invalidate: () => undefined,
     });
     const { w, wakes } = sentBackBehind(lagging);
