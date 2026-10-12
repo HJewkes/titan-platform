@@ -44,9 +44,28 @@ function countsLine(list: NeedsList, brokerItems: readonly OwnerItem[]): string 
 
 const sourceName = (item: OwnerItem): string => item.sources.map((source) => `${source.system} ${source.ref}`).join(" + ");
 
+function silenceText(onSilence: OwnerItem["onSilence"]): string {
+  if (onSilence === undefined) return "unset";
+  return onSilence.action === "wait" ? "wait" : `${onSilence.action} after ${onSilence.afterHours}h`;
+}
+
+const cardLintOf = (item: OwnerItem): string[] => (item.lint ?? []).filter((rule) => rule.startsWith("card:"));
+
+/** Only an item that carries a card, or was linted against one, gets card lines, so items with neither stay one line each. */
+function cardLines(item: OwnerItem): string[] {
+  const lint = cardLintOf(item);
+  if (item.class === undefined && item.onSilence === undefined && item.irreversible === undefined && lint.length === 0) return [];
+  const head = `    class ${item.class ?? "unset"} · ${item.door} · on silence: ${silenceText(item.onSilence)}`;
+  const irreversible = item.irreversible === undefined ? [] : [`    irreversible: ${item.irreversible}`];
+  const options = (item.options ?? []).flatMap((option) => (option.consequence === undefined ? [] : [`    - ${option.id}: ${option.consequence}`]));
+  const missing = lint.length === 0 ? [] : [`    card lint: ${lint.join(", ")}`];
+  return [head, ...irreversible, ...options, ...missing];
+}
+
 function itemLines(item: OwnerItem): string[] {
   const line = `- ${item.kind}, ${item.door}: ${item.summary} [${item.sources[0]!.system}]`;
-  return item.sources.length > 1 ? [line, `    ${item.sources.length} items merged into 1: ${sourceName(item)}`] : [line];
+  const merged = item.sources.length > 1 ? [`    ${item.sources.length} items merged into 1: ${sourceName(item)}`] : [];
+  return [line, ...merged, ...cardLines(item)];
 }
 
 export function renderNeeds(list: NeedsList): string {

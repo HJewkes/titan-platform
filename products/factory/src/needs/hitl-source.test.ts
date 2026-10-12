@@ -1,7 +1,10 @@
-import { ownerItemSchema, type SourceEvent } from "@titan-design/owner-queue";
+import { MemoryGateStore } from "@titan-design/hitl";
+import { ownerCardSchema, ownerItemSchema, type SourceEvent } from "@titan-design/owner-queue";
 import { describe, expect, it } from "vitest";
+import { approveMergeDecision } from "../gate-brief.js";
 import { RUN_A, RUN_B, gateSnapshot } from "../test-support/owner-queue.js";
 import { hitlGateSource } from "./hitl-source.js";
+import { collectNeeds, renderNeeds } from "./merged.js";
 
 describe("hitlGateSource open", () => {
   it("lists pending gates only, each a schema-valid one-way approval", async () => {
@@ -59,5 +62,47 @@ describe("hitlGateSource resolve and tail", () => {
     const { value } = (await next) as { value: SourceEvent };
     controller.abort();
     expect(value).toEqual({ type: "closed", ref: "bare-gate", status: "answered", cursor: "1" });
+  });
+});
+
+const HEAD = "b".repeat(40);
+
+/** An approve-merge gate as Shepherd opens it, plus a gate at a step no card row covers. */
+function cardedGates(): MemoryGateStore {
+  const gates = new MemoryGateStore();
+  const reason = "seat example-seat policy owner-gate (owner-asked) waits for the owner on merge";
+  const { brief } = approveMergeDecision({ repo: "example/widgets", pr: 4, headSha: HEAD, reason, reviewedMerge: true });
+  gates.create({ id: `${RUN_A}/approve-merge`, prompt: `Merge PR #4 in example/widgets at head ${HEAD}? CI is green. Policy shepherd-seat/example-seat: ${reason}`, ...brief });
+  gates.create({ id: `${RUN_B}/device-confirm`, prompt: "Did the device check pass?", questions: [{ id: "decision", question: "Pass?", options: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }] }] });
+  return gates;
+}
+
+describe("hitlGateSource owner cards", () => {
+  it("gives an approve-merge gate a full card that passes the card schema", async () => {
+    const [item] = await hitlGateSource({ gates: cardedGates() }).open();
+
+    expect(item).toMatchObject({ class: "D19", door: "one-way", onSilence: { action: "wait" }, shown: ["https://github.com/example/widgets/pull/4"] });
+    expect(item!.irreversible).toBeDefined();
+    expect(item!.options!.map((option) => option.id)).toEqual(["merge", "abandon"]);
+    for (const option of item!.options!) expect(option.consequence).toBeDefined();
+    expect(item!.lint).toBeUndefined();
+    expect(() => ownerCardSchema.parse(item)).not.toThrow();
+  });
+
+  it("marks a gate at an unknown step with the card rules it breaks and still lists it", async () => {
+    const [, item] = await hitlGateSource({ gates: cardedGates() }).open();
+
+    expect(item!.lint).toEqual(expect.arrayContaining(["card:class", "card:consequence", "card:on-silence", "card:one-way-irreversible"]));
+    expect(() => ownerItemSchema.parse(item)).not.toThrow();
+  });
+
+  it("renders the class, door, on-silence line and each option's consequence in needs", async () => {
+    const text = renderNeeds(await collectNeeds([hitlGateSource({ gates: cardedGates() })]));
+
+    expect(text).toContain("    class D19 · one-way · on silence: wait");
+    expect(text).toContain("    irreversible: A merge lands on the base branch and can only be undone by a revert.");
+    expect(text).toContain("    - merge: Shepherd merges the PR into its base; undoing it takes a revert PR.");
+    expect(text).toContain("    class unset · one-way · on silence: unset");
+    expect(text).toContain("    card lint: card:consequence, card:class, card:on-silence, card:one-way-irreversible");
   });
 });

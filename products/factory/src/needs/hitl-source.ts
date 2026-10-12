@@ -1,6 +1,7 @@
 import type { GateRecord, GateStore } from "@titan-design/hitl";
-import type { ClosedStatus, OwnerItem, QueueSource, ResolveResult } from "@titan-design/owner-queue";
+import { cardLint, type ClosedStatus, type OwnerItem, type QueueSource, type ResolveResult } from "@titan-design/owner-queue";
 import { resolveCommand } from "../registry.js";
+import { cardFields, consequenceOf, gateStepOf } from "./gate-card.js";
 import { pollTail } from "./poll-tail.js";
 import { summaryOf } from "./queue-read-error.js";
 
@@ -21,8 +22,6 @@ const CLOSED_AS: Record<GateRecord["status"], ClosedStatus> = {
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; a bare id names no run. */
 const runOf = (gateId: string): string | undefined => (gateId.includes("/") ? gateId.slice(0, gateId.indexOf("/")) : undefined);
 
-const stepOf = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).replace(/:\d+$/, "");
-
 /** A single question becomes the item's options; several stay in the context, where the gate's schema governs them. */
 function choicesOf(gate: GateRecord): Pick<OwnerItem, "options" | "recommended"> {
   const questions = gate.questions ?? [];
@@ -30,7 +29,10 @@ function choicesOf(gate: GateRecord): Pick<OwnerItem, "options" | "recommended">
   const options = questions[0]!.options;
   const pick = options.find((option) => option.recommended);
   return {
-    options: options.map(({ id, label }) => ({ id, label })),
+    options: options.map(({ id, label }) => {
+      const consequence = consequenceOf(gate, id);
+      return { id, label, ...(consequence && { consequence }) };
+    }),
     ...(pick && { recommended: { optionId: pick.id, by: "titan-factory" } }),
   };
 }
@@ -42,15 +44,22 @@ function contextOf(gate: GateRecord): string {
 
 /** Every factory gate holds a land or Shepherd run before its merge, and resolving one releases that run. */
 function gateToOwnerItem(gate: GateRecord): OwnerItem {
+  const item = gateItem(gate);
+  const lint = cardLint(item);
+  return lint.length > 0 ? { ...item, lint } : item;
+}
+
+function gateItem(gate: GateRecord): OwnerItem {
   const runId = runOf(gate.id);
   return {
     id: `gate:${gate.id}`,
     sources: [{ system: "hitl", ref: gate.id }],
     kind: "approve",
     door: "one-way",
+    ...cardFields(gate),
     summary: gate.summary ?? summaryOf(gate.prompt, `gate ${gate.id}`),
     context: contextOf(gate),
-    ...(runId && { command: resolveCommand(runId, stepOf(gate.id)) }),
+    ...(runId && { command: resolveCommand(runId, gateStepOf(gate.id)) }),
     ...choicesOf(gate),
     ...(gate.evidenceRef && { evidenceRef: gate.evidenceRef }),
     keys: [`gate:${gate.id}`, ...(runId ? [`run:${runId}`] : [])],
