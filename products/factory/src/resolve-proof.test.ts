@@ -7,11 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import type { OwnerKeys } from "./owner-keys.js";
-import { itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
+import { holdDigest, itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
 import { createFactoryRegistry } from "./registry.js";
-import { MAX_PROOF_BODY_BYTES, RESOLVE_PROOF_PATH } from "./resolve-proof.js";
+import { HOLD_RELEASE_PROOF_PATH, MAX_PROOF_BODY_BYTES, RESOLVE_PROOF_PATH } from "./resolve-proof.js";
 import { startFactoryServer, TOOL_PREFIX, type FactoryServer, type FactoryServerOptions } from "./serve.js";
 import { TEST_BRIEF } from "./test-support/brief.js";
+import { REPO as SHEPHERD_REPO } from "./test-support/land.js";
+import { callCommand, shepherdFixture } from "./test-support/shepherd.js";
 
 const REPO = "example-org/example-repo";
 const AUD = "factory.test";
@@ -73,8 +75,8 @@ function proofOf(items: readonly ProofItem[], nonce = randomBytes(16).toString("
   return { statement: bytes.toString("base64url"), signature: sign("sha256", bytes, { key: owner.privateKey, dsaEncoding: "der" }).toString("base64url") };
 }
 
-const post = (server: FactoryServer, body: string): Promise<Response> =>
-  fetch(`http://127.0.0.1:${server.port}${RESOLVE_PROOF_PATH}`, { method: "POST", headers: { "content-type": "application/json", [CLIENT_HEADER]: "test" }, body });
+const post = (server: FactoryServer, body: string, path = RESOLVE_PROOF_PATH): Promise<Response> =>
+  fetch(`http://127.0.0.1:${server.port}${path}`, { method: "POST", headers: { "content-type": "application/json", [CLIENT_HEADER]: "test" }, body });
 
 const health = async (server: FactoryServer): Promise<Record<string, unknown>> => (await fetch(`http://127.0.0.1:${server.port}/health`)).json() as Promise<Record<string, unknown>>;
 
@@ -200,6 +202,84 @@ describe("POST /gates/resolve-proof", () => {
 
     expect(tools.map((tool) => tool.name).filter((name) => /resolve|proof/.test(name))).toEqual([]);
     expect(createFactoryRegistry().list().map((cmd) => cmd.name).filter((name) => /resolve|proof/.test(name))).toEqual([]);
+  });
+});
+
+describe("POST /holds/release-proof", () => {
+  const REASON = "g10-adversary: authority change; TP-1";
+
+  function holdProof(runId: string, pr: number, aud = AUD) {
+    const iat = NOW_MS / 1000;
+    const items = [{ runId, repo: SHEPHERD_REPO, pr, holdDigest: holdDigest(REASON), headSha: HEAD }];
+    const statement = { v: 1, type: "titan-factory.hold-release", aud, keyId: KEY_ID, nonce: randomBytes(16).toString("hex"), iat, exp: iat + 120, items };
+    const bytes = Buffer.from(JSON.stringify(statement));
+    return { statement: bytes.toString("base64url"), signature: sign("sha256", bytes, { key: owner.privateKey, dsaEncoding: "der" }).toString("base64url") };
+  }
+
+  async function heldShepherd(overrides: Partial<FactoryServerOptions> = {}) {
+    const fixture = shepherdFixture({ frozen: true });
+    const server = await serve({ workflows: fixture.workflows, routes: fixture.routes, resyncOnStart: false, ...overrides });
+    const pr = fixture.fake.addPr({ headSha: HEAD }).number;
+    const registered = await callCommand<{ runId: string }>(server.host, fixture.routes, "shepherd.register", { repo: SHEPHERD_REPO, pr, task: "demo/T-1", implementer: "impl-a" });
+    if (!registered.ok) throw new Error(registered.error);
+    const store = fixture.routes.shepherd!.store.get();
+    store.hold(registered.data.runId, REASON);
+    return { server, store, pr, runId: registered.data.runId };
+  }
+
+  it("releases the hold on a valid owner proof, recording the key as the actor", async () => {
+    const { server, store, pr, runId } = await heldShepherd();
+
+    const response = await post(server, JSON.stringify(holdProof(runId, pr)), HOLD_RELEASE_PROOF_PATH);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, runId, actor: `key:${KEY_ID}` });
+    expect(store.byRun(runId)?.held).toBe(false);
+    expect(store.eventsOf(runId).filter((event) => event.kind === "release")).toEqual([expect.objectContaining({ actor: `key:${KEY_ID}` })]);
+  });
+
+  it("refuses a proof signed for another factory with 403 and leaves the hold", async () => {
+    const { server, store, pr, runId } = await heldShepherd({ aud: "other.host" });
+
+    const response = await post(server, JSON.stringify(holdProof(runId, pr)), HOLD_RELEASE_PROOF_PATH);
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ ok: false, refusal: "wrong-aud" });
+    expect(store.byRun(runId)?.held).toBe(true);
+  });
+
+  it("answers 503 owner keys not installed when the key directory was refused", async () => {
+    const server = await serve({ ownerKeys: () => ({ ok: false, refusal: "/etc/titan-factory/owner-keys is missing" }) });
+
+    const response = await post(server, JSON.stringify(holdProof("run-1", 1)), HOLD_RELEASE_PROOF_PATH);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ ok: false, error: "owner keys not installed" });
+  });
+
+  it("refuses an oversize body before reading it as a proof", async () => {
+    const server = await serve();
+
+    const response = await post(server, JSON.stringify({ statement: "a".repeat(MAX_PROOF_BODY_BYTES), signature: "b" }), HOLD_RELEASE_PROOF_PATH);
+
+    expect(response.status).toBe(413);
+  });
+
+  it("answers 503 when serve runs without the shepherd routes", async () => {
+    const server = await serve();
+
+    const response = await post(server, JSON.stringify(holdProof("run-1", 1)), HOLD_RELEASE_PROOF_PATH);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ ok: false, error: "shepherd routes not mounted" });
+  });
+
+  it("refuses a browser-shaped request through the daemon's existing guards", async () => {
+    const server = await serve();
+
+    const response = await fetch(`http://127.0.0.1:${server.port}${HOLD_RELEASE_PROOF_PATH}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+
+    expect(response.status).toBe(403);
   });
 });
 
