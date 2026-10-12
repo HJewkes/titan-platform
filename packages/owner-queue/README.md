@@ -16,6 +16,18 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent
   means owner. It only selects a reader and grants no authority. `forAudience(items, audience)`
   keeps the matching items in input order and `audienceOf(item)` reads the default.
+- Card fields, all optional on an item and a deposit: `class` (the decision-routing D-row,
+  `D<n>`), `irreversible` (one line on what cannot be undone), `shown` (1-8 evidence refs, each
+  an https URL, an absolute path or `$ <command>`), `default` (an option id), `onSilence`
+  (`ON_SILENCE_ACTIONS`: `{ action: "wait" }`, or `apply-default`/`expire` with `afterHours`
+  1-720) and a one-line `consequence` per option. `cardLint(item)` returns the `CARD_RULES` an
+  item breaks, in that order: a `decide` or `approve` item needs `card:options` (two or more),
+  `card:class`, `card:on-silence` and, when one-way, `card:one-way-irreversible`. Any kind is
+  checked on the fields it sets: `card:consequence` (every option has one),
+  `card:default-not-option`, `card:apply-default-needs-default` and `card:one-way-waits` (a
+  one-way item never acts on silence). `ownerCardSchema` is `ownerItemSchema` plus those rules,
+  one issue per broken rule named by its id; `ownerItemSchema` itself still accepts an item
+  with no card fields.
 - `@titan-design/owner-queue/spool` is the only part of the package that touches the
   filesystem; the root export stays I/O-free. `writeDeposit(dir, deposit)` files a deposit
   once as `<asker>-<depositId>.json` (0600, temp file then a no-clobber link, 64 KB cap),
