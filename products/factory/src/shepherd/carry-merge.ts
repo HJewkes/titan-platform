@@ -57,7 +57,7 @@ async function readScope(ctx: WorkflowContext, target: CarryTarget, read: string
  * The base branch a carry probes against, or undefined when the run's kind does not carry, the base is unknown, or a seat
  * asked for Shepherd's own review at one of `vouched`, the heads the carried MERGE would stand for.
  */
-export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[] = []): Promise<string | undefined> {
+async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[] = []): Promise<string | undefined> {
   const scope = await readScope(ctx, target, read, vouched);
   return scope && scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
 }
