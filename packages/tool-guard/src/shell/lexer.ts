@@ -79,12 +79,14 @@ function markSubscript(s: LexState): void {
 }
 
 /**
- * Joined, bash reads `#` and `<<` in the subscript as text and may run what the split reading hides behind a
- * comment or heredoc, such as a `${` funsub; split, the comment is real and hides what the joined reading shows.
- * No single reading shows every command bash may run, so the line is refused.
+ * Every character the split reading would take to read past the current token: a comment, a heredoc opener, or a
+ * newline while a heredoc waits for its body. Joined, bash reads each as text and runs what the split reading hides,
+ * such as a `${` funsub or the line after the `]`; split, the comment or body is real and hides what the joined
+ * reading shows. No single reading shows every command bash may run, so the line is refused.
  */
 function refuseHidingOpener(s: LexState, c: string, ahead: string): void {
-  if ((c === "#" && !s.word) || ahead.startsWith("<<")) throw new ParseError("a subscript bash may join or split holds a comment or heredoc");
+  const opensBody = c === "\n" && s.heredocs.length > 0;
+  if ((c === "#" && !s.word) || ahead.startsWith("<<") || opensBody) throw new ParseError("a subscript bash may join or split holds a comment, heredoc or heredoc body");
 }
 
 /**
