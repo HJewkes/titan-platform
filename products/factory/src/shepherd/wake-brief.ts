@@ -253,6 +253,9 @@ async function withReviewComments(port: GitHubPort, input: WakeFacts, wake: { re
   return { ...wake, payload: `${wake.payload}\n\n${COMMENTS_INTRO}\n${dataFence("review comments", section)}` };
 }
 
+/** Seats merged main into PRs to re-run flaky CI or stay current, resetting reviews; Shepherd owns the land-time merge-up (TP-2080). */
+const BASE_IS_SHEPHERDS = "Do not merge the base branch to re-run CI or to bring the PR up to date: Shepherd re-runs flaky checks and merges the base itself at land time. Push only your fix.";
+
 /** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest, testRule: string = MAC_SUITE_RULES.fixer): Promise<{ reason: string; payload: string }> {
   const wake = await wakeBody(port, input, pr);
@@ -264,7 +267,7 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
   switch (input.kind) {
     case "ci-red": {
       const failing = await failingRuns(port, input);
-      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow. ${BASE_IS_SHEPHERDS}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }
     case "review":
       return withReviewComments(port, input, reviewWake(input));
