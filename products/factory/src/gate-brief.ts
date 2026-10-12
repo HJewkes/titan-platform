@@ -77,11 +77,14 @@ interface PrHead {
 
 const where = ({ repo, pr, headSha }: PrHead): string => `${repo}#${pr} at ${headSha}`;
 
-export const prFilesEvidence = (repo: string, pr: number): string => `${prEvidence(repo, pr)}/files`;
+const prFilesEvidence = (repo: string, pr: number): string => `${prEvidence(repo, pr)}/files`;
+
+/** Each path is flattened to one line, so a path holding a newline cannot pose as a line of the prompt it is shown in. */
+const shownSkillPaths = (skillPaths: readonly string[]): string => skillPaths.map((path) => oneLine(path, MAX_EVIDENCE_REF)).join(", ");
 
 /** The owner reads a repo skill change in the diff itself. The link leads, so a long path list cut to fit a field never cuts it. */
 export function skillChangeNote(repo: string, pr: number, skillPaths: readonly string[]): string {
-  return `Review the repo skill diff: ${prFilesEvidence(repo, pr)}. Repo skill changes: ${skillPaths.join(", ")}.`;
+  return `Review the repo skill diff: ${prFilesEvidence(repo, pr)}. Repo skill changes: ${shownSkillPaths(skillPaths)}.`;
 }
 
 interface ApproveMergeTarget extends PrHead {
@@ -119,7 +122,7 @@ function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): Gate
 /** The files URL rides in the fixed tail and the evidence link, so a long path list or reason can never cut it. */
 function skillMergeBrief(target: ApproveMergeTarget, skills: readonly string[], questions: GateQuestion[]): GateBrief {
   const files = prFilesEvidence(target.repo, target.pr);
-  const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${skills.join(", ")}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
+  const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
   return brief(summary, files, questions);
 }
 

@@ -27,7 +27,7 @@ export type ApprovalAnswer = "merge" | "abandon" | { failed: string };
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
 
 /** What the approve-merge gate shows beside the policy's reason, each read at the head it asks about. */
-export interface ApproveMergeFacts {
+interface ApproveMergeFacts {
   reviewedMerge?: (headSha: string) => boolean;
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
   /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
