@@ -18,7 +18,7 @@ const FINISHED_RUN: ReadonlySet<WorkflowStatus> = new Set(["completed", "failed"
 export const runFinished = (status: WorkflowStatus): boolean => FINISHED_RUN.has(status);
 
 /** Which registrations a read wants, judged from the registration and its run's status before the run is loaded. */
-export type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean;
+type RowFilter = (registration: Registration, status: WorkflowStatus) => boolean;
 
 /**
  * Each wanted registration's watch row beside the run it was read from; a registration whose run is missing is left out.
