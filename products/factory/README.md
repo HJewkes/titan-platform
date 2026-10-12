@@ -523,6 +523,9 @@ failure; only a wrong sha, or no sha in the whole poll, fails. A failed install 
 restores the snapshot and leaves the old process running, untouched. A failed restart or sha
 check restores the snapshot and kickstarts again. Both record `rolled-back`, and that sha is
 then held until a newer one arrives.
+A failed install or build also writes `deploy-build.log` beside `deploy.json`: the command,
+target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
+keeps a 20-line tail and names the log; the file holds only the newest failure.
 
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
