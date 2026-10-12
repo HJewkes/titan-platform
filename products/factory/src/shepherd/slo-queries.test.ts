@@ -163,6 +163,14 @@ describe("owner-load queries", () => {
     expect(await value("owner-load.delegation-share", input({ gates }))).toEqual({ value: 0.333, n: 3 });
   });
 
+  it("leaves an owner-class resolve made under a grant out of owner touches", async () => {
+    const granted = { ...resolved("b/approve-merge:0", T0, T0 + HOUR, "owner-terminal"), resolvedEvidence: { grant: "item 193" } };
+    const delegate = { ...resolved("d/approve-merge:0", T0, T0 + HOUR, "coordinator"), resolvedEvidence: { kind: "delegate", delegate: "tp-operator", grant: "item 193" } };
+    const gates = [resolved("a/approve-merge:0", T0, T0 + HOUR, "owner-terminal"), granted, resolved("c/approve-merge:0", T0, T0 + HOUR, "coordinator"), delegate];
+
+    expect(await value("owner-load.touches-per-day", input({ gates }))).toEqual({ value: 0.5, n: 2 });
+  });
+
   it("gives the cancelled share of gates opened in range", async () => {
     const gates = [gate("a/approve-merge:0", T0, { status: "cancelled", reason: "head moved" }), gate("b/approve-merge:0", T0)];
 

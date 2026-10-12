@@ -1,9 +1,9 @@
-import { RESOLVER_CLASSES } from "@titan-design/authority";
 import type { GateRecord } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { stepOf } from "../coordinator-evidence.js";
 import type { ShepherdEvent } from "./events.js";
 import { overrideStats } from "./override-stats.js";
+import { isOwnerTouch } from "./owner-friction.js";
 import { reviewCauseStats } from "./review-cause.js";
 import { p90 } from "./stage-times.js";
 import type { ReviewCostReport } from "./stats-cost.js";
@@ -69,7 +69,6 @@ function mergesIn({ runs, range }: SloInput): { run: WorkflowRun; at: number }[]
   });
 }
 
-const isOwner = (gate: GateRecord): boolean => gate.resolvedBy !== undefined && (RESOLVER_CLASSES as readonly string[]).includes(gate.resolvedBy.class);
 const resolvedIn = ({ gates, range }: SloInput): GateRecord[] => gates.filter((gate) => gate.status === "resolved" && gate.resolvedAt !== undefined && inRange(Date.parse(gate.resolvedAt), range));
 const hoursOpen = (gate: GateRecord): number => (Date.parse(gate.resolvedAt!) - Date.parse(gate.createdAt)) / HOUR;
 
@@ -187,15 +186,15 @@ const ownerLoad: Record<string, Query> = {
     const pending = gates.filter((gate) => gate.status === "pending" && !SEAT_STEPS.includes(stepOf(gate.id)));
     return count(pending.filter((gate) => (now - Date.parse(gate.createdAt)) / HOUR > OVERDUE_HOURS).length, pending.length);
   },
-  "owner-load.touches-per-day": (input) => perDay(resolvedIn(input).filter(isOwner).length, input.range),
-  "owner-load.gate-wait-p90": (input) => percentile90(resolvedIn(input).filter(isOwner).map(hoursOpen), 1),
+  "owner-load.touches-per-day": (input) => perDay(resolvedIn(input).filter(isOwnerTouch).length, input.range),
+  "owner-load.gate-wait-p90": (input) => percentile90(resolvedIn(input).filter(isOwnerTouch).map(hoursOpen), 1),
   "owner-load.cancelled-gate-share": ({ gates, range }) => {
     const opened = gates.filter((gate) => inRange(Date.parse(gate.createdAt), range));
     return ratio(opened.filter((gate) => gate.status === "cancelled").length, opened.length);
   },
   "owner-load.delegation-share": (input) => {
     const answered = resolvedIn(input).filter((gate) => gate.resolvedBy !== undefined);
-    return ratio(answered.filter((gate) => !isOwner(gate)).length, answered.length);
+    return ratio(answered.filter((gate) => !isOwnerTouch(gate)).length, answered.length);
   },
 };
 
@@ -223,7 +222,7 @@ const cost: Record<string, Query> = {
 const business: Record<string, Query> = {
   "business.merges-per-day": (input) => perDay(mergesIn(input).length, input.range),
   "business.unattended-share": (input) => {
-    const touched = new Set(input.gates.filter((gate) => gate.status === "resolved" && isOwner(gate)).map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
+    const touched = new Set(input.gates.filter((gate) => gate.status === "resolved" && isOwnerTouch(gate)).map((gate) => gate.id.slice(0, gate.id.indexOf("/"))));
     const merges = mergesIn(input);
     return ratio(merges.filter(({ run }) => !touched.has(run.id)).length, merges.length);
   },
