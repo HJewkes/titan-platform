@@ -48,3 +48,4 @@ export { aggregate } from "./aggregate.js";
 export type { AggregateInput, MemberResult } from "./aggregate.js";
 export { OVERLAY_SHAPES, SHAPE_BRIEFS, shapeBrief } from "./briefs/shape-brief.js";
 export type { OverlayShape, ShapeBrief, ShapeBriefInput } from "./briefs/shape-brief.js";
+export type { FixProofUnverified } from "./briefs/tests.js";

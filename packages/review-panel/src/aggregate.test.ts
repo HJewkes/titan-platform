@@ -155,7 +155,7 @@ describe("aggregate advisory members", () => {
     expect(verdict.findings.map((f) => f.text)).toEqual(["- src/gate.ts:1-2 reads oddly"]);
   });
 
-  it.each(["vacuous", "no-tests"])("makes the tests member block when fix-proof is %s", (fixProof) => {
+  it.each(["vacuous", "no-tests", "error"])("makes the tests member block when fix-proof is %s", (fixProof) => {
     const verdict = aggregate(untested, [merge("correctness"), fixFirst("tests", "the test passes on base")], { ...input, fixProof });
     expect(verdict.outcome).toBe("FIX_FIRST");
     expect(verdict.dissent).toEqual(["tests"]);
@@ -195,6 +195,7 @@ describe("aggregate reads a fix-proof/v1 line", () => {
   it.each([
     { name: "a vacuous line at the head", fixProof: fixProofLine(HEAD, "vacuous") },
     { name: "a no-tests line at the head", fixProof: `${fixProofLine(HEAD, "no-tests")}\n` },
+    { name: "an error line at the head", fixProof: fixProofLine(HEAD, "error") },
     { name: "a reproduced line at a stale head", fixProof: fixProofLine(OLD_HEAD, "reproduced") },
     { name: "a line that fails to parse", fixProof: 'fix-proof/v1 {"head":"' + HEAD + '","verdict":"reproduced"}' },
     { name: "an unrecognised word", fixProof: "passed" },
