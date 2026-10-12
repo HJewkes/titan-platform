@@ -21,7 +21,8 @@ import { g10ReleaseRoutes, releaseG10Hold } from "./g10-release.js";
 import { g10ReholdRoutes, reholdMovedHead } from "./g10-rehold.js";
 import { narrowToRegistration, registrationPolicy } from "./registration-policy.js";
 import { afterStages, type AfterStage, postMergeRoutes, shepherdMainCi } from "./post-merge.js";
-import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseLandOptions, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
+import { VERSION_PACKAGES_BRANCH, npmRegistry, releaseFollowStep, releaseLandOptions, releasePreflightAt, releaseRoutes, releaseVerdict, type PackageRegistry } from "./release.js";
+import { npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
 import { publishOutcome } from "./publish-review.js";
 import { reviewPhase, reviewRoutes, type ReviewWiring } from "./review.js";
 import { standingVerdict } from "./review-request.js";
@@ -308,7 +309,9 @@ async function onConflict(run: ShepherdRun, headSha: string): Promise<LandOutcom
 async function landed(ctx: WorkflowContext, run: ShepherdRun, merged: Extract<LandOutcome, { kind: "merged" }>, after: readonly AfterStage[]): Promise<LandOutcome> {
   await recordLanded(ctx, run.target, merged);
   // The main-CI read answers `none` for an empty merge sha and hands that run to the owner.
-  await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "" }, after, run.policy.fixer);
+  const mainCi = await shepherdMainCi(ctx, { ...run.target, mergeSha: merged.mergeSha ?? "" }, after, run.policy.fixer);
+  // A red or unread main already went to its own route, and a release built on it would not publish.
+  if (run.release && mainCi.verdict === "green" && merged.mergeSha) await releaseFollowStep(ctx, { ...run.target, mergeSha: merged.mergeSha }, releasePreflightAt(merged.headSha, (headSha) => run.reviews.get(headSha))?.versions ?? {});
   return merged;
 }
 
@@ -319,6 +322,8 @@ export interface ShepherdWiring {
   park?: ParkPort;
   /** Absent means registry.npmjs.org over `fetch`. */
   registry?: PackageRegistry;
+  /** Where a merged release's versions are looked up; absent means registry.npmjs.org over `fetch`. */
+  versions?: VersionRegistry;
   /** The freeze store and the task and fixer ports a red main uses; absent means a red main goes to the owner, unfrozen. */
   mainRed?: MainRedWiring;
 }
@@ -333,7 +338,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...parkRoutes(deps, wiring.park),
     ...reviewRoutes(deps, wiring.review),
     ...carryRoutes(deps, wiring.review),
-    ...releaseRoutes(deps, wiring.registry ?? npmRegistry()),
+    ...releaseRoutes(deps, wiring.registry ?? npmRegistry(), wiring.versions ?? npmVersionRegistry(), wiring.mainRed?.tasks),
     ...postMergeRoutes(deps, wiring.mainRed),
     observeRoute(deps.port, deps.now, deps.snapshot),
     conflictCheckRoute(deps),
