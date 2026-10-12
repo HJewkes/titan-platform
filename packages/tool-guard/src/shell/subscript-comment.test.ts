@@ -63,7 +63,12 @@ describe("a subscript bash may join but the guard splits", () => {
     ["inside a subshell, a heredoc opener", "(a[ <<E ]=x\ngit push origin HEAD:main\nE\n)"],
     ["inside a function body", "f() { a[ # ]=x; git push origin HEAD:main; }; f"],
     ["inside a function keyword body", "function f { a[ # ]=x; git push origin HEAD:main; }; f"],
-    ["in an argument position", "echo a[ # git push origin HEAD:main ]"],
+    ["after ((, a } inside backquotes before their close", "declare -A a; ((1)); a[ `[]}]` # ]=x; echo HIDDEN"],
+    ["with no prefix, a } inside backquotes before their close", "a[ `[]}]` # ]; echo HIDDEN"],
+    ["after a redirect, a } inside backquotes before their close", "2>/dev/null a[ `[]}]` # ]=x; echo HIDDEN"],
+    ["in a subshell, a } inside backquotes before their close", "(a[ `[]}]` # ]=x; echo HIDDEN)"],
+    ["a } inside backquotes before a heredoc opener", "a[ `[]}]` <<E ]=1\necho HIDDEN\nE"],
+    ["in an argument position","echo a[ # git push origin HEAD:main ]"],
     ["after ((, a ${ with an unbalanced [", "((1)); a[ ${x:-[} ]=1 # ]; git push origin HEAD:main"],
     ["after ((, a ${ with a bare { inside", "((1)); a[ ${x:-{[} # ]; git push origin HEAD:main"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {

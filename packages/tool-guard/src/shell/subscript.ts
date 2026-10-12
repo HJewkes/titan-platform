@@ -221,7 +221,8 @@ function selfContainedSpan(src: string, j: number): boolean {
       k++;
     }
     if (c === "[") brackets++;
-    if ((c === "]" && --brackets < 0) || (c === "}" && --depth === 0)) return c === "}" && brackets === 0;
+    if (c === "]" && --brackets < 0) return false;
+    if (!tick && c === "}" && --depth === 0) return brackets === 0;
   }
   return false;
 }
