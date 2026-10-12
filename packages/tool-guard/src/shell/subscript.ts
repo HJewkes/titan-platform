@@ -33,16 +33,15 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
 }
 
 /**
- * Index of the `]` matching the `[` at `open` when bash may read `NAME[...]` as one word but `assignmentSubscriptEnd`
- * did not take the join: after an unplaceable form, where bash may join or split, or at an assignment position with no
- * `=` after the `]`, where bash joins on position alone. -1 when bash splits for sure. Bash skips `$( )`, `${ }` and
- * backquotes whole while the scan here cannot, so when the scan never closes or crossed such an unsure span, bash
- * may close later: the span then runs to the end of the source.
+ * Index of the `]` matching the `[` of a bare `NAME[` whose join `assignmentSubscriptEnd` did not take, or -1 when
+ * it took it. Bash joins on position alone, and positions it joins at keep turning up that the token model misses
+ * (a redirect prefix, `coproc`, `time -p`, a subshell, a function body), so every such `[` is treated as one bash may
+ * join. Bash skips `$( )`, `${ }` and backquotes whole while the scan here cannot, so when the scan never closes or
+ * crossed such an unsure span, bash may close later: the span then runs to the end of the source.
  */
 export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
+  if (assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
   const scan = scanOf(src);
-  const mayJoin = open >= scan.unplaceableFrom || atAssignmentPosition(tokens);
-  if (!mayJoin || assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
   const close = matchingBracket(src, open, scan);
   return close === -1 || scan.unsurePairs.has(open) ? src.length : close;
 }
@@ -166,7 +165,7 @@ function matchingBracket(src: string, open: number, scan: SourceScan): number {
   for (let j = open; j < src.length; j++) {
     const end = skipQuoted(src, j, scan.spans);
     if (end === -1) break;
-    if (end === j && opensUnsureSpan(src, j)) lastUnsure = j;
+    if (end === j && opensUnsureSpan(src, j) && !selfContainedSpan(src, j)) lastUnsure = j;
     const c = end === j ? src[j] : "";
     if (c === "[") pending.push(j);
     const paired = c === "]" ? pending.pop() : undefined;
@@ -196,6 +195,35 @@ function opensUnsureSpan(src: string, j: number): boolean {
   if (src[j] !== "$") return false;
   const opener = dollarOpener(src, joinedDollar(src, j));
   return opener === "paren" || opener === "braced";
+}
+
+/** Characters that can move where bash ends a `${ }` or backquote span, or hide its brackets from the scan. */
+const SPAN_MOVERS = "'\"\\`(){\n";
+
+/**
+ * Whether the unsure `${ }` or backquote span at `j` holds only text whose end bash finds as this does, with its own
+ * brackets balanced, so reading it one character at a time pairs the brackets around it as bash's skip does: `${`
+ * closes at the first `}` that no nested `${` opened, and a backquote at the next one. A `$( )` may hold a `case`
+ * whose `)` moves its end, so it is never self-contained, nor is a funsub (`${ `, `${⏎`, `${|`).
+ */
+function selfContainedSpan(src: string, j: number): boolean {
+  const tick = src[j] === "`";
+  const from = tick ? j + 1 : joinedDollar(src, j) + 2;
+  if (!tick && (src[from - 1] !== "{" || /[\s|]/.test(src[from] ?? ""))) return false;
+  let depth = 1;
+  let brackets = 0;
+  for (let k = from; k < src.length; k++) {
+    const c = src[k] as string;
+    if (tick && c === "`") return brackets === 0;
+    if (SPAN_MOVERS.includes(c) || (tick && c === "$")) return false;
+    if (c === "$" && src[k + 1] === "{") {
+      depth++;
+      k++;
+    }
+    if (c === "[") brackets++;
+    if ((c === "]" && --brackets < 0) || (c === "}" && --depth === 0)) return c === "}" && brackets === 0;
+  }
+  return false;
 }
 
 /** Skips the `$'…'`, `$( )` or `${ }` the shared table finds after the `$` at `j`; a `$[` is left to the bracket count, which nests it. */
