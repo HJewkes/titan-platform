@@ -9,7 +9,7 @@ function rig(rows: Record<string, Presence>, refuse: Record<string, string> = {}
   const calls: string[] = [];
   const ports: FixerRetirePorts = {
     roster: async () => Object.entries(rows).map(([name, presence]) => ({ name, presence })),
-    park: (name) => {
+    park: async (name) => {
       calls.push(`park ${name}`);
       if (refuse[name]) throw new Error(refuse[name]);
     },

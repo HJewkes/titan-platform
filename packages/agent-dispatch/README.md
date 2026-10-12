@@ -40,8 +40,10 @@ dispatchToAgentChat(
   agent-chat's name shape before running anything. The message is in argv.
 - `parkAgent(bin, name, timeoutMs?)` runs `agent-chat agent park <name>`: the broker removes
   an exited agent's clean, pushed worktree and keeps its branch, and `resumeAgent`
-  re-creates it. A refusal (live, dirty, unpushed or shared tree) throws `DispatchError`
-  with the broker's reason; a broker that cannot be reached throws `BrokerUnavailableError`.
+  re-creates it. A refusal (live, dirty, unpushed or shared tree) rejects with `DispatchError`
+  carrying the broker's reason; a broker that cannot be reached rejects with
+  `BrokerUnavailableError`. It is async: `agent park` may read the caller back (agent-chat asks
+  Shepherd about a fix round), so a caller that serves HTTP must keep its event loop free.
 - `messageAgent(bin, name, text, timeoutMs)` runs `agent-chat debug send -- <name> <text>`:
   the broker delivers the text to a live agent as one channel message from the human seat,
   which starts a turn in an idle session. A name with no live session throws
