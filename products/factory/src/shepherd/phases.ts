@@ -10,6 +10,7 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
+import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
@@ -101,4 +102,6 @@ export interface ShepherdDeps {
   reviewCheckouts?: { root?: string; remove?: RemoveDir };
   /** True for a repo where Shepherd never writes to a branch: no successor is spawned and no head ref deleted. */
   advisory?: (repo: string) => boolean;
+  /** Reads a head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
+  prFiles?: PrFilesRead;
 }

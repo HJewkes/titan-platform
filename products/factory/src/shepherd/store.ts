@@ -26,9 +26,13 @@ export interface RegistrationInput {
   kind?: string;
   /** Names the slice of a multi-slice task this PR delivers; landing then notes the task instead of closing it. */
   slice?: string;
+  /** The PR's head as the registering caller saw it; with `base`, Shepherd diffs the PR in its git cache. */
+  headSha?: string;
+  /** The PR's base branch name. */
+  base?: string;
 }
 
-export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice">;
+export type RegistrationUpdate = Pick<RegistrationInput, "task" | "implementer" | "reviewer" | "policy" | "kind" | "slice" | "headSha" | "base">;
 
 export interface Registration {
   repo: RepoSlug;
@@ -53,6 +57,9 @@ export interface Registration {
   reviewRequest: { head: string; at: string; takenAt: string | null } | null;
   /** Apart from the gating hold, and lifted only by `releaseOwnerHold`; while set, `held` is true and, with no other hold, `holdReason` is its reason. */
   ownerHold: OwnerHold | null;
+  /** The head and base branch the latest registration named; null when it named none. */
+  headSha: string | null;
+  base: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,7 +78,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, registrationFactsMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -109,6 +116,7 @@ export class ShepherdStore implements HoldLookup {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
+    this.writeFacts(input.runId, input);
     return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
@@ -148,9 +156,16 @@ export class ShepherdStore implements HoldLookup {
       this.db
         .prepare("UPDATE shepherd_registration SET task = ?, implementer = ?, reviewer = ?, policy = ?, kind = ?, slice = ?, updated_at = ? WHERE run_id = ?")
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
+      this.writeFacts(runId, meta);
     });
     write.immediate();
     return this.changed(runId, this.byRun(runId)!);
+  }
+
+  /** A fact the caller omits keeps the stored one; a store opened without the facts migration is written only when one is given. */
+  private writeFacts(runId: string, facts: Pick<RegistrationInput, "headSha" | "base">): void {
+    if (facts.headSha === undefined && facts.base === undefined) return;
+    this.db.prepare("UPDATE shepherd_registration SET head_sha = COALESCE(?, head_sha), base = COALESCE(?, base) WHERE run_id = ?").run(facts.headSha ?? null, facts.base ?? null, runId);
   }
 
   /** Record the PR a branch registration was waiting for; throws when the run has no registration. */
@@ -363,6 +378,8 @@ function fromRow(row: Row): Registration {
     releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
     reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
     ownerHold,
+    headSha: row.head_sha ?? null,
+    base: row.base ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

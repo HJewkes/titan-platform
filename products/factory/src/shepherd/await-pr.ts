@@ -30,7 +30,7 @@ async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSig
     const found = await deps.port.findPr(input.repo, input.branch).catch(() => null);
     if (found && (found.state === "open" || found.merged)) {
       deps.store.get().setPr(input.runId, found.number);
-      await applyRegistrationHold(deps.port, deps.store.get(), input.runId);
+      await applyRegistrationHold(deps.port, deps.store.get(), input.runId, { head: found.headSha, ...(deps.prFiles && { local: deps.prFiles }) });
       return { pr: found.number, headSha: found.headSha };
     }
     await deps.sleep(deps.pollMs ?? SH_AWAIT_PR_POLL_MS, signal);

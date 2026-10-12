@@ -3,6 +3,7 @@ import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
 import type { WorkflowDefinition } from "../definition.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
+import type { PrFilesRead } from "../shepherd/git-pr-files.js";
 import type { ShepherdPhases } from "../shepherd/phases.js";
 import { shepherdPrWorkflow } from "../shepherd/pr.js";
 import type { PackageRegistry } from "../shepherd/release.js";
@@ -34,6 +35,8 @@ export interface FixtureOptions {
   registry?: PackageRegistry;
   /** Replaces the port over `fake`, for a test that needs a GitHub with more than one repo. */
   port?: GitHubPort;
+  /** Answers every git file read; absent means the serve process's reader, which fetches from GitHub. */
+  prFiles?: PrFilesRead;
 }
 
 /** A fake GitHub whose checks pass on every head, and the factory routes over it on a fake clock. */
@@ -51,6 +54,7 @@ export function shepherdFixture(options: FixtureOptions = {}): ShepherdFixture {
     registry: options.registry ?? (async () => "trusted"),
     versions: async () => true,
     ...(options.seats && { seats: () => options.seats! }),
+    ...(options.prFiles && { prFiles: options.prFiles }),
   });
   return { fake, routes, workflows: [shepherdPrWorkflow(IDLE_PHASES), landPrWorkflow()] };
 }
