@@ -18,6 +18,7 @@ interface Options {
 /** ci-wait over a PR at H1 whose required checks follow `runs`, given how many reruns GitHub has been asked for; the clock moves only by sleeping. */
 function ciWait(options: Options) {
   const fake = fakeGitHub();
+  fake.rules = { contexts: ["validate", "lint"], strict: false };
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, options.runs(fake.effects.rerunFailedJobs));
   const clock = { now: 0 };
