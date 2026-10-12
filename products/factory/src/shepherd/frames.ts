@@ -69,7 +69,8 @@ export function openFramedHost(options: FactoryHostOptions & FramedHostOptions):
 
 /** A route set without a store, as some tests pass, has no registrations to hear. */
 function subscribe(services: ShepherdServices | undefined, source: ShepherdFrames): (() => void) | undefined {
-  return services?.store?.onChange?.(source.onChange);
+  const store: ShepherdServices["store"] | undefined = services?.store;
+  return store?.onChange?.(source.onChange);
 }
 
 function tapDatabase(routes: FactoryRoutes, tap: (db: Db) => void): FactoryRoutes {
@@ -139,7 +140,7 @@ function pollCommits(db: Db, pollMs: number, onCommit: () => void): ReturnType<t
     if (version !== seen) onCommit();
     seen = version;
   }, pollMs);
-  poll.unref?.();
+  poll.unref();
   return poll;
 }
 
@@ -158,5 +159,5 @@ function registrationFields(registrationOf: ShepherdFramesOptions["registrationO
 
 /** Changes only when another connection commits, which is what makes a CLI's gate resolve `external` and this process's writes not. */
 function dataVersion(db: Db): number {
-  return db.pragma("data_version", { simple: true }) as number;
+  return Number(db.pragma("data_version", { simple: true }));
 }

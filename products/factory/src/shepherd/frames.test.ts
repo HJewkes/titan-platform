@@ -5,6 +5,7 @@ import { EventHub, silentLogger } from "@titan-design/daemon";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { startFactoryServer, type FactoryServer, type FactoryServerOptions } from "../serve.js";
 import { gateId, gateOpened, landScenario } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
@@ -33,9 +34,19 @@ async function serve(options: Pick<FactoryServerOptions, "dbPath" | "workflows" 
   return server;
 }
 
+const FrameSchema = z.object({
+  v: z.literal(1),
+  kind: z.enum(["run", "gate", "registration", "external"]),
+  repo: z.string().optional(),
+  pr: z.number().optional(),
+  runId: z.string().optional(),
+  stepId: z.string().optional(),
+  at: z.string(),
+});
+
 function framesOf(hub: EventHub): ShepherdFrame[] {
   const frames: ShepherdFrame[] = [];
-  hub.subscribe((message) => void (message.event === SHEPHERD_FRAME_EVENT && frames.push(JSON.parse(message.data) as ShepherdFrame)));
+  hub.subscribe((message) => void (message.event === SHEPHERD_FRAME_EVENT && frames.push(FrameSchema.strict().parse(JSON.parse(message.data)))));
   return frames;
 }
 
