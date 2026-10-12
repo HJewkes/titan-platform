@@ -62,7 +62,7 @@ export function latestSession(name: string, roster: readonly ReviewerAgent[]): R
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
  * the transcript changes. A reader with no seat read falls back to the finished-session read. A failure propagates.
  */
-export function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
+function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
   return reader.readSeat ? reader.readSeat(input) : reader.read(input);
 }
 
