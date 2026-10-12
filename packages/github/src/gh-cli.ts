@@ -115,7 +115,7 @@ async function getContent(api: Rest, repo: string, path: string, ref: string): P
 
 interface GhPull {
   number: number;
-  state: "open" | "closed";
+  state: unknown;
   merged?: boolean;
   merged_at?: string | null;
   merge_commit_sha: string | null;
@@ -126,10 +126,16 @@ interface GhPull {
   base: { ref: string };
 }
 
+/** A state the shepherd cannot place must fail the read: a caller that treats "not open" as closed would release on it. */
+function pullState(pr: GhPull): PullRequest["state"] {
+  if (pr.state === "open" || pr.state === "closed") return pr.state;
+  throw new Error(`the pull request answered state ${JSON.stringify(pr.state)}, neither open nor closed`);
+}
+
 function toPullRequest(pr: GhPull, behindBy?: number): PullRequest {
   return {
     number: pr.number,
-    state: pr.state,
+    state: pullState(pr),
     merged: pr.merged ?? Boolean(pr.merged_at),
     mergeSha: pr.merge_commit_sha,
     mergedAt: pr.merged_at ?? null,

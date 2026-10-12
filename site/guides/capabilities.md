@@ -832,7 +832,7 @@ Key exports:
 - `turn-action`: `classifyRequest`
 - `request-owner`: `readRequestToolCalls`
 - `wake-episodes`: `buildWakeEpisodes`, `episodeNames`
-- +284 more in the [reference page](/reference/session-analytics)
+- +285 more in the [reference page](/reference/session-analytics)
 
 <a id="cap-session-graph"></a>
 
@@ -945,8 +945,9 @@ Key exports:
 - `class-table`: `classFor`, `classTable`, `DEFAULT_HALF_LIFE_DAYS`, `DEFAULT_MIN_N`
 - `rows`: `sizeBand`
 - `forecast-set`: `DEFAULT_FORECAST_DRAWS`, `forecastSet`
-- `set-inputs`: `closureFor`, `closureRates`, `DEFAULT_WEEK_MIN_TASKS`, `weekEffects`
-- +35 more in the [reference page](/reference/throughput)
+- `set-inputs`: `closureFor`, `closureRates`, `weekEffects`
+- `backtest-sets`: `backtestSets`
+- +46 more in the [reference page](/reference/throughput)
 
 <a id="cap-workflow"></a>
 

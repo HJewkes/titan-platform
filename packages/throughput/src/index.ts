@@ -48,4 +48,17 @@ export {
   type WeekEffect,
   type WeekEffectOptions,
 } from "./set-inputs.js";
+export {
+  backtestSets,
+  DEFAULT_BACKTEST_SET_DRAWS,
+  type BacktestSetsOptions,
+  type BacktestSetsResult,
+  type OpenSetTask,
+  type ScoredSetGroup,
+  type SetArmScore,
+  type SetGroupKind,
+  type SetKindScore,
+  type SetMembership,
+  type SetOrigin,
+} from "./backtest-sets.js";
 export { type Quantiles } from "./weighted-quantiles.js";

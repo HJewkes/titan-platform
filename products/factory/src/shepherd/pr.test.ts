@@ -28,6 +28,7 @@ import type { FlakyChecks } from "../workflows/land-flaky.js";
 import { mergeVerdict } from "./review.js";
 import { shepherdStoreRef, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import { watchRow } from "./view.js";
+import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 import { OWNER } from "../test-support/resolver.js";
 import { TEST_BRIEF, expectBrief } from "../test-support/brief.js";
 
@@ -670,6 +671,49 @@ describe("the route table in a run", () => {
     expect(heads).toHaveLength(6);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task: the last at ${heads[5]}`);
     expect(w.fake.effects.merge).toBe(0);
+  });
+
+  /** Every review says FIX_FIRST; `review` and `wake` note the FIX_FIRST count each reads, as the re-review brief and the wake text do. */
+  function fixFirstEveryHead(onReview: (headSha: string, reviews: number) => void = () => undefined) {
+    const late: { w?: World } = {};
+    const read = { reviews: [] as number[], wakes: [] as number[] };
+    const w = autoWorld(
+      async (ctx, request) => (read.reviews.push(fixFirstCount(ctx)), onReview(request.headSha, read.reviews.length), { kind: "FIX_FIRST", headSha: request.headSha, text: "again" }),
+      async (ctx) => (read.wakes.push(fixFirstCount(ctx)), late.w!.fake.pushHead(1, fakeSha(`fix-${read.reviews.length}`)), { kind: "woken", agent: "impl-a" }),
+    );
+    late.w = w;
+    const recorded = (runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).filter((result) => result.stepId === FIX_FIRST_STEP);
+    return { w, read, recorded };
+  }
+
+  it("counts a FIX_FIRST that wakes no fixer while held once, in the runaway cap, the re-review brief and the wake", async () => {
+    const holding = { runId: "" };
+    const { w, read, recorded } = fixFirstEveryHead((_head, reviews) => reviews === 1 && w.store.hold(holding.runId, "owner wants a look"));
+    holding.runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+    const runId = holding.runId;
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.currentStep).toMatch(/^sh-held-wait/));
+    w.fake.pushHead(1, fakeSha("pushed-while-held"));
+    w.store.release(runId);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(read.reviews).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(read.wakes).toEqual([2, 3, 4, 5]);
+    expect(recorded(runId)).toHaveLength(6);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task");
+  });
+
+  const resultOf = (data: unknown) => (typeof data === "object" && data !== null && "result" in data ? data.result : undefined);
+
+  it("records each FIX_FIRST verdict, such as a seat reviewer's, once at its head, and the wake that follows reads that count", async () => {
+    const heads: string[] = [];
+    const { w, read, recorded } = fixFirstEveryHead((headSha) => heads.push(headSha));
+    const runId = shepherdPr1(w, AUTO_POLICY, AUTO_POLICY);
+
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    expect(recorded(runId).map((result) => resultOf(result.data))).toEqual(heads.map((headSha, n) => ({ repo: REPO, pr: 1, headSha, fixFirst: n + 1 })));
+    expect(read.wakes).toEqual([1, 2, 3, 4, 5]);
   });
 
   /** A no-progress gate at H2 under an auto policy, superseded by a head the run then sends back `sendBacks` times before a fixer's push gets a MERGE. */

@@ -16,6 +16,7 @@ import { MAX_REPAIRS } from "./route-table.js";
 import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
+import { recordFixFirst } from "./routed.js";
 import { HEAD_READ_GIVE_UP_MS } from "./head-read.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
@@ -800,7 +801,11 @@ describe("wakePhase", () => {
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const request: WakeRequest = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload: kind === "review" ? fixFirst("fix it") : {} };
-    const run = async (ctx: Parameters<typeof wakePhase>[0]) => void outcomes.push(await wakePhase(ctx, request));
+    // shepherd-pr records a FIX_FIRST at its round, before the wake reads the count.
+    const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
+      if (kind === "review") await recordFixFirst(ctx, { repo: REPO, pr: 1, headSha: H1 });
+      outcomes.push(await wakePhase(ctx, request));
+    };
     const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
