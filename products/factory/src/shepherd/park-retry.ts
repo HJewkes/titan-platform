@@ -9,7 +9,7 @@ const PARK_RETRY_GIVE_UP_MS = 48 * 3_600_000;
 export type ParkAttempt = { done: true; detail: string; parked: boolean } | { done: false };
 
 export interface LiveRetryDeps {
-  attempt(name: string): ParkAttempt;
+  attempt(name: string): Promise<ParkAttempt>;
   /** The agent's presence, or undefined when the roster cannot be read or holds no such name. */
   presence(name: string): Promise<string | undefined>;
   wait(ms: number): Promise<void>;
@@ -47,7 +47,7 @@ export function liveRetry(deps: LiveRetryDeps): LiveRetry {
         await deps.wait(pollMs);
         if (deps.now() >= deadline) return await settle({ agent, parked: false, detail: `${agent} was still live ${Math.round((deps.giveUpMs ?? PARK_RETRY_GIVE_UP_MS) / 3_600_000)}h after its park was refused` });
         if (STILL_RUNNING.has((await deps.presence(agent)) ?? "")) continue;
-        const attempt = deps.attempt(agent);
+        const attempt = await deps.attempt(agent);
         if (attempt.done) return await settle({ agent, parked: attempt.parked, detail: attempt.detail });
       }
     } finally {

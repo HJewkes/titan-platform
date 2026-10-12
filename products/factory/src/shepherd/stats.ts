@@ -193,6 +193,13 @@ function addEvent(rows: Rows, event: Event): void {
   if (event.ownerGated) row.slowOwnerGated++;
 }
 
+/** When each `sh-head-origin` read found a merge of the base that someone other than Shepherd pushed. */
+function foreignMergeUpsOf(run: WorkflowRun): number[] {
+  return Object.entries(run.stepResults)
+    .filter(([key, result]) => stepName(key) === "sh-head-origin" && payloadOf(result).kind === "merge-of-base")
+    .map(([, result]) => Date.parse(result.completedAt));
+}
+
 /** A merged run's merge-ups count in its merge week, so they sit beside the wait they caused; others in their own week. */
 function addMergeUps(rows: Rows, run: WorkflowRun): void {
   const repo = run.params.repo?.toLowerCase();
@@ -206,11 +213,16 @@ function addMergeUps(rows: Rows, run: WorkflowRun): void {
     const row = rows.at(repo, merged ?? at);
     if (row) row.strictRounds++;
   }
+  for (const at of foreignMergeUpsOf(run)) {
+    const row = rows.at(repo, merged ?? at);
+    if (row) row.foreignMergeUps++;
+  }
 }
 
 /**
  * Per repo and ISO week: merges, those whose MERGE-to-merged wait exceeded an hour with their total hours and how many
- * an owner gate held, merges made outside Shepherd, and Shepherd's merge-ups by class with the strict rounds behind them.
+ * an owner gate held, merges made outside Shepherd, Shepherd's merge-ups by class with the strict rounds behind them, and
+ * the merges of the base that others pushed.
  */
 export function shepherdStats(runs: readonly WorkflowRun[], range: StatsRange = {}): StatsRow[] {
   const rows = new Rows(range);
