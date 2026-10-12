@@ -6,13 +6,13 @@ import { failure, unexpectedShape } from "./active-work.js";
 /** Items stay `unknown` here so one item that fails `ownerItemSchema` costs a gap line, not the whole list. */
 const needsList = z.object({ items: z.array(z.unknown()), gaps: z.array(z.string()) });
 
-export interface FactoryNeedsList {
+interface FactoryNeedsList {
   items: OwnerItem[];
   /** The factory's own dead-source lines, then one line per item that failed the schema. */
   gaps: string[];
 }
 
-export interface FactoryNeeds {
+interface FactoryNeeds {
   /** Rejects with an error that carries a sysexits `code` when the factory is down, refuses, or answers another shape. */
   list(): Promise<FactoryNeedsList>;
 }
