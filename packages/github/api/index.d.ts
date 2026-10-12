@@ -1,3 +1,5 @@
+import { Octokit } from '@octokit/core';
+
 /** The only conclusions an App-posted check run may carry. */
 declare const CHECK_CONCLUSIONS: readonly ["success", "failure", "action_required"];
 type CheckConclusion = (typeof CHECK_CONCLUSIONS)[number];
@@ -57,6 +59,32 @@ declare class GhError extends Error {
 }
 /** Uses the caller's existing `gh` login; this module never sees a token. */
 declare const execGh: GhExec;
+
+type Fields = Record<string, string>;
+/** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
+type Revalidated<T> = {
+    notModified: true;
+} | {
+    notModified: false;
+    body: T;
+    etag: string | null;
+};
+/** The REST transport every wire method reads through: `restCaller` over `gh api -i`, or `octokitRest` over Octokit. */
+interface Rest {
+    /** Conditional on the ETag of the same request's last 200; a 304 answers with that cached body. */
+    get<T>(path: string, fields?: Fields): Promise<T>;
+    getOrNull<T>(path: string, fields?: Fields): Promise<T | null>;
+    /** Follows `Link: rel="next"`, each page conditional on its own ETag. */
+    pages<P, T>(path: string, fields: Fields, pick: (page: P) => T[]): Promise<T[]>;
+    /**
+     * Like `pages`, but conditional on the caller's `etag` rather than the cache. One ETag vouches for one page, so a list
+     * longer than a page answers every page with a null `etag`, and the caller's next read is unconditional.
+     */
+    revalidatePages<P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>>;
+    /** Unconditional, for bodies that are not JSON. */
+    text(path: string): Promise<string>;
+    send<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, fields?: Fields, input?: string): Promise<T>;
+}
 
 /** One force-push of a PR's head branch: the head it replaced, null once GitHub no longer has that commit, and the new head. */
 interface ForcePush {
@@ -565,6 +593,51 @@ type CheckFinding = {
  */
 declare function headCheckFindings({ headSha, contexts, runs, requiredApps }: HeadChecksInput): CheckFinding[];
 
+type RateLane = "rest" | "graphql";
+/** GitHub's own count for one lane, as its last answer's `x-ratelimit-*` headers put it. */
+interface RateWindow {
+    limit: number;
+    remaining: number;
+    used: number;
+    /** Epoch milliseconds. */
+    resetAt: number;
+}
+/** A lane the throttle saw limited, and until when; a primary limit lasts to the window's reset, a secondary one to its retry-after. */
+interface Cooldown {
+    lane: RateLane;
+    class: "primary" | "secondary";
+    /** Epoch milliseconds. */
+    until: number;
+}
+interface GatewayBudget {
+    lanes: Partial<Record<RateLane, RateWindow>>;
+    /** Only the cooldowns still running. */
+    cooldowns: Cooldown[];
+}
+interface OctokitClientOptions {
+    /** Defaults to `gh auth token`, so the client speaks as the same login `gh` does. */
+    token?: () => Promise<string>;
+    /** Re-read the token once on a 401; off for a token that cannot change, such as an App JWT. Defaults to on. */
+    reauthOn401?: boolean;
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+    /** Keys the throttle's limiters, so a second identity (an App installation) never waits behind the user's writes. */
+    throttleId?: string;
+}
+interface GitHubClient {
+    request: Octokit["request"];
+    budget(): GatewayBudget;
+}
+/** A failed call, rebuilt with only its status, headers and a redacted message, so no token or body travels with it. */
+declare class GitHubRequestError extends Error {
+    readonly status: number;
+    readonly headers: Readonly<Record<string, string>>;
+    constructor(message: string, status: number, headers: Readonly<Record<string, string>>);
+}
+declare function octokitClient(options?: OctokitClientOptions): GitHubClient;
+/** One client per process, so every service call in it shares one throttle; the token is read on the first request. */
+declare function sharedOctokit(): GitHubClient;
+
 interface AppCredentials {
     appId: number;
     installationId: number;
@@ -581,6 +654,8 @@ interface InstallationToken {
 declare function signAppJwt(appId: number, privateKeyPem: string, nowMs: number): string;
 /** Exchanges a freshly signed App JWT for an installation token; the JWT reaches `gh` as `GH_TOKEN` for this call only. */
 declare function appInstallationToken(credentials: AppCredentials, exec?: GhExec): Promise<InstallationToken>;
+/** The same exchange over Octokit, with the JWT as this one client's bearer token; no `gh` process and no child env. */
+declare function appInstallationTokenOverHttp(credentials: AppCredentials, clientOptions?: Omit<OctokitClientOptions, "token" | "reauthOn401">): Promise<InstallationToken>;
 
 interface GhCliOptions {
     /** Defaults to one budget per process, because GitHub counts calls per login. */
@@ -595,7 +670,27 @@ interface GhCliOptions {
     /** Waits between attempts of a failed read; tests inject one so they do not sleep. */
     sleep?: (ms: number) => Promise<void>;
 }
+/** The `gh` CLI wire, for CLI processes; a long-running service uses `octokitWire` instead. */
 declare function ghCliWire(exec?: GhExec, options?: GhCliOptions): GitHubWire;
+
+interface OctokitWireOptions {
+    /** Defaults to the process's shared client, so every wire in a service spends one throttled budget. */
+    client?: GitHubClient;
+    /** Most recent conditional GETs whose ETag and body are kept. */
+    etagCacheSize?: number;
+    /** Mints the GitHub App installation token `createCheckRun` posts under, per check run; without it `createCheckRun` refuses. */
+    appToken?: () => Promise<string>;
+    /** Options for the App identity's own client; its token is always the one `appToken` minted. */
+    appClientOptions?: Omit<OctokitClientOptions, "token" | "reauthOn401">;
+}
+/** The wire a long-running service uses: Octokit with throttling, GET-only retry and ETag reads, behind the same port as `ghCliWire`. */
+declare function octokitWire(options?: OctokitWireOptions): GitHubWire;
+
+/**
+ * The `Rest` port over one Octokit client, with `restCaller`'s semantics: GETs conditional on a bounded ETag cache, an
+ * unconditional 304 refused, next pages followed only on the API origin. Retries and rate-limit waits are the client's.
+ */
+declare function octokitRest(client: GitHubClient, cacheSize?: number): Rest;
 
 /** A value that would change which GitHub resource a `gh api` path names; thrown before any call. */
 declare class GitHubInputError extends Error {
@@ -754,4 +849,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };
+export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type Cooldown, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, type Fields, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GatewayBudget, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, type GitHubClient, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, GitHubRequestError, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OctokitClientOptions, type OctokitWireOptions, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RateLane, type RateWindow, type RepoFile, type RepoSlug, type RequiredChecks, type Rest, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, appInstallationTokenOverHttp, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, octokitClient, octokitRest, octokitWire, rateBudget, sharedOctokit, sharedRateBudget, signAppJwt, successRun };

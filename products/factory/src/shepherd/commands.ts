@@ -7,6 +7,7 @@ import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
+import type { GhGateway } from "./gh-gateway.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
@@ -39,6 +40,8 @@ export interface ShepherdServices extends SnapshotServices {
   train?: MergeTrainRef;
   /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
   freeze?: FreezeStoreRef;
+  /** Serve's GitHub gateway behind `shepherd.ghRead` and `shepherd.ghBudget`; absent on a host that is not serve. */
+  gateway?: GhGateway;
 }
 
 export interface Registered {

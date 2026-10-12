@@ -1,7 +1,7 @@
 import { GhError } from "./exec.js";
 import { GitHubRequestError, type GitHubClient } from "./octokit-client.js";
 import { redact } from "./redact.js";
-import { nextPage, type Fields, type Rest } from "./rest.js";
+import { nextPage, type Fields, type Rest, type Revalidated } from "./rest.js";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -37,18 +37,7 @@ export function octokitRest(client: GitHubClient, cacheSize = 500): Rest {
       }
     },
     pages: async <P, T>(path: string, fields: Fields, pick: (page: P) => T[]) => followPages(conditional, withQuery(path, fields), pick, []),
-    revalidatePages: async <P, T>(path: string, fields: Fields, etag: string | null, pick: (page: P) => T[]) => {
-      const url = withQuery(path, fields);
-      const answer = await call("GET", url, undefined, etag ?? undefined);
-      if (answer.status === 304) {
-        if (etag === null) throw unconditional304(url);
-        return { notModified: true as const };
-      }
-      const first = pick(answer.data as P);
-      const next = nextPage(answer.headers.get("link"));
-      if (!next) return { notModified: false as const, body: first, etag: answer.headers.get("etag") ?? null };
-      return { notModified: false as const, body: await followPages(conditional, next, pick, first), etag: null };
-    },
+    revalidatePages: (path, fields, etag, pick) => revalidate(call, conditional, withQuery(path, fields), etag, pick),
     text: async (path: string) => {
       const { data } = await call("GET", path);
       return typeof data === "string" ? data : JSON.stringify(data);
@@ -58,6 +47,19 @@ export function octokitRest(client: GitHubClient, cacheSize = 500): Rest {
       return (await call(method, path, Object.keys(fields).length === 0 ? undefined : JSON.stringify(fields))).data as T;
     },
   };
+}
+
+/** One ETag vouches for one page, so a list longer than a page answers with a null `etag`. */
+async function revalidate<P, T>(call: Call, conditional: (url: string) => Promise<Answer>, url: string, etag: string | null, pick: (page: P) => T[]): Promise<Revalidated<T[]>> {
+  const answer = await call("GET", url, undefined, etag ?? undefined);
+  if (answer.status === 304) {
+    if (etag === null) throw unconditional304(url);
+    return { notModified: true };
+  }
+  const first = pick(answer.data as P);
+  const next = nextPage(answer.headers.get("link"));
+  if (!next) return { notModified: false, body: first, etag: answer.headers.get("etag") ?? null };
+  return { notModified: false, body: await followPages(conditional, next, pick, first), etag: null };
 }
 
 /** Fields become the query here rather than Octokit parameters, so no field name can collide with an Octokit option. */
