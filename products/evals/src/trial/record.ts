@@ -6,7 +6,7 @@ import type { TrialRecord } from "../spec/index.js";
 export type TrialOutcome = "passed-run" | "failed" | "infra";
 
 /** The account or the runtime failed, not the variant, so the trial says nothing about the variant (design 1.6). */
-export const INFRA_FAILURES: ReadonlySet<string> = new Set<AgentFailureKind>(["rate_limited", "auth_misconfigured", "runtime_error"]);
+const INFRA_FAILURES: ReadonlySet<string> = new Set<AgentFailureKind>(["rate_limited", "auth_misconfigured", "runtime_error"]);
 
 export interface TrialCost {
   usd: number;

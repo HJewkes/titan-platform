@@ -23,7 +23,7 @@ export interface LaunchRequest {
 
 export type TrialLaunch = (request: LaunchRequest) => Promise<AgentRunResult<unknown>>;
 
-export interface ManifestRouteDeps {
+interface ManifestRouteDeps {
   code: Readonly<Record<string, CodeStep>>;
   launch?: TrialLaunch;
   observations: TrialObservations;
