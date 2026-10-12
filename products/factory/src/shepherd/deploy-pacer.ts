@@ -1,6 +1,7 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import type { AncestryProbe } from "../build-ancestry.js";
 import type { DeployRecord } from "../deploy.js";
 import { failureOf } from "./error-class.js";
 
@@ -39,6 +40,8 @@ interface PaceInput {
   wanted: DeployWanted | undefined;
   now: number;
   runningSha: string;
+  /** The running build descends from the wanted sha, so a later commit deployed by hand already answered it. */
+  runningHoldsWanted?: boolean;
   lastDeploy?: DeployRecord | undefined;
   busy: number;
   /** TP-2268's rollback pause: the deployer would refuse, so nothing is spawned until a person clears it. */
@@ -81,6 +84,7 @@ export function paceDecision(input: PaceInput): PaceDecision {
   const { wanted, now, busy, quietMs, maxWaitMs } = input;
   if (wanted === undefined) return { kind: "idle" };
   if (wanted.sha === input.runningSha) return { kind: "clear", why: `the service runs ${wanted.sha}` };
+  if (input.runningHoldsWanted === true) return { kind: "clear", why: `the service runs ${input.runningSha}, which contains ${wanted.sha}` };
   if (recorded(wanted, input.lastDeploy)) return { kind: "clear", why: `deploy.json records ${input.lastDeploy?.outcome} for ${wanted.sha}` };
   if (input.paused) return { kind: "wait", why: "deploys are paused; titan-factory service pause --clear lifts it" };
   const spawned = spawnedRule(wanted, input);
@@ -161,6 +165,8 @@ interface PacerDeps {
   store: WantedStore;
   now: () => number;
   runningSha: () => string;
+  /** Whether the running build descends from `sha`, settled before the tick since git is async; absent means only an equal sha counts. */
+  runningHolds?: (sha: string) => boolean;
   lastDeploy: () => DeployRecord | undefined;
   busy: () => number;
   paused: () => boolean;
@@ -185,6 +191,7 @@ function decide(deps: PacerDeps): { wanted: DeployWanted | undefined; decision: 
     wanted,
     now: deps.now(),
     runningSha: deps.runningSha(),
+    runningHoldsWanted: deps.runningHolds?.(wanted.sha) ?? false,
     lastDeploy: deps.lastDeploy(),
     busy: deps.busy(),
     paused: deps.paused(),
@@ -212,6 +219,8 @@ function act(deps: PacerDeps, wanted: DeployWanted, decision: PaceDecision): voi
 export interface DeployPacerOptions {
   stateDir: string;
   spawn: (sha: string) => { pid?: number | undefined };
+  /** Lets the sweep clear a wanted sha the running build already descends from. */
+  isAncestor?: AncestryProbe;
   store?: WantedStore;
   /** How often the sweep runs; defaults to `PACER_SWEEP_MS`. */
   sweepMs?: number;
