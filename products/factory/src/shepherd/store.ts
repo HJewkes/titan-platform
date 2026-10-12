@@ -76,30 +76,7 @@ export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, line
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
 
-interface Row {
-  repo: string;
-  pr: number | null;
-  branch: string | null;
-  run_id: string;
-  task: string;
-  implementer: string;
-  reviewer: string | null;
-  policy: string;
-  kind: string;
-  slice: string | null;
-  held: number;
-  hold_reason: string | null;
-  hold_reviewer?: string | null;
-  release_ready_head?: string | null;
-  release_ready_at?: string | null;
-  hold_satisfied_head?: string | null;
-  hold_satisfied_by?: string | null;
-  review_request_head?: string | null;
-  review_request_at?: string | null;
-  review_request_taken_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
+import type { RegistrationRow as Row } from "./registration-row.js";
 
 const KindSchema = z.enum(TASK_KINDS);
 
@@ -111,11 +88,15 @@ const REFS_HEADS = "refs/heads/";
 /** A branch spelled `refs/heads/<b>` and one spelled `<b>` are the same branch; strip one leading prefix. */
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
+/** Hears a registration after a write to it commits; it must not throw, since the write has already landed. */
+type RegistrationListener = (registration: Registration) => void;
+
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
   constructor(
     private readonly db: Db,
     private readonly now: () => number = Date.now,
+    private readonly onChange: RegistrationListener = () => undefined,
   ) {}
 
   register(input: RegistrationInput): Registration {
@@ -128,7 +109,7 @@ export class ShepherdStore implements HoldLookup {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(repoKey(input.repo), input.pr ?? null, input.branch === undefined ? null : branchName(input.branch), input.runId, input.task, input.implementer, input.reviewer ?? null, JSON.stringify(input.policy), kind, input.slice ?? null, at, at);
-    return this.byRun(input.runId)!;
+    return this.changed(input.runId, this.byRun(input.runId)!);
   }
 
   byRun(runId: string): Registration | undefined {
@@ -169,14 +150,14 @@ export class ShepherdStore implements HoldLookup {
         .run(meta.task, meta.implementer, meta.reviewer ?? null, JSON.stringify(policy), kind, meta.slice ?? null, this.stamp(), runId);
     });
     write.immediate();
-    return this.byRun(runId)!;
+    return this.changed(runId, this.byRun(runId)!);
   }
 
   /** Record the PR a branch registration was waiting for; throws when the run has no registration. */
   setPr(runId: string, pr: number): Registration {
     const changed = this.db.prepare("UPDATE shepherd_registration SET pr = ?, updated_at = ? WHERE run_id = ?").run(pr, this.stamp(), runId).changes;
     if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
-    return this.byRun(runId)!;
+    return this.changed(runId, this.byRun(runId)!);
   }
 
   /** Points a registration, and the authors, hold events, proofs, settled parks and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
@@ -190,13 +171,13 @@ export class ShepherdStore implements HoldLookup {
       moveAccountHold(this.db, runId, newRunId);
     });
     move();
-    return this.byRun(newRunId)!;
+    return this.changed(newRunId, this.byRun(newRunId)!);
   }
 
   /** A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`); an owner-asked hold takes its own slot. */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
     this.db.transaction(() => this.placeHold(runId, { reason, reviewer: reviewer ?? null }, by))();
-    return this.byRun(runId)!;
+    return this.changed(runId, this.byRun(runId)!);
   }
 
   /** Lifts the hold that gates, and records its reason, or `reason` when given; a hold parked under it gates in its place. `reason` goes to the event only, never to the row. */
@@ -212,12 +193,12 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
   releaseOwnerHold(runId: string, by: EventContext = {}, reason?: string): boolean {
-    return this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))();
+    return this.changed(runId, this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))());
   }
 
   /** Records that the owner was asked about the run's owner-asked hold again; false when it has none. */
   markOwnerAsked(runId: string): boolean {
-    return recordOwnerAsked(this.db, runId, this.stamp());
+    return this.changed(runId, recordOwnerAsked(this.db, runId, this.stamp()));
   }
 
   /** Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none. */
@@ -232,7 +213,7 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap: holds only while no hold or release has landed since `mark` was read, so a hold or release made meanwhile stands untouched; false when one did. */
   holdIfUnchanged(runId: string, mark: number, reason: string, by: EventContext = {}): boolean {
-    return this.db.transaction(() => latestChangeId(this.db, runId) === mark && (this.placeHold(runId, { reason, reviewer: null }, by), true))();
+    return this.changed(runId, this.db.transaction(() => latestChangeId(this.db, runId) === mark && (this.placeHold(runId, { reason, reviewer: null }, by), true))());
   }
 
   /** Records a probe's proof that a head is a clean merge-up; a repeat changes nothing. */
@@ -262,24 +243,24 @@ export class ShepherdStore implements HoldLookup {
     const changed = this.db
       .prepare("UPDATE shepherd_registration SET hold_satisfied_head = ?, hold_satisfied_by = ?, updated_at = ? WHERE run_id = ? AND held = 1 AND hold_reviewer = ?")
       .run(head, satisfiedBy, this.stamp(), runId, reviewer).changes;
-    return changed === 1;
+    return this.changed(runId, changed === 1);
   }
 
   /** Withdraws the satisfaction, as when the reviewer's newest verdict is FIX_FIRST; at whatever head it was read, so no later carry can restore it. */
   unsatisfyHold(runId: string): void {
-    this.db.prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?").run(this.stamp(), runId);
+    this.changed(runId, this.db.prepare("UPDATE shepherd_registration SET hold_satisfied_head = NULL, hold_satisfied_by = NULL, updated_at = ? WHERE run_id = ?").run(this.stamp(), runId).changes === 1);
   }
 
   /** Asks for Shepherd's own review at `head`; false when an ask at that head already stands, taken or not, so a repeat asks nothing. */
   requestReview(runId: string, head: string): boolean {
     const ask = "UPDATE shepherd_registration SET review_request_head = ?, review_request_at = ?, review_request_taken_at = NULL, updated_at = ? WHERE run_id = ? AND review_request_head IS NOT ?";
-    return this.db.prepare(ask).run(head, this.stamp(), this.stamp(), runId, head).changes === 1;
+    return this.changed(runId, this.db.prepare(ask).run(head, this.stamp(), this.stamp(), runId, head).changes === 1);
   }
 
   /** Compare-and-swap: marks the ask at `head` taken; false when there is no untaken ask at that head. */
   takeReviewRequest(runId: string, head: string): boolean {
     const take = "UPDATE shepherd_registration SET review_request_taken_at = ?, updated_at = ? WHERE run_id = ? AND review_request_head = ? AND review_request_taken_at IS NULL";
-    return this.db.prepare(take).run(this.stamp(), this.stamp(), runId, head).changes === 1;
+    return this.changed(runId, this.db.prepare(take).run(this.stamp(), this.stamp(), runId, head).changes === 1);
   }
 
   /** Marks `head` as ready to land, or clears the mark with null. */
@@ -288,11 +269,12 @@ export class ShepherdStore implements HoldLookup {
       .prepare("UPDATE shepherd_registration SET release_ready_head = ?, release_ready_at = ?, updated_at = ? WHERE run_id = ?")
       .run(head, head === null ? null : this.stamp(), this.stamp(), runId).changes;
     if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
+    this.changed(runId, true);
   }
 
   /** Gives up a finished run's claim on its branch, so a later PR from the same branch can register. */
   releaseBranch(runId: string): void {
-    this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId);
+    this.changed(runId, this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId).changes === 1);
   }
 
   /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. No satisfaction passes an owner hold. */
@@ -331,11 +313,18 @@ export class ShepherdStore implements HoldLookup {
   }
 
   private lift(runId: string, pick: (slots: HoldSlots) => Lift | undefined, by: EventContext): boolean {
-    return this.db.transaction(() => {
+    return this.changed(runId, this.db.transaction(() => {
       const next = pick(readSlots(this.db, runId));
       if (next) this.writeSlots(runId, next.slots, { kind: "release", reason: next.reason }, by);
       return next !== undefined;
-    })();
+    })());
+  }
+
+  /** Called once the write has committed; `false` means it wrote nothing. */
+  private changed<T>(runId: string, result: T): T {
+    const registration = result === false ? undefined : this.byRun(runId);
+    if (registration) this.onChange(registration);
+    return result;
   }
 
   private writeSlots(runId: string, slots: HoldSlots, change: { kind: EventKind; reason: string | null }, by: EventContext): void {
@@ -384,10 +373,13 @@ export interface ShepherdStoreRef {
   get(): ShepherdStore;
   /** Returns the unbind, which the host calls before it closes the database. */
   bind(db: Db): () => void;
+  /** Hears every registration write on whichever store is bound, now or later; returns the unsubscribe. Optional so hand-rolled refs need not carry it. */
+  onChange?(listener: RegistrationListener): () => void;
 }
 
 export function shepherdStoreRef(now: () => number = Date.now): ShepherdStoreRef {
   let store: ShepherdStore | undefined;
+  const listeners = new Set<RegistrationListener>();
   return {
     get() {
       if (!store) throw new Error("the shepherd store is not bound to an open factory database");
@@ -395,9 +387,10 @@ export function shepherdStoreRef(now: () => number = Date.now): ShepherdStoreRef
     },
     bind(db) {
       if (store) throw new Error("the shepherd store is already bound to an open factory database");
-      const bound = new ShepherdStore(db, now);
+      const bound = new ShepherdStore(db, now, (registration) => listeners.forEach((listener) => listener(registration)));
       store = bound;
       return () => void (store === bound && (store = undefined));
     },
+    onChange: (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
   };
 }

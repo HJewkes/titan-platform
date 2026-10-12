@@ -3,6 +3,7 @@ import { CI_BACKLOG_CEILING_FACTOR, MISSING_CHECK_GRACE_MS, missingCheckGraceSpe
 import { rerunIfFlaky, type FlakyState } from "./land-flaky.js";
 import { deadline, type Deadline } from "./deadline.js";
 import type { LandDeps, Timing } from "./land.js";
+import { requireRequiredChecks } from "../required-checks.js";
 
 /** Writes go through the port, which re-reads the PR first; the snapshot is dropped once a write is through, so the next read sees it. */
 export async function afterWrite<T>(deps: LandDeps, input: { repo: string }, write: Promise<T>): Promise<T> {
@@ -30,9 +31,10 @@ export async function waitForCi(deps: LandDeps, input: CiInput, timing: Timing, 
   const missingSettled = (headSha: string) => missingCheckGraceSpent(firstReads, `${input.repo}#${input.pr}@${headSha}`, timing.now(), graceMs);
   let last = "no read yet";
   const openSeen = {};
+  const liveContexts = async (baseRef: string) => (await requireRequiredChecks(port, input.repo, baseRef)).contexts;
   for (;;) {
     try {
-      const snapshot = await readCi(port, input, reads, { missingSettled, openSeen });
+      const snapshot = await readCi(port, input, reads, { missingSettled, openSeen, liveContexts });
       const readAt = timing.now();
       if (snapshot.verdict === "red" && (await rerunWithinDeadline(deps, input, snapshot, { timing, signal, flaky, clock }))) continue;
       if (snapshot.verdict !== "pending") return { ...snapshot, readAt };
