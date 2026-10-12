@@ -82,7 +82,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBe("g10-review: store migration");
   });
 
-  it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts"])(
+  it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "commands.ts"])(
     "holds Shepherd's merge policy in %s g10-adversary",
     async (name) => {
       const r = rig([file(`products/factory/src/shepherd/${name}`, 10)]);
@@ -159,6 +159,41 @@ describe("the G10 hold Shepherd places at registration", () => {
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
     expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+
+  it("leaves a commands.ts outside Shepherd unheld", async () => {
+    const r = rig([file("packages/cli/src/commands.ts", 10)]);
+
+    expect(await holdOf(r)).toBeUndefined();
+  });
+
+  it("escalates to g10-adversary when a seat's g10-review hold lands during the file read", async () => {
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
+    const listPrFiles = r.port.listPrFiles;
+    r.port = { ...r.port, listPrFiles: async (repo, pr) => (r.store.hold("run-1", "g10-review: seat's own hold"), listPrFiles(repo, pr)) };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: authority touch");
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: authority touch" });
+  });
+
+  it("escalates to g10-adversary over a released g10-review hold the run inherited", async () => {
+    const r = rig([file("packages/authority/src/x.ts", 10)]);
+    r.store.hold("run-1", "g10-review: 900 changed lines");
+    r.store.releaseIfHeld("run-1", "g10-review: 900 changed lines");
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: authority touch");
+  });
+
+  it("does not re-hold a run whose g10-adversary hold was released, whatever class it now needs", async () => {
+    const r = rig([file("packages/x/src/a.ts", 900)]);
+    r.store.hold("run-1", "g10-adversary: authority touch");
+    r.store.releaseIfHeld("run-1", "g10-adversary: authority touch");
+    let reads = 0;
+    const listPrFiles = r.port.listPrFiles;
+    r.port = { ...r.port, listPrFiles: async (repo, pr) => (reads++, listPrFiles(repo, pr)) };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
+    expect(reads).toBe(0);
   });
 
   it("keeps a hold placed while the file list was read, under the G10 hold", async () => {

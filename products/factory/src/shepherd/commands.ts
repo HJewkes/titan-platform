@@ -143,10 +143,12 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
   return startRegistered(ctx, store, args, branch, policy);
 }
 
-/** Only a seat's registration is classed: the release and toolchain PRs Shepherd registers itself carry no seat to release a hold. */
+/**
+ * Only a seat's registration is classed: the release and toolchain PRs Shepherd registers itself carry no seat to release a hold.
+ * A repeat registration is classed again, so a diff that grew past the size limit or into a stronger class gets its hold.
+ */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const registered = await register(args, ctx);
-  if (!registered.created) return registered;
   const services = servicesOf(ctx);
   const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId);
   return g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };

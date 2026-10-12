@@ -21,6 +21,7 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
+import { everG10Held } from "./registration-hold.js";
 import { prChangedLines, prTouchesDependency, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { withReviewerProfile } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
@@ -195,10 +196,21 @@ async function plannedPanel(deps: ShepherdDeps, { panel, panelPolicy, roles }: W
   return intentPlan(await panelFacts(deps, input, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules);
 }
 
-/** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
+/** A step with no run id, or a store that cannot be read, has no kind or hold to go by, so it is classed with the stricter reviewers. */
 function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerFacts {
   const read = runId === undefined ? { unread: "no run id" } : registeredKind(deps.store, runId);
-  return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
+  const g10Hold = runId === undefined ? undefined : g10HoldRead(deps, runId);
+  if (read.unread !== undefined || g10Hold === undefined) return { unread: true };
+  return { ...(read.kind !== undefined && { kind: read.kind }), ...(g10Hold && { g10Hold }) };
+}
+
+/** Undefined when the store cannot be read. */
+function g10HoldRead(deps: ShepherdDeps, runId: string): boolean | undefined {
+  try {
+    return everG10Held(deps.store.get(), runId);
+  } catch {
+    return undefined;
+  }
 }
 
 /** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */

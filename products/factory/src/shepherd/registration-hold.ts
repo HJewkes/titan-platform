@@ -7,12 +7,14 @@ import { prChangedLines } from "./reviewer-roles.js";
 import type { ShepherdStore } from "./store.js";
 
 const SHEPHERD_MIGRATION_FILES = ["store.ts", "events.ts", "train.ts"].map((name) => `products/factory/src/shepherd/${name}`);
-const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts"].map((name) => `**/${name}`);
+const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts"].map((name) => `**/${name}`);
+/** Shepherd's hold and release commands, and the choice of which registrations are classed, live in this one file. */
+const HOLD_COMMAND_FILES = ["products/factory/src/shepherd/commands.ts"];
 
 /** Factory's store migrations and Shepherd's merge policy live in plain source files, which the panel's default globs miss. */
 const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
-  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES],
+  policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES, ...HOLD_COMMAND_FILES],
   migration: [...DEFAULT_CLASS_RULES.migration, "**/store-migrations.ts", "**/*-migration*.ts", "**/*-store.ts", ...SHEPHERD_MIGRATION_FILES],
 };
 
@@ -56,7 +58,17 @@ export async function g10HoldAt(port: GitHubPort, { repo, pr, kind }: HoldTarget
   }
 }
 
-const wasG10Held = (store: ShepherdStore, runId: string): boolean => store.eventsOf(runId).some((event) => event.kind === "hold" && (event.reason?.startsWith("g10-") ?? false));
+const G10_STRENGTH: Readonly<Record<string, number>> = { "g10-review": 1, "g10-adversary": 2 };
+
+const g10StrengthOf = (reason: string | null | undefined): number => G10_STRENGTH[holdClassOf(reason) ?? ""] ?? 0;
+
+/** True when a G10 hold at least as strong as `wanted` was placed on the run, so a weaker one placed or inherited never blocks a stronger. */
+const wasG10Held = (store: ShepherdStore, runId: string, wanted: string): boolean =>
+  store.eventsOf(runId).some((event) => event.kind === "hold" && g10StrengthOf(event.reason) >= g10StrengthOf(wanted));
+
+/** True when the run holds or ever held a G10 hold; the reviewer it gets is picked by this, since a released hold still names the class. */
+export const everG10Held = (store: ShepherdStore, runId: string): boolean =>
+  g10StrengthOf(store.byRun(runId)?.holdReason) > 0 || store.eventsOf(runId).some((event) => event.kind === "hold" && g10StrengthOf(event.reason) > 0);
 
 /**
  * The hold to place over the run's gating hold, or undefined when one as strong stands. A run keeps a second hold only
@@ -71,21 +83,23 @@ export function stackedOver(gating: string | null, wanted: string): string | und
   return `g10-adversary: ${wanted.slice(wanted.indexOf(":") + 1).trim()}, over a ${gatingClass} hold`;
 }
 
-/** Undefined when a G10 hold was placed or released since registration, which decided the run's class already. */
+/** Undefined when a G10 hold as strong as `wanted` was placed or released already, which decided the run's class. */
 function holdToPlace(store: ShepherdStore, runId: string, wanted: string): string | undefined {
   const registration = store.byRun(runId);
-  if (!registration || wasG10Held(store, runId)) return undefined;
+  if (!registration || wasG10Held(store, runId, wanted)) return undefined;
   return stackedOver(registration.held ? (registration.holdReason ?? "") : null, wanted);
 }
 
 /**
- * Holds a new run for its G10 class, stacked on any hold the run has, so the G10 hold outlasts a stall or an inherited
- * hold. A restart whose events carry a G10 hold had its class decided already, so a hold released there stays released.
- * The file read is slow, so the hold is a compare-and-swap retried on a fresh read of the run.
+ * Holds a run for its G10 class, stacked on any hold the run has, so the G10 hold outlasts a stall or an inherited hold.
+ * Called at each registration and when a branch registration learns its PR, so a diff that grows is classed again. A
+ * G10 hold as strong as the one wanted, placed or released before, decided the class already, so a released one stays
+ * released; a weaker one does not stop an escalation. The file read is slow, so the hold is a compare-and-swap retried
+ * on a fresh read of the run.
  */
 export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
   const registration = store.byRun(runId);
-  if (!registration || registration.pr === null || wasG10Held(store, runId)) return undefined;
+  if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const wanted = await g10HoldAt(port, { repo: registration.repo, pr: registration.pr, kind: registration.kind });
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {

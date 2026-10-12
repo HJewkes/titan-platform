@@ -232,7 +232,7 @@ describe("shepherd.register G10 hold", () => {
     expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([expect.objectContaining({ kind: "hold", actor: "shepherd" })]);
   });
 
-  it("a repeat registration of a run a seat held keeps that hold and writes no event", async () => {
+  it("a repeat registration whose diff grew past 400 lines stacks a G10 hold over the seat's hold", async () => {
     const w = world({ frozen: true });
     w.fake.addPr({ headSha: H1, headRef: BRANCH });
     const { runId } = await registered(w, pr1);
@@ -242,9 +242,47 @@ describe("shepherd.register G10 hold", () => {
 
     const repeat = await registered(w, pr1);
 
-    expect(repeat).toMatchObject({ created: false, registration: { holdReason: "visual-gate2: screenshots pending" } });
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: 450 changed lines, over a visual-gate2 hold" });
+    expect(store.release(runId).holdReason).toBe("visual-gate2: screenshots pending");
+  });
+
+  it("a repeat registration whose diff grew into an authority path escalates a released g10-review hold to g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+    w.fake.prFiles.set(1, [...large, { path: "packages/authority/src/x.ts", status: "modified", additions: 5, deletions: 0 }]);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: authority touch", registration: { held: true } });
+  });
+
+  it("a repeat registration of an unchanged diff leaves a released G10 hold released", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, registration: { held: false } });
     expect(repeat.g10Hold).toBeUndefined();
-    expect(store.eventsOf(runId)).toHaveLength(1);
+  });
+
+  it("a repeat registration whose changed files cannot be read is held g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, pr1);
+    w.fake.prChangedFiles.set(1, 5000);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: changed files unread at registration (FileListTruncatedError)" });
   });
 });
 
