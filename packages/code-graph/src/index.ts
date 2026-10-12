@@ -257,6 +257,7 @@ export type {
   CheckRule,
   CheckRulesFile,
   CheckViolation,
+  CycleKind,
   ForbidImportRule,
   LayeredDepsRule,
   MetricMaxRule,

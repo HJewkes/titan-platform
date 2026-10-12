@@ -199,8 +199,11 @@ do instead. Commands nested in `bash -c`, `eval`, heredocs, substitutions and wr
 | R133 | a merge the merge family classifies, when `ctx.seat` | `seat-merge`, any merge outside a seat |
 | R64 | `active-work` with `XDG_DATA_HOME` set and no `ACTIVE_ROOT` | `ACTIVE_ROOT=<dir> active-work` |
 | R164 | git `--no-verify`, `commit -n`, `-c core.hooksPath=` | `-m "--no-verify"`, `push -n` |
+| R175 | `pnpm test`, `npm test`, `vitest run`, `pnpm vitest run`, `pnpm exec vitest run`, `npx vitest run` with no path argument, when `ctx.agentWorktree` | a path argument, `--changed`, `pnpm --filter <pkg> test`, `pnpm test:affected`, any run outside an agent worktree |
 
 The checker is pure. A shell loop's keywords never reach the command list, so R127 reads a
-`sleep` beside a CI read as the loop. The merge spellings that need the checked-out branch
-(`git merge`, a bare `git push`) are skipped, since reading it needs the filesystem.
+`sleep` beside a CI read as the loop. R175 names `pnpm test:affected` because CI runs the full
+suite on every pull request, so a local whole-suite run only spends machine memory. The merge
+spellings that need the checked-out branch (`git merge`, a bare `git push`) are skipped, since
+reading it needs the filesystem.
 `checkPreferences` only reports; no hook blocks on a preference hit yet.
