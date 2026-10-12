@@ -25,7 +25,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, arithEnd: -1, wholeEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -56,7 +56,7 @@ function step(s: LexState): void {
   if (c === "[") markSubscript(s);
   const ahead = readAhead(s.src, s.i, 3);
   const end = (length: number) => ahead.ends[length - 1] ?? s.src.length;
-  if (c === "(" && ahead.text[1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s, end(2)));
+  if (c === "(" && ahead.text[1] === "(" && !s.word && s.i > s.arithEnd) markDoubleParen(s, end(2));
   if (s.i < s.arithEnd && ahead.text.startsWith("<<")) return appendShift(s, end(2));
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
@@ -76,12 +76,21 @@ function markSubscript(s: LexState): void {
 }
 
 /**
- * Index of the `))` closing the `((` at `s.i`, or -1 when bash reads nested subshells instead:
- * like bash, it reads to the `)` matching the first `(` and wants another `)` right after it.
+ * Like bash, reads the `((` at `s.i` whole to the `)` matching its second `(`: an arithmetic command
+ * when another `)` follows, and otherwise nested subshells that bash lexes again from that text.
+ */
+function markDoubleParen(s: LexState, body: number): void {
+  const close = cachedEnd(s.trials, s.i, () => doubleParenClose(s, body));
+  s.arithEnd = close !== -1 && s.src[nextAfter(s.src, close)] === ")" ? close : -1;
+  s.wholeEnd = Math.max(s.wholeEnd, close);
+}
+
+/**
+ * Index of the `)` matching the second `(` of the `((` at `s.i`, or -1 when none closes it.
  * A trial lex with every `<<` a shift finds that `)` through the same quote readers; it fails
  * closed once the source's trials have spent their budget.
  */
-function arithmeticEnd(s: LexState, body: number): number {
+function doubleParenClose(s: LexState, body: number): number {
   const trial = newState(s.src, body, true, s.trials);
   trial.arithEnd = Number.POSITIVE_INFINITY;
   let reached = s.src.length;
@@ -92,7 +101,7 @@ function arithmeticEnd(s: LexState, body: number): number {
     if (!(error instanceof ParseError) || spent(s.trials)) throw error;
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
-  return reached < s.src.length && s.src[nextAfter(s.src, reached)] === ")" ? reached : -1;
+  return reached < s.src.length ? reached : -1;
 }
 
 function appendShift(s: LexState, end: number): void {
@@ -105,15 +114,15 @@ function readBlank(s: LexState): void {
   s.i++;
 }
 
-/** Bash reads an arithmetic command's text whole, so a newline inside `(( ))` is not a line end and starts no heredoc body. */
+/** A newline bash read inside a `((` span, arithmetic or reparsed as subshells, is not a line end and starts no heredoc body. */
 function readOperator(s: LexState, op: string, end: number): void {
-  const inArithmetic = s.i < s.arithEnd;
+  const inWholeSpan = s.i < s.wholeEnd;
   endWord(s);
   s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
-  if (op === "\n" && !inArithmetic) readLineEnd(s);
+  if (op === "\n" && !inWholeSpan) readLineEnd(s);
 }
 
 function readDouble(s: LexState): void {

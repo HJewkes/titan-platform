@@ -48,6 +48,17 @@ describe("a newline inside an arithmetic command while a heredoc waits", () => {
   });
 
   it.each([
+    ["(( ) ) before &&", `: <<E; ((true\n) ) && ${PUSH}\nE`],
+    ["(( )| )", `: <<E; ((true\n)|${PUSH})\nE`],
+    ["(( ) ) as an if condition", `: <<E; if ((true\n) ); then ${PUSH}; fi\nE`],
+    ["(( ) ) before ;", `: <<E; ((true\n) ); ${PUSH}\nE`],
+    ["(( ) ) holding two commands", `: <<E; ((echo a\necho b) ); ${PUSH}\nE`],
+    ["a heredoc opened inside (( ) )", `((cat <<EOFX\n) ); ${PUSH}\nEOFX`],
+  ])("the hook denies a push bash runs after a newline in %s, which bash reparses as subshells", async (_name, command) => {
+    expect(await hookDenies(command)).toBe(true);
+  });
+
+  it.each([
     ["$(( ))", `: <<E; echo $(( 1\n)); ${PUSH}\nE`],
     ["$(( )) in a for (( ))", `: <<E; for (( i=$((0\n)); i<0; )); do :; done; ${PUSH}\nE`],
     ["$[ ]", `: <<E; echo $[ 1\n]; ${PUSH}\nE`],
@@ -62,6 +73,8 @@ describe("where a heredoc's body starts after a multi-line arithmetic command", 
     ["(( ))", "cat <<E; (( 1\n))\nbody\nE"],
     ["for (( ;; ))", "cat <<E; for ((\n;\n0;\n)); do :; done\nbody\nE"],
     ["(( )) holding $(( ))", "cat <<E; (( $((1\n)) ))\nbody\nE"],
+    ["(( ) ), which bash reparses as subshells", "cat <<E; ((true\n) )\nbody\nE"],
+    ["(( ) ) that opened the heredoc", "((cat <<E\n) )\nbody\nE"],
   ])("reads the body from the line after %s closes", (_name, command) => {
     const heredoc = tokenize(command).find((t): t is RedirectToken => t.type === "redirect");
     expect(heredoc).toMatchObject({ op: "<<", target: { value: "E" }, body: "body\n" });
