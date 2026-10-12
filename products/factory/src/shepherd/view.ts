@@ -212,8 +212,7 @@ function heldWakeWait(run: WorkflowRun, steps: readonly StepResult[]): string | 
 
 /** While a red head waits out a frozen main or a red base, the hold's own reason is the next action. */
 function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  const { currentStep } = run;
-  if (currentStep === null || !["sh-freeze-wait", "sh-base-wait"].some((id) => stepIdMatches(id, currentStep))) return undefined;
+  if (!["sh-freeze-wait", "sh-base-wait"].some((id) => run.currentStep !== null && stepIdMatches(id, run.currentStep))) return undefined;
   const hold = FreezeHoldData.safeParse(steps.filter((result) => stepIdMatches("sh-freeze-hold", result.stepId)).at(-1)?.data);
   return hold.success ? hold.data.result.reason : undefined;
 }

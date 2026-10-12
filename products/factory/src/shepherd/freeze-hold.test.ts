@@ -288,9 +288,9 @@ describe("a ci-red wake under a frozen main", () => {
 
 const BASE = fakeSha("base");
 
-/** The PR's base head, `main` at BASE, fails `failing`. */
-function baseFails(w: World, failing: readonly string[]): void {
-  w.fake.setRuns(BASE, runs(failing));
+/** The PR's base head, `main` at BASE, ends every check in `failing` with `conclusion`. */
+function baseFails(w: World, failing: readonly string[], conclusion = "failure"): void {
+  w.fake.setRuns(BASE, ["validate", "dag-check"].map((name, i) => outsideActions(successRun(name, i + 1, undefined, failing.includes(name) ? conclusion : "success"))));
 }
 
 async function waitingOnBase(w: World, runId: string): Promise<void> {
@@ -325,6 +325,43 @@ describe("a ci-red wake on a PR whose base head is red", () => {
     expect(w.wakes.map((wake) => [wake.kind, wake.headSha])).toEqual([["ci-red", H1]]);
     expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("dag-check") } });
     expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  it("wakes as before when the base head's only red is a cancelled run", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"], "cancelled");
+    const runId = start(w);
+
+    await gateOpened(w.host, gateId(runId, "ci-failed"));
+
+    expect(w.wakes.map((wake) => wake.kind)).toEqual(["ci-red"]);
+    expect(holdOf(w, runId)).toMatchObject({ result: { hold: false, reason: expect.stringContaining("failing here but not on main") } });
+    expect(stepIds(w, runId)).not.toContain("sh-base-wait:0");
+  });
+
+  it("decides afresh once the base wait reaches its limit, and neither fails nor wakes an agent", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    const runId = start(w);
+
+    await vi.waitFor(() => expect(stepIds(w, runId)).toContain("sh-freeze-hold:1"), { timeout: 10_000 });
+
+    expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: false, expired: true, headSha: H1 } });
+    expect(w.host.runtime.status(runId)?.status).toBe("running");
+    expect(w.wakes).toEqual([]);
+  });
+
+  it("ends the run when the PR is closed during the base wait", async () => {
+    const w = world(["validate"], []);
+    baseFails(w, ["validate"]);
+    const runId = start(w);
+    await waitingOnBase(w, runId);
+
+    w.fake.pr(1).state = "closed";
+
+    await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("completed"));
+    expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: false, headSha: H1 } });
+    expect(w.wakes).toEqual([]);
   });
 
   it("wakes as before when the base head's checks cannot be read", async () => {

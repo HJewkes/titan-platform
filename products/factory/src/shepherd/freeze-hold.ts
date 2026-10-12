@@ -1,11 +1,11 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import { isPassing, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step, type FailingCheck, type LandOutcome } from "../workflows/land.js";
 import { UpdateResultResult } from "../workflows/land-steps.js";
 import { UPDATE_RESENDS } from "../workflows/land-update.js";
-import { FREEZE_RECHECK_MS, failingAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
+import { FREEZE_RECHECK_MS, actionsRunsAt, failingAt, greenHead, isFixersPr, type FreezeStore, type Red } from "./freeze.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun, PrTarget } from "./gates.js";
 import { singleSeat } from "./held-repair.js";
@@ -118,9 +118,15 @@ async function decideHold(deps: ShepherdDeps, freezes: FreezeStore | undefined, 
   return { hold: true, reason: `waiting for the thaw: main is frozen red at ${red}, and every failing check (${input.failing.join(", ")}) fails there too`, episode: freeze.episode, baseRef };
 }
 
+/** As `failingAt`, less checks whose newest run was cancelled: like `redOnlyFromCancels`, a cancel is no red the base owns. */
+async function redAtBase(port: GitHubPort, repo: RepoSlug, sha: string): Promise<Set<string>> {
+  const runs = actionsRunsAt(await port.latestCheckRuns(repo, sha), sha);
+  return new Set(runs.filter((run) => run.status === "completed" && !isPassing(run) && run.conclusion !== "cancelled").map((run) => run.name));
+}
+
 /**
  * Holds a red head whose every failing check also fails at the PR's base head, so a fixer is never woken to repair the
- * base's red. Any read that fails passes, as does a base with no completed red run there (R5: path-filtered base CI).
+ * base's red. Any read that fails passes, as does a base with no completed red run there (R5: path-filtered base CI) or only cancelled ones.
  */
 async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: string): Promise<Hold> {
   if (input.failing.length === 0) return pass(unfrozen);
@@ -128,7 +134,7 @@ async function decideBaseRed(deps: ShepherdDeps, input: HoldInput, unfrozen: str
     const { baseRef } = await deps.port.getPr(input.repo, input.pr);
     const baseSha = await deps.port.getHeadSha(input.repo, baseRef);
     if (baseSha === null) return pass(`${unfrozen}; the base ${baseRef} has no head`);
-    const onBase = new Set(await failingAt(deps.port, input.repo, baseSha));
+    const onBase = await redAtBase(deps.port, input.repo, baseSha);
     const own = input.failing.filter((name) => !onBase.has(name));
     if (own.length > 0) return pass(`${unfrozen}; failing here but not on ${baseRef} at ${baseSha.slice(0, 7)}: ${own.join(", ")}`);
     const seat = singleSeat(deps.store.get().byPr(input.repo, input.pr)?.policy.seat);
