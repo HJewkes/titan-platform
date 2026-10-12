@@ -187,6 +187,7 @@ export {
   topTestCoverageRisks,
 } from "./analysis/graph-report-sections.js";
 export { publicApiFiles, topUnusedExports } from "./analysis/unused-exports.js";
+export * from "./analysis/complexity-distribution.js";
 export { topDeadModules } from "./analysis/dead-modules.js";
 export { topGrowthRisks } from "./analysis/growth-risks.js";
 export { topUntestedRisks } from "./analysis/untested-risks.js";

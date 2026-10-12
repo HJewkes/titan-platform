@@ -1,0 +1,158 @@
+import type { GraphNode } from "../types.js";
+import { keepNode, lookupMetric, type ReportContext } from "./graph-report-sections.js";
+import { bucketFilesByPackage, type PackageRoot } from "./package-buckets.js";
+
+/** SCBench's `cc_high_count` cut: a callable above it counts toward erosion. */
+export const HIGH_CC = 10;
+/** SCBench's `cc_extreme_count` cut. */
+export const EXTREME_CC = 30;
+
+/** One measured function: its declaring file, both complexities and its source lines. */
+export interface CallableComplexity {
+  fileId: string;
+  cyclomatic: number;
+  cognitive: number;
+  /** Non-blank, non-comment lines. */
+  sloc: number;
+}
+
+/**
+ * SCBench's complexity summary over a set of callables; the SCBench key each field ports
+ * is named on it. Every ratio is 0 when its denominator is.
+ */
+export interface ComplexityDistribution {
+  callables: number;
+  /** Σ CC·√SLOC over every callable. */
+  mass: number;
+  /** `mass.high_cc_pct`: the share of {@link mass} in callables with CC above {@link HIGH_CC}. */
+  erosion: number;
+  /** Σ cognitive·√SLOC over every callable. */
+  cogMass: number;
+  /** `cog_erosion`: the share of {@link cogMass} in callables with cognitive above {@link HIGH_CC}. */
+  cogErosion: number;
+  /** `cc_max`. */
+  ccMax: number;
+  /** `cc_mean`. */
+  ccMean: number;
+  /** `cc_std`, the population standard deviation. */
+  ccStd: number;
+  /** `cc_high_count`: callables with CC above {@link HIGH_CC}. */
+  ccHighCount: number;
+  /** `cc_extreme_count`: callables with CC above {@link EXTREME_CC}. */
+  ccExtremeCount: number;
+  /** `high_cc_mean`: the mean CC of the callables {@link ccHighCount} counts. */
+  highCcMean: number;
+  /** `cc_concentration`: the Gini coefficient of CC across callables, 0 when spread evenly. */
+  ccGini: number;
+}
+
+export interface PackageComplexityRow extends ComplexityDistribution {
+  /** The {@link PackageRoot.id}; `""` for files under no package. */
+  packageId: string;
+}
+
+export interface ComplexityRollup {
+  /** Every callable at once, the figure scb-check reports for a whole tree. */
+  total: ComplexityDistribution;
+  /** One row per package with a callable, ordered by package id. */
+  packages: PackageComplexityRow[];
+}
+
+/** The report's `quality` section. */
+export interface QualitySection {
+  /** SCBench erosion and the CC distribution, over named functions in kept files. */
+  complexity: ComplexityRollup;
+}
+
+const ratio = (part: number, whole: number): number => (whole === 0 ? 0 : part / whole);
+const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0);
+
+function erosionOf(scores: readonly number[], slocs: readonly number[]): { mass: number; erosion: number } {
+  const masses = scores.map((s, i) => s * Math.sqrt(slocs[i]!));
+  const mass = sum(masses);
+  const high = sum(masses.filter((_, i) => scores[i]! > HIGH_CC));
+  return { mass, erosion: ratio(high, mass) };
+}
+
+function gini(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const weighted = sum(sorted.map((v, i) => (2 * (i + 1) - n - 1) * v));
+  return ratio(weighted, n * sum(sorted));
+}
+
+/** SCBench's complexity measures over `callables`, whatever unit they were gathered from. */
+export function summarizeComplexity(callables: readonly CallableComplexity[]): ComplexityDistribution {
+  const cc = callables.map((c) => c.cyclomatic);
+  const slocs = callables.map((c) => c.sloc);
+  const { mass, erosion } = erosionOf(cc, slocs);
+  const cog = erosionOf(callables.map((c) => c.cognitive), slocs);
+  const ccMean = ratio(sum(cc), cc.length);
+  const high = cc.filter((v) => v > HIGH_CC);
+  return {
+    callables: callables.length,
+    mass,
+    erosion,
+    cogMass: cog.mass,
+    cogErosion: cog.erosion,
+    ccMax: cc.length === 0 ? 0 : Math.max(...cc),
+    ccMean,
+    ccStd: Math.sqrt(ratio(sum(cc.map((v) => (v - ccMean) ** 2)), cc.length)),
+    ccHighCount: high.length,
+    ccExtremeCount: cc.filter((v) => v > EXTREME_CC).length,
+    highCcMean: ratio(sum(high), high.length),
+    ccGini: gini(cc),
+  };
+}
+
+/** {@link summarizeComplexity} for the whole set and for each package's share of it. */
+export function complexityDistribution(
+  callables: readonly CallableComplexity[],
+  packages: readonly PackageRoot[],
+): ComplexityRollup {
+  const byFile = new Map<string, CallableComplexity[]>();
+  for (const c of callables) {
+    const list = byFile.get(c.fileId);
+    if (list) list.push(c);
+    else byFile.set(c.fileId, [c]);
+  }
+  const rows: PackageComplexityRow[] = [];
+  for (const [packageId, fileIds] of bucketFilesByPackage([...byFile.keys()], packages)) {
+    const members = fileIds.flatMap((f) => byFile.get(f)!);
+    rows.push({ packageId, ...summarizeComplexity(members) });
+  }
+  rows.sort((a, b) => a.packageId.localeCompare(b.packageId));
+  return { total: summarizeComplexity(callables), packages: rows };
+}
+
+/**
+ * The SCBench rollups for the report's `quality` section. Symbols stand in for SCBench's
+ * callables, so a function with no symbol node of its own (a nested closure, an unexported
+ * helper the extractor does not name) is not counted.
+ */
+export function qualitySection(
+  symbolNodes: readonly GraphNode[],
+  ctx: ReportContext,
+  packages: readonly PackageRoot[],
+): QualitySection {
+  return { complexity: complexityDistribution(measuredCallables(symbolNodes, ctx), packages) };
+}
+
+function measuredCallables(symbolNodes: readonly GraphNode[], ctx: ReportContext): CallableComplexity[] {
+  const out: CallableComplexity[] = [];
+  for (const n of symbolNodes) {
+    const fileId = n.parentId;
+    if (n.kind !== "symbol" || !fileId || !keepNode(ctx, fileId)) continue;
+    const cyclomatic = lookupMetric(ctx, "symbol_cyclomatic", n.id);
+    if (cyclomatic === undefined) continue;
+    const loc = lookupMetric(ctx, "symbol_loc", n.id) ?? 0;
+    const comments = lookupMetric(ctx, "symbol_comment_lines", n.id) ?? 0;
+    out.push({
+      fileId,
+      cyclomatic,
+      cognitive: lookupMetric(ctx, "symbol_cognitive", n.id) ?? 0,
+      sloc: Math.max(loc - comments, 0),
+    });
+  }
+  return out;
+}

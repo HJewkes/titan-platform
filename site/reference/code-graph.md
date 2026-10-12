@@ -444,6 +444,37 @@ topUnusedExports(symbols, publicApiFiles(nodes, edges), ctx, 10);
 Neither is `pnpm dead:check`, which reads edges rather than `utilization` and follows
 re-exports transitively from package-manifest entries.
 
+### SCBench complexity rollup
+
+`qualitySection` fills the report's optional `quality` section with SlopCodeBench's
+complexity measures, for the whole tree and per package:
+
+```ts
+import { buildReportContext, qualitySection } from "@titan-design/code-graph/analysis";
+
+const nodes = [
+  { id: "packages/a/x.ts", kind: "file", name: "x.ts" },
+  { id: "packages/a/x.ts#run", kind: "symbol", name: "run", parentId: "packages/a/x.ts" },
+];
+const metrics = [
+  { nodeId: "packages/a/x.ts#run", name: "symbol_cyclomatic", value: 12 },
+  { nodeId: "packages/a/x.ts#run", name: "symbol_loc", value: 9 },
+];
+const ctx = buildReportContext({ nodes, metrics, excluders: [], excludedRoles: new Set(), windowDays: 30 });
+
+qualitySection(nodes, ctx, [{ id: "packages/a", name: "a" }]).complexity.packages;
+// [ { packageId: 'packages/a', callables: 1, mass: 36, erosion: 1, ccMax: 12, ccGini: 0, … } ]
+```
+
+- Mass is CC·√SLOC, with SLOC taken as `symbol_loc` minus `symbol_comment_lines`.
+  `erosion` (SCBench `mass.high_cc_pct`) is the share of mass in callables with CC above 10;
+  `cogErosion` is the same over cognitive complexity.
+- The rows also carry `ccMax`, `ccMean`, `ccStd` (population), `ccHighCount` (CC > 10),
+  `ccExtremeCount` (CC > 30), `highCcMean` and `ccGini` (SCBench `cc_concentration`).
+- Only functions with a symbol node count, so nested closures are left out. Erosion drops when a
+  function is split, whether or not the design improved; read it beside `symbol_pass_through`
+  and `symbol_single_caller_helper`.
+
 ### Growth and untested risks
 
 The scaling-smell and under-tested-hotspot sections of codewatch's `graph report` are pure
