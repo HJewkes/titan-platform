@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, runCli } from "./cli.js";
 import { releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
-import { deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
+import { deployBuildLogPath, deployRecordPath, deployService, parseDeployRecord, type DeployOptions, type DeployPorts } from "./deploy.js";
 import type { DeployIncident } from "./deploy-incident.js";
 import { clearDeployPause, deployPausePath, readDeployPause } from "./deploy-pause.js";
 import { plistPath, SERVICE_LABEL } from "./service.js";
@@ -24,6 +24,7 @@ const FACTORY_DIST = `${CHECKOUT}/products/factory/dist`;
 const WORKFLOW_DIST = `${CHECKOUT}/packages/workflow/dist`;
 const CHARTS_DIST = `${CHECKOUT}/packages/charts/dist`;
 const RECORD = deployRecordPath(STATE);
+const BUILD_LOG = deployBuildLogPath(STATE);
 const ok = (stdout = ""): CommandResult => ({ code: 0, stdout, stderr: "" });
 const failed = (code: number, stderr: string): CommandResult => ({ code, stdout: "", stderr });
 
@@ -67,6 +68,8 @@ interface MachineInit {
   changes?: Record<string, string[]>;
   /** What `git show <sha>:<path>` prints, keyed by `<sha>:<path>`. */
   blobs?: Record<string, string>;
+  /** `writeFile` throws for this path. */
+  writeFails?: string;
 }
 
 const lockfile = (sqlite: string): string => `lockfileVersion: '9.0'\n\npackages:\n\n  better-sqlite3@${sqlite}:\n    resolution: {integrity: sha512-x}\n\n  zod@4.4.3:\n    resolution: {integrity: sha512-y}\n`;
@@ -183,7 +186,10 @@ function fakeMachine(init: MachineInit = {}) {
     },
     incident: async (incident) => void incidents.push(incident),
     mkdir: () => undefined,
-    writeFile: (path, text) => void files.set(path, text),
+    writeFile: (path, text) => {
+      if (path === init.writeFails) throw new Error(`EACCES: permission denied, open '${path}'`);
+      files.set(path, text);
+    },
     readFile: (path) => files.get(path),
     exists: (path) => files.has(path) || trees.has(path),
     remove: (path) => void files.delete(path),
@@ -506,6 +512,50 @@ describe("titan-factory service deploy", () => {
     expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, from: BASE, why: expect.stringContaining(why) });
     expect(failing.record()?.why).not.toContain("did not answer");
     expect(failing.calls.some((call) => call.startsWith("git reset"))).toBe(false);
+    expect(failing.files.get(BUILD_LOG)).toContain(`command: ${why.replace(" failed", "")}\ntarget: ${TIP}\n`);
+    expect(failing.record()?.why).toContain(`full output: ${BUILD_LOG}`);
+  });
+
+  it("keeps the last 200 lines of each stream of a failed build in a log the rollback record names", async () => {
+    const numbered = (name: string, count: number) => Array.from({ length: count }, (_, line) => `${name} line ${line}`).join("\n");
+    const failing = fakeMachine({ buildFails: { code: 1, stdout: numbered("out", 250), stderr: numbered("err", 60) } });
+
+    await deploy(failing);
+
+    const log = failing.files.get(BUILD_LOG) ?? "";
+    expect(log).toContain("command: pnpm --filter @titan-design/factory... build\n");
+    expect(log).toContain(`target: ${TIP}\n`);
+    expect(log).toContain("exit 1\nstderr:\nerr line 0\n");
+    expect(log).toContain("err line 59\nstdout:\nout line 50\n");
+    expect(log).toContain("out line 249");
+    expect(log).not.toContain("out line 49\n");
+    const why = failing.record()?.why ?? "";
+    expect(why).toContain("stderr:\nerr line 40\n");
+    expect(why).not.toContain("err line 39\n");
+    expect(why).toContain(`full output: ${BUILD_LOG}`);
+  });
+
+  it("redacts credential shapes in the build log, even outside the record's tail", async () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const stderr = Array.from({ length: 60 }, (_, line) => (line === 5 ? `auth with ${token}` : `err line ${line}`)).join("\n");
+    const failing = fakeMachine({ buildFails: { code: 1, stdout: "", stderr } });
+
+    await deploy(failing);
+
+    const log = failing.files.get(BUILD_LOG) ?? "";
+    expect(log).toContain("auth with [redacted]");
+    expect(log).not.toContain(token);
+  });
+
+  it("still restores and records the rollback when the build log cannot be written", async () => {
+    const failing = fakeMachine({ buildFails: true, writeFails: BUILD_LOG });
+
+    const result = await deploy(failing);
+
+    expect(result.code).toBe(1);
+    expect(failing.trees.get(FACTORY_DIST)).toBe(`build:${BASE}`);
+    expect(failing.files.has(BUILD_LOG)).toBe(false);
+    expect(failing.record()).toMatchObject({ outcome: "rolled-back", target: TIP, why: expect.stringContaining("full output not written: EACCES") });
   });
 
   it("records the exit code and the stdout tail when a build fails with nothing on stderr", async () => {
