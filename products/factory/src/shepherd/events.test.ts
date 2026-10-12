@@ -2,7 +2,7 @@ import { appliedVersions, openDatabase, runMigrations, type Db } from "@titan-de
 import { describe, expect, it } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { eventsSince, shepherdEventMigration } from "./events.js";
-import { FreezeStore, freezeCancelOnlyMigration, freezeMigration } from "./freeze.js";
+import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMigration } from "./freeze.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration } from "./store.js";
 import { timelineEntries } from "./view.js";
@@ -12,7 +12,7 @@ const STAMP = Date.parse("2026-01-01T00:00:00Z");
 
 function open(): { db: Db; store: ShepherdStore; freezes: FreezeStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19)]);
+  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19), freezeFixPrMigration(23)]);
   const store = new ShepherdStore(db, () => STAMP);
   store.register({ repo: REPO, pr: 7, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   return { db, store, freezes: new FreezeStore(db, () => STAMP) };
