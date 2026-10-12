@@ -213,7 +213,7 @@ function selfContainedSpan(src: string, j: number): boolean {
   let depth = 1;
   let brackets = 0;
   for (let k = from; k < src.length; k++) {
-    const c = src[k] as string;
+    const c = src.charAt(k);
     if (tick && c === "`") return brackets === 0;
     if (SPAN_MOVERS.includes(c) || (tick && c === "$")) return false;
     if (c === "$" && src[k + 1] === "{") {
