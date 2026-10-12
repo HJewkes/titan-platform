@@ -534,6 +534,9 @@ answer, when the build sha or the pid changes, or when the `failed` plus `recove
 run counts rise above the answer that confirmed the sha. A failed install or build restores
 the snapshot and leaves the old process running, untouched; it records `rolled-back`, and that
 sha is then held until a newer one arrives.
+A failed install or build also writes `deploy-build.log` beside `deploy.json`: the command,
+target, time, exit code and the redacted last 200 lines of stderr and stdout. The record's `why`
+keeps a 20-line tail and names the log; the file holds only the newest failure.
 
 A failed restart, sha check or watch pauses every deploy. The deployer writes
 `deploy-pause.json` beside `deploy.json` before it restores anything, so a deployer killed

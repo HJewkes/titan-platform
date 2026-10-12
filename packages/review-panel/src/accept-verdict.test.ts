@@ -144,3 +144,27 @@ describe("acceptVerdict FIX_FIRST findings", () => {
     expect(findingsOf(result)).toBe(fixFirst(HEAD));
   });
 });
+
+describe("acceptVerdict CI-policy line", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const ciPolicyOf = (result: ReturnType<typeof acceptVerdict>) => (result.kind === "verdict" && result.verdict === "MERGE" ? result.ciPolicy : "not a MERGE");
+
+  it("carries a MERGE's weakened line", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nVerdict: MERGE\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: weakened ruleset`)]);
+
+    expect(ciPolicyOf(result)).toEqual({ kind: "weakened", keys: ["ruleset"] });
+  });
+
+  it("carries no ciPolicy on a MERGE without the line", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).not.toHaveProperty("ciPolicy");
+  });
+
+  it("carries none on a FIX_FIRST", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\nVerdict: FIX_FIRST\nPR: octo/demo#7\nHead: ${HEAD}\nCI-policy: unchanged`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST" });
+    expect(result).not.toHaveProperty("ciPolicy");
+  });
+});
