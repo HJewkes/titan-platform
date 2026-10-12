@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeFetch, secondaryLimit, type FakeAnswer } from "./fetch-fake.test-helpers.js";
+import { fakeFetch, rejectionOf, secondaryLimit, type FakeAnswer } from "./fetch-fake.test-helpers.js";
 import { octokitClient } from "./octokit-client.js";
 
 const TOKEN = "ghp_synthetic_test_token_0000000000";
@@ -16,11 +16,14 @@ function clientWith(answer: (index: number) => FakeAnswer, token: () => Promise<
 
 /** Lets the throttle's and retry's timers run under fake time. */
 async function settle<T>(pending: Promise<T>, ms = 5_000): Promise<T> {
-  const caught = pending.catch((error: unknown) => error);
+  const outcome = pending.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  );
   await vi.advanceTimersByTimeAsync(ms);
-  const result = await caught;
-  if (result instanceof Error) throw result;
-  return result as T;
+  const result = await outcome;
+  if ("error" in result) throw result.error;
+  return result.value;
 }
 
 describe("octokitClient", () => {
@@ -104,11 +107,11 @@ describe("octokitClient", () => {
   it("keeps the token out of a failure's message and its request headers", async () => {
     const { client } = clientWith(() => ({ status: 403, body: { message: `Resource not accessible with ${TOKEN}` } }));
 
-    const error = await settle(client.request("POST /repos/octo/demo/check-runs", { name: "x" })).catch((caught: unknown) => caught);
+    const error = await rejectionOf(settle(client.request("POST /repos/octo/demo/check-runs", { name: "x" })), Error);
 
     expect(JSON.stringify(error)).not.toContain(TOKEN);
-    expect(String((error as Error).message)).not.toContain(TOKEN);
-    expect((error as Error).stack ?? "").not.toContain(TOKEN);
+    expect(error.message).not.toContain(TOKEN);
+    expect(error.stack ?? "").not.toContain(TOKEN);
   });
 
   it("reports the live rate window and a secondary-limit cooldown in its budget", async () => {

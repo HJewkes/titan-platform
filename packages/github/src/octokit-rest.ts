@@ -25,7 +25,7 @@ type Call = (method: Method, url: string, body?: string, etag?: string) => Promi
 export function octokitRest(client: GitHubClient, cacheSize = 500): Rest {
   const call = caller(client);
   const conditional = conditionalGetter(call, cacheSize);
-  const get = async <T>(path: string, fields: Fields = {}): Promise<T> => (await conditional(withQuery(path, fields))).data as T;
+  const get = async <T>(path: string, fields: Fields = {}): Promise<T> => callerTyped((await conditional(withQuery(path, fields))).data);
   return {
     get,
     getOrNull: async <T>(path: string, fields?: Fields) => {
@@ -42,9 +42,9 @@ export function octokitRest(client: GitHubClient, cacheSize = 500): Rest {
       const { data } = await call("GET", path);
       return typeof data === "string" ? data : JSON.stringify(data);
     },
-    send: async <T>(method: Exclude<Method, "GET">, path: string, fields: Fields = {}, input?: string) => {
-      if (input !== undefined) return (await call(method, withQuery(path, fields), input)).data as T;
-      return (await call(method, path, Object.keys(fields).length === 0 ? undefined : JSON.stringify(fields))).data as T;
+    send: async (method: Exclude<Method, "GET">, path: string, fields: Fields = {}, input?: string) => {
+      if (input !== undefined) return callerTyped((await call(method, withQuery(path, fields), input)).data);
+      return callerTyped((await call(method, path, Object.keys(fields).length === 0 ? undefined : JSON.stringify(fields))).data);
     },
   };
 }
@@ -56,10 +56,19 @@ async function revalidate<P, T>(call: Call, conditional: (url: string) => Promis
     if (etag === null) throw unconditional304(url);
     return { notModified: true };
   }
-  const first = pick(answer.data as P);
+  const first = pick(callerTyped(answer.data));
   const next = nextPage(answer.headers.get("link"));
   if (!next) return { notModified: false, body: first, etag: answer.headers.get("etag") ?? null };
   return { notModified: false, body: await followPages(conditional, next, pick, first), etag: null };
+}
+
+/**
+ * `Rest` lets its caller name the shape of GitHub's JSON, unchecked, the way `restCaller` types `JSON.parse`; this
+ * overload is that one step, so no call site needs an assertion.
+ */
+function callerTyped<T>(data: unknown): T;
+function callerTyped(data: unknown): unknown {
+  return data;
 }
 
 /** Fields become the query here rather than Octokit parameters, so no field name can collide with an Octokit option. */
@@ -128,7 +137,7 @@ function conditionalGetter(call: Call, cacheSize: number): (url: string) => Prom
 async function followPages<P, T>(get: (url: string) => Promise<Answer>, start: string, pick: (page: P) => T[], items: T[]): Promise<T[]> {
   for (let url: string | null = start; url; ) {
     const answer = await get(url);
-    items.push(...pick(answer.data as P));
+    items.push(...pick(callerTyped(answer.data)));
     url = nextPage(answer.headers.get("link"));
   }
   return items;

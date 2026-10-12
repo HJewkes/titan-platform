@@ -1,6 +1,6 @@
 import { createPrivateKey, createSign } from "node:crypto";
 import { execGh, type GhExec } from "./exec.js";
-import { octokitClient, type OctokitClientOptions } from "./octokit-client.js";
+import { GitHubRequestError, octokitClient, type OctokitClientOptions } from "./octokit-client.js";
 import { GitHubInputError } from "./validate.js";
 import { parseIncluded } from "./rest.js";
 import { redact, redactStreams } from "./redact.js";
@@ -63,9 +63,9 @@ export async function appInstallationTokenOverHttp(credentials: AppCredentials, 
   try {
     ({ data } = await client.request("POST /app/installations/{installation_id}/access_tokens", { installation_id: credentials.installationId }));
   } catch (error) {
-    const status = (error as { status?: unknown }).status;
+    const status = error instanceof GitHubRequestError ? error.status : undefined;
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(redact(`installation token exchange failed${typeof status === "number" ? ` (HTTP ${status})` : ""}: ${detail}`, [...secrets, ...tokensIn(detail)]));
+    throw new Error(redact(`installation token exchange failed${status === undefined ? "" : ` (HTTP ${status})`}: ${detail}`, [...secrets, ...tokensIn(detail)]));
   }
   return tokenOf(typeof data === "object" && data !== null ? data : {}, nowMs, secrets);
 }

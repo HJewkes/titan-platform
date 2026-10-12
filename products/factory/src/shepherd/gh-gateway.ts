@@ -93,7 +93,7 @@ function matchRoute(path: string): Matched | undefined {
   if (!route || ![...params].every(([key, value]) => route.query.includes(key) && QUERY_VALUE.test(value))) return undefined;
   if (!(route.required ?? []).every((key) => params.has(key))) return undefined;
   const pull = route.template.endsWith("/pulls/{n}") ? Number(tail.split("/")[2]) : undefined;
-  return { route, repo: `${owner}/${name}` as RepoSlug, ...(pull !== undefined && { pull }) };
+  return { route, repo: `${owner}/${name}`, ...(pull !== undefined && { pull }) };
 }
 
 interface Remembered {

@@ -1,7 +1,7 @@
 import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { appInstallationToken, appInstallationTokenOverHttp, signAppJwt } from "./app-token.js";
-import { API, fakeFetch, type FakeAnswer } from "./fetch-fake.test-helpers.js";
+import { API, fakeFetch, rejectionOf, type FakeAnswer } from "./fetch-fake.test-helpers.js";
 import { octokitClient } from "./octokit-client.js";
 import { octokitWire } from "./octokit-wire.js";
 import { redact, redactStreams } from "./redact.js";
@@ -226,10 +226,10 @@ describe("appInstallationTokenOverHttp", () => {
     let jwt = "";
     const fake = fakeFetch((call) => ((jwt = call.headers.authorization!.split(" ")[1]!), { status: 401, body: { message: `Bad credentials ${jwt} {"token":"${TOKEN}"}` } }));
 
-    const error = await appInstallationTokenOverHttp(credentials, { fetch: fake.fetch, throttleId: throttleId() }).catch((caught: Error) => caught);
+    const error = await rejectionOf(appInstallationTokenOverHttp(credentials, { fetch: fake.fetch, throttleId: throttleId() }), Error);
 
-    expect((error as Error).message).toContain("HTTP 401");
-    for (const secret of [jwt, TOKEN, PEM.split("\n")[1]!]) expect((error as Error).message).not.toContain(secret);
+    expect(error.message).toContain("HTTP 401");
+    for (const secret of [jwt, TOKEN, PEM.split("\n")[1]!]) expect(error.message).not.toContain(secret);
     expect(fake.calls).toHaveLength(1);
   });
 
@@ -264,11 +264,10 @@ describe("octokitWire createCheckRun", () => {
   it("keeps the HTTP status and drops the token from a failure", async () => {
     const { port } = wireWith(() => ({ status: 422, body: { message: `nope ${TOKEN}` } }));
 
-    const error = await port.createCheckRun(REPO, request).catch((caught: GhError) => caught);
+    const error = await rejectionOf(port.createCheckRun(REPO, request), GhError);
 
-    expect(error).toBeInstanceOf(GhError);
-    expect((error as GhError).status).toBe(422);
-    expect((error as GhError).message).not.toContain(TOKEN);
+    expect(error.status).toBe(422);
+    expect(error.message).not.toContain(TOKEN);
   });
 
   it("refuses with no token provider before any request", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GhError } from "./exec.js";
-import { API, fakeFetch, type FakeAnswer, type FetchCall } from "./fetch-fake.test-helpers.js";
+import { API, fakeFetch, rejectionOf, type FakeAnswer, type FetchCall } from "./fetch-fake.test-helpers.js";
 import { octokitClient } from "./octokit-client.js";
 import { octokitRest } from "./octokit-rest.js";
 
@@ -88,12 +88,11 @@ describe("octokitRest", () => {
     const { api } = restWith((call) => (call.url.includes("missing") ? { status: 404, body: { message: "Not Found" } } : { status: 422, body: { message: "No commit found" } }));
 
     const missing = await api.getOrNull("repos/octo/demo/contents/missing");
-    const error = await api.get("repos/octo/demo/commits/abc").catch((caught: unknown) => caught);
+    const error = await rejectionOf(api.get("repos/octo/demo/commits/abc"), GhError);
 
     expect(missing).toBeNull();
-    expect(error).toBeInstanceOf(GhError);
-    expect((error as GhError).status).toBe(422);
-    expect((error as GhError).message).toContain("No commit found");
+    expect(error.status).toBe(422);
+    expect(error.message).toContain("No commit found");
   });
 
   it("posts a GraphQL query as the raw input body", async () => {
@@ -127,9 +126,9 @@ describe("octokitRest", () => {
   it("keeps the token out of a failure", async () => {
     const { api } = restWith(() => ({ status: 403, body: { message: `denied for ${TOKEN}` } }));
 
-    const error = await api.send("POST", "repos/octo/demo/issues/1/comments", {}, "{}").catch((caught: unknown) => caught);
+    const error = await rejectionOf(api.send("POST", "repos/octo/demo/issues/1/comments", {}, "{}"), GhError);
 
-    expect((error as GhError).status).toBe(403);
-    expect(JSON.stringify(error) + (error as Error).message).not.toContain(TOKEN);
+    expect(error.status).toBe(403);
+    expect(JSON.stringify(error) + error.message).not.toContain(TOKEN);
   });
 });

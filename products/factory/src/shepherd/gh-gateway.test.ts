@@ -25,7 +25,7 @@ function gatewayWith(answer: (url: string, headers: Record<string, string>) => A
   const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
     const url = String(input);
     urls.push(url);
-    const { status, body, headers = {} } = answer(url, (init.headers ?? {}) as Record<string, string>);
+    const { status, body, headers = {} } = answer(url, Object.fromEntries(new Headers(init.headers).entries()));
     return new Response(body === undefined || status === 304 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
   }) as typeof globalThis.fetch;
   const client = octokitClient({ fetch, token: async () => TOKEN, throttleId: `gateway-${++clients}` });
@@ -67,7 +67,7 @@ describe("shepherd.ghRead", () => {
     const { gateway, urls } = gatewayWith(() => ({ status: 200, body: {} }));
 
     for (const method of ["POST", "PUT", "PATCH", "DELETE", "HEAD"]) {
-      const attempt = command("shepherd.ghRead").run({ path: "repos/octo/demo", method, caller: "t" } as never, contextWith(gateway));
+      const attempt = command("shepherd.ghRead").run({ path: "repos/octo/demo", method, caller: "t" }, contextWith(gateway));
       await expect(attempt).rejects.toMatchObject({ code: EXIT.NOPERM });
     }
     expect(urls).toEqual([]);
@@ -129,7 +129,7 @@ describe("shepherd.ghRead", () => {
   });
 
   it("serves an open pull from the snapshot with no client call", async () => {
-    const row = { number: 5, state: "open", headSha: "h".repeat(40) } as PullRequest;
+    const row = partialFake<PullRequest>({ number: 5, state: "open", headSha: "h".repeat(40) });
     const snapshot = partialFake<PrSnapshot>({ openPrs: async () => [row] });
     const { gateway, urls } = gatewayWith(() => ({ status: 200, body: {} }), { snapshot });
 
@@ -146,12 +146,12 @@ describe("shepherd.ghBudget", () => {
     const { gateway } = gatewayWith(() => ({ status: 200, body: {}, headers: { "x-ratelimit-resource": "core", "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4999", "x-ratelimit-used": "1", "x-ratelimit-reset": String(reset) } }));
 
     await gateway.read({ path: "repos/octo/demo" });
-    const budget = await command("shepherd.ghBudget").run({} as never, contextWith(gateway));
+    const budget = await command("shepherd.ghBudget").run({}, contextWith(gateway));
 
     expect(budget).toEqual({ lanes: { rest: { limit: 5000, remaining: 4999, used: 1, resetAt: reset * 1000 } }, cooldowns: [] });
   });
 
   it("is unavailable on a host opened without the gateway", async () => {
-    await expect(command("shepherd.ghBudget").run({} as never, contextWith())).rejects.toMatchObject({ code: EXIT.UNAVAILABLE });
+    await expect(command("shepherd.ghBudget").run({}, contextWith())).rejects.toMatchObject({ code: EXIT.UNAVAILABLE });
   });
 });

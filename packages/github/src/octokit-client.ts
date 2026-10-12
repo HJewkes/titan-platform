@@ -138,7 +138,7 @@ function authenticate(octokit: InstanceType<typeof ThrottledOctokit>, readToken:
       options.headers.authorization = `bearer ${secret}`;
       try {
         const response = await request(options);
-        observe(response.headers as Headers);
+        observe(response.headers);
         return response;
       } catch (error) {
         throw scrubbed(error, secret, observe);
@@ -155,12 +155,23 @@ function authenticate(octokit: InstanceType<typeof ThrottledOctokit>, readToken:
 }
 
 function scrubbed(error: unknown, secret: string, observe: (headers: Headers) => void): Error {
-  const failure = error as { status?: unknown; message?: unknown; response?: { headers?: Headers } };
-  const message = redact(typeof failure.message === "string" ? failure.message : String(error), [secret]);
-  if (typeof failure.status !== "number") return new Error(message);
-  const headers = Object.fromEntries(Object.entries(failure.response?.headers ?? {}).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])));
+  const message = redact(error instanceof Error ? error.message : String(error), [secret]);
+  const status = statusOf(error);
+  if (status === undefined) return new Error(message);
+  const headers = Object.fromEntries(Object.entries(responseHeadersOf(error)).flatMap(([key, value]) => (value === undefined ? [] : [[key, String(value)]])));
   observe(headers);
-  return new GitHubRequestError(message, failure.status, headers);
+  return new GitHubRequestError(message, status, headers);
+}
+
+function statusOf(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null && "status" in error && typeof error.status === "number" ? error.status : undefined;
+}
+
+function responseHeadersOf(error: unknown): object {
+  if (typeof error !== "object" || error === null || !("response" in error)) return {};
+  const { response } = error;
+  if (typeof response !== "object" || response === null || !("headers" in response)) return {};
+  return typeof response.headers === "object" && response.headers !== null ? response.headers : {};
 }
 
 /** The login `gh` already holds; its output is never echoed, since it is the token. */
