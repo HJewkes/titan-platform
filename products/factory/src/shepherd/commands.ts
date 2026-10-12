@@ -8,8 +8,8 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
-import { HoldReasonSchema, OWNER_HOLD_CLASS, RELEASABLE_CLASSES, type HoldResult } from "./hold-reason.js";
-import { isOwnerHold } from "./hold-slot-rows.js";
+import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
+import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { applyRegistrationHold } from "./registration-hold.js";
@@ -277,7 +277,7 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
 });
 
 /** An owner-asked hold is not a class `release` can name: only the owner's own release lifts it. */
-const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: z.enum(RELEASABLE_CLASSES).optional() });
+const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: ReleasableClassSchema.optional() });
 
 const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",

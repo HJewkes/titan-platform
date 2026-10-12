@@ -3,6 +3,7 @@ import { classifyPr, DEFAULT_CLASS_RULES, type ClassRules } from "@titan-design/
 import { SHEPHERD_ACTOR } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
 import { isAdversaryHold } from "./hold-slots.js";
+import { isOwnerHold } from "./owner-hold-rows.js";
 import { prChangedLines } from "./reviewer-roles.js";
 import type { ShepherdStore } from "./store.js";
 
@@ -61,11 +62,11 @@ const wasG10Held = (store: ShepherdStore, runId: string): boolean => store.event
 /**
  * The hold to place over the run's gating hold, or undefined when one as strong stands. A run keeps a second hold only
  * under a `g10-adversary` one, so a `g10-review` hold over another class would replace it; it goes in as adversary
- * instead, failing closed, and the other class waits under it.
+ * instead, failing closed, and the other class waits under it. An owner-asked hold keeps its own slot, so it stacks nothing.
  */
 export function stackedOver(gating: string | null, wanted: string): string | undefined {
   if (isAdversaryHold(gating)) return undefined;
-  if (gating === null || isAdversaryHold(wanted)) return wanted;
+  if (gating === null || isOwnerHold(gating) || isAdversaryHold(wanted)) return wanted;
   const gatingClass = holdClassOf(gating) ?? gating;
   if (gatingClass === holdClassOf(wanted)) return undefined;
   return `g10-adversary: ${wanted.slice(wanted.indexOf(":") + 1).trim()}, over a ${gatingClass} hold`;

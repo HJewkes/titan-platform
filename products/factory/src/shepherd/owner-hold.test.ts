@@ -8,6 +8,7 @@ import { callCommand, shepherdFixture } from "../test-support/shepherd.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { runCleanup } from "./cleanup.js";
+import { stackedOver } from "./registration-hold.js";
 import { shepherdEventMigration } from "./events.js";
 import { G10_RELEASE_STEP } from "./g10-release.js";
 import { MergeHeldError, holdingPort } from "./hold.js";
@@ -202,6 +203,20 @@ describe("an owner-asked hold in its own slot", () => {
       ["hold", OWNER, "shepherd"],
       ["release", OWNER, "owner-terminal:test"],
     ]);
+  });
+});
+
+describe("a G10 registration hold on a run the owner alone holds", () => {
+  it("goes in as asked, not escalated to g10-adversary, and the owner hold stays", () => {
+    const { store } = storeAt();
+    store.hold("run-1", OWNER);
+    const registration = store.byRun("run-1")!;
+
+    const placed = stackedOver(registration.held ? registration.holdReason : null, G10);
+
+    expect(placed).toBe(G10);
+    store.hold("run-1", placed!);
+    expect(store.byRun("run-1")).toMatchObject({ holdReason: G10, ownerHold: { reason: OWNER } });
   });
 });
 

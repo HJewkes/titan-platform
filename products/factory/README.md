@@ -230,7 +230,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     `--reviewer` MERGE (at the head or carried to a tree-equal one), and not `shepherd release`, which refuses
     `--class owner-asked` with exit 65 and a bare release of a PR held by it alone. `shepherd hold` refuses it with
     `--reviewer` (exit 65). Every merge route reads it first and holds whatever MERGE stands. Only the owner's own
-    release lifts it (`ShepherdStore.releaseOwnerHold`; the `shepherd owner-release` verb is TP-2408 b). A PR merged
+    release lifts it (`ShepherdStore.releaseOwnerHold`, and the forthcoming `shepherd owner-release` verb, TP-2408 b). A PR merged
     outside Shepherd with one in force clears it at cleanup, with the release event `owner hold bypassed: merged
     outside Shepherd`.
 - `merge` reports the policy decision for the current head and what the run waits on. It

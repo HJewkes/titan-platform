@@ -1,6 +1,34 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
 
+const TABLE_DDL = `
+  CREATE TABLE shepherd_registration (
+    repo        TEXT NOT NULL,
+    pr          INTEGER,
+    branch      TEXT,
+    run_id      TEXT NOT NULL UNIQUE,
+    task        TEXT NOT NULL,
+    implementer TEXT NOT NULL,
+    reviewer    TEXT,
+    policy      TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    held        INTEGER NOT NULL DEFAULT 0,
+    hold_reason TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    CHECK (pr IS NOT NULL OR branch IS NOT NULL)
+  );
+  CREATE UNIQUE INDEX shepherd_registration_pr ON shepherd_registration (repo, pr) WHERE pr IS NOT NULL;
+  CREATE UNIQUE INDEX shepherd_registration_branch ON shepherd_registration (repo, branch);`;
+
+export function shepherdMigration(version = 4): Migration {
+  return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
+}
+
+export function sliceMigration(version = 8): Migration {
+  return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
+}
+
 const TP734_DDL = `
   ALTER TABLE shepherd_registration ADD COLUMN hold_reviewer TEXT;
   ALTER TABLE shepherd_registration ADD COLUMN release_ready_head TEXT;

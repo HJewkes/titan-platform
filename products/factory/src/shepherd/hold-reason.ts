@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { holdClassOf } from "./g10-release.js";
-import { OWNER_HOLD_CLASS } from "./hold-slot-rows.js";
+import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
 
 /**
  * The closed list of break-glass hold classes in charter section 8; add a class here when the charter adds it, or seats
@@ -10,10 +10,10 @@ import { OWNER_HOLD_CLASS } from "./hold-slot-rows.js";
 export const HOLD_CLASSES = ["serve-down", "stalled", "no-reviewer", "run-failed", "visual-gate2", "g10-review", "g10-adversary", "owner-asked"] as const;
 type HoldClass = (typeof HOLD_CLASSES)[number];
 
-export { OWNER_HOLD_CLASS } from "./hold-slot-rows.js";
+export { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
 
 /** Every class `shepherd release` may name; an owner-asked hold is not one, so naming it is an argument error. */
-export const RELEASABLE_CLASSES = HOLD_CLASSES.filter((holdClass) => holdClass !== OWNER_HOLD_CLASS) as [Exclude<HoldClass, typeof OWNER_HOLD_CLASS>, ...Exclude<HoldClass, typeof OWNER_HOLD_CLASS>[]];
+export const ReleasableClassSchema = z.enum(HOLD_CLASSES).exclude([OWNER_HOLD_CLASS]);
 
 /** Gate classes, not factory defects: they cite no task. Every other class names the open task for its defect. */
 export const TASKLESS_CLASSES: ReadonlySet<HoldClass> = new Set(["visual-gate2", "g10-review", "g10-adversary", OWNER_HOLD_CLASS]);

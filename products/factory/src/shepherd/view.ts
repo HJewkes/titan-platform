@@ -171,8 +171,8 @@ function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string |
   return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
 }
 
-function holdWait({ holdReason, holdReviewer, ownerHold, repo, pr }: Registration, headSha: string | null): string {
-  if (ownerHold) return `waits for the owner (${ownerHold.reason}): titan-factory shepherd owner-release ${repo}#${pr ?? "?"} --head <sha>`;
+function holdWait({ holdReason, holdReviewer, ownerHold }: Registration, headSha: string | null): string {
+  if (ownerHold) return `waiting for the owner to release their hold (${ownerHold.reason})`;
   const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
   return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
@@ -273,8 +273,7 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
 /** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. No satisfaction passes an owner hold, so it shows none. */
 function heldView({ held, holdReason, holdSatisfied, ownerHold }: Registration): WatchRow["held"] {
   if (!held) return null;
-  if (ownerHold) return { reason: ownerHold.reason };
-  if (holdSatisfied === null) return { reason: holdReason ?? "held" };
+  if (ownerHold || holdSatisfied === null) return { reason: ownerHold?.reason ?? holdReason ?? "held" };
   const { reviewer, agentId, sessionId } = holdSatisfied.by;
   return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
 }

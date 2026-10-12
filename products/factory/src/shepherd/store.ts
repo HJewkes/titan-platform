@@ -1,10 +1,11 @@
 import type { RepoSlug } from "@titan-design/github";
-import type { Db, Migration } from "@titan-design/store-sqlite";
+import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
-import { isOwnerHold, liftOwnerHold, markOwnerAsked, placeOwnerHold, readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
+import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
+import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
 import { TASK_KINDS, kindMoveRefusal, type TaskKind } from "./task-kind.js";
 
@@ -39,9 +40,7 @@ export interface Registration {
   policy: EffectivePolicy;
   kind: TaskKind;
   slice: string | null;
-  /** True while any hold is in force, the owner's included. */
   held: boolean;
-  /** The gating hold's reason, or the owner hold's when it is the only hold. */
   holdReason: string | null;
   /** The reviewer a hold waits on, set only by `hold --reviewer`; never read out of the reason. */
   holdReviewer: string | null;
@@ -51,7 +50,7 @@ export interface Registration {
   releaseReady: { head: string; at: string } | null;
   /** The head `shepherd review` asked Shepherd's own reviewer to review; `takenAt` is null until a run's review intent took it. */
   reviewRequest: { head: string; at: string; takenAt: string | null } | null;
-  /** An owner-asked hold, apart from the gating one: only `releaseOwnerHold` lifts it, and no satisfaction passes it. `askedAt` is when the owner was last re-asked. */
+  /** Apart from the gating hold, and lifted only by `releaseOwnerHold`; while set, `held` is true and, with no other hold, `holdReason` is its reason. */
   ownerHold: OwnerHold | null;
   createdAt: string;
   updatedAt: string;
@@ -60,12 +59,6 @@ export interface Registration {
 /** The verdict that satisfied a hold: its reviewer's name, the session that wrote it, and where in that session's transcript. */
 export const HoldSatisfiedBySchema = z.object({ reviewer: z.string(), agentId: z.string(), sessionId: z.string(), locator: z.looseObject({}) });
 export type HoldSatisfiedBy = z.infer<typeof HoldSatisfiedBySchema>;
-
-export interface OwnerHold {
-  reason: string;
-  at: string;
-  askedAt: string | null;
-}
 
 export interface HoldSatisfaction {
   head: string;
@@ -77,35 +70,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-const TABLE_DDL = `
-  CREATE TABLE shepherd_registration (
-    repo        TEXT NOT NULL,
-    pr          INTEGER,
-    branch      TEXT,
-    run_id      TEXT NOT NULL UNIQUE,
-    task        TEXT NOT NULL,
-    implementer TEXT NOT NULL,
-    reviewer    TEXT,
-    policy      TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    held        INTEGER NOT NULL DEFAULT 0,
-    hold_reason TEXT,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    CHECK (pr IS NOT NULL OR branch IS NOT NULL)
-  );
-  CREATE UNIQUE INDEX shepherd_registration_pr ON shepherd_registration (repo, pr) WHERE pr IS NOT NULL;
-  CREATE UNIQUE INDEX shepherd_registration_branch ON shepherd_registration (repo, branch);`;
-
-export function shepherdMigration(version = 4): Migration {
-  return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
-}
-
-export function sliceMigration(version = 8): Migration {
-  return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
-}
-
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, reviewRequestMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -131,9 +96,6 @@ interface Row {
   review_request_head?: string | null;
   review_request_at?: string | null;
   review_request_taken_at?: string | null;
-  owner_hold_reason?: string | null;
-  owner_hold_at?: string | null;
-  owner_hold_asked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -229,10 +191,7 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(newRunId)!;
   }
 
-  /**
-   * A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`).
-   * An owner-asked hold goes to the owner slot and leaves the others and any satisfaction as they were.
-   */
+  /** A hold or release clears any satisfaction, so a re-hold waits for its reviewer again; another class waits under a `g10-adversary` hold (`afterHold`); an owner-asked hold takes its own slot. */
   hold(runId: string, reason: string, reviewer?: string, by: EventContext = {}): Registration {
     this.db.transaction(() => this.placeHold(runId, { reason, reviewer: reviewer ?? null }, by))();
     return this.byRun(runId)!;
@@ -251,17 +210,12 @@ export class ShepherdStore implements HoldLookup {
 
   /** Compare-and-swap: lifts the owner-asked hold only while one is set, recording its reason, or `reason` when given; false, writing nothing, when none is. */
   releaseOwnerHold(runId: string, by: EventContext = {}, reason?: string): boolean {
-    return this.db.transaction(() => {
-      const at = this.stamp();
-      const lifted = liftOwnerHold(this.db, runId, at);
-      if (lifted !== undefined) this.record(runId, "release", reason ?? lifted, at, by);
-      return lifted !== undefined;
-    })();
+    return this.db.transaction(() => liftOwnerHold(this.db, runId, this.stamp(), by, reason))();
   }
 
   /** Records that the owner was asked about the run's owner-asked hold again; false when it has none. */
   markOwnerAsked(runId: string): boolean {
-    return markOwnerAsked(this.db, runId, this.stamp());
+    return recordOwnerAsked(this.db, runId, this.stamp());
   }
 
   /** Compare-and-swap: lifts only the hold `liftClass` picks for `holdClass`; false, writing nothing, when it picks none. */
@@ -339,13 +293,12 @@ export class ShepherdStore implements HoldLookup {
     this.db.prepare("UPDATE shepherd_registration SET branch = NULL, updated_at = ? WHERE run_id = ? AND pr IS NOT NULL").run(this.stamp(), runId);
   }
 
-  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. An owner hold holds whatever head was satisfied. */
+  /** A branch registration still waiting for its PR holds that PR too, so no merge slips in before `setPr`. No satisfaction passes an owner hold. */
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined {
     const candidates = [this.byPr(repo, pr), branch === undefined ? undefined : this.byBranch(repo, branch)];
-    const owner = candidates.find((registration) => registration?.ownerHold);
-    if (owner?.ownerHold) return owner.ownerHold.reason;
+    const owner = candidates.find((registration) => registration?.ownerHold)?.ownerHold;
     const held = candidates.find((registration) => registration?.held && !(sha !== undefined && registration.holdSatisfied?.head === sha));
-    return held && (held.holdReason ?? "held");
+    return owner?.reason ?? (held && (held.holdReason ?? "held"));
   }
 
   /** Records an author of the run's code; a repeat for the same agent keeps the first row, so lineage never rewrites itself. */
@@ -362,16 +315,8 @@ export class ShepherdStore implements HoldLookup {
   }
 
   private placeHold(runId: string, hold: SlotHold, by: EventContext): void {
-    if (isOwnerHold(hold.reason)) return this.placeOwnerHold(runId, hold, by);
+    if (isOwnerHold(hold.reason)) return placeOwnerHold(this.db, runId, hold, this.stamp(), by);
     this.writeSlots(runId, afterHold(readSlots(this.db, runId), hold), { kind: "hold", reason: hold.reason }, by);
-  }
-
-  /** The owner's hold waits for the owner alone, so it never names a reviewer whose MERGE could pass it. */
-  private placeOwnerHold(runId: string, hold: SlotHold, by: EventContext): void {
-    if (hold.reviewer !== null) throw new Error(`an owner-asked hold waits for the owner alone, so it names no reviewer: ${hold.reviewer}`);
-    const at = this.stamp();
-    if (placeOwnerHold(this.db, runId, hold.reason, at) === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
-    this.record(runId, "hold", hold.reason, at, by);
   }
 
   private lift(runId: string, pick: (slots: HoldSlots) => Lift | undefined, by: EventContext): boolean {
@@ -399,6 +344,7 @@ export class ShepherdStore implements HoldLookup {
 }
 
 function fromRow(row: Row): Registration {
+  const ownerHold = ownerHoldOf(row);
   return {
     repo: row.repo,
     pr: row.pr,
@@ -410,13 +356,13 @@ function fromRow(row: Row): Registration {
     policy: EffectivePolicySchema.parse(JSON.parse(row.policy)),
     kind: KindSchema.parse(row.kind),
     slice: row.slice,
-    held: row.held === 1 || Boolean(row.owner_hold_reason),
-    holdReason: row.hold_reason ?? row.owner_hold_reason ?? null,
+    held: row.held === 1 || ownerHold !== null,
+    holdReason: row.hold_reason ?? ownerHold?.reason ?? null,
     holdReviewer: row.hold_reviewer ?? null,
     holdSatisfied: row.hold_satisfied_head && row.hold_satisfied_by ? { head: row.hold_satisfied_head, by: HoldSatisfiedBySchema.parse(JSON.parse(row.hold_satisfied_by)) } : null,
     releaseReady: row.release_ready_head && row.release_ready_at ? { head: row.release_ready_head, at: row.release_ready_at } : null,
     reviewRequest: row.review_request_head && row.review_request_at ? { head: row.review_request_head, at: row.review_request_at, takenAt: row.review_request_taken_at ?? null } : null,
-    ownerHold: row.owner_hold_reason ? { reason: row.owner_hold_reason, at: row.owner_hold_at ?? row.updated_at, askedAt: row.owner_hold_asked_at ?? null } : null,
+    ownerHold,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

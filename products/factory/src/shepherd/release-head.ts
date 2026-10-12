@@ -5,7 +5,7 @@ import { EXIT } from "@titan-design/registry";
 
 export const ReleaseHeadArg = z.string().regex(/^[0-9a-f]{40}$/, "must be the 40-character head sha the hold was reviewed at");
 
-const OWNER_ONLY = "only the owner releases an owner-asked hold: titan-factory shepherd owner-release";
+const OWNER_ONLY = "only the owner releases an owner-asked hold, with the forthcoming titan-factory shepherd owner-release (TP-2408 b)";
 
 const refused = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
