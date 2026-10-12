@@ -441,8 +441,8 @@ declare const costReportSchema: z.ZodObject<{
     }, z.core.$strip>;
     byTokenClass: z.ZodArray<z.ZodObject<{
         tokenClass: z.ZodEnum<{
-            output: "output";
             input: "input";
+            output: "output";
             cache_read: "cache_read";
             cache_write_5m: "cache_write_5m";
             cache_write_1h: "cache_write_1h";
