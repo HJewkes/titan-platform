@@ -5,7 +5,7 @@ import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite
 import { describe, expect, it } from "vitest";
 import { shepherdEventMigration } from "./events.js";
 import { checkHoldReason } from "./hold-reason.js";
-import { NO_REVIEWER_WAIT_LIMIT_MS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
+import { NO_REVIEWER_STEPS, NO_REVIEWER_WAIT_LIMIT_MS, noReviewerHeld, noReviewerRoutes } from "./no-reviewer-hold.js";
 import type { ShepherdDeps } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
@@ -180,6 +180,14 @@ function stepContext(held: object) {
   }
   return { ctx: partialFake<WorkflowContext>({ runId: "run-1", dispatch }), steps };
 }
+
+describe("NO_REVIEWER_STEPS", () => {
+  it("declares exactly the steps the routes answer, so a registered route is never refused as undeclared", () => {
+    const routes = noReviewerRoutes(partialFake<ShepherdDeps>({ now: () => T0 }));
+
+    expect(NO_REVIEWER_STEPS.map((declared) => declared.id)).toEqual(routes.map((route) => route.match));
+  });
+});
 
 describe("noReviewerHeld", () => {
   it("holds, waits, and answers none with cause not-started so the refusal counts as no failed round", async () => {

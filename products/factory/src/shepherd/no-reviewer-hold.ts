@@ -47,9 +47,9 @@ interface WaitInput extends HoldInput {
 }
 
 /** The head is in the reason, so a refusal at a new head is a new hold and tells the seat again. */
-export const noReviewerReason = (refusal: string, head: string): string => `no-reviewer: ${refusal} at ${head}; TP-2446`;
+const noReviewerReason = (refusal: string, head: string): string => `no-reviewer: ${refusal} at ${head}; TP-2446`;
 
-export function noReviewerAlertText(input: HoldInput): string {
+function noReviewerAlertText(input: HoldInput): string {
   return (
     `Shepherd: no reviewer could be started for ${input.repo}#${input.pr} at ${input.head}: ${input.refusal}. ` +
     `The run is held (no-reviewer; TP-2446) and opens no merge gate. Bind a checkout of ${input.repo} (a seat's repos: line or shepherd.repos["${input.repo}"].path), ` +
