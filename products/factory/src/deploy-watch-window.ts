@@ -83,5 +83,6 @@ export async function watchServe(ports: WatchPorts, baseline: Health, target: st
     const why = health === null ? undefined : drift(baseline, health, target);
     if (why !== undefined) return `${why} ${during}`;
   }
-  return readings.every((reading) => reading.slow) ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
+  const allSlow = readings.length > 0 && readings.every((reading) => reading.slow);
+  return allSlow ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
 }

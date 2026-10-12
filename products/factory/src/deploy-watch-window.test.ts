@@ -75,6 +75,15 @@ describe("watchServe slow versus down", () => {
     expect(why).toContain("no answer in 35 s");
   });
 
+  it("passes a zero-length window without probing", async () => {
+    const { ports, timeouts } = scripted(["stall"]);
+
+    const why = await watchServe(ports, baseline, TARGET, { ...WINDOW, windowMs: 0 });
+
+    expect(why).toBeUndefined();
+    expect(timeouts).toEqual([]);
+  });
+
   it("keeps a window with some quick answers, however slow the others were", async () => {
     const { ports } = scripted(["slow-answer", "stall", "answer"]);
 
