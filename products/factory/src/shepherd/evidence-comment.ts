@@ -4,6 +4,7 @@ import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import type { EvidenceRecord } from "./merge-facts.js";
 
 export const VISUAL_REASON_PREFIX = "the owner decides visual changes: ";
+export const SKILL_REASON_PREFIX = "the owner reviews repo skill changes: ";
 
 /** One marker per head, so a replay or a second run at the same head finds the comment instead of posting again. */
 export function evidenceMarker(head: string): string {
@@ -48,6 +49,7 @@ const GUARD_RULE_WORDS: Record<string, string> = {
   "head-mismatch": "the facts were collected at another head",
   "files-unread": "the changed files could not be read",
   "visual-path": "the pull request changes visual paths",
+  "skill-path": "the pull request changes repo skills",
   "required-checks-unknown": "the base branch's required checks could not be read",
   "merge-state-unsettled": "GitHub had not computed mergeability",
 };
@@ -58,10 +60,13 @@ function ruleInWords(rule: PolicyRule): string {
   return (rule.table === "shepherd-merge-guard" ? GUARD_RULE_WORDS[rule.rowId] : undefined) ?? `${rule.table}/${rule.rowId}`;
 }
 
-/** The paths the visual-path gate named, read back from its own reason, with the count it left out. */
+const PATH_GATE_PREFIXES: Record<string, string> = { "visual-path": VISUAL_REASON_PREFIX, "skill-path": SKILL_REASON_PREFIX };
+
+/** The paths a path gate named, read back from its own reason, with the count it left out. */
 function gatedPaths(decision: GateDecision): { paths: string[]; omitted: number } | undefined {
-  if (decision.rule.rowId !== "visual-path" || !decision.reason.startsWith(VISUAL_REASON_PREFIX)) return undefined;
-  const list = decision.reason.slice(VISUAL_REASON_PREFIX.length);
+  const prefix = decision.rule.table === "shepherd-merge-guard" ? PATH_GATE_PREFIXES[decision.rule.rowId] : undefined;
+  if (prefix === undefined || !decision.reason.startsWith(prefix)) return undefined;
+  const list = decision.reason.slice(prefix.length);
   const more = /^(.*) and (\d+) more$/.exec(list);
   return { paths: (more?.[1] ?? list).split(", "), omitted: more ? Number(more[2]) : 0 };
 }
