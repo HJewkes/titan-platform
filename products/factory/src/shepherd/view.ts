@@ -2,7 +2,7 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
-import { verdictAt } from "../coordinator-evidence-read.js";
+import { verdictAt } from "../verdict-at.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { holdClassOf } from "./g10-release.js";
@@ -248,7 +248,7 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
 }
 
 /** Longest a g10-review hold may wait with no reviewer verdict at its head: nothing else releases it, so past this it is stuck, not waiting. */
-export const G10_UNREVIEWED_LIMIT_MS = 60 * MINUTE;
+const G10_UNREVIEWED_LIMIT_MS = 60 * MINUTE;
 
 interface HoldWait {
   registration: Registration;
