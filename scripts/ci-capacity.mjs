@@ -17,6 +17,8 @@ export const DEFAULT_REPOS = ["HJewkes/titan-design", "HJewkes/titan-platform", 
 // The Free plan's concurrent standard-job cap. The plan cannot be read through the API, so the report shows it as the
 // line the peaks are compared against, not as a fact about the account.
 export const DEFAULT_CAP = 20;
+// Calls left to the rest of the machine: Shepherd and the coordinators spend the same per-user REST quota.
+export const DEFAULT_RATE_RESERVE = 1000;
 const WINDOW_DAYS = 7;
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
@@ -48,6 +50,7 @@ export function parseArgs(argv, now) {
     cacheDir: flag(argv, "--cache") ?? DEFAULT_CACHE,
     thresholdMin: Number(flag(argv, "--queue-threshold-min") ?? DEFAULT_QUEUE_THRESHOLD_MIN),
     cap: Number(flag(argv, "--cap") ?? DEFAULT_CAP),
+    rateReserve: Number(flag(argv, "--rate-reserve") ?? DEFAULT_RATE_RESERVE),
   };
 }
 
@@ -157,9 +160,10 @@ function header(text, name) {
 /**
  * Answers slice a's `gh api rate_limit` from the X-RateLimit headers of a real one-row Actions call. Agent sessions
  * reach gh through agent-chat's shim, whose rate_limit answer stayed at 5000 remaining while Actions calls were
- * already refused (2026-10-12), so the pause never fired. A refused probe still carries the headers.
+ * already refused (2026-10-12), so the pause never fired. A refused probe still carries the headers. `reserve` is
+ * hidden from the remaining count, so the pause leaves that many calls to the other sessions on the account.
  */
-export function headerRateLimitIo(io, probeRepo) {
+export function headerRateLimitIo(io, probeRepo, reserve = 0) {
   const probe = ["api", "-i", `repos/${probeRepo}/actions/runs?per_page=1`];
   const gh = (args) => {
     if (args.length !== 2 || args[1] !== "rate_limit") return io.gh(args);
@@ -169,7 +173,7 @@ export function headerRateLimitIo(io, probeRepo) {
     } catch (error) {
       text = String(error?.stdout ?? "");
     }
-    const core = { remaining: header(text, "X-Ratelimit-Remaining"), reset: header(text, "X-Ratelimit-Reset") };
+    const core = { remaining: header(text, "X-Ratelimit-Remaining") - reserve, reset: header(text, "X-Ratelimit-Reset") };
     if (Number.isNaN(core.remaining) || Number.isNaN(core.reset)) throw new Error(`no X-RateLimit headers from ${probe[2]}`);
     return JSON.stringify({ resources: { core } });
   };
@@ -203,12 +207,12 @@ export function runCli(argv, io = liveIo(), now = Date.now()) {
   if (argv.includes("--help")) {
     console.error(
       "usage: ci-capacity.mjs [--from YYYY-MM-DD --to YYYY-MM-DD] [--repos owner/a,owner/b] [--pool-repos ...]\n" +
-        "         [--db factory.sqlite3] [--cache dir] [--queue-threshold-min 10] [--cap 20]",
+        "         [--db factory.sqlite3] [--cache dir] [--queue-threshold-min 10] [--cap 20] [--rate-reserve 1000]",
     );
     return 2;
   }
   const options = parseArgs(argv, now);
-  process.stdout.write(buildReport(headerRateLimitIo(io, options.repos[0]), options));
+  process.stdout.write(buildReport(headerRateLimitIo(io, options.repos[0], options.rateReserve), options));
   return 0;
 }
 

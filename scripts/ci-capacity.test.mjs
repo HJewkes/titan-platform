@@ -29,6 +29,7 @@ describe("default window", () => {
       repos: ["HJewkes/titan-design", "HJewkes/titan-platform", "HJewkes/agent-chat"],
       thresholdMin: 10,
       cap: 20,
+      rateReserve: 1000,
     });
   });
 
@@ -170,6 +171,14 @@ describe("rate limit read", () => {
 
     expect(answer.resources.core).toEqual({ remaining: 0, reset: 1791824976 });
     expect(calls).toEqual(["api -i repos/a/b/actions/runs?per_page=1"]);
+  });
+
+  it("hides the reserve from the remaining count so the pause leaves calls to other sessions", () => {
+    const io = { gh: () => refused.replace("Remaining: 0", "Remaining: 1100") };
+
+    const answer = JSON.parse(headerRateLimitIo(io, "a/b", 1000).gh(["api", "rate_limit"]));
+
+    expect(answer.resources.core.remaining).toBe(100);
   });
 
   it("passes every other call through unchanged", () => {
