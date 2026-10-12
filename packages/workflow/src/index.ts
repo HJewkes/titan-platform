@@ -69,3 +69,5 @@ export { WorkflowRuntime } from "./runtime.js";
 export type { DurableHarnessRunnerOptions } from "./durable-harness-runner.js";
 export { durableHarnessRunner } from "./durable-harness-runner.js";
 export { gateIdFor } from "./context.js";
+export type { RunTraceSources } from "./trace-projection.js";
+export { projectRunTrace } from "./trace-projection.js";

@@ -1,16 +1,60 @@
-import { cp, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { constants } from "node:fs";
+import type * as FsPromises from "node:fs/promises";
+import { cp, mkdir, mkdtemp, open, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
 import { EXIT } from "@titan-design/registry";
 import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_ROUND_BYTES, getRound, listRounds, roundsCommands, type RoundDetail, type RoundSummary } from "./rounds.js";
+import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, roundsCommands, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
+/** Lets a test make readdir answer newest name first, so any order the reader shows is its own. */
+const readdirOrder = vi.hoisted(() => ({ reversed: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof FsPromises>();
+  const readdir = async (...args: Parameters<typeof actual.readdir>) => {
+    const entries = await actual.readdir(...args);
+    return readdirOrder.reversed ? [...entries].reverse() : entries;
+  };
+  return { ...actual, readdir };
+});
+
 const FIXTURES = FIXTURE_ROUNDS.dir;
+const HANG_LIMIT_MS = 3000;
+
+const fifos: string[] = [];
+
+function plantFifo(file: string): void {
+  execFileSync("mkfifo", [file]);
+  fifos.push(file);
+}
+
+/** A writer's open releases any reader still blocked on the FIFO, so a regression cannot pin a worker thread. */
+async function releaseFifos(): Promise<void> {
+  for (const file of fifos.splice(0)) {
+    const writer = await open(file, constants.O_WRONLY | constants.O_NONBLOCK).catch(() => null);
+    await writer?.close();
+  }
+}
+
+/** Fails rather than hangs when a read blocks, so a FIFO regression is a red test, not a stuck run. */
+async function withinLimit<T>(read: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`read did not finish within ${HANG_LIMIT_MS} ms`)), HANG_LIMIT_MS);
+  });
+  try {
+    return await Promise.race([read, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 let root: string;
 let dir: string;
@@ -26,6 +70,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  readdirOrder.reversed = false;
+  await releaseFifos();
   await rm(root, { recursive: true, force: true });
 });
 
@@ -145,6 +191,87 @@ describe("the rounds dir defences", () => {
   it("classes both commands as reads", () => {
     const commands = roundsCommands({ dir });
     expect([commands["rounds.list"].commandClass, commands["rounds.get"].commandClass]).toEqual(["read", "read"]);
+  });
+});
+
+describe("readQueueRounds", () => {
+  const queueRound = (rounds: readonly QueueRound[], id: string): QueueRound | undefined => rounds.find((round) => round.id === id);
+
+  it("reads every valid round with its feedback and reports each invalid one as a gap", async () => {
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1"]);
+    expect(queueRound(rounds, "kiln-schedule-r1")?.feedback).toMatchObject({ unit: "kiln-schedule", round: 1 });
+    expect(queueRound(rounds, "kiln-schedule-r2")).toMatchObject({ feedback: null, manifest: { unit: "kiln-schedule", round: 2 } });
+    expect(gaps).toHaveLength(2);
+    expect(gaps).toContain("unreadable-r1: round.json is not JSON");
+    expect(gaps.find((gap) => gap.startsWith("legacy-r1: "))).toBeDefined();
+  });
+
+  it("reads a round with a symlinked feedback.json as unsent", async () => {
+    await symlink(path.join(dir, "kiln-schedule-r1", "feedback.json"), path.join(dir, "kiln-schedule-r2", "feedback.json"));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps.filter((gap) => gap.startsWith("kiln-schedule-r2"))).toEqual([]);
+  });
+
+  it("keeps a round open and reports a gap when its feedback.json is over the size cap", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), " ".repeat(MAX_ROUND_BYTES + 1));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps).toContain(`kiln-schedule-r2: feedback.json is over ${MAX_ROUND_BYTES} bytes`);
+  });
+
+  it("keeps a round open and reports a gap when its feedback.json is not JSON", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), "{ not json");
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps).toContain("kiln-schedule-r2: feedback.json is not JSON");
+  });
+
+  it("keeps a round open and reports a gap when its feedback.json is not feedback@1", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), JSON.stringify({ schema: "titan-review/feedback@1", unit: "kiln-schedule" }));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps.find((gap) => gap.startsWith("kiln-schedule-r2: feedback.json: "))).toBeDefined();
+  });
+
+  it("reads rounds in id order whatever order the dir lists them in", async () => {
+    readdirOrder.reversed = true;
+
+    const { rounds } = await readQueueRounds({ dir });
+
+    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1"]);
+  });
+
+  it("reads a round with a FIFO for feedback.json as unsent instead of hanging", async () => {
+    plantFifo(path.join(dir, "kiln-schedule-r2", "feedback.json"));
+
+    const { rounds } = await withinLimit(readQueueRounds({ dir }));
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+  });
+
+  it("reports a FIFO for round.json as a gap instead of hanging", async () => {
+    await mkdir(path.join(dir, "fifo-r1"));
+    plantFifo(path.join(dir, "fifo-r1", "round.json"));
+
+    const { rounds, gaps } = await withinLimit(readQueueRounds({ dir }));
+
+    expect(queueRound(rounds, "fifo-r1")).toBeUndefined();
+    expect(gaps).toContain("fifo-r1: round.json is not a regular file");
+  });
+
+  it("answers no rounds and no gaps when the rounds dir does not exist yet", async () => {
+    expect(await readQueueRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], gaps: [] });
   });
 });
 

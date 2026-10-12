@@ -2,7 +2,8 @@
  * Refuse a dispatch unless the profile agent-chat is about to load says
  * `"surface": "headless"` (relay R-71 slice A, ported from relay PR #59).
  *
- * agent-chat re-reads `~/.agent-chat/profiles/<name>.json` on every spawn, and
+ * agent-chat re-reads `<name>.json` from its profiles dir (`$AGENT_CHAT_HOME/profiles`,
+ * default `~/.agent-chat/profiles`) on every spawn, and
  * a dispatched implementer holds `Write` and blanket `Bash`, neither
  * path-limited. So one agent can rewrite the installed profile to an
  * interactive surface, and the NEXT dispatch then puts its brief in `claude`'s
@@ -22,12 +23,20 @@ import { join } from "node:path";
 import { DispatchError } from "./dispatch.js";
 
 /**
- * Resolved per call so it tracks `HOME`. Read from `process.env` first because
- * `homedir()` sees the process-wide variable, not a worker thread's own env.
+ * agent-chat's own rule: `$AGENT_CHAT_HOME/profiles`, else
+ * `$HOME/.agent-chat/profiles`. `||` rather than `??` so an empty variable
+ * falls back instead of yielding a relative `profiles`. Resolved per call so
+ * it tracks both variables. Read from `process.env` first because `homedir()`
+ * sees the process-wide variable, not a worker thread's own env.
  */
 export function installedProfilesDir(): string {
-  return join(process.env.HOME || homedir(), ".agent-chat", "profiles");
+  const agentChatHome =
+    process.env.AGENT_CHAT_HOME || join(process.env.HOME || homedir(), ".agent-chat");
+  return join(agentChatHome, "profiles");
 }
+
+/** Checked before the name reaches a path join, so `../x` never touches the filesystem. */
+const PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
 const REINSTALL_HINT = "reinstall it with `agent-chat profiles install`";
 
@@ -63,6 +72,9 @@ export function assertInstalledHeadless(
   profile: string,
   dir: string = installedProfilesDir(),
 ): void {
+  if (!PROFILE_NAME_PATTERN.test(profile)) {
+    throw new DispatchError(`invalid profile name: '${profile}'`);
+  }
   const parsed = readInstalledProfile(profile, dir);
   const surface =
     typeof parsed === "object" && parsed !== null
