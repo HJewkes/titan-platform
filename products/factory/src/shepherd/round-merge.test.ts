@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import type { PendingGate } from "../host.js";
-import { roundMergeDecisions, type RoundFeedback } from "./round-merge.js";
+import { RoundFeedbackSchema, roundMergeDecisions, shipAtHead, type RoundFeedback } from "./round-merge.js";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "round-merge");
 const roundBytes = readFileSync(join(dir, "round.json"));
@@ -111,5 +111,80 @@ describe("roundMergeDecisions", () => {
 
   it("a round.json that is not a round resolves nothing", () => {
     expect(roundMergeDecisions("not json", feedbackWith(allShipped), gates, runs, NOW)).toMatchObject({ decisions: [] });
+  });
+});
+
+describe("shipAtHead", () => {
+  const REPO = "example-org/example-repo";
+  const at = (pr: number, headSha: string) => ({ repo: REPO, pr, headSha });
+
+  it("a Ship on every question bound to the PR at its current head is the approval, naming those questions", () => {
+    expect(shipAtHead(roundBytes, feedbackWith(allShipped), at(102, H2), NOW)).toEqual({
+      shipped: true,
+      unit: "example-unit",
+      round: 1,
+      questionIds: ["tb-icon", "tb-extra"],
+      submittedAt: "2026-10-06T10:30:00.000Z",
+    });
+  });
+
+  it("a Ship at an older head never counts, naming both heads", () => {
+    const result = shipAtHead(roundBytes, feedbackWith(allShipped), at(101, H2), NOW);
+    expect(result).toMatchObject({ shipped: false, reason: expect.stringContaining(H1) });
+    expect(result).toMatchObject({ reason: expect.stringContaining(H2) });
+  });
+
+  it("no Ship pick on a bound question is no approval", () => {
+    const answers = allShipped.map((a) => (a.questionId === "tb-extra" ? { questionId: "tb-extra", pick: "Revise" } : a));
+    expect(shipAtHead(roundBytes, feedbackWith(answers), at(102, H2), NOW)).toMatchObject({ shipped: false, reason: expect.stringContaining("tb-extra") });
+  });
+
+  it("an unanswered bound question is no approval", () => {
+    const answers = allShipped.filter((a) => a.questionId !== "tb-icon");
+    expect(shipAtHead(roundBytes, feedbackWith(answers), at(102, H2), NOW)).toMatchObject({ shipped: false, reason: expect.stringContaining("tb-icon") });
+  });
+
+  it("a revision request blocks the Ship even beside a ship pick", () => {
+    const answers = allShipped.map((a) => (a.questionId === "tb-ship" ? { ...a, revisionRequested: true } : a));
+    expect(shipAtHead(roundBytes, feedbackWith(answers), at(101, H1), NOW)).toMatchObject({ shipped: false });
+  });
+
+  it("a Ship stands for 24 hours, not the 2 hour gate-answer window", () => {
+    expect(shipAtHead(roundBytes, feedbackWith(allShipped, { submittedAt: "2026-10-05T12:00:00.000Z" }), at(101, H1), NOW)).toMatchObject({ shipped: true });
+    expect(shipAtHead(roundBytes, feedbackWith(allShipped, { submittedAt: "2026-10-05T10:00:00.000Z" }), at(101, H1), NOW)).toMatchObject({
+      shipped: false,
+      reason: expect.stringContaining("stale"),
+    });
+  });
+
+  it("a submit stamped in the future is not believed", () => {
+    const future = feedbackWith(allShipped, { submittedAt: "2026-10-07T11:00:00.000Z" });
+    expect(shipAtHead(roundBytes, future, at(101, H1), NOW)).toMatchObject({ shipped: false, reason: expect.stringContaining("future") });
+  });
+
+  it("a feedback whose manifest hash differs from round.json is no approval", () => {
+    const forged = feedbackWith(allShipped, { manifestSha256: "0".repeat(64) });
+    expect(shipAtHead(roundBytes, forged, at(101, H1), NOW)).toMatchObject({ shipped: false, reason: expect.stringContaining("manifest hash") });
+  });
+
+  it("a round that binds no question to the PR is no approval", () => {
+    expect(shipAtHead(roundBytes, feedbackWith(allShipped), at(999, H1), NOW)).toMatchObject({ shipped: false, reason: expect.stringContaining("no question binds") });
+    expect(shipAtHead(roundBytes, feedbackWith(allShipped), { repo: "other-org/other", pr: 101, headSha: H1 }, NOW)).toMatchObject({ shipped: false });
+  });
+
+  it("a round.json that is not a round is no approval", () => {
+    expect(shipAtHead("not json", feedbackWith(allShipped), at(101, H1), NOW)).toMatchObject({ shipped: false });
+  });
+});
+
+describe("RoundFeedbackSchema", () => {
+  it("reads the decision fields of a feedback.json and drops the rest", () => {
+    const answer = { questionId: "tb-ship", pick: "Ship it", note: "lgtm" };
+    const raw: unknown = { ...feedbackWith([answer]), reviewer: "owner" };
+    expect(RoundFeedbackSchema.parse(raw)).toEqual(feedbackWith([{ questionId: "tb-ship", pick: "Ship it" }]));
+  });
+
+  it("rejects a feedback with no answers list", () => {
+    expect(RoundFeedbackSchema.safeParse({ unit: "u", round: 1, manifestSha256: "x", submittedAt: "t" }).success).toBe(false);
   });
 });
