@@ -16,6 +16,21 @@ export interface PrSnapshot extends PrReads {
   invalidate(repo: RepoSlug): void;
   /** The repo's open PRs as of this tick's list read, which carries no `behind` or `mergeableState`; a PR missing from it is not open or is newer than the list. */
   openPrs(repo: RepoSlug): Promise<PullRequest[]>;
+  /** `openPrs` with the time its list was read; a list under one tick old is answered with no GitHub call. */
+  openList(repo: RepoSlug): Promise<OpenList>;
+  /** The runs the snapshot already holds for `sha`, and when they were read; never reads GitHub. */
+  cachedRuns(repo: RepoSlug, sha: string): CachedRuns | undefined;
+}
+
+export interface OpenList {
+  prs: PullRequest[];
+  at: number;
+}
+
+export interface CachedRuns {
+  runs: CheckRun[];
+  at: number;
+  settled: boolean;
 }
 
 interface PrSnapshotOptions {
@@ -48,7 +63,10 @@ interface Detail {
 
 interface Checks {
   runs: CheckRun[];
+  /** When the runs are next due a read; `invalidate` makes it now. */
   at: number;
+  /** When the runs were read, which `invalidate` leaves alone. */
+  readAt: number;
   settled: boolean;
   /** Bumped when the runs settle anew, so a detail read before they settled is read again. */
   version: number;
@@ -76,7 +94,12 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
   return {
     getPr: async (repo, number) => snapshotPr(port, timing, repo, await listed(port, timing, repo, stateOf(repo)), number),
     checkRuns: async (repo, sha, settled) => snapshotRuns(port, timing, repo, stateOf(repo), sha, settled),
-    openPrs: async (repo) => [...(await listed(port, timing, repo, stateOf(repo))).list!.rows.values()].map((pr) => ({ ...pr })),
+    openPrs: async (repo) => (await openList(port, timing, repo, stateOf(repo))).prs,
+    openList: async (repo) => openList(port, timing, repo, stateOf(repo)),
+    cachedRuns: (repo, sha) => {
+      const checks = repos.get(repo.toLowerCase())?.checks.get(sha);
+      return checks && { runs: [...checks.runs], at: checks.readAt, settled: checks.settled };
+    },
     invalidate: (repo) => {
       const state = repos.get(repo.toLowerCase());
       if (state) markStale(state);
@@ -94,6 +117,11 @@ function markStale(state: RepoState): void {
   if (state.list) state.list.at = -Infinity;
   state.details.clear();
   for (const checks of state.checks.values()) checks.at = -Infinity;
+}
+
+async function openList(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState): Promise<OpenList> {
+  const { list } = await listed(port, timing, repo, state);
+  return { prs: [...list!.rows.values()].map((pr) => ({ ...pr })), at: list!.at };
 }
 
 const tickReader = (tickMs: number | (() => number) = SNAPSHOT_TICK_MS): (() => number) => (typeof tickMs === "number" ? () => tickMs : tickMs);
@@ -155,7 +183,7 @@ async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, st
   const runs = await port.checkRuns(repo, sha);
   if (generation !== state.generation) return [...runs];
   const settled = isSettled(runs);
-  state.checks.set(sha, { runs, at: timing.now(), settled, version: nextVersion(cached, runs, settled) });
+  state.checks.set(sha, { runs, at: timing.now(), readAt: timing.now(), settled, version: nextVersion(cached, runs, settled) });
   return [...runs];
 }
 

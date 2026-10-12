@@ -65,6 +65,8 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
   verb("list", "the watch list")
     .option("--state <state>", "active, finished or all", "active")
     .action((opts: ShepherdOpts & { state: string }) => runShepherd(verbs, "shepherd.list", () => ({ state: opts.state }), opts));
+  verb("prs [repo]", "every open PR of each seat repo, or of owner/repo, from Shepherd's snapshot, plus the PRs it merged in the last 24 h")
+    .action((repo: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.prs", () => (repo ? { repo } : {}), opts));
   verb("waiting", "every pending gate, oldest first: what waits on the owner, then seat work (ci-failed, sh-sent-back, stuck-behind)")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.waiting", () => ({}), opts));
 }
