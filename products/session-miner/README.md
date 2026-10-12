@@ -99,6 +99,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 | Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
 | Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
+| Q14 | `insights seat-generations` | each agent that held a seat's name in the window, in start order, with its start, end, how it ended (`handoff`, `teleport`, `exit` or `open`) and its graph sessions, plus a ready `--session` argument string for the graph questions | `--seat <name>` (required), `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
@@ -141,6 +142,14 @@ before `--until`, not counting `resolution` rows, however long before `--since`;
 A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
+
+Q14 resolves a seat to its generations through session-analytics' `seatGenerations`. It reads
+`agent_handoff` rows from the events table and spawn, exit and `teleport_completed` lines from the
+broker log, and maps each agent id to its graph sessions. It refuses the session filters; name the
+seat with `--seat`. A generation that ended before `--since` or started at or after `--until` is
+left out, and one with no graph session stays listed with no sessions. `sessionArgs` joins only
+the sessions the graph knows; appended to any graph question, it runs that question over a seat
+since a time. Q14 is registered from `AGENT_CHAT_QUESTIONS`.
 
 Q9 reads each Bash call in the window back from its transcript, since the graph keeps no command
 text; a call whose `command_heads` signal names none of our CLIs is never read. It keeps every
