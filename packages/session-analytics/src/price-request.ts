@@ -39,10 +39,11 @@ export function priceRequest(
   ts: string,
   prices: readonly PriceRow[] = PRICE_TABLE,
 ): PricedRequest {
-  const row = findPrice(model, ts, prices);
-  if (!row) return { ...UNPRICED };
+  const found = findPrice(model, ts, prices);
+  if (!found) return { ...UNPRICED };
 
   const { write5m, write1h } = splitCacheCreation(tokens);
+  const row = ratesFor(found, (tokens.inputTokens ?? 0) + (tokens.cacheReadTokens ?? 0) + write5m + write1h);
   const inputUsd = perMTok(tokens.inputTokens, row.input);
   const cacheReadUsd = perMTok(tokens.cacheReadTokens, row.cacheRead);
   const cacheWrite5mUsd = perMTok(write5m, row.cacheWrite5m);
@@ -50,6 +51,14 @@ export function priceRequest(
   const outputUsd = perMTok(tokens.outputTokens, row.output);
   const costUsd = inputUsd + cacheReadUsd + cacheWrite5mUsd + cacheWrite1hUsd + outputUsd;
   return { inputUsd, cacheReadUsd, cacheWrite5mUsd, cacheWrite1hUsd, outputUsd, costUsd, priced: true };
+}
+
+type Rates = Omit<PriceRow, "modelPrefix" | "effectiveFrom" | "longPrompt">;
+
+// SQL twin: IS_LONG in session-graph price-long-prompt-schema.ts; long-prompt-parity.test.ts keeps them equal.
+function ratesFor(row: PriceRow, promptTokens: number): Rates {
+  const long = row.longPrompt;
+  return long && promptTokens > long.abovePromptTokens ? long : row;
 }
 
 /**
