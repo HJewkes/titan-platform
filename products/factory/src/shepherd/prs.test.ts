@@ -1,4 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { partialFake } from "@titan-design/test-kit";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
@@ -33,9 +34,9 @@ function step(stepId: string, completedAt: string, result: object): StepResult {
 }
 
 function shepherded(pr: number, steps: StepResult[], completedAt: string | null = null): ShepherdedRun {
-  const registration = { repo: REPO, pr, branch: `agent-chat/demo-${pr}`, runId: `run-${pr}` } as Registration;
+  const registration = partialFake<Registration>({ repo: REPO, pr, branch: `agent-chat/demo-${pr}`, runId: `run-${pr}` });
   const stepResults = Object.fromEntries(steps.map((result) => [`${result.stepId}:0`, result]));
-  const run = { id: `run-${pr}`, params: {}, stepResults, completedAt } as unknown as WorkflowRun;
+  const run = partialFake<WorkflowRun>({ id: `run-${pr}`, params: {}, stepResults, completedAt });
   return { registration, run, phase: completedAt ? "done" : "ci", headSha: fakeSha(`head-of-${pr}`) };
 }
 
