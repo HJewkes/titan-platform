@@ -2,7 +2,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import type { RepoSlug } from "@titan-design/github";
 import { conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
-import { step, type LandOutcome } from "../workflows/land.js";
+import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
 
@@ -18,6 +18,30 @@ export interface GateRun {
   state: { waits: number };
   /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
   carried?: Escalated;
+}
+
+/** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
+export interface EscalationRun {
+  carried?: Escalated;
+  escalations: Map<string, Escalated>;
+  lastCi?: CiSnapshot;
+}
+
+/**
+ * The escalation that gates `headSha`. A conflict row is dropped, and cleared, once that head reads mergeable: GitHub's
+ * mergeability is the evidence the owner was asked about, so a head that is not dirty has no conflict to ask about.
+ */
+export function liveEscalation(run: EscalationRun, headSha: string): Escalated | undefined {
+  const escalated = run.carried ?? run.escalations.get(headSha);
+  if (escalated?.escalation !== "conflict" || !resolvedAt(run.lastCi, headSha)) return escalated;
+  run.carried = undefined;
+  run.escalations.delete(headSha);
+  return undefined;
+}
+
+// An unknown or unread state keeps the conflict: GitHub computes mergeability lazily, so only a read state resolves it.
+function resolvedAt(lastCi: CiSnapshot | undefined, headSha: string): boolean {
+  return lastCi?.headSha === headSha && lastCi.mergeableState !== "dirty" && lastCi.mergeableState !== "unknown";
 }
 
 /** Waits, with no gate, for the PR to show any other head; undefined lands the next round. */

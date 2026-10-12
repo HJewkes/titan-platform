@@ -245,7 +245,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}? Policy shepherd-route/conflict`);
   });
 
-  it("asks the owner again at the new head when the conflict is gone, naming the carried conflict and not merging", async () => {
+  it("drops the carried conflict when the new head is clean, so the policy alone gates it", async () => {
     const { host, fake, services, runId, reviewed, review } = await conflictAtGated();
     review.mergeAt = MOVED;
     Object.assign(fake.pr(1), { mergeableState: "clean" });
@@ -257,9 +257,45 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(reviewed).toContain(MOVED);
     const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
     expect(prompt).toContain(`at head ${MOVED} into main?`);
-    expect(prompt).toContain("Policy shepherd-route/conflict");
-    expect(prompt).toContain(`carried from the gate at head ${GATED}`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
     expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("asks no conflict question at the update-branch head that reads blocked with green CI and MERGE (cw#203 run 5ec87e00)", async () => {
+    const { host, fake, services, runId, review } = await conflictAtGated();
+    const runs = fake.onGetPr;
+    fake.reviewBypass = true;
+    fake.onGetPr = (open, reads) => {
+      if (open.headSha !== MOVED && open.headSha !== GATED) {
+        open.mergeableState = "blocked";
+        review.mergeAt = open.headSha;
+      }
+      runs?.(open, reads);
+    };
+    Object.assign(fake.pr(1), { mergeableState: "behind", behind: true });
+    fake.pushHead(1, MOVED);
+
+    await supersedeMovedGates(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    expect(fake.effects.updateBranch).toBe(1);
+    const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${review.mergeAt} into main?`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
+  });
+
+  it("asks no conflict question at a new head that reads unstable", async () => {
+    const { host, fake, services, runId, review } = await conflictAtGated();
+    review.mergeAt = MOVED;
+    Object.assign(fake.pr(1), { mergeableState: "unstable" });
+    fake.pushHead(1, MOVED);
+
+    await supersedeMovedGates(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${MOVED} into main?`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
   });
 
   it("supersedes a conflict gate when the run's last seat-policy decision was about an older head", async () => {
