@@ -50,7 +50,7 @@ function host(): FactoryHost {
 
 function openMergeGate(target: FactoryHost, id = GATE): void {
   const { schema, brief } = approveMergeDecision({ repo: "HJewkes/demo", pr: 7, headSha: HEAD, reason: "Ready.", reviewedMerge: true });
-  target.gates.create({ id, prompt: "Merge?", schema: toJSONSchema(schema) as Record<string, unknown>, ...brief });
+  target.gates.create({ id, prompt: "Merge?", schema: toJSONSchema(schema), ...brief });
 }
 
 function ports(target: FactoryHost, queue: FakeQueue, logs: string[] = []): GateNotifyPorts {
@@ -210,7 +210,7 @@ describe("which gates are asked", () => {
   const gate = (overrides: Partial<GateRecord> = {}): GateRecord => ({
     id: GATE,
     prompt: "Merge?",
-    schema: toJSONSchema(merge.schema) as Record<string, unknown>,
+    schema: toJSONSchema(merge.schema),
     status: "pending",
     payload: undefined,
     reason: undefined,

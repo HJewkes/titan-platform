@@ -61,7 +61,7 @@ export function askable(gate: GateRecord, resolverClass: ResolverClass): boolean
   return pinnedFields(gate) !== undefined;
 }
 
-export function askText(gate: GateRecord): string {
+function askText(gate: GateRecord): string {
   const question = decisionQuestion(gate);
   const options = (question?.options ?? []).map((option) => `${option.id}: ${option.label}`).join("; ");
   return [gate.summary, gate.evidenceRef && `Evidence: ${gate.evidenceRef}`, question && `${question.question} (${options})`]

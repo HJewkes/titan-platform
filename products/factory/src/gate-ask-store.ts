@@ -22,7 +22,7 @@ export function gateAskMigration(version = 20): Migration {
 /** `asked` until one route settles it; every other state is final, which is what makes an answer apply at most once. */
 export type GateAskState = "asked" | "resolved" | "dismissed" | "withdrawn" | "refused" | "unmappable";
 
-export interface GateAskRecord {
+interface GateAskRecord {
   gateId: string;
   msgId: string;
   askedAt: string;
@@ -57,18 +57,18 @@ export class GateAskStore {
   ) {}
 
   get(gateId: string): GateAskRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM gate_ask WHERE gate_id = ?").get(gateId) as GateAskRow | undefined;
+    const row = this.db.prepare<[string], GateAskRow>("SELECT * FROM gate_ask WHERE gate_id = ?").get(gateId);
     return row && fromRow(row);
   }
 
   byMsg(msgId: string): GateAskRecord | undefined {
-    const row = this.db.prepare("SELECT * FROM gate_ask WHERE msg_id = ?").get(msgId) as GateAskRow | undefined;
+    const row = this.db.prepare<[string], GateAskRow>("SELECT * FROM gate_ask WHERE msg_id = ?").get(msgId);
     return row && fromRow(row);
   }
 
   /** Every ask still waiting on the owner, oldest first. */
   open(): GateAskRecord[] {
-    const rows = this.db.prepare("SELECT * FROM gate_ask WHERE state = 'asked' ORDER BY asked_at, gate_id").all() as GateAskRow[];
+    const rows = this.db.prepare<[], GateAskRow>("SELECT * FROM gate_ask WHERE state = 'asked' ORDER BY asked_at, gate_id").all();
     return rows.map(fromRow);
   }
 
@@ -86,7 +86,7 @@ export class GateAskStore {
   }
 
   cursor(label: string): string | undefined {
-    const row = this.db.prepare("SELECT next FROM gate_ask_cursor WHERE label = ?").get(label) as { next: string } | undefined;
+    const row = this.db.prepare<[string], { next: string }>("SELECT next FROM gate_ask_cursor WHERE label = ?").get(label);
     return row?.next;
   }
 
