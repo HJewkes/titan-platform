@@ -65,6 +65,16 @@ describe("ownerFriction", () => {
     expect(rows).toEqual([]);
   });
 
+  it("counts only the owner resolve with no grant as a touch, leaving granted, coordinator and delegate resolves out", () => {
+    const granted = { ...gate("approve-merge", T0, owner(T0 + HOUR)), resolvedEvidence: { grant: "item 193" } };
+    const delegate = { ...gate("approve-merge", T0, { at: T0 + HOUR, by: "coordinator" }), resolvedEvidence: { kind: "delegate", delegate: "tp-operator", grant: "item 193" } };
+    const gates = [gate("approve-merge", T0, owner(T0 + HOUR)), granted, gate("approve-merge", T0, { at: T0 + HOUR, by: "coordinator" }), delegate];
+
+    const [day] = ownerFriction(gates, NOW);
+
+    expect(day!.ownerTouches).toBe(1);
+  });
+
   it("keeps days apart, oldest first, and applies an inclusive date range", () => {
     const gates = [gate("stuck-behind", T0, owner(T0 + HOUR)), gate("stuck-behind", T0 + 24 * HOUR, owner(T0 + 26 * HOUR)), gate("stuck-behind", T0 + 48 * HOUR, owner(T0 + 49 * HOUR))];
 

@@ -26,6 +26,10 @@ export interface ReviewerFacts {
   changedLines?: number;
   /** The size could not be read, so the PR takes the stricter class. */
   sizeUnread?: boolean;
+  /** The PR changes a lockfile or package.json, so it takes the stricter class whatever its size. */
+  dependencyTouch?: boolean;
+  /** The run holds or held a G10 hold, so it takes the stricter class whatever its size or kind. */
+  g10Hold?: boolean;
   /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
   intentAt?: number;
 }

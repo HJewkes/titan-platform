@@ -253,7 +253,10 @@ Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have
 MRG-AU allow row must have had only transient conditions unmet, `merge-tree-clean`,
 `repo-not-frozen` or both, and the gate must still be at the pull request's head. The cancel
 reason starts `superseded: review again: ` and names the conditions, and the run asks the
-policy again at the same head. A row with any other unmet condition, such as
+policy again at the same head. A head a reviewer already said `MERGE` at keeps it: the run records
+`sh-review-refused` with reason `merge-standing`, reads the merge evidence again, and
+dispatches no reviewer. A `MERGE` carried to the head goes back through the carry's checks
+instead, so a seat's `FIX_FIRST` posted since still stops it. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
 the same sweep at once for that repo's gates. If a pull request's head cannot be read during
@@ -382,11 +385,21 @@ owner is not asked twice, in two cases and no others:
 
 Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
 only after required CI is green at that head, so a head with no verdict or a red check asks the
-owner again. A `security` or `unknown` run never carries, and neither does an escalation gate.
+owner again. An `unknown` run never carries, and neither does an escalation gate. A `security` run follows
+only the rule below.
 Any error computing the tree or the diff asks again. The run records an
 `sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
 `remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
 paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
+
+A `security` run's answer follows one head move only: Shepherd's own clean merge-up
+(`products/factory/src/shepherd/own-merge-up.ts`, step `sh-approval-carry:own:<head>`). The new head
+must have exactly two parents, the first the approved head and the second on the base branch, its
+tree must equal `git merge-tree` of the two, and none of the files the base side changed since the
+pull request left it may be a file the pull request changed (a rename counts as both sides). A
+non-merge commit, another first parent, a second parent off the base, a hand-resolved or amended
+tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
+rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
 
 ## Watch
 
@@ -842,10 +855,16 @@ never the standing reviewer or the named reviewer of a `hold --reviewer`, record
 `requested: true` when it takes the ask. A retry at that head, after a silent or timed-out
 reviewer, spawns again too.
 
+A head where a reviewer already said `MERGE` is refused with exit 65 (DATAERR): the same code
+would get a second reviewer and no new information, so push a change or raise a hold instead.
+An ask that reaches the run at such a head anyway is taken and the `MERGE` stands. A head with
+a carried `MERGE` still takes the ask, because it is the seat's way to get Shepherd's own
+review over a carry.
+
 A run waiting in `merging` at that head stops waiting without merging and reads CI again,
 held or not: an ask also stops an unheld pull request's merge at that head, which fails safe.
 The `sh-review-request` step then takes the ask and sets aside the verdict the run already
-had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It also ends the
+had there, whether a seat reviewer's or a carried `MERGE`. It also ends the
 land round, because `land` trusts a head for the rest of a round once its old verdict let it
 through. The next round asks the policy, or the owner, again, so an asked review that
 escalates opens `approve-merge` instead of merging. That review is named `seat-request`,

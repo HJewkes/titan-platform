@@ -2,11 +2,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
+import { openDatabase } from "@titan-design/store-sqlite";
 import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
+import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
@@ -216,6 +218,74 @@ describe("shepherd.register kind", () => {
   });
 });
 
+describe("shepherd.register G10 hold", () => {
+  const large = [{ path: "packages/x/src/a.ts", status: "modified", additions: 450, deletions: 0 }];
+
+  it("a new registration of a PR over 400 lines comes back held g10-review by Shepherd", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+
+    const result = await registered(w, pr1);
+
+    expect(result).toMatchObject({ created: true, g10Hold: "g10-review: 450 changed lines", registration: { held: true, holdReason: "g10-review: 450 changed lines" } });
+    expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([expect.objectContaining({ kind: "hold", actor: "shepherd" })]);
+  });
+
+  it("a repeat registration whose diff grew past 400 lines stacks a G10 hold over the seat's hold", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    w.fake.prFiles.set(1, large);
+    const store = w.routes.shepherd!.store.get();
+    store.hold(runId, "visual-gate2: screenshots pending");
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: 450 changed lines, over a visual-gate2 hold" });
+    expect(store.release(runId).holdReason).toBe("visual-gate2: screenshots pending");
+  });
+
+  it("a repeat registration whose diff grew into an authority path escalates a released g10-review hold to g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+    w.fake.prFiles.set(1, [...large, { path: "packages/authority/src/x.ts", status: "modified", additions: 5, deletions: 0 }]);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: authority touch", registration: { held: true } });
+  });
+
+  it("a repeat registration of an unchanged diff leaves a released G10 hold released", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.releaseIfHeld(runId, "g10-review: 450 changed lines");
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, registration: { held: false } });
+    expect(repeat.g10Hold).toBeUndefined();
+  });
+
+  it("a repeat registration whose changed files cannot be read is held g10-adversary", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, pr1);
+    w.fake.prChangedFiles.set(1, 5000);
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, g10Hold: "g10-adversary: changed files unread at registration (FileListTruncatedError)" });
+  });
+});
+
 describe("shepherd.register kind on a failed run", () => {
   it("a refused kind move leaves the failed run, its registration and the run count untouched", async () => {
     const w = world({ frozen: true });
@@ -311,6 +381,26 @@ describe("shepherd.register after a failed run", () => {
     expect(store.authorsOf(again.runId).map((author) => author.name)).toEqual(["impl-a", "impl-a-2"]);
     expect(store.authorsOf(again.registration.runId).filter((author) => author.role === "successor").map((author) => author.name)).toEqual(["impl-a-2"]);
     expect(store.authorsOf(failedRunId)).toEqual([]);
+  });
+
+  it("the failed run's own account hold moves to the new run, which owns it", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp-2385-")), "factory.db");
+    const w = world({ frozen: true, dbPath });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+    const db = openDatabase(dbPath);
+    const limits = new AccountLimitStore(db);
+    expect(limits.holdRun(failedRunId, "account-exhausted: /accounts/review; TP-2385")).toBe(true);
+
+    try {
+      const again = await registered(w, pr1);
+
+      expect(limits.holdsRun(again.runId)).toBe(true);
+      expect(limits.holdsRun(failedRunId)).toBe(false);
+      expect(db.prepare("SELECT run_id FROM shepherd_account_hold").all()).toEqual([{ run_id: again.runId }]);
+    } finally {
+      db.close();
+    }
   });
 
   it("two registers after one failure start exactly one new run", async () => {
@@ -444,7 +534,6 @@ describe("shepherd.register after a stopped run", () => {
 
   it.each([
     ["merged", LANDED],
-    ["abandoned", stoppedStep("abandoned")],
     ["closed", stoppedStep("closed")],
     ["stuck-behind", stoppedStep("stuck-behind")],
     ["merge-denied", stoppedStep("merge-denied")],
@@ -456,6 +545,30 @@ describe("shepherd.register after a stopped run", () => {
 
     expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
     expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run whose gate was abandoned gets a new run at the current head with the current seat book's policy", async () => {
+    const w = world({ frozen: true });
+    const abandonedRunId = await endedAs(w, stoppedStep("abandoned"));
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: abandonedRunId, previousStop: "abandoned", registration: { runId: again.runId } });
+    expect(again.runId).not.toBe(abandonedRunId);
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("a run abandoned on a pull request that has since closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("abandoned"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 

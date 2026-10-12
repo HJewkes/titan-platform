@@ -1,5 +1,6 @@
+import { CLIENT_HEADER } from "@titan-design/daemon";
 import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
-import { postRpc, type Verbs } from "./cli.js";
+import type { Verbs } from "./cli.js";
 import { EXIT } from "./exit-codes.js";
 import { createFactoryRegistry, factoryContext } from "./registry.js";
 import { probeServe, type ServeProbe } from "./serve-probe.js";
@@ -24,4 +25,13 @@ export function unansweredMessage(probe: ServeProbe, port: number): string {
   if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
   if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
   return `no titan-factory serve answered on port ${port}: connection refused, so serve is down`;
+}
+
+export async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
+  const res = await fetch(`http://127.0.0.1:${port}/rpc/${name}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", [CLIENT_HEADER]: "titan-factory" },
+    body: JSON.stringify(args),
+  });
+  return (await res.json()) as JsonEnvelope<T>;
 }

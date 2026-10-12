@@ -4,8 +4,11 @@ import type { ShepherdServices } from "./commands.js";
 import type { Registration } from "./store.js";
 import { runOutcome } from "./view.js";
 
-/** Stops a pushed fix can clear: the run handed the PR to an agent that never took it, so a new head may merge. */
-const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict"]);
+/**
+ * Stops a new register can clear: a pushed fix may let a new head merge, and an owner abandon
+ * ends the run, not the pull request, so registering it again is the owner asking for a new run.
+ */
+const RESTARTABLE_STOPS: ReadonlySet<string> = new Set(["not-mergeable", "conflict", "abandoned"]);
 
 interface Restart {
   /** Why the replaced run stopped; absent when it failed. */

@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/bin.ts"],
+  entry: { index: "src/index.ts", bin: "src/bin.ts", judge: "src/judge-entry.ts" },
   format: ["esm"],
   dts: { entry: "src/index.ts" },
   clean: true,

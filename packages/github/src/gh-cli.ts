@@ -215,6 +215,7 @@ interface GhCheckRun {
   details_url: string | null;
   html_url: string | null;
   app?: { id: number } | null;
+  pull_requests?: { number: number; base: { ref: string } }[];
 }
 
 async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<CheckRun[]> {
@@ -228,6 +229,7 @@ async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<Chec
     headSha: run.head_sha,
     appId: run.app?.id ?? null,
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
+    pullRequests: (run.pull_requests ?? []).map((pr) => ({ number: pr.number, baseRef: pr.base.ref })),
     url: run.html_url ?? run.details_url ?? "",
   }));
 }

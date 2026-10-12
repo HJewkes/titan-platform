@@ -70,7 +70,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen), flakyChecks });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, versions: async () => true, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
@@ -973,14 +973,14 @@ describe("the Version Packages PR", () => {
   }
 
   /** The changesets PR as PR 1, registered the way the release sweep registers it. */
-  function releaseWorld(registry: PackageRegistry): { w: World; runId: string; reviews: ReviewRequest[] } {
+  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY): { w: World; runId: string; reviews: ReviewRequest[] } {
     const { phases, reviews } = fakePhases({});
     const w = world(phases, undefined, undefined, undefined, registry);
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
     setWidgetManifest(w.fake, H1);
-    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(RELEASE_POLICY) });
-    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: RELEASE_POLICY });
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(policy) });
+    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy });
     return { w, runId, reviews };
   }
 
@@ -1008,6 +1008,52 @@ describe("the Version Packages PR", () => {
     );
     expect(w.fake.effects.merge).toBe(0);
     expect(w.store.byRun(runId)?.releaseReady).toBeNull();
+  });
+
+  /** tp#1152: an auto seat without the release-merge grant gates at H1; the release head then moves to H2 while paused. */
+  async function releaseGateMoved(): Promise<{ w: World; runId: string }> {
+    const { w, runId } = releaseWorld(async () => "trusted", AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-release/no-release-grant");
+    setWidgetManifest(w.fake, H2);
+    w.fake.pushHead(1, H2);
+    return { w, runId };
+  }
+
+  it("supersedes a release gate whose head moved, and gates afresh at the new head after a new preflight (tp#1152)", async () => {
+    const { w, runId } = await releaseGateMoved();
+
+    const superseded = await supersedeMovedGates(w.host, w.services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: H1, to: H2, condition: "head-moved" }]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toMatchObject({ status: "cancelled", reason: expect.stringMatching(/^superseded: /) });
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${H2}`);
+    expect(prompt).toContain("Policy shepherd-release/no-release-grant");
+    expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H2}`);
+    expect(w.host.runtime.status(runId)?.status).not.toBe("failed");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("reports a moved release gate on a dry run and cancels nothing", async () => {
+    const { w, runId } = await releaseGateMoved();
+
+    const superseded = await supersedeMovedGates(w.host, w.services, { dryRun: true });
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: H1, to: H2, condition: "head-moved" }]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("leaves a release gate at the PR's current head with the owner", async () => {
+    const { w, runId } = releaseWorld(async () => "trusted", AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const superseded = await supersedeMovedGates(w.host, w.services);
+
+    expect(superseded).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
   it("defers another PR's merge while the Version Packages PR is ready, then re-reads CI and merges once it lands", async () => {
@@ -1068,7 +1114,7 @@ describe("sh-park", () => {
       wake: async () => UNHANDLED,
       review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
     };
-    const w = world(phases, undefined, undefined, (name) => (events.push(`park ${name}`), { lines: park(name) }));
+    const w = world(phases, undefined, undefined, async (name) => (events.push(`park ${name}`), { lines: park(name) }));
     w.fake.addPr({ headSha: H1 });
     return { w, events };
   }
@@ -1690,7 +1736,7 @@ describe("merge steps allocate no worktree (CC-276 S3)", () => {
     fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), pr.headSha !== H1 && (pr.mergeableState = "clean"));
     const ref = shepherdStoreRef();
     const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")), git: cleanMergeUp };
-    const park: ParkPort = () => (record("park"), { lines: [] });
+    const park: ParkPort = async () => (record("park"), { lines: [] });
     const port = githubPort(fake.wire);
     const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
     const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry } });

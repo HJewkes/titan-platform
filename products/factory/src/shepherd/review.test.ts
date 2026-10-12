@@ -48,9 +48,10 @@ import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
-import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
+import type { PanelMode } from "./review-panel-plan.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -515,6 +516,8 @@ describe("sh-review", () => {
     changedFiles?: number;
     /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
     removals?: string[];
+    /** Acts on the bound store after the registration is written, before any step runs. */
+    prepare?: (store: ShepherdStore) => void;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -526,7 +529,9 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const store = boundStore(options.registered ?? registration);
+    options.prepare?.(store.get());
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -581,6 +586,15 @@ describe("sh-review", () => {
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
     });
 
+    it("gives a small correctness PR that changes the lockfile the g10 profile", async () => {
+      const sized = await spawnSized([
+        { path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 },
+        { path: "pnpm-lock.yaml", status: "modified", additions: 4, deletions: 2 },
+      ]);
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 36, dependencyTouch: true }, profile: "bd-reviewer" });
+    });
+
     it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
       const sized = await spawnSized([
         { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },
@@ -606,6 +620,44 @@ describe("sh-review", () => {
       const sized = await spawnSized();
 
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    const smallMigration: PrFile[] = [{ path: "products/factory/src/shepherd/store-migrations.ts", status: "modified", additions: 20, deletions: 10 }];
+    const spawnHeld = async (prepare: (store: ShepherdStore) => void) => {
+      const dispatch = fakeDispatch();
+      const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallMigration, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      return { facts: dispatch.spawns[0]?.facts, profile: result?.kind === "dispatched" ? result.profile : undefined };
+    };
+
+    it("gives a 30-line migration PR held g10-review the g10 profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "g10-review: store migration"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", g10Hold: true, changedLines: 30 }, profile: "bd-reviewer" });
+    });
+
+    it("gives a 30-line PR whose g10-review hold was released the g10 profile", async () => {
+      const sized = await spawnHeld((store) => {
+        store.hold("run-1", "g10-review: store migration");
+        store.release("run-1");
+      });
+
+      expect(sized.profile).toBe("bd-reviewer");
+    });
+
+    it("gives a 30-line PR under a non-G10 hold the standard profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "stalled: seat away"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+    });
+
+    it("gives the g10 profile when the run's hold events cannot be read", async () => {
+      const sized = await spawnHeld((store) => {
+        store.eventsOf = () => {
+          throw new Error("disk I/O error");
+        };
+      });
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, unread: true, changedLines: 30 }, profile: "bd-reviewer" });
     });
   });
 
@@ -1277,6 +1329,7 @@ describe("reviewPhase", () => {
     /** Collects the checkout dirs removed; no scene touches the real filesystem. */
     removals?: string[];
     machineStop?: MachineStopWatch;
+    panel?: PanelMode;
   }
 
   async function review(scene: Scene) {
@@ -1295,7 +1348,7 @@ describe("reviewPhase", () => {
       for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1319,6 +1372,49 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  describe("review.panel", () => {
+    const singleReviewerSteps = [`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`];
+    const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
+
+    it("off records today's intent and runs today's steps with one reviewer", async () => {
+      const dispatch = fakeDispatch();
+
+      const { stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "off" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("shadow records the head's class, touches and plan on the intent, and dispatches and awaits exactly as off does", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "shadow" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual({
+        ...intent,
+        class: "g10",
+        touches: ["untested", "large"],
+        plan: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness", profile: "bd-reviewer" }), expect.objectContaining({ shape: "tests" }), expect.objectContaining({ shape: "perf" })] }),
+      });
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
+    });
+
+    it("shadow plans an external review's head with nothing, because Shepherd starts no reviewer for it", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+      const dispatch = fakeDispatch(crew(external));
+
+      const { resultOf } = await review({ dispatch, panel: "shadow", hold: "security: awaiting the audit", holdReviewer: external.name, awaited: () => ({ kind: "none" }) });
+
+      expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ mode: "external" });
+      expect(resultOf(`sh-review-intent:${H1}`)).not.toHaveProperty("plan");
+    });
   });
 
   it("records the dispatch's cause on sh-review-intent, so the ledger says why the head was reviewed", async () => {

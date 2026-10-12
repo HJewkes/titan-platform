@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configuredRoles, DEFAULT_REVIEWER_ROLES, prChangedLines, reviewerClassFor, reviewerRoleFor } from "./reviewer-roles.js";
+import { configuredRoles, DEFAULT_REVIEWER_ROLES, prChangedLines, prTouchesDependency, reviewerClassFor, reviewerRoleFor } from "./reviewer-roles.js";
 
 describe("reviewerRoleFor", () => {
   it("gives a security PR and a small correctness PR different profiles", () => {
@@ -75,5 +75,15 @@ describe("configuredRoles", () => {
 
   it("carries a configured changed-line limit", () => {
     expect(configuredRoles({ profile: "rv", g10ChangedLines: 250 })).toEqual({ g10: "rv", standard: "rv", g10ChangedLines: 250 });
+  });
+});
+
+describe("dependency touch", () => {
+  it("takes g10 for a small correctness PR that changes the lockfile", () => {
+    const files = [{ path: "src/a.ts", status: "modified", additions: 5, deletions: 0 }, { path: "pnpm-lock.yaml", status: "modified", additions: 400, deletions: 0 }] as const;
+    expect(prTouchesDependency(files)).toBe(true);
+    expect(prChangedLines(files)).toBe(405);
+    expect(reviewerClassFor({ kind: "correctness", changedLines: 3, dependencyTouch: true })).toBe("g10");
+    expect(reviewerClassFor({ kind: "correctness", changedLines: 3 })).toBe("standard");
   });
 });

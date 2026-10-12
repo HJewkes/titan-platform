@@ -496,11 +496,6 @@
       "count": 1
     }
   },
-  "products/factory/src/cli.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/factory/src/gate-brief.test.ts": {
     "titan/no-chained-type-assertions": {
       "count": 1

@@ -423,6 +423,8 @@ declare class WorkflowRunStore {
     create(run: WorkflowRun): void;
     get(id: string): WorkflowRun | undefined;
     listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[];
+    /** Counts from the status index alone: a caller that only needs totals never loads or parses a run's step results. */
+    countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined;
     save(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
     renew(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
@@ -431,6 +433,17 @@ declare class WorkflowRunStore {
      * run, so no fence applies. False when the run is unfinished or already has that key, so a repeat never rewrites one.
      */
     annotate(id: string, key: string, result: StepResult): boolean;
+    /** Every run's status by id, read without a run's step results, so a caller can pick the few runs it must load. */
+    statuses(): Map<string, WorkflowStatus>;
+    /**
+     * Up to `limit` runs of `statuses` with ids after `after`, in id order, finished at or after `completedSince` when
+     * given; a caller reads a long history a page at a time instead of holding every run at once.
+     */
+    page(statuses: readonly WorkflowStatus[], { after, limit, completedSince }: {
+        after?: string;
+        limit: number;
+        completedSince?: string;
+    }): WorkflowRun[];
     release(run: WorkflowRun, fence: WorkflowOwnerFence): void;
 }
 
@@ -579,6 +592,7 @@ declare class WorkflowRuntime {
     private readonly options;
     private readonly workflows;
     private readonly live;
+    private readonly held;
     private readonly store;
     private readonly runtimeId;
     private readonly leaseMs;

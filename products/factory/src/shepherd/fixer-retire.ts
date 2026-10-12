@@ -11,7 +11,7 @@ const FIXER_NAME = /^fix-([a-z0-9-]+)-[0-9a-f]{7}$/;
 export interface FixerRetirePorts {
   roster(): Promise<readonly { name: string; presence: Presence }[]>;
   /** Removes the agent's clean pushed worktree and keeps its branch; throws when the tree is dirty, unpushed or in use. */
-  park(name: string): void;
+  park(name: string): Promise<void>;
   /** Never forced. */
   retire(name: string): Promise<void>;
 }
@@ -50,7 +50,7 @@ const reasonOf = (error: unknown): string => redactForEvidence(error instanceof 
 
 async function retireOne(ports: FixerRetirePorts, fixer: string): Promise<FixerRetireNote> {
   try {
-    ports.park(fixer);
+    await ports.park(fixer);
   } catch (error) {
     return { fixer, outcome: "left", detail: `its worktree was not parked: ${reasonOf(error)}` };
   }

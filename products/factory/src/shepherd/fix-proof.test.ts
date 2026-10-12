@@ -1,5 +1,5 @@
 import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
-import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
@@ -20,6 +20,7 @@ const BASE = fakeSha("fix-proof-base");
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
 const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
+const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
 
 function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
@@ -47,7 +48,7 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 });
 
-const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, ...overrides });
+const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
 
 interface Scene {
   kind?: string;
@@ -55,6 +56,7 @@ interface Scene {
   headRef?: string;
   runs?: CheckRun[];
   log?: string;
+  files?: PrFile[];
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -80,7 +82,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }) });
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
-    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
@@ -175,6 +177,25 @@ describe("sh-fix-proof in reviewPhase", () => {
 
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProof: line });
     expect(spawns[0]?.brief).toContain("fix-proof/v1 verdict for this head: reproduced");
+    expect(spawns[0]?.brief).toContain("Do not rerun");
+  });
+
+  it("withholds a reproduced line from the reviewer brief when the PR edits the fix-proof workflow", async () => {
+    const line = resultLine(H, "reproduced");
+
+    const { spawns, inputs, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(line), files: [WORKFLOW_EDIT] });
+
+    expect(proof).toEqual({ kind: "untrusted", line, verdict: "reproduced", reason: expect.stringContaining(WORKFLOW_EDIT.path) });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
+    expect(spawns[0]?.brief).not.toContain("Do not rerun");
+  });
+
+  it("reviews a PR whose vacuous line is untrusted instead of ending it as NO_REPRO", async () => {
+    const { verdicts, spawns, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
+
+    expect(proof).toMatchObject({ kind: "untrusted", verdict: "vacuous" });
+    expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+    expect(spawns).toHaveLength(1);
   });
 });
 
@@ -184,14 +205,21 @@ describe("readFixProof", () => {
   interface Registered {
     branch?: string;
     headRef?: string;
+    unreadablePr?: boolean;
     timeoutMs?: number;
+    logs?: Record<number, string>;
+    files?: PrFile[];
+    changedFiles?: number;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
     const fake = fakeGitHub();
-    if (options.headRef !== undefined) fake.addPr({ headSha: H, headRef: options.headRef });
+    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }) });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
+    for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
+    if (options.files !== undefined) fake.prFiles.set(1, options.files);
+    if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
     const store = shepherdStoreRef();
@@ -217,7 +245,7 @@ describe("readFixProof", () => {
   });
 
   it("skips the gate with the reason recorded when the PR's head branch cannot be read", async () => {
-    const { read } = registered("feature", [fixProofRun()]);
+    const { read } = registered("feature", [fixProofRun()], { unreadablePr: true });
 
     expect(await read()).toEqual({ kind: "skipped", reason: expect.stringContaining("head branch unreadable") });
   });
@@ -236,10 +264,126 @@ describe("readFixProof", () => {
     expect(elapsed()).toBeGreaterThanOrEqual(1_500_000);
   });
 
-  it("gives up as missing at the deadline while the fix-proof run is still in progress", async () => {
+  it("trusts a successful run's line when the PR leaves the harness alone", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+  });
+
+  it("distrusts the line when the PR renames the fix-proof run script away", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "scripts/other.sh", previousPath: "scripts/fix-proof-run.sh", status: "renamed" }] });
+
+    expect(await read()).toEqual({ kind: "untrusted", line: resultLine(H, "vacuous"), verdict: "vacuous", reason: expect.stringContaining("scripts/fix-proof-run.sh") });
+  });
+
+  it("distrusts the line from a fix-proof run that did not conclude success", async () => {
+    const { read } = registered("correctness", [fixProofRun({ conclusion: "failure" })]);
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("failure") });
+  });
+
+  it("distrusts the line when the PR's changed files cannot be read in full", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "src/a.ts", status: "modified" }], changedFiles: 5_000 });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("could not be read") });
+  });
+
+  it("ignores a newer fix-proof run bound to a different PR at the same head and trusts the one bound to this PR", async () => {
+    const reproduced = resultLine(H, "reproduced");
+    const forged = fixProofRun({ id: 99, pullRequests: [{ number: 2, baseRef: "main" }] });
+    const { read } = registered("correctness", [fixProofRun(), forged], { logs: { 99: actionsLog(resultLine(H, "vacuous")), [FIX_PROOF_JOB]: actionsLog(reproduced) } });
+
+    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+  });
+
+  it("ignores a newer run for this PR number on another base branch", async () => {
+    const reproduced = resultLine(H, "reproduced");
+    const forged = fixProofRun({ id: 99, pullRequests: [{ number: 1, baseRef: "attacker" }] });
+    const { read } = registered("correctness", [fixProofRun(), forged], { logs: { 99: actionsLog(resultLine(H, "vacuous")), [FIX_PROOF_JOB]: actionsLog(reproduced) } });
+
+    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+  });
+
+  it.each([
+    ["newest last", [77, 78]],
+    ["newest first", [78, 77]],
+  ])("distrusts the line when two fix-proof runs at the head are bound to this PR (%s)", async (_order, ids) => {
+    const { read } = registered("correctness", ids.map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(resultLine(H, "reproduced")) } });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", verdict: "reproduced", reason: expect.stringContaining("2 fix-proof runs") });
+  });
+
+  it("distrusts the line when no fix-proof run at the head is bound to this PR", async () => {
+    const { read } = registered("correctness", [fixProofRun({ pullRequests: [] })]);
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("0 fix-proof runs") });
+  });
+
+  it("waits for the newest fix-proof run rather than read an older completed one", async () => {
+    const { read, elapsed } = registered("correctness", [fixProofRun(), fixProofRun({ id: 78, status: "in_progress", conclusion: null })]);
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("at the deadline") });
+    expect(elapsed()).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("reads a bound fix-proof run still in progress at the deadline as error, not missing", async () => {
     const { read } = registered("correctness", [fixProofRun({ status: "in_progress", conclusion: null })]);
 
-    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("still in_progress at the deadline") });
+  });
+
+  it("reads a completed fix-proof run with no result line for the head as error, not missing", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(OLD, "reproduced")) } });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no result line for this head") });
+  });
+
+  it("reads a PR that deletes the fix-proof workflow and leaves no run as error", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate], { files: [{ path: ".github/workflows/fix-proof.yml", status: "removed" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("harness: .github/workflows/fix-proof.yml") });
+  });
+
+  it("reads a PR whose changed files cannot be read in full and leaves no run as error", async () => {
+    const { read } = registered("correctness", [], { files: [{ path: "src/a.ts", status: "modified" }], changedFiles: 5_000 });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("could not be read") });
+  });
+
+  it("still reads missing for a repo with no fix-proof run when the PR leaves the harness alone", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("no fix-proof check run") });
+  });
+});
+
+describe("fixProofStanding", () => {
+  const verdicts: FixProofResult["verdict"][] = ["reproduced", "unproven", "vacuous", "no-tests"];
+
+  it.each(verdicts)("lets a trusted %s result at the head stand", (verdict) => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, verdict), verdict }, H)).toBeUndefined();
+  });
+
+  it("marks a trusted error result at the head unverified as error", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, "error"), verdict: "error" }, H)).toEqual({ unverified: "error" });
+  });
+
+  it.each([...verdicts, "error" as const])("marks an untrusted %s result unverified as untrusted", (verdict) => {
+    expect(fixProofStanding({ kind: "untrusted", line: resultLine(H, verdict), verdict, reason: "harness edited" }, H)).toEqual({ unverified: "untrusted" });
+  });
+
+  it("marks an error read unverified as unread", () => {
+    expect(fixProofStanding({ kind: "error", reason: "no result line" }, H)).toEqual({ unverified: "unread" });
+  });
+
+  it("marks a stored result line naming another head unverified as unread", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(OLD, "reproduced"), verdict: "reproduced" }, H)).toEqual({ unverified: "unread" });
+  });
+
+  it.each(["skipped", "missing"] as const)("lets a %s read stand, since no proof was expected", (kind) => {
+    expect(fixProofStanding({ kind, reason: "no fix-proof run" }, H)).toBeUndefined();
   });
 });
 

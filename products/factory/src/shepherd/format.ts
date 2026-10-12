@@ -61,7 +61,8 @@ function formatReviewAsk({ runId, head, requested }: ReviewAsk): string {
 function formatRegistered(registered: Registered): string {
   const { runId, registration } = registered;
   const target = `${registration.repo}${registration.pr === null ? "" : `#${registration.pr}`}${registration.branch ? ` (${registration.branch})` : ""}`;
-  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}\n`;
+  const held = registered.g10Hold === undefined ? "" : `; held ${registered.g10Hold}`;
+  return `run ${runId} shepherd-pr ${target}: ${registerOutcome(registered)}; policy ${registration.policy.merge}${held}\n`;
 }
 
 function registerOutcome({ created, previousRunId, previousStop }: Registered): string {

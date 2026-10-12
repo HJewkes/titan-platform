@@ -48,7 +48,7 @@ const input = { runId: "run-1", headSha: "a".repeat(40) };
 
 const refusing =
   (reasons: Record<string, string>, asked: string[] = []): ParkPort =>
-  (name) => {
+  async (name) => {
     asked.push(name);
     const reason = reasons[name];
     if (reason === undefined) return { lines: [`Parked ${name}.`] };
@@ -74,11 +74,11 @@ const LIVE = (name: string) =>
   `${name} is live; park takes only an agent whose process has exited or that this broker no longer tracks`;
 
 describe("parkImplementer", () => {
-  it("skips without asking the broker when no registration names an implementer", () => {
+  it("skips without asking the broker when no registration names an implementer", async () => {
     const asked: string[] = [];
-    const park: ParkPort = (name) => (asked.push(name), { lines: [] });
+    const park: ParkPort = async (name) => (asked.push(name), { lines: [] });
 
-    const outcome = parkImplementer(storeWith(), park, input);
+    const outcome = await parkImplementer(storeWith(), park, input);
 
     expect(outcome).toEqual({
       kind: "skipped",
@@ -87,13 +87,13 @@ describe("parkImplementer", () => {
     expect(asked).toEqual([]);
   });
 
-  it("answers a thrown non-Error as not parked rather than failing the step", () => {
-    const park: ParkPort = () => {
+  it("answers a thrown non-Error as not parked rather than failing the step", async () => {
+    const park: ParkPort = async () => {
       throw "socket closed";
     };
 
     expect(
-      parkImplementer(storeWith({ implementer: "impl-a" }), park, input)
+      await parkImplementer(storeWith({ implementer: "impl-a" }), park, input)
     ).toEqual({
       kind: "not-parked",
       agent: "impl-a",
@@ -102,12 +102,12 @@ describe("parkImplementer", () => {
     });
   });
 
-  it("counts a tree that is already off disk as parked", () => {
+  it("counts a tree that is already off disk as parked", async () => {
     const park = refusing({
       "impl-a": "/tmp/tree is not on disk; nothing to park",
     });
 
-    const outcome = parkImplementer(
+    const outcome = await parkImplementer(
       storeWith({ implementer: "impl-a" }),
       park,
       input
@@ -120,12 +120,12 @@ describe("parkImplementer", () => {
     });
   });
 
-  it("counts a tree agent-chat never allocated as parked", () => {
+  it("counts a tree agent-chat never allocated as parked", async () => {
     const park = refusing({
       "impl-a": "impl-a holds no worktree agent-chat allocated",
     });
 
-    const outcome = parkImplementer(
+    const outcome = await parkImplementer(
       storeWith({ implementer: "impl-a" }),
       park,
       input
@@ -138,14 +138,14 @@ describe("parkImplementer", () => {
     });
   });
 
-  it("parks the successor and the agent its agent-chat branch was allocated to when the registered name is unknown", () => {
+  it("parks the successor and the agent its agent-chat branch was allocated to when the registered name is unknown", async () => {
     const asked: string[] = [];
     const park = refusing(
       { "seat-label": 'no agent named "seat-label"' },
       asked
     );
 
-    const outcome = parkImplementer(
+    const outcome = await parkImplementer(
       storeWith({
         implementer: "seat-label",
         branch: "agent-chat/impl-b",
@@ -268,12 +268,12 @@ describe("parkStep", () => {
 describe("liveRetry", () => {
   function retryWorld(
     presences: string[],
-    attempts: ReturnType<LiveRetryDeps["attempt"]>[]
+    attempts: Awaited<ReturnType<LiveRetryDeps["attempt"]>>[]
   ) {
     const tried: string[] = [];
     let clock = 0;
     const deps: LiveRetryDeps = {
-      attempt: (name) => (
+      attempt: async (name) => (
         tried.push(name),
         attempts.shift() ?? { done: true, parked: true, detail: "parked" }
       ),
@@ -474,7 +474,7 @@ describe("an implementer retired while its park waited for its exit", () => {
     vi.useFakeTimers();
     const notice = noticePorts("hub");
     let live = true;
-    const park: ParkPort = (name) => {
+    const park: ParkPort = async (name) => {
       if (live) throw new DispatchError(`agent-chat refused agent park: Not parked: ${LIVE(name)}`);
       throw new DispatchError(`agent-chat refused agent park: Not parked: no agent named "${name}"`);
     };
