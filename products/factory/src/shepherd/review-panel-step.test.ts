@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
-import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, type PanelPlan, type ReviewShape, type ReviewerAgent } from "@titan-design/review-panel";
+import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, type PanelPlan, type PanelVerdict, type ReviewShape, type ReviewerAgent } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import { panelFindingsText, panelMerge, panelReviewerNames, panelVerdictRoute, type PanelVerdictRecord } from "./review-panel-step.js";
+import { aggregatePanel, panelFindingsText, panelMerge, panelReviewerNames } from "./review-panel-step.js";
 import { defectClassSection } from "./wake-brief.js";
 
 const REPO = "octo/demo";
@@ -19,14 +19,11 @@ const verdict = (shape: ReviewShape, said: "MERGE" | "FIX_FIRST", text = ""): Re
 });
 const none = (shape: ReviewShape): Recorded => ({ shape, result: { kind: "none" } });
 
-async function aggregateStep(results: readonly Recorded[], files: Record<string, string> = {}): Promise<PanelVerdictRecord> {
+/** What the sh-review-panel step records for these member results, with `files` readable at the head. */
+async function aggregateStep(results: readonly Recorded[], files: Record<string, string> = {}): Promise<PanelVerdict> {
   const fake = fakeGitHub();
   for (const [path, content] of Object.entries(files)) fake.files.set(`${HEAD}:${path}`, { content, blobSha: fakeSha(path) });
-  const route = panelVerdictRoute({ port: githubPort(fake.wire), now: () => 0 });
-  const input = { repo: REPO, pr: 1, head: HEAD, plan: PLAN, results };
-  const outcome = await route.runner.run({ prompt: JSON.stringify(input), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: `sh-review-panel:${HEAD}` } as never);
-  if (!outcome.ok) throw new Error(outcome.error);
-  return JSON.parse(outcome.output).result as PanelVerdictRecord;
+  return aggregatePanel({ port: githubPort(fake.wire) }, JSON.parse(JSON.stringify({ repo: REPO, pr: 1, head: HEAD, plan: PLAN, results })));
 }
 
 describe("the sh-review-panel step", () => {

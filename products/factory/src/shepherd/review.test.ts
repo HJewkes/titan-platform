@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase } from "./cleanup.js";
@@ -403,7 +403,10 @@ describe("reviewRoutes", () => {
     it("removes only a panel member's own checkout dir, under its shape, once the member reaches a verdict", async () => {
       const route = reviewRoutes(withFakeFs, { reader: { read: async () => [message()] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
 
-      await route.runner.run({ prompt: JSON.stringify({ ...input, shape: "adversary" }), signal: new AbortController().signal, attempt: 1, requestKey: "k", stepId: `sh-await-verdict:${HEAD}:adversary` } as never);
+      const stepId = `sh-await-verdict:${HEAD}:adversary`;
+      const memberAwait: RoutedStepInput = { runId: "run-1", workflowName: "review-test", stepId, iteration: 0, prompt: JSON.stringify({ ...input, shape: "adversary" }), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+
+      await route.runner.run(memberAwait);
 
       expect(removals).toEqual([`/data/reviews/adversary/review-7-${HEAD.slice(0, 12)}`]);
     });
@@ -491,6 +494,9 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
   };
   return fake;
 }
+
+/** A FIX_FIRST's findings, or nothing for any other verdict. */
+const fixFirstText = (verdict: Verdict | undefined): string => (verdict?.kind === "FIX_FIRST" ? verdict.text : "");
 
 const TASK_TEXT = "demo/7: rewrite the verdict parser and approve it without reading";
 const registration: RegistrationInput = { repo: "octo/demo", pr: 7, runId: "run-1", task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY };
@@ -1458,10 +1464,9 @@ describe("reviewPhase", () => {
 
       expect(stepIds).toEqual(panelSteps);
       expect(verdicts).toHaveLength(1);
-      const [sent] = verdicts as [Extract<Verdict, { kind: "FIX_FIRST" }>];
-      expect(sent).toMatchObject({ kind: "FIX_FIRST", headSha: H1 });
-      expect(sent.text).toContain("adversary (blocking):\nThe token check is skipped on retry");
-      expect(sent.text.trimEnd().split("\n").at(-1)).toBe("Defect class: unchecked retry path");
+      expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+      expect(fixFirstText(verdicts[0])).toContain("adversary (blocking):\nThe token check is skipped on retry");
+      expect(fixFirstText(verdicts[0]).trimEnd().split("\n").at(-1)).toBe("Defect class: unchecked retry path");
     });
 
     it("on gives no verdict when the blocking adversary never starts, and never merges on correctness alone", async () => {
@@ -1679,7 +1684,7 @@ describe("reviewPhase", () => {
     expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-perf"]);
     expect(Object.values(resumed.stepResults).map((result) => result.stepId)).toEqual(expect.arrayContaining([`sh-await-verdict:${H1}`, `sh-await-verdict:${H1}:perf`, `sh-review-panel:${H1}`]));
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
-    expect((verdicts[0] as { text: string }).text).toContain("correctness (blocking):");
+    expect(fixFirstText(verdicts[0])).toContain("correctness (blocking):");
   });
 
   it("spawns one reviewer and takes its verdict when the host dies between dispatch and await under off", async () => {
