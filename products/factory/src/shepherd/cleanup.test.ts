@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
-import type { AgentRow } from "@titan-design/agent-dispatch";
+import { DispatchError, type AgentRow } from "@titan-design/agent-dispatch";
 import { createRosterReader } from "./roster.js";
 import { agentChatCleanupAgents, activeWorkTasks, type AgentChatCalls } from "./cleanup-ports.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
@@ -406,7 +406,7 @@ describe("sh-cleanup retire", () => {
   it("does not retire an agent resumed inside the roster cache window", async () => {
     const clock = { now: 0 };
     const rowAt = (): AgentRow => ({ name: IMPLEMENTER, agentId: "id", state: "live", presence: clock.now < 100_000 ? "exited" : "live", status: "finished", profile: "implementer", surface: "headless", model: null, cwd: "/repo", sessionId: "s", transcriptPath: null, transcriptExists: false, spawnedBy: null, account: null, generation: 1, teleportFrom: null });
-    const calls: AgentChatCalls = { listAgents: vi.fn(async () => [rowAt()]), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
+    const calls: AgentChatCalls = { listAgents: vi.fn(async () => [rowAt()]), retire: vi.fn(async () => ({ name: IMPLEMENTER, caveats: [] })) };
     const roster = createRosterReader(async () => calls.listAgents("/bin/agent-chat", 1_000), { now: () => clock.now, ttlMs: SH_CLEANUP_GIVE_UP_MS * 2 });
     const agents = agentChatCleanupAgents("/bin/agent-chat", calls, 1_000, roster);
     const w = world();
@@ -457,13 +457,19 @@ describe("fresh reviewer names", () => {
 
 describe("cleanup ports", () => {
   it("retires through agent-chat without --force", async () => {
-    const calls: AgentChatCalls = { listAgents: vi.fn(async () => []), retire: vi.fn(() => ({ name: IMPLEMENTER, caveats: [] })) };
+    const calls: AgentChatCalls = { listAgents: vi.fn(async () => []), retire: vi.fn(async () => ({ name: IMPLEMENTER, caveats: [] })) };
 
     await agentChatCleanupAgents("/bin/agent-chat", calls, 1_000).retire(IMPLEMENTER);
 
     expect(calls.retire).toHaveBeenCalledTimes(1);
     const options = vi.mocked(calls.retire).mock.calls[0]![3];
     expect(options?.force).not.toBe(true);
+  });
+
+  it("a refused retire rejects the cleanup adapter's retire", async () => {
+    const calls: AgentChatCalls = { listAgents: vi.fn(async () => []), retire: vi.fn(async () => { throw new DispatchError("agent-chat refused agent retire: dirty tree"); }) };
+
+    await expect(agentChatCleanupAgents("/bin/agent-chat", calls, 1_000).retire(IMPLEMENTER)).rejects.toThrow(/dirty tree/);
   });
 
   it("reads a task's state from its initiative's list and closes it over loopback rpc", async () => {
