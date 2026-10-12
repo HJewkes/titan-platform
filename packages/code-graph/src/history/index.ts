@@ -33,3 +33,11 @@ export {
   type ComputeChangeCouplingOptions,
   type CouplingPartner,
 } from "./change-coupling.js";
+export {
+  accreteSymbols,
+  DEFAULT_TASK_ID_PATTERN,
+  loadFileEditsResult,
+  type FileEdit,
+  type SymbolAccretion,
+  type SymbolSpan,
+} from "./accretion.js";

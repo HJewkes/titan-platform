@@ -250,6 +250,16 @@ const HISTORY: readonly MetricDescriptor[] = [
     absent: "exclude", source: "history", windowed: true,
     description: "Share of the file's churn in the {w} window written by its top author.",
   },
+  {
+    name: "symbol_task_ids_{w}", unit: "count", appliesTo: SYMBOL, rollup: "none", direction: "higher-worse",
+    absent: "zero", source: "history", windowed: true,
+    description: "Distinct task ids (such as TP-123, read from commit subjects) whose commits edited the function in the {w} window. Edits map to HEAD line spans after carrying each hunk through later commits; a method edit credits the method, not its class. Several ids in a short window is function-level accretion. Not additive.",
+  },
+  {
+    name: "symbol_edit_commits_{w}", unit: "count", appliesTo: SYMBOL, rollup: "none", direction: "neutral",
+    absent: "zero", source: "history", windowed: true,
+    description: "Commits that edited the function in the {w} window, with or without a task id. Not additive.",
+  },
 ];
 
 /** Test linking (`test-linker.ts`) and the Istanbul overlay (`coverage.ts`), keyed on source nodes. */
