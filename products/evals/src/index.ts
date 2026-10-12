@@ -35,6 +35,10 @@ export { hashSpec, validateSpec } from "./validate.js";
 export type { SpecValidation } from "./validate.js";
 export { scorecardKeysFor, startTrial } from "./trial.js";
 export type { ChampionOf, TrialStart, UnitRef } from "./trial.js";
+export { createTrialHost } from "./trial/host.js";
+export type { TrialHost, TrialHostOptions, TrialStartInput, TrialTopology } from "./trial/host.js";
+export type { TrialAttempt, TrialCall, TrialCost, TrialOutcome, TrialRunRecord } from "./trial/record.js";
+export type { CodeStep, LaunchRequest, TrialLaunch } from "./trial/routes.js";
 export { scoreMeasurementAudit } from "./measurement-audit.js";
 export type { AuditGold, AuditRun, AuditScore, GoldGap, GoldMetric } from "./measurement-audit.js";
 export {

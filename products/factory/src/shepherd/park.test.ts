@@ -423,6 +423,22 @@ describe("parkStep reviewer trees", () => {
     ]);
   });
 
+  it("parks the exited panel members of this pull request's reviewers, and of its standing reviewer, at the round end", async () => {
+    const asked: string[] = [];
+    const members = [
+      row("rv-o-r-7-adversary", "exited"),
+      row("rv-o-r-7-2-perf", "exited"),
+      row("rv-o-r-7-tests-2", "exited"),
+      row("rv-o-r-7-2-tests", "live", "running"),
+      row("rv-o-r-70-adversary", "exited"),
+      row("rv-o-r-7-review", "exited"),
+    ];
+
+    await parkStep(storeWith({ implementer: "impl-a" }), wiringFor(members, refusing({}, asked)), input);
+
+    expect(asked).toEqual(["rv-o-r-7-adversary", "rv-o-r-7-2-perf", "rv-o-r-7-tests-2", "impl-a"]);
+  });
+
   it("tells the seat when a reviewer's tree is dirty and asks again at the next round end", async () => {
     const notice = noticePorts("hub");
     const refused = refusing({
