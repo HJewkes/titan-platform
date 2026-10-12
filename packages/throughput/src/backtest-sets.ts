@@ -10,7 +10,6 @@ const MS_PER_DAY = 86_400_000;
 const DEFAULT_HORIZON_DAYS = 7;
 export const DEFAULT_BACKTEST_SET_DRAWS = 1000;
 const DEFAULT_MIN_SET_SIZE = 2;
-const GROUP_KINDS: readonly SetGroupKind[] = ["seat-week", "parent", "milestone"];
 
 export type SetGroupKind = "seat-week" | "parent" | "milestone";
 
@@ -253,7 +252,7 @@ function kindScores(scored: readonly ScoredSetGroup[], censored: readonly SetGro
     const censoredN = censored.filter((group) => group.kind === kind).length;
     return { n: groups.length, censored: censoredN, independent: armScore(groups, "independent"), weekEffect: armScore(groups, "weekEffect") };
   };
-  return Object.fromEntries(GROUP_KINDS.map((kind) => [kind, score(kind)])) as Record<SetGroupKind, SetKindScore>;
+  return { "seat-week": score("seat-week"), parent: score("parent"), milestone: score("milestone") };
 }
 
 function positiveInteger(value: number, name: string): number {
