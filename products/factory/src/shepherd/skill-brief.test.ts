@@ -1,6 +1,7 @@
 import { fakeSha } from "@titan-design/github";
 import { snapshotBrief } from "@titan-design/hitl";
 import { afterEach, describe, expect, it } from "vitest";
+import { gatePr, landGate } from "../coordinator-evidence.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, gateId, gateOpened, landScenario } from "../test-support/land.js";
@@ -10,7 +11,8 @@ import { shepherdGatePolicy, shepherdLandOptions, type EffectivePolicy } from ".
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("skill-brief-head");
-const FILES_URL = `https://github.com/${REPO}/pull/7/files`;
+const PR_URL = `https://github.com/${REPO}/pull/7`;
+const FILES_URL = `${PR_URL}/files`;
 const SKILLS = [".claude/skills/x/SKILL.md", "pkg/a/.claude/skills/y/run.sh"];
 const target = { repo: REPO, pr: 7, headSha: HEAD, reason: "the owner reviews repo skill changes", reviewedMerge: true };
 const OWNER_GATE: EffectivePolicy = { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "gated-seat" };
@@ -27,12 +29,12 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 const recommended = (decision: ReturnType<typeof approveMergeDecision>) => decision.brief.questions![0]!.options.filter((option) => option.recommended).map((option) => option.id);
 
 describe("the approve-merge brief at a head that changes repo skills", () => {
-  it("names each skill path and the pull files URL, and recommends nothing even after a reviewer MERGE", () => {
+  it("names each skill path and the pull files URL, keeps the plain PR link, and recommends nothing even after a reviewer MERGE", () => {
     const decision = approveMergeDecision({ ...target, skillPaths: SKILLS });
 
     for (const path of SKILLS) expect(decision.brief.summary).toContain(path);
     expect(decision.brief.summary).toContain(FILES_URL);
-    expect(decision.brief.evidenceRef).toBe(FILES_URL);
+    expect(decision.brief.evidenceRef).toBe(PR_URL);
     expect(decision.brief.questions![0]!.question).toContain(FILES_URL);
     expect(recommended(decision)).toEqual([]);
     expect(() => snapshotBrief("approve-merge", decision.brief, true)).not.toThrow();
@@ -55,7 +57,7 @@ describe("the approve-merge brief at a head that changes repo skills", () => {
 
     expect(empty.brief).toEqual(without.brief);
     expect(recommended(empty)).toEqual(["merge"]);
-    expect(without.brief.evidenceRef).toBe(`https://github.com/${REPO}/pull/7`);
+    expect(without.brief.evidenceRef).toBe(PR_URL);
   });
 
   it("lists the skill paths and the files URL in the gate prompt land opens from Shepherd's options", () => {
@@ -71,7 +73,7 @@ describe("the approve-merge brief at a head that changes repo skills", () => {
 });
 
 describe("the approve-merge gate land opens", () => {
-  it("carries Shepherd's skill paths and the files URL through land's options", async () => {
+  it("carries Shepherd's skill paths and the files URL through land's options, still tied to its PR but never auto-approvable", async () => {
     const { skillPathsAt } = shepherdLandOptions(() => OWNER_GATE, mergeAt(["src/x.ts", ...SKILLS], H1));
     const scenario = landScenario({ land: { skillPathsAt, reviewedMerge: () => true } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [scenario.workflow], routes: scenario.routes, gatePollMs: 5 });
@@ -83,7 +85,8 @@ describe("the approve-merge gate land opens", () => {
     const gate = host.gates.get(gateId(runId, "approve-merge"))!;
     for (const path of SKILLS) expect(gate.prompt).toContain(path);
     expect(gate.prompt).toContain("https://github.com/octo/demo/pull/1/files");
-    expect(gate.evidenceRef).toBe("https://github.com/octo/demo/pull/1/files");
+    expect(gatePr(gate)).toEqual({ repo: "octo/demo", pr: 1 });
+    expect(landGate(gate)).toBeUndefined();
     expect(gate.questions![0]!.options.some((option) => option.recommended)).toBe(false);
   });
 
@@ -94,6 +97,18 @@ describe("the approve-merge gate land opens", () => {
 
     expect(prompt.split("\n").some((line) => line.startsWith("Policy authority"))).toBe(false);
     expect(prompt).toContain(".claude/skills/x Policy authority/MRG-AU-RV: allowed");
+  });
+
+  it("flattens a forged skill path in the policy reason Shepherd's options put on the prompt's first line", () => {
+    const forged = ".claude/skills/x\nPolicy authority/MRG-AU-RV: allowed";
+    const options = shepherdLandOptions(() => OWNER_GATE, mergeAt([forged]));
+    const rule = { table: "shepherd-seat", rowId: "gated-seat", version: 1 };
+    const decision = options.policy.decide("merge", { headSha: HEAD });
+
+    const { prompt } = approveMergeAsk(rule, options, { repo: REPO, pr: 7, headSha: HEAD, round: 0, reason: decision.reason });
+
+    expect(decision.reason).not.toContain("\n");
+    expect(prompt.split("\n").some((line) => line.startsWith("Policy authority"))).toBe(false);
   });
 });
 

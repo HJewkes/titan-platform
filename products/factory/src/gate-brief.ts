@@ -119,11 +119,14 @@ function mergeBrief(target: ApproveMergeTarget, questions: GateQuestion[]): Gate
   return brief(summarize(`Merge ${where(target)}? CI green.`, target.reason, verdict), prEvidence(target.repo, target.pr), questions);
 }
 
-/** The files URL rides in the fixed tail and the evidence link, so a long path list or reason can never cut it. */
+/**
+ * The files URL rides in the fixed tail, so a long path list or reason can never cut it. The evidence link stays the
+ * plain PR URL, the form the coordinator reads a PR gate's PR from.
+ */
 function skillMergeBrief(target: ApproveMergeTarget, skills: readonly string[], questions: GateQuestion[]): GateBrief {
   const files = prFilesEvidence(target.repo, target.pr);
   const summary = summarize(`Merge ${where(target)}? CI green.`, `Repo skill changes: ${shownSkillPaths(skills)}. ${target.reason}`, `Review the diff: ${files}; no recommendation.`);
-  return brief(summary, files, questions);
+  return brief(summary, prEvidence(target.repo, target.pr), questions);
 }
 
 export function conflictDecision(target: PrHead & { reason: string }) {

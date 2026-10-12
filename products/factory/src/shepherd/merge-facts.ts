@@ -2,6 +2,7 @@ import { compileGlobs } from "@titan-design/fix-proof";
 import { DEFAULT_TABLE, evaluate, type AgentIdentity, type CarryFact, type CheckRunFact, type MergeFacts } from "@titan-design/authority";
 import { FileListTruncatedError, GITHUB_ACTIONS_APP_ID, type CheckRun, type GitHubPort, type PrFile, type PullRequest, type RepoSlug } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
+import { oneLine } from "../gate-brief.js";
 import { readRequiredChecks, statusOf } from "../required-checks.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { errorClass } from "./error-class.js";
@@ -174,9 +175,11 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
 }
 
 const SHOWN_VISUAL_PATHS = 10;
+const MAX_SHOWN_PATH = 200;
 
+/** Each path is flattened, as a PR author names it and a gate reason lands on one line of the owner's prompt. */
 export function shownPaths(paths: readonly string[]): string {
-  return paths.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
+  return paths.slice(0, SHOWN_VISUAL_PATHS).map((path) => oneLine(path, MAX_SHOWN_PATH)).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
 }
 
 /**
