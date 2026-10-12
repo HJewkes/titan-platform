@@ -26,7 +26,7 @@ const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
  * On `pull_request` the PR merge ref supplies the workflow file and the run script, so a PR touching any of these
  * chose the code that printed its own result line.
  */
-export const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
+const FIX_PROOF_HARNESS: readonly string[] = [".github/workflows/", ".github/actions/", ".github/fix-proof.json", "scripts/fix-proof-run.sh"];
 
 type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 type FixProofRead = ({ kind: "result" } & Parsed) | ({ kind: "untrusted"; reason: string } & Parsed) | { kind: "skipped" | "missing" | "error"; reason: string };
@@ -77,7 +77,7 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
 const isFixProofRun = (head: string) => (run: CheckRun) => run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head;
 
 /** Duplicate runs at one head (a re-run, a re-push) resolve to the newest, whatever order GitHub lists them in. */
-export const newestFixProofRun = (runs: readonly CheckRun[], head: string): CheckRun | undefined =>
+const newestFixProofRun = (runs: readonly CheckRun[], head: string): CheckRun | undefined =>
   runs.filter(isFixProofRun(head)).reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
 
 const actionsAt = (runs: readonly CheckRun[], head: string): CheckRun[] => runs.filter((run) => run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head);
