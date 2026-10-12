@@ -131,7 +131,9 @@ takes `off`, `shadow` or `on`, and an absent key means `off`.
 
 Under `on` the intent also records `panel: "on"` and `panelReviewers`, the name of each
 member other than correctness: the correctness reviewer's name with the shape as a suffix
-(`rv-octo-demo-12-adversary`). The correctness member keeps today's steps, including its late
+(`rv-octo-demo-12-adversary`). A standing reviewer serves many PRs, so its members take the
+PR's fresh-reviewer base instead. Either way, round-end parking and cleanup find a member by
+the PR's base, just as they find its fresh reviewers. The correctness member keeps today's steps, including its late
 read, correction turn and usage-limit hold. Every other member gets `sh-review:<head>:<shape>`
 and `sh-await-verdict:<head>:<shape>`, at its planned profile, with its shape's brief, and
 checks out under `<review checkouts>/<shape>`. All members are started before any verdict is

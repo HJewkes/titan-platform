@@ -173,8 +173,6 @@ async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter
   }
 }
 
-/** A fresh reviewer, or a panel member named after one with its shape. */
-const MEMBER_SUFFIX = `(?:-(?:${OVERLAY_SHAPES.join("|")})(?:-\\d+)?)?`;
 
 /** Newest successor first, then the implementer, then this PR's fresh reviewers and their panel members; the standing reviewer is never among them. */
 export function retireOrder(registration: Registration, lineageSuccessors: readonly string[], roster: readonly CleanupAgent[], input: CleanupInput): string[] {
@@ -184,10 +182,20 @@ export function retireOrder(registration: Registration, lineageSuccessors: reado
     return k === undefined ? [] : [{ name: agent.name, k: Number(k) }];
   });
   const successors = [...[...lineageSuccessors].reverse(), ...numbered.sort((a, b) => b.k - a.k).map((agent) => agent.name)];
-  const reviewerName = new RegExp(`^${escapeRegExp(freshReviewerBase(input.repo, input.pr))}(-\\d+)?${MEMBER_SUFFIX}$`);
-  const reviewers = roster.map((agent) => agent.name).filter((name) => reviewerName.test(name));
+  const reviewers = roster.map((agent) => agent.name).filter(isOwnReviewer(input.repo, input.pr));
   const standing = registration.policy.reviewer;
   return [...new Set([...successors, registration.implementer, ...reviewers])].filter((name) => name !== standing);
+}
+
+const MEMBER_SUFFIX = `(?:-(?:${OVERLAY_SHAPES.join("|")})(?:-\\d+)?)?`;
+
+/**
+ * Shepherd's own reviewers of one PR: its fresh reviewers, and the panel members named after one of them or after the PR's
+ * base. Park and cleanup both find them by this one test, so a new name form cannot reach only one of them.
+ */
+export function isOwnReviewer(repo: RepoSlug, pr: number): (name: string) => boolean {
+  const own = new RegExp(`^${escapeRegExp(freshReviewerBase(repo, pr))}(?:-\\d+)?${MEMBER_SUFFIX}$`);
+  return (name) => own.test(name);
 }
 
 /** The name `sh-review` gives the first fresh reviewer of a PR; later ones append `-<k>`. */

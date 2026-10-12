@@ -2,6 +2,7 @@ import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, planPanel, type PanelPlan, type PanelVerdict, type ReviewShape, type ReviewerAgent } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
 import { aggregatePanel, panelFindingsText, panelMerge, panelReviewerNames } from "./review-panel-step.js";
+import { isOwnReviewer } from "./cleanup.js";
 import { defectClassSection } from "./wake-brief.js";
 
 const REPO = "octo/demo";
@@ -70,11 +71,22 @@ describe("the sh-review-panel step", () => {
 describe("panelReviewerNames", () => {
   const roster = (...names: string[]): ReviewerAgent[] => names.map((name) => ({ name, agentId: `agent-${name}`, sessionId: "", presence: "exited", spawnedBy: null }));
 
-  it("names each member but correctness after the correctness reviewer, with its shape", () => {
-    expect(panelReviewerNames("rv-octo-demo-1", PLAN, roster())).toEqual({ adversary: "rv-octo-demo-1-adversary", perf: "rv-octo-demo-1-perf" });
+  const spawned = { repo: REPO, pr: 1, reviewer: "rv-octo-demo-1", mode: "spawn" };
+  const standing = { repo: REPO, pr: 7, reviewer: "rv-standing", mode: "resume" };
+
+  it("names each member but correctness after the spawned correctness reviewer, with its shape", () => {
+    expect(panelReviewerNames(spawned, PLAN, roster())).toEqual({ adversary: "rv-octo-demo-1-adversary", perf: "rv-octo-demo-1-perf" });
   });
 
   it("skips a name an earlier agent holds, so a member is never adopted from another head", () => {
-    expect(panelReviewerNames("rv-standing", PLAN, roster("rv-standing-adversary"))).toMatchObject({ adversary: "rv-standing-adversary-2" });
+    expect(panelReviewerNames(spawned, PLAN, roster("rv-octo-demo-1-adversary"))).toMatchObject({ adversary: "rv-octo-demo-1-adversary-2" });
+  });
+
+  it("names a standing reviewer's members after this PR's base, so park and cleanup find them and no other PR's", () => {
+    const names = panelReviewerNames(standing, PLAN, roster("rv-octo-demo-7-adversary"));
+
+    expect(names).toEqual({ adversary: "rv-octo-demo-7-adversary-2", perf: "rv-octo-demo-7-perf" });
+    expect(Object.values(names).every(isOwnReviewer(REPO, 7))).toBe(true);
+    expect(Object.values(names).some(isOwnReviewer(REPO, 8))).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import type { PanelMerge, ShepherdDeps, Verdict } from "./phases.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { Awaited, Dispatched } from "./review-schemas.js";
+import { freshReviewerBase } from "./cleanup.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult } from "./take-verdict.js";
@@ -37,11 +38,24 @@ function unusedName(base: string, taken: Set<string>): string {
   }
 }
 
-/** Each member's name but correctness's, by shape: the correctness reviewer's name with the shape as a suffix. Recorded on the intent so a repeat spawns the same names. */
-export function panelReviewerNames(reviewer: string, plan: Pick<PanelPlan, "members">, roster: readonly ReviewerAgent[]): Record<string, string> {
+/** The correctness reviewer the intent chose, and the PR it reviews. */
+interface MemberNaming {
+  repo: string;
+  pr: number;
+  reviewer: string;
+  mode: string;
+}
+
+/**
+ * Each member's name but correctness's, by shape, recorded on the intent so a repeat spawns the same names. A spawned reviewer's
+ * members take its name with the shape as a suffix. A standing reviewer serves many PRs, so its members take this PR's fresh
+ * reviewer base instead: park and cleanup find a PR's own reviewers by that base, and never reach another PR's members.
+ */
+export function panelReviewerNames({ repo, pr, reviewer, mode }: MemberNaming, plan: Pick<PanelPlan, "members">, roster: readonly ReviewerAgent[]): Record<string, string> {
   const taken = new Set([reviewer, ...roster.map((agent) => agent.name)]);
+  const base = mode === "spawn" ? reviewer : freshReviewerBase(repo, pr);
   const names = plan.members.filter((member) => isOverlay(member.shape)).map((member) => {
-    const name = unusedName(`${reviewer}-${member.shape}`, taken);
+    const name = unusedName(`${base}-${member.shape}`, taken);
     taken.add(name);
     return [member.shape, name] as const;
   });
@@ -61,12 +75,12 @@ interface PanelWiring {
  * Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none.
  * Under `on` it also names the members, so the review phase knows to run them.
  */
-export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
+export async function plannedPanel(deps: Pick<ShepherdDeps, "store" | "port">, { panel, panelPolicy, roles }: PanelWiring, input: ReviewTarget & { runId: string; reviewer: string; mode: string }, roster: readonly ReviewerAgent[]): Promise<IntentPlan | PanelOnPlan | undefined> {
   if (panel === undefined || panel === "off") return undefined;
   const rules = classRulesFor(roles);
   const target = { repo: input.repo, pr: input.pr, head: input.head };
   const planned = intentPlan(await panelFacts(deps, target, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules);
-  return panel === "on" ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input.reviewer, planned.plan, roster) } : planned;
+  return panel === "on" ? { ...planned, panel: "on", panelReviewers: panelReviewerNames(input, planned.plan, roster) } : planned;
 }
 
 /** What every member's dispatch shares with the correctness reviewer's; members never write the owner brief. */
