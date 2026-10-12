@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { createFixtureGraph, insertPrices, insertRequest, type FixtureGraph } from "./fixture.js";
 import { priceRequest, type RequestTokens } from "./price-request.js";
 
@@ -14,8 +15,10 @@ beforeEach(() => {
 });
 afterEach(() => fixture.close());
 
-function sqlCost(requestId: string): Record<string, number> {
-  return fixture.graph.db.prepare("SELECT * FROM request_cost WHERE request_id = ?").get(requestId) as Record<string, number>;
+const costRowSchema = z.record(z.string(), z.union([z.number(), z.string(), z.null()]));
+
+function sqlCost(requestId: string): z.infer<typeof costRowSchema> {
+  return costRowSchema.parse(fixture.graph.db.prepare("SELECT * FROM request_cost WHERE request_id = ?").get(requestId));
 }
 
 /** Fixed writes and output, with cache read filling the rest of the prompt. */
