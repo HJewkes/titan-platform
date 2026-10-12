@@ -142,7 +142,7 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
   const match = CLOSER_LINE.exec(lines[at] ?? "");
   const duplicated = lines.some((line, index) => index !== at && line?.startsWith("Closer:"));
   if (!match || duplicated) return undefined;
-  return match[1] as VerdictBlockCloser;
+  return match[1] === "yes" ? "yes" : "no";
 }
 
 /** Like Closer, any second visible CI-policy line voids it, so a later `unchanged` never overrides a `weakened`. */
@@ -151,10 +151,14 @@ function readCiPolicy(lines: (string | null)[], at: number): CiPolicy | undefine
   const duplicated = lines.some((line, index) => index !== at && line?.startsWith("CI-policy:"));
   if (!match || duplicated) return undefined;
   if (match[1] === undefined) return { kind: "unchanged" };
-  const keys = match[1].split(", ");
-  const known = keys.every((key) => (CI_POLICY_KEYS as readonly string[]).includes(key));
-  if (!known || new Set(keys).size !== keys.length) return undefined;
-  return { kind: "weakened", keys: keys as CiPolicyKey[] };
+  const words = match[1].split(", ");
+  const keys = words.filter(isCiPolicyKey);
+  if (keys.length !== words.length || new Set(keys).size !== keys.length) return undefined;
+  return { kind: "weakened", keys };
+}
+
+function isCiPolicyKey(word: string): word is CiPolicyKey {
+  return CI_POLICY_KEYS.some((key) => key === word);
 }
 
 function isDotName(name: string): boolean {
