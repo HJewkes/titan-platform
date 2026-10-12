@@ -538,14 +538,15 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   - `mergeUps`: Shepherd's own update-branch steps, by the CI read before each one.
     `landTime` is a refresh after the merge decision, when the base had moved since the green.
     `strictChase` is an update before the decision, which only a strict repo forces.
-    `freezeHold` is an update from a freeze hold, and `retry` is an update after
+    `freezeHold` is an update from a freeze hold after a thaw, `baseRed` is an update from a
+    freeze hold after the red base it waited on moved, and `retry` is an update after
     `update-backoff`.
   - `strictRounds`: land rounds whose `land-rules` read found the repo requires up-to-date heads.
     Anything above 0 means the strict setting is back on.
   - `foreignMergeUps`: heads Shepherd did not make that are a merge of the base. It stays 0
     until Shepherd records the origin of foreign heads (`sh-head-origin`).
 
-  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/retry`,
+  The text line prints them as `slow owner-gated`, `merge-ups land/strict/freeze/base/retry`,
   `strict rounds` and `foreign merge-ups`.
 - Per day, the owner's friction. **Owner touches** counts the gates an owner class resolved that
   day. For each gate kind (the gate's step id without its iteration, such as `approve-merge`,
@@ -580,7 +581,7 @@ the minutes it has been there, and the minutes since registration. `status --jso
 as `stage` and `totalMinutes`.
 
 `--json` returns `{ "merges": [...], "ownerFriction": [...], "stageTimes": [...], "redAfterMerge": [...] }`;
-each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, retry }`), `strictRounds`,
+each `merges` row carries `mergeUps` (`{ landTime, strictChase, freezeHold, baseRed, retry }`), `strictRounds`,
 `slowOwnerGated` and `foreignMergeUps`;
 each `redAfterMerge` row carries `merged`, `red`, `rate`, `redPrs`, `reverted` and `revertedPrs`. The morning digest shows today's
 two lines, "Owner touches" and "Owner wait (median/max hours)", under "Owner friction".
@@ -967,7 +968,8 @@ Agents (seats, implementers and fixers) merge the base into a registered PR only
 
 - A conflict wake, or a run that stopped with `conflict` or `not-mergeable`. The conflict brief
   tells the agent to merge the base and resolve the conflict.
-- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`.
+- A freeze hold that updates the branch is Shepherd's own step, counted as `mergeUps.freezeHold`,
+  or as `mergeUps.baseRed` when it waited on a red base.
 
 They do not merge the base in these cases:
 
