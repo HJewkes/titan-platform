@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { GateResolver } from "@titan-design/hitl";
-import { parkOnDefinitionDrift, registration, type Registration } from "./definition-version.js";
+import { parkOnDefinitionDrift, registration } from "./definition-version.js";
 import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
+import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
@@ -28,7 +29,7 @@ interface Live {
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 export class WorkflowRuntime {
-  private readonly workflows = new Map<string, Registration>();
+  private readonly workflows = new Map<string, WorkflowRegistration>();
   private readonly live = new Map<string, Live>();
   private readonly held = new HeldRuns();
   private readonly store: WorkflowRunStore;
@@ -59,9 +60,9 @@ export class WorkflowRuntime {
   }
 
   /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
-  register(name: string, fn: WorkflowFn, options: { version?: string } = {}): void {
+  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, registration(name, fn, options.version));
+    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan });
   }
 
   registered(): string[] {
@@ -79,7 +80,7 @@ export class WorkflowRuntime {
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), workflow.fn, new Map());
+    this.launch(insert.immediate(), workflow, new Map());
     return run.id;
   }
 
@@ -108,7 +109,7 @@ export class WorkflowRuntime {
         this.release(run);
         return null;
       }
-      this.launch(run, workflow.fn, recovered, controller, renewTimer);
+      this.launch(run, workflow, recovered, controller, renewTimer);
       return run.id;
     } catch (error) {
       clearInterval(renewTimer);
@@ -139,22 +140,22 @@ export class WorkflowRuntime {
 
   private launch(
     run: WorkflowRun,
-    fn: WorkflowFn,
+    workflow: WorkflowRegistration,
     recovered: ReadonlyMap<string, RecoveredStep>,
     controller = new AbortController(),
     renewTimer = this.startRenewal(run, controller),
   ): void {
     const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value) };
     const ctx = new RunContext(run, deps, controller);
-    const done = this.drive(run, fn, ctx, controller);
+    const done = this.drive(run, workflow, ctx, controller);
     this.live.set(run.id, { ctx, controller, done, renewTimer });
   }
 
-  private async drive(run: WorkflowRun, fn: WorkflowFn, ctx: RunContext, controller: AbortController): Promise<void> {
+  private async drive(run: WorkflowRun, workflow: WorkflowRegistration, ctx: RunContext, controller: AbortController): Promise<void> {
     let failure: unknown;
     let rejected = false;
     try {
-      await fn(ctx);
+      await workflow.fn(ctx);
     } catch (error) {
       failure = error;
       rejected = true;
@@ -162,20 +163,16 @@ export class WorkflowRuntime {
     await ctx.settleDispatches();
     try {
       if (rejected) this.settleRejection(run, controller.signal.reason, failure);
-      else this.finishFromSuccess(run, controller.signal.reason);
+      else this.finishFromSuccess(run, controller.signal.reason, ctx, workflow.abandonsOrphan);
     } catch (error) {
       this.settleRejection(run, controller.signal.reason, error);
     }
   }
 
-  private finishFromSuccess(run: WorkflowRun, abortReason: unknown): void {
+  private finishFromSuccess(run: WorkflowRun, abortReason: unknown, ctx: RunContext, abandonsOrphan?: AbandonsOrphan): void {
     if (abortReason instanceof RuntimeShutdown || abortReason instanceof WorkflowOwnershipLostError) return this.dropLive(run.id);
-    const unfinished = Object.values(run.activeSteps)[0];
-    if (unfinished) {
-      this.markRecovery(run, unfinished, "unknown", `workflow returned while step ${unfinished.stepId} still required reconciliation`);
-      this.save(run);
-      return this.park(run, true);
-    }
+    const hooks = { save: (value: WorkflowRun) => this.save(value), emit: this.baseDeps.emit, now: () => this.isoNow() };
+    if (settleUnfinished(run, ctx.orphanedSteps(), abandonsOrphan, hooks)) return this.park(run, true);
     if (run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError || run.status === "cancelling") {
       return this.finish(run, "cancelled", abortReason instanceof WorkflowCancelledError ? abortReason.reason : run.error);

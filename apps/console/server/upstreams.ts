@@ -5,6 +5,8 @@ import { activeWorkClient } from "./active-work.js";
 import { brokerReader } from "./broker.js";
 import type { ConsoleSources } from "./commands.js";
 import type { ConsoleConfig } from "./config.js";
+import { factoryNeeds } from "./factory.js";
+import { shepherdReader } from "./shepherd.js";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
 export type UpstreamId = (typeof UPSTREAM_IDS)[number];
@@ -105,5 +107,7 @@ export function createSources(config: ConsoleConfig): ConsoleSources {
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
     inbox: { dir: config.inboxDir },
     rounds: { dir: config.roundsDir },
+    shepherd: shepherdReader(config.factoryPort),
+    factory: factoryNeeds(config.factoryPort),
   };
 }

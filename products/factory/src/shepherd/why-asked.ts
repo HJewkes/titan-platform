@@ -38,6 +38,9 @@ const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
   "head-mismatch": { gateClass: "accidental", words: "the merge facts were collected at another head" },
   "files-unread": { gateClass: "accidental", words: "Shepherd could not read the changed files" },
   "required-checks-unknown": { gateClass: "accidental", words: "Shepherd could not read which checks are required" },
+  "github-path": { gateClass: "accidental", words: "it changes .github/ and the reviewer's MERGE carries no CI-policy line; a fresh review asks for one" },
+  "ci-policy-weakened": { gateClass: "deliberate", words: "the reviewer says it weakens CI policy, and only you accept a weaker CI policy" },
+  "ci-policy-malformed": { gateClass: "accidental", words: "the reviewer wrote a CI-policy line Shepherd could not read, which may hide a weakening; a fresh review asks for it again" },
 };
 
 /** The gate rows of `release.ts` and the factory's catch-all default, keyed `table/row`. */
