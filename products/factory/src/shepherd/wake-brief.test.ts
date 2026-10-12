@@ -269,6 +269,31 @@ describe("review wake brief: a verdict with no findings", () => {
   });
 });
 
+describe("wake brief: who merges the base branch", () => {
+  const NO_BASE_MERGE = "Do not merge the base branch";
+
+  it("tells a ci-red fixer that Shepherd re-runs flakes and merges the base at land time", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+
+    const { reason } = await describeWake(githubPort(fake.wire), { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(reason).toContain(`${NO_BASE_MERGE} to re-run CI or to bring the PR up to date: Shepherd re-runs flaky checks and merges the base itself at land time. Push only your fix.`);
+  });
+
+  it("still tells a conflict fixer to merge the base branch", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    fake.prFiles.set(pr.number, [{ path: "CAPABILITIES.md", status: "modified" }]);
+    fake.compares.set(`${H1}...${pr.baseRef}`, { mergeBaseSha: fakeSha("base"), files: ["CAPABILITIES.md"] });
+
+    const { reason } = await describeWake(githubPort(fake.wire), { kind: "conflict", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(reason).toContain("Merge the base branch from origin");
+    expect(reason).not.toContain(NO_BASE_MERGE);
+  });
+});
+
 describe("defectClassSection", () => {
   it("reads the newest defect class when the findings hold more than one FIX_FIRST", () => {
     const verdict = `Verdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}`;

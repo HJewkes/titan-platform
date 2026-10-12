@@ -45,6 +45,35 @@ export const StatementSchema = z.strictObject({
 export type Statement = z.infer<typeof StatementSchema>;
 export type ProofItem = z.infer<typeof ItemSchema>;
 
+/**
+ * One Shepherd hold the owner lifts: bound to the run, the exact reason it is held under, when that hold state began
+ * (the `at` of the run's latest hold or release event, so a re-hold with the same text is a different hold), and the
+ * PR head the owner saw.
+ */
+const HoldReleaseItemSchema = z.strictObject({
+  runId: z.string().min(1),
+  repo: z.string().min(1),
+  pr: z.number().int().positive(),
+  holdDigest: z.string().regex(HEX(64)),
+  holdSince: z.iso.datetime(),
+  headSha: z.string().regex(HEX(40)),
+});
+
+/** A second statement type over the same envelope; its `type` literal keeps it from ever parsing as a gate resolve, or the reverse. */
+const HoldReleaseStatementSchema = z.strictObject({
+  v: z.literal(1),
+  type: z.literal("titan-factory.hold-release"),
+  aud: z.string().min(1),
+  keyId: z.string().regex(HEX(16)),
+  nonce: z.string().regex(HEX(32)),
+  iat: z.number().int().nonnegative(),
+  exp: z.number().int().nonnegative(),
+  items: z.tuple([HoldReleaseItemSchema]),
+});
+
+export type HoldReleaseStatement = z.infer<typeof HoldReleaseStatementSchema>;
+export type HoldReleaseItem = z.infer<typeof HoldReleaseItemSchema>;
+
 export type Refusal =
   | "bad-signature"
   | "unknown-key"
@@ -56,7 +85,22 @@ export type Refusal =
   | "malformed"
   | "mixed-release-batch";
 
-export type ProofResult = { ok: true; statement: Statement; keyId: string } | { ok: false; refusal: Refusal };
+type Verified<S> = { ok: true; statement: S; keyId: string } | { ok: false; refusal: Refusal };
+export type ProofResult = Verified<Statement>;
+type HoldReleaseResult = Verified<HoldReleaseStatement>;
+
+/** What every statement type shares, and the checks only its own type knows. */
+interface Envelope {
+  aud: string;
+  keyId: string;
+  iat: number;
+  exp: number;
+}
+
+interface StatementKind<S extends Envelope> {
+  schema: z.ZodType<S>;
+  refusal: (statement: S) => Refusal | undefined;
+}
 
 export interface ProofInput {
   statementB64: string;
@@ -91,6 +135,11 @@ function itemsConsistent(items: readonly ProofItem[]): boolean {
     gates.add(gate);
   }
   return true;
+}
+
+/** sha256 hex over the UTF-8 hold reason, so a signature covers the exact hold the owner read. */
+export function holdDigest(reason: string): string {
+  return createHash("sha256").update(reason, "utf8").digest("hex");
 }
 
 /** What the owner approves: every item in order, covering the run, step and answer as well as the PR and head. Throws on a payload nested more than 30 levels deep, since the row wrappers take two of the 32. */
@@ -136,10 +185,10 @@ function signingKeys(ring: KeyRing, bytes: Buffer, signature: Buffer): string[] 
   return matches;
 }
 
-function parseStatement(bytes: Buffer): Statement | undefined {
+function parseStatement<S>(bytes: Buffer, schema: z.ZodType<S>): S | undefined {
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    const parsed = StatementSchema.safeParse(JSON.parse(text));
+    const parsed = schema.safeParse(JSON.parse(text));
     return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
@@ -151,19 +200,26 @@ function isSingleOnly({ gate }: ProofItem): boolean {
   return RELEASE_STEPS.has(step) || HARDWARE_STEP.test(step);
 }
 
-/** Checks that need the statement's content, in the order a reader would ask them; undefined means all pass. */
-function contentRefusal(statement: Statement, signer: string, now: number, aud: string): Refusal | undefined {
+/** Checks that need the envelope, in the order a reader would ask them; undefined means all pass. */
+function envelopeRefusal(statement: Envelope, signer: string, now: number, aud: string): Refusal | undefined {
   if (statement.keyId !== signer) return "unknown-key";
-  if (!itemsConsistent(statement.items)) return "malformed";
   if (statement.exp <= statement.iat) return "malformed";
   if (statement.exp - statement.iat > MAX_WINDOW_S) return "window-too-long";
   if (now > statement.exp + EXPIRY_SKEW_S) return "expired";
   if (statement.iat > now + ISSUE_SKEW_S) return "not-yet-valid";
   if (statement.aud !== aud) return "wrong-aud";
+  return undefined;
+}
+
+function gateResolveRefusal(statement: Statement): Refusal | undefined {
+  if (!itemsConsistent(statement.items)) return "malformed";
   if (statement.digest !== itemsDigest(statement.items)) return "digest-mismatch";
   if (statement.items.length > 1 && statement.items.some(isSingleOnly)) return "mixed-release-batch";
   return undefined;
 }
+
+const GATE_RESOLVE: StatementKind<Statement> = { schema: StatementSchema, refusal: gateResolveRefusal };
+const HOLD_RELEASE: StatementKind<HoldReleaseStatement> = { schema: HoldReleaseStatementSchema, refusal: () => undefined };
 
 /**
  * Verifies an owner presence proof: ECDSA P-256 SHA-256 DER over the received statement bytes first, then the parse,
@@ -176,14 +232,26 @@ function contentRefusal(statement: Statement, signer: string, now: number, aud: 
  *   record, so apply #837's `mergeTarget` to each item before firing it.
  */
 export function verifyProof(input: ProofInput, keys: KeyRing, now: number, aud: string): ProofResult {
+  return verifySigned(input, keys, now, aud, GATE_RESOLVE);
+}
+
+/**
+ * Verifies an owner-signed `titan-factory.hold-release` statement the way `verifyProof` verifies a gate resolve. The caller
+ * still owns the nonce, and the run, reason digest and head the one item is bound to.
+ */
+export function verifyHoldRelease(input: ProofInput, keys: KeyRing, now: number, aud: string): HoldReleaseResult {
+  return verifySigned(input, keys, now, aud, HOLD_RELEASE);
+}
+
+function verifySigned<S extends Envelope>(input: ProofInput, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
   try {
-    return verifyChecked(input, keys, now, aud);
+    return verifyChecked(input, keys, now, aud, kind);
   } catch {
     return { ok: false, refusal: "malformed" };
   }
 }
 
-function verifyChecked(input: ProofInput, keys: KeyRing, now: number, aud: string): ProofResult {
+function verifyChecked<S extends Envelope>(input: ProofInput, keys: KeyRing, now: number, aud: string, kind: StatementKind<S>): Verified<S> {
   if (typeof input?.statementB64 !== "string" || typeof input.signatureB64 !== "string") return { ok: false, refusal: "malformed" };
   if (!Number.isFinite(now) || typeof aud !== "string") return { ok: false, refusal: "malformed" };
   const bytes = decodeBase64url(input.statementB64);
@@ -192,8 +260,8 @@ function verifyChecked(input: ProofInput, keys: KeyRing, now: number, aud: strin
   if (keys.size === 0) return { ok: false, refusal: "unknown-key" };
   const [signer] = signingKeys(keys, bytes, signature);
   if (signer === undefined) return { ok: false, refusal: "bad-signature" };
-  const statement = parseStatement(bytes);
+  const statement = parseStatement(bytes, kind.schema);
   if (statement === undefined) return { ok: false, refusal: "malformed" };
-  const refusal = contentRefusal(statement, signer, now, aud);
+  const refusal = envelopeRefusal(statement, signer, now, aud) ?? kind.refusal(statement);
   return refusal === undefined ? { ok: true, statement, keyId: signer } : { ok: false, refusal };
 }

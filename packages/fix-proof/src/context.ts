@@ -10,6 +10,9 @@ import { formatResultLine, toResult } from "./result-line.js";
 const CLEANUP_TIMEOUT_MS = 60_000;
 const ZERO_SHA = "0".repeat(40);
 const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+// The head side runs PR code in the shared checkout before the judge, so it could plant refs/replace objects or name files
+// with pathspec magic; every git call ignores both so the trees the judge and the base side read are the commits named.
+export const GIT_SAFETY = ["--no-replace-objects", "--literal-pathspecs"] as const;
 
 export interface Shas {
   base: string;
@@ -43,7 +46,7 @@ export async function call(ctx: Context, cwd: string, file: string, args: readon
 }
 
 export async function git(ctx: Context, args: readonly string[], what: string): Promise<string> {
-  const result = await call(ctx, ctx.repo, "git", ["-c", "core.quotePath=false", ...args]);
+  const result = await call(ctx, ctx.repo, "git", [...GIT_SAFETY, "-c", "core.quotePath=false", ...args]);
   if (result.status !== 0) throw new RunError(`${what} failed (exit ${result.status ?? "signal"})`);
   return result.stdout;
 }
@@ -84,11 +87,11 @@ export function messageOf(error: unknown): string {
 
 async function cleanup(ctx: Context): Promise<void> {
   for (const tree of ctx.trees) {
-    await ctx.exec("git", ["worktree", "remove", "--force", tree], { cwd: ctx.repo, timeoutMs: CLEANUP_TIMEOUT_MS }).catch(() => undefined);
+    await ctx.exec("git", [...GIT_SAFETY, "worktree", "remove", "--force", tree], { cwd: ctx.repo, timeoutMs: CLEANUP_TIMEOUT_MS }).catch(() => undefined);
   }
   fs.rmSync(ctx.tmp, { recursive: true, force: true });
   if (ctx.trees.length > 0) {
-    await ctx.exec("git", ["worktree", "prune"], { cwd: ctx.repo, timeoutMs: CLEANUP_TIMEOUT_MS }).catch(() => undefined);
+    await ctx.exec("git", [...GIT_SAFETY, "worktree", "prune"], { cwd: ctx.repo, timeoutMs: CLEANUP_TIMEOUT_MS }).catch(() => undefined);
   }
 }
 

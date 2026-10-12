@@ -70,7 +70,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, snapshot: snapshotOf?.(mainGreen), flakyChecks });
+  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, versions: async () => true, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
@@ -1114,7 +1114,7 @@ describe("sh-park", () => {
       wake: async () => UNHANDLED,
       review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
     };
-    const w = world(phases, undefined, undefined, (name) => (events.push(`park ${name}`), { lines: park(name) }));
+    const w = world(phases, undefined, undefined, async (name) => (events.push(`park ${name}`), { lines: park(name) }));
     w.fake.addPr({ headSha: H1 });
     return { w, events };
   }
@@ -1671,7 +1671,7 @@ describe("a failed required check at a pull request head", () => {
     const db = openDatabase(dbPath);
     const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
     const entries = Object.entries(StoredStepResults.parse(JSON.parse(row.step_results)));
-    const heldAt = entries.findIndex(([, result]) => result.stepId === "sh-held-check");
+    const heldAt = entries.findIndex(([, result]) => result.stepId.startsWith("sh-held-check"));
     const repair = entries.find(([, result]) => result.stepId === "sh-repair")!;
     const old = [...entries.slice(0, withHeldCheck ? heldAt + 1 : heldAt), repair];
     db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(old)), runId);
@@ -1736,7 +1736,7 @@ describe("merge steps allocate no worktree (CC-276 S3)", () => {
     fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), pr.headSha !== H1 && (pr.mergeableState = "clean"));
     const ref = shepherdStoreRef();
     const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")), git: cleanMergeUp };
-    const park: ParkPort = () => (record("park"), { lines: [] });
+    const park: ParkPort = async () => (record("park"), { lines: [] });
     const port = githubPort(fake.wire);
     const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
     const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry } });

@@ -36,7 +36,8 @@ every caller plans, briefs and aggregates the same way:
   from, matches `ClassRules.dependency` (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, any
   `package.json`). `classifyPr` adds the `dependency` touch, which is strict, so such a PR is
   `g10` at any size. `ReviewerFacts.dependencyTouch` carries the same fact to Shepherd's
-  reviewer sizing.
+  reviewer sizing, and `ReviewerFacts.g10Hold` marks a run that holds or held a G10 hold,
+  which takes the g10 reviewer at any size.
 - `securitySliceFlag({ kind?, changedFiles }, rules?)`: `{ lines, cap, guardPaths }` when a
   slice is past `SECURITY_SLICE_LINES` (400) non-generated lines and is kind `security` or
   touches a non-generated `security` or `authority` path; undefined otherwise, including an
@@ -158,8 +159,12 @@ const brief = shapeBrief("adversary", {
   verdict so evals compare variants, not ids.
 - The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
   that does not parse, or names another head, is ignored.
+- `reviewerBrief`'s `fixProofUnverified` (`error`, `untrusted` or `unread`) adds a blocking
+  section: FIX_FIRST unless the reviewer names an added test that fails on the base. A
+  reason outside that set adds nothing, and a reproduced line no longer stops the reviewer
+  rerunning checks.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
-  `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
+  `vacuous`, `no-tests` or `error`, and then its MERGE is needed too. When the plan has no `tests`
   member, that seat counts as missing, so the panel never says MERGE.
 - `aggregate` reads `sonnetFor` from its input, not the plan. Pass the same table you gave
   `planPanel`, or `satisfiesG10` stays false for a custom opus profile.

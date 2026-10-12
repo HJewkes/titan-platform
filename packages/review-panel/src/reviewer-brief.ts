@@ -1,5 +1,5 @@
 import { parseResultLine } from "@titan-design/fix-proof";
-import { fixProofLines } from "./briefs/tests.js";
+import { fixProofLines, unverifiedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 
 type RepoSlug = string;
@@ -42,6 +42,8 @@ export interface ReviewerBriefInput {
   greenChecks?: readonly string[];
   /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
   fixProof?: string;
+  /** Set by Shepherd when this head's fix-proof could not be verified; the brief then says the proof is blocking. */
+  fixProofUnverified?: FixProofUnverified;
 }
 
 /** The line the fixer's structural brief finds the reviewer's defect-class section by. */
@@ -65,10 +67,11 @@ function fixProofReproduced(head: string, line: string | undefined): boolean {
 function greenCheckLines(input: ReviewerBriefInput): string[] {
   const checks = (input.greenChecks ?? []).filter((name) => CHECK_NAME.test(name));
   const proof = input.fixProof === undefined ? [] : fixProofLines(input.head, input.fixProof);
-  const rerun = checks.length > 0 || fixProofReproduced(input.head, input.fixProof);
+  const rerun = checks.length > 0 || (input.fixProofUnverified === undefined && fixProofReproduced(input.head, input.fixProof));
   return [
     ...(checks.length > 0 ? [`These checks are green at this head: ${checks.join(", ")}.`] : []),
     ...proof,
+    ...unverifiedLines(input.fixProofUnverified),
     ...(rerun ? ["Do not rerun the checks named here, including typecheck, lint and the full suite when they are named; read their results and spend your time on the diff."] : []),
   ];
 }

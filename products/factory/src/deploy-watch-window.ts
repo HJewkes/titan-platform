@@ -10,10 +10,16 @@ export interface WatchWindow {
 
 export const DEFAULT_WATCH_WINDOW: WatchWindow = { windowMs: 120_000, intervalMs: 10_000, missLimit: 3 };
 
-/** What the watch reads; the deployer passes its own `/health` probe and clock. */
+/** The first probe of a tick waits this long; a timeout from a live pid is then retried for `SLOW_PROBE_TIMEOUT_MS`. */
+export const FAST_PROBE_TIMEOUT_MS = 5_000;
+export const SLOW_PROBE_TIMEOUT_MS = 30_000;
+
+/** What the watch reads; the deployer passes its own `/health` probe, clock and pid check. */
 interface WatchPorts {
-  probe: () => Promise<Health | null>;
+  probe: (timeoutMs: number) => Promise<Health | null>;
   sleep: (ms: number) => Promise<void>;
+  now: () => number;
+  alive: (pid: number) => boolean;
 }
 
 /** A named field of an object, or undefined for anything else; `/health` is untrusted JSON. */
@@ -37,21 +43,47 @@ function drift(baseline: Health, health: Health, target: string): string | undef
   return added > 0 ? `${added} more run(s) failed or need recovery` : undefined;
 }
 
+/** How one tick's probe went: a quick answer, an answer after the retry, or a live pid that never answered. */
+interface Reading {
+  health: Health | null;
+  slow: boolean;
+  latencyMs: number;
+}
+
+/** A live pid earns a null a second, longer probe before the tick gives up; a dead pid cannot answer, so it gets none. */
+async function read(ports: WatchPorts, baseline: Health): Promise<Reading> {
+  const started = ports.now();
+  const quick = await ports.probe(FAST_PROBE_TIMEOUT_MS);
+  if (quick !== null) return { health: quick, slow: false, latencyMs: ports.now() - started };
+  const pid = baseline.pid;
+  if (typeof pid !== "number" || !ports.alive(pid)) return { health: null, slow: false, latencyMs: ports.now() - started };
+  const retried = await ports.probe(SLOW_PROBE_TIMEOUT_MS);
+  return { health: retried, slow: true, latencyMs: ports.now() - started };
+}
+
+const describeLatency = ({ health, latencyMs }: Reading): string => (health === null ? `no answer in ${Math.round(latencyMs / 1000)} s` : `${(latencyMs / 1000).toFixed(1)} s`);
+
 /**
  * Undefined when serve held steady for the whole window, else why not; `baseline` is the answer that confirmed the sha.
- * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies late is not deployed.
+ * Every tick with no answer counts toward the miss limit, whether or not the pid lives; a live pid only buys the slower retry first.
+ * An answer that needed the retry is slow, not a miss, and a window of nothing but slow probes rolls back.
+ * A miss still open when the window ends keeps the watch probing until an answer or the miss limit, so a serve that dies or hangs late is not deployed.
  */
 export async function watchServe(ports: WatchPorts, baseline: Health, target: string, window: WatchWindow): Promise<string | undefined> {
   const interval = Math.max(1, window.intervalMs);
   const during = `during the ${Math.round(window.windowMs / 1000)} s watch`;
+  const readings: Reading[] = [];
   let misses = 0;
   for (let waited = 0; waited < window.windowMs || misses > 0; waited += interval) {
     await ports.sleep(interval);
-    const health = await ports.probe();
+    const reading = await read(ports, baseline);
+    readings.push(reading);
+    const { health } = reading;
     misses = health === null ? misses + 1 : 0;
     if (misses >= Math.max(1, window.missLimit)) return `serve stopped answering /health (${misses} probes in a row) ${during}`;
     const why = health === null ? undefined : drift(baseline, health, target);
     if (why !== undefined) return `${why} ${during}`;
   }
-  return undefined;
+  const allSlow = readings.length > 0 && readings.every((reading) => reading.slow);
+  return allSlow ? `serve answered slowly on every probe (${readings.map(describeLatency).join(", ")}) ${during}` : undefined;
 }

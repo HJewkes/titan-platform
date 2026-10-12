@@ -1,5 +1,6 @@
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
-import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, type DeployHealth } from "./deploy-health.js";
+import { runningHolds, type AncestryProbe } from "./build-ancestry.js";
+import { alarmMessage, deployHealth, lastRefused, namesIndexLock, parseRedeployLog, targetsToProve, type DeployHealth } from "./deploy-health.js";
 import { describeIndexLock, type IndexLock } from "./stale-lock.js";
 
 export const DEPLOY_WATCH_MS = 5 * 60_000;
@@ -19,6 +20,8 @@ export interface DeployWatchPorts {
   /** The tail of redeploy.log, or undefined before the first redeploy. */
   readLog: () => string | undefined;
   runningSha: () => string;
+  /** Proves the running build descends from an ask, so a hand deploy of a later commit lands it; absent means only an equal sha does. */
+  isAncestor?: AncestryProbe;
   indexLock: () => Promise<IndexLock>;
   /** Absent means no hub seat is configured, so only status and the owner queue carry the alarm. */
   notify?: (text: string) => Promise<void>;
@@ -62,10 +65,25 @@ async function lockNote(ports: DeployWatchPorts, entries: ReturnType<typeof pars
   return last && namesIndexLock(last.text) ? describeIndexLock(await ports.indexLock()) : undefined;
 }
 
+/** Asks git could not settle stay out of `held`, so the block reads behind, as it did before ancestry counted. */
+async function heldByRunning(probe: AncestryProbe | undefined, entries: ReturnType<typeof parseRedeployLog>, running: string): Promise<{ held: Set<string>; unverified?: string }> {
+  const held = new Set<string>();
+  const failures: string[] = [];
+  if (probe === undefined) return { held };
+  for (const target of targetsToProve(entries, running)) {
+    const holds = await runningHolds(probe, running, target);
+    if (holds === true) held.add(target);
+    else if (typeof holds === "object") failures.push(`${target}: ${holds.unknown}`);
+  }
+  return failures.length === 0 ? { held } : { held, unverified: `could not tell whether ${running} contains ${failures.join("; ")}; counted as not landed` };
+}
+
 async function readDeployHealth(ports: DeployWatchPorts): Promise<DeployHealth> {
   const entries = parseRedeployLog(ports.readLog() ?? "");
   const note = await lockNote(ports, entries);
-  return deployHealth({ entries, runningSha: ports.runningSha(), now: ports.now(), ...(note !== undefined && { lockNote: note }) });
+  const runningSha = ports.runningSha();
+  const ancestry = await heldByRunning(ports.isAncestor, entries, runningSha);
+  return deployHealth({ entries, runningSha, now: ports.now(), ...ancestry, ...(note !== undefined && { lockNote: note }) });
 }
 
 const failure = (error: unknown): string => (error instanceof Error ? error.message : String(error));

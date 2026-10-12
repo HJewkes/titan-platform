@@ -1,4 +1,5 @@
-import type { Migration } from "@titan-design/store-sqlite";
+import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 const TABLE_DDL = `
   CREATE TABLE shepherd_registration (
@@ -89,6 +90,19 @@ const TP2383_DDL = `
 /** A park refusal whose exit retry settled, per run, head and agent, so a replay after a restart does not arm it again. */
 export function parkSettledMigration(version = 21): Migration {
   return { version, name: "factory:shepherd_park_settled", up: (db) => db.exec(TP2383_DDL) };
+}
+
+const OWNER_HOLD_COLUMNS = ["owner_hold_reason", "owner_hold_at", "owner_hold_asked_at"];
+
+/** Adds only the columns a database lacks, so a store that already has them opens unchanged. */
+function addOwnerHoldColumns(db: Db): void {
+  const present = new Set(z.array(z.looseObject({ name: z.string() })).parse(db.prepare("PRAGMA table_info(shepherd_registration)").all()).map((column) => column.name));
+  for (const column of OWNER_HOLD_COLUMNS.filter((name) => !present.has(name))) db.exec(`ALTER TABLE shepherd_registration ADD COLUMN ${column} TEXT`);
+}
+
+/** An owner-asked hold's own slot: its reason, when it was placed, and when the owner was last asked about it. */
+export function ownerHoldMigration(version = 22): Migration {
+  return { version, name: "factory:shepherd_registration_owner_hold", up: addOwnerHoldColumns };
 }
 
 const LINEAGE_DDL = `

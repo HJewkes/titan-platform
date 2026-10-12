@@ -126,6 +126,22 @@ function markRecovery(
   announceRecovery(options.emit, run.id, step.stepId, evidence);
 }
 
+/**
+ * Runs this runtime parked as `recovery_required` with work it cannot finish, by the revision it left them at.
+ * Replaying one again only repeats the park, so adoption skips it until the row changes or a new runtime starts.
+ */
+export class HeldRuns {
+  private readonly revisions = new Map<string, number>();
+
+  hold(run: WorkflowRun): void {
+    this.revisions.set(run.id, run.revision);
+  }
+
+  has(run: WorkflowRun): boolean {
+    return run.status === "recovery_required" && this.revisions.get(run.id) === run.revision;
+  }
+}
+
 /** The one place a run enters `recovery_required`: a human must look before it moves again. */
 export function parkForRecovery(run: WorkflowRun, evidence: string): void {
   run.status = "recovery_required";

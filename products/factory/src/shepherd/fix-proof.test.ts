@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
@@ -322,14 +322,68 @@ describe("readFixProof", () => {
   it("waits for the newest fix-proof run rather than read an older completed one", async () => {
     const { read, elapsed } = registered("correctness", [fixProofRun(), fixProofRun({ id: 78, status: "in_progress", conclusion: null })]);
 
-    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("at the deadline") });
     expect(elapsed()).toBeGreaterThanOrEqual(10_000);
   });
 
-  it("gives up as missing at the deadline while the fix-proof run is still in progress", async () => {
+  it("reads a bound fix-proof run still in progress at the deadline as error, not missing", async () => {
     const { read } = registered("correctness", [fixProofRun({ status: "in_progress", conclusion: null })]);
 
-    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("still in_progress at the deadline") });
+  });
+
+  it("reads a completed fix-proof run with no result line for the head as error, not missing", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { logs: { [FIX_PROOF_JOB]: actionsLog(resultLine(OLD, "reproduced")) } });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no result line for this head") });
+  });
+
+  it("reads a PR that deletes the fix-proof workflow and leaves no run as error", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate], { files: [{ path: ".github/workflows/fix-proof.yml", status: "removed" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("harness: .github/workflows/fix-proof.yml") });
+  });
+
+  it("reads a PR whose changed files cannot be read in full and leaves no run as error", async () => {
+    const { read } = registered("correctness", [], { files: [{ path: "src/a.ts", status: "modified" }], changedFiles: 5_000 });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("could not be read") });
+  });
+
+  it("still reads missing for a repo with no fix-proof run when the PR leaves the harness alone", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read } = registered("correctness", [validate], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("no fix-proof check run") });
+  });
+});
+
+describe("fixProofStanding", () => {
+  const verdicts: FixProofResult["verdict"][] = ["reproduced", "unproven", "vacuous", "no-tests"];
+
+  it.each(verdicts)("lets a trusted %s result at the head stand", (verdict) => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, verdict), verdict }, H)).toBeUndefined();
+  });
+
+  it("marks a trusted error result at the head unverified as error", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(H, "error"), verdict: "error" }, H)).toEqual({ unverified: "error" });
+  });
+
+  it.each([...verdicts, "error" as const])("marks an untrusted %s result unverified as untrusted", (verdict) => {
+    expect(fixProofStanding({ kind: "untrusted", line: resultLine(H, verdict), verdict, reason: "harness edited" }, H)).toEqual({ unverified: "untrusted" });
+  });
+
+  it("marks an error read unverified as unread", () => {
+    expect(fixProofStanding({ kind: "error", reason: "no result line" }, H)).toEqual({ unverified: "unread" });
+  });
+
+  it("marks a stored result line naming another head unverified as unread", () => {
+    expect(fixProofStanding({ kind: "result", line: resultLine(OLD, "reproduced"), verdict: "reproduced" }, H)).toEqual({ unverified: "unread" });
+  });
+
+  it.each(["skipped", "missing"] as const)("lets a %s read stand, since no proof was expected", (kind) => {
+    expect(fixProofStanding({ kind, reason: "no fix-proof run" }, H)).toBeUndefined();
   });
 });
 
