@@ -273,7 +273,7 @@ describe("sh-account-wait", () => {
     const s = scene();
     s.register("run-1", 1);
     await s.hold("run-1");
-    s.fake.pr(1).state = "merged" as never;
+    Reflect.set(s.fake.pr(1), "state", "merged");
 
     expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
     expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: HELD });
