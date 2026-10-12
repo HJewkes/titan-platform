@@ -16,6 +16,7 @@ type LogEntry =
   | { kind: "ok" | "refused" | "superseded"; at: string | null; text: string; target?: string };
 
 type Outcome = Exclude<LogEntry, { kind: "ask" }>;
+type Ask = Extract<LogEntry, { kind: "ask" }>;
 
 interface DeployHealthInput {
   entries: readonly LogEntry[];
@@ -23,6 +24,10 @@ interface DeployHealthInput {
   now: number;
   /** The index.lock report, appended to a refusal that names index.lock. */
   lockNote?: string;
+  /** Asked targets the running build descends from, as git proved in the deploy checkout. */
+  held?: ReadonlySet<string>;
+  /** Why ancestry could not be proved for some asks; those stay behind. */
+  unverified?: string;
 }
 
 /** The deploy block of `/health` and `shepherd status`. */
@@ -36,6 +41,8 @@ export interface DeployHealth {
   lastRefusal: { at: string | null; reason: string } | null;
   alarm: boolean;
   causes: string[];
+  /** Set when git could not say whether the running build holds an ask, so the block counts it behind rather than guess. */
+  unverified?: string;
 }
 
 const START = /^(\d{4}-\d\d-\d\dT\S+Z) service deploy --expect ([0-9a-f]{7,})\b/;
@@ -98,15 +105,18 @@ function askPositions(entries: readonly LogEntry[]): Map<string, number> {
 
 /**
  * Every proof that serve caught up, and the only one: logged landings, plus the running build. A fix made by hand
- * never writes to redeploy.log, so the running build counts as its own ask's deployer having landed, placed where
- * that ask's outcome lines end (the next ask). A running build that was never asked lands nothing.
+ * never writes to redeploy.log, so the running build counts as the deployer of every ask it holds (its own sha, or
+ * one it descends from) having landed, placed where that ask's outcome lines end (the next ask).
  */
-function landingsOf(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, runningSha: string): Landing[] {
+function landingsOf(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, held: ReadonlySet<string>): Landing[] {
   const logged = entries.flatMap((entry, index) => (entry.kind === "ok" && entry.target !== undefined ? [{ index, target: entry.target }] : []));
-  const runningAsk = askedAt.get(runningSha);
-  if (runningAsk === undefined) return logged;
-  const nextAsk = entries.findIndex((entry, index) => index > runningAsk && entry.kind === "ask");
-  return [...logged, { index: nextAsk === -1 ? entries.length : nextAsk, target: runningSha }];
+  const byRunning = [...held].flatMap((target) => {
+    const asked = askedAt.get(target);
+    if (asked === undefined) return [];
+    const nextAsk = entries.findIndex((entry, index) => index > asked && entry.kind === "ask");
+    return [{ index: nextAsk === -1 ? entries.length : nextAsk, target }];
+  });
+  return [...logged, ...byRunning];
 }
 
 /** Refusals since the last landing; superseded ones are no refusal. */
@@ -131,14 +141,22 @@ function lastRefusal(entries: readonly LogEntry[], lockNote: string | undefined)
  * `service deploy --expect T` lands exactly T, so an ask is covered only by a later landing of its own target or of a
  * target asked at or after it; position in the log alone proves nothing, since a burst's lock losers never deploy.
  */
-function uncoveredAsks(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, landings: readonly Landing[]): number[] {
+function uncoveredAsks(entries: readonly LogEntry[], askedAt: ReadonlyMap<string, number>, landings: readonly Landing[]): Ask[] {
   const covered = (target: string, index: number): boolean =>
     landings.some((landing) => landing.index > index && (landing.target === target || (askedAt.get(landing.target) ?? -1) >= index));
-  return entries.flatMap((entry, index) => (entry.kind === "ask" && !covered(entry.target, index) ? [Date.parse(entry.at)] : []));
+  return entries.flatMap((entry, index) => (entry.kind === "ask" && !covered(entry.target, index) ? [entry] : []));
 }
 
-function waiting(asks: readonly number[], now: number): Pick<DeployHealth, "behind" | "behindMinutes"> {
-  if (asks.length === 0) return { behind: 0, behindMinutes: 0 };
+/** Targets of asks still waiting once only equal shas count; the caller proves which of them the running build descends from. */
+export function targetsToProve(entries: readonly LogEntry[], runningSha: string): string[] {
+  const askedAt = askPositions(entries);
+  const landings = landingsOf(entries, askedAt, new Set([runningSha]));
+  return [...new Set(uncoveredAsks(entries, askedAt, landings).map((entry) => entry.target))];
+}
+
+function waiting(uncovered: readonly Ask[], now: number): Pick<DeployHealth, "behind" | "behindMinutes"> {
+  if (uncovered.length === 0) return { behind: 0, behindMinutes: 0 };
+  const asks = uncovered.map((entry) => Date.parse(entry.at));
   const behind = asks.filter((at) => now - at >= DEPLOY_GRACE_MS).length;
   return { behind, behindMinutes: Math.max(0, Math.floor((now - Math.min(...asks)) / 60_000)) };
 }
@@ -158,7 +176,7 @@ function alarmCauses(health: Omit<DeployHealth, "alarm" | "causes">): string[] {
  */
 export function deployHealth(input: DeployHealthInput): DeployHealth {
   const askedAt = askPositions(input.entries);
-  const landings = landingsOf(input.entries, askedAt, input.runningSha);
+  const landings = landingsOf(input.entries, askedAt, new Set([input.runningSha, ...(input.held ?? [])]));
   const base = {
     runningSha: input.runningSha,
     ...waiting(uncoveredAsks(input.entries, askedAt, landings), input.now),
@@ -166,7 +184,7 @@ export function deployHealth(input: DeployHealthInput): DeployHealth {
     lastRefusal: lastRefusal(input.entries, input.lockNote),
   };
   const causes = alarmCauses(base);
-  return { ...base, alarm: causes.length > 0, causes };
+  return { ...base, alarm: causes.length > 0, causes, ...(input.unverified !== undefined && { unverified: input.unverified }) };
 }
 
 /** The one message the hub seat gets when the alarm goes up. */
@@ -176,7 +194,8 @@ export const alarmMessage = (health: DeployHealth): string =>
 /** The human summary line `shepherd status` prints under its rows. */
 export function deploySummary(health: DeployHealth): string {
   const state = health.alarm ? `ALARM: ${health.causes.join("; ")}` : "ok";
-  return `deploy: running ${health.runningSha}, ${health.behind} asked deploy(s) not landed, ${health.consecutiveRefusals} refusal(s) in a row; ${state}\n`;
+  const unverified = health.unverified === undefined ? "" : `; ${health.unverified}`;
+  return `deploy: running ${health.runningSha}, ${health.behind} asked deploy(s) not landed, ${health.consecutiveRefusals} refusal(s) in a row; ${state}${unverified}\n`;
 }
 
 /** The deploy block from a `/health` answer; null when serve answered none or keeps none. */

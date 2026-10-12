@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Logger } from "@titan-design/daemon";
+import { cachedAncestry, gitAncestry, runningHolds } from "./build-ancestry.js";
 import { factoryStateDir } from "./config.js";
 import { readDeployPause } from "./deploy-pause.js";
 import { readLastDeploy } from "./deploy-ports.js";
@@ -18,22 +19,32 @@ interface ServiceView {
 
 const pauseReadPorts = { exists: existsSync, readFile: (path: string) => readFileSync(path, "utf8") };
 
+/** The wanted sha the running build descends from, if any; a git failure reads as not held, so the deployer is still asked. */
+async function heldWanted(options: DeployPacerOptions, runningSha: string): Promise<string | undefined> {
+  const wanted = readWanted(options.stateDir, options.store ?? nodeWantedStore);
+  if (wanted === undefined || options.isAncestor === undefined) return undefined;
+  return (await runningHolds(options.isAncestor, runningSha, wanted.sha)) === true ? wanted.sha : undefined;
+}
+
 /** The first tick is not awaited, so a record a restart already answered clears soon after start without holding it up. */
 export function startDeployPacer(options: DeployPacerOptions | undefined, service: ServiceView, log: Logger): Sweep | undefined {
   if (options === undefined) return undefined;
   const { stateDir, spawn } = options;
-  const tick = async (): Promise<void> =>
-    void pacerTick({
+  const tick = async (): Promise<void> => {
+    const held = await heldWanted(options, service.runningSha);
+    pacerTick({
       stateDir,
       store: options.store ?? nodeWantedStore,
       now: service.now,
       runningSha: () => service.runningSha,
+      runningHolds: (sha) => sha === held,
       lastDeploy: () => readLastDeploy(stateDir) ?? undefined,
       busy: service.busy,
       paused: () => readDeployPause(pauseReadPorts, stateDir).paused,
       spawn,
       log: (line) => log.info({}, line),
     });
+  };
   const sweep = startSweep(tick, options.sweepMs ?? PACER_SWEEP_MS, "deploy pacer", log);
   void sweep.tick();
   return sweep;
@@ -46,5 +57,7 @@ export function deployPendingHealth(options: DeployPacerOptions | undefined): { 
 }
 
 /** The same bin and state dir `workflows.ts` gives Shepherd's redeploy step, so the queue and the sweep share one record. */
-export const configuredDeployPacer = (env: NodeJS.ProcessEnv): DeployPacerOptions =>
-  deployPacerPorts({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) });
+export const configuredDeployPacer = (env: NodeJS.ProcessEnv, checkout: string): DeployPacerOptions => ({
+  ...deployPacerPorts({ bin: fileURLToPath(new URL("./bin.js", import.meta.url)), stateDir: factoryStateDir(env) }),
+  isAncestor: cachedAncestry(gitAncestry(checkout)),
+});

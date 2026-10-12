@@ -163,8 +163,8 @@ async function withDeploy(running: CheckResult, ports: CheckPorts): Promise<Chec
 const deployStalled = (deploy: DeployHealth): string => `${deploy.causes.join("; ")}; titan-factory shepherd status --json --deploy shows the deploy block`;
 
 function deployDetail(deploy: DeployHealth): CheckResult["detail"] {
-  const { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal } = deploy;
-  return { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal: lastRefusal?.reason ?? null };
+  const { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal, unverified } = deploy;
+  return { runningSha, behind, behindMinutes, consecutiveRefusals, lastRefusal: lastRefusal?.reason ?? null, ...(unverified !== undefined && { unverified }) };
 }
 
 const NO_HUB_SEAT = "shepherd.hubSeat is not set in the titan-factory config; a deploy alarm reaches no seat, so set it to the coordinating seat and run titan-factory service restart";
