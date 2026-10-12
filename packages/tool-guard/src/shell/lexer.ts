@@ -1,5 +1,6 @@
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, joinedDollar, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./joins.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
@@ -54,15 +55,17 @@ function step(s: LexState): void {
   const c = s.src[s.i] as string;
   if (s.i < s.subscriptEnd && !SUBSCRIPT_ACTIVE.includes(c)) return appendChar(s, c);
   if (c === "[") markSubscript(s);
-  if (c === "(" && s.src[s.i + 1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s));
-  if (s.i < s.arithEnd && s.src.startsWith("<<", s.i)) return appendShift(s);
+  const ahead = readAhead(s.src, s.i, 3);
+  const end = (length: number) => ahead.ends[length - 1] ?? s.src.length;
+  if (c === "(" && ahead.text[1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s, end(2)));
+  if (s.i < s.arithEnd && ahead.text.startsWith("<<")) return appendShift(s, end(2));
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
   if (c === "#" && !s.word && s.i >= s.arithEnd) return skipComment(s);
-  if (c === "&" && s.src[s.i + 1] === ">") return readRedirect(s);
-  const op = OPERATORS.find((o) => s.src.startsWith(o, s.i));
-  if (op) return readOperator(s, op);
+  if (c === "&" && ahead.text[1] === ">") return readRedirect(s);
+  const op = OPERATORS.find((o) => ahead.text.startsWith(o));
+  if (op) return readOperator(s, op, end(op.length));
   if (s.word?.quoted) s.word.spliced = true;
   appendChar(s, c);
 }
@@ -79,8 +82,8 @@ function markSubscript(s: LexState): void {
  * A trial lex with every `<<` a shift finds that `)` through the same quote readers; it fails
  * closed once the source's trials have spent their budget.
  */
-function arithmeticEnd(s: LexState): number {
-  const trial = newState(s.src, s.i + 2, true, s.trials);
+function arithmeticEnd(s: LexState, body: number): number {
+  const trial = newState(s.src, body, true, s.trials);
   trial.arithEnd = Number.POSITIVE_INFINITY;
   let reached = s.src.length;
   try {
@@ -90,12 +93,12 @@ function arithmeticEnd(s: LexState): number {
     if (!(error instanceof ParseError) || spent(s.trials)) throw error;
   }
   if (!chargeTrial(s.trials, reached - s.i)) throw new ParseError("arithmetic command too costly to scan");
-  return reached < s.src.length && s.src[reached + 1] === ")" ? reached : -1;
+  return reached < s.src.length && s.src[nextAfter(s.src, reached)] === ")" ? reached : -1;
 }
 
-function appendShift(s: LexState): void {
+function appendShift(s: LexState, end: number): void {
   ensureWord(s).value += "<<";
-  s.i += 2;
+  s.i = end;
 }
 
 function readBlank(s: LexState): void {
@@ -103,9 +106,9 @@ function readBlank(s: LexState): void {
   s.i++;
 }
 
-function readOperator(s: LexState, op: string): void {
+function readOperator(s: LexState, op: string, end: number): void {
   endWord(s);
-  s.i += op.length;
+  s.i = end;
   if (op === "(") s.depth++;
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
@@ -139,7 +142,7 @@ const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> 
   pid: readVariable,
   braced: (s, w) => refusingAs("unclosed-expansion", () => readBraced(s, w)),
   bracket: (s, w) => refusingAs("unclosed-expansion", () => readBracketArithmetic(s, w)),
-  paren: (s, w) => (s.src[s.i + 2] === "(" ? refusingAs("unclosed-expansion", () => readArithmetic(s, w)) : pushSubstitution(s, w, s.i + 2)),
+  paren: (s, w) => (s.src[nextAfter(s.src, s.i + 1)] === "(" ? refusingAs("unclosed-expansion", () => readArithmetic(s, w)) : pushSubstitution(s, w, s.i + 2)),
   "ansi-c": readAnsiC,
   locale: readLocale,
 };
@@ -215,7 +218,7 @@ function readArithmetic(s: LexState, w: WordToken): void {
 
 /** The expansion ending at `end`, spelled without the backslash-newlines bash dropped after its `$`. */
 function dollarText(s: LexState, end: number): string {
-  return `$${s.src.slice(s.i + 1, end + 1)}`;
+  return dropJoins(`$${s.src.slice(s.i + 1, end + 1)}`);
 }
 
 /** Reads a `$[ ]`, bash's older spelling of `$(( ))`, through the same matching as `${ }`. */
@@ -244,8 +247,9 @@ function arithmeticExpansionEnd(at: Reading, dollar: number, found: Token[][]): 
 
 function arithmeticTrial(at: Reading, dollar: number, trial: Token[][]): number {
   try {
-    const inner = balancedEnd(at.src, dollar + 2, nestedReaders(at, trial));
-    return at.src[inner + 1] === ")" ? inner + 1 : -1;
+    const inner = balancedEnd(at.src, nextAfter(at.src, dollar + 1), nestedReaders(at, trial));
+    const close = nextAfter(at.src, inner);
+    return at.src[close] === ")" ? close : -1;
   } catch (error) {
     if (error instanceof ParseError && !(error instanceof SplitParseError)) return -1;
     throw error;
@@ -293,7 +297,7 @@ export function scanSubstitutions(src: string, from: number, to: number, trials 
 }
 
 function dollarParen(src: string, dollar: number, read: NestedReaders): number {
-  return src[dollar + 2] === "(" ? read.dollarParens(dollar) : read.substitution(dollar + 2);
+  return src[nextAfter(src, dollar + 1)] === "(" ? read.dollarParens(dollar) : read.substitution(dollar + 2);
 }
 
 function scanBacktick(src: string, start: number, found: Token[][], trials: ArithTrials): number {
@@ -321,11 +325,13 @@ function readRedirect(s: LexState): void {
     fd = w.value;
     s.word = null;
   } else endWord(s);
-  REDIRECT_RE.lastIndex = s.i;
-  const op = (REDIRECT_RE.exec(s.src) as RegExpExecArray)[0];
-  s.i += op.length;
-  if ((op === "<" || op === ">") && s.src[s.i] === "(") {
-    s.tokens.push({ type: "subs", subs: [readSubstitution(s, s.i + 1)] });
+  const ahead = readAhead(s.src, s.i, 3);
+  REDIRECT_RE.lastIndex = 0;
+  const op = (REDIRECT_RE.exec(ahead.text) as RegExpExecArray)[0];
+  s.i = ahead.ends[op.length - 1] ?? s.src.length;
+  const paren = pastJoins(s.src, s.i);
+  if ((op === "<" || op === ">") && s.src[paren] === "(") {
+    s.tokens.push({ type: "subs", subs: [readSubstitution(s, paren + 1)] });
     return;
   }
   const heredoc = op === "<<" || op === "<<-";

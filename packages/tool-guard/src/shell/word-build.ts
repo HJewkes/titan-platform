@@ -1,5 +1,6 @@
 import { decodeAnsiC } from "./ansi-c.js";
-import { ansiCEnd, pastJoins } from "./balanced.js";
+import { ansiCEnd } from "./balanced.js";
+import { pastJoins } from "./joins.js";
 import { ParseError } from "./parse-error.js";
 import type { LexState, WordToken } from "./tokens.js";
 

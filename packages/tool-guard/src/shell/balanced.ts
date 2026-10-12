@@ -1,3 +1,4 @@
+import { joinedDollar, nextAfter } from "./joins.js";
 import { type Nesting, nested } from "./nesting.js";
 import { ParseError, SplitParseError } from "./parse-error.js";
 
@@ -48,7 +49,7 @@ function constructEnd(src: string, j: number, read: NestedReaders, braces: boole
   if (c === '"') return doubleQuoteEnd(src, j, read);
   if (c === "`") return read.backtick(j);
   if (c === "$") return dollarEnd(src, j, read);
-  if (braces && !read.bash32 && (c === "<" || c === ">") && src[j + 1] === "(") return processEnd(src, j, read);
+  if (braces && !read.bash32 && (c === "<" || c === ">") && src[nextAfter(src, j)] === "(") return processEnd(src, nextAfter(src, j), read);
   return j;
 }
 
@@ -70,18 +71,6 @@ export const EXPANSION_OPENERS = "{[(";
 /** Inside double quotes `$'` and `$"` are a literal `$` and a quote, not the ANSI-C and locale openers. */
 export const QUOTED_LITERAL_OPENERS = "'\"";
 
-/** Where the `$` at `j` stands once bash drops the backslash-newlines after it, so `$\<NL>[` opens `$[`. */
-export function joinedDollar(src: string, j: number): number {
-  return pastJoins(src, j + 1) - 1;
-}
-
-/** The first index at or after `at` that does not start a backslash-newline. */
-export function pastJoins(src: string, at: number): number {
-  let past = at;
-  while (src.startsWith("\\\n", past)) past += 2;
-  return past;
-}
-
 /** The opener after the `$` at `j`, or null when bash reads that `$` as a name, a special parameter or text. */
 export function dollarOpener(src: string, j: number): DollarOpener | null {
   const next = src[j + 1] ?? "";
@@ -95,7 +84,7 @@ const DOLLAR_ENDS: Record<DollarOpener, (src: string, j: number, read: NestedRea
   pid: (_src, j) => j + 1,
   braced: (src, j, read) => balancedEnd(src, j + 1, read),
   bracket: (src, j, read) => balancedEnd(src, j + 1, read),
-  paren: (src, j, read) => sameIn32(src, j + 1, src[j + 2] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read),
+  paren: (src, j, read) => sameIn32(src, j + 1, src[nextAfter(src, j + 1)] === "(" ? read.dollarParens(j) : read.substitution(j + 2), read),
   "ansi-c": (src, j) => ansiCEnd(src, j + 1),
   locale: (_src, j) => j,
 };
@@ -150,9 +139,9 @@ function sameIn32(src: string, open: number, end: number, read: NestedReaders): 
 }
 
 /** Bash 5 reads a `<( )` inside `${ }` to its `)`; bash 3.2 reads its text as part of the parameter, so a `}` or a construct crossing that `)` splits them. */
-function processEnd(src: string, j: number, read: NestedReaders): number {
-  const end = read.substitution(j + 2);
-  if (in32(() => plainEnd(src, j + 2, end, read.nesting)) !== end) {
+function processEnd(src: string, paren: number, read: NestedReaders): number {
+  const end = read.substitution(paren + 1);
+  if (in32(() => plainEnd(src, paren + 1, end, read.nesting)) !== end) {
     throw new SplitParseError("bash 3.2 ends ${ } inside a process substitution", "procsub-brace");
   }
   return end;

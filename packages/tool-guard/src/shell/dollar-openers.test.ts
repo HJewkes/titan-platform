@@ -51,6 +51,13 @@ const GUARDED: Array<[string, string]> = [
   ["a merge", MERGE],
 ];
 
+/** Joins between or after the two parens bash reads as one `$((` or `((`. */
+const PAREN_JOINS: Array<[string, (guarded: string) => string]> = [
+  ["a join between the parens of $((", (g) => `true || : $(${JOIN}( 1 #)); ${g}\n))`],
+  ["joins after $ and between the parens of $((", (g) => `true || : $${JOIN}(${JOIN}( 1 #)); ${g}\n))`],
+  ["a join between the parens of a top-level ((", (g) => `true || (${JOIN}( 1 #)); ${g}\n))`],
+];
+
 /** Each hides the guarded command after it from a reader that takes the opener for text. */
 const HIDERS: Array<[string, (guarded: string) => string]> = [
   ["a # inside a top-level $[ ]", (g) => `true || : $[ #]; ${g}`],
@@ -67,6 +74,10 @@ const HIDERS: Array<[string, (guarded: string) => string]> = [
   ["a joined ANSI-C string as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `$1 $${JOIN}'$2'`)],
   ["a joined variable as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $${JOIN}ab`)],
   ["a variable name joined in the middle", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $a${JOIN}b`)],
+  ...PAREN_JOINS,
+  ["a joined heredoc delimiter", (g) => `cat <<EOF\nEO${JOIN}F\n${g}\nEOF`],
+  ["a subscript assignment joined before its =", (g) => `Y[ 0 ]${JOIN}=x ${g}`],
+  ["a joined $( ) inside a spaced subscript", (g) => `Y[ $${JOIN}(echo 0) ]=x ${g}`],
 ];
 
 /** The rows whose `$[` a reader without a `[` entry must refuse. */
@@ -83,6 +94,10 @@ describe("a guarded command next to a $-opener", () => {
 
   it.each(GUARDED)("the built hook denies %s after a joined $[ ]", (_name, guarded) => {
     expect(builtHookStdout(`true || : $${JOIN}[ #]; ${guarded}`)).toContain(DENY);
+  });
+
+  it.each(GUARDED.flatMap(([name, g]) => PAREN_JOINS.map(([join, line]) => [name, join, line(g)] as const)))("the built hook denies %s after %s", (_name, _join, command) => {
+    expect(builtHookStdout(command)).toContain(DENY);
   });
 
   it("names the unclosed expansion when $[ never closes", async () => {
@@ -119,6 +134,18 @@ describe("where the lexer ends a $-opener", () => {
   it("reads a $[ ] joined by backslash-newlines as one word", () => {
     const words = tokenize(`echo $${JOIN}${JOIN}[ #]; x`).map((t) => (t.type === "word" || t.type === "op" ? t.value : t.type));
     expect(words).toEqual(["echo", "$[ #]", ";", "x"]);
+  });
+
+  it.each([
+    ["&&", `a &${JOIN}& b`],
+    ["<<", `cat <${JOIN}<EOF\nx\nEOF`],
+  ])("joins the operator %s across a backslash-newline", (op, command) => {
+    expect(tokenize(command).some((t) => (t.type === "op" || t.type === "redirect") && (t.type === "op" ? t.value : t.op) === op)).toBe(true);
+  });
+
+  it("keeps a quoted heredoc's backslash-newline, so its delimiter does not join", () => {
+    const redirect = tokenize(`cat <<'EOF'\nEO${JOIN}F\nEOF`).find((t) => t.type === "redirect");
+    expect(redirect?.type === "redirect" && redirect.body).toBe(`EO\\\nF\n`);
   });
 
   it("joins a variable name across a backslash-newline", () => {

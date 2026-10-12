@@ -1,3 +1,5 @@
+import { dollarOpener } from "./balanced.js";
+import { dropJoins, joinedDollar, readAhead } from "./joins.js";
 import type { Token, WordToken } from "./lexer.js";
 
 const ASSIGNMENT_WORD_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\[.*\])?\+?=/s;
@@ -21,9 +23,9 @@ const UNSURE = -2;
  * Returns the index of that `]` for the `[` at `open`, or -1 when the word lexes as usual.
  */
 export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[]): number {
-  if (UNPLACEABLE_RE.test(src.slice(0, open)) || !atAssignmentPosition(tokens)) return -1;
+  if (UNPLACEABLE_RE.test(dropJoins(src.slice(0, open))) || !atAssignmentPosition(tokens)) return -1;
   const close = matchingBracket(src, open);
-  const after = close === -1 ? "" : src.slice(close + 1, close + 3);
+  const after = close === -1 ? "" : readAhead(src, close + 1, 2).text;
   return after.startsWith("=") || after === "+=" ? close : -1;
 }
 
@@ -80,9 +82,17 @@ function skipQuoted(src: string, j: number, spans: SpanEnds): number {
   if (c === "\\") return j + 1;
   if (c === "'") return src.indexOf("'", j + 1);
   if (c === '"') return closingQuote(src, j + 1, '"');
-  if (c === "$" && src[j + 1] === "'") return closingQuote(src, j + 2, "'");
   if (c === "`") return skippedSpan(j, closingBacktick(src, j));
-  if (c === "$" && (src[j + 1] === "(" || src[j + 1] === "{")) return skippedSpan(j, substitutionEnd(src, j, spans));
+  if (c === "$") return skipDollar(src, j, spans);
+  return j;
+}
+
+/** Skips the `$'…'`, `$( )` or `${ }` the shared table finds after the `$` at `j`; a `$[` is left to the bracket count, which nests it. */
+function skipDollar(src: string, j: number, spans: SpanEnds): number {
+  const dollar = joinedDollar(src, j);
+  const opener = dollarOpener(src, dollar);
+  if (opener === "ansi-c") return closingQuote(src, dollar + 2, "'");
+  if (opener === "paren" || opener === "braced") return skippedSpan(j, substitutionEnd(src, dollar, spans));
   return j;
 }
 
