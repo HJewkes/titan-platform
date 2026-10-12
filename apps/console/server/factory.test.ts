@@ -1,5 +1,4 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT, successEnvelope } from "@titan-design/registry";
 import { factoryNeeds } from "./factory.js";
@@ -47,7 +46,9 @@ async function recordHeaders(seen: IncomingHttpHeaders[]): Promise<number> {
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  factory = { port: (server.address() as AddressInfo).port, close: () => new Promise((resolve) => server.close(() => resolve())) };
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("header recorder bound no TCP port");
+  factory = { port: address.port, close: () => new Promise((resolve) => server.close(() => resolve())) };
   return factory.port;
 }
 
