@@ -4,7 +4,8 @@ import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import { SHEPHERD_COMMAND_MAP, type ShepherdServices } from "./commands.js";
+import { SHEPHERD_COMMAND_MAP } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import type { TaskKind } from "./store.js";
 
 export interface HandoffRequest {
