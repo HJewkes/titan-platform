@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { GateResolver } from "@titan-design/hitl";
-import { parkOnDefinitionDrift, registration, type Registration } from "./definition-version.js";
+import { parkOnDefinitionDrift, registration } from "./definition-version.js";
 import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
+import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
@@ -18,9 +19,6 @@ import {
   type WorkflowFn,
   type WorkflowRun,
 } from "./types.js";
-
-/** `abandonsOrphan` names the recovered steps a replay that moved past them may drop instead of parking the run. */
-type WorkflowRegistration = Registration & { abandonsOrphan?: (stepId: string) => boolean };
 
 interface Live {
   ctx: RunContext;
@@ -61,15 +59,10 @@ export class WorkflowRuntime {
     };
   }
 
-  /**
-   * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
-   * `abandonsOrphan` is asked, when the workflow returns, about each recovered step its replay never reached: true drops
-   * the step with a `step_abandoned` event, false parks the run. Without it every such orphan parks the run.
-   */
-  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: (stepId: string) => boolean } = {}): void {
+  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: AbandonsOrphan } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    const { abandonsOrphan } = options;
-    this.workflows.set(name, { ...registration(name, fn, options.version), ...(abandonsOrphan ? { abandonsOrphan } : {}) });
+    this.workflows.set(name, { ...registration(name, fn, options.version), abandonsOrphan: options.abandonsOrphan });
   }
 
   registered(): string[] {
@@ -176,36 +169,15 @@ export class WorkflowRuntime {
     }
   }
 
-  private finishFromSuccess(run: WorkflowRun, abortReason: unknown, ctx: RunContext, abandonsOrphan?: (stepId: string) => boolean): void {
+  private finishFromSuccess(run: WorkflowRun, abortReason: unknown, ctx: RunContext, abandonsOrphan?: AbandonsOrphan): void {
     if (abortReason instanceof RuntimeShutdown || abortReason instanceof WorkflowOwnershipLostError) return this.dropLive(run.id);
-    const orphans = this.dropSafeOrphans(run, ctx.orphanedSteps(), abandonsOrphan);
-    const unfinished = Object.values(run.activeSteps)[0];
-    if (unfinished) {
-      const evidence = orphans.has(unfinished.stepId)
-        ? `replay never reached recovered step ${unfinished.stepId}`
-        : `workflow returned while step ${unfinished.stepId} still required reconciliation`;
-      this.markRecovery(run, unfinished, "unknown", evidence);
-      this.save(run);
-      return this.park(run, true);
-    }
+    const hooks = { save: (value: WorkflowRun) => this.save(value), emit: this.baseDeps.emit, now: () => this.isoNow() };
+    if (settleUnfinished(run, ctx.orphanedSteps(), abandonsOrphan, hooks)) return this.park(run, true);
     if (run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError || run.status === "cancelling") {
       return this.finish(run, "cancelled", abortReason instanceof WorkflowCancelledError ? abortReason.reason : run.error);
     }
     this.finish(run, "completed", null);
-  }
-
-  /** Drops each orphan the registration allows and returns the step ids of those it kept. */
-  private dropSafeOrphans(run: WorkflowRun, orphans: ActiveStep[], abandonsOrphan?: (stepId: string) => boolean): Set<string> {
-    const dropped = orphans.filter((step) => abandonsOrphan?.(step.stepId) === true);
-    const kept = new Set(orphans.filter((step) => !dropped.includes(step)).map((step) => step.stepId));
-    if (dropped.length === 0) return kept;
-    for (const step of dropped) delete run.activeSteps[step.stepId];
-    this.save(run);
-    for (const step of dropped) {
-      this.baseDeps.emit({ type: "step_abandoned", runId: run.id, stepId: step.stepId, reason: "replay never reached recovered step" });
-    }
-    return kept;
   }
 
   private settleRejection(run: WorkflowRun, abortReason: unknown, error: unknown): void {

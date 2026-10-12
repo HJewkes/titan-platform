@@ -598,6 +598,12 @@ declare const TRACE_ARTIFACTS_KEY = "titan.trace.artifacts";
 /** The name every authorize gate records as its rule's table. */
 declare const AUTHORITY_TABLE_NAME = "F5";
 
+/**
+ * Asked, when a workflow returns, about each recovered step its replay never reached: true drops the step with a
+ * `step_abandoned` event, false parks the run. A registration without one parks on every such orphan.
+ */
+type AbandonsOrphan = (stepId: string) => boolean;
+
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 declare class WorkflowRuntime {
     private readonly options;
@@ -611,14 +617,10 @@ declare class WorkflowRuntime {
     private readonly now;
     private readonly baseDeps;
     constructor(options: WorkflowRuntimeOptions);
-    /**
-     * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
-     * `abandonsOrphan` is asked, when the workflow returns, about each recovered step its replay never reached: true drops
-     * the step with a `step_abandoned` event, false parks the run. Without it every such orphan parks the run.
-     */
+    /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
-        abandonsOrphan?: (stepId: string) => boolean;
+        abandonsOrphan?: AbandonsOrphan;
     }): void;
     registered(): string[];
     /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
@@ -633,8 +635,6 @@ declare class WorkflowRuntime {
     private launch;
     private drive;
     private finishFromSuccess;
-    /** Drops each orphan the registration allows and returns the step ids of those it kept. */
-    private dropSafeOrphans;
     private settleRejection;
     shutdown(): void;
     private finish;
