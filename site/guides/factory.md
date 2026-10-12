@@ -350,16 +350,20 @@ curl -s http://127.0.0.1:7410/health | jq .ownerKeys
 `POST /holds/release-proof` lifts one Shepherd hold on a `titan-factory.hold-release` statement,
 with `applyHoldRelease` behind it. It takes the same body, keys, guards and size limit as the gate
 route. The statement carries the same envelope (`v`, `aud`, `keyId`, `nonce`, `iat`, `exp`) and
-exactly one item: `{runId, repo, pr, holdDigest, headSha}`, where `holdDigest` is the sha256 hex of
-the hold reason the owner read. Its `type` keeps it from ever being read as a gate resolve, and the
-reverse.
+exactly one item: `{runId, repo, pr, holdDigest, holdSince, headSha}`. `holdDigest` is the sha256
+hex of the hold reason the owner read. `holdSince` is the `at` of the run's latest hold or release
+event in `shepherd timeline`, so a re-hold with the same text is a different hold and an unspent
+proof for the earlier one cannot lift it. Its `type` keeps it from ever being read as a gate
+resolve, and the reverse.
 
 1. The signature, window and audience are checked as for a gate proof, and a used nonce is refused.
 2. `repo#pr` must be registered to `runId` (else `run-mismatch`), held (else `not-held`), and held
-   under exactly the signed reason (else `hold-changed`). None of these refusals writes anything.
+   under exactly the signed reason since `holdSince` (else `hold-changed`). None of these refusals
+   writes anything.
 3. The proof is recorded, which spends the nonce, with one item `hold:<runId>`.
 4. The PR head is read from GitHub. A head other than `headSha` is `head-moved`, and the item is
-   recorded `skipped-moved`. An unreadable PR is `head-unreadable` (503).
+   recorded `skipped-moved`. An unreadable PR is `head-unreadable` (503). Both spend the proof:
+   the owner signs a new one to retry.
 5. The hold is released only while it is still the signed reason, with actor `key:<keyId>` and the
    head on the release event. A hold that changed during the read is `hold-changed`.
 

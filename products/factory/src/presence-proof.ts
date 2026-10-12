@@ -45,17 +45,22 @@ export const StatementSchema = z.strictObject({
 export type Statement = z.infer<typeof StatementSchema>;
 export type ProofItem = z.infer<typeof ItemSchema>;
 
-/** One Shepherd hold the owner lifts: bound to the run, the exact reason it is held under, and the PR head the owner saw. */
-export const HoldReleaseItemSchema = z.strictObject({
+/**
+ * One Shepherd hold the owner lifts: bound to the run, the exact reason it is held under, when that hold state began
+ * (the `at` of the run's latest hold or release event, so a re-hold with the same text is a different hold), and the
+ * PR head the owner saw.
+ */
+const HoldReleaseItemSchema = z.strictObject({
   runId: z.string().min(1),
   repo: z.string().min(1),
   pr: z.number().int().positive(),
   holdDigest: z.string().regex(HEX(64)),
+  holdSince: z.iso.datetime(),
   headSha: z.string().regex(HEX(40)),
 });
 
 /** A second statement type over the same envelope; its `type` literal keeps it from ever parsing as a gate resolve, or the reverse. */
-export const HoldReleaseStatementSchema = z.strictObject({
+const HoldReleaseStatementSchema = z.strictObject({
   v: z.literal(1),
   type: z.literal("titan-factory.hold-release"),
   aud: z.string().min(1),
@@ -63,7 +68,7 @@ export const HoldReleaseStatementSchema = z.strictObject({
   nonce: z.string().regex(HEX(32)),
   iat: z.number().int().nonnegative(),
   exp: z.number().int().nonnegative(),
-  items: z.array(HoldReleaseItemSchema).length(1),
+  items: z.tuple([HoldReleaseItemSchema]),
 });
 
 export type HoldReleaseStatement = z.infer<typeof HoldReleaseStatementSchema>;
@@ -82,7 +87,7 @@ export type Refusal =
 
 type Verified<S> = { ok: true; statement: S; keyId: string } | { ok: false; refusal: Refusal };
 export type ProofResult = Verified<Statement>;
-export type HoldReleaseResult = Verified<HoldReleaseStatement>;
+type HoldReleaseResult = Verified<HoldReleaseStatement>;
 
 /** What every statement type shares, and the checks only its own type knows. */
 interface Envelope {

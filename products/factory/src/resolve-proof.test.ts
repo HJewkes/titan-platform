@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow } from "./definition.js";
 import type { OwnerKeys } from "./owner-keys.js";
+import { holdSinceOf } from "./hold-release-proof.js";
 import { holdDigest, itemsDigest, keyIdOf, keyRing, type ProofItem } from "./presence-proof.js";
 import { createFactoryRegistry } from "./registry.js";
 import { HOLD_RELEASE_PROOF_PATH, MAX_PROOF_BODY_BYTES, RESOLVE_PROOF_PATH } from "./resolve-proof.js";
@@ -208,9 +209,9 @@ describe("POST /gates/resolve-proof", () => {
 describe("POST /holds/release-proof", () => {
   const REASON = "g10-adversary: authority change; TP-1";
 
-  function holdProof(runId: string, pr: number, aud = AUD) {
+  function holdProof(runId: string, pr: number, holdSince = new Date(NOW_MS).toISOString(), aud = AUD) {
     const iat = NOW_MS / 1000;
-    const items = [{ runId, repo: SHEPHERD_REPO, pr, holdDigest: holdDigest(REASON), headSha: HEAD }];
+    const items = [{ runId, repo: SHEPHERD_REPO, pr, holdDigest: holdDigest(REASON), holdSince, headSha: HEAD }];
     const statement = { v: 1, type: "titan-factory.hold-release", aud, keyId: KEY_ID, nonce: randomBytes(16).toString("hex"), iat, exp: iat + 120, items };
     const bytes = Buffer.from(JSON.stringify(statement));
     return { statement: bytes.toString("base64url"), signature: sign("sha256", bytes, { key: owner.privateKey, dsaEncoding: "der" }).toString("base64url") };
@@ -224,13 +225,13 @@ describe("POST /holds/release-proof", () => {
     if (!registered.ok) throw new Error(registered.error);
     const store = fixture.routes.shepherd!.store.get();
     store.hold(registered.data.runId, REASON);
-    return { server, store, pr, runId: registered.data.runId };
+    return { server, store, pr, runId: registered.data.runId, holdSince: holdSinceOf(store, registered.data.runId)! };
   }
 
   it("releases the hold on a valid owner proof, recording the key as the actor", async () => {
-    const { server, store, pr, runId } = await heldShepherd();
+    const { server, store, pr, runId, holdSince } = await heldShepherd();
 
-    const response = await post(server, JSON.stringify(holdProof(runId, pr)), HOLD_RELEASE_PROOF_PATH);
+    const response = await post(server, JSON.stringify(holdProof(runId, pr, holdSince)), HOLD_RELEASE_PROOF_PATH);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, runId, actor: `key:${KEY_ID}` });
@@ -239,9 +240,9 @@ describe("POST /holds/release-proof", () => {
   });
 
   it("refuses a proof signed for another factory with 403 and leaves the hold", async () => {
-    const { server, store, pr, runId } = await heldShepherd({ aud: "other.host" });
+    const { server, store, pr, runId, holdSince } = await heldShepherd({ aud: "other.host" });
 
-    const response = await post(server, JSON.stringify(holdProof(runId, pr)), HOLD_RELEASE_PROOF_PATH);
+    const response = await post(server, JSON.stringify(holdProof(runId, pr, holdSince)), HOLD_RELEASE_PROOF_PATH);
 
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, refusal: "wrong-aud" });

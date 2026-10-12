@@ -283,7 +283,7 @@ describe("verifyHoldRelease", () => {
     nonce: "0123456789abcdef0123456789abcdef",
     iat: NOW - 10,
     exp: NOW + 110,
-    items: [{ runId: "run", repo: "owner/repo", pr: 837, holdDigest: holdDigest("g10-adversary: x"), headSha: HEAD }],
+    items: [{ runId: "run", repo: "owner/repo", pr: 837, holdDigest: holdDigest("g10-adversary: x"), holdSince: "2026-10-12T07:00:00.000Z", headSha: HEAD }],
     ...over,
   });
 
