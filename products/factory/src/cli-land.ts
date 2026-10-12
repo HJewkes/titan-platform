@@ -23,7 +23,7 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
   try {
     args = { ...parsePrRef(ref), ...(opts.task ? { task: opts.task } : {}) };
   } catch (err) {
-    verbs.io.stderr(`error: ${(err as Error).message}\n`);
+    verbs.io.stderr(`error: ${err instanceof Error ? err.message : String(err)}\n`);
     return verbs.setExit(EXIT.USAGE);
   }
   if (await probeHealth(opts.port)) return verbs.setExit(await landOnServer(verbs.io, opts.port, args));
