@@ -51,6 +51,7 @@ import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
+import type { PanelMode } from "./review-panel-plan.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -1277,6 +1278,7 @@ describe("reviewPhase", () => {
     /** Collects the checkout dirs removed; no scene touches the real filesystem. */
     removals?: string[];
     machineStop?: MachineStopWatch;
+    panel?: PanelMode;
   }
 
   async function review(scene: Scene) {
@@ -1295,7 +1297,7 @@ describe("reviewPhase", () => {
       for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1319,6 +1321,49 @@ describe("reviewPhase", () => {
     expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  describe("review.panel", () => {
+    const singleReviewerSteps = [`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`];
+    const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
+
+    it("off records today's intent and runs today's steps with one reviewer", async () => {
+      const dispatch = fakeDispatch();
+
+      const { stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "off" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("shadow records the head's class, touches and plan on the intent, and dispatches and awaits exactly as off does", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "shadow" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual({
+        ...intent,
+        class: "g10",
+        touches: ["untested", "large"],
+        plan: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness", profile: "bd-reviewer" }), expect.objectContaining({ shape: "tests" }), expect.objectContaining({ shape: "perf" })] }),
+      });
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
+    });
+
+    it("shadow plans an external review's head with nothing, because Shepherd starts no reviewer for it", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+      const dispatch = fakeDispatch(crew(external));
+
+      const { resultOf } = await review({ dispatch, panel: "shadow", hold: "security: awaiting the audit", holdReviewer: external.name, awaited: () => ({ kind: "none" }) });
+
+      expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ mode: "external" });
+      expect(resultOf(`sh-review-intent:${H1}`)).not.toHaveProperty("plan");
+    });
   });
 
   it("records the dispatch's cause on sh-review-intent, so the ledger says why the head was reviewed", async () => {
