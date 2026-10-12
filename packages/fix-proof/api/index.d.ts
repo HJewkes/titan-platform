@@ -165,6 +165,11 @@ interface ExecSideOptions {
     out: string;
     budgetMs?: number;
     exec?: Exec;
+    /**
+     * Runs each base-side vitest call as this user in a fresh PID namespace through `sudo -n`, so nothing the head's test
+     * or carried files start outlives the run or can write the runner's files. The head side ignores it.
+     */
+    sandboxUser?: string;
 }
 /** Builds and tests one side of the proof and writes its encoded reports to out; a failure writes error markers, never throws. */
 declare function execSide(options: ExecSideOptions): Promise<void>;

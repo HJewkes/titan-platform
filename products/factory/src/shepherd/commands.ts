@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import type { WorkflowRun } from "@titan-design/workflow";
@@ -6,40 +6,27 @@ import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import type { FreezeStoreRef } from "./freeze.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { applyRegistrationHold } from "./registration-hold.js";
+import { hostPrsSources, shepherdPrs, type PrRow } from "./prs.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
-import type { SeatBook } from "./seats.js";
-import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
-import type { MergeTrainRef } from "./train.js";
-import type { SnapshotServices } from "./snapshot-reads.js";
+import type { Registration, ShepherdStore } from "./store.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
 
-export const SHEPHERD_WORKFLOW = "shepherd-pr";
-
-/** What the shepherd commands read beyond the host; the route set that binds the store carries it. */
-export interface ShepherdServices extends SnapshotServices {
-  store: ShepherdStoreRef;
-  port: GitHubPort;
-  /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
-  seats: () => SeatBook;
-  /** Absent means no row reports a run waiting for its repo's merge train. */
-  train?: MergeTrainRef;
-  /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
-  freeze?: FreezeStoreRef;
-}
+/** Transitional, for workflows.ts until TP-2466 b repoints it. */
+export type { ShepherdServices } from "./services.js";
 
 export interface Registered {
   runId: string;
@@ -310,6 +297,19 @@ const resyncCommand = defineCommand<{ dryRun?: boolean }, ResyncReport, FactoryC
   run: async ({ dryRun }, ctx) => resyncShepherd(ctx.host, servicesOf(ctx), { dryRun }),
 });
 
+/** Answers from the snapshot alone: a host with none wired refuses rather than reading GitHub per call. */
+const prsCommand = defineCommand<{ repo?: string }, PrRow[], FactoryContext>({
+  name: "shepherd.prs",
+  description: "Every open PR of each seat repo (or of --repo) from Shepherd's snapshot, plus the PRs Shepherd merged in the last 24 h, with head, base, run and cached CI; no GitHub call while the list is under a minute old",
+  args: z.object({ repo: RepoArg.optional() }),
+  result: z.custom<PrRow[]>(),
+  async run({ repo }, ctx) {
+    const services = servicesOf(ctx);
+    if (!services.snapshot) throw coded("shepherd prs reads the PR snapshot, and this host was opened without one", EXIT.UNAVAILABLE);
+    return shepherdPrs(hostPrsSources(ctx.host, services, services.snapshot), repo);
+  },
+});
+
 /** Keyed by name so a consumer can type itself per verb; each key must equal its command's `name`. */
 export const SHEPHERD_COMMAND_MAP = {
   "shepherd.register": registerCommand,
@@ -322,6 +322,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.merge": mergeCommand,
   "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
+  "shepherd.prs": prsCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

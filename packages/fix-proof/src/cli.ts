@@ -4,13 +4,14 @@ import { parseArgs } from "node:util";
 import { errorLine, messageOf } from "./context.js";
 import { judge, type JudgeReports } from "./judge.js";
 import { run, type RunOptions } from "./run.js";
-import { execSide, type Side } from "./side.js";
+import { SANDBOX_FLAG, SANDBOX_USER_PATTERN } from "./sandbox.js";
+import { execSide, type ExecSideOptions, type Side } from "./side.js";
 import { MAX_ENCODED_BYTES } from "./transport.js";
 
 const COMMON_USAGE = "--base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]";
 export const USAGE = `usage: fix-proof run|exec|judge ${COMMON_USAGE}`;
 const RUN_USAGE = `usage: fix-proof run ${COMMON_USAGE}`;
-const EXEC_USAGE = `usage: fix-proof exec --side base|head --out <dir> ${COMMON_USAGE}`;
+const EXEC_USAGE = `usage: fix-proof exec --side base|head --out <dir> [--${SANDBOX_FLAG} <name>] ${COMMON_USAGE}`;
 const JUDGE_USAGE = `usage: fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] ${COMMON_USAGE}`;
 
 type Values = Partial<Record<string, string>>;
@@ -40,6 +41,14 @@ function sideOf(value: string | undefined): Side {
   throw new Error(EXEC_USAGE);
 }
 
+function execOptions(values: Values, cwd: string): ExecSideOptions {
+  const options: ExecSideOptions = { ...common(values, cwd), side: sideOf(values.side), out: path.resolve(cwd, values.out ?? "") };
+  const sandboxUser = values[SANDBOX_FLAG];
+  if (sandboxUser === undefined) return options;
+  if (!SANDBOX_USER_PATTERN.test(sandboxUser)) throw new Error(EXEC_USAGE);
+  return { ...options, sandboxUser };
+}
+
 // Reads at most a little past the decoder's cap, so an oversized report file is refused without loading it whole.
 function readReport(file: string | undefined, cwd: string): string | undefined {
   if (file === undefined) return undefined;
@@ -66,10 +75,10 @@ const COMMANDS: Readonly<Record<string, Command>> = {
   run: { usage: RUN_USAGE, flags: [], required: [], act: (values, cwd, runner) => runner(common(values, cwd)) },
   exec: {
     usage: EXEC_USAGE,
-    flags: ["side", "out"],
+    flags: ["side", "out", SANDBOX_FLAG],
     required: ["side", "out"],
     act: async (values, cwd) => {
-      await execSide({ ...common(values, cwd), side: sideOf(values.side), out: path.resolve(cwd, values.out ?? "") });
+      await execSide(execOptions(values, cwd));
       return "";
     },
   },

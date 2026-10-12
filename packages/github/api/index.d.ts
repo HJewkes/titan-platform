@@ -199,6 +199,9 @@ interface PullRequest {
     behindBy?: number;
     /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
     autoMerge: boolean;
+    /** Absent where the wire does not read them; GitHub's REST answer carries both, an empty body as null. */
+    title?: string;
+    body?: string;
 }
 interface RequiredChecks {
     contexts: string[];

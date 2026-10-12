@@ -1,6 +1,6 @@
 import type { FactoryHost } from "../host.js";
 import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
-import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import { openHead } from "./head-moved.js";
 import { REVIEW_INTENT_STEP, REVIEW_STEP } from "./review.js";
 

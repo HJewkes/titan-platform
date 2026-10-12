@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { Logger } from "@titan-design/daemon";
 import type { CheckRun, GitHubPort } from "@titan-design/github";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { singleSeat } from "./held-repair.js";
 import { MAIN_WATCH_DB, MainWatchLedger, type WatchedSha } from "./main-watch-ledger.js";

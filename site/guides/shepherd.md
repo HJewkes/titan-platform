@@ -445,6 +445,7 @@ titan-factory shepherd status owner/repo#123   # one pull request
 titan-factory shepherd status --active --branch-prefix pc-   # live runs on agent-chat/pc-* branches
 titan-factory shepherd status --phase review,merging --task TP-42
 titan-factory shepherd waiting                 # pending gates, oldest first
+titan-factory shepherd prs owner/repo --json   # open PRs from the snapshot, plus Shepherd's merges
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
@@ -507,6 +508,19 @@ is listed apart, because those are routed to the seat that owns the PR. `--json`
 the gate names is the run's current head, false when the run has moved on, null when the gate names
 none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
 The factory digest lists the five oldest owner gates under "Waiting on you".
+
+`shepherd prs [owner/repo] [--json]` lists the open PRs of every seat repo, or of the repo
+named, from Shepherd's PR snapshot (`products/factory/src/shepherd/prs.ts`). A seat repo with no
+run in it is listed too. The answer makes no GitHub call while the repo's open list is under a
+minute old, and concurrent callers share one list read. The PRs Shepherd itself merged in the last
+24 hours follow, built from each run's `merge` step, so their `mergeSha` costs no PR read. Each
+row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
+registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
+`snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
+`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
+appears only when the snapshot already holds the head's check runs. A head it holds none for
+leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
+that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
 
 ## Stats {#stats}
 
@@ -1099,10 +1113,31 @@ hold at the exact head being merged (`packages/authority/src/table.json`):
 
 Shepherd adds its own guards before it asks authority
 (`products/factory/src/shepherd/merge-facts.ts`). No collected facts, facts collected at
-another head sends the merge to the owner. A changed path under `.github/` no longer does: by the owner decision of 2026-10-07 (TP-1886), Shepherd leaves `.github/` to the authority table and the required checks, like any other path. A file list
+another head sends the merge to the owner. A file list
 that GitHub truncated, or that failed to read, counts as no list and gates on `files-unread`. Every fact is read from GitHub or from the run's
 own step outputs, never from the reviewer's text. Any other authority rule that allows still
 gates: only `MRG-AU-RV` merges without the owner.
+
+The one reviewer line the guard reads is `CI-policy:` (TP-2407), which every MERGE carries
+directly after `Head:` as `CI-policy: unchanged` or `CI-policy: weakened <keys>`. It never
+allows a merge; it only gates one:
+
+- `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
+  a weaker CI policy.
+- The label is read on every raw line, fenced, indented or commented out, and with any casing,
+  decoration or punctuation, so a hidden or decorated `weakened` still reads weakened. Across
+  several lines the strictest reading wins.
+- A line that is present but malformed, or an `unchanged` that is not the one exact line after
+  `Head:`, gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must
+  not read as silence. So does a stored line of an unknown shape.
+- A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
+  (class D6) when the line is missing. Evidence stored before the line existed reads as
+  missing, so it fails closed; answer it with a fresh review.
+- `unchanged` leaves a `.github/` change to the authority table and the required checks, as
+  TP-1886 left every path.
+
+The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
+review. A coordinator never resolves any of these gates.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so
