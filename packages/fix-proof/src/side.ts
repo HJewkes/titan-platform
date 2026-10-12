@@ -14,6 +14,8 @@ export const DEFAULT_BUILD = "pnpm build";
 /** The vitest invocation; the runner appends the JSON reporter flags and the selected test paths. */
 export const DEFAULT_COMMAND = "pnpm exec vitest run";
 const TEARDOWN_TIMEOUT_MS = 60_000;
+/** Far above any real vitest JSON report; a larger file is refused rather than read into memory. */
+export const MAX_VITEST_REPORT_BYTES = 16 * 1024 * 1024;
 
 export type Side = "base" | "head";
 
@@ -84,8 +86,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// The sandbox user owns the output dir, so the file there could be a symlink to a forged report or a FIFO that blocks.
-function readRegularFile(file: string): string | null {
+// The sandbox user owns the output dir, so the file there could be a symlink to a forged report, a FIFO that blocks,
+// or large enough to exhaust memory.
+function readReportFile(file: string, name: string): string | null {
   let fd: number;
   try {
     fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
@@ -93,7 +96,10 @@ function readRegularFile(file: string): string | null {
     return null;
   }
   try {
-    return fs.fstatSync(fd).isFile() ? fs.readFileSync(fd, "utf-8") : null;
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    if (stat.size > MAX_VITEST_REPORT_BYTES) throw new RunError(`${name}: vitest report over ${MAX_VITEST_REPORT_BYTES} bytes`);
+    return fs.readFileSync(fd, "utf-8");
   } finally {
     fs.closeSync(fd);
   }
@@ -119,14 +125,22 @@ async function runTests(ctx: Context, tree: string, plan: FixProofPlan, name: st
   const out = path.join(dir, `${name}.json`);
   const args = ["--reporter=json", "--outputFile", out, "--testTimeout", "30000", ...plan.tests];
   const result = await vitest(ctx, tree, plan.config.command ?? DEFAULT_COMMAND, args, sandboxUser);
-  const json = readRegularFile(out);
+  const json = readReportFile(out, name);
   if (json === null) throw new RunError(`${name}: vitest wrote no report (exit ${result.status ?? "signal"})`);
   return encodeReport(relativeNames(JSON.parse(json), tree));
 }
 
-function runnerOwner(): string {
+function runnerIds(): { uid: number; gid: number } {
   if (process.getuid === undefined || process.getgid === undefined) throw new RunError("base: sandbox setup failed (no uid on this platform)");
-  return `${process.getuid()}:${process.getgid()}`;
+  return { uid: process.getuid(), gid: process.getgid() };
+}
+
+// Root or the runner's own login would run the head's tests with exactly the reach the sandbox exists to take away.
+async function assertSeparateUid(ctx: Context, user: string, runnerUid: number): Promise<void> {
+  const result = await call(ctx, ctx.tmp, "id", ["-u", "--", user]);
+  const uid = result.status === 0 && /^\d+\n?$/.test(result.stdout) ? Number(result.stdout) : null;
+  if (uid === null) throw new RunError(`base: sandbox setup failed (no uid for ${user})`);
+  if (uid === 0 || uid === runnerUid) throw new RunError(`base: sandbox setup failed (${user} is uid ${uid}, root or the runner)`);
 }
 
 /**
@@ -135,13 +149,14 @@ function runnerOwner(): string {
  */
 async function withSandbox<T>(ctx: Context, tree: string, user: string, body: () => Promise<T>): Promise<T> {
   assertSandboxUser(user);
-  const owner = runnerOwner();
+  const runner = runnerIds();
+  await assertSeparateUid(ctx, user, runner.uid);
   fs.chmodSync(ctx.tmp, 0o711);
   try {
     await sudo(ctx, ["find", tree, "-type", "d", "-exec", "chown", `${user}:`, "{}", "+"]);
     return await body();
   } finally {
-    await ctx.exec("sudo", ["-n", "--", "chown", "-R", owner, ctx.tmp], { cwd: ctx.tmp, timeoutMs: TEARDOWN_TIMEOUT_MS });
+    await ctx.exec("sudo", ["-n", "--", "chown", "-R", `${runner.uid}:${runner.gid}`, ctx.tmp], { cwd: ctx.tmp, timeoutMs: TEARDOWN_TIMEOUT_MS });
   }
 }
 

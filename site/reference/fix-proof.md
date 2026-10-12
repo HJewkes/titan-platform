@@ -69,7 +69,8 @@ reports before they are passed on. `--sandbox-user <name>` closes that:
   --mount-proc -- setpriv --reuid <name> --regid <name> --init-groups --no-new-privs
   --bounding-set=-all -- env -i PATH=… HOME=<tree> CI=1 sh -c <command>`. Every process the
   tests start dies when the namespace's init exits, and none can regain root.
-- The vitest output is read only as a regular file, never through a symlink.
+- A user that resolves to uid 0 or to the runner's own uid is refused as a setup failure.
+- The vitest output is read only as a regular file of at most 16 MiB, never through a symlink.
 - Everything is handed back to the runner afterwards so cleanup can remove it.
 
 A failed `sudo` setup writes an error marker for both base reports; vitest never falls back to an
