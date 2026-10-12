@@ -3,7 +3,7 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { redactForEvidence } from "../redact.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
-import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewerOrNone } from "./external-review.js";
+import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewer } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
 import { provablyIndependent } from "./lineage.js";
 import type { ReviewerAgent, ReviewerReader } from "./review.js";
@@ -41,7 +41,7 @@ export interface HoldSatisfierDeps {
   carry?: (input: CarryInput) => Promise<CarryResult>;
 }
 
-/** A read that fails, a reviewer not on the roster, or one not provably independent of the code's authors changes nothing. */
+/** A reviewer not on the roster, or one not provably independent of the code's authors, changes nothing; a read that fails, a damaged transcript included, withdraws a satisfaction at this head and never keeps or grants one. */
 export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
   return async (repo, pr, sha, baseRef) => {
     const store = deps.store();
@@ -52,7 +52,8 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const row = latestSession(reviewer, roster);
     if (row === undefined || !independent(row, registration, roster, store)) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
-    const messages = await readNamedReviewerOrNone(deps.reader, read);
+    const messages = await readNamedReviewer(deps.reader, read).catch((): undefined => undefined);
+    if (messages === undefined) return registration.holdSatisfied?.head === sha ? store.unsatisfyHold(registration.runId) : undefined;
     const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
     if (verdict.kind === "none" && verdict.reason === "wait" && registration.holdSatisfied?.head === sha) return store.unsatisfyHold(registration.runId);
     if (verdict.kind !== "verdict") {
@@ -65,11 +66,12 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
   };
 }
 
-/** The newest verdict block on this PR in any session under the reviewer's name, at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time a FIX_FIRST or WAIT wins; a WAIT stops a carry without unsatisfying. */
+/** The newest verdict block on this PR in any session under the reviewer's name, at any head, so a FIX_FIRST at a head nobody asked about still stops a carry past it; on a tie in time a FIX_FIRST or WAIT wins; a WAIT stops a carry without unsatisfying, and so does a session whose read fails. */
 async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[], repo: RepoSlug, pr: number): Promise<"MERGE" | "FIX_FIRST" | "WAIT" | undefined> {
   let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" | "WAIT" } | undefined;
   for (const row of rows) {
-    const messages = await readNamedReviewerOrNone(reader, { repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
+    const messages = await readNamedReviewer(reader, { repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }).catch((): undefined => undefined);
+    if (messages === undefined) return "WAIT";
     for (const message of messages) {
       const block = parseVerdictBlock(message.text);
       const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;

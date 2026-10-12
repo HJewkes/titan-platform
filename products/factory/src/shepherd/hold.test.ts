@@ -554,6 +554,27 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
     expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 
+  it("withdraws a satisfaction when the reviewer dies mid-record after a poll satisfied the hold", async () => {
+    const { r, seat, port } = seated("live");
+    seat.send(verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" }) }));
+    await held(REPO, r.pr, H1);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toMatchObject({ head: H1 });
+
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+    seat.row.presence = "exited";
+
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("merges on a clean exited transcript that ends after a complete MERGE", async () => {
+    const { r, seat, port } = seated("exited");
+    seat.send(verdictAt(H1)).text("Sent.");
+
+    expect((await port.merge(REPO, r.pr, H1, "squash")).done).toBe(true);
+  });
+
   it("is not satisfied by another agent's MERGE block delivered into the reviewer's transcript, only by the reviewer's own", async () => {
     const { r, seat, port } = seated("live");
     seat.user(verdictAt(H1));

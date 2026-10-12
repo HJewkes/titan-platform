@@ -62,12 +62,12 @@ export function latestSession(name: string, roster: readonly ReviewerAgent[]): R
  * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
  * the transcript changes. A reader with no seat read falls back to the finished-session read. A failure propagates.
  */
-function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
+export function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
   return reader.readSeat ? reader.readSeat(input) : reader.read(input);
 }
 
-/** The release-side read: any failure, a damaged transcript included, is no messages. A damaged transcript's complete records can hold a MERGE written before a cut-off FIX_FIRST, so they may only block a merge (the seat read), never release one. */
-export function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
+/** The awaiting release-side read: any failure, a damaged transcript included, is no messages. A damaged transcript's complete records can hold a MERGE written before a cut-off FIX_FIRST, so they may only block a merge (the seat read), never release one. */
+function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
   return readNamedReviewer(reader, input).catch((): readonly ReviewerMessage[] => []);
 }
 
