@@ -31,41 +31,40 @@ describe("localBasementSuite", () => {
 });
 
 describe("suiteRules", () => {
-  it("on basement calls basement-suite directly, never through ssh, and never mentions the Mac", () => {
-    const rules = suiteRules(true);
-
-    for (const rule of [rules.fixer, rules.reviewer]) {
-      expect(rule).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
-      expect(rule).toContain("Exit 75 means busy: retry every 5 minutes.");
-      expect(rule).toMatch(/dead:check.*dag:check/);
-      expect(rule).toContain("never through ssh");
-      expect(rule).not.toContain("ssh basement");
-      expect(rule).not.toContain("Mac");
-    }
-  });
-
-  it("on basement keeps the reviewer's checkout read-only and sends its targeted tests to basement-suite", () => {
-    const { reviewer } = suiteRules(true);
-
-    expect(reviewer).toContain("Never install dependencies in your checkout");
-    expect(reviewer).toContain("`basement-suite <repo> <branch> --agent <your name> -- <paths>`");
-    expect(reviewer).toContain("`head=`");
-    expect(reviewer).not.toContain("pnpm exec vitest");
-  });
-
-  it("on basement still lets a fixer run targeted tests in its own worktree", () => {
+  it("on basement sends the fixer's full checks to basement-suite directly, never through ssh, and never mentions the Mac", () => {
     const { fixer } = suiteRules(true);
 
+    expect(fixer).toContain("`basement-suite <repo> <branch> --agent <your name> --run <script>`");
+    expect(fixer).toContain("Exit 75 means busy: retry every 5 minutes.");
+    expect(fixer).toMatch(/dead:check.*dag:check/);
+    expect(fixer).toContain("never through ssh");
+    expect(fixer).not.toContain("ssh basement");
+    expect(fixer).not.toContain("Mac");
+  });
+
+  it("on basement still lets a fixer run its affected tests in its own worktree", () => {
+    const { fixer } = suiteRules(true);
+
+    expect(fixer).toContain("`pnpm test:affected` where the repo has that script");
     expect(fixer).toContain("`timeout 300 pnpm exec vitest run <paths>`");
     expect(fixer).not.toContain("Never install");
   });
 
-  it("elsewhere keeps the ssh form", () => {
-    const rules = suiteRules(false);
+  it("elsewhere names test:affected for the fixer and keeps the ssh form", () => {
+    const { fixer } = suiteRules(false);
 
-    for (const rule of [rules.fixer, rules.reviewer]) {
-      expect(rule).toContain("ssh basement basement-suite");
-      expect(rule).toContain("Never run a full `pnpm test` on the Mac.");
-    }
+    expect(fixer).toContain("`pnpm test:affected` where the repo has that script");
+    expect(fixer).toContain("ssh basement basement-suite");
+    expect(fixer).toContain("Never run a full `pnpm test` on the Mac.");
+  });
+
+  it.each([true, false])("tells the reviewer to run no tests and cite the CI check-runs at its head (basement %s)", (onBasement) => {
+    const { reviewer } = suiteRules(onBasement);
+
+    expect(reviewer).toContain("Run no tests, builds, typecheck or lint, and install nothing");
+    expect(reviewer).toContain("`gh api repos/<repo>/commits/<head>/check-runs");
+    expect(reviewer).toContain("Cite each check-run in your review by name and conclusion.");
+    expect(reviewer).toContain("A required check that is missing at this head, still running, or red (failure, cancelled or timed_out) is blocking");
+    expect(reviewer).not.toMatch(/basement-suite|vitest|ssh basement/);
   });
 });
