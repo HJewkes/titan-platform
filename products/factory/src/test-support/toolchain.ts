@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type RepoSlug } from "@titan-design/github";
 import { TOOLCHAIN_CONSUMERS } from "../workflows/toolchain-fanout.js";
 
-export const CANONICAL_REPO: RepoSlug = "HJewkes/titan-platform";
+const CANONICAL_REPO: RepoSlug = "HJewkes/titan-platform";
 export const DRIFTED: RepoSlug = "HJewkes/codewatch";
 export const ADOPTION_BRANCH = "toolchain/node-24.21.0-pnpm-10.28.1";
 
