@@ -87,11 +87,15 @@ describe("reviewerBrief", () => {
     expect(reviewerBrief(target)).not.toMatch(/dir="\$TMPDIR|-C "\/tmp/);
   });
 
-  it("keeps the full suite off the Mac", () => {
+  it("by default runs no tests and judges the CI check-runs at the reviewed head", () => {
     const brief = reviewerBrief(target);
 
-    expect(brief).toContain("ssh basement basement-suite");
-    expect(brief).toContain("Never run a full `pnpm test` on the Mac.");
+    expect(brief).toContain("Run no tests, builds, typecheck or lint, and install nothing");
+    expect(brief).toContain("`gh api repos/<repo>/commits/<head>/check-runs --jq '.check_runs[] | [.name, .status, .conclusion] | @tsv'`");
+    expect(brief).toContain("`gh pr checks <pr> --repo <repo> --required`");
+    expect(brief).toContain("Cite each check-run in your review by name and conclusion.");
+    expect(brief).toContain("A required check that is missing at this head, still running, or red (failure, cancelled or timed_out) is blocking: give FIX_FIRST and name it.");
+    expect(brief).not.toMatch(/basement-suite|vitest/);
   });
 
   it("carries the test rule it is given, so a reviewer on basement never ssh-es to itself", () => {
