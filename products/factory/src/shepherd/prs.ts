@@ -7,7 +7,7 @@ import type { CachedRuns, PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { Phase } from "./step-phase.js";
 import type { Registration } from "./store.js";
 import { rowOf, rowsWithRuns, runFinished, type RowWithRun } from "./watch-rows.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 
 /** How far back a merge Shepherd made is still listed. */
 export const MERGED_WINDOW_MS = 24 * 60 * 60_000;

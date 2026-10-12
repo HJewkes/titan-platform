@@ -6,7 +6,7 @@ import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
 import { parseSinceOption } from "./digest/command.js";
 import { gateStats, type GateStatsRow } from "./shepherd/gate-stats.js";
-import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
+import { SHEPHERD_WORKFLOW } from "./shepherd/services.js";
 import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
