@@ -1707,11 +1707,6 @@
       "count": 1
     }
   },
-  "packages/review-panel/src/reviewer-brief.test.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 1
-    }
-  },
   "packages/rpc-client/src/client/canonical-key.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
