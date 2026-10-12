@@ -141,8 +141,8 @@ async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: 
   return { messages: messages.filter(owned), failures };
 }
 
-/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, and blocks the head too. */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string } | { kind: "clear"; merged?: string };
+/** `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT (`wait`), and blocks the head too. */
+export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true } | { kind: "clear"; merged?: string };
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -201,20 +201,53 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
     const read = await readReviewer(reader, target, rows.filter((row) => row.name === name));
     const newest = newestAtHead(target, read.messages);
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
-    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished` };
+    if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true };
     if (newest?.verdict === "MERGE") merged ??= name;
     failed ??= failedRead(name, target, read, warn);
   }
   return failed ?? { kind: "clear", ...(merged !== undefined && { merged }) };
 }
 
-/** A MERGE stands only while the seat check is clear at the same head. A seat's FIX_FIRST over it is a G10 disagreement, recorded on the result. */
-export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now): Promise<AwaitVerdictResult> {
-  if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
-  const check = await seatFixFirst(roster, reader, target, warn);
-  if (check.kind === "clear") return result;
-  return check.kind === "verdict" ? { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) } : check;
+export type SeatWaitTiming = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs" | "timeoutMs">;
+
+/** How long Shepherd's own MERGE waits on a seat WAIT, and the step's signal that ends the wait early. */
+export interface SeatWait {
+  timing: SeatWaitTiming;
+  signal: AbortSignal;
 }
+
+type OwnMerge = Extract<AwaitVerdictResult, { verdict: "MERGE" }>;
+
+/** Shepherd's own MERGE that a seat WAIT still held when the seat wait ran out; the next round re-checks the seat against it instead of reviewing again. */
+export interface SeatHeldNone {
+  kind: "none";
+  reason: string;
+  seatHeld: OwnMerge;
+}
+
+/** Re-reads the seat check while it answers WAIT, so a seat waiting on CI settles into its verdict; the deadline returns the standing WAIT. */
+export async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
+  const clock = deadline(timing);
+  for (;;) {
+    const check = await seatFixFirst(roster, reader, target, warn);
+    if (check.kind !== "none" || !check.wait || clock.expired()) return check;
+    await clock.sleep(timing.pollMs, signal);
+  }
+}
+
+/**
+ * A MERGE stands only while the seat check is clear at the same head. A seat's FIX_FIRST over it is a G10 disagreement,
+ * recorded on the result. With `seatWait`, a seat WAIT is waited out, and one that outlasts it holds the MERGE as `seatHeld`.
+ */
+export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
+  if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
+  const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
+  if (check.kind === "clear") return result;
+  if (check.kind === "verdict") return { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) };
+  return seatWait && check.wait ? held(check.reason, result) : { kind: "none", reason: check.reason };
+}
+
+const held = (reason: string, seatHeld: OwnMerge): SeatHeldNone => ({ kind: "none", reason, seatHeld });
 
 const disagreement = (head: string, shepherd: "MERGE" | "FIX_FIRST", other: string, now: () => number): Omit<OwnerOverride, "trigger"> & { trigger: "g10-disagree" } => ({ trigger: "g10-disagree", head, shepherd, other, at: now() });
 
@@ -237,15 +270,16 @@ async function withAuthorProfile(raw: unknown, result: AwaitVerdictResult, roste
   return profile === undefined ? result : { ...result, reviewerProfile: profile };
 }
 
-/** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. */
-export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now): VerdictStep {
+/** Inside the step, so the replay reads the recorded outcome; with no dispatch wired there is no roster to read seat reviewers from. With `seatWaitTiming`, a seat WAIT over the MERGE is waited out under the step's signal. */
+export function seatVetoed(wiring: ReviewWiring | undefined, body: VerdictStep, now: () => number = Date.now, seatWaitTiming?: SeatWaitTiming): VerdictStep {
   return async (raw, signal) => {
     const result = await body(raw, signal);
     const dispatch = wiring?.dispatch;
     if (!dispatch) return result;
     const { repo, pr, head } = raw as ReviewTarget;
     const roster = () => dispatch.roster();
-    const vetoed = await unlessSeatFixFirst(roster, wiring.reader, { repo, pr, head }, result, undefined, now);
+    const seatWait = seatWaitTiming && { timing: seatWaitTiming, signal };
+    const vetoed = await unlessSeatFixFirst(roster, wiring.reader, { repo, pr, head }, result, undefined, now, seatWait);
     return withAuthorProfile(raw, bounded(vetoed === result ? await seatMergeOverFixFirst(roster, wiring.reader, { repo, pr, head }, result, now) : vetoed), roster);
   };
 }

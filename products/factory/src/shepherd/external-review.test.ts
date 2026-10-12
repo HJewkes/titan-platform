@@ -319,6 +319,71 @@ describe("unlessSeatFixFirst", () => {
   });
 });
 
+const SEAT_POLL_MS = 1_000;
+const SEAT_BOUND_MS = 30 * SEAT_POLL_MS;
+
+/** A clock that each sleep advances, and a reader whose seat says the next verdict in `answers` on every read. */
+function seatSaying(...answers: string[]) {
+  let clock = 0;
+  let reads = 0;
+  const reader: ReviewerReader = {
+    read: async (input) => {
+      const answer = answers[Math.min(reads, answers.length - 1)]!;
+      reads += 1;
+      return input.reviewerAgentId === SEAT.agentId ? [said(SEAT, verdictAt(answer), 5 + reads)] : [];
+    },
+  };
+  const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS };
+  return { reader, seatWait: { timing, signal: new AbortController().signal }, reads: () => reads };
+}
+
+describe("Shepherd's MERGE meeting a seat WAIT", () => {
+  it("waits for the seat's MERGE and lets the own MERGE stand", async () => {
+    const seat = seatSaying("WAIT", "WAIT", "MERGE");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(seat.reads()).toBe(3);
+  });
+
+  it("is a G10 disagreement when the seat answers FIX_FIRST after its WAIT", async () => {
+    const seat = seatSaying("WAIT", "FIX_FIRST");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, () => 91, seat.seatWait);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId }, ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 91 } });
+  });
+
+  it("holds the own MERGE as seatHeld when the WAIT outlasts the bound", async () => {
+    const seat = seatSaying("WAIT");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seatHeld: shepherdMerge });
+    expect(seat.reads()).toBe(SEAT_BOUND_MS / SEAT_POLL_MS + 1);
+  });
+
+  it("vetoes at once with no seat-wait timing, as before", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT") });
+    expect(seat.reads()).toBe(1);
+  });
+
+  it("blocks with the failed read's reason, not seatHeld, when a read fails during the wait", async () => {
+    const seat = seatSaying("WAIT");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(new Error("broker down")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read") });
+  });
+});
+
 describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
   const POSTSCRIPT = `A background search timed out. The verdict stands.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
   const textOf = (result: unknown) => (result as { text: string }).text;
@@ -359,6 +424,15 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
     expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+  });
+
+  it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+
+    const step = seatVetoed({ ...wiring(SEAT)!, reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
+
+    expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
+    expect(seat.reads()).toBe(2);
   });
 });
 
