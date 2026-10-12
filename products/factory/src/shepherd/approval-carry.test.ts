@@ -27,7 +27,7 @@ interface Rig {
 }
 
 interface RigOptions {
-  kind?: string;
+  kind?: string | null;
   remerge?: RemergeResult;
   fix?: FixCarryResult;
   own?: OwnMergeUpResult;
@@ -185,7 +185,7 @@ describe("an approve-merge answer following the head", () => {
   });
 
   it.each(["unknown", "none"])("never follows a %s run through the own merge-up rule", async (kind) => {
-    const r = rig({ kind: kind === "none" ? (undefined as unknown as string) : kind, own: OWN, remerge: RESOLVED });
+    const r = rig({ kind: kind === "none" ? null : kind, own: OWN, remerge: RESOLVED });
 
     await r.ask("approve-merge", landPrompt(APPROVED));
     await r.ask("approve-merge:1", landPrompt(MERGED_UP));

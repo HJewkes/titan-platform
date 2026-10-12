@@ -37,7 +37,7 @@ export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feat
  * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
  * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`).
  */
-export const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
+const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
 
 export interface CarryTarget {
   repo: RepoSlug;
