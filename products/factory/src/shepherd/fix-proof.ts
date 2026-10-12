@@ -12,8 +12,11 @@ import type { Registration, ShepherdStoreRef } from "./store.js";
 export const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
 export const FIX_PROOF_CHECK = "fix-proof";
-/** Above the fix-proof job's own 20-minute timeout, so a job that runs to its limit is still read. */
-const DEFAULT_FIX_PROOF_WAIT_MS = 25 * 60_000;
+/**
+ * Above the three-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
+ * queue gaps. A judge that runs to its limit is still read.
+ */
+const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
 /** A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it. */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
 const DEFAULT_POLL_MS = 30_000;
