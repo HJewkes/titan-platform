@@ -70,7 +70,7 @@ describe("sweepReviewCheckouts", () => {
     const removed = await sweepReviewCheckouts({
       root,
       now: () => NOW,
-      list: async () => ["review-9-dddddddddddd", "review-3-cccccccccccc"],
+      list: async (dir) => (dir === root ? ["review-9-dddddddddddd", "review-3-cccccccccccc"] : []),
       onError: (p) => errors.push(p),
     });
 
@@ -100,7 +100,7 @@ describe("sweepReviewCheckouts", () => {
     const removed = await sweepReviewCheckouts({
       root,
       now: () => NOW,
-      list: async () => ["review-12-0123456789ab", "review-14-0123456789ac"],
+      list: async (dir) => (dir === root ? ["review-12-0123456789ab", "review-14-0123456789ac"] : []),
       remove: async (path) => {
         if (path === bad) throw failure;
         rmSync(path, { recursive: true, force: true });
@@ -110,6 +110,17 @@ describe("sweepReviewCheckouts", () => {
 
     expect(errors).toEqual([[bad, failure]]);
     expect(removed).toEqual([good]);
+  });
+
+  it("removes an old checkout a panel member made under its shape's dir, and keeps a fresh one there", async () => {
+    mkdirSync(join(root, "adversary"));
+    const old = dir("adversary/review-7-abcdef123456", REVIEW_CHECKOUT_MAX_AGE_MS + HOUR);
+    const fresh = dir("adversary/review-8-abcdef123456", HOUR);
+
+    const removed = await sweepReviewCheckouts({ root, now: () => NOW });
+
+    expect(removed).toEqual([old]);
+    expect(existsSync(fresh)).toBe(true);
   });
 
   it("keeps a plain file with a valid review name", async () => {
