@@ -668,7 +668,7 @@ describe("serve's head-moved sweep", () => {
     await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }), { timeout: 2_000 });
     expect(reviewed).toEqual([REVIEWED, PUSHED]);
     const ciWaits = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("ci-wait"));
-    expect(ciWaits.map((result) => [result.stepId, (result.data as { result: { headSha: string } }).result.headSha])).toContainEqual(["ci-wait:r1:0", PUSHED]);
+    expect(ciWaits.map((result) => [result.stepId, result.output])).toContainEqual(["ci-wait:r1:0", expect.stringContaining(`"headSha":"${PUSHED}"`)]);
   });
 });
 
