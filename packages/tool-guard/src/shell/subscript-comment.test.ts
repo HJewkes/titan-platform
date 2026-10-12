@@ -4,6 +4,8 @@ import { nodeContext } from "../context.js";
 import { decide } from "../decide.js";
 import type { HookPort } from "../hook.js";
 import { handle } from "../hook.js";
+import { extractCommands } from "./commands.js";
+import { ParseError } from "./lexer.js";
 
 const HOME = "/home/you";
 const noFs: ReadFs = {
@@ -63,12 +65,7 @@ describe("a subscript bash may join but the guard splits", () => {
     ["inside a subshell, a heredoc opener", "(a[ <<E ]=x\ngit push origin HEAD:main\nE\n)"],
     ["inside a function body", "f() { a[ # ]=x; git push origin HEAD:main; }; f"],
     ["inside a function keyword body", "function f { a[ # ]=x; git push origin HEAD:main; }; f"],
-    ["after ((, a } inside backquotes before their close", "declare -A a; ((1)); a[ `[]}]` # ]=x; echo HIDDEN"],
-    ["with no prefix, a } inside backquotes before their close", "a[ `[]}]` # ]; echo HIDDEN"],
-    ["after a redirect, a } inside backquotes before their close", "2>/dev/null a[ `[]}]` # ]=x; echo HIDDEN"],
-    ["in a subshell, a } inside backquotes before their close", "(a[ `[]}]` # ]=x; echo HIDDEN)"],
-    ["a } inside backquotes before a heredoc opener", "a[ `[]}]` <<E ]=1\necho HIDDEN\nE"],
-    ["in an argument position","echo a[ # git push origin HEAD:main ]"],
+    ["in an argument position", "echo a[ # git push origin HEAD:main ]"],
     ["after ((, a ${ with an unbalanced [", "((1)); a[ ${x:-[} ]=1 # ]; git push origin HEAD:main"],
     ["after ((, a ${ with a bare { inside", "((1)); a[ ${x:-{[} # ]; git push origin HEAD:main"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {
@@ -94,5 +91,34 @@ describe("a subscript bash may join but the guard splits", () => {
     ["a test then a spaced subscript argument", "[[ -n $x ]]; echo a[ $x ]"],
   ])("passes %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBeNull();
+  });
+});
+
+/** Bash runs `echo HIDDEN` in each; the guard must refuse the line or read that command, never hide it. */
+function refusesOrShowsHidden(command: string): boolean {
+  try {
+    return extractCommands(command).some((c) => c.name === "echo" && c.args[0]?.value === "HIDDEN");
+  } catch (error) {
+    return error instanceof ParseError;
+  }
+}
+
+describe("backquote spans in a subscript bash may join", () => {
+  it.each([
+    ["after ((, a } inside backquotes before their close", "declare -A a; ((1)); a[ `[]}]` # ]=x; echo HIDDEN"],
+    ["with no prefix, a } inside backquotes before their close", "a[ `[]}]` # ]; echo HIDDEN"],
+    ["after a redirect, a } inside backquotes before their close", "2>/dev/null a[ `[]}]` # ]=x; echo HIDDEN"],
+    ["in a subshell, a } inside backquotes before their close", "(a[ `[]}]` # ]=x; echo HIDDEN)"],
+    ["a } inside backquotes before a heredoc opener", "a[ `[]}]` <<E ]=1\necho HIDDEN\nE"],
+    ["with no prefix, a ] in a second adjacent backquote", "a[ `[]``]` # ]; echo HIDDEN"],
+    ["after ((, a ] in a second adjacent backquote", "((1)); a[ `[]``]` # ]=x; echo HIDDEN"],
+    ["after a redirect, a ] in a second adjacent backquote", "2>/dev/null a[ `[]``]` # ]=x; echo HIDDEN"],
+    ["in a subshell, a ] in a second adjacent backquote", "(a[ `[]``]` # ]=x; echo HIDDEN)"],
+    ["a ] in a second adjacent backquote before a heredoc opener", "a[ `[]``]` <<E ]=1\necho HIDDEN\nE"],
+    ["after [[ ]], a ] in a second adjacent backquote", "[[ 1 ]]; a[ `[]``]` # ]; echo HIDDEN"],
+    ["after &&, a ] in a second adjacent backquote", "true && a[ `[]``]` # ]; echo HIDDEN"],
+    ["after a heredoc, a ] in a second adjacent backquote", "cat <<'E' >/dev/null\n`x`\nE\na[ `[]``]` # ]; echo HIDDEN"],
+  ])("refuses or shows the command %s", (_scenario, command) => {
+    expect(refusesOrShowsHidden(command)).toBe(true);
   });
 });

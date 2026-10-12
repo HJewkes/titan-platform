@@ -163,9 +163,15 @@ function matchingBracket(src: string, open: number, scan: SourceScan): number {
   const pending: number[] = [];
   let lastUnsure = -1;
   for (let j = open; j < src.length; j++) {
-    const end = skipQuoted(src, j, scan.spans);
+    let end = skipQuoted(src, j, scan.spans);
     if (end === -1) break;
-    if (end === j && opensUnsureSpan(src, j) && !selfContainedSpan(src, j)) lastUnsure = j;
+    if (end === j && opensUnsureSpan(src, j)) {
+      end = selfContainedEnd(src, j);
+      if (end === -1) {
+        lastUnsure = j;
+        end = j;
+      }
+    }
     const c = end === j ? src[j] : "";
     if (c === "[") pending.push(j);
     const paired = c === "]" ? pending.pop() : undefined;
@@ -201,30 +207,30 @@ function opensUnsureSpan(src: string, j: number): boolean {
 const SPAN_MOVERS = "'\"\\`(){\n";
 
 /**
- * Whether the unsure `${ }` or backquote span at `j` holds only text whose end bash finds as this does, with its own
- * brackets balanced, so reading it one character at a time pairs the brackets around it as bash's skip does: `${`
- * closes at the first `}` that no nested `${` opened, and a backquote at the next one. A `$( )` may hold a `case`
- * whose `)` moves its end, so it is never self-contained, nor is a funsub (`${ `, `${⏎`, `${|`).
+ * Index of the last character of the unsure `${ }` or backquote span at `j` when it holds only text whose end bash
+ * finds as this does, with its own brackets balanced, so skipping it whole pairs the brackets around it as bash's
+ * skip does; -1 otherwise. `${` closes at the first `}` that no nested `${` opened, and a backquote at the next one.
+ * A `$( )` may hold a `case` whose `)` moves its end, so it is never self-contained, nor is a funsub (`${ `, `${⏎`, `${|`).
  */
-function selfContainedSpan(src: string, j: number): boolean {
+function selfContainedEnd(src: string, j: number): number {
   const tick = src[j] === "`";
   const from = tick ? j + 1 : joinedDollar(src, j) + 2;
-  if (!tick && (src[from - 1] !== "{" || /[\s|]/.test(src[from] ?? ""))) return false;
+  if (!tick && (src[from - 1] !== "{" || /[\s|]/.test(src[from] ?? ""))) return -1;
   let depth = 1;
   let brackets = 0;
   for (let k = from; k < src.length; k++) {
     const c = src.charAt(k);
-    if (tick && c === "`") return brackets === 0;
-    if (SPAN_MOVERS.includes(c) || (tick && c === "$")) return false;
+    if (tick && c === "`") return brackets === 0 ? k : -1;
+    if (SPAN_MOVERS.includes(c) || (tick && c === "$")) return -1;
     if (c === "$" && src[k + 1] === "{") {
       depth++;
       k++;
     }
     if (c === "[") brackets++;
-    if (c === "]" && --brackets < 0) return false;
-    if (!tick && c === "}" && --depth === 0) return brackets === 0;
+    if (c === "]" && --brackets < 0) return -1;
+    if (!tick && c === "}" && --depth === 0) return brackets === 0 ? k : -1;
   }
-  return false;
+  return -1;
 }
 
 /** Skips the `$'…'`, `$( )` or `${ }` the shared table finds after the `$` at `j`; a `$[` is left to the bracket count, which nests it. */
