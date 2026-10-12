@@ -134,3 +134,29 @@ describe("backquote spans in a subscript bash may join", () => {
     expect(refusesOrShowsHidden(command)).toBe(true);
   });
 });
+
+/** Past this a hook timeout would let the command through; reading each span opener once takes milliseconds. */
+const BUDGET_MS = 1000;
+
+async function timedScriptDecision(script: string): Promise<{ decision: string | null; ms: number }> {
+  const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
+  const scriptPort: HookPort = { context, now: () => new Date(0), loadDecide: async () => decide };
+  const input = JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: `${HOME}/app`, tool_input: { command: "bash a.sh; git push origin HEAD:main" } });
+  const start = performance.now();
+  const { stdout } = await handle(input, { PATH: "/usr/bin" }, scriptPort);
+  return { decision: stdout.includes('"permissionDecision":"deny"') ? "deny" : stdout, ms: performance.now() - start };
+}
+
+describe("a subscript holding many span openers", () => {
+  it.each([
+    ["$${ openers, each a bare { to bash", `echo a[ ${"$${x[".repeat(12_800)} ]\n`],
+    ["nested ${ openers", `echo a[ ${"${x[".repeat(16_000)} ]\n`],
+    ["closed ${ spans", `echo a[ ${"${x[0]}".repeat(8_000)} ]\n`],
+    ["backquote spans", `echo a[ ${"`[]`".repeat(16_000)} ]\n`],
+  ])("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, script) => {
+    const { decision, ms } = await timedScriptDecision(script);
+
+    expect(decision).toBe("deny");
+    expect(ms).toBeLessThan(BUDGET_MS);
+  });
+});
