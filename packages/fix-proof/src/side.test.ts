@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { GIT_SAFETY } from "./context.js";
-import { spawnExec, type Exec } from "./exec.js";
+import { spawnExec, type Exec, type ExecResult } from "./exec.js";
 import { FIXED, makeRepo, REAL_TEST, removeRepos } from "./repo.test-helpers.js";
 import { execSide } from "./side.js";
 import { decodeReport } from "./transport.js";
@@ -14,6 +14,35 @@ function outDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fix-proof-side-"));
   outs.push(dir);
   return dir;
+}
+
+interface Call {
+  file: string;
+  args: readonly string[];
+}
+
+const isSandboxed = (call: Call) => call.file === "sudo" && call.args.includes("setpriv");
+
+/**
+ * Records every call and stands in for sudo without root: a sandboxed call runs the command after setpriv's `--` as
+ * this user, and any other sudo call succeeds unless failing says otherwise. after runs once a sandboxed call exits.
+ */
+function sudoStub(failing: (args: readonly string[]) => boolean = () => false, after: (args: readonly string[]) => void = () => undefined) {
+  const calls: Call[] = [];
+  const exec: Exec = async (file, args, options): Promise<ExecResult> => {
+    calls.push({ file, args });
+    if (file !== "sudo") return spawnExec(file, args, options);
+    if (!args.includes("setpriv")) return { status: failing(args) ? 1 : 0, stdout: "", stderr: "" };
+    const command = args.slice(args.indexOf("--", args.indexOf("setpriv")) + 1);
+    const result = await spawnExec(command[0] ?? "", command.slice(1), options);
+    after(args);
+    return result;
+  };
+  return { calls, exec };
+}
+
+function readReports(out: string, names: readonly string[]) {
+  return names.map((name) => decodeReport(fs.readFileSync(path.join(out, `${name}.report`), "utf-8")));
 }
 
 afterEach(() => {
@@ -83,5 +112,71 @@ describe("execSide", { timeout: 120_000 }, () => {
 
     expect(calls.map((args) => args.find((arg) => !arg.startsWith("-")))).toEqual(expect.arrayContaining(["worktree", "checkout"]));
     calls.forEach((args) => expect(args.slice(0, GIT_SAFETY.length)).toEqual([...GIT_SAFETY]));
+  });
+
+  it("base side with a sandbox user runs every vitest call through the sandbox and chowns the tree first", async () => {
+    const { calls, exec } = sudoStub();
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox", budgetMs: 120_000 });
+
+    const chownTree = calls.findIndex((call) => call.file === "sudo" && call.args.includes("find"));
+    const vitest = calls.flatMap((call, index) => (isSandboxed(call) ? [index] : []));
+    expect(chownTree).toBeGreaterThanOrEqual(0);
+    expect(vitest).toHaveLength(2);
+    expect(chownTree).toBeLessThan(vitest[0] ?? -1);
+    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+    expect(calls.filter((call) => call.file === "sudo").at(-1)?.args.slice(0, 4)).toEqual(["-n", "--", "chown", "-R"]);
+    const seconds = Number(calls[vitest[0] ?? 0]?.args[5]);
+    expect(seconds).toBeGreaterThan(60);
+    expect(seconds).toBeLessThanOrEqual(120);
+    const reports = readReports(out, ["base", "base-rerun"]);
+    reports.forEach((report) => expect(report.ok && report.report.testResults).toMatchObject([{ name: "src/math.test.ts", status: "failed" }]));
+  });
+
+  it("sandbox setup failure writes error markers, and vitest never runs unsandboxed", async () => {
+    const { calls, exec } = sudoStub((args) => args.includes("find"));
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox" });
+
+    readReports(out, ["base", "base-rerun"]).forEach((report) =>
+      expect(report).toEqual({ ok: false, error: expect.stringMatching(/^base: sandbox setup failed/), reported: true }),
+    );
+    expect(calls.some(isSandboxed)).toBe(false);
+    expect(calls.filter((call) => call.file === "sh").map((call) => call.args[1])).not.toContainEqual(expect.stringContaining("vitest"));
+  });
+
+  it("a symlinked vitest output is not read", async () => {
+    const forged = path.join(outDir(), "forged.json");
+    fs.writeFileSync(forged, JSON.stringify({ testResults: [] }));
+    const { exec } = sudoStub(undefined, (args) => {
+      const output = args[args.indexOf("--outputFile") + 1] ?? "";
+      fs.rmSync(output, { force: true });
+      fs.symlinkSync(forged, output);
+    });
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "base", out, exec, sandboxUser: "fix-proof-sandbox" });
+
+    expect(readReports(out, ["base"])).toEqual([{ ok: false, error: expect.stringMatching(/^base: vitest wrote no report/), reported: true }]);
+  });
+
+  it("head side ignores the sandbox user", async () => {
+    const { calls, exec } = sudoStub();
+    const repo = makeRepo();
+    const head = repo.commit({ "src/math.ts": FIXED, "src/math.test.ts": REAL_TEST });
+    const out = outDir();
+
+    await execSide({ repo: repo.dir, base: repo.base, head, side: "head", out, exec, sandboxUser: "fix-proof-sandbox" });
+
+    expect(calls.some((call) => call.file === "sudo")).toBe(false);
+    expect(readReports(out, ["head"])[0]?.ok).toBe(true);
   });
 });

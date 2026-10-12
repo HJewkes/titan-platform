@@ -36,7 +36,7 @@ The bin has three subcommands. In CI each runs in its own job, so code from the 
 runs in the job that prints the verdict.
 
 ```sh
-fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
+fix-proof exec --side base|head --out <dir> [--sandbox-user <name>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]
 ```
@@ -58,6 +58,25 @@ when it succeeds.
    gzipped and base64-encoded: no space or newline, so it fits a job output and can never form a
    `fix-proof/v1 ` log line. A failed git call, install or build, a missing vitest report or the
    `--budget-ms` deadline (default 18 minutes) writes an error marker in place of each report.
+
+**The base-side sandbox.** The base side runs head test code on the runner. Without a sandbox, a
+`setsid` child of a head test outlives vitest under the job's own uid and can rewrite the base
+reports before they are passed on. `--sandbox-user <name>` closes that:
+
+- The tree's directories and a fresh output directory per run are handed to that user. Files
+  stay runner-owned, because pnpm hardlinks `node_modules` files to its store.
+- Each vitest run is `sudo -n -- timeout -k 5 <budget> unshare --pid --fork --kill-child
+  --mount-proc -- setpriv --reuid <name> --regid <name> --init-groups --no-new-privs
+  --bounding-set=-all -- env -i PATH=… HOME=<tree> CI=1 sh -c <command>`. Every process the
+  tests start dies when the namespace's init exits, and none can regain root.
+- The vitest output is read only as a regular file, never through a symlink.
+- Everything is handed back to the runner afterwards so cleanup can remove it.
+
+A failed `sudo` setup writes an error marker for both base reports; vitest never falls back to an
+unsandboxed run. The head side ignores the flag. The caller creates the user, which must not be
+able to `sudo`. Code running inside the sandbox during the
+run can still rewrite that run's own vitest output, as the test itself could by failing on
+purpose; the sandbox removes the survivors, not the test code's own reach.
 
 **`judge`** reads the report files and prints one `fix-proof/v1` line.
 
