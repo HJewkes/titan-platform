@@ -1,8 +1,9 @@
 import type { RepoSlug } from "@titan-design/github";
-import type { Db, Migration } from "@titan-design/store-sqlite";
+import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
+import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { EffectivePolicySchema, RegistrationRefused, repeatedPolicy, type EffectivePolicy } from "./policy.js";
@@ -67,35 +68,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-const TABLE_DDL = `
-  CREATE TABLE shepherd_registration (
-    repo        TEXT NOT NULL,
-    pr          INTEGER,
-    branch      TEXT,
-    run_id      TEXT NOT NULL UNIQUE,
-    task        TEXT NOT NULL,
-    implementer TEXT NOT NULL,
-    reviewer    TEXT,
-    policy      TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    held        INTEGER NOT NULL DEFAULT 0,
-    hold_reason TEXT,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL,
-    CHECK (pr IS NOT NULL OR branch IS NOT NULL)
-  );
-  CREATE UNIQUE INDEX shepherd_registration_pr ON shepherd_registration (repo, pr) WHERE pr IS NOT NULL;
-  CREATE UNIQUE INDEX shepherd_registration_branch ON shepherd_registration (repo, branch);`;
-
-export function shepherdMigration(version = 4): Migration {
-  return { version, name: "factory:shepherd_registration", up: (db) => db.exec(TABLE_DDL) };
-}
-
-export function sliceMigration(version = 8): Migration {
-  return { version, name: "factory:shepherd_registration_slice", up: (db) => db.exec("ALTER TABLE shepherd_registration ADD COLUMN slice TEXT") };
-}
-
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, parkSettledMigration, reviewRequestMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, parkSettledMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -209,7 +182,7 @@ export class ShepherdStore implements HoldLookup {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
       if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
-      this.db.prepare("UPDATE shepherd_park_settled SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+      repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
@@ -324,14 +297,12 @@ export class ShepherdStore implements HoldLookup {
   }
 
   /** Records that the exit retry of a refused park settled; a repeat keeps the first row. */
-  settlePark(runId: string, headSha: string, agent: string, outcome: { parked: boolean; detail: string }): void {
-    this.db
-      .prepare("INSERT INTO shepherd_park_settled (run_id, head_sha, agent, parked, detail, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, head_sha, agent) DO NOTHING")
-      .run(runId, headSha, agent, outcome.parked ? 1 : 0, outcome.detail, this.stamp());
+  settlePark(runId: string, headSha: string, agent: string, outcome: ParkSettle): void {
+    settlePark(this.db, { runId, headSha, agent }, outcome, this.stamp());
   }
 
   parkSettled(runId: string, headSha: string, agent: string): boolean {
-    return this.db.prepare("SELECT 1 FROM shepherd_park_settled WHERE run_id = ? AND head_sha = ? AND agent = ?").get(runId, headSha, agent) !== undefined;
+    return parkSettled(this.db, { runId, headSha, agent });
   }
 
   /** Every author recorded for the run, earliest first, ties broken by agent id. */

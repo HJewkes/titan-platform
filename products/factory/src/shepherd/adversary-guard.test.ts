@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
-import { holdSlotsMigration } from "./store-migrations.js";
+import { holdSlotsMigration, parkSettledMigration } from "./store-migrations.js";
 import { adversaryGuard } from "./adversary-guard.js";
 import { accountLimitMigration } from "./account-store.js";
 import { shepherdEventMigration } from "./events.js";
@@ -156,7 +156,7 @@ describe("the merge guard failing closed on a g10-adversary run", () => {
   /** A bare run on PR 1, at `head`, whose probe answers by base branch and counts its calls. */
   function bare(head = MOVED, answer: (input: CarryInput) => CarryResult = () => FIX_PUSH) {
     const db = openDatabase(":memory:");
-    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19)]);
+    runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17), holdSlotsMigration(19), parkSettledMigration(21)]);
     const store = new ShepherdStore(db);
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: head });

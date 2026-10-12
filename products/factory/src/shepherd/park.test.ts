@@ -564,7 +564,7 @@ describe("a settled park refusal across serve restarts", () => {
       throw new DispatchError(`agent-chat refused agent park: Not parked: ${live ? LIVE(name) : DIRTY(name)}`);
     };
     const deps = {
-      store: { get: () => shepherd } as ShepherdStoreRef,
+      store: { get: () => shepherd, bind: () => () => undefined } satisfies ShepherdStoreRef,
       now: () => Date.now(),
       agentChatBin: "agent-chat",
       roster: createRosterReader(async () => []),
