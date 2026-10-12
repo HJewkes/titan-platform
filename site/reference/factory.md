@@ -110,6 +110,40 @@ be read exits 2 and names its path. A bad flag, config or seat book also exits 2
 charter 8 adds a hold class, add it to `HOLD_CLASSES` in `shepherd/hold-reason.ts` too, or
 holds of that class are listed as untyped.
 
+## Scorecard
+
+`scorecard` prints the factory scorecard, one row per metric, from ledgers only. It ports
+agent-chat's `scripts/seat/scorecard` and prints the same rows on the same data.
+
+```sh
+titan-factory scorecard --spec w41.yml
+titan-factory scorecard --spec w41.yml --since 2026-10-05 --json
+```
+
+```
+SCORECARD since 2026-10-03
+SCORECARD Register to merge: median 45.0 min (n=2) | source Shepherd ledger | baseline median 15.0 min
+...
+```
+
+- **Rows.** From the factory ledger: merges per day with no human step, task ready to merged,
+  register to merge, change failure rate, time main stays red, seat merge share, and approved
+  merges waiting over 60 minutes. From agent-chat's `events.db` and the seats'
+  `dispatch.jsonl`, through [`session-analytics`](/reference/session-analytics): first-pass
+  FIX_FIRST share, mechanical first-blocker share, coordinator spawns for milestone tasks, and
+  cost per merged PR.
+- **Spec.** `--spec <file>` is required, YAML or JSON. It holds `since` (the default window
+  start) and, for each row id (`merges`, `lead`, `register`, `cfr`, `recovery`, `rework`,
+  `mechanical`, `breakglass`, `queue`, `autonomy`, `cost`), a `baseline` and an optional
+  `target`. Dates and targets are program data, so none live in code.
+- **Window.** `--since` overrides the spec's start; `--until` (an ISO time) ends it, default now.
+- **Sources.** The ledger is `--db` as for every verb. `events.db` sits in `AGENT_CHAT_HOME`,
+  else `~/.agent-chat`. The journals are `AUTONOMY_ROOT/logs`, where `AUTONOMY_ROOT` defaults to
+  `ACTIVE_ROOT/claude-channels/sources/autonomy`. Task `created:` dates are read under
+  `ACTIVE_ROOT`. With both roots unset it exits 2.
+- **Not measured.** Every source opens read-only. A row whose source is absent or empty prints
+  `not measured`, never 0. A missing or invalid spec exits 2 and names the problem.
+
 ## What it deliberately does not do
 
 It does not create relay items, and it requests no agent except the Shepherd reviewer,

@@ -36,7 +36,7 @@ import { leaveTrain } from "./train.js";
 import { routeFor, type CloserStreak, type Escalated } from "./route-table.js";
 import { countRound, endedOutcome, type Routed } from "./routed.js";
 import { wakePhase, wakeRoutes } from "./wake.js";
-import { awaitedPast, conflictGate, type PrTarget, type WakeRun } from "./gates.js";
+import { awaitedPast, conflictGate, liveEscalation, type PrTarget, type WakeRun } from "./gates.js";
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
@@ -119,7 +119,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
     ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
-  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
+  const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
   const reviewing = reviewingContext(run);
   for (;;) {
     const outcome = await landRound(reviewing, run, options);
