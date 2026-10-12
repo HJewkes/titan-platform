@@ -121,11 +121,11 @@ describe("resumeAgent", () => {
   it("reports agent-chat's refusal as a plain DispatchError", async () => {
     const bin = fakeAgentChat(`echo 'Not resumed: impl-7 is live'\nexit 1\n`);
 
-    const refused = await resumeAgent(bin, "impl-7", "msg", 5_000).catch((e: unknown) => e);
+    const refused = resumeAgent(bin, "impl-7", "msg", 5_000);
 
-    expect(refused).toBeInstanceOf(DispatchError);
-    expect((refused as Error).message).toMatch(/Not resumed: impl-7 is live/);
-    expect(refused).not.toBeInstanceOf(BrokerUnavailableError);
+    await expect(refused).rejects.toThrow(/Not resumed: impl-7 is live/);
+    await expect(refused).rejects.toBeInstanceOf(DispatchError);
+    await expect(refused).rejects.not.toBeInstanceOf(BrokerUnavailableError);
   });
 
   it("leaves the caller's event loop free while the broker works", async () => {

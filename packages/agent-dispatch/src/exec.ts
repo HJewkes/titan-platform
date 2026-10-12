@@ -185,6 +185,8 @@ export function execSafeAsync(
         reject(error);
       }
     });
+    // A child may exit without reading its stdin; its exit status reports that, so EPIPE here is not a crash.
+    child.stdin?.on("error", () => undefined);
     // execFileSync closes the child's stdin; a child that reads it would otherwise wait forever.
     child.stdin?.end(input);
   });

@@ -134,6 +134,11 @@ describe("execSafeAsync", () => {
     expect(result.stdout).toBe("");
   });
 
+  it("resolves with the exit status when the child exits without reading a large input", async () => {
+    const result = await execSafeAsync("/bin/sh", ["-c", "exit 3"], minimalEnv(), 5_000, "x".repeat(4 * 1024 * 1024));
+    expect(result.status).toBe(3);
+  });
+
   it("runs the child in cwd when one is given", async () => {
     const result = await execSafeAsync("/bin/pwd", ["-P"], minimalEnv(), 5_000, undefined, dir);
     expect(result.stdout.trim()).toBe(realpathSync(dir));
