@@ -78,6 +78,17 @@ describe("findPrice", () => {
     expect(findPrice("claude-haiku-5-5[1m]", TS)).toMatchObject({ modelPrefix: "claude-haiku-5-5" });
   });
 
+  it("carries haiku 5.5's long-prompt tier above 100K prompt tokens at 5x", () => {
+    expect(findPrice("claude-haiku-5-5", TS)!.longPrompt).toEqual({
+      abovePromptTokens: 100_000,
+      input: 0.5,
+      cacheRead: 0.05,
+      cacheWrite5m: 0.625,
+      cacheWrite1h: 1,
+      output: 2.5,
+    });
+  });
+
   it("haiku 5.5 cache read is 0.1 of input", () => {
     const haiku = findPrice("claude-haiku-5-5", TS)!;
 
