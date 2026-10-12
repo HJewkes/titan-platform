@@ -813,7 +813,7 @@ Key exports:
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`
-- +73 more in the [reference page](/reference/review-panel)
+- +77 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
