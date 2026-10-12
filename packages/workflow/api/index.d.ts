@@ -592,8 +592,7 @@ declare class WorkflowRuntime {
     private readonly options;
     private readonly workflows;
     private readonly live;
-    /** Revision each run was left at when this runtime parked it with work it cannot finish; replaying it again only repeats the park. */
-    private readonly heldAt;
+    private readonly held;
     private readonly store;
     private readonly runtimeId;
     private readonly leaseMs;
@@ -612,8 +611,6 @@ declare class WorkflowRuntime {
     hydrate(options?: {
         exclude?: ReadonlySet<string>;
     }): Promise<string[]>;
-    /** A row someone else changed since this runtime parked it (revision moved) is worth another look. */
-    private stillHeld;
     private hydrateOne;
     private reconcile;
     private markRecovery;
