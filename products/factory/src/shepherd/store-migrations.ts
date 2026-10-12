@@ -1,4 +1,5 @@
-import type { Migration } from "@titan-design/store-sqlite";
+import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 const TP734_DDL = `
   ALTER TABLE shepherd_registration ADD COLUMN hold_reviewer TEXT;
@@ -45,6 +46,19 @@ const TP2239_DDL = `
 /** A hold kept under a run's `g10-adversary` hold, and the heads proven clean merge-ups of a head the seat released it at, per base branch. */
 export function holdSlotsMigration(version = 19): Migration {
   return { version, name: "factory:shepherd_hold_slots_vouch", up: (db) => db.exec(TP2239_DDL) };
+}
+
+const OWNER_HOLD_COLUMNS = ["owner_hold_reason", "owner_hold_at", "owner_hold_asked_at"];
+
+/** Adds only the columns a database lacks, so a store that already has them opens unchanged. */
+function addOwnerHoldColumns(db: Db): void {
+  const present = new Set(z.array(z.looseObject({ name: z.string() })).parse(db.prepare("PRAGMA table_info(shepherd_registration)").all()).map((column) => column.name));
+  for (const column of OWNER_HOLD_COLUMNS.filter((name) => !present.has(name))) db.exec(`ALTER TABLE shepherd_registration ADD COLUMN ${column} TEXT`);
+}
+
+/** An owner-asked hold's own slot: its reason, when it was placed, and when the owner was last asked about it. */
+export function ownerHoldMigration(version = 22): Migration {
+  return { version, name: "factory:shepherd_registration_owner_hold", up: addOwnerHoldColumns };
 }
 
 const LINEAGE_DDL = `
