@@ -181,15 +181,18 @@ function detailOf({ id, status, updatedAt, parsed }: LoadedRound): RoundDetail {
 
 const newestFirst = (a: RoundSummary, b: RoundSummary): number => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || a.id.localeCompare(b.id);
 
-/** A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it. */
-export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean }> {
+/**
+ * A missing rounds dir is no rounds yet; a symlinked round directory is skipped, as `isDirectory` is false for it.
+ * The dir is returned so an empty page can say where rounds are read from.
+ */
+export async function listRounds({ dir }: RoundsSource): Promise<{ rounds: RoundSummary[]; truncated: boolean; dir: string }> {
   const entries = await readdir(dir, { withFileTypes: true }).catch((error: unknown) => {
     if (errnoOf(error) === "ENOENT") return [];
     throw failure("the rounds dir could not be read", EXIT.UNAVAILABLE);
   });
   const ids = entries.filter((entry) => entry.isDirectory() && ROUND_ID.test(entry.name)).map((entry) => entry.name).sort();
   const loaded = await Promise.all(ids.slice(0, MAX_ROUNDS).map((id) => loadRound(dir, id)));
-  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS };
+  return { rounds: loaded.map(summaryOf).sort(newestFirst), truncated: ids.length > MAX_ROUNDS, dir };
 }
 
 export async function getRound({ dir }: RoundsSource, id: string): Promise<RoundDetail> {
@@ -203,7 +206,7 @@ export function roundsCommands(source: RoundsSource) {
       name: "rounds.list",
       description: "Every review round in the rounds dir, newest first: open or sent, and the schema's reason for any invalid one",
       args: z.object({}),
-      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean() }),
+      result: z.object({ rounds: z.array(roundSummary), truncated: z.boolean(), dir: z.string() }),
       run: () => listRounds(source),
     }),
     "rounds.get": readCommand({
