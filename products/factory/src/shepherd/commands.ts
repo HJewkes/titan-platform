@@ -8,7 +8,8 @@ import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
-import { HOLD_CLASSES, HoldReasonSchema, type HoldResult } from "./hold-reason.js";
+import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
+import { isOwnerHold } from "./owner-hold-rows.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { applyRegistrationHold } from "./registration-hold.js";
@@ -259,7 +260,10 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   },
 });
 
-const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(), actor: ActorArg });
+/** A reviewer's MERGE must never pass an owner-asked hold, so one that names a reviewer is an argument error, exit 65. */
+const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(), actor: ActorArg }).superRefine(({ reason, reviewer }, ctx) => {
+  if (reviewer !== undefined && isOwnerHold(reason)) ctx.addIssue({ code: "custom", path: ["reviewer"], message: `hold refused, nothing was held: an ${OWNER_HOLD_CLASS} hold waits for the owner alone, so it takes no --reviewer` });
+});
 
 const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
@@ -274,7 +278,8 @@ const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryC
   },
 });
 
-const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: z.enum(HOLD_CLASSES).optional() });
+/** An owner-asked hold is not a class `release` can name: only the owner's own release lifts it. */
+const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: ReleasableClassSchema.optional() });
 
 const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
