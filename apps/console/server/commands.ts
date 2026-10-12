@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CommandMapOf } from "@titan-design/registry";
 import { agentsCommands, type AgentsSource } from "./agents.js";
+import { approvalsCommands, type FactoryNeeds } from "./approvals.js";
 import type { ActiveWork } from "./active-work.js";
 import { graphCommands } from "./graph.js";
 import { inboxCommands, type InboxSource } from "./inbox.js";
@@ -27,6 +28,8 @@ export interface ConsoleSources {
   activeWork: ActiveWork;
   inbox: InboxSource;
   rounds: RoundsSource;
+  /** Optional so test sources need not build one; absent reads as a `factory:` gap in `approvals.flow`. */
+  factory?: FactoryNeeds;
   work?: WorkOptions;
 }
 
@@ -43,7 +46,7 @@ function upstreamsCommands(upstreams: readonly Upstream[]) {
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, work }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox, rounds, factory, work }: ConsoleSources) {
   return {
     ...upstreamsCommands(upstreams),
     ...agentsCommands(agents),
@@ -53,6 +56,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, inbox
     ...knowledgeCommands(activeWork, work),
     ...inboxCommands(inbox),
     ...roundsCommands(rounds),
+    ...approvalsCommands({ factory, rounds, inbox }),
     "work.portfolio": readCommand({
       name: "work.portfolio",
       description: "Every active-work initiative with its open-task rollup, note, source and session counts, newest activity and personal flag",
