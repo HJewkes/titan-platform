@@ -50,8 +50,8 @@ function scratch(): Scratch {
       try {
         return { ok: true, out: run(work, args) };
       } catch (error) {
-        const e = error as { stdout?: string; stderr?: string };
-        return { ok: false, out: `${e.stdout ?? ""}${e.stderr ?? ""}` };
+        const output = error instanceof Error && "stdout" in error ? `${String(error.stdout)}${String("stderr" in error ? error.stderr : "")}` : String(error);
+        return { ok: false, out: output };
       }
     },
     commitFile(file, text, message) {
