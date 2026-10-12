@@ -2,7 +2,7 @@
   "version": 1,
   "branches": {
     "main": {
-      "contexts": ["dag-check", "egress-scan", "hub-compose", "validate"]
+      "contexts": ["dag-check", "hub-compose", "validate"]
     }
   }
 }
