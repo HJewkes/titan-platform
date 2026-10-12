@@ -193,7 +193,7 @@ function escalatedReason(escalated: Escalated, headSha: string | undefined, verd
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
-function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
+export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
   const verdict = verdictFor(headSha);
   if (verdict?.kind !== "MERGE") return undefined;
   const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;
