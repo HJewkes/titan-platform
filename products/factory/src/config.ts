@@ -42,6 +42,8 @@ export const ReviewConfigSchema = z.strictObject({
   minFreeInodesPct: z.number().min(0).max(100).optional(),
   /** No reviewer starts while this many run; absent means 3. */
   maxConcurrent: z.number().int().positive().optional(),
+  /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
+  panel: z.enum(["off", "shadow", "on"]).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
