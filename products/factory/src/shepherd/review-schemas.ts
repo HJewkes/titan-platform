@@ -70,7 +70,14 @@ export const MergeEvidenceSchema = z.looseObject({
 
 const PanelMemberRead = z.looseObject({ shape: z.string(), profile: z.string(), blocking: z.boolean() });
 /** Recorded only under `review.panel` shadow or on; an intent recorded before the flag, or under `off`, has none. */
-const IntentPlanRead = { class: z.enum(["g10", "standard"]).optional(), touches: z.array(z.string()).optional(), plan: z.looseObject({ members: z.array(PanelMemberRead) }).optional() };
+/** `panel: "on"` and `panelReviewers` (each member's name but correctness's, by shape) are recorded only under `on`. */
+const IntentPlanRead = {
+  class: z.enum(["g10", "standard"]).optional(),
+  touches: z.array(z.string()).optional(),
+  plan: z.looseObject({ members: z.array(PanelMemberRead) }).optional(),
+  panel: z.literal("on").optional(),
+  panelReviewers: z.record(z.string(), z.string().min(1)).optional(),
+};
 const Intended = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("intent"), mode: z.string(), reviewer: z.string(), ...IntentPlanRead }), z.looseObject({ kind: z.literal("none") })]);
 const Dispatched = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("dispatched"), at: z.number(), startedAt: z.number().optional(), profile: z.string().optional(), ...Identity.shape }),

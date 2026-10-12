@@ -33,8 +33,8 @@ describe("shepherd phase step families", () => {
     expect(wakeRoutes(deps).map((route) => route.match)).toEqual(ids);
   });
 
-  it("pins sh-fix-proof, sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait, sh-review-request and sh-review-stop to review.ts, declared and routed there", () => {
-    const ids = ["sh-fix-proof", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop"];
+  it("pins sh-fix-proof, sh-review-intent, sh-review, sh-await-verdict, sh-late-verdict, sh-correct-verdict, sh-merge-evidence, sh-carry, sh-publish-review, sh-account-hold, sh-account-wait, sh-review-request, sh-review-stop and sh-review-panel to review.ts, declared and routed there", () => {
+    const ids = ["sh-fix-proof", "sh-review-intent", "sh-review", "sh-await-verdict", "sh-late-verdict", "sh-correct-verdict", "sh-merge-evidence", "sh-merge-evidence-gate", "sh-carry", "sh-publish-review", "sh-account-hold", "sh-account-wait", "sh-review-request", "sh-review-stop", "sh-review-panel"];
     expect(REVIEW_STEPS.map((step) => step.id)).toEqual(ids);
     expect(reviewRoutes(deps).map((route) => route.match)).toEqual(ids.filter((id) => id !== "sh-merge-evidence-gate"));
     expect(WAKE_STEPS.map((step) => step.id)).not.toContain("sh-review-intent");
@@ -45,5 +45,7 @@ describe("shepherd phase step families", () => {
 
     expect(runner.routeFor(`sh-review-intent:${target.headSha}`)?.match).toBe("sh-review-intent");
     expect(runner.routeFor(`sh-review:${target.headSha}`)?.match).toBe("sh-review");
+    expect(runner.routeFor(`sh-review:${target.headSha}:adversary`)?.match).toBe("sh-review");
+    expect(runner.routeFor(`sh-review-panel:${target.headSha}`)?.match).toBe("sh-review-panel");
   });
 });

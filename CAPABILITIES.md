@@ -1008,7 +1008,7 @@ Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
 - `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
-- +75 more in `products/evals/src/index.ts`
+- +88 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 

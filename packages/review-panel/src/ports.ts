@@ -32,6 +32,8 @@ export interface ReviewerFacts {
   g10Hold?: boolean;
   /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
   intentAt?: number;
+  /** The profile a panel member was planned at; when set it wins over the class the other facts pick. */
+  profile?: string;
 }
 
 /** One roster row, as the dispatch port reports it. */

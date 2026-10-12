@@ -3,6 +3,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type ReviewComment } from 
 import { parseVerdictBlock } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
+import { panelFindingsText } from "./review-panel-step.js";
 import { suiteRules } from "./suite-host.js";
 import { COMMENTS_MAX_CHARS, COMMENT_MAX_CHARS, LOG_TAIL_LINES, defectClassSection, describeWake, reviewCommentSection, type WakeFacts } from "./wake-brief.js";
 
@@ -266,6 +267,33 @@ describe("review wake brief: a verdict with no findings", () => {
 
     expect(reason).toContain(`Shepherd found no findings in the reviewer's verdict for head ${H1}.`);
     expect(reason).toContain(`step sh-await-verdict:${H1} of run ${RUN}`);
+  });
+});
+
+describe("review wake brief: a panel's FIX_FIRST", () => {
+  it("hands a structural fixer both members' findings and the panel's defect class", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const text = panelFindingsText({
+      outcome: "FIX_FIRST",
+      head: H1,
+      findings: [
+        { shape: "correctness", text: "1. The parser drops the last token.\n\nDefect class: off-by-one at the buffer end", blocking: true },
+        { shape: "adversary", text: "1. A crafted header skips the token check.", blocking: true },
+      ],
+      defectClass: "off-by-one at the buffer end",
+      dissent: ["correctness", "adversary"],
+      degraded: [],
+      satisfiesG10: false,
+    });
+    const input: WakeFacts = { kind: "review", repo: REPO, pr: pr.number, headSha: H1, payload: { text }, fixFirst: 2 };
+
+    const { reason, payload } = await describeWake(githubPort(fake.wire), input, pr);
+
+    expect(reason).toContain("The reviewer's defect class follows, then every blocking item verbatim in the full findings.");
+    expect(payload).toContain(dataFence("defect class", "Defect class: off-by-one at the buffer end"));
+    expect(payload).toContain("correctness (blocking):\n1. The parser drops the last token.");
+    expect(payload).toContain("adversary (blocking):\n1. A crafted header skips the token check.");
   });
 });
 
