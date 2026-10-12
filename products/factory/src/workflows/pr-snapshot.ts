@@ -84,12 +84,16 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
   };
 }
 
-/** Keeps the list's ETag, so the next read is a conditional GET, and the checks by head sha, which a write cannot change. */
+/**
+ * Keeps the list's ETag, so the next read is a conditional GET. Checks are kept but read again, because a re-run is a
+ * write that changes a head's runs; keeping them lets a re-run that settles differently still bump their version.
+ */
 function markStale(state: RepoState): void {
   state.generation += 1;
   state.listing = undefined;
   if (state.list) state.list.at = -Infinity;
   state.details.clear();
+  for (const checks of state.checks.values()) checks.at = -Infinity;
 }
 
 const tickReader = (tickMs: number | (() => number) = SNAPSHOT_TICK_MS): (() => number) => (typeof tickMs === "number" ? () => tickMs : tickMs);

@@ -83,7 +83,7 @@ function etagSpy() {
   return { fake, snapshot: prSnapshot(spied, { now: () => 0 }), sentEtags };
 }
 
-const restCalls =(fakes: Map<string, FakeGitHub>): number => [...fakes.values()].reduce((sum, fake) => sum + fake.calls.length, 0);
+const restCalls = (fakes: Map<string, FakeGitHub>): number => [...fakes.values()].reduce((sum, fake) => sum + fake.calls.length, 0);
 
 describe("PR snapshot", () => {
   it("serves 30 waiting runs in 5 repos for one simulated hour with under 600 REST calls", async () => {
@@ -202,21 +202,23 @@ describe("PR snapshot", () => {
     expect(fake.notModified).toBe(1);
   });
 
-  it("keeps the checks of an unchanged head across an invalidate but reads the PR again", async () => {
+  it("reads a re-run head's checks again after the invalidate that follows the re-run", async () => {
     const { fake, snapshot } = etagSpy();
     const sha = fakeSha("one");
     const pr = fake.addPr({ headSha: sha });
-    fake.setRuns(sha, [successRun("validate", 1)]);
+    fake.setRuns(sha, [successRun("validate", 1, "2026-01-01T00:00:00Z", "failure")]);
 
     await snapshot.getPr("o/r", pr.number);
     await snapshot.checkRuns("o/r", sha, allCompleted);
+    fake.setRuns(sha, [successRun("validate", 1)]);
     snapshot.invalidate("o/r");
     await snapshot.getPr("o/r", pr.number);
     const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
 
     expect(runs.map((run) => run.conclusion)).toEqual(["success"]);
-    expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "revalidateOpenPrs", "getPr"]);
+    expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "revalidateOpenPrs", "getPr", "listCheckRuns"]);
   });
+
 
   it("lists again after an invalidate that lands while a list read is in flight", async () => {
     const { fake, snapshot } = etagSpy();
