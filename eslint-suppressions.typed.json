@@ -2700,6 +2700,16 @@
       "count": 1
     }
   },
+  "products/factory/src/cli-shepherd-rpc.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli-shepherd.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
   "products/factory/src/cli-stats.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -2715,7 +2725,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
+      "count": 1
     }
   },
   "products/factory/src/coordinator-evidence-read.ts": {
@@ -2906,7 +2916,7 @@
   },
   "products/factory/src/serve.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/service-check.ts": {
