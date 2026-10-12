@@ -430,6 +430,39 @@ describe("titan-factory service deploy", () => {
     expect(machine.mutations().filter((call) => call.startsWith("launchctl kickstart"))).toHaveLength(1);
   });
 
+  it("verifies a deploy whose /health answers after 1.5 s with a per-request timeout of at least 5 s", async () => {
+    const machine = fakeMachine();
+    const health = machine.ports.healthWithin;
+    const timeouts: number[] = [];
+    machine.ports.healthWithin = async (port, timeoutMs) => {
+      timeouts.push(timeoutMs);
+      await machine.ports.sleep(1_500);
+      return health(port, timeoutMs);
+    };
+
+    const { code, err } = await deploy(machine);
+
+    expect(err).toBe("");
+    expect(code).toBe(0);
+    expect(machine.record()).toMatchObject({ outcome: "deployed", target: TIP });
+    expect(Math.min(...timeouts)).toBeGreaterThanOrEqual(5_000);
+  });
+
+  it("fails a dead port in the verify poll within ten probe timeouts plus sleeps", async () => {
+    const machine = fakeMachine({ silentProbes: 100 });
+    const health = machine.ports.healthWithin;
+    machine.ports.healthWithin = async (port, timeoutMs) => {
+      await machine.ports.sleep(timeoutMs);
+      return health(port, timeoutMs);
+    };
+
+    const { code } = await deploy(machine);
+
+    expect(code).toBe(1);
+    expect(machine.record()).toMatchObject({ outcome: "rolled-back" });
+    expect(machine.elapsed()).toBeLessThan(10 * (5_000 + 1_000) * 3);
+  });
+
   it("rolls back when /health gives no build sha in the whole poll", async () => {
     const machine = fakeMachine({ silentProbes: 100 });
 

@@ -79,6 +79,8 @@ export interface FactoryHost {
   /** Claim every unfinished run whose lease is free and keep driving it; the ids it claimed, never those in `exclude`. Leases stay held until `close()`. */
   adopt(options?: { exclude?: ReadonlySet<string> }): Promise<string[]>;
   pendingGates(): PendingGate[];
+  /** Runs per status from the status index, for callers that need totals and must not parse every run's step results. */
+  countRuns<S extends WorkflowRun["status"]>(statuses: readonly S[]): Map<S, number>;
   close(): void;
 }
 
@@ -94,6 +96,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
+  const runs = new WorkflowRunStore(db);
   const host: FactoryHost = {
     runtime,
     runs: new WorkflowRunStore(db),
@@ -101,6 +104,7 @@ export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
     batches: new GateBatchStore(db, options.now),
     asks: new GateAskStore(db, options.now),
     pendingGates,
+    countRuns: (statuses) => runs.countByStatus(statuses),
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
     close: () => {

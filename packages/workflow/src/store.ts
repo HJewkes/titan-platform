@@ -129,6 +129,12 @@ export class WorkflowRunStore {
     return rows.map(toRun);
   }
 
+  /** Counts from the status index alone: a caller that only needs totals never loads or parses a run's step results. */
+  countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number> {
+    const count = this.db.prepare(`SELECT COUNT(*) FROM ${this.table} WHERE status = ?`).pluck();
+    return new Map(statuses.map((status) => [status, Number(count.get(status))]));
+  }
+
   claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined {
     if (!runtimeId.trim()) throw new TypeError("runtimeId must not be empty");
     const timestamps = leaseTimestamps(leaseUntil, at);

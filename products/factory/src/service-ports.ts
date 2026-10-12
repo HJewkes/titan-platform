@@ -12,6 +12,8 @@ import type { TickStatusRead } from "./tick-status.js";
 
 const COMMAND_TIMEOUT_MS = 30_000;
 const NOT_FOUND = 127;
+/** A loaded serve answers /health in 0.5-5 s; the daemon's 500 ms default read that as a dead pid (TP-2417). */
+export const SERVICE_CHECK_HEALTH_TIMEOUT_MS = 6_000;
 
 /** Resolves with the exit code instead of rejecting, and with undefined when the binary is not on PATH. */
 export function runCommand(file: string, args: readonly string[], env?: Readonly<Record<string, string>>): Promise<CommandResult | undefined> {
@@ -81,7 +83,7 @@ export function systemServicePorts(): ServicePorts {
     claude: (args, env) => runCommand("claude", args, env),
     isDirectory,
     which: (binary) => findOnPath(binary, process.env.PATH),
-    health: (port) => probeHealth(port),
+    health: (port) => probeHealth(port, { timeoutMs: SERVICE_CHECK_HEALTH_TIMEOUT_MS }),
     mkdir: (dir) => void mkdirSync(dir, { recursive: true }),
     writeFile: (path, text) => writeFileSync(path, text),
     readFile: readIfPresent,

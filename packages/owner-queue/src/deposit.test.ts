@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fromDeposit, ownerItemDepositSchema, type OwnerItemDeposit } from "./deposit.js";
+import { ownerCardSchema } from "./card.js";
 import { ownerItemSchema } from "./schema.js";
 
 const NOW = new Date("2026-01-01T00:00:00Z");
@@ -35,6 +36,32 @@ describe("ownerItemDepositSchema", () => {
     ["a lint list", { lint: [] }],
   ])("refuses a deposit carrying %s", (_label, extra) => {
     expect(ownerItemDepositSchema.safeParse({ ...deposit(), ...extra }).success).toBe(false);
+  });
+
+  it("accepts a full card and files it with every card field", () => {
+    const full = deposit({
+      door: "one-way",
+      class: "D4",
+      irreversible: "The grant applies to every later gate.",
+      shown: ["https://github.com/o/r/pull/1"],
+      default: "nested",
+      onSilence: { action: "wait" },
+      options: [
+        { id: "flat", label: "Flat", consequence: "Reads stay one hop." },
+        { id: "nested", label: "Nested", consequence: "Writes stay local." },
+      ],
+    });
+
+    const filed = fromDeposit(full, NOW);
+
+    expect(ownerCardSchema.parse(filed)).toEqual(filed);
+    expect(filed).toMatchObject({ class: "D4", default: "nested", onSilence: { action: "wait" } });
+  });
+
+  it("refuses an option carrying an unknown field", () => {
+    const options = [{ id: "flat", label: "Flat", cost: "high" }, { id: "nested", label: "Nested" }];
+
+    expect(ownerItemDepositSchema.safeParse({ ...deposit(), options }).success).toBe(false);
   });
 
   it("refuses an audience outside owner and operator", () => {
