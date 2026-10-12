@@ -813,7 +813,7 @@ Key exports:
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`
-- +79 more in the [reference page](/reference/review-panel)
+- +92 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
@@ -869,7 +869,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +210 more in the [reference page](/reference/session-read)
+- +211 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 
@@ -962,7 +962,7 @@ Key exports:
 
 - `types`: `AuthorityDeniedError`, `AuthorityRefusedError`, `StepFailedError`, `StepOutputInvalidError`, `WorkflowCancelledError`, `WorkflowNonDeterminismError`, `WorkflowNotOwnedError`, `WorkflowRecoveryRequiredError`, `WorkflowSchemaDriftError`, `workflowStepRequestKey`
 - `signals`: `createSignalParser`, `createSignalSetParser`
-- +75 more in the [reference page](/reference/workflow)
+- +77 more in the [reference page](/reference/workflow)
 
 ## UI
 
@@ -1008,7 +1008,7 @@ Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
 - `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
-- +75 more in `products/evals/src/index.ts`
+- +98 more in `products/evals/src/index.ts`
 
 <a id="cap-factory"></a>
 

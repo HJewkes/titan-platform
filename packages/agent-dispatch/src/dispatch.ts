@@ -109,9 +109,18 @@ export function isBrokerUnavailable(result: SafeExecResult): boolean {
   );
 }
 
-/** Every agent-chat call runs with this; autostart would leave a broker owned by the caller. */
+/**
+ * Every agent-chat call runs with this; autostart would leave a broker owned by the caller.
+ * A non-empty `AGENT_CHAT_HOME` is forwarded so the CLI reaches the broker whose
+ * profiles `installedProfilesDir()` just checked, not the default one.
+ */
 export function agentChatEnv(): Record<string, string> {
-  return { ...minimalEnv(), AGENT_CHAT_NO_AUTOSTART: "1" };
+  const agentChatHome = process.env.AGENT_CHAT_HOME;
+  return {
+    ...minimalEnv(),
+    AGENT_CHAT_NO_AUTOSTART: "1",
+    ...(agentChatHome ? { AGENT_CHAT_HOME: agentChatHome } : {}),
+  };
 }
 
 export interface DispatchRequest {

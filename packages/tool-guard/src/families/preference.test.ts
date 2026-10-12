@@ -196,6 +196,19 @@ describe("R175: an agent worktree runs affected tests, never the whole suite", (
     "timeout 300 npx vitest run --testTimeout=20000",
     "pnpm build && pnpm test",
     "bash -c 'pnpm test'",
+    "pnpm t",
+    "npm t",
+    "pnpm tst",
+    "npm run-script test",
+    "pnpm run-script test",
+    "vitest",
+    "npx vitest",
+    "pnpm vitest",
+    "pnpm exec vitest",
+    "vitest watch",
+    "pnpm test -- --reporter dot",
+    "pnpm -c test",
+    "pnpm vitest run -c vitest.config.ts",
   ])("matches %s in an agent worktree", (command) => {
     expect(checkPreferences(extractCommands(command), WORKTREE)).toEqual([{ id: "R175", message: AFFECTED }]);
   });
@@ -213,6 +226,11 @@ describe("R175: an agent worktree runs affected tests, never the whole suite", (
     "pnpm test:affected",
     "pnpm test:watch",
     "npx vitest list",
+    "npx vitest run --changed",
+    "pnpm test -- --changed",
+    "pnpm test -- src/a.test.ts --reporter dot",
+    "vitest src/a.test.ts",
+    "npx vitest src/a.test.ts",
   ])("passes %s in an agent worktree", (command) => {
     expect(ids(command, WORKTREE)).not.toContain("R175");
   });
