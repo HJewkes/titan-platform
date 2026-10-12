@@ -6,10 +6,10 @@ import type { ShepherdServices } from "./commands.js";
 import type { Registration } from "./store.js";
 
 export const SHEPHERD_FRAME_EVENT = "shepherd";
-export const FRAME_COALESCE_MS = 250;
-export const FRAME_POLL_MS = 1_000;
+const FRAME_COALESCE_MS = 250;
+const FRAME_POLL_MS = 1_000;
 
-export type ShepherdFrameKind = "run" | "gate" | "registration" | "external";
+type ShepherdFrameKind = "run" | "gate" | "registration" | "external";
 
 /** A refetch hint for the console: which run moved and how, never the payload; a breaking change bumps `v`. */
 export interface ShepherdFrame {
@@ -22,7 +22,7 @@ export interface ShepherdFrame {
   at: string;
 }
 
-export interface ShepherdFramesOptions {
+interface ShepherdFramesOptions {
   coalesceMs?: number;
   pollMs?: number;
   now?: () => number;
@@ -30,7 +30,7 @@ export interface ShepherdFramesOptions {
   registrationOf?: (runId: string) => { repo: string; pr: number | null } | undefined;
 }
 
-export interface ShepherdFrames {
+interface ShepherdFrames {
   onEvent(event: WorkflowEvent): void;
   onChange(change: Pick<Registration, "repo" | "pr" | "runId">): void;
   /** Frames go nowhere until the hub exists; `db` must be the connection this process writes through, so its own commits never read as external. */
@@ -45,7 +45,7 @@ export interface FramedHostOptions {
 }
 
 /** What serve holds: frames start with the daemon's hub and stop before the host closes the database. */
-export interface ServeFrames {
+interface ServeFrames {
   started<T extends { hub: EventHub }>(daemon: T): T;
   stop(): void;
 }

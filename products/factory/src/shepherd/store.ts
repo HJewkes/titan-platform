@@ -89,7 +89,7 @@ const REFS_HEADS = "refs/heads/";
 const branchName = (branch: string): string => (branch.startsWith(REFS_HEADS) ? branch.slice(REFS_HEADS.length) : branch);
 
 /** Hears a registration after a write to it commits; it must not throw, since the write has already landed. */
-export type RegistrationListener = (registration: Registration) => void;
+type RegistrationListener = (registration: Registration) => void;
 
 /** Shepherd registrations in the factory database; the table comes from `shepherdMigration`. */
 export class ShepherdStore implements HoldLookup {
