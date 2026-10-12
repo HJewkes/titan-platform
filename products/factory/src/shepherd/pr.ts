@@ -89,8 +89,8 @@ interface ShepherdRun extends WakeRun {
   failedRounds: number;
   /** Throttled rounds at this run; up to `MAX_THROTTLED_ROUNDS` count no round. */
   throttledRounds: number;
-  /** FIX_FIRST reviews at this task, and the consecutive ones that said Closer: no; each is progress until a cap. */
-  fixFirsts: number; closer: CloserStreak;
+  /** The consecutive FIX_FIRSTs that said Closer: no; the FIX_FIRST count itself is `fixFirstCount(ctx)`. */
+  closer: CloserStreak;
   /** Conflict wakes since the PR was last green; a conflict that survives one goes to the owner. */
   conflictWakes: number;
   conflictChecks: number;
@@ -116,7 +116,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, throttledRounds: 0, fixFirsts: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
+    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => run.carried ?? run.escalations.get(headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
@@ -246,7 +246,7 @@ async function routeGreenHead(run: ShepherdRun, headSha: string): Promise<void> 
 /** True goes on to the merge decision, false reviews the same head again; every other route leaves this land round. */
 async function takeRoute(run: ShepherdRun, routed: Routed): Promise<boolean> {
   const { route, headSha } = routed;
-  const escalated = countRound(run, routed);
+  const escalated = await countRound(run, routed);
   if (escalated) {
     run.escalations.set(headSha, escalated);
     return true;
