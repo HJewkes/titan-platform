@@ -7,25 +7,18 @@ import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
 import type { FreezeStoreRef } from "./freeze.js";
-import {
-  RegistrationRefused,
-  RequestedPolicyFields,
-  resolveEffectivePolicy,
-  runPolicyCeiling,
-  shepherdGatePolicy,
-  stricterPolicy,
-  type EffectivePolicy,
-} from "./policy.js";
+import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HOLD_CLASSES, HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
 import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { applyRegistrationHold } from "./registration-hold.js";
+import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
-import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
-import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
+import type { SeatBook } from "./seats.js";
+import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
 import { FINISHED_PHASES, type Phase } from "./step-phase.js";
@@ -71,64 +64,9 @@ export interface MergeEvaluation {
 
 const DEFAULT_KIND = "correctness";
 
-const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
-
 function servicesOf(ctx: FactoryContext): ShepherdServices {
   if (!ctx.shepherd) throw coded("shepherd commands need the shepherd routes, and this host was opened without them", EXIT.UNAVAILABLE);
   return ctx.shepherd;
-}
-
-const RepoArg = z.string().refine(isRepoKey, "must be owner/repo");
-const PrArg = z.number().int().positive();
-/** Git's ref-name rules, loosely: no whitespace, control characters or the characters git reserves. */
-const BranchArg = z.string().regex(/^[^\s~^:?*[\\\p{Cc}]+$/u, "must be a branch name");
-
-const RegisterArgs = z
-  .object({
-    repo: RepoArg,
-    pr: PrArg.optional(),
-    branch: BranchArg.optional(),
-    task: z.string().min(1),
-    implementer: z.string().min(1),
-    reviewer: z.string().min(1).optional(),
-    kind: z.enum(TASK_KINDS).optional(),
-    slice: z.string().min(1).optional(),
-    noSlice: z.boolean().optional(),
-    policy: RequestedPolicyFields.optional(),
-  })
-  .refine((args) => args.pr !== undefined || args.branch !== undefined, { message: "needs a pr or a branch", path: ["pr"] })
-  .refine((args) => args.slice === undefined || !args.noSlice, { message: "slice and noSlice are exclusive", path: ["noSlice"] });
-
-type RegisterArgs = z.infer<typeof RegisterArgs>;
-
-/** A deny or unreadable seat book throws here, before anything is looked up or started. */
-function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePolicy {
-  try {
-    return resolveEffectivePolicy(lookupSeat(services.seats(), args.repo), args.policy ?? {});
-  } catch (error) {
-    if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
-    throw error;
-  }
-}
-
-/** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
-async function headBranch(services: ShepherdServices, args: RegisterArgs): Promise<string | undefined> {
-  if (args.pr === undefined) return args.branch;
-  const { headRef } = await services.port.getPr(args.repo, args.pr);
-  if (args.branch !== undefined && args.branch !== headRef) throw coded(`${args.repo}#${args.pr} has head ${headRef}, not ${args.branch}`, EXIT.DATAERR);
-  return headRef;
-}
-
-/** A repeat register without a slice keeps the stored one; only an explicit noSlice clears it. */
-function sliceAfter(existing: Registration, args: RegisterArgs): string | undefined {
-  if (args.noSlice) return undefined;
-  return args.slice ?? existing.slice ?? undefined;
-}
-
-/** Checked before a failed run is replaced, so a refused kind leaves the run and its registration untouched. */
-function refuseKindMove(existing: Registration, args: RegisterArgs): void {
-  const refusal = args.kind === undefined ? undefined : kindMoveRefusal(existing.kind, args.kind);
-  if (refusal) throw coded(`registration refused: run ${existing.runId}: ${refusal}`, EXIT.DATAERR);
 }
 
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy): Registered {
@@ -192,11 +130,11 @@ async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: 
 
 async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const services = servicesOf(ctx);
-  const policy = policyFor(services, args);
+  const policy = policyFor(services.seats, args);
   const known = findRegistration(ctx, services.store.get(), args.repo, args.pr, args.branch);
   if (known) return reuseOrRestart(ctx, services.store.get(), known, args, policy);
   releaseFinishedBranch(ctx, services.store.get(), args.repo, args.pr, args.branch);
-  const branch = await headBranch(services, args);
+  const branch = await headBranch(services.port, args);
   const store = services.store.get();
   const existing = findRegistration(ctx, store, args.repo, args.pr, branch);
   if (existing) return reuseOrRestart(ctx, store, existing, args, policy);
