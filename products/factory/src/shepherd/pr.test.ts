@@ -1114,7 +1114,7 @@ describe("sh-park", () => {
       wake: async () => UNHANDLED,
       review: async (_ctx, request) => (events.push(`review ${request.headSha}`), { kind: "MERGE", headSha: request.headSha, evidence: {} }),
     };
-    const w = world(phases, undefined, undefined, (name) => (events.push(`park ${name}`), { lines: park(name) }));
+    const w = world(phases, undefined, undefined, async (name) => (events.push(`park ${name}`), { lines: park(name) }));
     w.fake.addPr({ headSha: H1 });
     return { w, events };
   }
@@ -1736,7 +1736,7 @@ describe("merge steps allocate no worktree (CC-276 S3)", () => {
     fake.onGetPr = (pr) => (fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]), pr.headSha !== H1 && (pr.mergeableState = "clean"));
     const ref = shepherdStoreRef();
     const carry = { stateDir: mkdtempSync(join(tmpdir(), "no-worktree-")), git: cleanMergeUp };
-    const park: ParkPort = () => (record("park"), { lines: [] });
+    const park: ParkPort = async () => (record("park"), { lines: [] });
     const port = githubPort(fake.wire);
     const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
     const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), park, review: { reader: { read: async () => [] }, carry } });

@@ -73,7 +73,7 @@ function world(evidenceState: EvidenceState, observeState: ObserveState = () => 
     store,
     now: () => clock.now,
     sleep: tick,
-    park: () => ({ lines: [] }),
+    park: async () => ({ lines: [] }),
     registry: async () => "trusted" as const,
     mergeTree: async (input) => (mergeTreeProbes.push(input.headSha), "clean"),
   });
