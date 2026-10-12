@@ -806,13 +806,13 @@ Tier 2, `@titan-design/review-panel@0.5.4`. Review-panel types and the reviewer 
 
 Key exports:
 
-- `classify`: `changedLineCount`, `classifyPr`
+- `classify`: `changedLineCount`, `classifyPr`, `securitySliceFlag`
 - `plan`: `planPanel`
 - `reviewer-brief`: `correctionPrompt`, `reviewCheckoutName`, `reviewerBrief`
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
-- `fix-first-findings`: `boundedFindings`, `findingsText`, `fixFirstFindings`
-- +67 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- `fix-first-findings`: `boundedFindings`, `findingsText`
+- +71 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 

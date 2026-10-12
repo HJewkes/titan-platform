@@ -31,7 +31,19 @@ export const DEFAULT_CLASS_RULES: ClassRules = {
   perf: ["packages/tool-guard/**", "packages/code-graph/src/indexer*", "**/indexer*.ts", "**/parser*.ts", "**/tick.ts", "**/tick-*.ts", "**/hooks/**"],
   test: ["**/*.test.ts", "**/*.test.tsx"],
   source: ["**/src/**/*.ts", "**/src/**/*.tsx"],
-  generated: ["CAPABILITIES.md", "site/reference/**", "site/.vitepress/reference-sidebar.json", "site/guides/capabilities.md", ".codewatch/check.json"],
+  generated: [
+    "CAPABILITIES.md",
+    "site/reference/**",
+    "site/.vitepress/reference-sidebar.json",
+    "site/guides/capabilities.md",
+    ".codewatch/check.json",
+    ".codewatch/dead-exports.json",
+    ".changeset/*.md",
+    "**/api/**/*.d.ts",
+    "**/__snapshots__/**",
+    "**/*.snap",
+    "pnpm-lock.yaml",
+  ],
   largeLines: 400,
   largeFiles: 12,
 };
@@ -58,6 +70,34 @@ export function changedLineCount(files: readonly ChangedFile[], rules: Pick<Clas
   const generated = lineSum(files.filter((f) => isGenerated(f, rules.generated)));
   const all = lineSum(files);
   return generated > rules.largeLines ? all : all - generated;
+}
+
+/** The review-rounds audit (2026-10-11): security slices past about this many lines rarely converge in 3 rounds. */
+export const SECURITY_SLICE_LINES = DEFAULT_CLASS_RULES.largeLines;
+
+/** An oversize security or guard-area slice: its non-generated size, the cap it passed, and the guard paths it touches. */
+export interface SliceFlag {
+  lines: number;
+  cap: number;
+  guardPaths: string[];
+}
+
+export interface SliceInput {
+  kind?: string;
+  changedFiles: readonly ChangedFile[];
+}
+
+/**
+ * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
+ * set. Advisory only, so an unreadable count flags nothing.
+ */
+export function securitySliceFlag(input: SliceInput, rules: ClassRules = DEFAULT_CLASS_RULES): SliceFlag | undefined {
+  const lines = changedLineCount(input.changedFiles, rules);
+  if (lines === undefined || lines <= SECURITY_SLICE_LINES) return undefined;
+  const guards = [...rules.security, ...rules.authority];
+  const guardPaths = input.changedFiles.filter((f) => !isGenerated(f, rules.generated) && matchesAny(f.path, guards)).map((f) => f.path);
+  if (input.kind !== "security" && guardPaths.length === 0) return undefined;
+  return { lines, cap: SECURITY_SLICE_LINES, guardPaths };
 }
 
 function isLarge(files: readonly ChangedFile[], rules: ClassRules): boolean {

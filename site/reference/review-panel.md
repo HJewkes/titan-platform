@@ -26,11 +26,17 @@ every caller plans, briefs and aggregates the same way:
   shapes.
 - `changedLineCount(files, rules?)`: additions plus deletions with the `generated` globs
   (CAPABILITIES.md, site reference pages, the reference sidebar, the capabilities guide,
-  `.codewatch/check.json`) left out; undefined when any file has no line counts. A rename
+  `.codewatch/check.json` and `dead-exports.json`, changesets, `api/` reports, snapshots,
+  `pnpm-lock.yaml`) left out; undefined when any file has no line counts. A rename
   counts as generated only when it came from a generated path too, and generated lines that
   alone pass `largeLines` (400) count in full, since that is a hand edit. A PR is large past
   `largeLines` of it. Shepherd sizes its reviewer the same way, and an unread size there
   takes the g10 class.
+- `securitySliceFlag({ kind?, changedFiles }, rules?)`: `{ lines, cap, guardPaths }` when a
+  slice is past `SECURITY_SLICE_LINES` (400) non-generated lines and is kind `security` or
+  touches a non-generated `security` or `authority` path; undefined otherwise, including an
+  unread count. Advisory: the 2026-10-11 review-rounds audit found larger security slices
+  rarely converge within 3 review rounds.
 - `PanelPlan`: the members (one per `ReviewShape`), each with its profile, brief id, and
   whether it blocks or was degraded to sonnet, plus a spend estimate.
 - `planPanel(cls, policy, headroom)`: the pure planner. The correctness member always

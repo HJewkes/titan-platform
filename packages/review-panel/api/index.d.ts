@@ -186,6 +186,23 @@ declare const DEFAULT_CLASS_RULES: ClassRules;
  * that alone pass `largeLines` are no regeneration but a hand edit, so then every line counts.
  */
 declare function changedLineCount(files: readonly ChangedFile[], rules?: Pick<ClassRules, "generated" | "largeLines">): number | undefined;
+/** The review-rounds audit (2026-10-11): security slices past about this many lines rarely converge in 3 rounds. */
+declare const SECURITY_SLICE_LINES: number;
+/** An oversize security or guard-area slice: its non-generated size, the cap it passed, and the guard paths it touches. */
+interface SliceFlag {
+    lines: number;
+    cap: number;
+    guardPaths: string[];
+}
+interface SliceInput {
+    kind?: string;
+    changedFiles: readonly ChangedFile[];
+}
+/**
+ * Flags a slice over the cap when it is kind `security` or touches a security or authority path outside the generated
+ * set. Advisory only, so an unreadable count flags nothing.
+ */
+declare function securitySliceFlag(input: SliceInput, rules?: ClassRules): SliceFlag | undefined;
 /** Class and touch flags from signals alone; no model reads the diff. An unread kind takes the strict class. */
 declare function classifyPr(facts: PrFacts, rules?: ClassRules): PrClass;
 
@@ -450,4 +467,4 @@ interface ShapeBriefInput extends ReviewerBriefInput {
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, shapeBrief };
+export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief };
