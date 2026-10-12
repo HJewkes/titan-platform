@@ -1,0 +1,61 @@
+#!/usr/bin/env bpftrace
+// TP-814 root capture for scripts/daemon-remeasure.mjs report --bpftrace: 600 s of process forks and file ops,
+// per cgroup (the unit) and per pid (the broker, which has no unit). Run: sudo bpftrace scripts/daemon-remeasure.bt
+// task_newtask carries clone_flags, so threads (CLONE_THREAD) are left out and only new processes count as forks.
+// vfs_read and vfs_write count regular files only; the metadata syscalls stand in for the rest of fs_usage -f filesys.
+// Maps key on the cgroup id, and each id's path prints the first time it is seen: a oneshot timer service's cgroup
+// is gone by exit, when a cgroup_path map key would print empty.
+
+// Every short-lived pid takes a key in the per-pid maps; the default 4096 fills within seconds on basement.
+config = {
+  max_map_keys = 262144
+}
+
+BEGIN
+{
+  @self = pid;
+  printf("daemon-remeasure capture: 600 s, bpftrace pid %d\n", pid);
+}
+
+tracepoint:task:task_newtask
+/pid != @self && (args.clone_flags & 0x10000) == 0/
+{
+  if (!@seen[cgroup]) { @seen[cgroup] = 1; printf("cgroup %llu %s\n", cgroup, cgroup_path(cgroup)); }
+  @forks[cgroup] = count();
+  @forks_pid[pid, comm] = count();
+}
+
+tracepoint:syscalls:sys_enter_openat,
+tracepoint:syscalls:sys_enter_newfstatat,
+tracepoint:syscalls:sys_enter_statx,
+tracepoint:syscalls:sys_enter_unlinkat,
+tracepoint:syscalls:sys_enter_renameat2,
+tracepoint:syscalls:sys_enter_getdents64,
+tracepoint:syscalls:sys_enter_fsync,
+tracepoint:syscalls:sys_enter_fdatasync
+/pid != @self/
+{
+  if (!@seen[cgroup]) { @seen[cgroup] = 1; printf("cgroup %llu %s\n", cgroup, cgroup_path(cgroup)); }
+  @fsops[cgroup, probe] = count();
+  @fsops_pid[pid, comm] = count();
+}
+
+kprobe:vfs_read,
+kprobe:vfs_write
+/pid != @self && (((struct file *)arg0)->f_inode->i_mode & 0xf000) == 0x8000/
+{
+  if (!@seen[cgroup]) { @seen[cgroup] = 1; printf("cgroup %llu %s\n", cgroup, cgroup_path(cgroup)); }
+  @fsops[cgroup, probe] = count();
+  @fsops_pid[pid, comm] = count();
+}
+
+interval:s:600
+{
+  exit();
+}
+
+END
+{
+  clear(@self);
+  clear(@seen);
+}
