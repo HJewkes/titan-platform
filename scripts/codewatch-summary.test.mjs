@@ -62,12 +62,18 @@ describe("security slice flag", () => {
     expect(annotations(flagged)).toEqual([expect.stringMatching(/^::warning title=Security slice over cap::This guard-area PR is 500 /)]);
   });
 
-  it.each([
-    ["an unflagged size", sized({ lines: 900, cap: 400, guardPaths: [], flagged: false })],
-    ["a report with no size", readFixture("pr-report-clean.json")],
-  ])("renders neither for %s", (_, report) => {
+  it("renders neither for an unflagged size", () => {
+    const report = sized({ lines: 900, cap: 400, guardPaths: [], flagged: false });
+
     expect(renderSummary(report)).not.toContain("Security slice");
     expect(annotations(report)).toEqual([]);
+  });
+
+  it("renders an unknown size, not silence, for a report with no size block", () => {
+    const report = readFixture("pr-report-clean.json");
+
+    expect(renderSummary(report)).toContain("### Security slice size unknown\n\nThe report has no size block");
+    expect(annotations(report)).toEqual([expect.stringMatching(/^::warning title=Security slice size unknown::The report has no size block/)]);
   });
 });
 
@@ -98,7 +104,7 @@ describe("summary CLI", () => {
     expect(run.stdout).toContain("Check failed");
   });
 
-  it("prints the warning command with --annotate and nothing for a missing report", () => {
+  it("prints the warning command with --annotate, and the unknown warning for a missing report", () => {
     const script = fileURLToPath(new URL("./codewatch-summary.mjs", import.meta.url));
     const file = join(tempDir(), "report.json");
     writeFileSync(file, JSON.stringify({ ...readFixture("pr-report-clean.json"), size: { lines: 401, cap: 400, guardPaths: [], flagged: true } }));
@@ -108,6 +114,7 @@ describe("summary CLI", () => {
 
     expect(flagged.status).toBe(0);
     expect(flagged.stdout).toMatch(/^::warning title=Security slice over cap::.*401 non-generated lines.*\n$/);
-    expect(missing).toMatchObject({ status: 0, stdout: "" });
+    expect(missing.status).toBe(0);
+    expect(missing.stdout).toMatch(/^::warning title=Security slice size unknown::.*\n$/);
   });
 });

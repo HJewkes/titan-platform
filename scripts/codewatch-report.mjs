@@ -53,13 +53,13 @@ export function collectReport(graph, store, { snapshot, baselineSnapshot, result
   return size ? { ...report, size } : report;
 }
 
-/** The PR's non-generated size and whether it is a guard-area slice over the cap; any failure leaves it out. */
+/** The PR's non-generated size and whether it is a guard-area slice over the cap; any failure leaves it out, which reads as unknown. */
 export function sizeBlock(readNumstat) {
   try {
     if (!reviewPanel) return undefined;
-    const changedFiles = parseNumstat(readNumstat());
+    const changedFiles = countedFiles(parseNumstat(readNumstat()));
     const lines = reviewPanel.changedLineCount(changedFiles);
-    if (lines === undefined) return undefined;
+    if (lines === undefined) throw new Error("numstat gave a file no line counts");
     const flag = reviewPanel.securitySliceFlag({ changedFiles });
     const guardPaths = (flag?.guardPaths ?? []).slice(0, GUARD_PATH_LIMIT);
     return { lines, cap: reviewPanel.SECURITY_SLICE_LINES, guardPaths, flagged: flag !== undefined };
@@ -69,17 +69,33 @@ export function sizeBlock(readNumstat) {
   }
 }
 
+/** A binary file outside the guard area has no lines to review; one inside it makes the whole size unknown. */
+function countedFiles(files) {
+  const known = (f) => Number.isFinite(f.additions) && Number.isFinite(f.deletions);
+  const hidden = files.find((f) => !known(f) && [f.path, f.previousPath].some(isGuardPath));
+  if (hidden) throw new Error(`numstat gave guard path ${JSON.stringify(hidden.path)} no line counts`);
+  return files.map((f) => (known(f) ? f : { ...f, additions: 0, deletions: 0 }));
+}
+
+// Asks the shared rule whether this one path, made oversize, would be flagged as guard area, so the globs stay in review-panel.
+function isGuardPath(file) {
+  if (file === undefined) return false;
+  const probe = { path: file, additions: reviewPanel.SECURITY_SLICE_LINES + 1, deletions: 0 };
+  return reviewPanel.securitySliceFlag({ changedFiles: [probe] }) !== undefined;
+}
+
 /**
  * Parses `git diff --numstat -z -M`: `add\tdel\tpath`, or `add\tdel\t` then the old and new paths for a rename.
- * Newlines also separate records, so a fixture stays readable. A binary file (`-`) has no lines to review.
+ * Only NUL separates records, because -z leaves a path's own newlines and tabs raw.
  */
 export function parseNumstat(text) {
-  const tokens = text.split(/[\0\n]/);
+  const tokens = text.split("\0");
   const files = [];
   for (let i = 0; i < tokens.length; i++) {
     if (tokens[i] === "") continue;
-    const [add, del, name] = tokens[i].split("\t");
+    const [add, del, ...rest] = tokens[i].split("\t");
     const counts = { additions: lineCount(add), deletions: lineCount(del) };
+    const name = rest.join("\t");
     if (name) {
       files.push({ path: name, ...counts });
       continue;
@@ -90,14 +106,19 @@ export function parseNumstat(text) {
   return files;
 }
 
+// A count numstat could not give (`-` for a binary diff) stays unknown here; countedFiles decides what it means.
 function lineCount(field) {
-  return field === "-" ? 0 : Number.parseInt(field, 10);
+  return /^\d+$/.test(field ?? "") ? Number(field) : Number.NaN;
 }
 
-function gitNumstat(base, head) {
+// Attributes come from the empty tree, so a PR's own .gitattributes cannot mark a guard file -diff and hide its lines.
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+export function gitNumstat(base, head, cwd = ROOT) {
   return () => {
     if (!base) throw new Error("no baseline commit");
-    return execFileSync("git", ["diff", "--numstat", "-z", "-M", base, head], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    const args = [`--attr-source=${EMPTY_TREE}`, "diff", "--numstat", "-z", "-M", base, head];
+    return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
   };
 }
 

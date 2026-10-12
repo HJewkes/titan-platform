@@ -19,18 +19,29 @@ export function renderSummary(report) {
   ];
   const questions = report.questions ?? [];
   if (questions.length > 0) lines.push("", "### Questions", "", ...questions.map((q) => `- ${q}`));
-  if (report.size?.flagged) lines.push("", "### Security slice over cap", "", sliceMessage(report.size));
+  const slice = sliceNotice(report.size);
+  if (slice) lines.push("", `### ${slice.title}`, "", slice.message);
   return `${lines.join("\n")}\n`;
 }
 
-function sliceMessage({ lines, cap, guardPaths }) {
-  const where = guardPaths.length > 0 ? ` It touches ${guardPaths.join(", ")}.` : "";
-  return `This guard-area PR is ${lines} non-generated lines, over the ${cap}-line security slice cap.${where} Split the parser or list change from its wiring.`;
+const UNKNOWN_SIZE = {
+  title: "Security slice size unknown",
+  message: "The report has no size block (no baseline, a numstat failure or a file without line counts), so the security slice cap was not checked. Read the diff size by hand.",
+};
+
+// A missing size is surfaced, never silent: silence would read the same as a small PR.
+function sliceNotice(size) {
+  if (!size) return UNKNOWN_SIZE;
+  if (!size.flagged) return undefined;
+  const where = size.guardPaths.length > 0 ? ` It touches ${size.guardPaths.join(", ")}.` : "";
+  const message = `This guard-area PR is ${size.lines} non-generated lines, over the ${size.cap}-line security slice cap.${where} Split the parser or list change from its wiring.`;
+  return { title: "Security slice over cap", message };
 }
 
-/** Workflow commands for the job log: one warning for an oversize guard-area PR, none otherwise. */
+/** Workflow commands for the job log: one warning for an oversize guard-area PR or an unknown size, none otherwise. */
 export function annotations(report) {
-  return report.size?.flagged ? [`::warning title=Security slice over cap::${escapeCommand(sliceMessage(report.size))}`] : [];
+  const slice = sliceNotice(report?.size);
+  return slice ? [`::warning title=${slice.title}::${escapeCommand(slice.message)}`] : [];
 }
 
 function escapeCommand(text) {
@@ -41,12 +52,15 @@ function readReport(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+/** A missing or unreadable report has no size either, so it annotates as unknown. */
 export function annotateFile(file) {
+  let report;
   try {
-    return annotations(readReport(file)).map((line) => `${line}\n`).join("");
+    report = readReport(file);
   } catch {
-    return "";
+    report = undefined;
   }
+  return annotations(report).map((line) => `${line}\n`).join("");
 }
 
 export function summarizeFile(file) {
