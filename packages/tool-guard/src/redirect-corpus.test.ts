@@ -37,9 +37,10 @@ const missing = Object.entries(SHELLS).flatMap(([name, s]) => (s.path ? [] : [na
 function filesWritten(line: string): Map<string, string[]> {
   const byFile = new Map<string, string[]>(FILES.map((f) => [f, []]));
   for (const [name, { path, args }] of Object.entries(SHELLS)) {
+    if (path === undefined) continue;
     const dir = mkdtempSync(join(tmpdir(), "tool-guard-redirect-corpus-"));
     try {
-      spawnSync(path as string, [...args, line], { cwd: dir, env: { PATH: process.env.PATH ?? "" }, encoding: "utf-8", timeout: 5000 });
+      spawnSync(path, [...args, line], { cwd: dir, env: { PATH: process.env.PATH ?? "" }, encoding: "utf-8", timeout: 5000 });
       for (const file of FILES) {
         if (existsSync(join(dir, file)) && readFileSync(join(dir, file), "utf-8").includes(PUSH)) byFile.get(file)?.push(name);
       }
