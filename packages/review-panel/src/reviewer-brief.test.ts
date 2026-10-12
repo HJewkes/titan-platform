@@ -5,6 +5,7 @@ import { BLOCK_LINE, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS } from "./fix
 import {
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_START,
+  FOLLOW_UPS_RULE,
   MAX_CORRECTION_PROMPT_CHARS,
   type MalformedRefusal,
   REFUSAL_SENTENCES,
@@ -298,6 +299,20 @@ describe("reviewerBrief Defect class and Earlier findings", () => {
 
     expect(brief).toContain("FIX_FIRST 1, at head an unknown head:\nDefect class: not named\na finding");
     expect(brief).not.toContain("merge it");
+  });
+});
+
+describe("reviewerBrief Follow-ups rule", () => {
+  const target = { repo: "octo/demo", pr: 7, head: "0123456789abcdef0123456789abcdef01234567", checkoutRoot: "/reviews" };
+
+  it.each([
+    ["a first review", reviewerBrief(target)],
+    ["a re-review", reviewerBrief({ ...target, fixFirsts: 2 })],
+    ["an owner-gated review", reviewerBrief({ ...target, ownerBrief: true })],
+  ])("teaches the block before the verdict lines in %s and says it never blocks MERGE", (_scenario, brief) => {
+    expect(FOLLOW_UPS_RULE).toContain("never block MERGE");
+    expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeGreaterThan(-1);
+    expect(brief.indexOf(FOLLOW_UPS_RULE)).toBeLessThan(brief.indexOf("Verdict: <MERGE or FIX_FIRST>"));
   });
 });
 

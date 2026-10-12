@@ -529,9 +529,16 @@ closure, and restarts drained as `service restart` does. Success means launchd's
 `/health` up to 10 times with a 5 s timeout each, so a slow answer under load is not a
 failure; only a wrong sha, or no sha in the whole poll, fails. Once the sha checks out, the
 deployer watches the new build for `--watch-window` (default `service.deployWatchMs`, else
-2 minutes), probing `/health` every 10 s. The watch fails when three probes in a row get no
-answer, when the build sha or the pid changes, or when the `failed` plus `recovery_required`
-run counts rise above the answer that confirmed the sha. A failed install or build restores
+2 minutes), probing `/health` every 10 s with a 5 s timeout. When that probe times out and
+the restarted pid is still alive, the tick retries once with a 30 s timeout. An answer on the
+retry counts as slow, not as a miss; a dead pid gets no retry. The watch fails when three ticks
+in a row get no answer, when every probe in the window was slow, when the build sha or the pid
+changes, or when the `failed` plus `recovery_required` run counts rise above the answer that
+confirmed the sha. The watch has no start-up grace, and needs none. The sha poll already waits
+for the first answer, and a live pid that answers nothing needs about 3 × 45 s, so 135 s, to
+fail. That is longer than the 120 s window and well past the 17–32 s Shepherd resync measured
+after a restart (TP-2433). A grace would only hide a serve that hangs from its first second.
+A failed install or build restores
 the snapshot and leaves the old process running, untouched; it records `rolled-back`, and that
 sha is then held until a newer one arrives.
 A failed install or build also writes `deploy-build.log` beside `deploy.json`: the command,

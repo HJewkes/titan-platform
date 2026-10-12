@@ -813,7 +813,7 @@ Key exports:
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`
-- +79 more in the [reference page](/reference/review-panel)
+- +92 more in the [reference page](/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
@@ -869,7 +869,7 @@ Key exports:
 - `fold`: `EventFolder`, `foldEvents`
 - `read`: `TranscriptParseError`, `extractTranscript`, `readTranscriptEvents`
 - `refs`: `agentRef`, `artifactRef`, `branchRef`, `fileRef`, `parseFileRef`, `prRef`
-- +210 more in the [reference page](/reference/session-read)
+- +211 more in the [reference page](/reference/session-read)
 
 <a id="cap-style-analyzer"></a>
 

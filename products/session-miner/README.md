@@ -246,6 +246,18 @@ args or a missing events db). A number matches within `tolerance` relative to th
 0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
 failures when any citation is not ok. `--findings` is accepted only on the CLI.
 
+### The session-insights skill (TP-499)
+
+`skills/session-insights/` ships in the package. `SKILL.md` runs the insight loop in order:
+resolve the scope (Q14 for a seat since a time), clear Q12 data-quality faults (stopping on a
+stale graph), check prices with Q0 `--published` (stopping on any mismatch), run the questions
+as JSON, hand the JSON to a read-only analyst with `analyst-brief.md`, keep only the findings
+`verify-citations` passes, and file a task for any number the library cannot answer. A seat
+loads it from the installed package's `skills/session-insights/` or from a checkout.
+`src/session-insights-skill.test.ts` fails when the skill names an unregistered question, when
+the data-quality or price step moves after the questions, or when the brief's example stops
+parsing as `findingSchema`.
+
 ## The playbook (TP-19)
 
 `playbook add` is the default path and costs nothing: the agent that just learned

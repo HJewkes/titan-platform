@@ -2,6 +2,7 @@ import { parseResultLine } from "@titan-design/fix-proof";
 import { fixProofLines, unverifiedLines, type FixProofUnverified } from "./briefs/tests.js";
 import type { VerdictBlockRefusal } from "@titan-design/session-read";
 import { boundedFindings, findingsText } from "./fix-first-findings.js";
+import { FOLLOW_UPS_HEADING, MAX_FOLLOW_UPS } from "./follow-ups.js";
 
 type RepoSlug = string;
 
@@ -157,6 +158,11 @@ function recurringLines(fixFirsts: number, earlier: readonly EarlierFinding[]): 
   ];
 }
 
+/** Lets a reviewer defer a nit to a task instead of a FIX_FIRST round; the template's placeholders never parse as an item. */
+export const FOLLOW_UPS_RULE =
+  `Optionally, for work that should not hold this PR, add before the verdict lines a section that starts with a line \`${FOLLOW_UPS_HEADING}\`, then one line per proposed task, at most ${MAX_FOLLOW_UPS}: ` +
+  "`- <title> | <done_when> | <low, medium or high>`. Follow-ups never block MERGE and are filed as tasks for later; anything blocking goes in your review as FIX_FIRST, never here. Write no section when you have none.";
+
 /** A run handed earlier findings is a re-review even when its count lags them. */
 const fixFirstCount = (input: ReviewerBriefInput): number => Math.max(input.fixFirsts ?? 0, input.earlierFindings?.length ?? 0);
 
@@ -207,6 +213,17 @@ function handsOffLines(runDir: string): string[] {
   ];
 }
 
+/** What each verdict means and what it adds, ending with the optional follow-ups that never change it. */
+function verdictRuleLines(input: ReviewerBriefInput): string[] {
+  return [
+    "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
+    CI_POLICY_RULE,
+    `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
+    ...recurringLines(fixFirstCount(input), input.earlierFindings ?? []),
+    FOLLOW_UPS_RULE,
+  ];
+}
+
 /** The closing block is a template with a placeholder verdict, so the brief itself never parses as a verdict. */
 export function reviewerBrief(input: ReviewerBriefInput): string {
   const { repo, pr, head } = input;
@@ -225,10 +242,7 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
     "You run headless and nobody answers prompts. Run every check in the foreground, and never call Monitor, ScheduleWakeup or a background Bash (run_in_background): the prompt goes unanswered and you exit with no verdict.",
     ...questionLines(input.questions ?? []),
     "",
-    "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
-    CI_POLICY_RULE,
-    `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
-    ...recurringLines(fixFirstCount(input), input.earlierFindings ?? []),
+    ...verdictRuleLines(input),
     "",
     endingInstruction(input),
     "",
