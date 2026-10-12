@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { shepherdEventMigration } from "./events.js";
-import { FIX_PROOF_CHECK, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
+import { FIX_PROOF_CHECK, FixProofReadSchema, fixProofStanding, lastResultLine, readFixProof } from "./fix-proof.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "./review.js";
@@ -178,7 +178,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     const { verdicts, proof } = await review({ kind: "correctness", runs: execRuns() });
 
     expect(proof).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
-    expect(fixProofStanding(proof as { kind: "error"; reason: string }, H)).toEqual({ unverified: "unread" });
+    expect(fixProofStanding(FixProofReadSchema.parse(proof), H)).toEqual({ unverified: "unread" });
     expect(verdicts).not.toContainEqual(expect.objectContaining({ kind: "NO_REPRO" }));
   });
 
@@ -375,6 +375,14 @@ describe("readFixProof", () => {
   ] as const)("reads error, not missing, when the exec jobs %s but no judge run exists at the deadline", async (_how, overrides) => {
     const validate = { ...successRun("validate", 5), headSha: H };
     const { read, elapsed } = registered("correctness", [validate, ...execRuns(overrides)], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
+    expect(elapsed()).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("reads error, not missing, when the exec jobs drop out of the check-run list before any judge appears", async () => {
+    const validate = { ...successRun("validate", 5), headSha: H };
+    const { read, elapsed } = registered("correctness", [validate, ...execRuns()], { files: [{ path: "src/a.ts", status: "modified" }], later: [{ ms: 1_000, runs: [validate] }] });
 
     expect(await read()).toEqual({ kind: "error", reason: expect.stringContaining("no fix-proof judge run") });
     expect(elapsed()).toBeGreaterThanOrEqual(10_000);

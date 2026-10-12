@@ -116,12 +116,12 @@ const actionsAt = (runs: readonly CheckRun[], head: string): CheckRun[] => runs.
 const execAt = (runs: readonly CheckRun[], head: string): boolean => actionsAt(runs, head).some((run) => FIX_PROOF_EXEC_CHECKS.has(run.name));
 
 /**
- * Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. An exec job at the
- * head means the workflow runs here and its judge is still to be created, so its absence proves nothing.
+ * Every Actions run at the head finished and none is fix-proof: the repo has no such job, or it was skipped. An exec job seen at
+ * the head on any poll means the workflow runs here and its judge is still to be created, so its absence proves nothing.
  */
-const settledWithout = (runs: readonly CheckRun[], head: string): boolean => {
+const settledWithout = (runs: readonly CheckRun[], head: string, execSeen: boolean): boolean => {
   const actions = actionsAt(runs, head);
-  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head)) && !execAt(runs, head);
+  return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head)) && !execSeen;
 };
 
 /**
@@ -147,7 +147,7 @@ async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, bind
     const chosen = chooseRun(runs.filter(isFixProofRun(head)), binding);
     if (chosen?.run.status === "completed") return chosen;
     execSeen ||= execAt(runs, head);
-    const settled = settledWithout(runs, head);
+    const settled = settledWithout(runs, head, execSeen);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
     if (actionsAt(runs, head).length === 0 && !execSeen && grace.expired()) return { missing: "no GitHub Actions run at this head" };
     if (clock.expired()) return deadlineRead(chosen, execSeen);
