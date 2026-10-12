@@ -199,7 +199,7 @@ do instead. Commands nested in `bash -c`, `eval`, heredocs, substitutions and wr
 | R133 | a merge the merge family classifies, when `ctx.seat` | `seat-merge`, any merge outside a seat |
 | R64 | `active-work` with `XDG_DATA_HOME` set and no `ACTIVE_ROOT` | `ACTIVE_ROOT=<dir> active-work` |
 | R164 | git `--no-verify`, `commit -n`, `-c core.hooksPath=` | `-m "--no-verify"`, `push -n` |
-| R175 | `pnpm test`, `npm test`, `vitest run`, `pnpm vitest run`, `pnpm exec vitest run`, `npx vitest run` with no path argument, when `ctx.agentWorktree` | a path argument, `--changed`, `pnpm --filter <pkg> test`, `pnpm test:affected`, any run outside an agent worktree |
+| R175 | `pnpm test`, `npm test` and their `t`, `tst`, `run test` and `run-script test` forms, `pnpm -c test`, `vitest`, `vitest run`, `vitest watch`, `npx vitest [run\|watch]`, `pnpm [exec] vitest [run\|watch]` with no path argument, including options after `--`, when `ctx.agentWorktree` | a path argument (also after `--`), a bare `--changed`, `pnpm --filter <pkg> test`, `pnpm test:affected`, any run outside an agent worktree |
 
 The checker is pure. A shell loop's keywords never reach the command list, so R127 reads a
 `sleep` beside a CI read as the loop. R175 names `pnpm test:affected` because CI runs the full
