@@ -6,7 +6,7 @@ import { HEAD } from "./await-verdict.js";
 import type { AwaitVerdictInput, ReviewerAgent, ReviewerDispatch } from "./review.js";
 import { Awaited } from "./review-schemas.js";
 import { clearReviewWait, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type PollTiming } from "./review-wait.js";
-import { MalformedSchema, correctionPrompt, readMalformed } from "@titan-design/review-panel";
+import { MalformedSchema, correctionPrompt, isUsageLimit, readMalformed } from "@titan-design/review-panel";
 
 export const CORRECT_VERDICT_STEP = "sh-correct-verdict";
 
@@ -89,7 +89,8 @@ export async function correctOnce(ctx: WorkflowContext, awaiting: AwaitVerdictIn
   const asked = await step(ctx, `${CORRECT_VERDICT_STEP}:${awaiting.head}`, { ...awaiting, malformed, ...(options.ownerBrief && { ownerBrief: true }) }, Corrected);
   if (asked.kind !== "asked") return asked;
   const reply = await step(ctx, options.replyStep, { ...awaiting, dispatchedAt: malformed.writtenAt, startedAt: asked.startedAt }, Awaited);
-  if (reply.kind === "verdict") return reply;
+  // A usage limit is the reviewer's last word, not a failed correction: the caller holds its account instead of retrying.
+  if (reply.kind === "verdict" || isUsageLimit(reply)) return reply;
   const again = readMalformed(reply);
   return { kind: "none", reason: again ? `${UNPARSED_AFTER_CORRECTION} (${again.refusal})` : SILENT_AFTER_CORRECTION };
 }

@@ -175,6 +175,22 @@ describe("a told fix round reaches the seat digest", () => {
   });
 });
 
+describe("a held run's seat notice", () => {
+  it("says a pushed head runs CI and review while the hold stays, with no release needed", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const { sends, ports } = seat();
+    const host = world(fake, { ...ports, hubSeat: () => "demo-coord" }, phases({ kind: "unhandled", reason: GONE }));
+    host.store.get().hold(host.runId, "the owner reviews the baseline");
+
+    await vi.waitFor(() => expect(host.runtime.status(runOf(host))?.currentStep).toMatch(/^sh-held-wait/));
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]).toContain("runs CI and review at the new head while the hold stays");
+    expect(sends[0]).toContain("no release is needed");
+  });
+});
+
 describe("a spent repair budget", () => {
   it("tells the seat and waits for a head it pushes, with no sent-back gate", async () => {
     const fake = fakeGitHub();

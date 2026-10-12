@@ -9,6 +9,7 @@ import { REPO, gateId, gateOpened, outsideActions } from "../test-support/land.j
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
+import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { ReviewRequest, ShepherdPhases, Verdict } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
@@ -244,7 +245,7 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(host.gates.get(gateId(runId, "approve-merge", 1))?.prompt).toContain(`at head ${MOVED}? Policy shepherd-route/conflict`);
   });
 
-  it("asks the owner again at the new head when the conflict is gone, naming the carried conflict and not merging", async () => {
+  it("drops the carried conflict when the new head is clean, so the policy alone gates it", async () => {
     const { host, fake, services, runId, reviewed, review } = await conflictAtGated();
     review.mergeAt = MOVED;
     Object.assign(fake.pr(1), { mergeableState: "clean" });
@@ -256,9 +257,45 @@ describe("a pending approve-merge gate whose pull request head moved", () => {
     expect(reviewed).toContain(MOVED);
     const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
     expect(prompt).toContain(`at head ${MOVED} into main?`);
-    expect(prompt).toContain("Policy shepherd-route/conflict");
-    expect(prompt).toContain(`carried from the gate at head ${GATED}`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
     expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("asks no conflict question at the update-branch head that reads blocked with green CI and MERGE (cw#203 run 5ec87e00)", async () => {
+    const { host, fake, services, runId, review } = await conflictAtGated();
+    const runs = fake.onGetPr;
+    fake.reviewBypass = true;
+    fake.onGetPr = (open, reads) => {
+      if (open.headSha !== MOVED && open.headSha !== GATED) {
+        open.mergeableState = "blocked";
+        review.mergeAt = open.headSha;
+      }
+      runs?.(open, reads);
+    };
+    Object.assign(fake.pr(1), { mergeableState: "behind", behind: true });
+    fake.pushHead(1, MOVED);
+
+    await supersedeMovedGates(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    expect(fake.effects.updateBranch).toBe(1);
+    const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${review.mergeAt} into main?`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
+  });
+
+  it("asks no conflict question at a new head that reads unstable", async () => {
+    const { host, fake, services, runId, review } = await conflictAtGated();
+    review.mergeAt = MOVED;
+    Object.assign(fake.pr(1), { mergeableState: "unstable" });
+    fake.pushHead(1, MOVED);
+
+    await supersedeMovedGates(host, services);
+    await gateOpened(host, gateId(runId, "approve-merge", 1));
+
+    const prompt = host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${MOVED} into main?`);
+    expect(prompt).not.toContain("shepherd-route/conflict");
   });
 
   it("supersedes a conflict gate when the run's last seat-policy decision was about an older head", async () => {
@@ -407,6 +444,49 @@ describe("a pending shepherd-route fix-first-runaway approve-merge gate", () => 
 
     expect(await supersedeMovedGates(host, services)).toEqual([]);
     expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+});
+
+/** `services` reading PR 1's snapshot row at `rowHead`, with every port PR read counted in `reads`. */
+function snapshotAt(services: Services, fake: FakeGitHub, rowHead: string): { services: Services; reads: number[] } {
+  const reads: number[] = [];
+  const snapshot: PrSnapshot = {
+    openPrs: async () => [{ ...fake.pr(1), headSha: rowHead }],
+    getPr: async () => Promise.reject(new Error("the sweep reads PRs through the port")),
+    checkRuns: async () => [],
+    invalidate: () => undefined,
+  };
+  const port = { ...services.port, getPr: async (repo: string, number: number) => (reads.push(number), services.port.getPr(repo, number)) };
+  return { services: { ...services, snapshot, port }, reads };
+}
+
+describe("a pending approve-merge gate read through the PR snapshot", () => {
+  it("a snapshot row still at the gated head costs no PR read and supersedes nothing", async () => {
+    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    const read = snapshotAt(services, fake, gated);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([]);
+    expect(read.reads).toEqual([]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a snapshot row behind the gate's head is confirmed through the port and the live gate stays", async () => {
+    const { host, fake, services, runId } = await runawayAtSixthHead("MERGE");
+    const read = snapshotAt(services, fake, SENT_BACK);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([]);
+    expect(read.reads).toEqual([1]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("a snapshot row at a new head supersedes once the port agrees", async () => {
+    const { host, fake, services, runId, gated } = await runawayAtSixthHead("MERGE");
+    fake.pushHead(1, MOVED);
+    const read = snapshotAt(services, fake, MOVED);
+
+    expect(await supersedeMovedGates(host, read.services)).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: gated, to: MOVED, condition: "head-moved" }]);
+    expect(read.reads).toEqual([1]);
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled");
   });
 });
 

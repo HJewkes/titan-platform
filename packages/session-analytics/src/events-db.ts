@@ -1,4 +1,5 @@
 import type { Db } from "@titan-design/store-sqlite";
+import { z } from "zod";
 import { parseVerdict, type VerdictRecord } from "./blocked-flow-merge.js";
 import type { SpawnRecord } from "./liveness-exits.js";
 import type { LastEventRecord } from "./liveness-prompts.js";
@@ -63,4 +64,41 @@ interface LastEventRow extends Omit<LastEventRecord, "at"> {
 export function readLastPrompts(db: Db, asOf: string): LastEventRecord[] {
   const rows = db.prepare(LAST_PROMPTS_SQL).all({ asOf: Date.parse(asOf) }) as LastEventRow[];
   return rows.map(({ ts, ...row }) => ({ ...row, at: new Date(ts).toISOString() }));
+}
+
+/** A seat's handoff as agent-chat stores it: `actor` is the name the successor keeps, `ref` the outgoing agent id, `meta.successor` the incoming one. */
+export interface HandoffRecord {
+  eventId: number;
+  at: string;
+  seat: string;
+  predecessorId: string;
+  successorId: string | null;
+  /** The predecessor stood down afterwards; an uncommitted handoff is a teleport that was aborted. */
+  committed: boolean;
+}
+
+export const HANDOFFS_SQL = [
+  `SELECT h.id AS eventId, h.ts, h.actor AS seat, h.ref AS predecessorId, ${metaField("successor", "h.meta")} AS successorId,`,
+  `EXISTS (SELECT 1 FROM events s WHERE s.ref = h.ref AND s.kind = 'agent_stood_down' AND s.id > h.id) AS committed`,
+  `FROM events h WHERE h.kind = 'agent_handoff' AND h.ref IS NOT NULL AND h.ts >= @since ORDER BY h.id`,
+].join(" ");
+
+const handoffRowsSchema = z.array(
+  z.object({
+    eventId: z.number(),
+    ts: z.number(),
+    seat: z.string(),
+    predecessorId: z.string(),
+    successorId: z.unknown().transform((value) => (typeof value === "string" ? value : null)),
+    committed: z.number(),
+  }),
+);
+
+/**
+ * `agent_handoff` rows at or after `since` (ISO), oldest first. To resolve seat generations, omit
+ * `since`: the generation live at a window's start began with a handoff written before it.
+ */
+export function readHandoffs(db: Db, since?: string): HandoffRecord[] {
+  const rows = handoffRowsSchema.parse(db.prepare(HANDOFFS_SQL).all({ since: since ? Date.parse(since) : 0 }));
+  return rows.map(({ ts, committed, ...row }) => ({ ...row, at: new Date(ts).toISOString(), committed: committed === 1 }));
 }

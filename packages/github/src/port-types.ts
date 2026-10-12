@@ -20,6 +20,12 @@ export interface LoggedCommit {
   message: string;
 }
 
+export interface RepoFile {
+  path: string;
+  blobSha: string;
+  content: string;
+}
+
 export interface PutFileRequest {
   path: string;
   branch: string;
@@ -40,4 +46,26 @@ export interface SquashSource {
   title: string;
   body: string;
   commits: { subject: string; body: string }[];
+}
+
+export interface CheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  /** The commit the run checked; a run at any other sha says nothing about this head. */
+  headSha: string;
+  /** The GitHub App that posted the run; a required context counts only from an allowed app. */
+  appId: number | null;
+  /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
+  workflowRunId: number | null;
+  /** The pull requests GitHub ties the run to, so a run can be bound to one PR and base branch; empty for a fork's PR. */
+  pullRequests: CheckRunPr[];
+  url: string;
+}
+
+export interface CheckRunPr {
+  number: number;
+  baseRef: string;
 }

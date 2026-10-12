@@ -27,6 +27,7 @@ titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
 titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
+titan-miner --graph <file> tool-gap-weekly --notify-command <path>  # weekly tool-gap pass; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -85,6 +86,7 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 
 | Question | Command | Answers | Own options |
 | --- | --- | --- | --- |
+| Q0 | `insights prices` | the price table as data, the models in the window no row prices, and every model in a published price file the table prices differently or not at all; no cost claim until that list is empty | `--published <file>` (CLI only): JSON `[{ model, input, cacheRead, cacheWrite5m, cacheWrite1h, output }]` in USD per million tokens |
 | Q1 | `insights spend-by-action` | each role's spend by turn action, and the mechanical share | `--mechanical <class>` |
 | Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
@@ -96,17 +98,27 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 | Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
 | Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
 | Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
+| Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
+| Q14 | `insights seat-generations` | each agent that held a seat's name in the window, in start order, with its start, end, how it ended (`handoff`, `teleport`, `exit` or `open`) and its graph sessions, plus a ready `--session` argument string for the graph questions | `--seat <name>` (required), `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
 `--since` (inclusive) and `--until` (exclusive) on request time. Roles are the cost
 report's `byRole` names, such as `coordinator` or `worker:reviewer`. Compactions and
 coverage stay window-wide. Dates must parse and are compared in UTC, so an offset timestamp
-works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it reads a local file.
+works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` and `published` because they read a local file.
 
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
 renderer. Both carry `LIST_PRICE_CAVEAT`: the figures are list prices, not a bill.
+
+Q12 runs first. The graph is stale when its newest request trails `--until` (or now) by more
+than `--max-lag` minutes. An `error` fault means the numbers it touches are wrong and no claim
+should rest on them; a `warn` fault means they are incomplete. `--assignments` takes JSONL in
+session-analytics' `assignmentSchema` shape: a line that fails the schema is counted, not thrown;
+an outcome outside `merged`, `done` and any `--known-outcome` is flagged; and agents the
+cost-per-outcome join cannot find in the graph are listed. The code only reports; the
+session-insights skill files the tasks.
 
 Q7 reads outside the graph, so it refuses `--session`, `--agent-prefix` and `--role`; narrow it
 with `--seat`. Reviewer verdicts come from agent-chat's events table, opened read-only at
@@ -130,6 +142,14 @@ before `--until`, not counting `resolution` rows, however long before `--since`;
 A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row, or when the broker
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
+
+Q14 resolves a seat to its generations through session-analytics' `seatGenerations`. It reads
+`agent_handoff` rows from the events table and spawn, exit and `teleport_completed` lines from the
+broker log, and maps each agent id to its graph sessions. It refuses the session filters; name the
+seat with `--seat`. A generation that ended before `--since` or started at or after `--until` is
+left out, and one with no graph session stays listed with no sessions. `sessionArgs` joins only
+the sessions the graph knows; appended to any graph question, it runs that question over a seat
+since a time. Q14 is registered from `AGENT_CHAT_QUESTIONS`.
 
 Q9 reads each Bash call in the window back from its transcript, since the graph keeps no command
 text; a call whose `command_heads` signal names none of our CLIs is never read. It keeps every
@@ -202,6 +222,29 @@ synthetic-fixture test. Then add one `defineInsight({...})` to
 options and flags, the schema, and an `answer` that calls the analysis and its renderer.
 Append it to `INSIGHT_QUESTIONS`. The shared tests then cover its envelope, its caveat,
 every filter, and its presence on all three surfaces.
+
+### Verifying findings (TP-499)
+
+An analyst reading these answers writes each finding as `findingSchema` (exported from
+`src/insights/citations.ts`): `{ id, claim, citations, falsifier }`. A finding with no citation
+or an empty `falsifier` fails the schema. Each citation is
+`{ question, args, field, value, tolerance? }`: `question` is an insight name such as
+`spend-by-action`, `args` its flags as an object (`--agent-prefix`, `agent-prefix` and
+`agentPrefix` are the same key), and `field` a JSON pointer into the answer, such as
+`/totals/sessions`.
+
+```json
+[{ "id": "F1", "claim": "reviewers ran one session", "falsifier": "a second reviewer session in the window",
+   "citations": [{ "question": "spend-by-action", "args": { "since": "2026-09-10", "agent-prefix": "rev-" },
+                   "field": "/totals/sessions", "value": 1 }] }]
+```
+
+`titan-miner insights verify-citations --findings <file>` re-runs each cited question once per
+distinct question and args, and gives every citation a status: `ok`, `mismatch` (with the
+`actual` value), `missing-field`, `unknown-question`, or `error` (the run failed, such as invalid
+args or a missing events db). A number matches within `tolerance` relative to the cited value,
+0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
+failures when any citation is not ok. `--findings` is accepted only on the CLI.
 
 ## The playbook (TP-19)
 
@@ -304,6 +347,42 @@ systemctl --user enable --now session-miner-refresh.timer
 Then `systemctl --user start session-miner-refresh.service` runs a pass at once,
 `journalctl --user -u session-miner-refresh` shows its log, and a failed pass leaves the
 unit in `systemctl --user --failed`.
+
+## Weekly tool-gap pass (TP-2076)
+
+`titan-miner tool-gap-weekly --notify-command <path>` is one weekly pass over Q9
+`tool-gaps` and Q10 `tool-adoption`. It files and notes tasks and reports; it never builds a tool.
+
+1. It takes `<state>/tool-gap-weekly/run.lock` without waiting; a second live run exits 75.
+2. It runs both questions over the 7 days ending now and diffs them against
+   `<state>/tool-gap-weekly/latest.json`, last week's answers. A first run counts every row as new.
+3. For each pattern id with at least `--min-calls` calls (default 50) and `--min-sessions`
+   sessions (default 10) that the adoption registry does not already name, it files one task in
+   `--initiative <slug>` (default `titan-platform`) through `active-work task add`, tagged
+   `tool-gap`, `tool-gap:<patternId>` and `item-114`. If an open task already carries
+   `tool-gap:<patternId>`, it appends this week's counts with `active-work task note` instead.
+4. It runs the notify command once, with the digest on stdin: new gaps, task actions, adoption
+   results and removal candidates (shipped, unused 28 days or more after ship). The digest is a
+   notice and asks nothing.
+5. Only then does it replace `latest.json`. If a task action or the notifier fails, the pass logs
+   `tool-gap-weekly: FAILED: …`, exits 70 and keeps last week's snapshot, so the next run diffs
+   against the same base. A rerun in the same week notes the tasks the failed run did file.
+
+Stdout carries one JSON line: `outcome` (`ok`, `locked` or `failed`), the actions taken, and
+`exitCode`. agent-chat has no CLI verb that posts a notice, so the operator picks the notifier:
+any executable that reads stdin.
+
+`ops/systemd/session-miner-tool-gaps.{service,timer}` run it every Monday at 05:30, catching up a
+missed week on boot. The service reads `ACTIVE_ROOT`, `TITAN_MINER_GRAPH` and `TITAN_MINER_NOTIFY`
+from `~/.config/titan-session-miner/tool-gaps.env`, which it requires. To install (an owner step,
+same build and checkout as the hourly refresh):
+
+```sh
+printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\nTITAN_MINER_NOTIFY=<notifier>\n' > ~/.config/titan-session-miner/tool-gaps.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.service ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-tool-gaps.timer
+```
 
 ## Codex sessions
 

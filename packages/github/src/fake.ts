@@ -105,7 +105,7 @@ export function fakeSha(tag: string): string {
 }
 
 export function successRun(name: string, id: number, startedAt = "2026-01-01T00:00:00Z", conclusion = "success", appId = GITHUB_ACTIONS_APP_ID, headSha = ""): CheckRun {
-  return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
+  return { id, name, status: "completed", conclusion, startedAt, headSha, appId, workflowRunId: 1000 + id, pullRequests: [], url: `https://example.test/actions/runs/${1000 + id}/job/${id}` };
 }
 
 /** The App id the fake posts check runs as unless `fakeGitHub({ appId })` says otherwise. */
@@ -277,7 +277,7 @@ function resolveCommit(fake: FakeGitHub, runs: Map<string, CheckRun[]>, sha: str
 /** Like GitHub, the run is stamped with the posting App's id, which is what `latestCheckRuns` and `mergeReadiness` read. */
 function createCheckRun(fake: FakeGitHub, runs: Map<string, CheckRun[]>, appId: number, repo: string, request: CreateCheckRunRequest, n: number): { id: number } {
   const id = 9000 + n;
-  const run: CheckRun = { id, name: request.name, status: "completed", conclusion: request.conclusion, startedAt: "2026-01-01T00:00:00Z", headSha: request.headSha, appId, workflowRunId: null, url: `https://example.test/runs/${id}` };
+  const run: CheckRun = { id, name: request.name, status: "completed", conclusion: request.conclusion, startedAt: "2026-01-01T00:00:00Z", headSha: request.headSha, appId, workflowRunId: null, pullRequests: [], url: `https://example.test/runs/${id}` };
   fake.createdCheckRuns.push({ id, repo, request: { ...request } });
   runs.set(request.headSha, [...(runs.get(request.headSha) ?? []), run]);
   return { id };

@@ -13,10 +13,26 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   and requires `asker` and `depositId`. `fromDeposit(deposit, now)` parses one and returns the
   open item it files, with source `deposit:<asker>/<depositId>` and a lens taken from
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
+- `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent
+  means owner. It only selects a reader and grants no authority. `forAudience(items, audience)`
+  keeps the matching items in input order and `audienceOf(item)` reads the default.
+- Card fields, all optional on an item and a deposit: `class` (the decision-routing D-row,
+  `D<n>`), `irreversible` (one line on what cannot be undone), `shown` (1-8 evidence refs, each
+  an https URL, an absolute path or `$ <command>`), `default` (an option id), `onSilence`
+  (`ON_SILENCE_ACTIONS`: `{ action: "wait" }`, or `apply-default`/`expire` with `afterHours`
+  1-720) and a one-line `consequence` per option. `cardLint(item)` returns the `CARD_RULES` an
+  item breaks, in that order: a `decide` or `approve` item needs `card:options` (two or more),
+  `card:class`, `card:on-silence` and, when one-way, `card:one-way-irreversible`. Any kind is
+  checked on the fields it sets: `card:consequence` (every option has one),
+  `card:default-not-option`, `card:apply-default-needs-default` and `card:one-way-waits` (a
+  one-way item never acts on silence). `ownerCardSchema` is `ownerItemSchema` plus those rules,
+  one issue per broken rule named by its id; `ownerItemSchema` itself still accepts an item
+  with no card fields.
 - `@titan-design/owner-queue/spool` is the only part of the package that touches the
   filesystem; the root export stays I/O-free. `writeDeposit(dir, deposit)` files a deposit
   once as `<asker>-<depositId>.json` (0600, temp file then a no-clobber link, 64 KB cap),
-  `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects, and
+  `readSpool(dir)` returns the valid items plus `{ file, reason }` rejects (`{ audience }`
+  keeps one audience's items, absent counted as owner, and every reject), and
   `writeAnswer`/`readAnswer` keep `<id>.answer.json` beside them. File names percent-encode
   every byte outside `[a-z0-9_]`, so no asker or depositId can name a path outside `dir`, and
   `Bob` and `bob` stay apart on a case-insensitive filesystem. A lone surrogate is refused.

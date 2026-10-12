@@ -111,3 +111,71 @@ describe("titan-gh pr verbs", () => {
     expect(result.fake.calls).toEqual([]);
   });
 });
+
+async function titanGhPremerge(args: string[], setup: (fake: ReturnType<typeof fakeGitHub>) => void = () => {}) {
+  const fake = fakeGitHub();
+  fake.rules = { contexts: ["validate"], strict: false };
+  fake.addPr({ headSha: SHA, behindBy: 0 });
+  fake.setRuns(SHA, [successRun("validate", 1)]);
+  setup(fake);
+  const out: string[] = [];
+  const err: string[] = [];
+  const clones: string[] = [];
+  const mergeTree = (clone: string) => (clones.push(clone), async () => fakeSha(`tree:${SHA}`));
+  const code = await runTitanGh(args, { port: githubPort(fake.wire), out: (line) => out.push(line), err: (line) => err.push(line), now: () => 0, sleep: async () => {}, mergeTree });
+  return { code, out, err, fake, clones };
+}
+
+describe("titan-gh premerge", () => {
+  const REVIEWED = fakeSha("reviewed");
+  const BASE_PARENT = fakeSha("base-parent");
+
+  it("prints the OK line and exits 0 for a ready PR", async () => {
+    expect(await titanGhPremerge(["premerge", "o/r#1", SHA, "--approved-head", SHA])).toMatchObject({ code: 0, out: [`OK o/r#1 head=${SHA} base=main req=[validate] strict=false behind=0`], err: [] });
+  });
+
+  it("prints the FAIL line and exits 1 when a required check is red", async () => {
+    const result = await titanGhPremerge(["premerge", "o/r#1", SHA, "--approved-head", SHA], (fake) => fake.setRuns(SHA, [successRun("validate", 1, undefined, "failure")]));
+
+    expect(result).toMatchObject({ code: 1, out: ["FAIL o/r#1: checks red: validate=failure"] });
+  });
+
+  it("prints one JSON object with --json", async () => {
+    const result = await titanGhPremerge(["premerge", "o/r#1", SHA, "--approved-head", SHA, "--json"]);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out.join("\n"))).toEqual({ repo: "o/r", number: 1, ok: true, reasons: [], head: SHA, base: "main", required: ["validate"], strict: false, behindBy: 0 });
+  });
+
+  it("proves a walked approval with git merge-tree in the --clone directory", async () => {
+    const setup = (fake: ReturnType<typeof fakeGitHub>) => void fake.commits.set(SHA, { sha: SHA, parents: [REVIEWED, BASE_PARENT], tree: fakeSha(`tree:${SHA}`) });
+    const result = await titanGhPremerge(["premerge", "o/r#1", SHA, "--approved-head", REVIEWED, "--clone", "/tmp/clone"], setup);
+
+    expect(result).toMatchObject({ code: 0, clones: ["/tmp/clone"] });
+  });
+
+  it("fails a walked approval closed without --clone", async () => {
+    const setup = (fake: ReturnType<typeof fakeGitHub>) => void fake.commits.set(SHA, { sha: SHA, parents: [REVIEWED, BASE_PARENT], tree: fakeSha(`tree:${SHA}`) });
+    const result = await titanGhPremerge(["premerge", "o/r#1", SHA, "--approved-head", REVIEWED], setup);
+
+    expect(result.code).toBe(1);
+    expect(result.out[0]).toContain(`no merge-tree proof that head ${SHA} is reviewed ${REVIEWED}`);
+  });
+
+  it.each([
+    ["no arguments", []],
+    ["a missing approved head", [`o/r#1`, SHA]],
+    ["an abbreviated head", ["o/r#1", SHA.slice(0, 7), "--approved-head", SHA]],
+    ["an upper-case approved head", ["o/r#1", SHA, "--approved-head", SHA.toUpperCase()]],
+    ["a malformed ref", ["o/r", SHA, "--approved-head", SHA]],
+    ["an extra argument", ["o/r#1", SHA, "extra", "--approved-head", SHA]],
+    ["an unknown flag", ["o/r#1", SHA, "--approved-head", SHA, "--force"]],
+    ["a flag without a value", ["o/r#1", SHA, "--approved-head"]],
+  ])("exits 2 with usage and no GitHub read on %s", async (_name, args) => {
+    const result = await titanGhPremerge(["premerge", ...args]);
+
+    expect(result).toMatchObject({ code: 2, out: [] });
+    expect(result.err.join("\n")).toContain("titan-gh premerge <owner/repo#N> <sha> --approved-head <sha>");
+    expect(result.fake.calls).toEqual([]);
+  });
+});

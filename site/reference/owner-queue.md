@@ -56,8 +56,13 @@ const list = rank(mergeByKeys([gate, ask]));
 Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
 holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
 `recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
-`personal`, `unblocks`, `expiresAt`, plus `depositId`. `asker` and `depositId` are required;
-`keys` and `unblocks` default to empty and `personal` to false.
+`personal`, `unblocks`, `expiresAt`, `audience`, plus `depositId`. `asker` and `depositId` are
+required; `keys` and `unblocks` default to empty and `personal` to false.
+
+`audience` is `"owner"` or `"operator"` and says which reader the item is for; an item with
+none is the owner's. It selects a view and grants no authority. `forAudience(items, audience)`
+keeps the matching items in input order, and `audienceOf(item)` reads an absent audience as
+`"owner"`.
 
 The schema is strict at every level. The system alone sets `id`, `status`, `answer`, `route`,
 `authority`, `lint` and hidden picks, so a deposit carrying any of them is refused rather than
@@ -116,7 +121,8 @@ for (const item of items) {
   through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
   over the cap, a symlink, or a file whose name does not match its own asker and
   `depositId` goes to `rejects` as `{ file, reason }`; reasons never quote file contents. A
-  missing `dir` reads as empty.
+  missing `dir` reads as empty. `readSpool(dir, { audience })` keeps only that audience's
+  items, counting none as owner; rejects are kept whatever the filter.
 - `writeAnswer(dir, id, answer)` and `readAnswer(dir, id)` keep `<id>.answer.json` beside the
   deposits, written the same way. The first answer stays; `readAnswer` returns `undefined`
   when none is filed and throws on a malformed one.

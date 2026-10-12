@@ -1,8 +1,9 @@
-import { ownerItemSchema } from "@titan-design/owner-queue";
+import { mergeByKeys, ownerItemSchema } from "@titan-design/owner-queue";
 import { describe, expect, it, vi } from "vitest";
-import { RUN_A, brokerSnapshot } from "../test-support/owner-queue.js";
+import { RUN_A, brokerSnapshot, gateSnapshot } from "../test-support/owner-queue.js";
 import { TOKEN_HEADER, agentChatSource, type BrokerEndpoint } from "./agent-chat-source.js";
 import { tally } from "./counts.js";
+import { hitlGateSource } from "./hitl-source.js";
 import { QueueReadError } from "./queue-read-error.js";
 
 const SECRET = "test-token-not-real";
@@ -49,6 +50,17 @@ describe("agentChatSource open", () => {
       sources: [{ system: "agent-chat", ref: "m-30" }],
     });
     expect(question.context).toContain("If no answer: keep two");
+  });
+
+  it("keys a gate notifier's ask as its gate, so needs shows the gate and its ask as one item", async () => {
+    const gateId = `${RUN_A}/approve-merge`;
+    const ask = { ...brokerSnapshot().find((r) => r.msgId === "m-30")!, meta: { task: `gate:${gateId}` } };
+    const [chatItem] = await agentChatSource(endpoint(() => json({ items: [ask] })).endpoint).open();
+    expect(chatItem!.keys).toEqual([`gate:${gateId}`, `run:${RUN_A}`]);
+    const gateItem = (await hitlGateSource({ gates: gateSnapshot() }).open()).find((item) => item.id === `gate:${gateId}`)!;
+    const merged = mergeByKeys([gateItem, chatItem!]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.sources).toEqual([{ system: "hitl", ref: gateId }, { system: "agent-chat", ref: "m-30" }]);
   });
 
   it("makes permission prompts and endorsements one-way approvals", async () => {

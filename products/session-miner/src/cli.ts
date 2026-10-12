@@ -12,11 +12,15 @@ import {
   type CommandRegistry,
   type JsonEnvelope,
 } from "@titan-design/registry";
-import { resolveConfig, type ConfigOverrides } from "./config.js";
+import { resolveConfig, type ConfigOverrides, type MinerConfig } from "./config.js";
 import { createMinerContext, type MinerContext } from "./context.js";
 import { runGraphRefresh, spawnRefresh } from "./graph-refresh.js";
 import { MINER_VERSION, createMinerRegistry } from "./registry.js";
 import { runMinerMcpStdio, serveMinerUntilSignal } from "./serve.js";
+import { DEFAULT_TOOL_ADOPTION_PORTS } from "./insights/tool-adoption.js";
+import { DEFAULT_TOOL_GAPS_PORTS } from "./insights/tool-gaps.js";
+import { DEFAULT_GAP_THRESHOLD, type GapThreshold } from "./tool-gap-weekly.js";
+import { activeWorkCli, notifyCommand, runToolGapWeekly } from "./tool-gap-weekly-run.js";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -49,7 +53,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   const registry = createMinerRegistry();
   for (const cmd of registry.list()) attach(program, cmd, registry, io, (code) => (exitCode = code));
   attachLongRunning(program, io);
-  attachGraphRefresh(program, io, (code) => (exitCode = code));
+  attachScheduled(program, io, (code) => (exitCode = code));
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (err) {
@@ -144,4 +148,55 @@ function attachGraphRefresh(program: Command, io: CliIo, onExit: (code: number) 
       io.stdout(`${JSON.stringify(result)}\n`);
       onExit(result.exitCode);
     });
+}
+
+interface ToolGapWeeklyFlags {
+  initiative: string;
+  minCalls: string;
+  minSessions: string;
+  notifyCommand: string;
+}
+
+/** The verbs systemd timers run; CLI-only, since they spawn processes and hold locks. */
+function attachScheduled(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  attachGraphRefresh(program, io, onExit);
+  attachToolGapWeekly(program, io, onExit);
+}
+
+function attachToolGapWeekly(program: Command, io: CliIo, onExit: (code: number) => void): void {
+  program
+    .command("tool-gap-weekly")
+    .description("Scheduled pass: run Q9 and Q10 over the last 7 days, file or note one tool-gap task per pattern, send one digest")
+    .requiredOption("--notify-command <path>", "command that receives the digest on stdin")
+    .option("--initiative <slug>", "active-work initiative the tasks go to", "titan-platform")
+    .option("--min-calls <n>", "calls a pattern needs before it gets a task", String(DEFAULT_GAP_THRESHOLD.minCalls))
+    .option("--min-sessions <n>", "sessions a pattern needs before it gets a task", String(DEFAULT_GAP_THRESHOLD.minSessions))
+    .action(async (opts: ToolGapWeeklyFlags) => {
+      const threshold = { minCalls: Number(opts.minCalls), minSessions: Number(opts.minSessions) };
+      if (!Number.isInteger(threshold.minCalls) || !Number.isInteger(threshold.minSessions)) {
+        io.stderr("error: --min-calls and --min-sessions take whole numbers\n");
+        return onExit(EXIT.USAGE);
+      }
+      onExit(await toolGapWeeklyFromCli(resolveConfig(configOverrides(program.opts()), io.env), opts, threshold, io));
+    });
+}
+
+async function toolGapWeeklyFromCli(config: MinerConfig, opts: ToolGapWeeklyFlags, threshold: GapThreshold, io: CliIo): Promise<number> {
+  const ctx = createMinerContext(config, { format: "json", surface: "cli" });
+  try {
+    const result = await runToolGapWeekly({
+      db: ctx.graph().db,
+      dir: path.join(config.stateDir, "tool-gap-weekly"),
+      initiative: opts.initiative,
+      threshold,
+      reports: { ...DEFAULT_TOOL_GAPS_PORTS, ...DEFAULT_TOOL_ADOPTION_PORTS },
+      activeWork: activeWorkCli,
+      notify: notifyCommand(opts.notifyCommand),
+      log: (line) => io.stderr(`${line}\n`),
+    });
+    io.stdout(`${JSON.stringify(result)}\n`);
+    return result.exitCode;
+  } finally {
+    ctx.close();
+  }
 }

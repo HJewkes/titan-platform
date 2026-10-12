@@ -52,7 +52,7 @@ function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdP
   let clock = 0;
   spaceUpdates(fake, (ms) => void (clock += ms));
   const store = shepherdStoreRef();
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports, park: () => ({ lines: [] }) });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports, park: async () => ({ lines: [] }) });
   const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
   hosts.push(host);
   fake.addPr({ headSha: H1 });
@@ -135,20 +135,62 @@ describe("a held run whose head needs a fix wakes no agent and tells the seat on
     expect(world.host.gates.get(gateId(world.runId, "approve-merge"))?.prompt).toContain(`at head ${H2}`);
   });
 
-  it("a head pushed while held goes to the next round with no wake", async () => {
+});
+
+/** The run reached review at H2 and then a merge decision or gate, the only places a held run can rest at H2. */
+const settledAtH2 = ({ host, runId }: HeldWorld): boolean => /^(merge|sh-held-wait)(:|$)/.test(host.runtime.status(runId)?.currentStep ?? "") || host.pendingGates().length > 0;
+const heldWaitResult = ({ host, runId }: HeldWorld): unknown => Object.values(host.runtime.status(runId)!.stepResults).find((result) => /^sh-held-wait/.test(result.stepId))?.data?.["result"];
+
+describe("a head pushed while the run is held runs CI and review at it, with the hold kept", () => {
+  const cases: Array<[string, (fake: FakeGitHub) => void, ((headSha: string) => Verdict) | undefined]> = [
+    ["a ci-red", redAtH1, undefined],
+    ["a FIX_FIRST", green, () => ({ kind: "FIX_FIRST", headSha: H1, text: "missing test" })],
+  ];
+
+  it.each(cases)("after %s wake: review at the pushed head, no wake, still held and unmerged", async (_wake, fixture, firstVerdict) => {
+    const fake = fakeGitHub();
+    fixture(fake);
+    const wakes: WakeRequest[] = [];
+    const reviewed: string[] = [];
+    const shepherd = phases(fake, wakes, firstVerdict);
+    const { ports } = seatPorts();
+    const world = heldWorld(fake, ports, { ...shepherd, review: async (ctx, request) => (reviewed.push(request.headSha), shepherd.review(ctx, request)) });
+    await waitingOnHold(world);
+    const release = vi.spyOn(world.store.get(), "release");
+
+    fake.pushHead(1, H2);
+    await vi.waitFor(() => expect(reviewed).toContain(H2), { timeout: 5_000 });
+    await vi.waitFor(() => expect(settledAtH2(world)).toBe(true), { timeout: 5_000 });
+
+    expect(wakes).toEqual([]);
+    expect(release).not.toHaveBeenCalled();
+    expect(world.store.get().byRun(world.runId)).toMatchObject({ held: true, holdReason: HOLD });
+    expect(fake.pr(1).merged).toBe(false);
+  });
+
+  it("the held wait records the head it moved to", async () => {
     const fake = fakeGitHub();
     redAtH1(fake);
-    const wakes: WakeRequest[] = [];
-    const { sent, ports } = seatPorts();
-    const world = heldWorld(fake, ports, phases(fake, wakes));
+    const { ports } = seatPorts();
+    const world = heldWorld(fake, ports, phases(fake, []));
     await waitingOnHold(world);
 
     fake.pushHead(1, H2);
-    await vi.waitFor(() => expect(world.host.runtime.status(world.runId)?.currentStep).not.toMatch(/^sh-held-wait/));
-    world.store.get().release(world.runId);
-    await gateOpened(world.host, gateId(world.runId, "approve-merge"));
+    await vi.waitFor(() => expect(heldWaitResult(world)).toBeDefined());
 
-    expect(wakes).toEqual([]);
-    expect(sent).toHaveLength(1);
+    expect(heldWaitResult(world)).toEqual({ moved: true, headSha: H2 });
+  });
+
+  it("the held wait records no head when the PR closes", async () => {
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const { ports } = seatPorts();
+    const world = heldWorld(fake, ports, phases(fake, []));
+    await waitingOnHold(world);
+
+    fake.pr(1).state = "closed";
+    await vi.waitFor(() => expect(heldWaitResult(world)).toBeDefined());
+
+    expect(heldWaitResult(world)).toEqual({ moved: true });
   });
 });

@@ -271,7 +271,8 @@ export interface FreezeGuardDeps {
 
 /** Why a merge of `repo#pr` waits on a frozen repo; a blocked read also re-reads the default branch, at most every five minutes per repo. */
 export interface FreezeGuard {
-  reason(port: GitHubPort, repo: RepoSlug, pr: number, baseRef: string): Promise<string | undefined>;
+  /** `head` and `branch` are the PR's head and head branch as the merge check read them. */
+  reason(port: GitHubPort, repo: RepoSlug, pr: number, baseRef: string, head?: string, branch?: string): Promise<string | undefined>;
 }
 
 export function freezeGuard(deps: FreezeGuardDeps): FreezeGuard {

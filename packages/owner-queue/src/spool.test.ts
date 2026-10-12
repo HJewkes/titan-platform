@@ -195,6 +195,28 @@ describe("readSpool", () => {
     expect(rejects[2]?.reason).toBe("not a regular file");
   });
 
+  it("reads an operator deposit back with its audience", async () => {
+    await writeDeposit(dir, deposit({ depositId: "for-owner" }));
+    await writeDeposit(dir, deposit({ depositId: "for-operator", audience: "operator" }));
+
+    const { items } = await readSpool(dir);
+
+    expect(items.map((each) => each.audience).sort()).toEqual(["operator", undefined]);
+  });
+
+  it("filters by audience, counts no audience as owner and keeps every reject", async () => {
+    await writeDeposit(dir, deposit({ depositId: "for-owner" }));
+    await writeDeposit(dir, deposit({ depositId: "for-operator", audience: "operator" }));
+    await writeFile(join(dir, "broken.json"), "{ not json");
+
+    const operator = await readSpool(dir, { audience: "operator" });
+    const owner = await readSpool(dir, { audience: "owner" });
+
+    expect(operator.items.map((each) => each.sources[0]?.ref)).toEqual(["agent-a/for-operator"]);
+    expect(owner.items.map((each) => each.sources[0]?.ref)).toEqual(["agent-a/for-owner"]);
+    expect(operator.rejects.map((reject) => reject.file)).toEqual(["broken.json"]);
+  });
+
   it("rejects a deposit filed under a name that is not its own", async () => {
     const { file } = await writeDeposit(dir, deposit());
     await rename(file, join(dir, "agent%2Db-d%2D1.json"));

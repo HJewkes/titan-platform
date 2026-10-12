@@ -1,13 +1,16 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
-/** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
+/** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
+/** The run's FIX_FIRST rounds so far: the one count the runaway cap, the re-review brief and the wake all read. */
+export const fixFirstCount = (ctx: Pick<WorkflowContext, "iteration">): number => ctx.iteration(FIX_FIRST_STEP);
 /** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
 export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
@@ -53,10 +56,9 @@ async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun
  * Each entry names scripts, not commands; the appended test rule decides where and how they run.
  */
 const LOCAL_REPRO: Readonly<Record<string, string>> = {
-  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check`, `docs:build` or `egress:scan` (over the PR's commit range) script, or a missing changeset",
   "lint-types": "the `lint:types` script",
   "dag-check": "the `dag:check` and `dead:check` scripts",
-  "egress-scan": "the `egress:scan` script over the PR's commit range",
 };
 
 function failingJobsLine(failing: readonly CheckRun[]): string {

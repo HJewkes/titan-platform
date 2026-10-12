@@ -1,4 +1,4 @@
-export type { PriceRow } from "./prices.js";
+export type { LongPromptPrice, PriceRow } from "./prices.js";
 export { PRICE_TABLE, PRICE_TABLE_VERSION, findPrice } from "./prices.js";
 export type { PricedRequest, RequestTokens } from "./price-request.js";
 export { priceRequest } from "./price-request.js";
@@ -98,7 +98,11 @@ export type { LastEventRecord, StalePromptRow } from "./liveness-prompts.js";
 export { PROMPT_STALE_MIN, stalePromptRows } from "./liveness-prompts.js";
 export type { LivenessInput, LivenessReport, LivenessSource } from "./liveness.js";
 export { LIVENESS_SOURCES, livenessReport, livenessSchema, renderLivenessText } from "./liveness.js";
-export { EVENTS_TABLE_DDL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
+export type { HandoffRecord } from "./events-db.js";
+export { EVENTS_TABLE_DDL, HANDOFFS_SQL, LAST_PROMPTS_SQL, SPAWNS_SQL, VERDICTS_SQL, eventsDbCommand, readHandoffs, readLastPrompts, readSpawns, readVerdicts } from "./events-db.js";
+export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
+export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
+export { readAgentSessions } from "./cost-report-queries.js";
 export type {
   CompactionMark,
   ModelRequests,
@@ -132,7 +136,7 @@ export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
 export type { Assignment, CostPerOutcomeOptions, CostPerOutcomeReport, OutcomeBucket } from "./cost-per-outcome.js";
-export { assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
+export { DEFAULT_DONE_OUTCOMES, DEFAULT_MERGED_OUTCOMES, assignmentSchema, costPerOutcome, costPerOutcomeSchema, renderCostPerOutcomeText } from "./cost-per-outcome.js";
 export type { SuccessorReworkOptions, SuccessorReworkReport } from "./successor-rework.js";
 export { DEFAULT_BOOT_REQUESTS, successorReworkReport, successorReworkSchema } from "./successor-rework.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";

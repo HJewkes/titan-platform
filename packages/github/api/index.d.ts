@@ -126,6 +126,11 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
+interface RepoFile {
+    path: string;
+    blobSha: string;
+    content: string;
+}
 interface PutFileRequest {
     path: string;
     branch: string;
@@ -148,15 +153,30 @@ interface SquashSource {
         body: string;
     }[];
 }
+interface CheckRun {
+    id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    startedAt: string | null;
+    /** The commit the run checked; a run at any other sha says nothing about this head. */
+    headSha: string;
+    /** The GitHub App that posted the run; a required context counts only from an allowed app. */
+    appId: number | null;
+    /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
+    workflowRunId: number | null;
+    /** The pull requests GitHub ties the run to, so a run can be bound to one PR and base branch; empty for a fork's PR. */
+    pullRequests: CheckRunPr[];
+    url: string;
+}
+interface CheckRunPr {
+    number: number;
+    baseRef: string;
+}
 
 /** `owner/name`. */
 type RepoSlug = string;
 type MergeMethod = "merge" | "squash" | "rebase";
-interface RepoFile {
-    path: string;
-    blobSha: string;
-    content: string;
-}
 interface PullRequest {
     number: number;
     state: "open" | "closed";
@@ -175,6 +195,8 @@ interface PullRequest {
     mergeableState: string;
     /** The head lacks commits the base has. */
     behind: boolean;
+    /** How many base commits the head lacks; `getPr` reports it for an open PR, list rows never do. */
+    behindBy?: number;
     /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
     autoMerge: boolean;
 }
@@ -184,20 +206,6 @@ interface RequiredChecks {
     strict: boolean;
     /** Apps a context is pinned to; a context absent here accepts a check from any app. */
     pins?: Record<string, number[]>;
-}
-interface CheckRun {
-    id: number;
-    name: string;
-    status: string;
-    conclusion: string | null;
-    startedAt: string | null;
-    /** The commit the run checked; a run at any other sha says nothing about this head. */
-    headSha: string;
-    /** The GitHub App that posted the run; a required context counts only from an allowed app. */
-    appId: number | null;
-    /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
-    workflowRunId: number | null;
-    url: string;
 }
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */
 interface HeadRef {
@@ -746,4 +754,4 @@ interface SquashMessage {
 /** Pure: the same input always yields byte-identical output, and re-formatting its own output changes nothing. */
 declare function formatSquashMessage(input: SquashInput): SquashMessage;
 
-export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };
+export { type AppCredentials, type ApprovedHeadWalk, type ApprovedHeadWalkInput, CHECK_CONCLUSIONS, COMPARE_COMMIT_CAP, COMPARE_FILE_CAP, type CheckConclusion, type CheckFinding, type CheckRun, type CheckRunPr, type CiVerdict, type CiVerdictInput, type CiWaitOptions, type CiWaitOutcome, type CiWaitResult, type CleanMergeTree, type Commit, type CommitStatus, type CompareResult, type CreateCheckRunRequest, FAKE_APP_ID, FORCE_PUSHES_CAP, type FakeEffects, type FakeFaultyRead, type FakeGitHub, FakeHttpError, FileListTruncatedError, type ForcePush, type ForcePushPage, ForcePushesTruncated, GITHUB_ACTIONS_APP_ID, type GhCliOptions, GhError, type GhExec, type GhExecOptions, type GhResult, GitHubConflictError, GitHubInputError, type GitHubPort, type GitHubPortOptions, type GitHubWire, type HeadChecksInput, type HeadRef, type InstallationToken, type IssueComment, type LoggedCommit, MAX_BASE_MERGES, type MergeBlockReason, type MergeBlocker, type MergeMessage, type MergeMethod, type MergeReadiness, type MergeReadinessInput, type OpenPrList, type OpenPrRequest, PR_COMMITS_CAP, PR_FILES_CAP, type PrFile, type PullRequest, type PutFileRequest, RATE_FLOOR, type RateBudget, type RateBudgetOptions, type RepoFile, type RepoSlug, type RequiredChecks, type ReviewComment, type SkipReason, type SquashCommit, type SquashInput, type SquashMessage, type SquashSource, type WriteResult, WriteRetriesExhaustedError, appInstallationToken, approvedHeadWalk, backoffMs, ciVerdict, ciWait, execGh, fakeGitHub, fakeSha, formatSquashMessage, ghCliWire, githubPort, headCheckFindings, isPassing, isRepo, latestPerName, loadRequiredContexts, mergeReadiness, rateBudget, sharedRateBudget, signAppJwt, successRun };

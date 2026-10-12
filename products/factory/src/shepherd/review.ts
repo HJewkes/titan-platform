@@ -1,5 +1,5 @@
 import type { AgentIdentity } from "@titan-design/authority";
-import { isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type OwnerBrief, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
+import { isUsageLimit, type AcceptedVerdict as PanelAcceptedVerdict, type AwaitVerdictInput, type OwnerBrief, type PanelPolicy, type ReviewTarget, type ReviewerAgent, type ReviewerDispatch, type ReviewerMessage, type ReviewerReader } from "@titan-design/review-panel";
 import type { OwnerOverride } from "./override-stats.js";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
@@ -21,15 +21,16 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { prChangedLines, prTouchesDependency, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { withReviewerProfile } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
 import { REVIEW_REQUEST_STEPS, reviewPendingAt, reviewRequestRoute } from "./review-request.js";
-import { FIX_FIRST_STEP } from "./wake-brief.js";
+import { fixFirstCount } from "./wake-brief.js";
 import { FIX_PROOF_STEP, FIX_PROOF_STEPS, FixProofReadSchema, fixProofRoute, fixProofVerdict } from "./fix-proof.js";
 import type { MachineStopWatch } from "./machine-stop.js";
 import { REVIEW_STOP_STEPS, dispatchedNone, reviewStopRoute } from "./review-stop.js";
+import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 
 export const REVIEW_INTENT_STEP = "sh-review-intent";
 export const REVIEW_STEP = "sh-review";
@@ -66,7 +67,7 @@ export type ReviewInput = z.infer<typeof ReviewInputSchema>;
 /** Which reviewer a head gets, recorded first so a repeat reads the same name and `at`; only a message written after `at` can be the verdict. */
 export type ReviewIntent = z.infer<typeof ReviewIntentSchema>;
 type NoReview = { kind: "none"; reason: string; exhausted?: string };
-export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent) | NoReview;
+export type ReviewIntentResult = ({ kind: "intent" } & ReviewIntent & Partial<IntentPlan>) | NoReview;
 export type ReviewDispatchInput = z.infer<typeof ReviewDispatchInputSchema>;
 export type ReviewDispatchResult = ({ kind: "dispatched"; agentId: string; sessionId: string; startedAt: number; codewatch?: CodewatchEvidence } & ReviewIntent & BusyWaits & { profile?: string }) | NoReview | NotStarted;
 
@@ -143,6 +144,10 @@ export interface ReviewWiring {
   accounts?: ReviewAccounts;
   /** The stops the spawn gate and the broker saw; absent means a silent reviewer is a timeout whatever the machine did. */
   machineStop?: MachineStopWatch;
+  /** Absent means `off`: the intent records no panel plan and one reviewer is dispatched. */
+  panel?: PanelMode;
+  /** The panel a head is planned with; absent means `panelPolicyFor(roles)`. */
+  panelPolicy?: PanelPolicy;
 }
 
 type Wired = ReviewWiring & { dispatch: ReviewerDispatch };
@@ -171,15 +176,24 @@ const brokerStep = <I, T extends object>(deps: ShepherdDeps, wiring: ReviewWirin
  * The body of the sh-review-intent step. It asks the broker for nothing but the roster, so a repeat changes nothing; it records
  * why the head is reviewed and the account it bills. Shepherd's own review takes a seat's ask there, unless no account can bill it.
  */
-const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, { dispatch, accounts }, input, signal) => {
+const reviewIntent: BrokerStepBody<ReviewInput, ReviewIntentResult> = async (deps, wired, input, signal) => {
+  const { dispatch, accounts } = wired;
   const roster = await whileBrokerDown(brokerTiming(deps), signal, () => dispatch.roster());
   const store = deps.store.get();
   const registration = store.byRun(input.runId);
   const billed = billIntent(deps, accounts, input.runId, chooseReviewer(input, registration, roster, input.fresh), () => chooseReviewer(input, registration, roster, true));
   if ("exhausted" in billed) return { kind: "none", reason: "every review account is exhausted", exhausted: billed.exhausted };
   const requested = billed.choice.mode !== "external" && reviewPendingAt(registration, input.head) && store.takeReviewRequest(input.runId, input.head);
-  return { kind: "intent", head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }) };
+  const intent = { kind: "intent" as const, head: input.head, ...billed.choice, at: deps.now(), ...(billed.account && { account: billed.account }), ...(input.cause && { cause: input.cause }), ...(requested && { requested: true }) };
+  return billed.choice.mode === "external" ? intent : { ...intent, ...(await plannedPanel(deps, wired, input)) };
 };
+
+/** Under `shadow` or `on` the intent records the head's class, touches and panel plan; an external review starts nobody, so it gets none. */
+async function plannedPanel(deps: ShepherdDeps, { panel, panelPolicy, roles }: Wired, input: ReviewInput): Promise<IntentPlan | undefined> {
+  if (panel === undefined || panel === "off") return undefined;
+  const rules = classRulesFor(roles);
+  return intentPlan(await panelFacts(deps, input, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules);
+}
 
 /** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
 function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerFacts {
@@ -190,8 +204,10 @@ function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerF
 /** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */
 async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: number | undefined): Promise<ReviewerFacts> {
   try {
-    const changedLines = prChangedLines(await deps.port.listPrFiles(repo, pr), limit);
-    return changedLines === undefined ? { sizeUnread: true } : { changedLines };
+    const files = await deps.port.listPrFiles(repo, pr);
+    const changedLines = prChangedLines(files, limit);
+    const dependency = prTouchesDependency(files) && { dependencyTouch: true };
+    return changedLines === undefined ? { sizeUnread: true, ...dependency } : { changedLines, ...dependency };
   } catch {
     return { sizeUnread: true };
   }
@@ -323,8 +339,8 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
   const intent = await step(ctx, `${REVIEW_INTENT_STEP}:${target.head}`, { ...target, runId: ctx.runId, ...(request.fresh && { fresh: true }), ...(request.cause && { cause: request.cause }) }, Intended);
   if (intent.kind !== "intent") return typeof intent.exhausted === "string" ? accountHeld(ctx, target, { account: intent.exhausted }) : { kind: "none", cause: "no-verdict" };
   if (intent.mode === "external") return takeVerdict(ctx, target, { ...target, external: intent.reviewer }, undefined);
-  const fixFirsts = ctx.iteration(FIX_FIRST_STEP);
-  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent, ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(proof.kind === "result" && { fixProof: proof.line }) }, Dispatched);
+  const fixFirsts = fixFirstCount(ctx);
+  const dispatched = await step(ctx, `${REVIEW_STEP}:${target.head}`, { ...target, runId: ctx.runId, intent: withoutPlan(intent), ...(fixFirsts > 0 && { fixFirsts }), ...(asksOwnerBrief(ctx) && { ownerBrief: true }), ...(proof.kind === "result" && { fixProof: proof.line }) }, Dispatched);
   if (dispatched.kind !== "dispatched") return { kind: "none", cause: dispatched.notStarted === true ? "not-started" : "no-verdict" };
   const dispatchedReviewer: AgentIdentity = { agentId: dispatched.agentId, sessionId: dispatched.sessionId };
   const awaiting: AwaitVerdictInput & { reviewerProfile?: string } = {
@@ -340,18 +356,27 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 
+/** A dispatched reviewer stopped by its account's usage limit holds `account` until the reset; any other result is not a limit. */
+function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: z.infer<typeof Awaited>, dispatchedReviewer: AgentIdentity | undefined, account: string): Promise<Verdict> | undefined {
+  if (!dispatchedReviewer || !isUsageLimit(result)) return undefined;
+  return accountHeld(ctx, target, { account, notice: String(result.notice), ...(typeof result.resetsAt === "number" && { resetsAt: result.resetsAt }) });
+}
+
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
  * reviewer that missed the wait is read once more, so a late MERGE is a MERGE, not a no-facts gate, and a malformed final
- * message gets one correction turn. A reviewer stopped by its account's usage limit is neither read again nor corrected: `account` is held.
+ * message gets one correction turn. A reviewer stopped by its account's usage limit, read on time, late or as the
+ * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer.
  */
-
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (dispatchedReviewer && isUsageLimit(onTime)) return accountHeld(ctx, target, { account, notice: String(onTime.notice), ...(typeof onTime.resetsAt === "number" && { resetsAt: onTime.resetsAt }) });
+  const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
+  if (heldOnTime) return heldOnTime;
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
+  const heldLate = limitHeld(ctx, target, awaited, dispatchedReviewer, account);
+  if (heldLate) return heldLate;
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };

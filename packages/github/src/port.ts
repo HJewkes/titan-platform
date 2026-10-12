@@ -9,19 +9,13 @@ import { merge, rerunFailed } from "./merge-writes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { checkConclusion, checkMarker, checkMergeMethod, checkPath, checkPositiveInt, checkRef, checkRepo, checkSha, checkShaPrefix, checkTimestamp } from "./validate.js";
-import type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
-export type { Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, SquashSource } from "./port-types.js";
+import type { CheckRun, Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
+export type { CheckRun, CheckRunPr, Commit, CommitStatus, LoggedCommit, MergeMessage, PutFileRequest, RepoFile, SquashSource } from "./port-types.js";
 
 /** `owner/name`. */
 export type RepoSlug = string;
 
 export type MergeMethod = "merge" | "squash" | "rebase";
-
-export interface RepoFile {
-  path: string;
-  blobSha: string;
-  content: string;
-}
 
 export interface PullRequest {
   number: number;
@@ -41,6 +35,8 @@ export interface PullRequest {
   mergeableState: string;
   /** The head lacks commits the base has. */
   behind: boolean;
+  /** How many base commits the head lacks; `getPr` reports it for an open PR, list rows never do. */
+  behindBy?: number;
   /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
   autoMerge: boolean;
 }
@@ -51,21 +47,6 @@ export interface RequiredChecks {
   strict: boolean;
   /** Apps a context is pinned to; a context absent here accepts a check from any app. */
   pins?: Record<string, number[]>;
-}
-
-export interface CheckRun {
-  id: number;
-  name: string;
-  status: string;
-  conclusion: string | null;
-  startedAt: string | null;
-  /** The commit the run checked; a run at any other sha says nothing about this head. */
-  headSha: string;
-  /** The GitHub App that posted the run; a required context counts only from an allowed app. */
-  appId: number | null;
-  /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
-  workflowRunId: number | null;
-  url: string;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */

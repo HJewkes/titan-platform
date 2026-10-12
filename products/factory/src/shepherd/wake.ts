@@ -14,7 +14,7 @@ import { headMoved, unreadableHead, type HeadRead } from "./head-read.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { seatCheckout } from "./seat-checkout.js";
 import type { Registration } from "./store.js";
-import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, successorBrief } from "./wake-brief.js";
+import { FIX_FIRST_STEP, HEAD_LINE, REPAIR_STEP, describeWake, fixFirstCount, successorBrief } from "./wake-brief.js";
 import { latestRow, lineageSeat, newestAgent, successorName } from "./wake-roster.js";
 import { HOLDING_KINDS, type HeldWake } from "./held-wake.js";
 import { TURN_START_MS, awaitTurn, transcriptTurnSince, type TurnSince } from "./turn-check.js";
@@ -341,13 +341,11 @@ const Woke = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("unhandled"), reason: z.string(), held: z.looseObject({ agent: z.string() }).optional() }),
 ]);
 
-const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
-
-/** Counts a review wake across every head of the run, so the second FIX_FIRST is known however many heads came between. */
-async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promise<number | undefined> {
+/** A review wake names the FIX_FIRST its round recorded, so the second is known however many heads came between. */
+function fixFirstOf(ctx: WorkflowContext, request: WakeRequest): number | undefined {
   if (request.kind !== "review") return undefined;
-  const record = { repo: request.repo, pr: request.pr, headSha: request.headSha, fixFirst: ctx.iteration(FIX_FIRST_STEP) + 1 };
-  return (await step(ctx, FIX_FIRST_STEP, record, FixFirstRecord)).fixFirst;
+  const count = fixFirstCount(ctx);
+  return count > 0 ? count : undefined;
 }
 
 /**
@@ -355,7 +353,7 @@ async function countFixFirst(ctx: WorkflowContext, request: WakeRequest): Promis
  * same head turned green on a rerun, so the next round's ci-wait collects its merge facts. A second wake in one round replays at the next index.
  */
 export const wakePhase: ShepherdPhases["wake"] = async (ctx, request) => {
-  const fixFirst = await countFixFirst(ctx, request);
+  const fixFirst = fixFirstOf(ctx, request);
   const woke = await wakeStep(ctx, request, fixFirst);
   return woke.kind === "woken" ? redeliverAfterLiveExit(ctx, request, await awaitFixerHead(ctx, request, woke), woke, fixFirst) : notWoken(woke);
 };
@@ -369,7 +367,7 @@ const wakeStep = (ctx: WorkflowContext, request: WakeRequest, fixFirst: number |
 /**
  * A live agent can end its turn before it reads a chat-sent wake, so the wake is asked once more after its exit: the
  * agent is resumed, or a successor started, with the wake as its prompt. Resume and successor wakes, and a live wake
- * its resume fallback delivered, were the prompt already, and a second exit takes the exit route. The step is called directly so FIX_FIRST is not counted twice.
+ * its resume fallback delivered, were the prompt already, and a second exit takes the exit route.
  */
 async function redeliverAfterLiveExit(ctx: WorkflowContext, request: WakeRequest, outcome: WakeOutcome, woke: WakeEvidence, fixFirst: number | undefined): Promise<WakeOutcome> {
   if (outcome.kind !== "unhandled" || outcome.exited !== true || woke.mode !== "live" || woke.fallback === "resume") return outcome;

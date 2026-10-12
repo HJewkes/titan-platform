@@ -291,7 +291,7 @@ describe("shepherd view stalls", () => {
     });
 
     it("gives every declared Shepherd step id an explicit phase, never the ci fallback", () => {
-      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait"].includes(id));
+      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-head-origin"].includes(id));
 
       expect(unmapped).toEqual([]);
     });
@@ -411,5 +411,21 @@ describe("shepherd timeline verdict and wake entries", () => {
     const timeline = { row: watchRow({ registration, run }), entries: [...entries, { ...entries[0], request: "fix-proof" }] };
 
     expect(PrTimelineSchema.parse(timeline).entries.map((e) => e.kind === "wake" && [e.request, e.mode])).toEqual([[null, "live"], [null, "successor"], ["fix-proof", "live"]]);
+  });
+});
+
+describe("a held run whose wait saw a pushed head", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+
+  it("names the pushed head while CI runs at it", () => {
+    const run = { ...pausedAt("ci-wait:r1:0"), status: "running" } as WorkflowRun;
+    run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
+    run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
+
+    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
+
+    expect(row).toMatchObject({ phase: "ci", headSha: H2 });
+    expect(row.nextAction).toContain(H2.slice(0, 7));
   });
 });
