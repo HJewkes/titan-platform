@@ -3,6 +3,7 @@ import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { appendEvent, eventsFor, latestChangeId, type EventContext, type EventKind, type ShepherdEvent } from "./events.js";
 import { moveAccountHold } from "./account-store.js";
+import { parkSettled, repointParkSettled, settlePark, type ParkSettle } from "./park-settled.js";
 import { readSlots, recordVouch, repointRunRows, vouchedLine, writeSlotRow, type Vouch } from "./hold-slot-rows.js";
 import { afterHold, liftClass, liftTop, type HoldSlots, type Lift, type SlotHold } from "./hold-slots.js";
 import { isOwnerHold, liftOwnerHold, ownerHoldOf, placeOwnerHold, recordOwnerAsked, type OwnerHold } from "./owner-hold-rows.js";
@@ -70,7 +71,7 @@ export interface HoldLookup {
   heldReason(repo: RepoSlug, pr: number, branch?: string, sha?: string): string | undefined;
 }
 
-export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
+export { holdReviewerMigration, holdSatisfiedMigration, holdSlotsMigration, lineageMigration, ownerHoldMigration, parkSettledMigration, reviewRequestMigration, shepherdMigration, sliceMigration } from "./store-migrations.js";
 
 import type { Author, AuthorInput, AuthorRow } from "./author-types.js";
 export type { Author, AuthorInput } from "./author-types.js";
@@ -178,12 +179,13 @@ export class ShepherdStore implements HoldLookup {
     return this.byRun(runId)!;
   }
 
-  /** Points a registration, and the authors, hold events, proofs and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
+  /** Points a registration, and the authors, hold events, proofs, settled parks and own account hold recorded for its run, at the run that replaces its failed one; the old run stays in the workflow database. */
   repoint(runId: string, newRunId: string): Registration {
     const move = this.db.transaction(() => {
       const changed = this.db.prepare("UPDATE shepherd_registration SET run_id = ?, updated_at = ? WHERE run_id = ?").run(newRunId, this.stamp(), runId).changes;
       if (changed === 0) throw new Error(`shepherd-pr run ${runId} has no registration`);
       this.db.prepare("UPDATE shepherd_lineage SET run_id = ? WHERE run_id = ?").run(newRunId, runId);
+      repointParkSettled(this.db, runId, newRunId);
       repointRunRows(this.db, runId, newRunId);
       moveAccountHold(this.db, runId, newRunId);
     });
@@ -306,6 +308,15 @@ export class ShepherdStore implements HoldLookup {
     this.db
       .prepare("INSERT INTO shepherd_lineage (run_id, agent_id, name, role, predecessor, at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (run_id, agent_id) DO NOTHING")
       .run(runId, agent.agentId, agent.name, agent.role, agent.predecessor ?? null, this.stamp());
+  }
+
+  /** Records that the exit retry of a refused park settled; a repeat keeps the first row. */
+  settlePark(runId: string, headSha: string, agent: string, outcome: ParkSettle): void {
+    settlePark(this.db, { runId, headSha, agent }, outcome, this.stamp());
+  }
+
+  parkSettled(runId: string, headSha: string, agent: string): boolean {
+    return parkSettled(this.db, { runId, headSha, agent });
   }
 
   /** Every author recorded for the run, earliest first, ties broken by agent id. */

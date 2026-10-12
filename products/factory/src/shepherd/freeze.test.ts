@@ -507,8 +507,8 @@ describe("the freeze migration", () => {
       ...tenant.extraMigrations,
     ]);
 
-    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 22]);
-    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 22]);
+    expect(applied).toEqual([6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22]);
+    expect(appliedVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 16, 17, 18, 19, 21, 22]);
     expect(() => new FreezeStore(db).freeze(A, RED)).not.toThrow();
     db.close();
   });
