@@ -82,7 +82,7 @@ describe("the G10 hold Shepherd places at registration", () => {
     expect(await holdOf(r)).toBe("g10-review: store migration");
   });
 
-  it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "commands.ts"])(
+  it.each(["g10-release.ts", "g10-rehold.ts", "adversary-guard.ts", "adversary-anchor.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"])(
     "holds Shepherd's merge policy in %s g10-adversary",
     async (name) => {
       const r = rig([file(`products/factory/src/shepherd/${name}`, 10)]);
@@ -159,6 +159,34 @@ describe("the G10 hold Shepherd places at registration", () => {
 
     expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBeUndefined();
     expect(r.store.byRun("run-1")?.held).toBe(false);
+  });
+
+  const renamed = (previousPath: string, path: string): PrFile => ({ path, previousPath, status: "renamed", additions: 12, deletions: 8 });
+
+  it.each([
+    ["products/factory/src/shepherd/commands.ts", "products/factory/src/shepherd/cmds.ts", "policy"],
+    ["products/factory/src/shepherd/g10-release.ts", "products/factory/src/shepherd/release-gate.ts", "policy"],
+    ["packages/authority/src/x.ts", "packages/other/src/x.ts", "authority"],
+  ])("holds a 20-line rename of %s to %s g10-adversary by its old path", async (from, to, touch) => {
+    const r = rig([renamed(from, to)]);
+
+    expect(await holdOf(r)).toBe(`g10-adversary: ${touch} touch`);
+  });
+
+  it("holds a delete of a policy file g10-adversary", async () => {
+    const r = rig([{ path: "products/factory/src/shepherd/g10-release.ts", status: "removed", additions: 0, deletions: 40 }]);
+
+    expect(await holdOf(r)).toBe("g10-adversary: policy touch");
+  });
+
+  it("holds g10-adversary when the run's hold history cannot be read", async () => {
+    const r = rig([file("packages/x/src/a.ts", 10)]);
+    r.store.eventsOf = () => {
+      throw new Error("disk I/O error");
+    };
+
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: hold history unread at registration (Error)");
+    expect(r.store.byRun("run-1")).toMatchObject({ held: true, holdReason: "g10-adversary: hold history unread at registration (Error)" });
   });
 
   it("leaves a commands.ts outside Shepherd unheld", async () => {

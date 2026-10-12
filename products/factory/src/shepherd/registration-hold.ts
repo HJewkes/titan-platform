@@ -8,8 +8,8 @@ import type { ShepherdStore } from "./store.js";
 
 const SHEPHERD_MIGRATION_FILES = ["store.ts", "events.ts", "train.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts"].map((name) => `**/${name}`);
-/** Shepherd's hold and release commands, and the choice of which registrations are classed, live in this one file. */
-const HOLD_COMMAND_FILES = ["products/factory/src/shepherd/commands.ts"];
+/** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
+const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 
 /** Factory's store migrations and Shepherd's merge policy live in plain source files, which the panel's default globs miss. */
 const SHEPHERD_CLASS_RULES: ClassRules = {
@@ -29,10 +29,17 @@ interface HoldTarget {
   kind: string;
 }
 
-/** The panel's class reads an absent kind as unread; only these touches name a hold, so an unread kind alone holds nothing. */
+/**
+ * The panel's class reads an absent kind as unread; only these touches name a hold, so an unread kind alone holds nothing.
+ * The panel matches a file's new path only, so a rename's old path is classed as a file of its own: renaming a policy file
+ * away keeps its class. Lines are counted from the real list, so the extra entries add none.
+ */
 function classOf(files: readonly PrFile[], kind: string): { touches: readonly string[]; lines: number | undefined } {
   const lines = prChangedLines(files, SHEPHERD_CLASS_RULES.largeLines);
-  const changedFiles = files.map(({ path, previousPath, additions, deletions }) => ({ path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? 0, deletions: deletions ?? 0 }));
+  const changedFiles = files.flatMap(({ path, previousPath, additions, deletions }) => [
+    { path, ...(previousPath !== undefined && { previousPath }), additions: additions ?? 0, deletions: deletions ?? 0 },
+    ...(previousPath === undefined ? [] : [{ path: previousPath, additions: 0, deletions: 0 }]),
+  ]);
   const { touches } = classifyPr({ repo: "", pr: 0, head: "", base: "", kind, changedFiles }, SHEPHERD_CLASS_RULES);
   return { touches, lines };
 }
@@ -98,6 +105,17 @@ function holdToPlace(store: ShepherdStore, runId: string, wanted: string): strin
  * on a fresh read of the run.
  */
 export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
+  try {
+    return await placeRegistrationHold(port, store, runId);
+  } catch (error) {
+    const reason = `g10-adversary: hold history unread at registration (${error instanceof Error ? error.name : "error"})`;
+    store.hold(runId, reason, undefined, { actor: SHEPHERD_ACTOR });
+    return reason;
+  }
+}
+
+/** A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead. */
+async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string): Promise<string | undefined> {
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const wanted = await g10HoldAt(port, { repo: registration.repo, pr: registration.pr, kind: registration.kind });
