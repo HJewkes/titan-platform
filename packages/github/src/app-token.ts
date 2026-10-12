@@ -1,5 +1,6 @@
 import { createPrivateKey, createSign } from "node:crypto";
 import { execGh, type GhExec } from "./exec.js";
+import { octokitClient, type OctokitClientOptions } from "./octokit-client.js";
 import { GitHubInputError } from "./validate.js";
 import { parseIncluded } from "./rest.js";
 import { redact, redactStreams } from "./redact.js";
@@ -38,13 +39,8 @@ export function signAppJwt(appId: number, privateKeyPem: string, nowMs: number):
 
 /** Exchanges a freshly signed App JWT for an installation token; the JWT reaches `gh` as `GH_TOKEN` for this call only. */
 export async function appInstallationToken(credentials: AppCredentials, exec: GhExec = execGh): Promise<InstallationToken> {
-  const { appId, installationId, privateKeyPem, now } = credentials;
-  for (const [field, value] of [["appId", appId], ["installationId", installationId]] as const) {
-    if (!Number.isInteger(value) || value <= 0) throw new GitHubInputError(field, value, "expected a positive integer");
-  }
-  const nowMs = now();
-  const jwt = signAppJwt(appId, privateKeyPem, nowMs);
-  const secrets = [jwt, privateKeyPem];
+  const { installationId } = credentials;
+  const { jwt, nowMs, secrets } = signedExchange(credentials);
   const args = ["api", "-i", "-X", "POST", `app/installations/${installationId}/access_tokens`];
   const result = await exec(args, undefined, { env: { GH_TOKEN: jwt } }).catch((error: unknown) => {
     throw new Error(redact(`installation token exchange could not run: ${error instanceof Error ? error.message : String(error)}`, secrets));
@@ -59,17 +55,50 @@ export async function appInstallationToken(credentials: AppCredentials, exec: Gh
   return readToken(response.body, nowMs, secrets);
 }
 
+/** The same exchange over Octokit, with the JWT as this one client's bearer token; no `gh` process and no child env. */
+export async function appInstallationTokenOverHttp(credentials: AppCredentials, clientOptions: Omit<OctokitClientOptions, "token" | "reauthOn401"> = {}): Promise<InstallationToken> {
+  const { jwt, nowMs, secrets } = signedExchange(credentials);
+  const client = octokitClient({ throttleId: "app-jwt", ...clientOptions, token: async () => jwt, reauthOn401: false });
+  let data: unknown;
+  try {
+    ({ data } = await client.request("POST /app/installations/{installation_id}/access_tokens", { installation_id: credentials.installationId }));
+  } catch (error) {
+    const status = (error as { status?: unknown }).status;
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(redact(`installation token exchange failed${typeof status === "number" ? ` (HTTP ${status})` : ""}: ${detail}`, [...secrets, ...tokensIn(detail)]));
+  }
+  return tokenOf(typeof data === "object" && data !== null ? data : {}, nowMs, secrets);
+}
+
+function signedExchange({ appId, installationId, privateKeyPem, now }: AppCredentials): { jwt: string; nowMs: number; secrets: string[] } {
+  for (const [field, value] of [["appId", appId], ["installationId", installationId]] as const) {
+    if (!Number.isInteger(value) || value <= 0) throw new GitHubInputError(field, value, "expected a positive integer");
+  }
+  const nowMs = now();
+  const jwt = signAppJwt(appId, privateKeyPem, nowMs);
+  return { jwt, nowMs, secrets: [jwt, privateKeyPem] };
+}
+
 function tokensIn(text: string): string[] {
   return [...text.matchAll(/"token"\s*:\s*"([^"]+)"/g)].map((match) => match[1]!);
 }
 
+interface TokenBody {
+  token?: unknown;
+  expires_at?: unknown;
+}
+
 function readToken(body: string, nowMs: number, secrets: readonly string[]): InstallationToken {
-  let parsed: { token?: unknown; expires_at?: unknown };
+  let parsed: TokenBody;
   try {
     parsed = JSON.parse(body);
   } catch {
     throw new Error("installation token exchange answered with a body that is not JSON");
   }
+  return tokenOf(parsed, nowMs, secrets);
+}
+
+function tokenOf(parsed: TokenBody, nowMs: number, secrets: readonly string[]): InstallationToken {
   const expiresAtMs = typeof parsed.expires_at === "string" ? Date.parse(parsed.expires_at) : Number.NaN;
   if (typeof parsed.token !== "string" || parsed.token === "" || Number.isNaN(expiresAtMs)) throw new Error("installation token exchange answered without a token and expiry");
   if (expiresAtMs <= nowMs) throw new Error(redact("installation token exchange answered with a token that is already expired", [...secrets, parsed.token]));

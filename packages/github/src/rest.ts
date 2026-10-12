@@ -14,7 +14,7 @@ export type Fields = Record<string, string>;
 /** A GET sent with the caller's own ETag: a 304 answers `notModified`, with no body and, on GitHub, no rate-limit point. */
 type Revalidated<T> = { notModified: true } | { notModified: false; body: T; etag: string | null };
 
-/** Every call is `gh api -i`, so the status line, ETag, Link and rate headers are all visible. */
+/** The REST transport every wire method reads through: `restCaller` over `gh api -i`, or `octokitRest` over Octokit. */
 export interface Rest {
   /** Conditional on the ETag of the same request's last 200; a 304 answers with that cached body. */
   get<T>(path: string, fields?: Fields): Promise<T>;
@@ -177,7 +177,7 @@ export function parseIncluded(stdout: string): HttpResponse | null {
 }
 
 /** Only an api.github.com link is followed, as a path, so a page URL can never point `gh` elsewhere. */
-function nextPage(link: string | undefined): string | null {
+export function nextPage(link: string | undefined): string | null {
   const next = link ? /<([^>]+)>;\s*rel="next"/.exec(link)?.[1] : undefined;
   if (!next) return null;
   if (!next.startsWith(API_ORIGIN)) throw new Error(`refusing to follow a next page outside ${API_ORIGIN}: ${redact(next, [])}`);
