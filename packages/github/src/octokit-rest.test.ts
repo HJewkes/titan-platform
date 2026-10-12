@@ -25,6 +25,16 @@ describe("octokitRest", () => {
     expect(calls[0]).toMatchObject({ method: "GET", url: `${API}repos/octo/demo/branches?per_page=1&protected=true` });
   });
 
+  it("keeps an owner:branch head in a raw path intact, never expanded as a URL template", async () => {
+    const { api, calls } = restWith(() => page([]));
+
+    await api.get("repos/octo/demo/pulls?head=octo:feat-x&state=open");
+    await api.get("repos/octo/demo/pulls", { head: "octo:feat-y" });
+
+    const heads = calls.map((call) => new URL(call.url).searchParams.get("head"));
+    expect(heads).toEqual(["octo:feat-x", "octo:feat-y"]);
+  });
+
   it("sends the cached ETag and answers a 304 with the cached body", async () => {
     const { api, calls } = restWith((_call, index) => (index === 0 ? page({ n: 1 }, { etag: '"v1"' }) : { status: 304 }));
 

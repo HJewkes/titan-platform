@@ -69,13 +69,18 @@ function withQuery(path: string, fields: Fields): string {
   return `${path}${path.includes("?") ? "&" : "?"}${query}`;
 }
 
+/** Octokit reads `:word` and `{word}` in a url as template variables and expands them to nothing, so `head=owner:branch` would lose its branch. */
+function templateSafe(url: string): string {
+  return url.replace(/[:{}]/g, (char) => encodeURIComponent(char));
+}
+
 /** A 304 answers, not throws, so the conditional readers can serve their cached body. */
 function caller(client: GitHubClient): Call {
   return async (method, url, body, etag) => {
     try {
       const response = await client.request({
         method,
-        url: `/${url}`,
+        url: `/${templateSafe(url)}`,
         headers: { ...(etag === undefined ? {} : { "if-none-match": etag }), ...(body === undefined ? {} : { "content-type": "application/json" }) },
         ...(body === undefined ? {} : { data: body }),
       });
