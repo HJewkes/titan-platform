@@ -110,6 +110,8 @@ export interface CheckRulesFile {
   rules: CheckRule[];
 }
 
+export type CycleKind = "value" | "type-only";
+
 export interface CheckViolation {
   ruleId: string;
   severity: Severity;
@@ -121,6 +123,10 @@ export interface CheckViolation {
   destinationId?: string;
   /** Sorted member files of a cycle; part of the violation's identity, so a changed cycle keys differently. */
   members?: string[];
+  /** A cycle's kind: `type-only` when its value imports alone close no cycle. Not part of the key. */
+  cycleKind?: CycleKind;
+  /** A type-only cycle's member with the most type-only imports in from other members. Not part of the key. */
+  hub?: string;
   isCarryover?: boolean;
   /** Repo-relative file the violation sits in; a symbol's parent file. */
   path?: string;

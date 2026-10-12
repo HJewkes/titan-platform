@@ -105,7 +105,7 @@ match wins, in this order:
 2. A configured glob from `.codewatch/roles.json` (below).
 3. `test`, then `story` (`*.stories.{js,jsx,ts,tsx}` with an optional `c`/`m`, and `*.mdx`),
    so a story under `fixtures/` is still a story.
-4. `fixture` (a `fixtures/` path or a `*.fixture.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
+4. `fixture` (a `fixtures/` path or a `*.fixture.*` or `*.fixtures.*` file), `script`, `entry` (a `#!` shebang), `barrel`, `types`, `config`, else `source`.
 
 `UNIMPORTED_ROLES` lists the roles nothing imports by design (`test`, `fixture`, `story`, `lab`,
 `config`, `script`, `entry`). Dead-module reachability seeds from them plus `barrel`.
@@ -275,6 +275,9 @@ cycle of one. `import type` and `export type … from` edges are left out unless
 `includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
 `verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
 `excludeRoles` take files out of the graph.
+Each cycle carries `cycleKind`: `value` when its value imports alone still close a cycle among
+its members, otherwise `type-only`. A type-only cycle also names its `hub`, the member with the
+most type-only imports in from the other members, and its evidence says so.
 The baseline key is the rule id plus every member, so it does not depend on edge order. Against
 a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
 split cycle passes, while a cycle that gains a file or merges two known cycles is new.
