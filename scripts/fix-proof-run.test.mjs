@@ -164,6 +164,14 @@ describe("fix-proof workflow", () => {
     expect(Object.keys(workflow.jobs).sort()).toEqual(["fix-proof", "fix-proof-base", "fix-proof-head"]);
   });
 
+  it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
+    const caches = (job) => job.steps.some((step) => (step.with !== undefined && "cache" in step.with) || /^actions\/cache\b/.test(step.uses ?? ""));
+
+    const cached = Object.entries(workflow.jobs).filter(([, job]) => caches(job));
+
+    expect(cached.map(([id]) => id)).toEqual(["fix-proof-head"]);
+  });
+
   it("the judge job has no cache and installs only from the runner tree", () => {
     expect(judge.needs).toEqual(["fix-proof-base", "fix-proof-head"]);
     expect(judge.if).toBe("${{ !cancelled() }}");

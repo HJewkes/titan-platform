@@ -40,10 +40,11 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - uses: pnpm/action-setup@v4
+      # No cache: fix-proof-head shares the key and can save a store its install tampered with, which a later base
+      # run would restore into the merge-base runner and vitest.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
       # The event's base sha, not the moving base branch, so all three jobs agree on the merge base.
       - name: Find the merge base
         id: merge-base
@@ -122,7 +123,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit head "$RUNNER_TEMP/fix-proof-out"
 
-  # The check run Shepherd reads. No cache: a store saved by an exec job must not reach it. Every tool and dependency
+  # The check run Shepherd reads. No cache: a store saved by fix-proof-head must not reach it. Every tool and dependency
   # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
   fix-proof:
     needs: [fix-proof-base, fix-proof-head]
