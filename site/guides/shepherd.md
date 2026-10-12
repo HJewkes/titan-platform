@@ -873,6 +873,20 @@ decide only where the seat released. A repoint carries the run's events and proo
 replaces it. A proof is kept per base branch, so a head shown clean onto another branch is probed
 again onto the pull request's own base. A release records the hold it lifted.
 
+At registration Shepherd classes the pull request by path to pick its G10 hold
+(`products/factory/src/shepherd/registration-hold.ts`). Each changed file's new path, plus the old
+path of a file GitHub reports as renamed or copied, is matched against `SHEPHERD_CLASS_RULES`. A
+policy, authority or security path, or a `security` kind, takes `g10-adversary`. More than 400
+changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
+takes `g10-adversary`.
+
+**Accepted residual.** A new file that copies a policy file under a fresh name, made live by an
+edit to a file that is not policy, is not classed policy. GitHub usually reports such a copy as
+added, so only its new path is matched. Classing by content or by import graph would need every
+changed file's contents read at registration, and Shepherd does not read them. What still catches
+it: the `g10-review` hold past 400 changed lines, the `g10-adversary` hold a `security` kind
+places, and the seat's own review of the pull request.
+
 ### Ask for Shepherd's own review {#own-review}
 
 ```sh

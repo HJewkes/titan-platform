@@ -5,6 +5,7 @@ import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -16,7 +17,7 @@ export interface Routed {
 }
 
 /** The run's round counters `countRound` advances; its FIX_FIRST count is the run's recorded `FIX_FIRST_STEP`s. */
-interface RoundCounts {
+interface RoundCounts extends FixFirstTrail {
   ctx: WorkflowContext;
   target: { repo: RepoSlug; pr: number };
   failedRounds: number;
@@ -36,7 +37,10 @@ export async function countRound(run: RoundCounts, routed: Routed): Promise<Esca
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
-  if (kind === "fix-first") return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
+  if (kind === "fix-first") {
+    run.fixFirstTrail.push(fixFirstEntry(headSha, routed.verdict.kind === "FIX_FIRST" ? routed.verdict.text : ""));
+    return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
+  }
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;

@@ -59,6 +59,8 @@ interface RepoState {
   listing?: Promise<void>;
   /** Bumped when a PR leaves the open list: a merge may have moved the base under every other PR. */
   epoch: number;
+  /** Bumped by `invalidate`, so a list read already in flight does not count as fresh. */
+  generation: number;
   details: Map<number, Detail>;
   checks: Map<string, Checks>;
 }
@@ -68,29 +70,56 @@ export function prSnapshot(port: GitHubPort, options: PrSnapshotOptions = {}): P
   const repos = new Map<string, RepoState>();
   const stateOf = (repo: RepoSlug): RepoState => {
     const key = repo.toLowerCase();
-    if (!repos.has(key)) repos.set(key, { epoch: 0, details: new Map(), checks: new Map() });
+    if (!repos.has(key)) repos.set(key, { epoch: 0, generation: 0, details: new Map(), checks: new Map() });
     return repos.get(key)!;
   };
   return {
     getPr: async (repo, number) => snapshotPr(port, timing, repo, await listed(port, timing, repo, stateOf(repo)), number),
     checkRuns: async (repo, sha, settled) => snapshotRuns(port, timing, repo, stateOf(repo), sha, settled),
     openPrs: async (repo) => [...(await listed(port, timing, repo, stateOf(repo))).list!.rows.values()].map((pr) => ({ ...pr })),
-    invalidate: (repo) => void repos.delete(repo.toLowerCase()),
+    invalidate: (repo) => {
+      const state = repos.get(repo.toLowerCase());
+      if (state) markStale(state);
+    },
   };
+}
+
+/**
+ * Keeps the list's ETag, so the next read is a conditional GET. Checks are kept but read again, because a re-run is a
+ * write that changes a head's runs; keeping them lets a re-run that settles differently still bump their version.
+ */
+function markStale(state: RepoState): void {
+  state.generation += 1;
+  state.listing = undefined;
+  if (state.list) state.list.at = -Infinity;
+  state.details.clear();
+  for (const checks of state.checks.values()) checks.at = -Infinity;
 }
 
 const tickReader = (tickMs: number | (() => number) = SNAPSHOT_TICK_MS): (() => number) => (typeof tickMs === "number" ? () => tickMs : tickMs);
 
-/** Concurrent readers of one repo share one list read per tick. */
+/** Concurrent readers of one repo share one list read per tick; one that an `invalidate` overtook is read again. */
 async function listed(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState): Promise<RepoState> {
   if (state.list && timing.now() - state.list.at < timing.tickMs()) return state;
-  state.listing ??= refreshList(port, timing, repo, state).finally(() => (state.listing = undefined));
-  await state.listing;
-  return state;
+  for (;;) {
+    const generation = state.generation;
+    await (state.listing ??= sharedRefresh(port, timing, repo, state));
+    if (generation === state.generation) return state;
+  }
 }
 
+function sharedRefresh(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState): Promise<void> {
+  const listing: Promise<void> = refreshList(port, timing, repo, state).finally(() => {
+    if (state.listing === listing) state.listing = undefined;
+  });
+  return listing;
+}
+
+/** A read that an `invalidate` overtook is dropped: it may predate the write. */
 async function refreshList(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState): Promise<void> {
+  const generation = state.generation;
   const read = await port.revalidateOpenPrs(repo, state.list?.etag ?? null);
+  if (generation !== state.generation) return;
   if (read.notModified) return void (state.list!.at = timing.now());
   const rows = new Map(read.prs.map((pr) => [pr.number, pr]));
   if (state.list && [...state.list.rows.keys()].some((number) => !rows.has(number))) state.epoch += 1;
@@ -118,11 +147,13 @@ function detailStale(cached: Detail, row: PullRequest, state: RepoState, timing:
   return timing.now() - cached.at >= ttl;
 }
 
-/** A head's runs are read when it is new, while a required check is still pending, and once per settled window. */
+/** A head's runs are read when it is new, while a required check is still pending, and once per settled window; a read an `invalidate` overtook is not kept. */
 async function snapshotRuns(port: GitHubPort, timing: Timing, repo: RepoSlug, state: RepoState, sha: string, isSettled: (runs: readonly CheckRun[]) => boolean): Promise<CheckRun[]> {
   const cached = state.checks.get(sha);
   if (cached && timing.now() - cached.at < (cached.settled ? timing.settledMs : timing.pendingMs)) return [...cached.runs];
+  const generation = state.generation;
   const runs = await port.checkRuns(repo, sha);
+  if (generation !== state.generation) return [...runs];
   const settled = isSettled(runs);
   state.checks.set(sha, { runs, at: timing.now(), settled, version: nextVersion(cached, runs, settled) });
   return [...runs];
