@@ -10,6 +10,8 @@ import { readAllGates } from "./shepherd/owner-friction-read.js";
 import { ownerFriction, type FrictionDay } from "./shepherd/owner-friction.js";
 import { reviewCauseStats, type ReviewCauseRow } from "./shepherd/review-cause.js";
 import { stageStats, type StageWeek } from "./shepherd/stage-times.js";
+import { perRunExport } from "./shepherd/per-run-export.js";
+import { ShepherdStore } from "./shepherd/store.js";
 import { overrideLines, overrideStats, type OverrideRow } from "./shepherd/override-stats.js";
 import { failureStats, formatFailures } from "./shepherd/stats-failures.js";
 import { shepherdStats, type StatsRow } from "./shepherd/stats.js";
@@ -29,6 +31,7 @@ interface StatsOpts {
   failures?: boolean;
   slo?: boolean;
   registry?: string;
+  perRun?: boolean;
 }
 
 /** This checkout's registry entry: the factory runs from its own checkout, and src/ and dist/ sit at the same depth. */
@@ -39,8 +42,13 @@ function formatStages(weeks: readonly StageWeek[]): string[] {
   return lines.length === 0 ? [] : ["", "time per stage:", ...lines];
 }
 
+function mergeLine(r: StatsRow): string {
+  const ups = r.mergeUps;
+  return `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  slow owner-gated ${r.slowOwnerGated}  outside Shepherd ${r.outsideMerges}  merge-ups land/strict/freeze/retry ${ups.landTime}/${ups.strictChase}/${ups.freezeHold}/${ups.retry}  strict rounds ${r.strictRounds}  foreign merge-ups ${r.foreignMergeUps}`;
+}
+
 function formatStats(rows: readonly StatsRow[], friction: readonly FrictionDay[], stages: readonly StageWeek[], overrides: readonly OverrideRow[]): string {
-  const merges = rows.length === 0 ? ["no merges in range"] : rows.map((r) => `${r.repo}  ${r.week}  merges ${r.merges}  slow(>60m) ${r.slowMerges}  slow hours ${r.slowHours}  outside Shepherd ${r.outsideMerges}`);
+  const merges = rows.length === 0 ? ["no merges in range"] : rows.map(mergeLine);
   const days = friction.flatMap((d) => [`${d.day}  owner touches ${d.ownerTouches}`, ...d.kinds.map((k) => `  ${k.kind}  gates ${k.gates}  median ${k.medianHours}h  max ${k.maxHours}h`)]);
   return `${[...merges, ...(days.length > 0 ? ["", "owner friction:", ...days] : []), ...formatStages(stages), ...overrideLines(overrides)].join("\n")}\n`;
 }
@@ -61,6 +69,12 @@ function shepherdRuns(db: ReturnType<typeof openDatabase>): WorkflowRun[] {
 async function costReport(runs: readonly WorkflowRun[], opts: StatsOpts): Promise<string> {
   const cost = await reviewCost(runs, claudeTranscripts(), opts);
   return opts.json ? `${JSON.stringify({ reviewCost: cost }, null, 2)}\n` : formatReviewCost(cost);
+}
+
+/** Kind comes from the registration; a run with none reads as `unknown`. */
+function perRunReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts): string {
+  const kinds = new Map(new ShepherdStore(db).all().map((registration) => [registration.runId, registration.kind]));
+  return `${JSON.stringify({ perRun: perRunExport(shepherdRuns(db), kinds, { from: opts.from, to: opts.to }) }, null, 2)}\n`;
 }
 
 /** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
@@ -97,11 +111,31 @@ function sloOrExit(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: nu
   return sloReport(entry, db, opts, now).then((report) => io.stdout(report));
 }
 
+function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number): Promise<void> | void {
+  const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
+  if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));
+  if (opts.perRun && !opts.json) return (io.stderr("error: --per-run prints JSON only; add --json\n"), setExit(2));
+  let db: ReturnType<typeof openDatabase>;
+  try {
+    db = openDatabase(dbPath(), { readonly: true });
+  } catch (error) {
+    return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
+  }
+  try {
+    if (opts.slo) return sloOrExit(db, opts, now(), io, setExit);
+    if (opts.perRun) return io.stdout(perRunReport(db, opts));
+    if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
+    io.stdout(statsReport(db, opts, now()));
+  } finally {
+    db.close();
+  }
+}
+
 /** `titan-factory shepherd stats`: reads the ledger through a read-only connection, so a running serve is never disturbed. */
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
     .command("stats")
-    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes, and merges made outside Shepherd; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched")
+    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes and how many an owner approve-merge gate held, merges made outside Shepherd, Shepherd's merge-ups by class (land time, strict chase, freeze hold, retry), strict land-rules rounds, and merges of the base pushed by others; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched")
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
@@ -109,22 +143,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--rereviews", "print only the review dispatches per repo and ISO week, counted by why each was dispatched")
     .option("--slo", "instead: each metric in metrics/shepherd.yml with its value over its SLO window (or --from/--to), its SLO, and pass or fail")
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
+    .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")
     .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
-    .action((opts: StatsOpts) => {
-      const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
-      if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));
-      let db: ReturnType<typeof openDatabase>;
-      try {
-        db = openDatabase(dbPath(), { readonly: true });
-      } catch (error) {
-        return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
-      }
-      try {
-        if (opts.slo) return sloOrExit(db, opts, now(), io, setExit);
-        if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
-        io.stdout(statsReport(db, opts, now()));
-      } finally {
-        db.close();
-      }
-    });
+    .action((opts: StatsOpts) => statsAction(opts, io, dbPath, setExit, now));
 }

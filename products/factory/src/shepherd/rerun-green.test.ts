@@ -1,7 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterEach, describe, expect, it } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
+import { H1, REPO, gateId, gateOpened, outsideActions } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
@@ -19,7 +19,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 function scenario(fix: (fake: FakeGitHub, request: WakeRequest) => void, review: (headSha: string) => Verdict = () => ({ kind: "none" })) {
   const fake = fakeGitHub();
   let fixed = false;
-  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, fixed ? "success" : "failure"), successRun("dag-check", 2)]);
+  fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [outsideActions(successRun("validate", 1, undefined, fixed ? "success" : "failure")), successRun("dag-check", 2)]);
   const wakes: WakeRequest[] = [];
   const phases: ShepherdPhases = {
     wake: async (ctx, request) => (wakes.push(request), (fixed = true), fix(fake, request), awaitFixerHead(ctx, request, { agent: "impl-a" })),

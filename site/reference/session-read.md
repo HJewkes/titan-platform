@@ -158,14 +158,16 @@ skipped up to a line holding `-->` with no `<!--` after its last `-->`. A `Statu
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 8) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
+Version 8 added the channel tag's `broadcast` flag to `inbound`; session-graph's `backfillFacets`
+re-extracts the inbound rows of every transcript indexed under 7 or earlier.
 
 | kind | list | emitted for |
 |---|---|---|
 | `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Supersedes the deprecated `usage`. |
 | `tool_call` | `toolCalls` | each `tool_use` block, with `family` and `mcpServer` from `toolFamily`, and `inputChars` |
-| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName` and `msgId`. A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. `promptSource` is the record's own `promptSource` (`typed`, `system`, `sdk` for a headless turn), null when absent. |
+| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName`, `msgId` and `broadcast` (true when the tag carries `broadcast="true"`, false for a direct message, null for an arrival with no channel tag). A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. `promptSource` is the record's own `promptSource` (`typed`, `system`, `sdk` for a headless turn), null when absent. |
 | `context_block` | `contextBlocks` | the characters that entered context, by `ContextSource`. A user record gives one row for its text, labelled by its wake cause (`human`, `channel`, `compaction_summary`, or `system_reminder` for other injected text). It also gives one `tool_result` row per `tool_result` block, and one `image` row per image block. An assistant line gives one row per `text`, `thinking` and `tool_use` block. An attachment gives one row (`skill_listing`, or `attachment` with `attachmentType`) only when its string content is 256 characters or more (`MIN_ATTACHMENT_CHARS`). `isMedia` marks base64 images, whose `chars` is the encoded length. |
 | `compaction` | `compactions` | a `compact_boundary` system line: trigger, tokens before and after, dropped tokens, duration |
 | `queue_op` | `queueOps` | a `queue-operation` line. `enqueue` is when a message arrived during a busy turn; rollup pairs it with the matching `inbound` by `contentHash`. |
@@ -269,7 +271,11 @@ source is a list, and that source yields nothing.
 open task. `orientationEnd(brief)` returns where the assignment starts: 0 when there is no
 orientation, null when there is one whose end cannot be found. Such a brief links nothing
 rather than guess. The block's format is owned by agent-chat, and the tests pin today's
-headings and truncation marker. Every search reads a bounded window, so a 100 KB brief costs
+headings and truncation marker. When agent-chat recorded the block's length (`agent_spawned`
+meta `briefing_chars`), pass it as `orientationEnd(brief, briefingChars)` or as
+`briefingChars` to `assignedTaskIds`: the assignment then starts at the first non-blank line
+after that offset, whatever the headings say. An out-of-range value falls back to the
+heading rules. Every search reads a bounded window, so a 100 KB brief costs
 the same as a short one.
 
 ## Where it came from
@@ -296,6 +302,23 @@ separate absence from failure. A missing directory yields no sources, and a stal
 as `null`. Any other I/O error, such as `EACCES`, rejects `discoverTranscripts`,
 `discoverAllTranscripts`, `discoverCodexSources`, `readClaudeText`, `readCodexText` and
 `readSessionSourceText`.
+
+## Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` decodes raw Claude transcript lines synchronously, with no
+source descriptor. It skips blank and malformed lines, ignores session identity and does
+not dedupe a repeated call id; a block without a call id is skipped.
+
+```ts
+import { decodeClaudeToolLines } from "@titan-design/session-read";
+
+const results = new Map<string, unknown>();
+const calls = [];
+for (const line of decodeClaudeToolLines(rawLines)) {
+  if (line.kind === "tool_result") results.set(line.callId, line.output);
+  else calls.push(line);
+}
+```
 
 ## Graph-free consumer views
 

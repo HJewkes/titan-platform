@@ -7,7 +7,7 @@ import path from 'node:path';
  * The first cut derived a repo from `basename(cwd)`, which is a guess: any two
  * directories sharing a last path segment collapse into one repo. That is not
  * hypothetical — a checkout at `~/projects/active-work` and the CLI's own state
- * directory at `~/Library/Application Support/active-work/active-work` both
+ * directory (whose path also ends in `active-work/active-work`) both
  * yielded `repo='active-work'`, so plain markdown state files were attributed
  * to the git repo and file precision in the ground-truth eval fell to 87%.
  *

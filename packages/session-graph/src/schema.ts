@@ -2,8 +2,11 @@ import { AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, applyAuditSchema } fro
 import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, applyOriginSchema } from "./origin-schema.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME, applyEpisodeTranscriptSchema } from "./episode-transcript-schema.js";
 import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./origin-task-link-schema.js";
+import { ORIGIN_EXPERIMENT_MIGRATION_NAME, applyOriginExperimentSchema } from "./origin-experiment-schema.js";
+import { INBOUND_BROADCAST_MIGRATION_NAME, applyInboundBroadcastSchema } from "./inbound-broadcast-schema.js";
 import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./review-schema.js";
 import { REQUEST_COST_BOUNDARY_MIGRATION_NAME, applyRequestCostBoundary } from "./audit-schema-v10.js";
+import { PRICE_LONG_PROMPT_MIGRATION_NAME, applyPriceLongPrompt } from "./price-long-prompt-schema.js";
 import { NORMALIZED_DDL, backfillClaudeAliases } from "./normalized-schema.js";
 import { SQL_NOW, hasTable, kitMigration, type Db, type Migration } from "@titan-design/store-sqlite";
 
@@ -198,4 +201,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 8, name: REVIEW_VERDICT_MIGRATION_NAME, up: applyReviewVerdictSchema },
   { version: 9, name: "stop storing bulk classes", up: stopStoringBulkClasses },
   { version: 10, name: REQUEST_COST_BOUNDARY_MIGRATION_NAME, up: applyRequestCostBoundary },
+  { version: 11, name: ORIGIN_EXPERIMENT_MIGRATION_NAME, up: applyOriginExperimentSchema },
+  { version: 12, name: INBOUND_BROADCAST_MIGRATION_NAME, up: applyInboundBroadcastSchema },
+  { version: 13, name: PRICE_LONG_PROMPT_MIGRATION_NAME, up: applyPriceLongPrompt },
 ];

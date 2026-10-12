@@ -1,5 +1,67 @@
 # @titan-design/review-panel
 
+## 0.5.4
+
+### Patch Changes
+
+- 5985f32: The reviewer brief now names the final message as the verdict channel and says the reviewer needs no chat_send; it no longer says "send your verdict".
+
+## 0.5.3
+
+### Patch Changes
+
+- b60d484: `aggregate` fails closed on fix-proof input it cannot read. A `fix-proof/v1` line is parsed with fix-proof's `parseResultLine`, and it makes the tests member blocking when its verdict is `vacuous` or `no-tests`, when it names another head, or when it does not parse. Any other unrecognised non-empty `fixProof` also makes the tests member blocking.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/fix-proof@0.4.0
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+
+## 0.5.0
+
+### Minor Changes
+
+- 3d3cc58: Add the optional `ReviewerMessage.synthetic` field: set only for a record the client wrote in the model's place, with the API error it names and the quota reset, read from the record's own fields and never from its text.
+
+  `acceptVerdict` now reads a usage-limit notice as a limit only when the client wrote it (a `synthetic` record naming no API error, `rate_limit` or `usage_limit_reached`); the same words written by the reviewer are a malformed verdict. A limit result keeps the notice text and, when recorded, `resetsAt`. The new `isUsageLimit` export tells a limit result apart from any other `none`.
+
+### Patch Changes
+
+- Updated dependencies [3d3cc58]
+  - @titan-design/session-read@0.12.2
+
+## 0.4.0
+
+### Minor Changes
+
+- 1add3c6: The reviewer brief can name the checks already green at the head and the fix-proof line, and asks the reviewer not to rerun them.
+
+## 0.3.0
+
+### Minor Changes
+
+- d7102a6: Add brief overlays for the adversary, tests, visual and perf panel shapes. Each has a stable id and a sha256 content hash, and `shapeBrief` puts it on top of the base reviewer brief. The tests brief reads a `fix-proof/v1` result line for the head when one is given.
+- 73683d7: `ReviewerFacts` gains an optional `intentAt`, the epoch-ms the run's review intent was recorded, so a spawn gate can admit deferred reviews oldest-first.
+- 7d52415: Add `aggregate(plan, results, input)`, the fail-closed panel verdict for one head. Any blocking FIX_FIRST blocks, MERGE needs every blocking member's MERGE at the head, and a missing blocking member is `no-verdict` or `timeout`, never MERGE. Advisory findings ride along only when their `path:line` citations exist at the head (checked with `@titan-design/evidence`), findings are bounded per member, and `satisfiesG10` is false when any member is degraded. Exports the `MemberResult` and `AggregateInput` types.
+- 446c60a: Move Shepherd review checkouts to the titan-factory app data dir. `reviewerBrief` now requires `checkoutRoot`, puts the head and base checkouts under `<checkoutRoot>/<run>`, and tells the reviewer to remove that whole dir. Shepherd also removes the run dir when the verdict step ends, and the stale-checkout sweep reads the same root.
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+
 ## 0.2.0
 
 ### Minor Changes

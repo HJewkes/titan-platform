@@ -3,7 +3,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { z } from "zod";
 
 /** Why a review was dispatched at a head; a run recorded before causes existed reads as `unknown`. */
-const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "unknown"] as const;
+const REVIEW_CAUSES = ["first", "fix-round", "conflict", "ci-fix", "update-branch", "merge-up-not-carried", "kind-no-carry", "seat-push", "superseded", "retry", "hold", "owner-request", "seat-request", "unknown"] as const;
 export type ReviewCauseKind = (typeof REVIEW_CAUSES)[number];
 
 /** `reason` is a carry refusal, a retry reason, or the registered kind that does not carry. */
@@ -78,4 +78,6 @@ const Awaited = z.discriminatedUnion("kind", [
   z.looseObject({ kind: z.literal("verdict"), verdict: z.enum(["MERGE", "FIX_FIRST"]), head: z.string(), locator: LocatorSchema, reviewer: Identity, text: z.string().optional(), ownerBrief: OwnerBriefSchema.nullable().optional() }),
   z.looseObject({ kind: z.literal("none") }),
 ]);
-export { Awaited, Dispatched, Intended };
+/** What sh-review-stop read: no machine stop during the round, or the stop and whether it lifted before the wait's ceiling. */
+const StopRead = z.discriminatedUnion("kind", [z.looseObject({ kind: z.literal("clear") }), z.looseObject({ kind: z.literal("stopped"), reason: z.string(), lifted: z.boolean() })]);
+export { Awaited, Dispatched, Intended, StopRead };

@@ -1,4 +1,5 @@
 import { caseNamed } from "./case-script.js";
+import type { Split } from "./parse-error.js";
 import type { Unwrapped } from "./unwrap.js";
 
 /** Words of `unsure` readings one line may walk; classifying costs about 50 ms per KiB, ten times that for a dynamic command word. */
@@ -55,21 +56,54 @@ export class ScriptBudgetError extends ReadingLimitError {
   }
 }
 
-/** A line bash 5 and bash 3.2 read differently because a substitution left a heredoc open; the hook denies it unchecked. */
+/** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
+  constructor(readonly split: Split) {
+    super();
+    this.message = "a line bash 5 and bash 3.2 read differently";
+    this.name = "SplitReadingError";
+  }
+}
+
+/** A line whose expansions nest past `MAX_NESTING`; the hook denies it unchecked rather than recurse past its stack. */
+export class NestingReadingError extends ReadingLimitError {
   constructor() {
     super();
-    this.message = "a heredoc left open by a substitution is read differently by bash 5 and bash 3.2";
-    this.name = "SplitReadingError";
+    this.message = "expansions nested too deep to check";
+    this.name = "NestingReadingError";
+  }
+}
+
+/**
+ * Characters of spliced eval and `-c` text one line may walk, per character of the line. Each nested `eval "$(echo :);…"`
+ * doubles the walks, since both readings hold the next one, so an unbounded line takes 2^8 walks at the nesting limit.
+ */
+export const SPLICED_WEIGHT = 4;
+
+/** A line whose eval and `-c` texts, read again with what their substitutions print, exceed the spliced budget; the hook denies it unchecked. */
+export class SplicedReadingError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "too many spliced readings of eval and -c text to check";
+    this.name = "SplicedReadingError";
   }
 }
 
 export interface UnsureBudget {
   left: number;
+  /** What is left of `SPLICED_WEIGHT` times the line's length; past it the line throws, even under `stopPastCap`. */
+  splicedLeft: number;
   /** Past the budget, walk no more readings instead of throwing, so the rest is read as main reads it. */
   stopPastCap: boolean;
   /** Whether classify reads this command other than by its arguments' default treatment: a dynamic, guarded or exempting name. */
   decides: (cmd: Unwrapped) => boolean;
+}
+
+/** Charges texts only the spliced reading adds; past the budget the line is refused, never read without them, so it fails closed. */
+export function chargeSpliced(budget: UnsureBudget, texts: string[]): void {
+  const cost = texts.reduce((sum, text) => sum + text.length, 0);
+  if (cost > budget.splicedLeft) throw new SplicedReadingError();
+  budget.splicedLeft -= cost;
 }
 
 /**

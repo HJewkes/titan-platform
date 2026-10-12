@@ -17,7 +17,34 @@ its content hash. It exits 1 when a stored prompt digest no longer matches its f
 split), a suite and a scorecard. Its hashes are checked by the tests, so editing a fixture
 means re-running `validate` and updating the digests it reports.
 
+`titan-evals corpus --db <factory.sqlite3> --repos-root <dir>` writes the review outcome corpus:
+one JSONL row per reviewed head, labelled from git history and the factory database, which it
+opens read-only. The label rules are in the reference page.
+
 Full reference: `site/reference/evals.md`.
+
+`titan-evals review-pr cases` builds the private cases for the `review-pr` unit in `units/review-pr/`:
+
+```sh
+titan-evals review-pr cases --corpus corpus.jsonl --repo owner/repo=<clone> \
+  --active-work-root <dir> --out <dir outside every repo> --selftest
+```
+
+- A `caught` corpus row becomes a defect head: gold is FIX_FIRST plus the defect paths, which
+  are the paths the review cited that the next head changed. A PR's latest `clean` row becomes
+  a clean head with gold MERGE. Rows with any other label are skipped and counted.
+- Six planted controls go on seeded clean heads, with the kinds rotating: a deleted assertion,
+  an inverted condition, and an assertion weakened so the test no longer bites. Each control is
+  a `tree` fixture under `<out>/trees/<id>/` holding `head/`, `base/` and `diff.patch`. Its gold
+  is FIX_FIRST at the mutated path and line.
+- Every case is `private`, and its split comes from a seeded hash. History cases use `repo`
+  fixtures, and the trial materializes their bundles from the local clone with git only.
+- The private exclusion (`src/private/exclusion.ts`) filters cases before controls are planted
+  and asserts again before anything is written. `--selftest` runs its self-test first and
+  aborts the build if it fails.
+- The command refuses an `--out` inside a git work tree or one that is not empty. It writes
+  `cases/*.json`, `suite.json` (sorted case hashes plus the checks in `src/review-pr/checks.ts`)
+  and `manifest.json` (counts by kind, skipped rows by reason, excluded cases by reason).
 
 `fixtures/measurement-audit/` is the second unit. It scores the `titan.measurement-audit/v1`
 report that `titan-factory audit <area>` writes. The gold case is the Shepherd measurement audit:

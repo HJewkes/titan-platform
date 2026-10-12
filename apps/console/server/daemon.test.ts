@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as daemonPackage from "@titan-design/daemon";
-import { SESSION_COOKIE, TlsFileError, TokenFileError, daemonPaths, readPidFile, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
+import { SESSION_COOKIE, SESSION_MAX_AGE_MS, TlsFileError, TokenFileError, daemonPaths, readPidFile, signSession, silentLogger, type DaemonHandle, type Logger } from "@titan-design/daemon";
 import { createRpcClient, liveSource, snapshotKey } from "@titan-design/rpc-client";
 import { openSessionGraph } from "@titan-design/session-graph";
 import type { ConsoleCommands } from "./commands.js";
@@ -68,6 +68,7 @@ beforeEach(async () => {
     lanTokenPath: path.join(dir, "state", "lan.token"),
     ownerWrites: false,
     inboxDir: path.join(dir, "state", "inbox", "deposits"),
+    roundsDir: path.join(dir, "state", "rounds"),
   };
   await writeFile(config.sessionGraphPath, "synthetic");
 });
@@ -122,6 +123,18 @@ describe("the console daemon", () => {
     expect(initiatives).toHaveLength(5);
     const detail = await client.call("work.initiative", { slug: "lantern-docs" });
     expect(detail.tasks.map((task) => task.id)).toEqual(["LD-3"]);
+  });
+
+  it("answers work.notes, work.record and work.search from the active-work daemon it fronts", async () => {
+    handle = await startConsoleDaemon({ config, logger: silentLogger });
+    const client = createRpcClient<ConsoleCommands>(liveSource({ origin: origin() }));
+    const { records } = await client.call("work.notes");
+    const note = await client.call("work.record", { ref: "note:orbit-relay/2031-03-03-backoff-ceiling.md" });
+    const { hits } = await client.call("work.search", { q: "handshake" });
+    expect(records.map((row) => row.ref)).toContain("source:kiln-tools/deepdive-cone-chart.md");
+    expect(note).toMatchObject({ title: "Cap the backoff at thirty seconds", truncated: false });
+    expect(hits.map((hit) => hit.ref)).toEqual(["source:orbit-relay/pr-41-handshake.md"]);
+    await expect(client.call("work.record", { ref: "source:orbit-relay/missing.md" })).rejects.toThrow(/not found/);
   });
 
   it("lists the upstream targets on /health without probing them", async () => {
@@ -429,6 +442,27 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
     expect((await rpc("upstreams.health", credential)).status).toBe(401);
     expect((await postCode(pending)).status).toBe(401);
     expect((await rpc("upstreams.health", await signIn(lanConfig))).status).toBe(200);
+  });
+
+  // TP-2262: the session lives in the cookie, signed with lan.token in the state dir, so a
+  // restart forgets nothing a browser needs; only an unspent login link dies with the process.
+  it("keeps a pre-restart cookie signed in after a restart, and still refuses an expired one", async () => {
+    const before = await startLan();
+    const credential = await signIn(before);
+    const pending = codeOf(createLoginLink(before));
+    await handle!.close();
+    handle = undefined;
+
+    const after = await startLan();
+    const expired = `${SESSION_COOKIE}=${signSession(readFileSync(after.lanTokenPath, "utf8"), Date.now() - SESSION_MAX_AGE_MS)}`;
+
+    expect((await rpc("upstreams.health", credential)).status).toBe(200);
+    expect((await lan("GET", "/", { accept: "text/html", ...credential })).body).toContain("console shell");
+    expect((await rpc("upstreams.health", { cookie: expired })).status).toBe(401);
+    expect((await postCode(pending)).status).toBe(401);
+    const logout = await lan("POST", "/auth/logout", { ...credential, ...json, ...sameOrigin() }, "{}");
+    expect(sessionCookie(logout)).toMatch(new RegExp(`^${SESSION_COOKIE}=;.*Max-Age=0`, "i"));
+    expect((await rpc("upstreams.health", await signIn(after))).status).toBe(200);
   });
 
   it("returns no rpc result that contains the agent-chat ui.token value", async () => {

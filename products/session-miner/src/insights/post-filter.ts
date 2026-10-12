@@ -17,7 +17,7 @@ export interface PostFilterUse {
 }
 
 /** Heads whose post-filters count; `sqlite3` counts only on a database named in `OUR_DB`. */
-export const OUR_CLIS = ["active-work", "agent-chat", "titan-factory", "basement-suite", "gh", "sqlite3"] as const;
+export const OUR_CLIS = ["active-work", "agent-chat", "titan-factory", "basement-suite", "gh", "titan-gh", "sqlite3"] as const;
 
 const OURS: ReadonlySet<string> = new Set(OUR_CLIS);
 /** agent-chat's events log, the session graph and the miner's own index, or anything under their state directories. */

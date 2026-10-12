@@ -56,8 +56,13 @@ const list = rank(mergeByKeys([gate, ask]));
 Any agent can put an item in front of the owner by filing a deposit. `ownerItemDepositSchema`
 holds only the fields an agent may set: `kind`, `door`, `summary`, `context`, `options`,
 `recommended` (never hidden), `command`, `evidenceRef`, `keys`, `asker`, `seat`, `initiative`,
-`personal`, `unblocks`, `expiresAt`, plus `depositId`. `asker` and `depositId` are required;
-`keys` and `unblocks` default to empty and `personal` to false.
+`personal`, `unblocks`, `expiresAt`, `audience`, plus `depositId`. `asker` and `depositId` are
+required; `keys` and `unblocks` default to empty and `personal` to false.
+
+`audience` is `"owner"` or `"operator"` and says which reader the item is for; an item with
+none is the owner's. It selects a view and grants no authority. `forAudience(items, audience)`
+keeps the matching items in input order, and `audienceOf(item)` reads an absent audience as
+`"owner"`.
 
 The schema is strict at every level. The system alone sets `id`, `status`, `answer`, `route`,
 `authority`, `lint` and hidden picks, so a deposit carrying any of them is refused rather than
@@ -116,7 +121,8 @@ for (const item of items) {
   through `fromDeposit`, opened at the file's mtime. Invalid JSON, a schema failure, a file
   over the cap, a symlink, or a file whose name does not match its own asker and
   `depositId` goes to `rejects` as `{ file, reason }`; reasons never quote file contents. A
-  missing `dir` reads as empty.
+  missing `dir` reads as empty. `readSpool(dir, { audience })` keeps only that audience's
+  items, counting none as owner; rejects are kept whatever the filter.
 - `writeAnswer(dir, id, answer)` and `readAnswer(dir, id)` keep `<id>.answer.json` beside the
   deposits, written the same way. The first answer stays; `readAnswer` returns `undefined`
   when none is filed and throws on a malformed one.
@@ -358,6 +364,61 @@ const { open, dropped, flags } = recheck(asked, answered);
   recommendation is a conflict. An item with no recommendation reads as reasked.
 - **Order.** `open` is sorted by id and `flags` by item, answer and kind, so the result is the
   same for any input order.
+
+## Consolidating the queue
+
+`consolidate(open, { answered, heads, stacks, deps })` runs the whole pass the approvals
+page reads, recomputed on every read and every answer. It composes `supersede`, `recheck`,
+`mergeByKeys`, `stackContext` and `rank`, then adds groups, influence order and holds.
+
+```ts
+import { consolidate } from "@titan-design/owner-queue";
+
+const flow = consolidate(openItems, {
+  answered,                                   // answered items, feedback answers included
+  heads: { "org-a/repo-1#12": liveHeadSha },
+  stacks: { "org-a/repo-1#13": "org-a/repo-1#12" },
+  deps: { "T-2": ["T-1"] },                   // task id to the task ids it depends on
+});
+// flow.groups[i] = { id: "pr:org-a/repo-1#12", kind: "pr", itemIds, shipBlockedBy }
+// flow.order, flow.held, flow.withdrawn, flow.dropped, flow.flags, flow.context, flow.edges
+```
+
+1. **Supersede.** Items on an old head of a PR are `withdrawn` as `new-head:<sha>`. The live
+   head counts answered items too, so a newer answered round moves it.
+2. **Re-check.** `recheck` against every answered item gives `dropped` and `flags`.
+3. **Dedupe.** `mergeByKeys` runs within one class: the item kind, with round questions kept
+   apart from every other source. A shared merge key across classes becomes an `overlap`
+   edge instead, so answering a review round never resolves a gate.
+4. **Context.** An item on a stacked PR lists its base PRs in `context[itemId]`.
+5. **Group.** Groups are fixed per PR: an item naming exactly one PR joins `pr:<owner>/<repo>#<n>`.
+   An item naming none or several, such as a cross-PR decision, joins a `topic` group, built
+   by union-find over shared `task:`, `component:`, `token:` and `topic:` keys.
+6. **Influence.** `edges` say A likely changes B:
+
+   | Rule | When |
+   |---|---|
+   | `base` | A is on B's base PR |
+   | `pr-decision` | they share a PR, A decides, B reviews or approves |
+   | `shared-unit` | they share a component or token, A decides or is one-way, B reviews or approves |
+   | `unblocks` | `A.unblocks` holds B's `task:` key, or B's task depends on A's in `deps` |
+   | `topic` | they share a topic, A decides, B does not |
+   | `overlap` | step 3 kept them apart; decisions, then reviews, then approvals; a round before a gate |
+
+   Topic groups come first. Groups then sort by the most transitive dependents of any member,
+   then by best `rank`. Inside a group the order is topological, with `rank` breaking ties
+   and cycles.
+7. **Hold.** `held[i] = { itemId, waitsOn }` lists the earlier items that likely change it.
+   Only edges from earlier in the order hold, so a cycle never holds all of its members.
+
+**Ship gate.** Each PR group carries `shipBlockedBy`, the open change requests on that PR at
+its live head, on any tab: `change-requested`, `free-text` (text or variant comments), or
+`other-choice` (a pick that is not the recommended, implemented one). An unanswered question
+never blocks. A newer answer to the same `ask:` replaces an older one, and an answer on an
+old head is withdrawn, so neither blocks. An empty list means Ship may go.
+
+**Order.** The Flow is the same for any order of `open` and `answered`. Flags keep the id of
+the item `recheck` saw, which may be a non-primary item that step 3 merged away.
 
 ## What it deliberately does not do
 

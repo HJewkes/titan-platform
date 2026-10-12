@@ -1,5 +1,38 @@
 # @titan-design/github
 
+## 0.10.0
+
+### Minor Changes
+
+- 61511e7: Add `pr-status` and `pr-context` verbs to the `titan-gh` bin: `pr-status <owner/repo#N>` prints one line of PR state, required checks and merge readiness, and `pr-context` prints title, base, head, changed files and body; `--json` prints either as an object.
+
+## 0.9.0
+
+### Minor Changes
+
+- cd830c1: Add `ciVerdict`, `loadRequiredContexts` and `ciWait`, plus the `titan-gh ci-wait` bin: wait for a sha's CI over the base branch's required contexts and exit 0 green, 1 red, 2 timeout or 64 on a usage error or unknown sha. The port gains `resolveCommit` and `commitStatuses`; rulesets and classic protection now read a free-plan "Upgrade to GitHub Pro" 403 as no rules, and rules of an unexpected shape throw.
+
+## 0.8.0
+
+### Minor Changes
+
+- 579886b: `PullRequest` now carries `autoMerge`, read from the REST `auto_merge` field. Shepherd's `shepherd/review` publish reads it, so a PR with auto-merge armed gets `action_required` rather than `success`; an unreadable PR is treated as armed.
+
+## 0.7.1
+
+### Patch Changes
+
+- 369a00b: The rate budget now tracks GraphQL rate headers apart from core and paces `listReviewComments` against them, and a GraphQL call times out after 30 seconds instead of hanging.
+
+## 0.7.0
+
+### Minor Changes
+
+- c0701a9: `GitHubPort.defaultBranch(repo)` reads the repo's default branch, and `GitHubPort.merge` takes an optional `expectedBase`: a PR on another base skips as `base-changed`, checked before the write and before each retry. The land core now records a `base-check` before every merge. An approved head whose pull request is based on anything but the default branch waits in `base-wait`, with no timeout, until the pull request is retargeted; a Shepherd run gives its repo's merge train up before it waits. An approval or policy allow covers one base: after a retarget the run re-reads the merge evidence and decides again, the `approve-merge` prompt names the base, and an approval never follows to a head on another base. A green read that names a new base re-reads the branch rules. A seat's `merge-into-feature-base` grant lets its runs merge into a stacked pull request's own base. `shepherd status` names the refused base as the next action.
+- 91eea82: Pass the formatted squash message on every land merge. `GitHubPort.merge` takes an optional `{ subject, body }` that the wire sends as `commit_title` and `commit_message`; the port gains `getSquashSource` (title, body and commit messages) so a caller can build the `formatSquashMessage` input. The factory's land merge step formats the PR's title, body and commits with the run's task id and merges with that message, falling back to the plain title and an empty body (and a warning) when formatting throws.
+- e4dd79b: `land-rules` no longer fails every run on a private free-plan repo (TP-1899). When the rules read answers HTTP 403 "Upgrade to GitHub Pro" and the branch endpoint reports `protected: false`, the base reads as requiring no checks, so `ci-wait` requires every check-run at the head to be green. Any other 403, a `protected: true` or an unreadable branch still refuses. `@titan-design/github` gains `branchProtected` on the port and `getBranchProtected` on the wire.
+- 845a0cf: Add `formatSquashMessage` and the `titan-squash-message` bin: a pure, deterministic squash commit message built from the PR title, body, task ids and commits, laid out as `## Summary`, `## Changes` (one bolded bullet per commit) and `Refs:`. Author markdown passes through as written: only plain commit-body paragraphs are joined onto one line. It strips Co-authored-by and Signed-off-by trailers, standalone email addresses (never inside code, URLs or ssh remotes) and the Claude Code line, recognises GitHub's `---------` separator and `* ` commit headers only in a commit GitHub squash-merged, and drops merges of main. Re-formatting its own output changes nothing.
+
 ## 0.6.0
 
 ### Minor Changes

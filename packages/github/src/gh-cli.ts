@@ -6,11 +6,12 @@ import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
 import { COMPARE_FILE_CAP } from "./port.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
-import type { CheckRun, Commit, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile, RequiredChecks } from "./port.js";
+import type { CheckRun, Commit, CommitStatus, CompareResult, GitHubWire, IssueComment, PrFile, PullRequest, RepoFile } from "./port.js";
 import type { SquashSource } from "./port-types.js";
 import type { OpenPrList } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
 import { restCaller, type Rest } from "./rest.js";
+import { branchRules, classicRequiredChecks, type GhRule } from "./rules-read.js";
 
 export interface GhCliOptions {
   /** Defaults to one budget per process, because GitHub counts calls per login. */
@@ -44,9 +45,9 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
     listPrs: (repo, headBranch) => listPulls(api, repo, { head: `${repo.split("/")[0]}:${headBranch}`, state: "all" }),
     listOpenPrs: (repo) => listPulls(api, repo, { state: "open" }),
     revalidateOpenPrs: (repo, etag) => revalidateOpenPulls(api, repo, etag),
-    createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request)), false),
+    createPr: async (repo, request) => toPullRequest(await api.send<GhPull>("POST", `repos/${repo}/pulls`, {}, JSON.stringify(request))),
     getPr: (repo, number) => getPr(api, repo, number),
-    getBranchRules: async (repo, branch) => requiredChecksFrom(await api.get<GhRule[]>(`repos/${repo}/rules/branches/${branch}`)),
+    getBranchRules: (repo, branch) => branchRules(api, repo, branch),
     getClassicRequiredChecks: (repo, branch) => classicRequiredChecks(api, repo, branch),
     reviewRulesBypassable: (repo, branch) => reviewRulesBypassable(api, repo, branch),
     getBranchProtected: (repo, branch) => branchProtected(api, repo, branch),
@@ -58,6 +59,8 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
       const tree = commit.tree?.sha;
       return { sha: commit.sha, parents: commit.parents.map((parent) => parent.sha), ...(tree ? { tree } : {}), ...(committedAt ? { committedAt } : {}) } satisfies Commit;
     },
+    resolveCommit: (repo, sha) => resolveCommit(api, repo, sha),
+    listCommitStatuses: (repo, sha) => listCommitStatuses(api, repo, sha),
     getWorkflowRunStatus: async (repo, runId) => (await api.get<{ status: string }>(`repos/${repo}/actions/runs/${runId}`)).status,
     getJobLog: (repo, jobId) => api.text(`repos/${repo}/actions/jobs/${jobId}/logs`),
     updateBranch: async (repo, number, expectedHeadSha) => void (await api.send("PUT", `repos/${repo}/pulls/${number}/update-branch`, { expected_head_sha: expectedHeadSha })),
@@ -112,20 +115,27 @@ async function getContent(api: Rest, repo: string, path: string, ref: string): P
 
 interface GhPull {
   number: number;
-  state: "open" | "closed";
+  state: unknown;
   merged?: boolean;
   merged_at?: string | null;
   merge_commit_sha: string | null;
   draft?: boolean;
   mergeable_state?: string;
+  auto_merge?: object | null;
   head: { ref: string; sha: string; repo?: { full_name: string } | null };
   base: { ref: string };
 }
 
-function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
+/** A state the shepherd cannot place must fail the read: a caller that treats "not open" as closed would release on it. */
+function pullState(pr: GhPull): PullRequest["state"] {
+  if (pr.state === "open" || pr.state === "closed") return pr.state;
+  throw new Error(`the pull request answered state ${JSON.stringify(pr.state)}, neither open nor closed`);
+}
+
+function toPullRequest(pr: GhPull, behindBy?: number): PullRequest {
   return {
     number: pr.number,
-    state: pr.state,
+    state: pullState(pr),
     merged: pr.merged ?? Boolean(pr.merged_at),
     mergeSha: pr.merge_commit_sha,
     mergedAt: pr.merged_at ?? null,
@@ -135,7 +145,9 @@ function toPullRequest(pr: GhPull, behind: boolean): PullRequest {
     baseRef: pr.base.ref,
     draft: pr.draft ?? false,
     mergeableState: pr.mergeable_state ?? "unknown",
-    behind,
+    behind: (behindBy ?? 0) > 0,
+    ...(behindBy === undefined ? {} : { behindBy }),
+    autoMerge: pr.auto_merge != null,
   };
 }
 
@@ -154,65 +166,20 @@ function splitMessage(message: string): SquashSource["commits"][number] {
 
 async function listPulls(api: Rest, repo: string, fields: Record<string, string>): Promise<PullRequest[]> {
   const prs = await api.pages(`repos/${repo}/pulls`, { ...fields, per_page: "100" }, (page: GhPull[]) => page);
-  return prs.map((pr) => toPullRequest(pr, false));
+  return prs.map((pr) => toPullRequest(pr));
 }
 
 async function revalidateOpenPulls(api: Rest, repo: string, etag: string | null): Promise<OpenPrList> {
   const read = await api.revalidatePages(`repos/${repo}/pulls`, { state: "open", per_page: "100" }, etag, (page: GhPull[]) => page);
-  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr, false)), etag: read.etag };
+  return read.notModified ? read : { notModified: false, prs: read.body.map((pr) => toPullRequest(pr)), etag: read.etag };
 }
 
 /** `behind` comes from the compare API, which is exact, not from the lazily computed `mergeable_state`. */
 async function getPr(api: Rest, repo: string, number: number): Promise<PullRequest> {
   const pr = await api.get<GhPull>(`repos/${repo}/pulls/${number}`);
-  if (pr.state !== "open") return toPullRequest(pr, false);
+  if (pr.state !== "open") return toPullRequest(pr, 0);
   const compare = await api.get<{ behind_by: number }>(`repos/${repo}/compare/${pr.base.ref}...${pr.head.sha}`, { per_page: "1" });
-  return toPullRequest(pr, compare.behind_by > 0);
-}
-
-interface GhRule {
-  type: string;
-  ruleset_id?: number;
-  parameters?: { required_approving_review_count?: number; require_code_owner_review?: boolean; required_review_thread_resolution?: boolean; required_reviewers?: unknown[]; strict_required_status_checks_policy?: boolean; required_status_checks?: { context: string; integration_id?: number | null }[] };
-}
-
-function requiredChecksFrom(rules: readonly GhRule[]): RequiredChecks {
-  const statusRules = rules.filter((rule) => rule.type === "required_status_checks");
-  if (statusRules.some((rule) => !Array.isArray(rule.parameters?.required_status_checks))) {
-    throw new Error("a required_status_checks rule has no required_status_checks list, so the required contexts are unknown");
-  }
-  const contexts = new Set(statusRules.flatMap((rule) => rule.parameters?.required_status_checks?.map((check) => check.context) ?? []));
-  const pins = pinsOf(statusRules.flatMap((rule) => (rule.parameters?.required_status_checks ?? []).map((check) => [check.context, check.integration_id] as const)));
-  return { contexts: [...contexts].sort(), strict: statusRules.some((rule) => rule.parameters?.strict_required_status_checks_policy === true), ...pins };
-}
-
-/** Only a positive app id pins; classic protection spells "any app" as -1. */
-function pinsOf(entries: readonly (readonly [string, number | null | undefined])[]): { pins?: Record<string, number[]> } {
-  const pins: Record<string, number[]> = {};
-  for (const [context, app] of entries) {
-    if (typeof app === "number" && app > 0 && !pins[context]?.includes(app)) (pins[context] ??= []).push(app);
-  }
-  return Object.keys(pins).length > 0 ? { pins } : {};
-}
-
-interface GhClassicChecks {
-  strict?: boolean;
-  contexts?: string[];
-  checks?: { context: string; app_id?: number | null }[];
-}
-
-/** A 404 means the branch has no classic protection; any other failure propagates, so it never reads as "none". */
-async function classicRequiredChecks(api: Rest, repo: string, branch: string): Promise<RequiredChecks> {
-  let body: GhClassicChecks;
-  try {
-    body = await api.get<GhClassicChecks>(`repos/${repo}/branches/${branch}/protection/required_status_checks`);
-  } catch (error) {
-    if ((error as { status?: unknown } | null)?.status === 404) return { contexts: [], strict: false };
-    throw error;
-  }
-  if (body === null || typeof body !== "object") throw new Error("classic protection answered an unexpected shape, so the required contexts are unknown");
-  const contexts = [...new Set([...(body.contexts ?? []), ...(body.checks ?? []).map((check) => check.context)])].sort();
-  return { contexts, strict: body.strict === true, ...pinsOf((body.checks ?? []).map((check) => [check.context, check.app_id] as const)) };
+  return toPullRequest(pr, compare.behind_by);
 }
 
 async function branchProtected(api: Rest, repo: string, branch: string): Promise<boolean> {
@@ -263,6 +230,27 @@ async function listCheckRuns(api: Rest, repo: string, sha: string): Promise<Chec
     workflowRunId: workflowRunIdOf(run.details_url ?? run.html_url),
     url: run.html_url ?? run.details_url ?? "",
   }));
+}
+
+/** `commits/{ref}` expands an abbreviation, unlike `git/commits/{sha}`; GitHub answers 422 "No commit found" for a sha it lacks. */
+async function resolveCommit(api: Rest, repo: string, sha: string): Promise<string | null> {
+  try {
+    return (await api.get<{ sha: string }>(`repos/${repo}/commits/${sha}`)).sha;
+  } catch (error) {
+    if (error instanceof GhError && (error.status === 422 || error.status === 404)) return null;
+    throw error;
+  }
+}
+
+/** A list shorter than `total_count` throws rather than read as complete, because a missing failure would read as green. */
+async function listCommitStatuses(api: Rest, repo: string, sha: string): Promise<CommitStatus[]> {
+  let total = 0;
+  const statuses = await api.pages(`repos/${repo}/commits/${sha}/status`, { per_page: "100" }, (page: { total_count: number; statuses: CommitStatus[] }) => {
+    total = page.total_count;
+    return page.statuses;
+  });
+  if (statuses.length !== total) throw new Error(`the combined status of ${sha} listed ${statuses.length} of ${total} statuses`);
+  return statuses.map((status) => ({ context: status.context, state: status.state }));
 }
 
 /** Actions job URLs read `.../actions/runs/<runId>/job/<jobId>`. */

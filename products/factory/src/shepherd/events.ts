@@ -1,4 +1,5 @@
 import type { Db, Migration } from "@titan-design/store-sqlite";
+import { z } from "zod";
 
 const EVENT_DDL = `
   CREATE TABLE shepherd_event (
@@ -15,7 +16,7 @@ const EVENT_DDL = `
   CREATE INDEX shepherd_event_run ON shepherd_event (run_id, id);
   CREATE INDEX shepherd_event_repo ON shepherd_event (repo, id);`;
 
-/** The append-only history of holds, releases, freezes and thaws; nothing here is ever updated or deleted. */
+/** The append-only history of holds, releases, freezes and thaws; nothing is deleted, and only a repoint rewrites a run id, to the run that replaces it. */
 export function shepherdEventMigration(version = 16): Migration {
   return { version, name: "factory:shepherd_event", up: (db) => db.exec(EVENT_DDL) };
 }
@@ -34,6 +35,9 @@ export interface ShepherdEvent {
   at: string;
   headSha: string | null;
 }
+
+/** Every new row names its actor: a seat or owner name from the CLI, `owner` for a gate answer, else Shepherd itself. Only rows from before TP-2266 are null. */
+export const SHEPHERD_ACTOR = "shepherd";
 
 /** Who made the change and the PR head it was made at, where the caller knows them. */
 export interface EventContext {
@@ -60,7 +64,7 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
     event.pr ?? null,
     event.kind,
     event.reason ?? null,
-    event.actor ?? null,
+    event.actor ?? SHEPHERD_ACTOR,
     event.at,
     event.headSha ?? null,
   );
@@ -70,6 +74,11 @@ export function appendEvent(db: Db, event: Partial<ShepherdEvent> & Pick<Shepher
 export function eventsFor(db: Db, runId: string, repo: string): ShepherdEvent[] {
   const rows = db.prepare("SELECT * FROM shepherd_event WHERE run_id = ? OR (run_id IS NULL AND repo = ?) ORDER BY id").all(runId, repo.toLowerCase()) as EventRow[];
   return rows.map(fromRow);
+}
+
+/** The id of a run's latest hold or release event, 0 when it has none. */
+export function latestChangeId(db: Db, runId: string): number {
+  return z.object({ id: z.number().nullable() }).parse(db.prepare("SELECT MAX(id) AS id FROM shepherd_event WHERE run_id = ? AND kind IN ('hold', 'release')").get(runId)).id ?? 0;
 }
 
 /** Every event at or after `since` (an ISO time), oldest first; what stats reads to attribute hold time. */

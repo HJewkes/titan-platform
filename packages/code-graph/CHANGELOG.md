@@ -1,5 +1,28 @@
 # @titan-design/code-graph
 
+## 0.17.1
+
+### Patch Changes
+
+- 18875c7: TP-747 b: `indexPaths` parses, signs, extracts, digests and deletes each file's syntax tree before parsing the next, so at most one web-tree-sitter tree is alive at a time instead of every changed file's tree until metrics. Snapshots are unchanged.
+
+## 0.17.0
+
+### Minor Changes
+
+- 334b3d3: TP-747 a: add a per-file digest of tree-derived facts (source, dead-code and growth-risk metrics, qualified names). `assembleIndexerMetrics` and `buildIndexerMetrics` accept optional `fileDigests` in place of `parsedFiles` (now optional), keeping symbol metrics only for symbols in the final node map, and `qualifiedSymbolAliases` accepts precomputed qualified-name maps. Groundwork for deleting each tree as soon as its file is indexed.
+
+## 0.16.0
+
+### Minor Changes
+
+- 9fb51e0: Add Python code-kind and test-kind metrics (TP-2170). Per function: `symbol_kind_output_boundary`, `symbol_kind_parser`, `symbol_kind_io`, `symbol_kind_pure`, plus the local facts `symbol_output_signal`, `symbol_state_writes` and `symbol_unlisted_calls`. Per pytest test: `test_kind_snapshot`, `test_kind_exact_output`, `test_kind_loose_output`, `test_kind_error_path`, `test_kind_property`, `test_kind_roundtrip`. Per source function a test reaches: `symbol_tests_snapshot`, `symbol_tests_exact_output`, `symbol_tests_loose_output_only`, `symbol_tests_error_path`, `symbol_tests_property`, `symbol_tests_roundtrip`. Python `calls` edges now include a click `CliRunner`'s `runner.invoke(cmd, ...)` as a call to `cmd` (the group alone for a group). The test linker now pairs pytest's `test_<name>.py` with the one non-test `<name>.py`. `INDEX_VERSION` is now 0.27.0, so the first index after upgrading reparses every file.
+
+### Patch Changes
+
+- 8030b8e: The indexer atomicity tests allow 30 seconds, matching the other indexing tests. Each test runs two
+  full indexes, which went past the 5 second default on a loaded CI runner.
+
 ## 0.15.1
 
 ### Patch Changes

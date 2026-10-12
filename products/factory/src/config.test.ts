@@ -103,6 +103,15 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { flakyChecks: { web: flakyChecks["acme/web"] } } })))).toThrow(/flakyChecks/);
   });
 
+  it("reads each repo's checkout and advisory flag, and rejects an unknown key and a repo that is not owner/name", () => {
+    const repos = { "acme/widgets": { path: "/src/widgets", advisory: true } };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { repos: block } })));
+
+    expect(load(repos).shepherd?.repos).toEqual(repos);
+    expect(() => load({ "acme/w": { pth: "x" } })).toThrow(/invalid config .*repos.*pth/);
+    expect(() => load({ widgets: { path: "/src/widgets" } })).toThrow(/repos/);
+  });
+
   it("reads the review-check App, and rejects a relative key path, a non-integer id and an unknown key", () => {
     const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
     const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
@@ -231,6 +240,13 @@ describe("loadConfig", () => {
     ["a tilde", "~/rv-claude"],
   ])("rejects a reviewer config directory with %s", (_label, configDir) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv-readonly", configDir } } })))).toThrow(/shepherd\.review\.configDir: must/);
+  });
+
+  it("loads review.fallbackConfigDirs, and refuses a relative one", () => {
+    const review = { profile: "rv", configDir: "/srv/rv-claude", fallbackConfigDirs: ["/srv/rv-spare"] };
+
+    expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review } }))).shepherd?.review?.fallbackConfigDirs).toEqual(["/srv/rv-spare"]);
+    expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { ...review, fallbackConfigDirs: ["rv-spare"] } } })))).toThrow(/shepherd\.review\.fallbackConfigDirs\.0: must/);
   });
 
   it.each([

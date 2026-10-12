@@ -1,4 +1,5 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { OwnerBrief } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { CleanupPorts } from "./cleanup.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -6,6 +7,7 @@ import type { RemoveDir } from "./review-checkout.js";
 import type { ReviewCause } from "./review-schemas.js";
 import type { RosterReader } from "./roster.js";
 import type { SpawnGate } from "./spawn-gate.js";
+import type { AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
@@ -44,11 +46,14 @@ export interface ReviewRequest extends PhaseTarget {
   cause?: ReviewCause;
 }
 
-/** Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, or a busy broker started nobody. */
-export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started";
+/**
+ * Why a review gave no verdict: a refusal or silence, the wait ran out, the hold's reviewer has not answered, a busy broker
+ * started nobody, the reviewer's Claude account is out of usage, or the reviewer went silent while the machine stop held.
+ */
+export type NoVerdictCause = "no-verdict" | "timeout" | "external-hold" | "not-started" | "account-exhausted" | "throttled";
 
 export type Verdict =
-  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string }
+  | { kind: "MERGE"; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
   | { kind: "none"; cause?: NoVerdictCause; reason?: string };
@@ -79,10 +84,14 @@ export interface ShepherdDeps {
   snapshot?: PrSnapshot;
   /** The App-token port `sh-publish-review` posts `shepherd/review` through; absent means it records `published: false`. */
   reviewCheck?: GitHubPort;
+  /** Which reviewer accounts are out of usage; absent reads as a store that cannot be read, so a usage limit fails closed. */
+  accountLimits?: AccountLimitStoreRef;
   /** Tells the repo's seat that a woken fixer exited with no push; absent means every such exit opens the owner gate. */
   exitNotice?: ExitNoticePorts;
   /** The test rules briefs carry, resolved once at serve start from its host; absent means the form for agents off basement. */
   suiteRules?: SuiteRules;
   /** Where reviewers extract checkouts and how a run's dir is removed; absent means the app data dir and `rm -rf`. */
   reviewCheckouts?: { root?: string; remove?: RemoveDir };
+  /** True for a repo where Shepherd never writes to a branch: no successor is spawned and no head ref deleted. */
+  advisory?: (repo: string) => boolean;
 }

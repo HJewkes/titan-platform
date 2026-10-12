@@ -98,6 +98,15 @@ describe("sh-publish-review", () => {
     expect(fake.createdCheckRuns[1]!.request.title).toContain(A.slice(0, 12));
   });
 
+  it("never reports success for a MERGE on a PR with auto-merge armed", async () => {
+    const fake = fakeGitHub();
+    fake.addPr = ((orig) => (fields) => orig({ ...fields, autoMerge: true }))(fake.addPr);
+
+    await gatedRun({ fake, reader: (clock) => verdictReader(clock, () => "MERGE"), reviewCheck: githubPort(fake.wire) });
+
+    expect(posted(fake)[0]).toEqual({ name: REVIEW_CHECK_NAME, headSha: A, conclusion: "action_required" });
+  });
+
   it("posts a FIX_FIRST as failure at the reviewed head", async () => {
     const fake = fakeGitHub();
 

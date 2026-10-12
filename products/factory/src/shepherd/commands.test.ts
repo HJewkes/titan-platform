@@ -195,6 +195,25 @@ describe("shepherd.register kind", () => {
     expect(envelope).toMatchObject({ ok: false, error: expect.stringMatching(/correctness.*unknown/) });
     expect((await registered(w, pr1)).registration.kind).toBe("correctness");
   });
+
+  it("a new registration with no kind stores correctness", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+
+    const { registration } = await registered(w, pr1);
+
+    expect(registration.kind).toBe("correctness");
+  });
+
+  it("a kindless repeat of a feature run keeps feature and is not refused", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    await registered(w, { ...pr1, kind: "feature" });
+
+    const envelope = await w.call<Registered>("shepherd.register", pr1);
+
+    expect(envelope).toMatchObject({ ok: true, data: { created: false, registration: { kind: "feature" } } });
+  });
 });
 
 describe("shepherd.register kind on a failed run", () => {
@@ -474,12 +493,81 @@ describe("shepherd.merge", () => {
 
     const hold = await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "no-reviewer: review step recorded none; TP-1" });
     const whileHeld = await w.call<MergeEvaluation>("shepherd.merge", { repo: REPO, pr: 1 });
-    await w.call("shepherd.release", { repo: REPO, pr: 1 });
+    await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
     const released = await w.call<MergeEvaluation>("shepherd.merge", { repo: REPO, pr: 1 });
 
     expect(hold).toEqual({ ok: true, data: { runId, held: { reason: "no-reviewer: review step recorded none; TP-1" } } });
     expect(whileHeld).toMatchObject({ ok: true, data: { held: { reason: "no-reviewer: review step recorded none; TP-1" } } });
     expect(released).toMatchObject({ ok: true, data: { held: null } });
+  });
+
+  it("records the head a release was made at, so a later move off it is known", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: "g10-adversary: trust rule; TP-1" });
+    await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    expect(w.routes.shepherd!.store.get().eventsOf(runId).at(-1)).toMatchObject({ kind: "release", headSha: H1 });
+  });
+
+  it("refuses a release at a head the PR has moved past, and keeps the hold", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.hold(runId, "g10-adversary: trust rule; TP-1");
+    w.fake.pr(1).headSha = fakeSha("pushed-after-review");
+
+    const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining(`not ${H1}`) });
+    expect(store.byRun(runId)?.held).toBe(true);
+  });
+
+  it("refuses a release on a run that is not held, and records no event", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+
+    const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("not held") });
+    expect(w.routes.shepherd!.store.get().eventsOf(runId)).toEqual([]);
+  });
+
+  it("refuses a release when the PR's head cannot be read, and without a head", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    const store = w.routes.shepherd!.store.get();
+    store.hold(runId, "g10-adversary: trust rule; TP-1");
+    const missing = await w.call("shepherd.release", { repo: REPO, pr: 1 });
+    w.fake.onGetPr = () => {
+      throw new Error("github is down");
+    };
+
+    const unread = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    expect(missing).toMatchObject({ ok: false });
+    expect(unread).toMatchObject({ ok: false, error: expect.stringContaining("could not be read") });
+    expect(store.byRun(runId)?.held).toBe(true);
+  });
+
+  it("records the caller's actor on a hold and a release, and unknown when a client sends none", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    const reason = "no-reviewer: review step recorded none; TP-1";
+
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason, actor: "seat-a" });
+    await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "seat-b" });
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason });
+    await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
+
+    const events = w.routes.shepherd!.store.get().eventsOf(runId);
+    expect(events.map((event) => [event.kind, event.actor])).toEqual([["hold", "seat-a"], ["release", "seat-b"], ["hold", "unknown"], ["release", "unknown"]]);
   });
 
   it("records a hold's --reviewer and refuses one with whitespace", async () => {
@@ -492,6 +580,56 @@ describe("shepherd.merge", () => {
 
     expect(named).toEqual({ ok: true, data: { runId, held: { reason: "g10-adversary: awaiting the audit", reviewer: "sec-audit-review" } } });
     expect(refused).toMatchObject({ ok: false });
+  });
+});
+
+describe("shepherd.release with a g10-adversary hold over another", () => {
+  const STALL = "stalled: no step progress; TP-2";
+  const ADVERSARY = "g10-adversary: trust rule; TP-1";
+
+  async function heldTwice(): Promise<{ w: World; runId: string }> {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: STALL, actor: "owner" });
+    await w.call("shepherd.hold", { repo: REPO, pr: 1, reason: ADVERSARY, actor: "seat" });
+    return { w, runId };
+  }
+
+  it("refuses two releases that name no class, so neither lifts the adversary hold for the stall and the PR stays held", async () => {
+    const { w, runId } = await heldTwice();
+    const store = w.routes.shepherd!.store.get();
+
+    const first = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "owner" });
+    const second = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "owner" });
+
+    expect([first, second]).toMatchObject([{ ok: false, error: expect.stringContaining("--class") }, { ok: false }]);
+    expect(store.heldReason(REPO, 1)).toBe(ADVERSARY);
+    expect(store.eventsOf(runId).map((event) => event.kind)).toEqual(["hold", "hold"]);
+  });
+
+  it("lifts only the named class, records its reason, and reports the hold still in force", async () => {
+    const { w, runId } = await heldTwice();
+    const store = w.routes.shepherd!.store.get();
+
+    const stall = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "stalled", actor: "owner" });
+    const adversary = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, actor: "seat" });
+
+    expect(stall).toEqual({ ok: true, data: { runId, held: { reason: ADVERSARY } } });
+    expect(adversary).toEqual({ ok: true, data: { runId, held: null } });
+    expect(store.eventsOf(runId).filter((event) => event.kind === "release").map((event) => [event.reason, event.actor])).toEqual([
+      [STALL, "owner"],
+      [ADVERSARY, "seat"],
+    ]);
+  });
+
+  it("refuses a class the run holds no hold of, and records no event", async () => {
+    const { w, runId } = await heldTwice();
+
+    const envelope = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1, holdClass: "visual-gate2" });
+
+    expect(envelope).toMatchObject({ ok: false, error: expect.stringContaining("no visual-gate2 hold") });
+    expect(w.routes.shepherd!.store.get().eventsOf(runId)).toHaveLength(2);
   });
 });
 
@@ -535,7 +673,7 @@ describe("shepherd.hold reason classes", () => {
     const { w, runId, heldReason } = await heldWorld();
     w.routes.shepherd!.store.get().hold(runId, LEGACY);
 
-    const released = await w.call("shepherd.release", { repo: REPO, pr: 1 });
+    const released = await w.call("shepherd.release", { repo: REPO, pr: 1, head: H1 });
 
     expect(released).toEqual({ ok: true, data: { runId, held: null } });
     expect(heldReason()).toBeNull();

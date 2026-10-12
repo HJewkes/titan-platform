@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { WorkflowNotOwnedError, type WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
+import { RESYNC_CONCURRENCY, mapBounded } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { failureOf } from "./error-class.js";
 import { openOrRead } from "./snapshot-reads.js";
@@ -35,13 +36,16 @@ interface GoneOptions {
   onCancelFailed?: (runId: string, cause: string) => void;
 }
 
-const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["merge", "sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
+const OWN_MERGE_STEPS: ReadonlySet<string> = new Set(["sh-landed", ...POST_MERGE_STEPS.map((declared) => declared.id)]);
 const stepName = (key: string): string => key.split(":")[0]!;
 export const LIVE: ReadonlySet<string> = new Set(["running", "paused"]);
 
-/** A run that merged its PR itself, recorded it landed, or started what follows a merge reads merged on GitHub and is still Shepherd's. */
+/**
+ * A run that merged its PR itself, recorded it landed, or started what follows a merge reads merged on GitHub and is still
+ * Shepherd's. A merge step that recorded no landing, such as one a hold refused, does not make it so.
+ */
 export function mergedByShepherd(run: WorkflowRun): boolean {
-  return [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
+  return mergedItself(run) || [...Object.keys(run.stepResults), ...Object.keys(run.activeSteps)].some((key) => OWN_MERGE_STEPS.has(stepName(key)));
 }
 
 /**
@@ -126,16 +130,16 @@ function tryCancel(host: FactoryHost, runId: string, reason: string, options: Go
 export async function endRunsGoneElsewhere(host: FactoryHost, services: ShepherdServices, options: GoneOptions = {}): Promise<EndedRun[]> {
   const ended: EndedRun[] = [];
   const scope = options.scope ?? "gated";
-  for (const { id: runId } of candidateRuns(host, scope)) {
-    if (options.only && !options.only.has(runId)) continue;
-    let reason: string | undefined;
-    try {
-      reason = await goneReason(services, runId);
-    } catch (error) {
-      if (!(error instanceof UnreadablePr)) throw error;
-      options.onUnreadable?.(runId, error.message);
+  const runIds = candidateRuns(host, scope).map((run) => run.id).filter((runId) => !options.only || options.only.has(runId));
+  const reasons = await mapBounded(runIds, RESYNC_CONCURRENCY, (runId) => goneReason(services, runId));
+  for (const [index, runId] of runIds.entries()) {
+    const read = reasons[index]!;
+    if (read.status === "rejected") {
+      if (!(read.reason instanceof UnreadablePr)) throw read.reason;
+      options.onUnreadable?.(runId, read.reason.message);
       continue;
     }
+    const reason = read.value;
     if (reason === undefined || !endable(host.runtime.status(runId), scope)) continue;
     const outcome = options.dryRun ? "cancelled" : tryCancel(host, runId, reason, options);
     if (outcome === "cancelled") ended.push({ runId, reason });

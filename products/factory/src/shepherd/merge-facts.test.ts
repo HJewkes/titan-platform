@@ -841,15 +841,17 @@ describe("an empty gh body while posting the sh-merge-evidence comment", () => {
     expect(fake.comments.get(1)).toHaveLength(1);
   });
 
-  it("stops at the step, naming sh-merge-evidence, when every post answers an empty body", async () => {
+  it("opens a gate naming sh-merge-evidence, not a failed run, when every post answers an empty body", async () => {
     const fake = world();
     fake.createCommentFaults = Array.from({ length: 10 }, emptyBody);
     const host = shepherdHost(fake);
+    const runId = host.runtime.start("shepherd-merge");
 
-    const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
+    await gateOpened(host, gateId(runId, "sh-merge-evidence-gate"));
 
-    expect(run.status).toBe("failed");
-    expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: .*unexpected end of JSON input`, "i"));
+    const gate = host.gates.get(gateId(runId, "sh-merge-evidence-gate"))!;
+    expect(gate.prompt).toContain(MERGE_EVIDENCE_STEP);
+    expect(host.runtime.status(runId)!.status).not.toBe("failed");
     expect(fake.effects.merge).toBe(0);
   });
 });

@@ -1,5 +1,306 @@
 # @titan-design/factory
 
+## 0.22.0
+
+### Minor Changes
+
+- 7a37aa8: `titan-factory shepherd status` takes `--active`, `--phase a,b`, `--branch-prefix p` and `--task id` filters, applied in the CLI so an older serve still filters.
+
+### Patch Changes
+
+- df69aad: Merge a Version Packages pull request only for a seat whose grants include `release-merge`. A seat with `merge-on-green-approve` alone now gates the release as `shepherd-release/no-release-grant`, because that merge publishes to npm. A seat without the grant no longer freezes the repo's other merges while its release waits.
+
+  The release preflight also needs each package's latest npm version to name a trusted publisher (`_npmUser.trustedPublisher` with an `id`); provenance attestations alone do not count. A hand-published latest version blocks the release for the owner, because release.yml cannot publish without one. Registry reads now time out after 10 seconds.
+
+- 9c426dd: `shepherd status` and the seat digest name a pending gate's own step (`approve-merge`) instead of an older `sh-fix-proof:<sha>` step the run's current step still pointed at, so the printed `gate resolve` command is stable and correct.
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
+## 0.21.0
+
+### Minor Changes
+
+- 5fd8ea4: Add `shepherd.repos`: a per-repo `path` the reviewer starts in when no seat binds the repo, and an `advisory` flag under which Shepherd reviews, watches CI and notifies but never merges, updates the branch, pushes, deletes the head ref, or spawns a successor or a red-main fixer. The flag fails closed when the config file is missing or invalid.
+- a598a25: `titan-factory shepherd timeline` takes `--last <n>` (only the last n entries, noting how many earlier ones it cut; with `--json` it slices `entries`) and `--width <n>` (cut every text line to n characters). New `titan-factory shepherd wait <ref> --until <phase[,phase]> [--timeout s] [--interval s]` polls the PR's status row until it reaches one of those phases: exit 0 when it does, 1 when the run ends in another phase or the timeout passes, 2 on an unknown phase.
+- 46339ef: Pace Shepherd's self-deploys. The `sh-redeploy` step now queues the merge sha in `deploy-wanted.json` instead of spawning a deployer per merge, and `serve` runs a 60 s deploy pacer sweep that spawns the deployer through the same systemd-run path once merges have been quiet for 15 min, or 90 min after the first queued merge. Busy review and merge runs hold the spawn until that cap, and a rollback pause (`deploy-pause.json`) holds it until cleared. A deployer that records nothing is asked once more after 2 h, then the sha is dropped until the next merge. `/health` gains `deployPending`.
+
+### Patch Changes
+
+- Updated dependencies [5985f32]
+- Updated dependencies [cd830c1]
+  - @titan-design/review-panel@0.5.4
+  - @titan-design/github@0.9.0
+
+## 0.20.0
+
+### Minor Changes
+
+- 4d15436: Add the `sh-release-follow` step: after a Version Packages merge it follows the release job on the merge sha, files one release-red fix task if the job fails, and polls npm until every bumped version resolves or it times out. The release preflight now records the bumped versions.
+- 75937e6: `service deploy` watches a restarted build for a short window (`--watch-window`, `service.deployWatchMs`, default 2 min): serve must keep answering `/health` on the same sha and pid with no new failed runs. A failed restart, sha check or watch now rolls back, verifies the old sha is serving, pauses every deploy with `deploy-pause.json` (a newer sha does not bypass it) and files one incident notice to the hub seat and the owner queue. A rollback that does not verify raises one `ALERT:` and is never retried. `service pause` shows the pause and `service pause --clear` lifts it under the deploy lock.
+- cc600f5: `shepherd register` infers a missing `--implementer` and `--task` from an `agent-chat/<name>` head branch, read from `--branch` or the pull request. A new registration without `--kind` stores `correctness`; a kindless repeat keeps the stored kind.
+
+### Patch Changes
+
+- 0e6074d: Shepherd asks the reviewer for an OWNER-BRIEF block when the run's policy carries `visualPaths`, as well as under `owner-gate`, so a `shepherd-merge-guard/visual-path` gate on an auto run has a brief to show. A MERGE verdict now carries the parsed owner brief, and the approve-merge gate at exactly that head shows it: the full block (what, why, pros, cons, door) in the gate prompt and a one-line form in the question the owner reads.
+- Updated dependencies [3199c5a]
+  - @titan-design/agent-dispatch@0.7.0
+
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.19.0
+
+### Minor Changes
+
+- 22a2d7b: Add the deploy pacer core: a wanted-deploy record and a pure pace decision that coalesce green factory merges into one deploy after a 15 min quiet window, capped at 90 min. Nothing calls it yet.
+- 2239ef0: Shepherd runs a `sh-fix-proof` step before `sh-review` at every head. For a correctness or security run, or a `fix/` head branch, it waits for the head's `fix-proof` check run from GitHub Actions and reads the last `fix-proof/v1` line naming the head. A vacuous or test-less proof ends the review as `NO_REPRO` before any reviewer starts; a reproduced or unproven line reaches the reviewer brief. A missing check, a read error or another kind proceeds to review with the reason recorded.
+
+### Patch Changes
+
+- de97421: Re-deliver a Shepherd wake that was chat-sent to a live implementer once that agent exits without pushing a new head: the wake step runs once more in the same round, so the exited agent is resumed (or a successor started) with the wake as its prompt and the new head is awaited again. Resume and successor wakes are not re-delivered, a second exit takes the existing exit route, and FIX_FIRST is not counted twice.
+- 2f90885: The restart drain treats an unanswered `/health` poll as unknown rather than idle: it keeps draining, and restarts a silent serve only after two minutes of consecutive no-answers (`NO_ANSWER_PROCEED_MS`). `wait: false` keeps its single check.
+- Updated dependencies [b60d484]
+- Updated dependencies [c54c098]
+- Updated dependencies [7b9335c]
+  - @titan-design/review-panel@0.5.3
+  - @titan-design/agent@0.5.0
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-analytics@0.15.1
+  - @titan-design/workflow@0.12.2
+
+## 0.18.3
+
+### Patch Changes
+
+- 60d8aa5: `service deploy` no longer rebuilds or restarts for a merge whose changes inside the factory closure are only test files, markdown, or version-only `package.json` bumps (a Version Packages merge); it records `skipped` instead.
+- 0891776: Shepherd's resync reads each run's PR with up to six reads in flight (`RESYNC_CONCURRENCY`) instead of one at a time, so a restart with dozens of live runs starts adopting in seconds. The gone-elsewhere sweep, moved-gate, stale-review and stale-merge supersedes read first, then act one run at a time in input order, re-reading each run or gate before acting as before; an unreadable PR still leaves its run held. `ResyncReport` gains `phaseMs`, the wall time of each phase.
+- Updated dependencies [3977860]
+- Updated dependencies [8bc0f25]
+- Updated dependencies [ef240c0]
+  - @titan-design/workflow@0.12.1
+  - @titan-design/fix-proof@0.4.0
+  - @titan-design/review-panel@0.5.2
+
+## 0.18.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [ea3d34c]
+- Updated dependencies [790401a]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/agent@0.4.7
+  - @titan-design/workflow@0.12.0
+  - @titan-design/session-read@0.13.2
+
+## 0.18.1
+
+### Patch Changes
+
+- 5b9d9f5: Wire Shepherd's machine-stop watch in production. `configuredRoutes` builds one watch over the factory's machine reading and spawn limits; the spawn gate notes every machine-stop breach it reads (not a pace or build-limit deferral), the reviewer dispatch notes every broker `machine_hold` refusal, and the review wiring carries the watch, so a reviewer that goes silent while the stop held is retried as a throttled round.
+- d6e85ba: `shepherd status --json` rows carry the registration's `slice` (null for a whole-task run), and the `shepherd timeline` header line names the run's task and, when set, its slice, so a seat can confirm a sliced registration without reading `factory.sqlite3`.
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.18.0
+
+### Minor Changes
+
+- 97e40c3: `titan-factory shepherd stats --per-run --json` prints `{ perRun: [...] }`, one record per shepherd-pr run started in range: task, repo, pr, kind (from the registration, else `unknown`), status, start and completion, minutes per stage summed from the stage spans, review rounds as distinct verdict heads, and the merge time with its path (`shepherd`, `outside` or null). `--per-run` without `--json` exits 2.
+
+### Patch Changes
+
+- 34c1d15: End a Shepherd wake whose asks are only waited out (agent-chat timing out, the spawn gate deferring, the broker down) once `WAKE_ASK_MS`, 5 minutes, passes with the roster showing no effect, so the seat hears of it instead of the run waiting on an implementer that never resumes. A resume fallback the spawn gate defers past the same deadline fails too.
+- 9e5af93: Retry a Shepherd review whose reviewer went silent while the machine stop held. A dispatched reviewer that times out now runs `sh-review-stop`, which asks the wired machine-stop watch whether a stop applied during the round or applies now, and waits for it to lift. A lifted stop records the round as `throttled`: the same head is reviewed again by a fresh reviewer and the round is not counted. Only the first throttled round at a run is exempt (`MAX_THROTTLED_ROUNDS`); later ones count as failed rounds, so a machine that never settles still reaches approve-merge. With no watch wired, or on a healthy machine, a silent reviewer is a timeout as before.
+- 7c32fa8: Add the toolchain fanout core. It reads titan-platform's canonical `.node-version`, `packageManager` and `engines.node`, plans one adoption edit per consumer repo, and prints dry-run lines. An `actions/setup-node` literal `node-version:` becomes `node-version-file: .node-version`; matrix values, expressions and reusable-workflow inputs are left alone and listed. Nothing calls it yet; the serve sweep and CLI follow.
+- Updated dependencies [dda3272]
+  - @titan-design/workflow@0.11.0
+
+## 0.17.1
+
+### Patch Changes
+
+- 546ff9c: Shepherd's ci-red wake brief for a failing `dag-check` job reads a wider log tail and quotes every dead:check NEW and GROWN line above the tail, so the implementer sees which exports to fix instead of only the `<n> new, <m> baselined` summary. `dead:check` now prints its NEW lines after the CARRY lines, next to the verdict.
+  - @titan-design/session-analytics@0.13.3
+
+## 0.17.0
+
+### Minor Changes
+
+- 20e426a: Add the Shepherd seat digest: `titan-factory serve` sends each seat one agent-chat message whenever its state changes, listing every open gate with its exact `titan-factory gate resolve` command, every `ci-failed` or `sh-sent-back` fix round the seat was told about with no fixer woken, and runs that finished since the last digest. An unchanged state sends nothing, and what each seat was last told is kept in `seat-digest.json` beside the factory database so a restart does not resend. The seat notice record now carries its gate and head.
+
+### Patch Changes
+
+- 452b194: Shepherd's main-red acknowledgement now judges a later main commit with `judgeMain` on `readMainRules`, the same path that greenAfterRed, unfreezeStep and readMainGreen use. A context pinned to a non-Actions app is judged by that app's runs, and classic protection contexts count as well.
+- Updated dependencies [2b1640a]
+- Updated dependencies [7c73654]
+  - @titan-design/agent-dispatch@0.6.0
+  - @titan-design/session-read@0.13.0
+  - @titan-design/review-panel@0.5.1
+  - @titan-design/session-analytics@0.13.2
+
+## 0.16.1
+
+### Patch Changes
+
+- 77c1298: Open a gate naming sh-merge-evidence, instead of failing the run, when the merge-evidence comment post still answers an empty or unparseable body after its retries.
+- Updated dependencies [3873ce6]
+  - @titan-design/session-analytics@0.13.1
+
+## 0.16.0
+
+### Minor Changes
+
+- 3d3cc58: Hold a Shepherd run as account-exhausted when its reviewer hits the account's usage limit, instead of re-spawning reviewers and falling to approve-merge. Only Claude Code's own `<synthetic>` limit record counts, never a reviewer's words. The run waits inside the review under the store hold (`account-exhausted: <configDir> until <reset>; TP-1955`), which is matched exactly so an owner's hold is never touched. The repo's seat gets one alert per exhaustion of an account. No reviewer is spawned on an exhausted account until its reset (believed only within 8 days, else re-checked after an hour) or an owner release, and the review runs again at the PR's current head when the hold lifts. The new optional `shepherd.review.fallbackConfigDirs` list moves the review to the next account with headroom. The restart drain does not wait on a held run.
+
+### Patch Changes
+
+- 9a842b3: The Shepherd ci-red wake counts the failing check runs and, for the known CI jobs (validate, lint-types, dag-check, egress-scan), names the scripts that reproduce each and asks the implementer to rerun them before pushing, as the brief's test rule says. Check-run names stay inside the fenced CI log and never reach the instruction text.
+- 703c716: Cap a gate brief's evidence link at 500 characters so a long CI URL no longer makes the brief invalid, and say a carried MERGE was carried from a tree-equal head.
+- 579886b: `PullRequest` now carries `autoMerge`, read from the REST `auto_merge` field. Shepherd's `shepherd/review` publish reads it, so a PR with auto-merge armed gets `action_required` rather than `success`; an unreadable PR is treated as armed.
+- 4823243: Shepherd retires a main-red fixer and parks its clean pushed worktree once the red main is over; a dirty or unpushed tree and a fixer still running are left.
+- 37fb5d0: On systemd, Shepherd's redeploy now starts `service deploy` in its own transient user unit (`systemd-run --user --collect`), so restarting the service no longer kills the deployer before it confirms health, records the outcome or rolls back. darwin keeps the setsid path. If systemd-run is missing or fails, the deployer falls back to setsid and logs why.
+- d5fe1a2: Move the branch-holder lookup out of shepherd/commands.ts so the file fits the 350-loc dag-check limit; no behaviour change.
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/review-panel@0.5.0
+  - @titan-design/session-read@0.12.2
+
+## 0.15.0
+
+### Minor Changes
+
+- eba2ac7: Add the read-only `factory.gates-review` command: each pending gate with its PR, head, policy rule, the reviewer's verdict at that head, the required checks, and whether it may ride in a batch.
+
+### Patch Changes
+
+- bd74657: Gate sweeps skip a gate another host settled between listing and cancelling instead of throwing partway through.
+- eee55b5: Shepherd's errorClass now hides credential prefixes anywhere in an error name, in any case, and npm\_ tokens; consoleTextOf always returns a string; cleanup's retire refusals read through the safe text path.
+- Updated dependencies [369a00b]
+- Updated dependencies [1add3c6]
+- Updated dependencies [bd74657]
+  - @titan-design/github@0.7.1
+  - @titan-design/review-panel@0.4.0
+  - @titan-design/workflow@0.10.1
+
+## 0.14.2
+
+### Patch Changes
+
+- 8dd6807: Land's flaky rerun now respects the ci-wait deadline, stamps a red with the time it was read, and waits only on the runs GitHub accepted a rerun for.
+- 7fe216d: Every new `shepherd_event` row records its actor: the seat or owner name for a CLI hold or release, `owner` for a thaw from the owner gate, and `shepherd` for Shepherd's own holds, releases, freezes and thaws.
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.14.1
+
+### Patch Changes
+
+- 2ee3abf: Shepherd parks the worktree of each exited `rv-<owner>-<repo>-<pr>` reviewer at every green head, so finished review rounds no longer leave trees behind. A refusal is logged, sent to the seat, and retried at the next round end.
+
+## 0.14.0
+
+### Minor Changes
+
+- 53685a5: Shepherd now keeps an owner's approve-merge `merge` answer across a small reviewed fix as well as a clean merge-up. A new head that is the approved head merged with its base plus a diff of at most 40 changed lines across at most 3 files, all already in the pull request, with no added, deleted, renamed or mode-changed file and no `.github`, lockfile or `package.json` dependency change, follows the answer when a reviewer said MERGE at exactly that head and required CI is green. The limits are the exported `SMALL_FIX_LIMITS`. The `sh-approval-carry` step records the rule and the tree or diff proof; any error computing the tree or diff asks the owner again.
+
+### Patch Changes
+
+- 2aeb12d: Add the Shepherd machine-stop watch: `stopReason` names a load5, memory pressure or free memory breach at the spawn gate's limits, `machineStopWatch` keeps an in-memory ledger of stops seen so a review round can ask whether one applied while it ran, and `awaitLift` polls until the stop clears or the hold ceiling passes. Nothing calls it yet; a later change counts a no-verdict review under a stop as throttled rather than failed.
+
+## 0.13.2
+
+### Patch Changes
+
+- 0247ca2: Shepherd resync now ends a run whose PR was merged outside Shepherd even when the run recorded a merge step that landed nothing, such as one a g10 hold refused.
+
+## 0.13.1
+
+### Patch Changes
+
+- 34da831: Shepherd's `sh-park` records a tree already off disk as parked, also tries the run's successors and the agent its `agent-chat/` branch was allocated to, retries a live agent once it exits, and tells the run's seat (or the hub seat) in one line about every tree it still leaves standing.
+
+## 0.13.0
+
+### Minor Changes
+
+- 62bd19c: A `g10-adversary` hold that names a reviewer no longer takes that reviewer's verdict as Shepherd's review: Shepherd spawns its own reviewer at the head, and the named reviewer's MERGE only satisfies the hold. The new `titan-factory shepherd review owner/repo#N` asks for Shepherd's own fresh review at the PR's current head, once per head; a run waiting to merge at that head, held or not, sets its verdict aside, ends the land round so the policy or the owner decides again, and reviews again. A MERGE that stands for an asked head is never carried to a later head. Retries at an asked head stay Shepherd's own, a `g10-review` hold that names a reviewer no longer releases itself on Shepherd's own MERGE, and the Version Packages run refuses an ask. Migration 18 stores the ask on the registration.
+
+## 0.12.2
+
+### Patch Changes
+
+- 2c83ae0: `titan-factory service check` reports a stale build only when the deploy checkout a restart loads is at a commit newer than the running build, so it no longer advises a restart that would roll serve back.
+- Updated dependencies [15ede18]
+  - @titan-design/session-read@0.12.1
+
+## 0.12.1
+
+### Patch Changes
+
+- b3c0688: Shepherd no longer reruns a red head's failed jobs when it replays a run recorded before the hold check or the rerun existed, so a run that landed before a serve restart does not touch CI again. A rerun GitHub answers with "cannot be retried" or "already running" is recorded as not rerunnable and the run goes on to the normal wake instead of failing.
+- 23b4922: Read the not-started review flag from `data.result`, where the sh-review step stores it, so the "review dispatches started no reviewer" stall fires on real runs. Rows with the flag at the top level still count.
+
+## 0.12.0
+
+### Minor Changes
+
+- c6f753a: `service deploy` now fast-forwards and builds a dedicated checkout, `service.deployCheckout` or `<app data dir>/deploy/titan-platform`, that no agent or coordinator uses as its cwd. An absent checkout is cloned from `service.deployRemote` (default: the CLI checkout's origin), built, and left for `service install`. While the installed unit does not start the deploy checkout's bin, deploy only builds and never restarts. `service install` renders the unit to run serve from it with `WorkingDirectory` set. `service install` refuses until the deploy checkout has a built bin. One-time migration: run `service deploy`, then `service install`.
+- cbc8192: Add the `device-pr` workflow (pilot 3): land-pr whose approval is a `device-confirm` gate. The owner performs the device step named by the `deviceStep` param and answers pass, fail or abandon at the exact head, from the terminal at the device. A fail reads as a red head, so the ci-failed gate decides what follows, and a new head asks the device again. The factory never talks to a device.
+- 08d99ea: Read the owner-queue directory from `digest.queuesDir` (now also read by the owner-queue reader) and the service label prefix from `service.labelPrefix` in the factory config. Both default to today's values.
+- 58265b2: `titan-factory shepherd stats --cost` reports reviewer dollars and tokens (input, cache read, cache write, output) per merged PR, per repo and ISO week, and in total with p50 and p90 per merged PR. Every dispatched review round counts, from its review intent to the step that resolved it (an on-time, corrected or late verdict, or a timeout); it reads the transcript the round's verdict locator names, read-only, and prices it with `@titan-design/session-analytics` `priceRequest`. A round that cannot be priced is listed as unreadable with its reason and never counted as zero.
+- 7b6c839: Shepherd's spawn gate defers a reviewer while `shepherd.review.maxConcurrent` (default 3) reviewers run, or while the filesystem that holds review checkouts has fewer free bytes than `shepherd.review.minFreeBytes` (default 5 GiB) or fewer free inodes than `shepherd.review.minFreeInodesPct` (default 15) percent of its total or twice the last checkout's, whichever is more. The deferral is logged with the reading and keeps the review's place in the oldest-first queue.
+- 36c876d: `titan-factory shepherd stats --slo` evaluates the checkout's `metrics/shepherd.yml` (or `--registry <file>`): for each metric it prints the value over the SLO's window (or `--from`/`--to`), the SLO, and `pass`, `fail`, `no-data`, `no-slo`, `no-query` with the metric's gap slice, or `error`; `--json` returns `{ "slo": [...] }`. A registry query names one of the stats SLO queries by id; a window with nothing to measure reports `no-data`, never a zero.
+- c0701a9: `GitHubPort.defaultBranch(repo)` reads the repo's default branch, and `GitHubPort.merge` takes an optional `expectedBase`: a PR on another base skips as `base-changed`, checked before the write and before each retry. The land core now records a `base-check` before every merge. An approved head whose pull request is based on anything but the default branch waits in `base-wait`, with no timeout, until the pull request is retargeted; a Shepherd run gives its repo's merge train up before it waits. An approval or policy allow covers one base: after a retarget the run re-reads the merge evidence and decides again, the `approve-merge` prompt names the base, and an approval never follows to a head on another base. A green read that names a new base re-reads the branch rules. A seat's `merge-into-feature-base` grant lets its runs merge into a stacked pull request's own base. `shepherd status` names the refused base as the next action.
+- ee5a12e: Shepherd reruns a red PR head's failed Actions jobs once before it wakes the implementer. A check that passes on the rerun wakes no one; one that fails again wakes the implementer once, at the second run. A head gets one rerun in total, shared with the rerun after a fixer exits without pushing, and a replay after a restart rebuilds the count.
+- be222f1: Shepherd watches main CI after every merge, its own or a seat's: serve reads each seat repo's main every 5 minutes, stays silent on green, and sends one red event per sha (failing jobs and sha) to the owning seat, with the hub seat as the fallback. A ledger beside the factory database keeps the event single across restarts.
+- 91eea82: Pass the formatted squash message on every land merge. `GitHubPort.merge` takes an optional `{ subject, body }` that the wire sends as `commit_title` and `commit_message`; the port gains `getSquashSource` (title, body and commit messages) so a caller can build the `formatSquashMessage` input. The factory's land merge step formats the PR's title, body and commits with the run's task id and merges with that message, falling back to the plain title and an empty body (and a warning) when formatting throws.
+- 7c4fc10: Each `shepherd status --json` row now carries `implementer` (the registration's, or null) and `reviewer` (the agent name the newest started `sh-review` dispatched, or null), so consumers no longer guess the agents from the branch.
+- 446c60a: Move Shepherd review checkouts to the titan-factory app data dir. `reviewerBrief` now requires `checkoutRoot`, puts the head and base checkouts under `<checkoutRoot>/<run>`, and tells the reviewer to remove that whole dir. Shepherd also removes the run dir when the verdict step ends, and the stale-checkout sweep reads the same root.
+- dc48dfc: A standing deploy alarm no longer goes unheard. serve logs a warning at start, and `service check` fails with `no hub seat`, when `shepherd.hubSeat` is not set. The hub seat is told again every `shepherd.deployAlarm.renotifyTicks` deploy-watch ticks (default 6) while the alarm stays up, and once it has stood for `shepherd.deployAlarm.escalateAfterMinutes` (default 30) serve files one owner-queue item into the titan console's deposit spool.
+
+### Patch Changes
+
+- 1b0b826: A repeat-safe workflow step that fails with a GitHub server-side error (`gh-api-5xx`) is retried up to three times, after 5 s, 20 s and 60 s, before the run fails. The retries are recorded as `ghRetries` on the step's evidence record, and any other failure class fails at once.
+- ba9e766: Lead Shepherd's merge-evidence comment with a readable summary: a one-line outcome, a table of the check runs and the reviewer verdict, and for a gate the rule in words with the paths as a list. The full JSON record is unchanged and sits inside a collapsed "Machine evidence" block after the marker.
+- ffd8d4d: Shepherd never wakes a fixer on a held run. A ci-red repair, a FIX_FIRST send-back or a conflict on a held run spends no repair and starts no agent; the run's seat (its policy seat, else `shepherd.hubSeat`) gets one notice per hold, head and cause, and the run waits. On release the normal repair path resumes at the same head.
+- 29b8cca: On basement, the Shepherd reviewer brief now says never to install dependencies in the review checkout, and to run targeted tests with `basement-suite <repo> <branch> --agent <name> -- <paths>`. A titan-platform review checkout drops from about 102k inodes to about 3k.
+- 516b095: Shepherd now supersedes a pending `shepherd-route` `fix-first-runaway`, `no-progress` or `conflict` approve-merge gate when the pull request head moves past the gated head, in the serve sweep and in resync. The new head is reviewed, and the owner is asked again there with the gate naming the carried reason and the new review; the superseded gate is cancelled, never answered, and its reason gates every later head until the owner answers an approve-merge gate, so even an `auto` policy does not merge the new head on its own.
+- e4dd79b: `land-rules` no longer fails every run on a private free-plan repo (TP-1899). When the rules read answers HTTP 403 "Upgrade to GitHub Pro" and the branch endpoint reports `protected: false`, the base reads as requiring no checks, so `ci-wait` requires every check-run at the head to be green. Any other 403, a `protected: true` or an unreadable branch still refuses. `@titan-design/github` gains `branchProtected` on the port and `getBranchProtected` on the wire.
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [4a42590]
+- Updated dependencies [b7c53ee]
+- Updated dependencies [9c173c9]
+- Updated dependencies [c174b71]
+- Updated dependencies [d7102a6]
+- Updated dependencies [c0701a9]
+- Updated dependencies [91eea82]
+- Updated dependencies [73683d7]
+- Updated dependencies [e4dd79b]
+- Updated dependencies [7d52415]
+- Updated dependencies [446c60a]
+- Updated dependencies [845a0cf]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/owner-queue@0.3.0
+  - @titan-design/review-panel@0.3.0
+  - @titan-design/github@0.7.0
+
 ## 0.11.0
 
 ### Minor Changes

@@ -12,10 +12,15 @@ import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { isFactoryRepo, redeploy, REDEPLOY_LOG, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
+import { DEPLOY_WANTED, readWanted, type WantedStore } from "./deploy-pacer.js";
+import { deployPacerPorts, deployUnitName, isFactoryRepo, redeploy, REDEPLOY_LOG, SYSTEMD_RUN, systemDeployer, type Deployer, type DeployerPorts } from "./redeploy.js";
 import { shepherdStoreRef } from "./store.js";
 
 const OWN_REPO = FACTORY_REPO!;
+const SHA = "b".repeat(40);
+const LOG = join("/state", REDEPLOY_LOG);
+const DEPLOY_ARGS = ["/factory/dist/bin.js", "service", "deploy", "--expect", SHA];
+const AT = new Date("2026-10-10T12:00:00.000Z");
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
@@ -23,6 +28,23 @@ function fakeDeployer(running = "unknown"): Deployer & { spawned: string[] } {
   const spawned: string[] = [];
   return { spawned, runningSha: () => running, spawn: (sha) => (spawned.push(sha), { pid: 4242, log: "/state/redeploy.log" }) };
 }
+
+/** `failing` makes every write throw, the way a full or read-only state dir does. */
+function memoryStore(failing = false): WantedStore & { files: Map<string, string> } {
+  const files = new Map<string, string>();
+  return {
+    files,
+    readFile: (path) => files.get(path),
+    writeFile: (path, text) => {
+      if (failing) throw new Error(`EROFS ${LEAKY_MESSAGE}`);
+      files.set(path, text);
+    },
+    rename: (from, to) => (files.set(to, files.get(from) ?? ""), void files.delete(from)),
+    remove: (path) => void files.delete(path),
+  };
+}
+
+const spawnOnly = (deployer: Deployer): Deployer => ({ runningSha: deployer.runningSha, spawn: deployer.spawn });
 
 function withPr(): FakeGitHub {
   const fake = fakeGitHub();
@@ -61,6 +83,32 @@ describe("sh-redeploy after main CI", () => {
     const mergeSha = w.fake.pr(1).mergeSha;
     expect(deployer.spawned).toEqual([mergeSha]);
     expect(redeploySteps(w, runId)).toMatchObject([{ stepId: `sh-redeploy:${mergeSha}`, data: { result: { spawned: true, pid: 4242 } } }]);
+  });
+
+  it("queues the merge sha for the deploy pacer instead of spawning a deployer", async () => {
+    const fake = fakePorts();
+    const store = memoryStore();
+    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", now: () => AT }, fake.ports, store));
+    const runId = await mergeIn(w, OWN_REPO);
+
+    await w.host.runtime.wait(runId);
+
+    const mergeSha = w.fake.pr(1).mergeSha;
+    expect(fake.calls).toEqual([]);
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, queued: true, detail: `queued ${mergeSha}; deploys after 15 min with no newer merge, at most 90 min after the first` } } }]);
+    expect(readWanted("/state", store)).toEqual({ sha: mergeSha, firstAt: AT.toISOString(), lastAt: AT.toISOString() });
+  });
+
+  it("records spawned false when the queue write fails, and still unfreezes and cleans up", async () => {
+    const w = world("success", systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts().ports, memoryStore(true)));
+    const runId = await mergeIn(w, OWN_REPO);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)!.status).toBe("completed");
+    expect(redeploySteps(w, runId)).toMatchObject([{ data: { result: { spawned: false, detail: "the deploy was not queued: Error" } } }]);
+    expectNoLeak(redeploySteps(w, runId));
+    expect(stepIdsOf(w, runId)).toEqual(expect.arrayContaining(["sh-unfreeze", "sh-cleanup"]));
   });
 
   it("records no step and spawns nothing after green main CI on another repo", async () => {
@@ -118,34 +166,39 @@ describe("sh-redeploy after main CI", () => {
   });
 });
 
-/** Ports that record each effect; `failing` names the one that throws. */
-function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append") {
+/** Ports that record each effect; `failing` names the one that throws, `refusedFile` a program whose spawn throws. */
+function fakePorts(failing?: "spawn" | "mkdir" | "openAppend" | "append", refusedFile?: string) {
   const calls: { file: string; args: readonly string[]; options: Record<string, unknown> }[] = [];
   const effects: string[] = [];
-  const errorHandlers: ((error: Error) => void)[] = [];
+  const lines: string[] = [];
+  const handlers: Record<string, ((value: unknown) => void)[]>[] = [];
   const fail = (port: string) => {
     if (port === failing) throw new Error(`${port} refused`);
   };
   const ports: DeployerPorts = {
     spawn: (file, args, options) => {
       fail("spawn");
+      if (file === refusedFile) throw new Error(`${file} refused`);
       calls.push({ file, args, options: options as Record<string, unknown> });
-      const on = (_event: string, handler: (error: Error) => void) => void errorHandlers.push(handler);
-      return { pid: 777, unref: () => void effects.push("unref"), on: on as never };
+      const own: Record<string, ((value: unknown) => void)[]> = {};
+      handlers.push(own);
+      const on = (event: string, handler: (value: unknown) => void) => void (own[event] ??= []).push(handler);
+      return { pid: 776 + calls.length, unref: () => void effects.push("unref"), on: on as never };
     },
     mkdir: (dir) => (fail("mkdir"), void effects.push(`mkdir ${dir}`)),
-    append: (path) => (fail("append"), void effects.push(`append ${path}`)),
+    append: (path, text) => (fail("append"), effects.push(`append ${path}`), void lines.push(text)),
     openAppend: (path) => (fail("openAppend"), effects.push(`open ${path}`), 9),
     close: (fd) => void effects.push(`close ${fd}`),
   };
-  return { ports, calls, effects, errorHandlers };
+  const emit = (spawned: number, event: string, value: unknown) => handlers[spawned]?.[event]?.forEach((handler) => handler(value));
+  return { ports, calls, effects, lines, emit, errorHandlers: () => handlers.flatMap((own) => own.error ?? []) };
 }
 
 const stepIdsOf = (w: ReturnType<typeof world>, runId: string) => Object.values(w.host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
 
 describe("sh-redeploy when the deployer cannot start", () => {
   it.each(["spawn", "mkdir", "openAppend"] as const)("records spawned false when %s throws, and still unfreezes and cleans up", async (failing) => {
-    const deployer = systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts(failing).ports);
+    const deployer = spawnOnly(systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fakePorts(failing).ports));
     const w = world("success", deployer);
     const runId = await mergeIn(w, OWN_REPO);
 
@@ -185,6 +238,26 @@ describe("redeploy", () => {
     expectNoLeak(result);
   });
 
+  it("asks a deployer that queues before the running-sha check only when the sha is new", () => {
+    const deployer = { ...fakeDeployer(input.mergeSha), request: () => ({ spawned: false, queued: true, detail: "queued" }) };
+
+    expect(redeploy(deployer, input)).toMatchObject({ spawned: false, detail: `the service already runs ${input.mergeSha}` });
+  });
+
+  it("records a request that throws as no spawn, with the error class only", () => {
+    const deployer: Deployer = {
+      ...fakeDeployer(),
+      request: () => {
+        throw new Error(LEAKY_MESSAGE);
+      },
+    };
+
+    const result = redeploy(deployer, input);
+
+    expect(result).toEqual({ spawned: false, detail: "the deploy was not queued: Error" });
+    expectNoLeak(result);
+  });
+
   it("reports no spawn when the deployer got no pid", () => {
     const deployer: Deployer = { runningSha: () => "unknown", spawn: () => ({ pid: undefined, log: "/state/redeploy.log" }) };
 
@@ -197,29 +270,121 @@ describe("redeploy", () => {
   });
 });
 
-describe("systemDeployer", () => {
+const deployerOn = (platform: NodeJS.Platform, ports: DeployerPorts, at = AT) => systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform, now: () => at }, ports);
+const setsidCall = { file: "/bin/node", args: DEPLOY_ARGS, options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } };
+
+describe("systemDeployer on darwin", () => {
   it("starts service deploy detached in its own session, logging to the state dir, and lets the service exit without it", () => {
     const fake = fakePorts();
-    const deployer = systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports);
 
-    const started = deployer.spawn("b".repeat(40));
+    const started = deployerOn("darwin", fake.ports).spawn(SHA);
 
-    const log = join("/state", REDEPLOY_LOG);
-    expect(started).toEqual({ pid: 777, log });
-    expect(fake.calls).toEqual([
-      { file: "/bin/node", args: ["/factory/dist/bin.js", "service", "deploy", "--expect", "b".repeat(40)], options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] } },
-    ]);
-    expect(fake.effects).toEqual(["mkdir /state", `append ${log}`, `open ${log}`, "unref", "close 9"]);
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([setsidCall]);
+    expect(fake.effects).toEqual(["mkdir /state", `append ${LOG}`, `open ${LOG}`, "unref", "close 9"]);
   });
 
   it("swallows a log append that throws while reporting a late spawn error, so the service does not crash", () => {
     const fake = fakePorts();
-    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node" }, fake.ports).spawn("b".repeat(40));
+    deployerOn("darwin", fake.ports).spawn(SHA);
     fake.ports.append = () => {
       throw new Error("disk full");
     };
 
-    expect(() => fake.errorHandlers.forEach((handler) => handler(new Error("ENOENT")))).not.toThrow();
-    expect(fake.errorHandlers).toHaveLength(1);
+    expect(() => fake.emit(0, "error", new Error("ENOENT"))).not.toThrow();
+    expect(fake.errorHandlers()).toHaveLength(1);
+  });
+});
+
+describe("deployPacerPorts", () => {
+  it("spawns through the same systemd-run unit and log as the per-merge deployer, in the deployer's state dir", () => {
+    const fake = fakePorts();
+
+    const pacer = deployPacerPorts({ bin: "/factory/dist/bin.js", stateDir: "/state", node: "/bin/node", platform: "linux", now: () => AT }, fake.ports);
+    const started = pacer.spawn(SHA);
+
+    expect(pacer.stateDir).toBe("/state");
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls[0]).toMatchObject({ file: SYSTEMD_RUN, args: expect.arrayContaining(["--unit", deployUnitName(SHA, AT), "/bin/node", ...DEPLOY_ARGS]) });
+    expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
+  });
+
+  it("queues into the file the pacer reads", () => {
+    const store = memoryStore();
+
+    systemDeployer({ bin: "/factory/dist/bin.js", stateDir: "/state", now: () => AT }, fakePorts().ports, store).request?.(SHA);
+
+    expect([...store.files.keys()]).toEqual([join("/state", DEPLOY_WANTED)]);
+  });
+});
+
+describe("systemDeployer on systemd", () => {
+  it("starts service deploy in its own transient user unit, outside the service's cgroup, logging to the state dir", () => {
+    const fake = fakePorts();
+
+    const started = deployerOn("linux", fake.ports).spawn(SHA);
+
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([
+      {
+        file: SYSTEMD_RUN,
+        args: ["--user", "--collect", "--quiet", "--unit", deployUnitName(SHA, AT), "--working-directory=/state", "--setenv=PATH", `--property=StandardOutput=append:${LOG}`, `--property=StandardError=append:${LOG}`, "--", "/bin/node", ...DEPLOY_ARGS],
+        options: { cwd: "/state", detached: true, stdio: ["ignore", 9, 9] },
+      },
+    ]);
+    expect(fake.lines).toEqual([`${AT.toISOString()} service deploy --expect ${SHA}\n`]);
+  });
+
+  it("names each deploy's unit after the sha and the time, so a redeploy of the same sha gets a fresh unit", () => {
+    const first = deployUnitName(SHA, AT);
+    const again = deployUnitName(SHA, new Date(AT.getTime() + 1000));
+
+    expect(first).toMatch(/^titan-factory-deploy-bbbbbbbb-[0-9a-z]+$/);
+    expect(again).not.toBe(first);
+  });
+
+  it("starts nothing more when systemd-run exits cleanly", () => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+
+    fake.emit(0, "exit", 0);
+
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["is missing", "error", new Error("spawn systemd-run ENOENT"), "spawn systemd-run ENOENT"],
+    ["refuses the unit", "exit", 1, "exit 1"],
+  ])("falls back to a setsid deployer and logs why when systemd-run %s", (_case, event, value, why) => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+
+    fake.emit(0, event, value);
+    fake.emit(0, "exit", 1);
+
+    expect(fake.calls.slice(1)).toEqual([setsidCall]);
+    expect(fake.lines.slice(1)).toEqual([`${SYSTEMD_RUN} did not start the deployer (${why}); starting it in its own session instead\n`]);
+  });
+
+  it("falls back to a setsid deployer when spawning systemd-run throws", () => {
+    const fake = fakePorts(undefined, SYSTEMD_RUN);
+
+    const started = deployerOn("linux", fake.ports).spawn(SHA);
+
+    expect(started).toEqual({ pid: 777, log: LOG });
+    expect(fake.calls).toEqual([setsidCall]);
+    expect(fake.lines.slice(1)).toEqual([`${SYSTEMD_RUN} did not start the deployer (Error); starting it in its own session instead\n`]);
+  });
+
+  it("logs that the deployer did not start when the fallback cannot spawn either", () => {
+    const fake = fakePorts();
+    deployerOn("linux", fake.ports).spawn(SHA);
+    fake.ports.spawn = () => {
+      throw new Error("EAGAIN");
+    };
+
+    fake.emit(0, "exit", 1);
+
+    expect(fake.lines.at(-1)).toBe("deployer did not start: Error\n");
   });
 });

@@ -113,7 +113,7 @@ export interface WakeEventRow {
   cause: string;
   delivery: string;
   fromName: string | null;
-  /** The same `msg_id` reached more than one session. */
+  /** The channel tag's broadcast flag; for rows extracted before it was stored, the same `msg_id` reached more than one session. */
   broadcast: boolean;
 }
 
@@ -128,6 +128,7 @@ export interface AgentNameRow {
 const EPISODE_DELIVERIES = "('turn_start', 'mid_loop')";
 
 // A record with several blocks is one event; its last block decides, as the request rollup does.
+// A forked session copies a DM's msg_id, so fan-out only stands in for a NULL flag on pre-EXTRACT_VERSION 8 rows.
 const WAKE_EVENTS = `
   WITH event AS (
     SELECT transcript_id, byte_offset, MAX(block_index) AS block_index FROM inbound
@@ -139,7 +140,7 @@ const WAKE_EVENTS = `
     GROUP BY msg_id
   )
   SELECT i.transcript_id || ':' || i.byte_offset AS key, i.session_id AS sessionId, i.cause, i.delivery,
-    i.from_name AS fromName, COALESCE(f.receivers, 1) > 1 AS broadcast
+    i.from_name AS fromName, COALESCE(i.broadcast, COALESCE(f.receivers, 1) > 1) AS broadcast
   FROM event JOIN inbound i USING (transcript_id, byte_offset, block_index)
   LEFT JOIN fanout f ON f.msg_id = i.msg_id
   ORDER BY i.transcript_id, i.byte_offset`;
@@ -213,13 +214,22 @@ function addOrigins(db: Db, ids: string, contexts: Map<string, SessionContext>):
 }
 
 function addInbounds(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
-  const sql = `SELECT session_id AS sessionId, cause, SUM(delivery = 'turn_start') AS turnStarts FROM inbound WHERE ${IN_SESSIONS} GROUP BY session_id, cause`;
+  const sql = `SELECT session_id AS sessionId, cause, SUM(delivery = 'turn_start') AS turnStarts
+    FROM (SELECT *, ${INBOUND_COPY_RANK} AS copy_rank FROM inbound WHERE ${IN_SESSIONS})
+    WHERE copy_rank = 1 GROUP BY session_id, cause`;
   for (const row of db.prepare(sql).all({ ids }) as { sessionId: string; cause: string; turnStarts: number }[]) {
     const facts = contexts.get(row.sessionId)!.facts;
     facts.inboundKinds = [...(facts.inboundKinds ?? []), row.cause];
     if (row.cause === "human_typed") facts.humanTurnCount = row.turnStarts;
   }
 }
+
+/**
+ * The inbound twin of session-graph's `SIGNAL_COPY_RANK`: a session held in two transcripts (a
+ * mirror, a resumed history) carries each inbound line in both, and only the first copy counts.
+ */
+export const INBOUND_COPY_RANK =
+  "ROW_NUMBER() OVER (PARTITION BY session_id, ts, block_index, cause, delivery, content_hash ORDER BY transcript_id, byte_offset)";
 
 function addSignals(db: Db, ids: string, contexts: Map<string, SessionContext>): void {
   const sql = `SELECT DISTINCT session_id AS sessionId, signal FROM session_signal WHERE ${IN_SESSIONS}`;

@@ -1,13 +1,16 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
-/** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
+/** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
+/** The run's FIX_FIRST rounds so far: the one count the runaway cap, the re-review brief and the wake all read. */
+export const fixFirstCount = (ctx: Pick<WorkflowContext, "iteration">): number => ctx.iteration(FIX_FIRST_STEP);
 /** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
 export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
@@ -15,6 +18,12 @@ export const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
+/** dead:check prints its NEW lines above one CARRY line per baselined finding, so the default tail never reaches them. */
+const DEAD_CHECK_TAIL_LINES = 2000;
+const DEAD_CHECK_MAX_FINDINGS = 40;
+const DEAD_CHECK_JOB = "dag-check";
+const ACTIONS_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /;
+const DEAD_CHECK_FINDING = /^\s*(?:NEW|GROWN)\s{2,}\S/;
 
 /**
  * Files a script rewrites whole (`pnpm capabilities`, `pnpm docs:reference`); a conflict confined to them is settled by
@@ -37,8 +46,32 @@ export interface WakeFacts {
 }
 
 /** The failing jobs' log tails, split evenly so one noisy job cannot crowd out the rest. */
-async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
-  const failing = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun[]> {
+  return (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => run.status === "completed" && !isPassing(run));
+}
+
+/**
+ * The script behind each CI job, so the implementer reruns the failing one before a push spends a CI cycle.
+ * Only these fixed keys reach `reason`: a check run's name is outside text (a branch can rename a job, any app can post a run), so it stays in the fenced log.
+ * Each entry names scripts, not commands; the appended test rule decides where and how they run.
+ */
+const LOCAL_REPRO: Readonly<Record<string, string>> = {
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  "lint-types": "the `lint:types` script",
+  "dag-check": "the `dag:check` and `dead:check` scripts",
+  "egress-scan": "the `egress:scan` script over the PR's commit range",
+};
+
+function failingJobsLine(failing: readonly CheckRun[]): string {
+  if (failing.length === 0) return "";
+  const names = new Set(failing.map((run) => run.name));
+  const known = Object.keys(LOCAL_REPRO).filter((job) => names.has(job));
+  const repro = known.map((job) => `${job}: ${LOCAL_REPRO[job]}`).join("; ");
+  const listed = known.length === 0 ? "" : ` Rerun the failing job's checks before you push, run as your test rule below says: ${repro}.`;
+  return ` ${failing.length} failing check run(s), named in the log below.${listed}`;
+}
+
+async function ciLogs(port: GitHubPort, input: WakeFacts, failing: readonly CheckRun[]): Promise<string> {
   if (failing.length === 0) return "No failing check run was found at this head.";
   const budget = Math.floor((LOG_BUDGET_BYTES - (failing.length - 1)) / failing.length);
   const sections = await Promise.all(failing.map((run) => logSection(port, input.repo, run, budget)));
@@ -47,8 +80,20 @@ async function ciLogs(port: GitHubPort, input: WakeFacts): Promise<string> {
 
 async function logSection(port: GitHubPort, repo: RepoSlug, run: CheckRun, budget: number): Promise<string> {
   const header = `== ${run.name} (${run.conclusion ?? "no conclusion"}) ${run.url}\n`;
-  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, LOG_TAIL_LINES).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
-  return header + tailBytes(log, Math.max(0, budget - Buffer.byteLength(header)));
+  const lines = run.name === DEAD_CHECK_JOB ? DEAD_CHECK_TAIL_LINES : LOG_TAIL_LINES;
+  const log = run.workflowRunId === null ? "(not an Actions job, so no log is read)" : await port.jobLogTail(repo, run.id, lines).catch((error: unknown) => `(log unavailable: ${failureOf(error)})`);
+  const findings = headBytes(run.name === DEAD_CHECK_JOB ? deadCheckFindings(log) : "", Math.max(0, budget - Buffer.byteLength(header)));
+  const tail = log.split("\n").slice(-LOG_TAIL_LINES).join("\n");
+  return header + findings + tailBytes(tail, Math.max(0, budget - Buffer.byteLength(header + findings)));
+}
+
+/** dead:check's NEW and GROWN lines, lifted above the tail so the implementer sees which exports to fix; empty when there are none. */
+function deadCheckFindings(log: string): string {
+  const found = log.split("\n").map((line) => line.replace(ACTIONS_TIMESTAMP, "")).filter((line) => DEAD_CHECK_FINDING.test(line));
+  if (found.length === 0) return "";
+  const shown = found.slice(0, DEAD_CHECK_MAX_FINDINGS);
+  const more = found.length > shown.length ? [`and ${found.length - shown.length} more`] : [];
+  return ["dead:check findings:", ...shown, ...more, "-- log tail --", ""].join("\n");
 }
 
 /** The last `max` bytes, dropping a character the cut split; a log's error is at its end. */
@@ -218,8 +263,10 @@ export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullR
 async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Promise<{ reason: string; payload: string }> {
   const head = input.headSha;
   switch (input.kind) {
-    case "ci-red":
-      return { reason: `CI failed at head ${head}. The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input)) };
+    case "ci-red": {
+      const failing = await failingRuns(port, input);
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+    }
     case "review":
       return withReviewComments(port, input, reviewWake(input));
     case "conflict": {

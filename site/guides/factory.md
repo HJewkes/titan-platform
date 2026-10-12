@@ -93,7 +93,8 @@ stays out of the repo.
       "verdictTimeoutMs": 1800000,
       "sessionStartTimeoutMs": 300000
     },
-    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" }
+    "fixer": { "configDir": "<agent-home>/.claude-profiles/fixer" },
+    "repos": { "acme/widgets": { "path": "/srv/checkouts/widgets", "advisory": true } }
   }
 }
 ```
@@ -134,6 +135,24 @@ stays out of the repo.
   while its free inodes are under `shepherd.review.minFreeInodesPct` (15) percent or twice the
   last checkout's inodes, whichever is more. Each such deferral keeps the review's place in the
   queue.
+- `shepherd.repos` maps an `owner/name` repo to `path`, its main checkout, and `advisory`.
+  Both keys are optional, and an unknown one fails the load. Keys match in any case. The
+  reviewer starts in `path` when no seat binds the repo, so Shepherd can review with no
+  `seatsDir` at all. A seat's own path for the repo wins. The map is re-read on every
+  spawn, as the seat book is.
+- `advisory: true` makes Shepherd review, watch CI and notify on that repo, but never merge,
+  update the branch, push to it or delete its head ref. The run waits held at its merge
+  step, or at `update-branch` when the PR is behind on a strict repo. A wake still resumes or
+  messages the PR's own implementer, but never spawns a successor, and a red main never
+  spawns a fixer. Clear the flag and the
+  held run merges on its next poll. Under the hold, the GitHub port itself refuses every
+  merge, branch update, empty-commit push and ref delete for the repo, whatever route asks.
+  The flag fails closed: the serve process reads it at start and on every check, and only
+  a config file that loads cleanly and leaves it off clears it. A file that is missing, half written or invalid
+  keeps the repo advisory, but only if this serve process has already read the flag. A serve
+  that starts while the file is missing has no flag to keep, and treats every repo as not
+  advisory until the file reads cleanly. If two keys differ only in case, the repo is advisory when
+  either sets the flag.
 - The rest of `shepherd` is covered in the [Shepherd guide](/guides/shepherd#seat-policy).
 
 A malformed file fails every command that opens the database, with
@@ -409,7 +428,7 @@ On Linux it reads `systemctl --user show titan-factory.service` instead: `MainPI
 - **not loaded**: `launchctl print` finds no `dev.hjewkes.titan-factory` job, or the unit's `LoadState` is not `loaded`.
 - **stale pid**: launchd's pid is dead, a different pid answers `/health` on the port, or launchd holds no process or one that gives no `/health` answer (and it is not crash-looping).
 - **crash loop**: launchd's last exit code is non-zero, the job has started at least 3 times, and it holds no process or its process started under 5 minutes ago and does not answer `/health` itself. `service restart` and `launchctl kickstart -k` leave a non-zero last exit and bump the run count, so a young process whose `/health` body names the launchd pid is a restart, not a crash loop.
-- **stale build**: the build sha in `/health` differs from the sha baked into the installed dist; an `unknown` sha on either side never counts.
+- **stale build**: a restart would load a newer commit than the build in `/health`. The check compares the running sha with the build baked into the dist of the deploy checkout the unit runs and reports only when the running sha is an ancestor of that build, so it never advises a restart that loads an older or diverged commit; an `unknown` running sha never counts.
 - **GitHub down**: the right pid answers but `github` is not `ok`.
 - **stale index.lock**: the service checkout's `.git/index.lock` has no process holding it and is older than 10 minutes. The line names its path and age. `service check` never removes it; a person does, once no git runs there.
 - **deploy stalled**: the deploy block in `/health` has its alarm up (see [below](#service-deploy-redeploy-from-main)). The line names each cause, with the last refusal's reason; `--json` adds the running sha, the waiting asks, the refusals in a row and the last refusal.
@@ -481,10 +500,25 @@ fast-forwards, runs `pnpm install --frozen-lockfile` under the `setupEnv` pin, b
 closure, and restarts drained as `service restart` does. Success means launchd's pid answers
 `/health` with `github` `ok`, and then `build.sha` equals the target. The sha read polls
 `/health` up to 10 times with a 5 s timeout each, so a slow answer under load is not a
-failure; only a wrong sha, or no sha in the whole poll, fails. A failed install or build
-restores the snapshot and leaves the old process running, untouched. A failed restart or sha
-check restores the snapshot and kickstarts again. Both record `rolled-back`, and that sha is
-then held until a newer one arrives.
+failure; only a wrong sha, or no sha in the whole poll, fails. Once the sha checks out, the
+deployer watches the new build for `--watch-window` (default `service.deployWatchMs`, else
+2 minutes), probing `/health` every 10 s. The watch fails when three probes in a row get no
+answer, when the build sha or the pid changes, or when the `failed` plus `recovery_required`
+run counts rise above the answer that confirmed the sha. A failed install or build restores
+the snapshot and leaves the old process running, untouched; it records `rolled-back`, and that
+sha is then held until a newer one arrives.
+
+A failed restart, sha check or watch pauses every deploy. The deployer writes
+`deploy-pause.json` beside `deploy.json` before it restores anything, so a deployer killed
+mid-rollback still leaves the pause. It then restores the snapshot, kickstarts once, and
+checks that `/health` answers as the build that ran before. The pause records the rollback as
+`verified`, or as `failed` when the old sha does not answer or was unknown. Either way the
+deployer sends one incident notice, to the hub seat when `shepherd.hubSeat` is set and always as
+an owner-queue item. A failed rollback also prints an `ALERT:` line, and nothing retries it.
+While the file exists, every `service deploy` is refused with `deploy held: deploys are
+paused`, whatever its sha, and a pause file that does not parse still pauses. `titan-factory
+service pause` shows the pause. `titan-factory service pause --clear` removes it under the
+deploy lock, so it is refused while a deployer runs.
 
 `deployed`, `skipped` and `rolled-back` go to `deploy.json`, which `/health` shows as
 `lastDeploy`. A refusal is printed on stderr and never written, so it cannot clear a hold.
@@ -522,7 +556,7 @@ a hub seat. With no `shepherd.hubSeat`, serve logs a warning at start and `servi
 with `no hub seat`.
 
 It takes the same `--port`, `--drain-timeout`, `--no-drain` and `--force` as `service restart`.
-It exits 1 on a refusal, a held sha, a lock held by a live deployer, or a rollback. The
+It exits 1 on a refusal, a held sha, a pause, a lock held by a live deployer, or a rollback. The
 refusal names its cause, such as `deploy refused: checkout not clean main: HEAD is feature/x,
 not main`. A rollback cannot undo a `node_modules` change that the old `dist` cannot load.
 The native-build refusal closes the known case. Any other such change leaves the service down

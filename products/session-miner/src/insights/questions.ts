@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { EXIT } from "@titan-design/registry";
 import {
   ACTION_CLASSES,
   blockedFlowReport,
@@ -20,13 +19,18 @@ import {
   type ActionClass,
   type BlockedFlowReport,
   type LivenessReport,
-  type ReportScope,
 } from "@titan-design/session-analytics";
 import { z } from "zod";
 import { fetchPulls, readDenials, readJournal, readPullSnapshot, withEventsDb } from "./blocked-flow-sources.js";
-import { defineInsight, isoTime, utc, type AnyInsight } from "./define.js";
+import { dataQuality } from "./data-quality.js";
+import { defineInsight, isoTime, refuseSessionScope, utc, type AnyInsight } from "./define.js";
 import { readBrokerLog } from "./liveness-sources.js";
+import { priceCheck } from "./price-check.js";
+import { probes } from "./probes.js";
+import { roundTrips } from "./round-trips.js";
+import { seatGenerations } from "./seat-generations.js";
 import { toolAdoption } from "./tool-adoption.js";
+import { toolErrors } from "./tool-errors.js";
 import { toolGaps } from "./tool-gaps.js";
 
 const reportFrame = { window: true, priceTableVersion: true, totals: true, coverage: true } as const;
@@ -180,17 +184,11 @@ export const liveness = defineInsight<{ seat?: string[]; brokerLog?: string }, L
   },
 });
 
-/** These questions read agent-chat's files, not the session graph, so session filters would silently match nothing. */
-function refuseSessionScope(question: string, scope: ReportScope | undefined): void {
-  const given = Object.entries(scope ?? {}).filter(([, value]) => value !== undefined).map(([key]) => key);
-  if (given.length > 0) throw Object.assign(new Error(`${question} does not take ${given.join(", ")}; narrow it with --seat`), { code: EXIT.DATAERR });
-}
-
 /** Every insight question, in plan order; a new question is one definition added here. */
-export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow];
+export const INSIGHT_QUESTIONS: readonly AnyInsight[] = [priceCheck, spendByAction, handoffThreshold, cacheTtl, wakeEconomics, blockedFlow, dataQuality];
 
 /** Questions that read only agent-chat's files; insights.test.ts runs every INSIGHT_QUESTIONS entry but blocked-flow against the graph. */
-export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [liveness];
+export const AGENT_CHAT_QUESTIONS: readonly AnyInsight[] = [roundTrips, liveness, seatGenerations];
 
-/** Questions that read Bash commands back from transcripts; their own tests cover them with injected ports. */
-export const TRANSCRIPT_QUESTIONS: readonly AnyInsight[] = [toolGaps, toolAdoption];
+/** Questions that read tool calls or results back from transcripts, probes among them; their own tests cover them. */
+export const TRANSCRIPT_QUESTIONS: readonly AnyInsight[] = [toolErrors, toolGaps, toolAdoption, probes];

@@ -3,7 +3,7 @@ export const MERGEABLE_STATES = ["clean", "blocked", "behind", "unstable", "dirt
 export type MergeableState = (typeof MERGEABLE_STATES)[number];
 
 /** What the review of one green head came to, read after the review ends. */
-export const REVIEW_OUTCOMES = ["MERGE", "FIX_FIRST", "no-verdict", "timeout", "head-moved", "external-hold", "not-started"] as const;
+export const REVIEW_OUTCOMES = ["MERGE", "FIX_FIRST", "no-verdict", "timeout", "head-moved", "external-hold", "not-started", "account-exhausted", "throttled"] as const;
 export type ReviewOutcome = (typeof REVIEW_OUTCOMES)[number];
 
 /** Whether the PR is still Shepherd's to land, or was merged or closed by someone else. */
@@ -14,23 +14,24 @@ export type RunState = (typeof RUN_STATES)[number];
  * Every route is autonomous. `merge` goes to the merge decision; `update-branch` and `new-cycle` start the next land
  * round, which updates a behind branch or re-reads a moved or unsettled head; `fresh-reviewer` reviews the same head
  * again under a never-held name; `retry-review` asks again for the reviewer a busy broker never started;
- * `await-external` reads the hold's reviewer again; `end-run` ends the run.
+ * `await-external` reads the hold's reviewer again; `await-account` reviews the PR's current head again once the reviewer's
+ * account hold has lifted or failed over, and counts no round, so it never reaches the owner; `end-run` ends the run.
  */
-export const ROUTES = ["merge", "update-branch", "wake-fixer", "fresh-reviewer", "retry-review", "await-external", "new-cycle", "end-run"] as const;
+export const ROUTES = ["merge", "update-branch", "wake-fixer", "fresh-reviewer", "retry-review", "await-external", "await-account", "new-cycle", "end-run"] as const;
 export type Route = (typeof ROUTES)[number];
 
 type Row = Readonly<Record<ReviewOutcome, Route>>;
 type Table = Readonly<Record<RunState, Readonly<Record<MergeableState, Row>>>>;
 
 /** A state GitHub will merge through; `blocked` is here because merge facts judge a review-only block. */
-const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review" };
+const MERGEABLE: Row = { MERGE: "merge", FIX_FIRST: "wake-fixer", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "head-moved": "new-cycle", "external-hold": "await-external", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "fresh-reviewer" };
 /** A behind head whose reviewer never started still needs its review: `update-branch` would go on to the merge decision with no review at all. */
-const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review" };
-const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer" };
-const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle" };
+const BEHIND: Row = { MERGE: "update-branch", FIX_FIRST: "wake-fixer", "no-verdict": "update-branch", timeout: "update-branch", "head-moved": "new-cycle", "external-hold": "update-branch", "not-started": "retry-review", "account-exhausted": "await-account", throttled: "retry-review" };
+const DIRTY: Row = { MERGE: "wake-fixer", FIX_FIRST: "wake-fixer", "no-verdict": "wake-fixer", timeout: "wake-fixer", "head-moved": "new-cycle", "external-hold": "wake-fixer", "not-started": "wake-fixer", "account-exhausted": "wake-fixer", throttled: "wake-fixer" };
+const UNSETTLED: Row = { MERGE: "new-cycle", FIX_FIRST: "wake-fixer", "no-verdict": "new-cycle", timeout: "new-cycle", "head-moved": "new-cycle", "external-hold": "new-cycle", "not-started": "new-cycle", "account-exhausted": "await-account", throttled: "new-cycle" };
 /** A draft is no merge candidate: the run ends without a gate, and registering the PR again restarts it. */
-const DRAFT: Row = { MERGE: "end-run", FIX_FIRST: "wake-fixer", "no-verdict": "end-run", timeout: "end-run", "head-moved": "new-cycle", "external-hold": "end-run", "not-started": "end-run" };
-const GONE: Row = { MERGE: "end-run", FIX_FIRST: "end-run", "no-verdict": "end-run", timeout: "end-run", "head-moved": "end-run", "external-hold": "end-run", "not-started": "end-run" };
+const DRAFT: Row = { MERGE: "end-run", FIX_FIRST: "wake-fixer", "no-verdict": "end-run", timeout: "end-run", "head-moved": "new-cycle", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run" };
+const GONE: Row = { MERGE: "end-run", FIX_FIRST: "end-run", "no-verdict": "end-run", timeout: "end-run", "head-moved": "end-run", "external-hold": "end-run", "not-started": "end-run", "account-exhausted": "end-run", throttled: "end-run" };
 
 const GONE_STATES: Readonly<Record<MergeableState, Row>> = { clean: GONE, blocked: GONE, behind: GONE, unstable: GONE, dirty: GONE, unknown: GONE, draft: GONE, has_hooks: GONE };
 
@@ -52,6 +53,8 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 
 /** Stuck rounds at one task before the owner is asked. */
 export const MAX_FAILED_ROUNDS = 3;
+/** Throttled rounds at one run that count no round; a later one counts as stuck, so a machine that never settles still reaches the owner. */
+export const MAX_THROTTLED_ROUNDS = 1;
 /** FIX_FIRST reviews at one task before the owner is asked; below it each one is progress, so only a runaway stops. */
 const MAX_FIX_FIRSTS = 6;
 /** Consecutive FIX_FIRST reviews whose Closer line said no before the owner is asked; a review with no Closer line never counts. */
@@ -76,25 +79,33 @@ export const FAILED_ROUND_WORDS: Partial<Record<ReviewOutcome, string>> = {
   "no-verdict": "no reviewer verdict",
   timeout: "no reviewer verdict before the wait ran out",
   "external-hold": "no verdict yet from the reviewer the hold names",
+  throttled: "no reviewer verdict while the machine stop held",
 };
 
 /** Why the owner decides one head: which escalation, and what happened there. */
 export interface Escalated {
   escalation: Escalation;
   detail: string;
+  /** The head whose owner gate the pull request moved past; this escalation was carried from it, so the new head is asked afresh whatever its review says. */
+  carriedFrom?: string;
 }
 
 /** Routes that retry the same head because nobody answered; each one taken is a stuck round. */
 const RETRIES: ReadonlySet<Route> = new Set(["fresh-reviewer", "await-external"]);
+/** Routes that review the same head again; only there is a throttled round free, elsewhere it is read like a timeout. */
+const REVIEWS_AGAIN: ReadonlySet<Route> = new Set(["fresh-reviewer", "retry-review"]);
 
 /**
  * `stuck` is silence, a timeout or a conflict; a FIX_FIRST is counted on its own, because the fix it asks for is progress.
  * `not-started` is no round at all: a busy broker started no reviewer, so nothing at this head failed review.
+ * `throttled` is a reviewer that went silent while the machine stop held; on a route that reviews again it is neither stuck nor
+ * progress until its cap, and on any other route it counts as a timeout would.
  */
-export type RoundKind = "stuck" | "fix-first" | "progress" | "not-started";
+export type RoundKind = "stuck" | "fix-first" | "progress" | "not-started" | "throttled";
 
 export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
-  if (outcome === "not-started") return "not-started";
+  if (outcome === "not-started") return outcome;
+  if (outcome === "throttled" && REVIEWS_AGAIN.has(route)) return outcome;
   if (RETRIES.has(route)) return "stuck";
   if (route !== "wake-fixer") return "progress";
   return outcome === "FIX_FIRST" ? "fix-first" : "stuck";

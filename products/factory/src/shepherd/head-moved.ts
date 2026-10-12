@@ -1,15 +1,17 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
+import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { lastReadHead } from "./last-read-head.js";
 import { SHEPHERD_POLICY_TABLE } from "./policy.js";
 import type { Escalation } from "./route-table.js";
-import { SUPERSEDED, gateHead } from "./stale-gates.js";
+import { SUPERSEDED, cancelUnlessSettled, gateHead } from "./stale-gates.js";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const ROUTE_TABLE = "shepherd-route";
-/** Silent, timed-out or unparsed (no_block) review rounds; every other route row, a conflict among them, stays with the owner. */
 const FAILED_ROUNDS: Escalation = "failed-rounds";
+const CONFLICT: Escalation = "conflict";
+const ROUTE_GATE = new RegExp(`Policy ${ROUTE_TABLE}/([a-z-]+):`);
 const APPROVE_MERGE_GATE = /\/approve-merge(:\d+)?$/;
 const SENT_BACK_GATE = /\/sh-sent-back(:\d+)?$/;
 const CI_FAILED_GATE = /\/ci-failed(:\d+)?$/;
@@ -30,6 +32,25 @@ export async function openHead(services: ShepherdServices, runId: string, onUnre
   if (!registration || registration.pr === null) return undefined;
   const pr = await services.port.getPr(registration.repo, registration.pr).catch(() => void onUnreadable());
   return pr?.state === "open" ? pr.headSha : undefined;
+}
+
+/**
+ * The open PR's head when it moved off `asked`; undefined while it is still `asked`, cannot be read, or is merged or closed.
+ * A snapshot row still at `asked` costs no PR read. Any other row is confirmed through the port, since the list may be a
+ * tick stale and a stale row must not cancel a gate at the live head.
+ */
+async function movedHead(services: ShepherdServices, runId: string, asked: string): Promise<string | undefined> {
+  const registration = services.store.get().byRun(runId);
+  if (!registration || registration.pr === null) return undefined;
+  const { repo, pr: number } = registration;
+  try {
+    const row = (await services.snapshot?.openPrs(repo))?.find((pr) => pr.number === number);
+    if (row?.headSha === asked) return undefined;
+    const pr = await services.port.getPr(repo, number);
+    return pr.state === "open" && pr.headSha !== asked ? pr.headSha : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 interface RecordedDecision {
@@ -92,13 +113,19 @@ interface AuthorityGate {
   reason: string;
 }
 
-/** The head a failed-rounds route gate asks about: the run's last decision gated that head under the route table's failed-rounds row. */
-function failedRoundsHead(run: WorkflowRun, gate: PendingGate["gate"]): string | undefined {
-  if (!gate.prompt.includes(`Policy ${ROUTE_TABLE}/${FAILED_ROUNDS}:`)) return undefined;
+/**
+ * The head a route-table approve-merge gate asks about: failed-rounds, fix-first-runaway, no-progress or conflict. The
+ * run's last decision gated that head under the gate's own route row; a conflict gate records no merge decision, so its
+ * prompt's head stands. Superseding only cancels: the run asks the owner again at the new head (see `clearSuperseded`).
+ */
+function routeGateHead(run: WorkflowRun, gate: PendingGate["gate"]): string | undefined {
+  const row = ROUTE_GATE.exec(gate.prompt)?.[1];
+  if (row === undefined) return undefined;
+  if (row === CONFLICT) return gateHead(gate.prompt);
   const decision = gatingDecision(run, gate.prompt);
-  if (decision) return decision.rule?.rowId === FAILED_ROUNDS ? decision.headSha : undefined;
-  // Only a run that recorded no merge decision at all falls back to the head the gate's own schema pins.
-  return lastMergeDecision(run) === undefined ? schemaHead(gate.schema) : undefined;
+  if (decision) return decision.rule?.rowId === row ? decision.headSha : undefined;
+  // Only a failed-rounds gate of a run that recorded no merge decision at all falls back to the head the gate's own schema pins.
+  return row === FAILED_ROUNDS && lastMergeDecision(run) === undefined ? schemaHead(gate.schema) : undefined;
 }
 
 function schemaHead(schema: unknown): string | undefined {
@@ -132,28 +159,30 @@ function stuckBehindHead(host: FactoryHost, { runId, gate }: PendingGate): strin
   return run?.workflowName === SHEPHERD_WORKFLOW ? lastReadHead(run) : undefined;
 }
 
-/** A conflict, other escalation or release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
+/** A release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
   if (pending.stepId === "stuck-behind") return stuckBehindHead(host, pending);
   const run = approveMergeRun(host, pending);
-  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? failedRoundsHead(run, gate));
+  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate));
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or failed-rounds route approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {
   const superseded: SupersededGate[] = [];
-  for (const pending of host.pendingGates()) {
-    const { runId, gate } = pending;
+  const asking = host.pendingGates().flatMap((pending) => {
     const asked = supersedableHead(host, pending);
-    if (!asked) continue;
-    const head = await openHead(services, runId);
-    if (!head || head === asked || host.gates.get(gate.id)?.status !== "pending") continue;
-    if (!dryRun) host.gates.cancel(gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`);
+    return asked ? [{ ...pending, asked }] : [];
+  });
+  const heads = await mapBounded(asking, RESYNC_CONCURRENCY, ({ runId, asked }) => movedHead(services, runId, asked));
+  for (const [index, { runId, gate, asked }] of asking.entries()) {
+    const head = settledValue(heads[index]!);
+    if (!head || host.gates.get(gate.id)?.status !== "pending") continue;
+    if (!dryRun && !cancelUnlessSettled(host.gates, gate.id, `${SUPERSEDED}the pull request moved from head ${asked} to ${head}`)) continue;
     superseded.push({ runId, gateId: gate.id, from: asked, to: head, condition: "head-moved" });
   }
   return superseded;

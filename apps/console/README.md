@@ -8,9 +8,10 @@ command definitions. The app is private and publishes nothing.
 
 The skeleton (TP-842) serves the shell, hash routes and a rail of six (TP-1057). The
 first real view is Initiatives (TP-861): the portfolio and one initiative's detail, read from
-the active-work daemon. The daemon also answers `agents.roster` and `agents.graph` (TP-847), and `agents.messages` and `agents.queue` (TP-1059),
-which no view shows yet. Every other view except Home is a placeholder that names the task
-that builds it.
+the active-work daemon. Home (TP-1061) reads upstream health, the portfolio, `work.tasks`, `agents.roster`,
+`agents.queue` and `sessions.list`, and links each queue item out to agent-chat. Agents
+(TP-864a, TP-865a) shows the roster, `agents.graph` (TP-847) and `agents.messages` (TP-1059).
+Every other view is a placeholder that names the task that builds it.
 
 ## Run it
 
@@ -56,6 +57,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_TOKEN` | `$TITAN_CONSOLE_STATE/lan.token` | The LAN secret, created at 0600 on first use; refused if it is group- or world-readable, a symlink, short or someone else's |
 | `TITAN_CONSOLE_OWNER_WRITES` | `0` | `1` lets owner-write commands run on the LAN (see "Who may run a command"). Turning it on is an owner step. Any value but `0` or `1` is refused |
 | `TITAN_CONSOLE_INBOX_DIR` | `$TITAN_CONSOLE_STATE/inbox/deposits` | The owner-inbox spool `inbox.deposit` files into, created 0700 on the first deposit |
+| `TITAN_CONSOLE_ROUNDS_DIR` | `$TITAN_CONSOLE_STATE/rounds` | Review rounds, one `<round-id>/round.json` each, read by `rounds.list` and `rounds.get`. `fixtures/rounds` holds synthetic ones for a browser check |
 
 The active-work root is `ACTIVE_ROOT` when set. Otherwise it is the data directory
 active-work's own CLI resolves through `env-paths`: the platform's application data
@@ -87,6 +89,8 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
   is printed to your terminal and nowhere else. Opening it shows a sign-in page that does
   nothing on its own, so a chat app's link preview cannot spend the code. Its button posts the
   code as JSON, and that sets a Secure, HttpOnly, SameSite=Strict cookie that lasts 30 days.
+  The cookie is the whole session, signed with the token file, so it survives a daemon
+  restart. The phone flow is in [docs/lan.md](docs/lan.md#on-a-phone).
 - **`token rotate`** writes a fresh secret by rename. The running daemon re-reads the file,
   so every session and outstanding link ends with no restart. This is how to revoke a lost
   device.
@@ -105,12 +109,17 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/upstreams.health` | `{ checkedAt, upstreams: [{ id, label, target, reachable, detail }] }` for `work`, `agents` and `sessions` |
 | `POST /rpc/agents.roster` | `AgentRosterSnapshot` from `@titan-design/chat-protocol/agents`: live presence, then agents known only from broker history |
 | `POST /rpc/agents.graph` | `AgentGraph`: the spawn tree, plus `spawned` and `message` edges with counts, keyed by roster ids |
-| `POST /rpc/agents.messages` | `{ agent, peer?, before?, limit? }` in; that agent's messages, or the pair's, newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
+| `POST /rpc/agents.messages` | `{ agent?, peer?, before?, limit? }` in; every agent's messages, that agent's, or the pair's (`peer` needs `agent`), newest first. From events.db with `nextCursor`, the row id to pass as `before`; from `/api/history` with `partial: true` and the window when events.db will not open |
 | `POST /rpc/agents.queue` | `{ include_system? }` in; open items waiting on the human from `/api/queue`, questions first, each with `asker` and `ageMs`. The broker's own notices are counted in `hidden` unless `include_system` is set |
 | `POST /rpc/work.portfolio` | Every initiative with its state, brief `taskPrefix`, open-task rollup, note, source and session counts, newest activity and `personal` flag |
 | `POST /rpc/work.tasks` | Open tasks across initiatives, each with a `stage` from titan-design's task-stage vocabulary, the `stageRule` and `stageReason` behind it, `stageGuessed` when no evidence was found, and `parent`, `dep` and `deliverables` read with `@titan-design/pm`'s `readEdges` (the field, else the edge tags) |
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, the sessions whose `session_origin.task_ids` name it, its `children`, and each deliverable id joined to its `deliverable.list` record (`null` when unknown; `deliverablesDegraded` when the registry is unread). An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
+| `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
+| `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
+| `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
+| `POST /rpc/rounds.list` | Every round in the rounds dir, newest first, `open` or `sent` (a `feedback.json` sits beside it). A manifest that fails `RoundSchema` from `@titan-design/review-schema`, round@1 included, is listed with the schema's reason. Symlinked round directories are skipped |
+| `POST /rpc/rounds.get` | `{ id }` in; that round's manifest. While an `after-answer` round is unsent, every question's recommendation is stripped. A round with frames is flagged `design`. `round.json` is read without following symlinks and only up to 1 MiB; an unknown or unsafe id is not found (66) |
 | `POST /rpc/inbox.deposit` | An `ownerItemDeposit` in; `{ id, created }` out. The one write, a `deposit` (see "Owner inbox deposits") |
 | `GET /events` | The daemon package's SSE stream, carrying the upstream events relay (see "Live updates"). At most 64 browsers at once (one more gets 503); a browser 256 frames behind is disconnected and redials |
 | `GET /` and any client route | The built app, or a "not built" page until `build` has run |
@@ -230,8 +239,9 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
 `server/active-work.ts` is the only code that calls the active-work daemon. It posts to
 `/rpc/<command>` on loopback with a ten second timeout, and it can call only the reads in its
 `READS` table: `list`, `task.list`, `inventory`, `session.list`, `loops` (offline, so a page
-view never makes active-work call GitHub), `note.list`, `source.list`, `source.read`, `artifact.list`, `artifact.status`, `context.graph` and
-`deliverable.list` (active-work 0.23 on, read only for a task that names a deliverable). Each
+view never makes active-work call GitHub), `note.list`, `note.read`, `source.list`, `source.read`,
+`search`, `artifact.list`, `artifact.status`, `context.graph` and `deliverable.list`
+(active-work 0.23 on, read only for a task that names a deliverable). Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 
@@ -266,13 +276,15 @@ Hash routes, because a page opened from disk has no server to answer a pushed pa
 
 | Route | Rail label | View | Built by |
 | --- | --- | --- | --- |
-| `#/` | Home | Upstream reachability, until the Home page lands | TP-1061 |
+| `#/` | Home | Upstream health, status counts, a read-only needs-you list and the last day's activity | TP-1061 |
 | `#/initiatives` | Work | Initiative portfolio: cards by state, then record counts per initiative | TP-861 |
 | `#/initiatives/<slug>` | Work | One initiative: header, open loops, brief, and tabs for open tasks, sessions, notes and sources | TP-861 |
 | `#/tasks`, `#/tasks/<id>` | Tasks | Tasks grouped by derived stage, and task detail | TP-866a |
 | `#/sessions`, `#/sessions/<id>` | Sessions | Sessions list, and one session with its conversation first | TP-862 |
 | `#/agents`, `#/agents/<name>` | Agents | Roster, spawn tree and message feed, and one agent | TP-864a, TP-865a |
-| `#/knowledge`, `#/knowledge/<ref>` | Notes | Notes and sources with a reader, and a Graph tab | TP-869, TP-871a |
+| `#/knowledge` | Notes | Browse tab: notes and sources in one table, filtered by `initiative`, `kind` and `since` in the query string. Search tab: hits by ref for `?tab=search&q=<q>`. The Graph tab is TP-1064 | TP-869 |
+| `#/knowledge/<ref>` | Notes | One note or source as prose, with a link to its initiative | TP-869 |
+| `#/rounds`, `#/rounds/<id>` | Rounds | Open and sent review rounds, and one round's questions with keys 1-9 choosing an option. Picks stay in the page; a design round points to the harness | TP-1987 |
 
 Any route keeps its query string (`#/tasks?task=<id>`, `#/knowledge/<ref>?tab=graph`) in `Route.query`.
 A knowledge ref holds `:` and `/`, so `href` encodes the whole ref as one segment. An unknown view,

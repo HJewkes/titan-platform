@@ -1,12 +1,13 @@
 import { appliedVersions, openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { ShepherdStore, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type AuthorInput, type RegistrationInput } from "./store.js";
 
 function openStore(): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   return new ShepherdStore(db, () => Date.parse("2026-01-01T00:00:00Z"));
 }
 
@@ -182,6 +183,20 @@ describe("shepherd registration store", () => {
     expect([named.holdReviewer, released.holdReviewer, unnamed.holdReviewer]).toEqual(["sec-audit-review", null, null]);
   });
 
+  it("records a release's own reason on its event, and the lifted hold's reason when none is given", () => {
+    const store = openStore();
+    store.register(base);
+
+    store.hold("run-1", "owner review");
+    const released = store.release("run-1", { actor: "shepherd:cleanup" }, "merged on rv-sec's MERGE");
+    store.hold("run-1", "second look");
+    store.release("run-1");
+
+    const releases = store.eventsOf("run-1").filter((event) => event.kind === "release");
+    expect(releases.map((event) => [event.reason, event.actor])).toEqual([["merged on rv-sec's MERGE", "shepherd:cleanup"], ["second look", "shepherd"]]);
+    expect(released.holdReason).toBeNull();
+  });
+
   it("holds any PR whose head branch has a held registration still waiting for its PR", () => {
     const store = openStore();
     store.register({ ...base, pr: undefined, branch: "feat/a" });
@@ -217,6 +232,56 @@ describe("shepherd registration store", () => {
     expect(store.heldReason("octo/demo", 12, "feat/xy")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12, "other/feat/x")).toBeUndefined();
     expect(store.heldReason("octo/demo", 12, "refs/heads/other/feat/x")).toBeUndefined();
+  });
+});
+
+describe("a hold of another class beside a g10-adversary hold", () => {
+  const ADVERSARY = "g10-adversary: trust rule (security)";
+  const STALL = "stalled: no progress; TP-2";
+  const HEAD = "1".repeat(40);
+
+  function heldBoth(first: string, second: string): ShepherdStore {
+    const store = openStore();
+    store.register(base);
+    store.hold("run-1", first, first === STALL ? "owner-rv" : undefined, { actor: "owner" });
+    store.hold("run-1", second, second === STALL ? "owner-rv" : undefined, { actor: "seat" });
+    return store;
+  }
+
+  it("still holds, under the other class and its reviewer, once the seat releases the adversary hold placed first", () => {
+    const store = heldBoth(ADVERSARY, STALL);
+
+    const gating = store.heldReason("octo/demo", 7);
+    store.release("run-1", { actor: "seat", headSha: HEAD });
+
+    expect(gating).toBe(ADVERSARY);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: STALL, holdReviewer: "owner-rv" });
+    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold", "hold", "release"]);
+  });
+
+  it("still holds under the other class once the seat releases an adversary hold placed over it", () => {
+    const store = heldBoth(STALL, ADVERSARY);
+
+    store.release("run-1", { actor: "seat", headSha: HEAD });
+
+    expect(store.heldReason("octo/demo", 7)).toBe(STALL);
+    expect(store.byRun("run-1")?.holdReviewer).toBe("owner-rv");
+  });
+
+  it("lifts one class per release, so the second release frees the run", () => {
+    const store = heldBoth(ADVERSARY, STALL);
+
+    store.release("run-1");
+    store.release("run-1");
+
+    expect(store.heldReason("octo/demo", 7)).toBeUndefined();
+  });
+
+  it("lifts nothing on a compare-and-swap release naming the parked class", () => {
+    const store = heldBoth(ADVERSARY, STALL);
+
+    expect(store.releaseIfHeld("run-1", STALL)).toBe(false);
+    expect(store.heldReason("octo/demo", 7)).toBe(ADVERSARY);
   });
 });
 
@@ -277,7 +342,7 @@ describe("a hold satisfied by its reviewer's MERGE", () => {
 
 function openLineageStore(clock: { now: number } = { now: Date.parse("2026-01-01T00:00:00Z") }): ShepherdStore {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   return new ShepherdStore(db, () => clock.now);
 }
 

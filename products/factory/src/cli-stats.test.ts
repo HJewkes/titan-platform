@@ -6,6 +6,8 @@ import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { runCli } from "./cli.js";
+import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
+import { ShepherdStore } from "./shepherd/store.js";
 import { openFactoryHost } from "./host.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -25,6 +27,59 @@ describe("shepherd stats verb", () => {
 
     expect(code).toBe(0);
     expect(JSON.parse(out.join(""))).toEqual({ merges: [], ownerFriction: [], stageTimes: [], redAfterMerge: [], ownerOverrides: [], reviewCauses: [] });
+  });
+
+  it("prints one record per run with --per-run --json, its kind read from the registration", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    const merge = { stepId: "merge", iteration: 0, agentId: null, signal: null, completedAt: "2026-10-07T09:30:00.000Z", data: { result: { done: true } } };
+    new WorkflowRunStore(store).create({ id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "3", task: "demo/T-9" }, status: "completed", currentStep: null, stepResults: { "merge:0": merge }, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-07T09:00:00.000Z", completedAt: "2026-10-07T09:31:00.000Z", error: null });
+    new ShepherdStore(store).register({ repo: "acme/widgets", pr: 3, runId: "run-1", task: "demo/T-9", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "refactor" });
+    store.close();
+    const { out, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--per-run", "--json"], io);
+
+    expect(code).toBe(0);
+    expect(JSON.parse(out.join(""))).toEqual({
+      perRun: [{ runId: "run-1", task: "demo/T-9", repo: "acme/widgets", pr: 3, kind: "refactor", status: "completed", startedAt: "2026-10-07T09:00:00.000Z", completedAt: "2026-10-07T09:31:00.000Z", stageMinutes: { land: 30 }, reviewRounds: 0, mergedAt: "2026-10-07T09:30:00.000Z", mergePath: "shepherd" }],
+    });
+  });
+
+  it("reports merge-up classes, strict rounds, slow owner-gated merges and foreign merge-ups in JSON and in the text line", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    const result = (stepId: string, completedAt: string, data: Record<string, unknown>) => ({ [stepId]: { stepId, iteration: 0, agentId: null, signal: null, completedAt, data: { result: data } } });
+    const stepResults = {
+      ...result("land-rules", "2026-10-07T08:59:00.000Z", { base: "main", contexts: [], strict: true }),
+      ...result("sh-await-verdict:h1", "2026-10-07T09:00:00.000Z", { kind: "verdict", verdict: "MERGE" }),
+      ...result("ci-wait:0", "2026-10-07T09:01:00.000Z", { verdict: "behind", headSha: "h1", baseMoved: true }),
+      ...result("update-branch:0", "2026-10-07T09:02:00.000Z", { headSha: "h2", own: true }),
+      ...result("approve-merge:0", "2026-10-07T10:20:00.000Z", { approved: true }),
+      ...result("merge:0", "2026-10-07T10:30:00.000Z", { done: true }),
+    };
+    new WorkflowRunStore(store).create({ id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "3" }, status: "completed", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-07T08:58:00.000Z", completedAt: "2026-10-07T10:31:00.000Z", error: null });
+    store.close();
+    const json = capture();
+    const text = capture();
+
+    await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
+    await runCli(["--db", db, "shepherd", "stats"], text.io);
+
+    expect(JSON.parse(json.out.join("")).merges[0]).toMatchObject({ mergeUps: { landTime: 1, strictChase: 0, freezeHold: 0, retry: 0 }, strictRounds: 1, slowOwnerGated: 1, foreignMergeUps: 0 });
+    expect(text.out.join("")).toContain("slow owner-gated 1  outside Shepherd 0  merge-ups land/strict/freeze/retry 1/0/0/0  strict rounds 1  foreign merge-ups 0\n");
+  });
+
+  it("refuses --per-run without --json", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const { out, err, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--per-run"], io);
+
+    expect([code, out, err.join("")]).toEqual([2, [], "error: --per-run prints JSON only; add --json\n"]);
   });
 
   it("prints only the review causes with --rereviews", async () => {

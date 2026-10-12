@@ -5,8 +5,8 @@ an agent under a named profile with the brief on stdin (never in argv, which `ps
 every local process), builds the argv that resumes an ended agent's Claude Code session
 with one more message, and runs binaries by absolute path with a minimal environment.
 
-Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency of
-the `./limits` subpath). Ported unchanged from relay's
+Tier 1 of the titan-platform DAG, with no titan dependencies (zod is a peer dependency,
+used by `readAnswers` and the `./limits` subpath). Ported unchanged from relay's
 `daemon/src/dispatch.ts`, `exec.ts` and `session.ts` (`resumeArgs`) by TP-460.
 
 ```ts
@@ -20,10 +20,19 @@ dispatchToAgentChat(
 ```
 
 - `dispatchToAgentChat(req, timeoutMs, allowedProfiles)` refuses a profile outside the
-  caller's allowlist and a peer name outside agent-chat's name shape, then runs
+  caller's allowlist and a peer name outside agent-chat's name shape, then refuses a
+  profile whose installed file is not headless (`assertInstalledHeadless`), then runs
   `agent-chat agent spawn <name> <profile> [--briefing <slug>] --brief-stdin`. A zero exit
   means the broker accepted the spawn, not that the work is done. A non-zero exit throws
-  `DispatchError` carrying the CLI's stdout reason, else its stderr.
+  `DispatchError` carrying the CLI's stdout reason, else its stderr; a CLI that hangs
+  throws `DispatchTimeoutError`, since the spawn may still have happened.
+- `assertInstalledHeadless(profile, dir?)` reads `<dir>/<profile>.json` (default
+  `installedProfilesDir()`, `$HOME/.agent-chat/profiles`) and throws `DispatchError` unless
+  it says `"surface": "headless"`: an interactive surface puts the brief in `claude`'s argv.
+  A missing, unreadable or non-JSON file is refused too. The refusal names the profile and
+  path, never the file's contents. `dispatchToAgentChat` takes `profilesDir` to point it
+  elsewhere. The broker re-reads the file after this check, so a write in between is still
+  possible until agent-chat's surface lock closes that window.
 - `dispatchToAgentChat` also takes `configDir`, passed as `--config-dir <path>` to run the
   agent on another Claude account.
 - `resumeAgent(bin, name, message, timeoutMs)` runs `agent-chat agent resume <name>
@@ -45,10 +54,22 @@ dispatchToAgentChat(
 - `resumeArgs(sessionId, message)` returns `claude` argv; run it with `execSafe`. The
   message is in argv here, so callers decide what may go in it.
 - `listAgents(bin, timeoutMs)` reads `agent-chat agent ls --json` and returns typed
-  `AgentRow`s, skipping a row that lacks a field it relies on. `retire(bin, name,
+  `AgentRow`s, skipping a row whose required field is missing or mistyped and dropping an
+  optional field (`model`, `transcriptPath`, `transcriptExists`, `spawnedBy`, `account`,
+  `teleportFrom`) that has the wrong type. `retire(bin, name,
   timeoutMs, { force })` frees a name and returns the broker's caveats. Both throw
   `DispatchError`, or `DispatchTimeoutError` when the CLI hangs, since a hung retire may
   still have happened.
+- `askHuman(bin, { as, text, task?, options?, recommended? }, timeoutMs)` puts a question on
+  agent-chat's human queue for a process that is not a Claude session, under the service
+  label `as`, and returns its msg_id. It runs `agent-chat ask --as <label> --text-stdin
+  --json`, with the text on stdin. `readAnswers(bin, label, since, timeoutMs)` reads the
+  answers and dismissals to that label's asks after the msg_id `since`, oldest first, as
+  `{ answers: ServiceAnswer[], next? }`; pass `next` back as `since`. A body that is not
+  that shape throws rather than reading as an empty page. `dismissAsk(bin, msgId,
+  timeoutMs)` withdraws an ask, and throws `DispatchError` when it is already closed. All
+  three throw `BrokerUnavailableError` when the broker is down or predates the verbs (exit
+  69), and a `DispatchError` naming a usage error on exit 2.
 - `execSafe`, `minimalEnv` and `resolveBinaryPath` never use `PATH` lookup or
   `process.env`, and never a shell.
 

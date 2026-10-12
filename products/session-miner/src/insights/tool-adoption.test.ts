@@ -16,6 +16,8 @@ import { toolAdoptionQuestion, type ToolAdoptionReport } from "./tool-adoption.j
 const REGISTRY: AdoptionOpportunity[] = [
   {
     id: "ls-filter",
+    row: 1,
+    status: "shipped",
     task: "DEMO-1",
     pr: "demo/cli#1",
     shipped: "2026-09-01T00:00:00Z",
@@ -24,6 +26,8 @@ const REGISTRY: AdoptionOpportunity[] = [
   },
   {
     id: "status-brief",
+    row: 2,
+    status: "shipped",
     task: "DEMO-2",
     pr: "demo/cli#2",
     shipped: "2026-09-01T00:00:00Z",
@@ -32,11 +36,21 @@ const REGISTRY: AdoptionOpportunity[] = [
   },
   {
     id: "waiting-verb",
+    row: 3,
+    status: "shipped",
     task: "DEMO-3",
     pr: "demo/cli#3",
     shipped: "2026-09-20T00:00:00Z",
     old: { head: "titan-factory shepherd status", patterns: ["| jq -r"] },
     new: { head: "titan-factory shepherd waiting", flags: [] },
+  },
+  {
+    id: "ls-baseline",
+    row: 4,
+    status: "baseline",
+    task: null,
+    old: { head: "agent-chat agent ls", patterns: ["| grep -E"] },
+    new: { head: "agent-chat agent ls", flags: ["--state"] },
   },
 ];
 
@@ -84,8 +98,8 @@ function fakePorts(read: string[] = []) {
   };
 }
 
-async function answer(report: { since?: string; until?: string; scope?: Record<string, unknown> } = {}, ports = fakePorts()) {
-  return toolAdoptionQuestion(ports, REGISTRY).answer(db, { scope: {}, ...report }, {}, config);
+async function answer(report: { since?: string; until?: string; scope?: Record<string, unknown> } = {}, ports = fakePorts(), registry: AdoptionOpportunity[] = REGISTRY) {
+  return toolAdoptionQuestion(ports, registry).answer(db, { scope: {}, ...report }, {}, config);
 }
 
 const row = (data: ToolAdoptionReport, id: string) => data.opportunities.find((o) => o.id === id)!;
@@ -143,8 +157,37 @@ describe("tool-adoption (Q10)", () => {
     const read: string[] = [];
     const { data } = await answer({}, fakePorts(read));
 
-    expect(data.totals).toEqual({ bashCalls: 10, skippedByHeads: 1, unreadable: 1, opportunities: 3 });
+    expect(data.totals).toEqual({ bashCalls: 10, skippedByHeads: 1, unreadable: 1, opportunities: 4 });
     expect(read).not.toContain(CALLS.at(-1)!.toolUseId);
+  });
+
+  it("counts a baseline's old pipelines from the window start, leaves its new form at zero and never flags it", async () => {
+    const { data } = await answer();
+
+    expect(row(data, "ls-baseline")).toMatchObject({
+      status: "baseline",
+      task: null,
+      pr: null,
+      shipped: null,
+      daysSinceShip: null,
+      newUses: 0,
+      oldUses: 5,
+      weeks: [
+        { week: 1, start: "2026-09-01", newUses: 0, oldUses: 3 },
+        { week: 2, start: "2026-09-08", newUses: 0, oldUses: 0 },
+        { week: 3, start: "2026-09-15", newUses: 0, oldUses: 2 },
+        { week: 4, start: "2026-09-22", newUses: 0, oldUses: 0 },
+      ],
+      watching: false,
+      flags: [],
+    });
+  });
+
+  it("starts the window four weeks before now when nothing has shipped", async () => {
+    const { data } = await answer({}, fakePorts(), [REGISTRY.at(-1)!]);
+
+    expect(data.window).toEqual({ since: "2026-08-28T00:00:00.000Z", until: "2026-09-25T00:00:00.000Z" });
+    expect(row(data, "ls-baseline")).toMatchObject({ oldUses: 6, flags: [] });
   });
 
   it("narrows by agent prefix and refuses --role", async () => {
@@ -159,6 +202,7 @@ describe("tool-adoption (Q10)", () => {
     expect(text).toContain(`| ls-filter | demo/cli#1 | 2026-09-01 | agent-chat agent ls --state | ${patternId("| grep -E")} | 0/3 0/0 1/2 0/0 | 1 | 5 | unadopted |`);
     expect(text).toContain("| waiting-verb | demo/cli#3 | 2026-09-20 | titan-factory shepherd waiting |");
     expect(text).toContain("watching");
+    expect(text).toContain(`| ls-baseline | - | - | agent-chat agent ls --state | ${patternId("| grep -E")} | 0/3 0/0 0/2 0/0 | 0 | 5 | baseline |`);
     expect(text.trimEnd().endsWith(LIST_PRICE_CAVEAT)).toBe(true);
   });
 });
@@ -177,13 +221,39 @@ describe("tool-adoption surfaces", () => {
 });
 
 describe("the adoption registry", () => {
-  it("names each opportunity once, with a merged PR, a ship time and a new form that differs from the old one", () => {
+  it("covers each of the 15 ranked rows of the 10-08 mining, every id once", () => {
     expect(new Set(ADOPTION_OPPORTUNITIES.map((o) => o.id)).size).toBe(ADOPTION_OPPORTUNITIES.length);
-    for (const o of ADOPTION_OPPORTUNITIES) {
+    expect([...new Set(ADOPTION_OPPORTUNITIES.map((o) => o.row))].sort((a, b) => a - b)).toEqual(Array.from({ length: 15 }, (_, i) => i + 1));
+  });
+
+  it("gives every shipped entry its task, merged PR and ship time", () => {
+    for (const o of ADOPTION_OPPORTUNITIES.filter((e) => e.status === "shipped")) {
+      expect(o.task).toMatch(/^[A-Z]+-\d+$/);
       expect(o.pr).toMatch(/^[\w.-]+\/[\w.-]+#\d+$/);
       expect(Number.isNaN(Date.parse(o.shipped))).toBe(false);
+    }
+  });
+
+  it("names the build task of each baseline filed from the 10-08 mining", () => {
+    const expected = {
+      "basement-suite-summary": "TP-2315",
+      "titan-gh-pr-status": "TP-2316",
+      "shepherd-status-filters": "TP-2317",
+      "shepherd-register-infer": "TP-2318",
+      "ci-failures-digest": "TP-2319",
+      "shepherd-timeline-last": "TP-2320",
+    };
+
+    const tasks = Object.fromEntries(ADOPTION_OPPORTUNITIES.filter((o) => o.id in expected).map((o) => [o.id, o.task]));
+
+    expect(tasks).toEqual(expected);
+  });
+
+  it("writes old patterns as Q9 tails, and notes every entry whose old or new form Q10 cannot count", () => {
+    for (const o of ADOPTION_OPPORTUNITIES) {
       expect(o.old.patterns.every((p) => p.startsWith("| "))).toBe(true);
-      expect(o.new.flags.length > 0 || o.new.head !== o.old.head).toBe(true);
+      const countable = o.old.patterns.length > 0 && (o.new.flags.length > 0 || o.new.head !== o.old.head);
+      expect(countable || o.note !== undefined, o.id).toBe(true);
     }
   });
 });

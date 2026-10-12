@@ -166,7 +166,11 @@ reordered between runs. Duplicate keys throw before anything launches.
 `budgetUsd` is checked before each launch against the cost that items reported
 in `StepResult.usage` or on their failure. An item that succeeds on retry
 counts its failed attempts once, through its result. Items still in flight are not
-counted, so a run can overshoot by up to `concurrency - 1` items.
+counted, so a run can overshoot by up to `concurrency - 1` items. A usage marked
+`costUnknown` (some spend had no price, such as a Codex subscription run) stops
+new launches with `stoppedBy: "cost_unknown"` when `budgetUsd` is set, because
+counting the gap as zero would let the budget overrun unseen. Without a budget it
+changes nothing.
 
 An item whose step throws `StepFailedError` lands in `failed` with its `error`,
 `retryable` flag and, when the runner reported it, the `usage` of its failed
@@ -175,7 +179,7 @@ budget, refusal, schema) stops new launches at once, because the next item would
 fail the same way. Retryable failures stop launches once there are more than
 `maxFailures` of them (default 3). `spentUsd` includes failed-call cost. The
 result reports `results` in input order, plus `failed`, `skipped`, `spentUsd`
-and `stoppedBy` (`"budget"`, `"failure"` or `null`). Any other error is
+and `stoppedBy` (`"budget"`, `"failure"`, `"cost_unknown"` or `null`). Any other error is
 rethrown once the items in flight settle.
 
 `agentRunner` reports `usage` (`costUsd`, `inputTokens`, `outputTokens`) on
@@ -272,6 +276,23 @@ runner whose steps are safe to repeat (see Fan-out). `agentRunner` and
 return a confirmed terminal result after restart; missing or failed attachment
 requires recovery. Legacy work is never automatically redispatched after an
 unsafe restart.
+
+## Definition versions
+
+`register(name, fn, { version })` pins each run that `start` creates to
+`version`, an opaque non-empty string such as a semver, a git sha or a content
+hash. On `hydrate`, a run pinned to a different version, or to a version when
+the workflow is now registered without one, is not replayed: its row becomes
+`recovery_required` with evidence naming both versions, and the workflow
+function is never called. A run that is already `recovery_required` keeps its
+own evidence and stays parked. A `cancelling` run is not parked: it finishes
+as cancelled through the usual path. Unpinned runs, including rows written before
+this option existed, hydrate as before.
+
+A fresh `workflowMigration` table has the `definition_version` column. An
+existing table needs `workflowDefinitionVersionMigration(n)` once. Until then
+unpinned runs keep working, and starting a pinned run throws
+`WorkflowStoreSchemaOutdated` rather than dropping the pin.
 
 ## Ownership and cancellation
 

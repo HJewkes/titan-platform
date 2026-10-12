@@ -1,10 +1,12 @@
 import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
+import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
@@ -45,6 +47,11 @@ export const WatchRowSchema = z.object({
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
+  /** The registration's implementer and slice label, each null when it names none (only a slice-less run closes its task). Absent in rows older than the fields. */
+  implementer: z.string().nullable().optional(),
+  slice: z.string().nullable().optional(),
+  /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
+  reviewer: z.string().nullable().optional(),
 });
 export type WatchRow = z.infer<typeof WatchRowSchema>;
 
@@ -111,10 +118,8 @@ function completedSteps(run: WorkflowRun): StepResult[] {
 }
 
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
-  const terminal = TERMINAL_PHASE[run.status];
-  if (terminal) return terminal;
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current);
+  return TERMINAL_PHASE[run.status] ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -214,8 +219,8 @@ function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | un
 export interface RowInput {
   registration: Registration;
   run: WorkflowRun;
-  /** The gate the run waits on now, with the step it belongs to. */
-  pending?: { gate: GateRecord; stepId: string };
+  /** The gate the run waits on now; its step is read from the gate id, because the run's current step can name an older step. */
+  pending?: { gate: GateRecord };
   /** The run holding the repo's merge train, if any. */
   train?: TrainHolder;
   /** The clock the stall limits read; defaults to the wall clock. */
@@ -230,15 +235,6 @@ export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
   const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
   const parsed = stopped && StoppedData.safeParse(stopped.data);
   return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
-}
-
-/** Three, as in MAX_FAILED_ROUNDS: a broker still refusing after three retries, each with its busy wait, needs a human's look. */
-export const MAX_NOT_STARTED_REVIEWS = 3;
-
-/** Review dispatches since the last one that started a reviewer; the run never counts these, so only the view does. */
-function notStartedStreak(steps: readonly StepResult[]): number {
-  const reviews = steps.filter((result) => result.stepId.split(":")[0] === "sh-review");
-  return reviews.reduce((streak, result) => (result.data?.notStarted === true ? streak + 1 : 0), 0);
 }
 
 const MINUTE = 60_000;
@@ -300,13 +296,16 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
-    pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    implementer: registration.implementer || null,
+    slice: registration.slice ?? null,
+    reviewer: reviewerName(steps),
   };
 }
 

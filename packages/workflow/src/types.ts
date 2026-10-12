@@ -18,6 +18,8 @@ export interface StepUsage {
   costUsd: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Some spend had no price, so `costUsd` is a floor; a budget must refuse it rather than read the gap as free. */
+  costUnknown?: true;
 }
 
 /** Which context method recorded a result; replay compares it to catch a workflow edited under a live run. */
@@ -66,6 +68,8 @@ export type ActiveStep = LegacyActiveStep | RecoverableActiveStep;
 export interface WorkflowRun {
   id: string;
   workflowName: string;
+  /** The registered definition version the run started under; absent means unpinned. */
+  definitionVersion?: string;
   /** Workflow parameters plus anything seed steps merged in. */
   params: Record<string, string>;
   status: WorkflowStatus;

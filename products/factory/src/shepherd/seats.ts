@@ -10,6 +10,9 @@ export { isRepo as isRepoKey } from "@titan-design/github";
 
 export const MERGE_ON_GREEN_GRANT = "merge-on-green-approve";
 
+/** Lets Shepherd merge a Version Packages PR, and so publish, on a passed preflight; merge-on-green alone does not. */
+export const RELEASE_MERGE_GRANT = "release-merge";
+
 /** Lets a run merge into a base other than the repo's default branch, as a stacked PR's is; only a seat can grant it. */
 export const FEATURE_BASE_GRANT = "merge-into-feature-base";
 
@@ -153,6 +156,14 @@ export function lookupSeat(book: SeatBook, repo: string): SeatLookup {
   if (book.denied.includes(remote) || book.denied.includes(name)) return { kind: "denied", reason: `${repo} is on a seat deny list or a charter hard stop` };
   const seats = book.seats.filter((s) => s.remotes.includes(remote));
   return seats.length > 0 ? { kind: "seat", seat: narrowest(seats) } : { kind: "none" };
+}
+
+/** The checkout a seat binds to `repo`; a repo no seat lists takes the one `unseated` names, keyed by owner/name in any case; a denied repo has none. */
+export function boundCheckout(book: SeatBook, repo: string, unseated: Readonly<Record<string, { path?: string }>> = {}): string | undefined {
+  const found = lookupSeat(book, repo);
+  if (found.kind === "seat") return found.seat.paths[repo.toLowerCase()];
+  if (found.kind === "denied") return undefined;
+  return Object.entries(unseated).find(([key]) => key.toLowerCase() === repo.toLowerCase())?.[1].path;
 }
 
 function narrowest(seats: Seat[]): Seat {

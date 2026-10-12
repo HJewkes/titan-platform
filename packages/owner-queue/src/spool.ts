@@ -3,7 +3,8 @@ import { link, lstat, mkdir, readFile, readdir, unlink, writeFile } from "node:f
 import { join } from "node:path";
 import { z } from "zod";
 import { fromDeposit, ownerItemDepositSchema, type OwnerItemDeposit } from "./deposit.js";
-import { ownerItemSchema, type OwnerAnswer, type OwnerItem } from "./schema.js";
+import { forAudience } from "./audience.js";
+import { ownerItemSchema, type Audience, type OwnerAnswer, type OwnerItem } from "./schema.js";
 
 /** The cap on one deposit file, so a runaway context cannot fill the spool or the console. */
 export const MAX_DEPOSIT_BYTES = 64 * 1024;
@@ -191,9 +192,10 @@ async function listNames(dir: string): Promise<string[]> {
 
 /**
  * Reads every deposit in the spool as an open OwnerItem, opened at the file's mtime. A bad
- * file lands in `rejects` and never stops the rest; a missing spool reads as empty.
+ * file lands in `rejects` and never stops the rest; a missing spool reads as empty. With
+ * `audience`, only that reader's items are kept (absent counts as owner); rejects are all kept.
  */
-export async function readSpool(dir: string): Promise<SpoolContents> {
+export async function readSpool(dir: string, options: { audience?: Audience } = {}): Promise<SpoolContents> {
   const contents: SpoolContents = { items: [], rejects: [] };
   for (const name of (await listNames(dir)).filter(isDepositFile)) {
     try {
@@ -205,6 +207,7 @@ export async function readSpool(dir: string): Promise<SpoolContents> {
       contents.rejects.push({ file: name, reason: code ?? message });
     }
   }
+  if (options.audience) contents.items = forAudience(contents.items, options.audience);
   return contents;
 }
 

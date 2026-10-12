@@ -1,7 +1,7 @@
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import { z } from "zod";
 import { deadline, type Deadline } from "../workflows/deadline.js";
-import { failureOf } from "./error-class.js";
+import { consoleTextOf, failureOf } from "./error-class.js";
 import type { Presence } from "./presence.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
@@ -46,6 +46,8 @@ export interface CleanupDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   cleanup?: CleanupPorts;
+  /** An advisory repo's head ref is never deleted, even after a human merge. */
+  advisory?: (repo: RepoSlug) => boolean;
 }
 
 export interface CleanupInput {
@@ -75,7 +77,7 @@ interface Waiter {
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), waiter())) ?? "unread";
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input), waiter())) ?? "unread";
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
@@ -88,18 +90,29 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 }
 
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
-async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string> {
+async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
+  if (advisory?.(input.repo)) return "advisory";
   const pr = await port.getPr(input.repo, input.pr);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
 }
 
-/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. */
+const CLEANUP_ACTOR = "shepherd:cleanup";
+
+/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. The release event keeps who satisfied it, since the release clears that from the row. */
 async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<void> {
   const store = deps.store.get();
   if (store.byRun(input.runId)?.held !== true) return;
-  if ((await deps.port.getPr(input.repo, input.pr)).merged) store.release(input.runId);
+  const pr = await deps.port.getPr(input.repo, input.pr);
+  if (pr.merged) store.release(input.runId, { actor: CLEANUP_ACTOR, headSha: pr.headSha }, satisfiedReason(store.byRun(input.runId)));
+}
+
+function satisfiedReason(registration: Registration | undefined): string | undefined {
+  const holdSatisfied = registration?.holdSatisfied;
+  if (!holdSatisfied) return undefined;
+  const { head, by } = holdSatisfied;
+  return `merged on ${by.reviewer}'s MERGE at ${head} (${by.agentId}/${by.sessionId})`;
 }
 
 /**
@@ -225,7 +238,7 @@ async function rosterRow(agents: CleanupAgents, name: string): Promise<CleanupAg
 }
 
 /** Reads the refusal text only to recognise an agent that is already gone; none of it is stored. */
-const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(error instanceof Error ? error.message : String(error));
+const alreadyGone = (error: unknown): boolean => /no agent named|already retired/i.test(consoleTextOf(error));
 
 /** Fixed words for the refusals an owner triages by, since the refusal's own text names paths. */
 const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
@@ -234,7 +247,7 @@ const KNOWN_REFUSALS: readonly (readonly [RegExp, string])[] = [
 ];
 
 function retireRefusal(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
+  const text = consoleTextOf(error);
   return KNOWN_REFUSALS.find(([pattern]) => pattern.test(text))?.[1] ?? failureOf(error);
 }
 

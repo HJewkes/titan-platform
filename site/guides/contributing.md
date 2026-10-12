@@ -253,5 +253,10 @@ memory and fails when either file differs, so edit the sources and rerun the scr
 "Version Packages" pull request stays green because `pnpm version-packages` regenerates the
 catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
 
+The same script writes each public package's API snapshots, `packages/<dir>/api/<entry>.d.ts`,
+from the built `dist/`, so it exits 2 when a package is unbuilt. Callers that run before a
+build (`pnpm version-packages`, `pnpm new:package`) pass `--catalog-only`; after stamping a
+package, run `pnpm build && pnpm capabilities` to add its snapshot.
+
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.

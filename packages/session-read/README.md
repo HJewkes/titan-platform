@@ -47,23 +47,26 @@ any short, upper-case or over-long head are refused. A `FIX_FIRST` block may add
 ## Review verdicts and assigned tasks
 
 `parseReviewVerdicts(text)` reads a `chat_send` message for approve / changes-requested
-verdicts. `assignedTaskIds({ agentName, brief, isKnown })` reads which task a spawned
-session was given, and `orientationEnd(brief)` returns where the assignment starts in the
-brief. Signatures and examples are in the
+verdicts. `assignedTaskIds({ agentName, brief, isKnown, briefingChars? })` reads which task a spawned
+session was given, and `orientationEnd(brief, briefingChars?)` returns where the assignment
+starts in the brief. Pass `briefingChars` (agent-chat's `agent_spawned` meta `briefing_chars`)
+when it was recorded: it locates the end of the orientation block without relying on heading text. Signatures and examples are in the
 [reference page](https://hjewkes.github.io/titan-platform/reference/session-read.html).
 
 ## Audit events
 
 Eight more kinds feed cost and context audits. Each extends the event base with
 `blockIndex`: the position of the block within the line's content, or 0 for a whole-line
-event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 7) is bumped
+event. They fold into their own `TranscriptDelta` lists. `EXTRACT_VERSION` (now 8) is bumped
 whenever a classification rule changes, so a store can tell stale rows apart and re-index.
+Version 8 added the channel tag's `broadcast` flag to `inbound`; session-graph's `backfillFacets`
+re-extracts the inbound rows of every transcript indexed under 7 or earlier.
 
 | kind | list | emitted for |
 |---|---|---|
 | `request` | `requests` | every assistant line with usage, keyed by `requestId` or else `message.id`. A response split over two lines repeats its usage, so the store dedupes on the key. Cache creation is split into 5m and 1h. Thinking tokens are an estimated share of output. |
 | `tool_call` | `toolCalls` | each `tool_use` block, with `family` and `mcpServer` from `toolFamily`, and `inputChars` |
-| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName` and `msgId`. A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. `promptSource` is the record's own `promptSource` (`typed`, `system`, `sdk` for a headless turn), null when absent. |
+| `inbound` | `inbound` | each delivering record: every `user` line, and each `queued_command` attachment (a message delivered mid-loop). `cause` is a `WakeCause` from `classifyInbound`. `delivery` is `turn_start`, `mid_loop` or `tool_result`. A channel message carries `originServer`, `fromName`, `msgId` and `broadcast` (true when the tag carries `broadcast="true"`, false for a direct message, null for an arrival with no channel tag). A tool result carries the `toolUseId` of its first `tool_result` block; rollup joins it to the `tool_call` for the tool name. `contentHash` is the sha-1 of the first 512 characters. `promptSource` is the record's own `promptSource` (`typed`, `system`, `sdk` for a headless turn), null when absent. |
 | `context_block` | `contextBlocks` | the characters that entered context, by `ContextSource`. A user record gives one row for its text, labelled by its wake cause (`human`, `channel`, `compaction_summary`, or `system_reminder` for other injected text). It also gives one `tool_result` row per `tool_result` block, and one `image` row per image block. An assistant line gives one row per `text`, `thinking` and `tool_use` block. An attachment gives one row (`skill_listing`, or `attachment` with `attachmentType`) only when its string content is 256 characters or more (`MIN_ATTACHMENT_CHARS`). `isMedia` marks base64 images, whose `chars` is the encoded length. |
 | `compaction` | `compactions` | a `compact_boundary` system line: trigger, tokens before and after, dropped tokens, duration |
 | `queue_op` | `queueOps` | a `queue-operation` line. `enqueue` is when a message arrived during a busy turn; rollup pairs it with the matching `inbound` by `contentHash`. |
@@ -218,6 +221,15 @@ resume boundary. They do not establish execution liveness.
 separate bounded filesystem window. It reports byte/turn truncation, malformed
 complete records, and unknown model/branch/error fields when the evidence is outside
 that window. It never runs the replay-prefix reader behind a purported tail read.
+
+### Tool calls from raw lines
+
+`decodeClaudeToolLines(lines)` is a sync generator over raw Claude JSONL lines that yields
+`tool_call` and `tool_result` records (`callId`, `name`, `input`, `output`, `isError`,
+`timestamp`, `sessionId`, `lineIndex`). It needs no source descriptor, skips blank and
+malformed lines, ignores session identity (forked and concatenated transcripts decode), and
+yields a repeated call id every time. Joining results to calls and dedup stay with the
+caller. A block without a call id is skipped.
 
 ### Reading back what an agent said
 

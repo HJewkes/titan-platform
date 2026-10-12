@@ -4,6 +4,7 @@ import { z } from "zod";
 import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
+import { holdClassOf } from "./g10-release.js";
 import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
@@ -13,6 +14,15 @@ import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
 export function externalReviewer(registration: Registration | undefined): string | undefined {
   if (!registration?.held) return undefined;
   return registration.holdReviewer ?? undefined;
+}
+
+/** A `g10-adversary` hold needs two independent MERGEs, the seat reviewer's and Shepherd's own, so its named reviewer is never adopted as Shepherd's. */
+const OWN_REVIEW_HOLDS: ReadonlySet<string> = new Set(["g10-adversary"]);
+
+/** The hold's named reviewer when the run takes its verdict as Shepherd's review; the hold satisfier still reads it under every class. */
+export function adoptedReviewer(registration: Registration | undefined): string | undefined {
+  const holdClass = holdClassOf(registration?.holdReason);
+  return holdClass !== undefined && OWN_REVIEW_HOLDS.has(holdClass) ? undefined : externalReviewer(registration);
 }
 
 export interface ExternalVerdictInput {

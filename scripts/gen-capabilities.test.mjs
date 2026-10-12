@@ -1,8 +1,9 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { keyExports, parseExports, parseUseWhen, tableRow } from "./gen-capabilities.mjs";
+import { afterAll, describe, expect, it } from "vitest";
+import { keyExports, parseExports, parseUseWhen, run, tableRow } from "./gen-capabilities.mjs";
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -72,5 +73,67 @@ describe("writing a table row", () => {
     const row = tableRow(["path", "`pkg`", "none", "`printf 'x' | agent-chat spawn`"]);
     expect(row).toBe("| path | `pkg` | none | `printf 'x' \\| agent-chat spawn` |");
     expect(row.split(/(?<!\\)\|/)).toHaveLength(6);
+  });
+});
+
+describe("writing and checking API snapshots", () => {
+  const tempDirs = [];
+  afterAll(() => tempDirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
+  function fixtureRepo({ dist = true } = {}) {
+    const repoRoot = mkdtempSync(join(tmpdir(), "gen-capabilities-"));
+    tempDirs.push(repoRoot);
+    const files = {
+      "package.json": JSON.stringify({
+        name: "@titan-design/hitl",
+        exports: { ".": { types: "./dist/index.d.ts" }, "./sqlite": { types: "./dist/sqlite.d.ts" } },
+      }),
+      ...(dist && {
+        "dist/index.d.ts": "export declare function openGate(): void;\nexport declare function waitGate(): void;\n",
+        "dist/sqlite.d.ts": "export declare class SqliteGateStore {}\n",
+      }),
+    };
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(repoRoot, "packages", "hitl", file)), { recursive: true });
+      writeFileSync(join(repoRoot, "packages", "hitl", file), text);
+    }
+    return repoRoot;
+  }
+
+  function generate(repoRoot, argv) {
+    const errors = [];
+    const catalog = () => [{ path: join(repoRoot, "CAPABILITIES.md"), text: "# catalog\n" }];
+    const code = run(argv, { repoRoot, catalog, log: () => {}, error: (m) => errors.push(m) });
+    return { code, errors };
+  }
+
+  it("writes a snapshot per exports entry, including the ./sqlite subpath, and then checks clean", () => {
+    const repoRoot = fixtureRepo();
+    expect(generate(repoRoot, []).code).toBe(0);
+    expect(readFileSync(join(repoRoot, "packages", "hitl", "api", "sqlite.d.ts"), "utf8")).toContain("SqliteGateStore");
+    expect(existsSync(join(repoRoot, "packages", "hitl", "api", "index.d.ts"))).toBe(true);
+    expect(generate(repoRoot, ["--check"])).toEqual({ code: 0, errors: [] });
+  });
+
+  it("fails the check and names the snapshot after an export is removed", () => {
+    const repoRoot = fixtureRepo();
+    generate(repoRoot, []);
+    writeFileSync(join(repoRoot, "packages", "hitl", "dist", "index.d.ts"), "export declare function openGate(): void;\n");
+    const { code, errors } = generate(repoRoot, ["--check"]);
+    expect(code).toBe(1);
+    expect(errors).toEqual([expect.stringContaining(join("packages", "hitl", "api", "index.d.ts"))]);
+  });
+
+  it("exits 2 naming the package when dist is missing", () => {
+    const { code, errors } = generate(fixtureRepo({ dist: false }), ["--check"]);
+    expect(code).toBe(2);
+    expect(errors).toEqual([expect.stringMatching(/@titan-design\/hitl.*pnpm build/)]);
+  });
+
+  it("with --catalog-only writes just the catalog and needs no dist", () => {
+    const repoRoot = fixtureRepo({ dist: false });
+    expect(generate(repoRoot, ["--catalog-only"]).code).toBe(0);
+    expect(existsSync(join(repoRoot, "CAPABILITIES.md"))).toBe(true);
+    expect(existsSync(join(repoRoot, "packages", "hitl", "api"))).toBe(false);
   });
 });

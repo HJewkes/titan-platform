@@ -1109,6 +1109,26 @@ describe("RunContext.expireGates", () => {
     expect(gates.get("run-a/current")?.status).toBe("pending");
     expect(gates.get("run-b/old")?.status).toBe("pending");
   });
+
+  it("skips a gate another host settled between listing and cancelling, and cancels the rest", () => {
+    const gates = new SqliteGateStore(makeDb(), { migrate: false });
+    const run = newRun("run-a", "raced", {});
+    gates.create({ id: "run-a/first", prompt: "p" });
+    gates.create({ id: "run-a/second", prompt: "p" });
+    const listPending = gates.listPending.bind(gates);
+    gates.listPending = () => {
+      const listed = listPending();
+      gates.cancel("run-a/first", "settled elsewhere");
+      return listed;
+    };
+    const ctx = new RunContext(run, replayDeps(gates), new AbortController());
+
+    const expired = ctx.expireGates("head moved", () => true);
+
+    expect(expired).toEqual(["run-a/second"]);
+    expect(gates.get("run-a/first")).toMatchObject({ status: "cancelled", reason: "settled elsewhere" });
+    expect(gates.get("run-a/second")?.status).toBe("cancelled");
+  });
 });
 
 describe("RunContext.historyNext", () => {

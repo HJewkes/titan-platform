@@ -1,7 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { Command, CommanderError } from "commander";
+import { Command, CommanderError, InvalidArgumentError } from "commander";
+import { z } from "zod";
+import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
+import { defaultPolicy, selfTest } from "./private/exclusion.js";
+import { buildReviewPrCases } from "./review-pr/build-cases.js";
+import { localCloneGit } from "./review-pr/bundle.js";
 import { validateSpec } from "./validate.js";
 
 /** Prompt paths are relative to the unit directory: the nearest ancestor holding unit.json. */
@@ -42,10 +47,121 @@ async function validateFile(file: string): Promise<boolean> {
   }
 }
 
+const collectClone = (value: string, clones: Map<string, string>): Map<string, string> => {
+  const at = value.indexOf("=");
+  if (at <= 0) throw new InvalidArgumentError("expected owner/repo=<clone dir>");
+  return new Map(clones).set(value.slice(0, at), value.slice(at + 1));
+};
+
+interface CorpusFlags {
+  db: string;
+  repo: Map<string, string>;
+  reposRoot?: string;
+  mainRef?: string;
+  now?: string;
+  out?: string;
+}
+
+async function writeCorpus(flags: CorpusFlags): Promise<void> {
+  const now = flags.now === undefined ? new Date() : new Date(flags.now);
+  if (Number.isNaN(now.getTime())) throw new InvalidArgumentError(`--now is not a date: ${flags.now}`);
+  const rows = await buildCorpus({ dbPath: flags.db, clones: flags.repo, reposRoot: flags.reposRoot, mainRef: flags.mainRef, now });
+  const jsonl = rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length > 0 ? "\n" : "");
+  if (flags.out) writeFileSync(flags.out, jsonl);
+  else process.stdout.write(jsonl);
+  console.error(JSON.stringify({ heads: rows.length, labels: labelHistogram(rows) }));
+}
+
+function corpusCommand(onResult: (code: number) => void): Command {
+  return new Command("corpus")
+    .description("Write the review outcome corpus as JSONL: one row per (repo, pr, head) with a verdict. Opens the factory database read-only")
+    .requiredOption("--db <path>", "factory.sqlite3, opened with mode=ro")
+    .option("--repo <owner/repo=dir>", "a local clone for a repo; repeatable", collectClone, new Map<string, string>())
+    .option("--repos-root <dir>", "find a repo with no --repo at <dir>/<repo name>")
+    .option("--main-ref <ref>", "the ref holding each repo's main history", "origin/main")
+    .option("--now <iso>", "the time labels mature against (default: now)")
+    .option("--out <file>", "write JSONL here instead of stdout; the summary goes to stderr")
+    .exitOverride()
+    .action(async (flags: CorpusFlags) => {
+      try {
+        await writeCorpus(flags);
+        onResult(EXIT.OK);
+      } catch (error) {
+        if (error instanceof CommanderError) throw error;
+        console.error(`corpus: ${error instanceof Error ? error.message : String(error)}`);
+        onResult(EXIT.FAILURE);
+      }
+    });
+}
+
+interface ReviewPrCasesFlags {
+  corpus: string;
+  repo: Map<string, string>;
+  activeWorkRoot: string;
+  out: string;
+  mainRef: string;
+  seed: string;
+  selftest?: boolean;
+}
+
+/** The fields the builder keys on; a row missing one is a corpus from another tool, refused by line number. */
+const CorpusRowKeys = z.looseObject({ repo: z.string(), pr: z.number(), head: z.string(), label: z.string(), citedPaths: z.array(z.string()) });
+const isCorpusRow = (value: unknown): value is CorpusRow => CorpusRowKeys.safeParse(value).success;
+
+function readCorpus(path: string): CorpusRow[] {
+  const lines = readFileSync(path, "utf8").split("\n");
+  return lines.flatMap((line, index) => {
+    if (line.trim() === "") return [];
+    const row: unknown = JSON.parse(line);
+    if (!isCorpusRow(row)) throw new Error(`${path}:${index + 1} is not an outcome-corpus row`);
+    return [row];
+  });
+}
+
+async function writeReviewPrCases(flags: ReviewPrCasesFlags): Promise<void> {
+  const policy = defaultPolicy(flags.activeWorkRoot);
+  if (flags.selftest) {
+    const result = selfTest(policy);
+    console.error(JSON.stringify({ selftest: result }));
+    if (!result.ok) throw new Error("the private exclusion self-test failed; no case was written");
+  }
+  const gitFor = (repo: string) => mapDefined(flags.repo.get(repo), localCloneGit);
+  const manifest = await buildReviewPrCases(readCorpus(flags.corpus), { outDir: flags.out, policy, gitFor, mainRef: flags.mainRef, seed: flags.seed });
+  console.error(JSON.stringify(manifest));
+}
+
+const mapDefined = <T, U>(value: T | undefined, fn: (value: T) => U): U | undefined => (value === undefined ? undefined : fn(value));
+
+function reviewPrCommand(onResult: (code: number) => void): Command {
+  const cases = new Command("cases")
+    .description("Build private review-pr cases from the outcome corpus: defect heads, clean heads, planted controls, a suite and a manifest")
+    .requiredOption("--corpus <jsonl>", "the JSONL `titan-evals corpus` wrote")
+    .option("--repo <owner/repo=dir>", "a local clone for a repo; repeatable", collectClone, new Map<string, string>())
+    .requiredOption("--active-work-root <dir>", "the active-work root the private markers are read from")
+    .requiredOption("--out <dir>", "an empty dir outside every git work tree")
+    .option("--main-ref <ref>", "the ref holding each repo's main history", "origin/main")
+    .option("--seed <text>", "seeds splits and control placement", "review-pr")
+    .option("--selftest", "run the private exclusion self-test first and abort if it fails")
+    .exitOverride()
+    .action(async (flags: ReviewPrCasesFlags) => {
+      try {
+        await writeReviewPrCases(flags);
+        onResult(EXIT.OK);
+      } catch (error) {
+        if (error instanceof CommanderError) throw error;
+        console.error(`review-pr cases: ${error instanceof Error ? error.message : String(error)}`);
+        onResult(EXIT.FAILURE);
+      }
+    });
+  return new Command("review-pr").description("The review-pr unit's private case builder").addCommand(cases).exitOverride();
+}
+
 export function buildProgram(onResult: (code: number) => void = () => undefined): Command {
   return new Command("titan-evals")
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
     .addCommand(validateCommand(onResult))
+    .addCommand(corpusCommand(onResult))
+    .addCommand(reviewPrCommand(onResult))
     .exitOverride()
     .showHelpAfterError();
 }

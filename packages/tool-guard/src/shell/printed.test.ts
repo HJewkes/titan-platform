@@ -4,8 +4,8 @@ import { printedText } from "./printed.js";
 import { tokenize } from "./lexer.js";
 import type { WordToken } from "./lexer.js";
 
-const printed = (name: string, ...args: string[]) =>
-  printedText(name, tokenize(args.join(" ")).filter((t): t is WordToken => "value" in t && "dynamic" in t));
+const words = (args: string[]) => tokenize(args.join(" ")).filter((t): t is WordToken => "value" in t && "dynamic" in t);
+const printed = (name: string, ...args: string[]) => printedText(name, words(args));
 
 const gitArgs = (src: string) =>
   extractCommands(src, { cwd: "/home/you/app", home: "/home/you" })
@@ -77,5 +77,27 @@ describe("NUL bytes in piped text", () => {
 
   it("keeps NUL for xargs -0, which splits on it", () => {
     expect(printed("printf", "'a\0b'")).toBe("a\0b");
+  });
+});
+
+describe("bash and zsh builtins", () => {
+  it.each([
+    [["-", "a"], "- a", "a"],
+    [["-n", "-", "a"], "- a", "a"],
+    [["-", "-n", "a"], "- -n a", "-n a"],
+    [["--", "a"], "-- a", "-- a"],
+  ])("echo %j prints %j in bash and %j in zsh", (args, bash, zsh) => {
+    expect(printedText("echo", words(args), "bash")).toBe(bash);
+    expect(printedText("echo", words(args), "zsh")).toBe(zsh);
+  });
+
+  it("counts printf precision in bytes for bash and characters for zsh", () => {
+    expect(printedText("printf", words(["'[%.4s]'", "ééégit"]), "bash")).toBe("[éé]");
+    expect(printedText("printf", words(["'[%.4s]'", "ééégit"]), "zsh")).toBe("[ééég]");
+  });
+
+  it("counts printf width in bytes for bash and characters for zsh", () => {
+    expect(printedText("printf", words(["'[%6s]'", "é"]), "bash")).toBe("[    é]");
+    expect(printedText("printf", words(["'[%6s]'", "é"]), "zsh")).toBe("[     é]");
   });
 });

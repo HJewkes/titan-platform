@@ -1,4 +1,4 @@
-import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type FakeGitHub } from "@titan-design/github";
 import { expect, vi } from "vitest";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { gateEverything, type GatePolicy } from "../gate-policy.js";
@@ -80,3 +80,6 @@ export async function approveUntilSettled(host: FactoryHost, runId: string, fake
     { timeout: 4_000, interval: 10 },
   );
 }
+
+/** A red check with no Actions run behind it: Shepherd cannot rerun it, so the first red wakes the fixer. */
+export const outsideActions = (run: CheckRun): CheckRun => ({ ...run, workflowRunId: null });

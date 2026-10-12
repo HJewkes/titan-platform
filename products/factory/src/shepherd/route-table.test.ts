@@ -1,24 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { MAIN_CI_READS, MAIN_CI_ROUTES, MERGEABLE_STATES, REVIEW_OUTCOMES, ROUTES, ROUTE_TABLE, RUN_STATES, mergeableState, nextCloserStreak, roundKind, routeFor, type MergeableState, type ReviewOutcome, type Route, type RunState } from "./route-table.js";
 
-const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review" };
+const MERGE_COLUMN: Partial<Record<ReviewOutcome, Route>> = { MERGE: "merge", "no-verdict": "fresh-reviewer", timeout: "fresh-reviewer", "external-hold": "await-external", "not-started": "retry-review", throttled: "fresh-reviewer" };
 
 /** The routing rules in the order they bind, written apart from the table so each cell is checked against the rule. */
 function expectedRoute(run: RunState, state: MergeableState, outcome: ReviewOutcome): Route {
   if (run !== "open") return "end-run";
   if (outcome === "head-moved") return "new-cycle";
   if (outcome === "FIX_FIRST" || state === "dirty") return "wake-fixer";
-  if (state === "behind") return outcome === "not-started" ? "retry-review" : "update-branch";
-  if (state === "unknown") return "new-cycle";
   if (state === "draft") return "end-run";
+  // An exhausted account never takes a head on toward the merge decision unreviewed; its head is reviewed again once the hold lifts.
+  if (outcome === "account-exhausted") return "await-account";
+  // A behind head whose reviewer never started, or went silent under the machine stop, still needs its review before the merge decision.
+  if (state === "behind") return outcome === "not-started" || outcome === "throttled" ? "retry-review" : "update-branch";
+  if (state === "unknown") return "new-cycle";
   return MERGE_COLUMN[outcome]!;
 }
 
 const CELLS = RUN_STATES.flatMap((run) => MERGEABLE_STATES.flatMap((state) => REVIEW_OUTCOMES.map((outcome) => [run, state, outcome] as const)));
 
 describe("the Shepherd route table", () => {
-  it("has 168 cells: 3 run states x 8 mergeable states x 7 review outcomes", () => {
-    expect(CELLS).toHaveLength(168);
+  it("has 216 cells: 3 run states x 8 mergeable states x 9 review outcomes", () => {
+    expect(CELLS).toHaveLength(216);
   });
 
   it("gives every cell a route, so a missing state or outcome fails here", () => {
@@ -63,6 +66,12 @@ describe("roundKind", () => {
     ["merge", "MERGE", "progress"],
     ["retry-review", "not-started", "not-started"],
     ["wake-fixer", "not-started", "not-started"],
+    ["fresh-reviewer", "throttled", "throttled"],
+    ["retry-review", "throttled", "throttled"],
+    ["wake-fixer", "throttled", "stuck"],
+    ["end-run", "throttled", "progress"],
+    ["new-cycle", "throttled", "progress"],
+    ["await-account", "account-exhausted", "progress"],
   ] as const)("reads route %s on outcome %s as a %s round", (route, outcome, kind) => {
     expect(roundKind(route, outcome)).toBe(kind);
   });

@@ -178,6 +178,22 @@ describe("titan-factory resume and gate resolve", () => {
   });
 });
 
+describe("FactoryHost.pendingGates", () => {
+  it("names a gate's own step even when the run's current step is another step", async () => {
+    const dbPath = dbFile();
+    const host = openFactoryHost({ dbPath, workflows: [approval], routes, gatePollMs: 10 });
+    const runId = host.runtime.start("approval");
+    await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
+    host.gates.cancel(`${runId}/approve-publish`, "superseded");
+    host.gates.create({ id: `${runId}/approve-merge:5`, prompt: "Merge?", summary: "Merge the PR.", evidenceRef: "$ git log -1" });
+
+    const pending = host.pendingGates().filter((gate) => gate.runId === runId);
+    host.close();
+
+    expect(pending).toEqual([expect.objectContaining({ stepId: "approve-merge", gate: expect.objectContaining({ id: `${runId}/approve-merge:5` }) })]);
+  });
+});
+
 describe("gate resolver migration", () => {
   it("a factory database created before the resolver migration gains the resolved_by column and its trigger when the host opens it", () => {
     const dbPath = dbFile();
@@ -196,7 +212,7 @@ describe("gate resolver migration", () => {
     db.close();
     expect(column).toBeDefined();
     expect(triggers.length).toBeGreaterThan(0);
-    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
   });
 });
 

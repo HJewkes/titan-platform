@@ -24,7 +24,15 @@ beforeEach(() => {
   checkout = join(home, "projects", "demo");
   mkdirSync(checkout, { recursive: true });
   vi.stubEnv("HOME", home);
+  installHeadlessProfiles(home, [PROFILE, "bd-reviewer", "reviewer", "rv-other"]);
 });
+
+/** agent-dispatch refuses a spawn unless `~/.agent-chat/profiles/<profile>.json` says headless. */
+function installHeadlessProfiles(root: string, profiles: string[]): void {
+  const profilesDir = join(root, ".agent-chat", "profiles");
+  mkdirSync(profilesDir, { recursive: true });
+  for (const profile of profiles) writeFileSync(join(profilesDir, `${profile}.json`), JSON.stringify({ surface: "headless" }));
+}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -76,7 +84,7 @@ describe("expandHome", () => {
 });
 
 describe("agentChatReviewerDispatch roster", () => {
-  const row = { name: "rv-demo-7", agentId: "agent-1", state: "exited", presence: "exited", status: "finished", profile: PROFILE, cwd: "/srv/demo", sessionId: "session-1" };
+  const row = { name: "rv-demo-7", agentId: "agent-1", state: "exited", presence: "exited", status: "finished", profile: PROFILE, surface: "headless", cwd: "/srv/demo", sessionId: "session-1", generation: 1 };
 
   const rosterOf = (rows: readonly unknown[]) => {
     writeFileSync(join(dir, "roster.json"), JSON.stringify(rows));
@@ -84,7 +92,7 @@ describe("agentChatReviewerDispatch roster", () => {
   };
 
   it("reads `agent ls --json` and keeps the identity, presence, spawner, profile and transcript of each row, and nothing else", async () => {
-    const full = { ...row, surface: "headless", model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
+    const full = { ...row, model: null, transcriptPath: "/srv/transcripts/session-1.jsonl", transcriptExists: true, spawnedBy: "coord", account: null, generation: 2, teleportFrom: "earlier" };
 
     const roster = await rosterOf([full]);
 
@@ -247,6 +255,24 @@ describe("agentChatReviewerDispatch spawn", () => {
 
     expect(error).toBeInstanceOf(ReviewerMachineHold);
     expect((error as Error).message).toBe("machine stop holds: load5 34 (machine_hold)");
+  });
+
+  it("tells the machine-stop ledger of a machine_hold refusal and still throws the machine hold", async () => {
+    const holds: string[] = [];
+    const onMachineHold = (_at: number, reason: string) => void holds.push(reason);
+    const error = await failure(dispatchOver(`echo 'Not spawned: machine stop holds: swap 9 GB'\necho 'code: machine_hold retryable: true'\nexit 1\n`, { onMachineHold }).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerMachineHold);
+    expect(holds).toEqual(["machine stop holds: swap 9 GB (machine_hold)"]);
+  });
+
+  it("does not tell the machine-stop ledger of a plain busy refusal", async () => {
+    const holds: string[] = [];
+    const onMachineHold = (_at: number, reason: string) => void holds.push(reason);
+    const error = await failure(dispatchOver(`echo 'Not spawned: spawn budget spent'\necho 'code: spawn_rate retryable: true'\nexit 1\n`, { onMachineHold }).spawn("rv-demo-7", BRIEF, target));
+
+    expect(error).toBeInstanceOf(ReviewerBrokerBusy);
+    expect(holds).toEqual([]);
   });
 
   it("keeps a machine guard refusal coded machine_headless_limit plain busy, not a machine hold", async () => {

@@ -30,7 +30,7 @@ interface Rig {
 }
 
 /** A context whose steps answer from the given scope and probe result, recording each step's input. */
-function rig(scope: { kind: string | null; baseRef: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
+function rig(scope: { kind: string | null; baseRef: string | null; askedHead?: string | null }, probe: CarryResult, seats: { clear: boolean } = { clear: true }, remerge: RemergeResult = NOT_REMERGED, recordedNext?: string): Rig {
   const asked: Rig["asked"] = [];
   const answer = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope")) return scope;
@@ -410,6 +410,30 @@ describe("carrying a MERGE across a clean merge-up of the base", () => {
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
 
     expect(mergeUpOf(r)).toBeUndefined();
+  });
+
+  it.each([
+    ["the reviewed head", REVIEWED],
+    ["the new head", NEW_HEAD],
+  ])("does not carry when a seat asked for Shepherd's own review at %s, taken or not, and probes nothing", async (_at, askedHead) => {
+    const r = rig({ ...SCOPE, askedHead }, MERGE_UP);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();
+
+    expect(r.asked.map((step) => step.stepId)).not.toContain(`sh-carry:${NEW_HEAD}`);
+  });
+
+  it("does not carry on from a head the same MERGE was already carried to when the ask is there", async () => {
+    const second = fakeSha("second");
+    const r = rig({ ...SCOPE, askedHead: second }, MERGE_UP);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)], [second, mergeAt(second, REVIEWED)]))).resolves.toBeUndefined();
+  });
+
+  it("carries when the ask is at a head the MERGE never stood for", async () => {
+    const r = rig({ ...SCOPE, askedHead: fakeSha("elsewhere") }, MERGE_UP);
+
+    await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toMatchObject({ kind: "MERGE", headSha: NEW_HEAD });
   });
 
   it("does not carry equal trees over an extra commit: the first parent is not the reviewed head", async () => {

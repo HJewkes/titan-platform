@@ -1,5 +1,144 @@
 # titan-console
 
+## 0.3.13
+
+### Patch Changes
+
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
+## 0.3.12
+
+### Patch Changes
+
+- Updated dependencies [cd830c1]
+  - @titan-design/github@0.9.0
+
+## 0.3.11
+
+### Patch Changes
+
+- b0fd912: Document the phone login-link flow, and that a console sign-in survives a daemon restart: the session cookie is signed with `lan.token`, so only an unspent login link dies with the process.
+
+## 0.3.10
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.3.9
+
+### Patch Changes
+
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-graph@0.16.2
+  - @titan-design/session-analytics@0.15.1
+
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.3.6
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+  - @titan-design/session-analytics@0.13.3
+
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-analytics@0.13.2
+  - @titan-design/session-graph@0.15.1
+
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/session-read@0.12.2
+
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.3.2
+
+### Patch Changes
+
+- ddfebf7: Add the knowledge pages. `work.notes` lists notes and top-level sources across initiatives by their `note:` or `source:` ref, `work.record` reads one by ref and flags a truncated file, and `work.search` returns active-work's search hits by ref; all three are reads, and `note.read` and `search` join the active-work `READS`. `#/knowledge` has a Browse tab with initiative, kind and date filters in the query string and a Search tab keyed on `q`; `#/knowledge/<ref>` renders the record as prose and links to its initiative.
+
+## 0.3.1
+
+### Patch Changes
+
+- 6be73ac: Add the Agents pages. `#/agents` has a Roster tab over `agents.roster` and a Messages tab over `agents.messages`, with the broker's window caption. `#/agents/<name>` shows the agent's card, a Runs tab over `sessions.list` filtered to the agent and a Messages tab of its own messages. Tabs follow `?tab=`. `agents.messages` now lists every agent's messages when called without `agent`.
+
+## 0.3.0
+
+### Minor Changes
+
+- 644a538: Add the `#/rounds` read pages. `rounds.list` and `rounds.get` (class read) serve the review rounds under `TITAN_CONSOLE_ROUNDS_DIR` (default `<state>/rounds`), one `<round-id>/round.json` each, validated with `RoundSchema` from `@titan-design/review-schema`. An invalid manifest, round@1 included, is listed with the schema's reason. While an `after-answer` round is unsent, `rounds.get` strips every question's recommendation. `#/rounds` lists open and sent rounds; `#/rounds/<id>` renders each question with its options and keys 1-9 choosing one, through a reusable `RoundQuestion` component. A round with frames shows "design round: open in the harness". Round ids are plain names, symlinked round directories and files are refused, and `round.json` is read only up to 1 MiB.
+
+### Patch Changes
+
+- d6b7b42: Add the Tasks pages. `#/tasks` lists open tasks from `work.tasks` grouped by derived stage, with stage, initiative, severity and text filters kept in the query string and a caption on each guessed stage. `#/tasks/<id>` shows one task from `work.task` with its pull request state, mentions and linked sessions as links. Both ship on react-ui 0.20.0's `Table` and `Badge` until the console pins a react-ui that exports `TaskTable` stage rows and `TaskStagePill`.
+
+## 0.2.1
+
+### Patch Changes
+
+- 46028ea: Replace the Status view with the Home page at `#/`: upstream health, status counts (open tasks, initiatives, live agents, sessions today), a read-only needs-you list of open queue items, blocked tasks and unreachable upstreams with deep links, and the last 24 hours of activity. A queue row links out to agent-chat's `/ui#queue`; the page issues no write.
+- 68011ca: Add the Sessions pages. `#/sessions` lists `sessions.list` in a table (agent, tasks, PR, started, duration, tokens, cost) with an `?agent=` filter, "Load more" on the `before` cursor and an "Indexed to" caption. `#/sessions/<id>` renders `sessions.timeline` as a header of facts, a Conversation tab of collapsible turns and a Files tab whose touched files link to their codewatch node when the server mapped one. Loading, empty, not-found and degraded states are keyed on the degraded reason.
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [4a42590]
+- Updated dependencies [b7c53ee]
+- Updated dependencies [9c173c9]
+- Updated dependencies [c174b71]
+- Updated dependencies [c0701a9]
+- Updated dependencies [91eea82]
+- Updated dependencies [e4dd79b]
+- Updated dependencies [845a0cf]
+- Updated dependencies [8030b8e]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/owner-queue@0.3.0
+  - @titan-design/github@0.7.0
+  - @titan-design/pm@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,13 +1,18 @@
 import { CLIENT_HEADER, probeHealth, type Logger } from "@titan-design/daemon";
 import { registerAudit } from "./audit/command.js";
-import { invokeCommand, type JsonEnvelope } from "@titan-design/registry";
+import type { JsonEnvelope } from "@titan-design/registry";
 import { Command, CommanderError } from "commander";
-import { parsePort } from "./cli-options.js";
+import { callerOf, parsePort, parsePositiveInt, parseTarget, statusRows, withStatusFilters, type StatusFilter } from "./cli-options.js";
 import { resolveDbPath } from "./config.js";
 import type { DeployPorts } from "./deploy.js";
 import { deployBlockOf, deploySummary, type DeployHealth } from "./deploy-health.js";
 import type { DeployWatch } from "./deploy-watch.js";
 import { configuredDeployWatch } from "./deploy-watch-ports.js";
+import { configuredDeployPacer } from "./deploy-pacer-sweep.js";
+import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
+import { configuredFixerRetire, configuredMainWatch } from "./main-watch-ports.js";
+import { configuredSeatDigest } from "./seat-digest-ports.js";
+import type { FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { EXIT } from "./exit-codes.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { parsePayload, resolveGate, type OwnerPresence } from "./gate-resolve.js";
@@ -17,20 +22,25 @@ import { registerQueueCounts } from "./needs/counts.js";
 import { registerNeeds } from "./needs/command.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, untilSettledOrGated, type FactoryHost, type FactoryRoutes, type FactoryHostOptions, type PendingGate, type ResumeReport } from "./host.js";
-import { createFactoryRegistry, factoryContext, parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
-import { isRepo } from "@titan-design/github";
+import { parsePrRef, resolveCommand, startLand, type LandArgs, type LandStarted } from "./registry.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
+import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdStats } from "./cli-stats.js";
+import { registerToolchain } from "./cli-toolchain.js";
 import type { CheckPorts } from "./service-check.js";
 import type { ServicePorts } from "./service-control.js";
-import type { ShepherdCommandName } from "./shepherd/commands.js";
+import { SHEPHERD_COMMAND_MAP, type ShepherdCommandName } from "./shepherd/commands.js";
+import type { MainWatchPorts } from "./shepherd/main-watch.js";
+import type { SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { activeWorkOrigin } from "./shepherd/cleanup-ports.js";
-import { formatShepherd } from "./shepherd/format.js";
+import { formatShepherd, lastEntries, type TimelineView } from "./shepherd/format.js";
 import { overdueOwnerGates, WaitingSchema } from "./shepherd/waiting.js";
-import { probeServe, type ServeProbe } from "./serve-probe.js";
+import { probeServe } from "./serve-probe.js";
+import { localEnvelope, unansweredMessage } from "./cli-shepherd-rpc.js";
+import { inferIdentity, type HeadRefRead } from "./shepherd/register-identity.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 
@@ -62,14 +72,23 @@ export interface CliDeps {
   presence?: OwnerPresence;
   /** What `shepherd register` resolves a bare task ID through; defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** How `shepherd register` reads a PR's head branch to infer a missing --task or --implementer; defaults to gh. */
+  headRef?: HeadRefRead;
   /** How long a shepherd verb waits on a serve that holds the connection but does not answer; defaults to 20 s. */
   serveWaitMs?: number;
   /** The serve verb's deploy alarm; absent means serve keeps no deploy block and tells no hub seat. */
   deployWatch?: (env: NodeJS.ProcessEnv) => DeployWatch;
+  /** The serve verb's deploy pacer, which spawns the deployer for Shepherd's queued sha; absent means serve spawns none. */
+  deployPacer?: (env: NodeJS.ProcessEnv) => DeployPacerOptions;
+  /** The serve verb's main CI watch; absent, or undefined for an env, means serve watches main only after its own merges. */
+  mainWatch?: (env: NodeJS.ProcessEnv) => MainWatchPorts | undefined;
+  fixerRetire?: (env: NodeJS.ProcessEnv) => FixerRetirePorts | undefined;
+  /** The serve verb's seat digest; absent, or undefined for an env, means serve sends none. */
+  seatDigest?: (env: NodeJS.ProcessEnv) => SeatDigestPorts | undefined;
 }
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)) };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: configuredDeployPacer, mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest };
 const routesOf = (deps: CliDeps): FactoryRoutes => (typeof deps.routes === "function" ? deps.routes() : deps.routes);
 
 export interface Verbs {
@@ -104,7 +123,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
@@ -140,7 +159,7 @@ function registerServe(program: Command, { io, deps, dbPath }: Verbs): void {
     .description("own the workflow database and keep runs alive, with RPC and MCP on loopback, until SIGTERM or SIGINT")
     .option("--port <n>", "port to bind", parsePort, FACTORY_PORT)
     .action((opts: { port: number }) =>
-      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env) }, deps.stop),
+      serveFactoryUntilSignal({ ...deps.host, dbPath: dbPath(), workflows: deps.workflows, routes: routesOf(deps), port: opts.port, logger: deps.logger, deployWatch: deps.deployWatch?.(io.env), deployPacer: deps.deployPacer?.(io.env), mainWatch: deps.mainWatch?.(io.env), fixerRetire: deps.fixerRetire?.(io.env), seatDigest: deps.seatDigest?.(io.env) }, deps.stop),
     );
 }
 
@@ -153,14 +172,14 @@ function registerLand(program: Command, verbs: Verbs): void {
     .action((ref: string, opts: { task?: string; port: number }) => landVerb(verbs, ref, opts));
 }
 
-interface ShepherdOpts {
+interface ShepherdOpts extends TimelineView, StatusFilter {
   port: number;
   json?: boolean;
   offline?: boolean;
   deploy?: boolean;
 }
 
-type RegisterOpts = ShepherdOpts & { branch?: string; task: string; implementer: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
+type RegisterOpts = ShepherdOpts & { branch?: string; task?: string; implementer?: string; reviewer?: string; kind?: string; slice?: string | false; policy?: string };
 
 /** The shepherd.* registry commands as verbs: on titan-factory serve when one answers, else against the database here; register needs --offline for that. */
 function registerShepherd(program: Command, verbs: Verbs): void {
@@ -173,8 +192,8 @@ function registerShepherd(program: Command, verbs: Verbs): void {
       .option("--json", "print the result as JSON");
   verb("register <target>", "shepherd owner/repo#N, or owner/repo with --branch before its PR exists; a repeat returns the existing run, or a new one if it failed")
     .option("--branch <name>", "the PR's head branch")
-    .requiredOption("--task <slug/id>", "the task this PR delivers")
-    .requiredOption("--implementer <name>", "the agent that pushes fixes")
+    .option("--task <slug/id>", "the task this PR delivers; defaults to the id in an agent-chat/<name> head branch")
+    .option("--implementer <name>", "the agent that pushes fixes; defaults to <name> of an agent-chat/<name> head branch")
     .option("--reviewer <name>", "the agent that reviews")
     .option("--kind <kind>", "correctness, security, feature, refactor or unknown")
     .option("--slice <label>", "this PR is one slice of a multi-slice task: landing notes the task instead of closing it")
@@ -182,7 +201,7 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .option("--policy <json>", 'narrow the seat policy, e.g. {"merge":"never"}')
     .option("--offline", "record the run in the database here when no titan-factory serve answers; nothing drives it until serve starts")
     .action((target: string, opts: RegisterOpts) => runShepherd(verbs, "shepherd.register", () => registerArgs(target, opts, verbs), opts));
-  verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line")
+  withStatusFilters(verb("status [target]", "one line per shepherded PR, optionally only owner/repo or owner/repo#N, then serve's deploy line"))
     .option("--deploy", "with --json, print { rows, deploy } so the deploy block rides along; without it --json stays the bare row array")
     .action((target: string | undefined, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.status", () => (target ? parseTarget(target) : {}), opts));
   verb("list", "the watch list")
@@ -194,35 +213,40 @@ function registerShepherd(program: Command, verbs: Verbs): void {
     .requiredOption("--reason <text>", "why it is held")
     .option("--reviewer <name>", "the reviewer whose verdict the run waits for; the reason text never names one")
     .action((ref: string, opts: ShepherdOpts & { reason: string; reviewer?: string }) =>
-      runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer }), opts));
+      runShepherd(verbs, "shepherd.hold", () => ({ ...parsePrRef(ref), reason: opts.reason, reviewer: opts.reviewer, actor: callerOf(verbs.io.env) }), opts));
+  verb("release <ref>", "release one hold on owner/repo#N at the head the seat reviewed; refused when the PR has moved past it")
+    .requiredOption("--head <sha>", "the 40-character head sha the hold was reviewed at")
+    .option("--class <class>", "the class of the hold to lift; needed only while a g10-adversary hold sits over another")
+    .action((ref: string, opts: ShepherdOpts & { head: string; class?: string }) =>
+      runShepherd(verbs, "shepherd.release", () => ({ ...parsePrRef(ref), head: opts.head, holdClass: opts.class, actor: callerOf(verbs.io.env) }), opts));
   verb("resync", "end runs and gates whose PR was merged or closed outside Shepherd, cancel gates of ended runs, supersede moved heads")
     .option("--dry-run", "print what it would end, cancel or supersede, and write nothing")
     .action((opts: ShepherdOpts & { dryRun?: boolean }) => runShepherd(verbs, "shepherd.resync", () => ({ dryRun: opts.dryRun === true }), opts));
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
+  registerShepherdWait(shepherd, verbs);
+  verb("timeline <ref>", "every step and gate the run for owner/repo#N recorded")
+    .option("--last <n>", "only the last n entries, noting how many earlier ones it cut; with --json, entries holds only those", parsePositiveInt)
+    .option("--width <n>", "cut every text line to n characters", parsePositiveInt)
+    .action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.timeline", () => parsePrRef(ref), opts));
   for (const [name, description] of PR_VERBS) {
     verb(`${name} <ref>`, description).action((ref: string, opts: ShepherdOpts) => runShepherd(verbs, `shepherd.${name}`, () => parsePrRef(ref), opts));
   }
 }
 
 const PR_VERBS = [
-  ["timeline", "every step and gate the run for owner/repo#N recorded"],
-  ["release", "release the hold on owner/repo#N"],
   ["merge", "evaluate a merge of owner/repo#N now; it resolves no gate"],
+  ["review", "ask for Shepherd's own fresh review of owner/repo#N at its current head; a repeat at the same head asks nothing"],
 ] as const;
-
-function parseTarget(target: string): { repo: string; pr?: number } {
-  if (target.includes("#")) return parsePrRef(target);
-  if (!isRepo(target)) throw new Error(`expected owner/repo or owner/repo#N, got ${JSON.stringify(target)}`);
-  return { repo: target };
-}
 
 async function registerArgs(target: string, opts: RegisterOpts, { io, deps }: Verbs): Promise<Record<string, unknown>> {
   const policy = opts.policy === undefined ? undefined : parsePayload(opts.policy);
   if (opts.policy !== undefined && !policy) throw new Error("--policy must be a JSON object");
-  const { branch, implementer, reviewer, kind, slice } = opts;
-  const task = await qualifyTask(opts.task, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
-  return { ...parseTarget(target), branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
+  const { branch, reviewer, kind, slice } = opts;
+  const parsed = parseTarget(target);
+  const { task: given, implementer } = await inferIdentity(parsed, opts, deps.headRef);
+  const task = await qualifyTask(given, { origin: activeWorkOrigin(io.env), ...(deps.fetch && { fetch: deps.fetch }) });
+  return { ...parsed, branch, task, implementer, reviewer, kind, slice: slice === false ? undefined : slice, noSlice: slice === false ? true : undefined, policy };
 }
 
 async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () => object | Promise<object>, opts: ShepherdOpts): Promise<void> {
@@ -241,21 +265,13 @@ async function runShepherd(verbs: Verbs, name: ShepherdCommandName, argsOf: () =
     verbs.io.stderr(`error: ${unansweredMessage(probe, opts.port)}; nothing was recorded (pass --offline to record the run here anyway)\n`);
     return verbs.setExit(EXIT.UNAVAILABLE);
   }
-  await verbs.withHost(async (host, routes) => {
-    const { envelope } = await invokeCommand(createFactoryRegistry().get(name)!, args, factoryContext(host, routes));
-    if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
-    return printShepherd(verbs.io, name, envelope, opts, deploy);
-  });
+  const envelope = await localEnvelope(verbs, name, args);
+  if (name === "shepherd.register" && envelope.ok) verbs.io.stderr(`no titan-factory serve answered on port ${opts.port}, so the run was recorded here; titan-factory serve drives it\n`);
+  verbs.setExit(printShepherd(verbs.io, name, envelope, opts, deploy));
 }
 
 /** A serve built before envelopes carried a code must still fail the shell, never exit 0 on a refusal. */
 const exitOf = (code: unknown): number => (Number.isInteger(code) && (code as number) > 0 ? (code as number) : EXIT.FAILURE);
-
-function unansweredMessage(probe: ServeProbe, port: number): string {
-  if (probe.state === "slow") return `titan-factory serve on port ${port} is busy, not down: it took the connection but did not answer within ${probe.waitedMs / 1000} s, so retry`;
-  if (probe.state === "unready") return `titan-factory serve on port ${port} is not ready: /health answered HTTP ${probe.status}`;
-  return `no titan-factory serve answered on port ${port}: connection refused, so serve is down`;
-}
 
 /** `deploy` is serve's deploy block for `status`: null when serve keeps none, undefined for every other verb. */
 function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvelope<unknown>, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): number {
@@ -263,9 +279,14 @@ function printShepherd(io: CliIo, name: ShepherdCommandName, envelope: JsonEnvel
     io.stderr(`error: ${envelope.error}\n`);
     return exitOf(envelope.code);
   }
-  if (!opts.json) io.stdout(`${formatShepherd(name, envelope.data)}${deploy ? deploySummary(deploy) : ""}`);
-  else io.stdout(`${JSON.stringify(opts.deploy && deploy !== undefined ? { rows: envelope.data, deploy } : envelope.data, null, 2)}\n`);
+  if (!opts.json) io.stdout(`${formatShepherd(name, statusRows(name, envelope.data, opts), opts)}${deploy ? deploySummary(deploy) : ""}`);
+  else io.stdout(`${JSON.stringify(jsonOf(name, statusRows(name, envelope.data, opts), opts, deploy), null, 2)}\n`);
   return name === "shepherd.waiting" && overdueOwnerGates(WaitingSchema.parse(envelope.data)).length > 0 ? EXIT.FAILURE : EXIT.OK;
+}
+
+function jsonOf(name: ShepherdCommandName, data: unknown, opts: ShepherdOpts, deploy: DeployHealth | null | undefined): unknown {
+  if (name === "shepherd.timeline" && opts.last !== undefined) return lastEntries(SHEPHERD_COMMAND_MAP[name].result.parse(data), opts.last).timeline;
+  return opts.deploy && deploy !== undefined ? { rows: data, deploy } : data;
 }
 
 async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: number }): Promise<void> {
@@ -280,7 +301,7 @@ async function landVerb(verbs: Verbs, ref: string, opts: { task?: string; port: 
   await verbs.withHost((host) => landInProcess(host, verbs, args, opts.port));
 }
 
-async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
+export async function postRpc<T>(port: number, name: string, args: unknown): Promise<JsonEnvelope<T>> {
   const res = await fetch(`http://127.0.0.1:${port}/rpc/${name}`, {
     method: "POST",
     headers: { "content-type": "application/json", [CLIENT_HEADER]: "titan-factory" },

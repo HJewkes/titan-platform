@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { GateResolver } from "@titan-design/hitl";
+import { parkOnDefinitionDrift, registration, type Registration } from "./definition-version.js";
 import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { mustacheRenderer } from "./prompt.js";
@@ -27,7 +28,7 @@ interface Live {
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 export class WorkflowRuntime {
-  private readonly workflows = new Map<string, WorkflowFn>();
+  private readonly workflows = new Map<string, Registration>();
   private readonly live = new Map<string, Live>();
   private readonly store: WorkflowRunStore;
   private readonly runtimeId: string;
@@ -56,9 +57,10 @@ export class WorkflowRuntime {
     };
   }
 
-  register(name: string, fn: WorkflowFn): void {
+  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+  register(name: string, fn: WorkflowFn, options: { version?: string } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, fn);
+    this.workflows.set(name, registration(name, fn, options.version));
   }
 
   registered(): string[] {
@@ -66,9 +68,9 @@ export class WorkflowRuntime {
   }
   /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
   start(name: string, params: Record<string, string> = {}, options: WorkflowStartOptions = {}): string {
-    const fn = this.workflows.get(name);
-    if (!fn) throw new Error(`unknown workflow: ${name}`);
-    const run = newRun(randomUUID(), name, params);
+    const workflow = this.workflows.get(name);
+    if (!workflow) throw new Error(`unknown workflow: ${name}`);
+    const run = newRun(randomUUID(), name, params, workflow.version);
     const insert = this.options.db.transaction((): WorkflowRun => {
       this.store.create(run);
       const claimed = this.claim(run.id);
@@ -76,7 +78,7 @@ export class WorkflowRuntime {
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), fn, new Map());
+    this.launch(insert.immediate(), workflow.fn, new Map());
     return run.id;
   }
 
@@ -89,10 +91,12 @@ export class WorkflowRuntime {
 
   private async hydrateOne(snapshot: WorkflowRun): Promise<string | null> {
     if (this.live.has(snapshot.id)) return null;
-    const fn = this.workflows.get(snapshot.workflowName);
-    if (!fn) return null;
+    const workflow = this.workflows.get(snapshot.workflowName);
+    if (!workflow) return null;
     const run = this.claim(snapshot.id);
     if (!run) return null;
+    const hooks = { emit: this.baseDeps.emit, save: (value: WorkflowRun) => this.save(value), park: (value: WorkflowRun) => this.park(value) };
+    if (parkOnDefinitionDrift(run, workflow.version, hooks)) return null;
     const controller = new AbortController();
     const renewTimer = this.startRenewal(run, controller);
     if (run.status === "cancelling") controller.abort(new WorkflowCancelledError(run.id, run.error ?? "cancelled"));
@@ -103,7 +107,7 @@ export class WorkflowRuntime {
         this.release(run);
         return null;
       }
-      this.launch(run, fn, recovered, controller, renewTimer);
+      this.launch(run, workflow.fn, recovered, controller, renewTimer);
       return run.id;
     } catch (error) {
       clearInterval(renewTimer);

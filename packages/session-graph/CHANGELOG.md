@@ -1,5 +1,45 @@
 # @titan-design/session-graph
 
+## 0.16.2
+
+### Patch Changes
+
+- 7b9335c: session-read keeps an agent-chat channel tag's `broadcast="true"` attribute as `Inbound.broadcast` (false for a direct message, null without a channel tag) and bumps `EXTRACT_VERSION` to 8, so `backfillFacets` re-extracts stored inbound rows. session-graph adds `inbound.broadcast` in migration 12 and writes it. session-analytics wake episodes read the flag for the `broadcast` sender kind, so a direct message a forked session copied is no longer a broadcast; msg_id fan-out remains the fallback for rows extracted before version 8.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+
+## 0.16.1
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/session-read@0.13.2
+
+## 0.16.0
+
+### Minor Changes
+
+- aeedb5d: `session_origin` stores an experiment arm and follow-up counts: `ResolvedOrigin` gains `experimentId`, `experimentArm`, `predecessor` and `followupKinds`, written to new columns by the `origin experiment arm` migration (`ORIGIN_EXPERIMENT_MIGRATION_NAME`). An arm table for one experiment is one query over `session_origin`.
+
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+
+## 0.15.0
+
+### Minor Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+
 ## 0.14.0
 
 ### Minor Changes

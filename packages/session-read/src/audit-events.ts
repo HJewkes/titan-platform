@@ -8,7 +8,7 @@ export type { ToolFamily, WakeCause };
  * Bumped whenever a classification rule below changes, so a consumer can tell
  * rows extracted under an older rule set apart and re-index them.
  */
-export const EXTRACT_VERSION = 7;
+export const EXTRACT_VERSION = 8;
 
 /** Where the characters in one context block came from. */
 export type ContextSource =
@@ -70,6 +70,7 @@ export type AuditEvent =
       originServer: string | null;
       fromName: string | null;
       msgId: string | null;
+      broadcast: boolean | null;
       toolUseId: string | null;
       isError: boolean;
       contentHash: string;

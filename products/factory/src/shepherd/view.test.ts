@@ -1,10 +1,13 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { resolveCommand } from "../registry.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+
+const gateRecord = (id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
@@ -43,6 +46,36 @@ describe("shepherd view outcomes", () => {
 
   it("leaves the outcome unknown for a completed run with neither record", () => {
     expect(watchRow({ registration, run: completedWith("merge", {}) }).outcome).toBeNull();
+  });
+});
+
+describe("shepherd view agent names", () => {
+  const withImplementer: Registration = { ...registration, implementer: "impl-1" };
+
+  function reviewedBy(...reviews: Array<[string, object]>): WorkflowRun {
+    const run = pausedAt("sh-await-verdict:abc1234");
+    reviews.forEach(([completedAt, result], iteration) => {
+      run.stepResults[`sh-review:abc1234#${iteration}`] = { stepId: "sh-review:abc1234", iteration, agentId: null, signal: null, completedAt, data: { result } };
+    });
+    return run;
+  }
+
+  it("names the implementer and the reviewer the newest started review dispatched", () => {
+    const run = reviewedBy(
+      ["2026-01-01T00:10:00.000Z", { kind: "dispatched", mode: "spawn", reviewer: "rv-acme-widgets-1-1", agentId: "a1", sessionId: "s1" }],
+      ["2026-01-01T00:20:00.000Z", { kind: "dispatched", mode: "spawn", reviewer: "rv-acme-widgets-1-2", agentId: "a2", sessionId: "s2" }],
+      ["2026-01-01T00:30:00.000Z", { kind: "none", notStarted: true, reason: "refused" }],
+    );
+
+    expect(watchRow({ registration: withImplementer, run })).toMatchObject({ implementer: "impl-1", reviewer: "rv-acme-widgets-1-2" });
+  });
+
+  it("leaves the reviewer null for a run no reviewer has started on", () => {
+    expect(watchRow({ registration: withImplementer, run: pausedAt("sh-review-intent:abc1234") })).toMatchObject({ implementer: "impl-1", reviewer: null });
+  });
+
+  it("leaves the implementer null for a run registered with none", () => {
+    expect(watchRow({ registration: { ...registration, implementer: "" }, run: pausedAt("ci-wait") }).implementer).toBeNull();
   });
 });
 
@@ -172,10 +205,11 @@ describe("a run held at registration waiting in its merge step", () => {
 });
 
 describe("shepherd view stalls", () => {
-  function reviewedRun(outcomes: readonly ("started" | "not-started")[]): WorkflowRun {
+  function reviewedRun(outcomes: readonly ("started" | "not-started")[], shape: "nested" | "top-level" = "nested"): WorkflowRun {
     const run = pausedAt("sh-review:abc1234");
     outcomes.forEach((outcome, iteration) => {
-      const data = outcome === "started" ? { kind: "dispatched" } : { kind: "none", notStarted: true };
+      const result = outcome === "started" ? { kind: "dispatched", reviewer: "rev-1" } : { kind: "none", notStarted: true, reason: "refused" };
+      const data = shape === "nested" ? { result } : result;
       const completedAt = `2026-01-01T00:00:0${iteration}.000Z`;
       run.stepResults[`sh-review:abc1234#${iteration}`] = { stepId: "sh-review:abc1234", iteration, agentId: null, signal: null, completedAt, data };
     });
@@ -190,6 +224,15 @@ describe("shepherd view stalls", () => {
     expect(two.stalled).toBeNull();
     expect(three.stalled).toEqual({ reason: "3 review dispatches in a row started no reviewer" });
     expect(three.phase).toBe("review");
+  });
+
+  it("still counts not-started dispatches stored at the top level of older rows", () => {
+    const now = new Date("2026-01-01T00:01:00.000Z");
+    const row = watchRow({ registration, run: reviewedRun(["started", "not-started", "not-started", "not-started"], "top-level"), now });
+    const reset = watchRow({ registration, run: reviewedRun(["not-started", "not-started", "started"], "top-level"), now });
+
+    expect(row.stalled).toEqual({ reason: "3 review dispatches in a row started no reviewer" });
+    expect(reset.stalled).toBeNull();
   });
 
   describe("time in phase", () => {
@@ -214,12 +257,24 @@ describe("shepherd view stalls", () => {
 
     it("does not stall a run parked on approve-merge for three days, and names the owner", () => {
       const run = pausedAt("approve-merge");
-      const gate = { id: "run-1/approve-merge", createdAt: "2026-01-01T00:00:00.000Z" } as never;
+      const gate = gateRecord("run-1/approve-merge");
 
-      const row = watchRow({ registration, run, pending: { gate, stepId: "approve-merge" }, now: new Date(started + minutes(3 * 24 * 60)) });
+      const row = watchRow({ registration, run, pending: { gate }, now: new Date(started + minutes(3 * 24 * 60)) });
 
       expect(row.stalled).toBeNull();
       expect(row.nextAction).toBe("owner: resolve approve-merge");
+    });
+
+    it("names the gate's own step when the run's current step is an older sh-fix-proof", () => {
+      const run = pausedAt("sh-fix-proof:abc1234");
+      run.stepResults["sh-fix-proof:def5678#0"] = { stepId: "sh-fix-proof:def5678", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: {} };
+      const gate = gateRecord("run-1/approve-merge:5");
+
+      const row = watchRow({ registration, run, pending: { gate } });
+
+      expect(row.pendingGate).toMatchObject({ gateId: "run-1/approve-merge:5", stepId: "approve-merge" });
+      expect(row.nextAction).toBe("owner: resolve approve-merge");
+      expect(resolveCommand(row.runId, row.pendingGate!.stepId)).toContain(" approve-merge ");
     });
 
     it("keeps a malformed sh-wake step as a plain step entry instead of throwing", () => {
@@ -356,5 +411,21 @@ describe("shepherd timeline verdict and wake entries", () => {
     const timeline = { row: watchRow({ registration, run }), entries: [...entries, { ...entries[0], request: "fix-proof" }] };
 
     expect(PrTimelineSchema.parse(timeline).entries.map((e) => e.kind === "wake" && [e.request, e.mode])).toEqual([[null, "live"], [null, "successor"], ["fix-proof", "live"]]);
+  });
+});
+
+describe("a held run whose wait saw a pushed head", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+
+  it("names the pushed head while CI runs at it", () => {
+    const run = { ...pausedAt("ci-wait:r1:0"), status: "running" } as WorkflowRun;
+    run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
+    run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
+
+    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
+
+    expect(row).toMatchObject({ phase: "ci", headSha: H2 });
+    expect(row.nextAction).toContain(H2.slice(0, 7));
   });
 });

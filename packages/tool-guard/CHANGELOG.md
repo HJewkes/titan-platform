@@ -1,5 +1,33 @@
 # @titan-design/tool-guard
 
+## 0.4.0
+
+### Minor Changes
+
+- ac99055: Remove the owner bypass: the hook now evaluates every call as an agent and ignores `TITAN_TOOL_GUARD_BYPASS`. The hook runs as the same OS user as the agent, so an agent could give any `claude` it started that variable, and whatever name, parent or terminal a check might demand. Breaking: `BYPASS_VAR` is no longer exported, `ActorObservation` loses `bypass`, and the log no longer writes `bypass` lines. Take a guarded action from a terminal outside Claude Code.
+
+## 0.3.3
+
+### Patch Changes
+
+- f68a4fc: Deny every Bash command that fails to parse or that the classifier throws on, and tell the agent to simplify it. Before this, such a command passed unless its raw text named a guarded keyword, so a `$( )` nested past the walk limit, or an ANSI-C or expanded spelling such as `git p$'u'sh`, let a push through. Unparseable commands that name nothing guarded now deny too. The owner bypass still passes them, with an error line.
+
+## 0.3.2
+
+### Patch Changes
+
+- 26bd9a1: Read each `$( )` and `${ }` span once when matching an assignment subscript's bracket. A value nesting substitutions inside brackets doubled the scan per level, so a short line outlasted the hook's timeout and the guarded command ran unchecked.
+
+## 0.3.1
+
+### Patch Changes
+
+- ea6b273: Match the closing brace of `${…}` and paren of `$((…))` with bash's quoting rules: quotes, escapes, `$'…'` and nested substitutions, including the old `$[…]` arithmetic form, hide a closer, and an unquoted `{` does not nest. A quoted `}` in a parameter default no longer ends it early and hides the commands after it. A `$((` whose `)` matching the second `(` is not followed by another `)` is read as a command substitution holding a subshell, as bash does, including in heredoc bodies. Lines bash 3.2 reads differently, a `$( )` inside `${…}` or `$((…))` that paren counting ends elsewhere or a `<( )` inside `${…}` whose text ends the parameter early, are refused. A single-quoted span in `${…}` holding an unclosed `$(` or backtick, which bash runs only when the `${…}` sits in double quotes, is refused rather than passed as unparsed, as is any `${…}`, `$((…))` or `$[…]` the reader cannot close, since bash may close it elsewhere and run the rest of the line. Expansions and substitutions nested more than 100 deep are refused before the readers can overflow the stack, including inside a stored value that arithmetic reads.
+- d750004: Refuse a Bash command whose line ends while a `$( )` or `<( )` it closed still has a heredoc open, including one inside `${...}` or `$((...))`. Bash 5 reads that heredoc's body from the following lines and moves the bodies of the line's own heredocs further down. Bash 3.2 runs those lines as commands instead. With the two readings that far apart, a quote in a body could hide a later `git push` from the guard. The hook now denies such a line unchecked, whatever it names, with a reason that says to close the heredoc inside the substitution. A heredoc closed inside its substitution, such as the usual `git commit -m "$(cat <<'EOF' … EOF\n)"`, is unaffected.
+- 8e39760: Check the command substitutions that arithmetic runs from inside a bracket of a variable's value: `X='a[$(git push origin HEAD:main)]'; (( X ))` now classifies the push.
+  Every value a variable takes is recorded where it is stored: assignments and appends, declarations, `printf -v`, prefix assignments, array elements and element writes, and, as unknown, what `read`, `mapfile`, `getopts`, a `for` or `select` list, `set` operands, a function's or a shell's arguments, a `${X:=...}` default or text built at run time store. Nothing is walked or refused unless the same line evaluates arithmetic: `(( ))`, `$(( ))`, `$[ ]`, `let`, a subscript, a substring offset (of a variable or of `$1`, `$@`, `$*`), an indirect expansion, a subscripted or run-time variable name handed to `read`, `printf -v` or a declaration (also after `builtin` or `command`), a subscripted `{b[i]}>` descriptor variable, `declare -i` or `-n`, a numeric `[[` comparison, `unset`, a `-v` test, or a `$(( ))` in an unquoted heredoc.
+  On such a line, each known value that holds code behind a bracket has its substitutions classified, and the hook denies the line when one cannot be walked in full or when the line types code behind a bracket (in one word, a heredoc or a here-string, or split across them) and also stores text the check cannot follow. A PR body, a regex or prose that holds a bracket and inline code passes when nothing on the line evaluates arithmetic.
+
 ## 0.3.0
 
 ### Minor Changes

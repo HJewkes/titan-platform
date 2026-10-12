@@ -1,6 +1,6 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
-import { busyRuns, describeBusy, drainForRestart, heldSkipped, type BusyRun, type DrainOptions } from "./restart-drain.js";
+import { busyRuns, describeBusy, drainForRestart, heldSkipped, NO_ANSWER_PROCEED_MS, type BusyRun, type DrainOptions } from "./restart-drain.js";
 
 const MINUTE = 60_000;
 const REVIEW: BusyRun = { runId: "run-review", step: "sh-await-verdict:abc1234", phase: "review" };
@@ -12,15 +12,16 @@ function run(id: string, currentStep: string | null, status: WorkflowRun["status
 
 const parkPostMerge = (stepId: string) => (stepId === "post-merge" ? { onRestart: "park" as const } : { onRestart: "repeat" as const });
 
-/** Each /health answer takes the next busy list, and the last repeats; sleeping advances the fake clock. */
-function fakeHealth(sequence: BusyRun[][]) {
+/** Each /health answer takes the next busy list, or no answer for null, and the last repeats; sleeping advances the fake clock. */
+function fakeHealth(sequence: (BusyRun[] | null)[]) {
   const answers = [...sequence];
   let clock = 0;
   let polls = 0;
   const ports = {
     health: async () => {
       polls += 1;
-      return { ok: true, busy: answers.length > 1 ? answers.shift() : answers[0] };
+      const busy = answers.length > 1 ? answers.shift() : answers[0];
+      return busy === null ? null : { ok: true, busy };
     },
     sleep: async (ms: number) => void (clock += ms),
     now: () => clock,
@@ -28,7 +29,9 @@ function fakeHealth(sequence: BusyRun[][]) {
   return { ports, elapsed: () => clock, polls: () => polls };
 }
 
-async function drain(sequence: BusyRun[][], options: Partial<DrainOptions> = {}) {
+const silence = (polls: number): null[] => Array.from({ length: polls }, () => null);
+
+async function drain(sequence: (BusyRun[] | null)[], options: Partial<DrainOptions> = {}) {
   const machine = fakeHealth(sequence);
   const reports: string[] = [];
   const outcome = await drainForRestart(machine.ports, (text) => void reports.push(text), { port: 7410, timeoutMs: 45 * MINUTE, force: false, wait: true, ...options });
@@ -48,6 +51,10 @@ describe("busy runs on /health", () => {
 
   it("counts a run at sh-late-verdict as busy in review", () => {
     expect(busyRuns([run("a", "sh-late-verdict:abc1234")], parkPostMerge)).toEqual([{ runId: "a", step: "sh-late-verdict:abc1234", phase: "review" }]);
+  });
+
+  it("does not wait on a run held at sh-account-wait, though its watch phase is review", () => {
+    expect(busyRuns([run("a", "sh-account-wait:abc1234"), run("b", "sh-account-hold:abc1234")], parkPostMerge)).toEqual([{ runId: "b", step: "sh-account-hold:abc1234", phase: "review" }]);
   });
 
   it("marks a step whose route parks on restart as park", () => {
@@ -114,10 +121,44 @@ describe("draining before a restart", () => {
     expect(elapsed).toBe(0);
   });
 
-  it("proceeds when nothing answers /health", async () => {
-    const outcome = await drainForRestart({ health: async () => null, sleep: async () => undefined, now: () => 0 }, () => undefined, { port: 7410, timeoutMs: MINUTE, force: false, wait: true });
+  it("a /health that stops answering while runs are busy does not end the drain", async () => {
+    const { outcome, elapsed, polls } = await drain([[REVIEW], ...silence(10), [REVIEW], []]);
 
     expect(outcome).toEqual({ proceed: true });
+    expect(polls).toBe(13);
+    expect(elapsed).toBe(60_000);
+  });
+
+  it("a serve that never answers is restarted after two minutes of silence", async () => {
+    const { outcome, reports, elapsed } = await drain([null]);
+
+    expect(outcome).toEqual({ proceed: true });
+    expect(elapsed).toBe(NO_ANSWER_PROCEED_MS);
+    expect(reports[0]).toContain("serve did not answer /health; still draining");
+    expect(reports.at(-1)).toContain("serve has not answered /health for 2 min; restarting it");
+  });
+
+  it("an answer resets the silence streak", async () => {
+    const { outcome, reports, polls } = await drain([...silence(20), [REVIEW], ...silence(20), []]);
+
+    expect(outcome).toEqual({ proceed: true });
+    expect(polls).toBe(42);
+    expect(reports.join("")).not.toContain("restarting it");
+  });
+
+  it("restarts a silent serve at a deadline shorter than the silence limit", async () => {
+    const { outcome, elapsed } = await drain([null], { timeoutMs: MINUTE });
+
+    expect(outcome).toEqual({ proceed: true });
+    expect(elapsed).toBe(MINUTE);
+  });
+
+  it("wait:false still proceeds on no answer", async () => {
+    const { outcome, elapsed, polls } = await drain([null, [REVIEW]], { wait: false });
+
+    expect(outcome).toEqual({ proceed: true });
+    expect(elapsed).toBe(0);
+    expect(polls).toBe(1);
   });
 
   it("waits while a review is busy, reporting it each minute, then proceeds once idle", async () => {

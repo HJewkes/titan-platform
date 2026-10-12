@@ -1,5 +1,56 @@
 # @titan-design/session-read
 
+## 0.14.0
+
+### Minor Changes
+
+- 7b9335c: session-read keeps an agent-chat channel tag's `broadcast="true"` attribute as `Inbound.broadcast` (false for a direct message, null without a channel tag) and bumps `EXTRACT_VERSION` to 8, so `backfillFacets` re-extracts stored inbound rows. session-graph adds `inbound.broadcast` in migration 12 and writes it. session-analytics wake episodes read the flag for the `broadcast` sender kind, so a direct message a forked session copied is no longer a broadcast; msg_id fan-out remains the fallback for rows extracted before version 8.
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+
+## 0.13.1
+
+### Patch Changes
+
+- 662f42b: Add an agent-chat consumer contract test that pins activity rendering, the truncation marker, the synthetic model skip and the observed branch.
+
+## 0.13.0
+
+### Minor Changes
+
+- 7c73654: `orientationEnd(brief, briefingChars?)` and `assignedTaskIds({ ..., briefingChars? })` accept the recorded orientation length (agent-chat's `agent_spawned` meta `briefing_chars`) and use it in place of the heading text, so a heading rename no longer stops task linking.
+
+## 0.12.2
+
+### Patch Changes
+
+- 3d3cc58: Keep a Claude record's `isApiErrorMessage`, `error`, `apiErrorStatus` and `quotaLimits` fields as native metadata entries, so a reader can tell a record the client wrote (such as the usage-limit notice) from one the model wrote.
+
+## 0.12.1
+
+### Patch Changes
+
+- 15ede18: Add `decodeClaudeToolLines`, a sync, descriptor-free decode of Claude transcript lines into tool call and tool result records. It skips malformed lines, ignores session identity and leaves joining and dedup to the caller.
+
+## 0.12.0
+
+### Minor Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+
+### Patch Changes
+
+- Updated dependencies [37550f4]
+- Updated dependencies [0fb5cf6]
+- Updated dependencies [6eea59d]
+- Updated dependencies [167611d]
+  - @titan-design/anthropic-account@0.3.0
+
 ## 0.11.1
 
 ### Patch Changes

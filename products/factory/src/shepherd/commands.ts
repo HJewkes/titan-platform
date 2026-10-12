@@ -16,17 +16,20 @@ import {
   stricterPolicy,
   type EffectivePolicy,
 } from "./policy.js";
-import { HoldReasonSchema, type HoldResult } from "./hold-reason.js";
+import { HOLD_CLASSES, HoldReasonSchema, type HoldResult } from "./hold-reason.js";
 import { RELEASE_IMPLEMENTER, releaseTask } from "./release.js";
+import { ReleaseHeadArg, releaseAtHead } from "./release-head.js";
 import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
-import { FINISHED_RUN_STATUSES } from "./run-status.js";
+import { reviewCommand } from "./review-request.js";
+import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
 import { isRepoKey, lookupSeat, type SeatBook } from "./seats.js";
 import { TASK_KINDS, kindMoveRefusal, type Registration, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { MergeTrainRef } from "./train.js";
 import type { SnapshotServices } from "./snapshot-reads.js";
+import { FINISHED_PHASES, type Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
-import { timelineEntries, watchRow, type Phase, type PrTimeline, type WatchRow } from "./view.js";
+import { timelineEntries, watchRow, type PrTimeline, type WatchRow } from "./view.js";
 
 export const SHEPHERD_WORKFLOW = "shepherd-pr";
 
@@ -62,6 +65,8 @@ export interface MergeEvaluation {
   pendingGate: WatchRow["pendingGate"];
   waiting: string;
 }
+
+const DEFAULT_KIND = "correctness";
 
 const coded = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
@@ -101,32 +106,6 @@ function policyFor(services: ShepherdServices, args: RegisterArgs): EffectivePol
     if (error instanceof RegistrationRefused) throw coded(`registration refused: ${error.message}`, EXIT.DATAERR);
     throw error;
   }
-}
-
-/** The registration of another PR that holds `branch` under a run that has finished, if any. */
-function finishedBranchHolder(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return undefined;
-  return FINISHED_RUN_STATUSES.has(ctx.host.runtime.status(byBranch.runId)?.status ?? "completed") ? byBranch : undefined;
-}
-
-/**
- * The registration for `repo#pr`, else the one for its head branch. A branch tied to another PR is refused while that
- * PR's run is live; a finished run gives the branch up (see `releaseFinishedBranch`). Reads only.
- */
-function findRegistration(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): Registration | undefined {
-  const byPr = pr === undefined ? undefined : store.byPr(repo, pr);
-  if (byPr) return byPr;
-  const byBranch = branch === undefined ? undefined : store.byBranch(repo, branch);
-  if (!byBranch || pr === undefined || byBranch.pr === null || byBranch.pr === pr) return byBranch;
-  if (finishedBranchHolder(ctx, store, repo, pr, branch)) return undefined;
-  throw coded(`${repo} branch ${branch} is already shepherded as #${byBranch.pr} by run ${byBranch.runId}`, EXIT.DATAERR);
-}
-
-/** The changesets branch is reused by every release, so a finished run's hold on it is dropped once a lookup finds nothing. */
-function releaseFinishedBranch(ctx: FactoryContext, store: ShepherdStore, repo: RepoSlug, pr: number | undefined, branch: string | undefined): void {
-  const holder = finishedBranchHolder(ctx, store, repo, pr, branch);
-  if (holder) store.releaseBranch(holder.runId);
 }
 
 /** A PR registration always learns its head branch, so a later branch registration finds it and vice versa. */
@@ -187,12 +166,15 @@ async function reuseOrRestart(ctx: FactoryContext, store: ShepherdStore, known: 
   return { ...refresh(store, store.byRun(runId)!, args, policy), created: true, previousRunId, ...restart };
 }
 
-/** Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back. */
+/**
+ * Another process's register can commit between the lookup and the start; its unique row rolls this run back and its run comes back.
+ * A new run with no kind stores correctness here, never in the CLI, so a kindless repeat keeps whatever kind the run already has.
+ */
 async function startRegistered(ctx: FactoryContext, store: ShepherdStore, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy): Promise<Registered> {
   let registration: Registration | undefined;
   try {
     const runId = startRun(ctx, args, branch, policy, (started) => {
-      registration = store.register({ ...args, branch, runId: started, policy });
+      registration = store.register({ ...args, kind: args.kind ?? DEFAULT_KIND, branch, runId: started, policy });
     });
     return { runId, created: true, registration: registration! };
   } catch (error) {
@@ -221,7 +203,19 @@ async function register(args: RegisterArgs, ctx: FactoryContext): Promise<Regist
 
 /** Registers the changesets PR the way `shepherd register` would, with no fixer: no agent wrote it, so none can fix it. */
 export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, policy: { fixer: false } }, ctx);
+  return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
+}
+
+/** The registration's implementer: the factory toolchain sweep wrote this PR, so a wake for it is never handled. */
+export const TOOLCHAIN_IMPLEMENTER = "toolchain-fanout";
+
+function toolchainTask(repo: RepoSlug): string {
+  return `${repo.split("/")[1] ?? repo}/toolchain`;
+}
+
+/** Registers a toolchain adoption PR with no fixer, since no agent can fix a plan the sweep wrote, and owner-gated, since it edits other repos' release workflows. */
+export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
+  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
@@ -243,18 +237,21 @@ function runOf(host: FactoryHost, registration: Registration): WorkflowRun {
 function rowOf(host: FactoryHost, services: ShepherdServices, registration: Registration, run: WorkflowRun): WatchRow {
   const pending = host.pendingGates().find((gate) => gate.runId === run.id);
   const train = services.train?.get().holder(registration.repo);
-  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate, stepId: pending.stepId } }), ...(train && { train }) });
+  return watchRow({ registration, run, ...(pending && { pending: { gate: pending.gate } }), ...(train && { train }) });
 }
 
-function rows(host: FactoryHost, services: ShepherdServices): WatchRow[] {
+/** Every registration's watch row beside the run it was read from; a registration whose run is missing is left out. */
+export function rowsWithRuns(host: FactoryHost, services: ShepherdServices): { row: WatchRow; run: WorkflowRun }[] {
   return services.store
     .get()
     .all()
     .flatMap((registration) => {
       const run = host.runtime.status(registration.runId);
-      return run ? [rowOf(host, services, registration, run)] : [];
+      return run ? [{ row: rowOf(host, services, registration, run), run }] : [];
     });
 }
+
+const rows = (host: FactoryHost, services: ShepherdServices): WatchRow[] => rowsWithRuns(host, services).map(({ row }) => row);
 
 /** Every gate the run opened: the ones its results name, and the one it waits on now. */
 function gatesOf(host: FactoryHost, run: WorkflowRun): GateRecord[] {
@@ -280,10 +277,12 @@ async function evaluateMerge({ repo, pr }: PrRefArgs, ctx: FactoryContext): Prom
 }
 
 const PrRefArgs = z.object({ repo: RepoArg, pr: PrArg });
+
+/** The seat or owner behind a hold or release, sent by the CLI because serve cannot read the caller's environment; a client that sends none is recorded as unknown. */
+const ActorArg = z.string().min(1).max(100).default("unknown");
 type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const LIST_STATES = ["active", "finished", "all"] as const;
-const FINISHED: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
@@ -310,7 +309,7 @@ const listCommand = defineCommand<{ state: (typeof LIST_STATES)[number] }, Watch
   args: z.object({ state: z.enum(LIST_STATES).default("active") }),
   result: z.custom<WatchRow[]>(),
   run: async ({ state }, ctx) =>
-    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED.has(row.phase) === (state === "finished")),
+    rows(ctx.host, servicesOf(ctx)).filter((row) => state === "all" || FINISHED_PHASES.has(row.phase) === (state === "finished")),
 });
 
 const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
@@ -326,31 +325,33 @@ const timelineCommand = defineCommand<PrRefArgs, PrTimeline, FactoryContext>({
   },
 });
 
-const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional() });
+const HoldArgs = PrRefArgs.extend({ reason: HoldReasonSchema, reviewer: z.string().regex(/^\S+$/, "must be a non-empty name without whitespace").optional(), actor: ActorArg });
 
 const holdCommand = defineCommand<z.infer<typeof HoldArgs>, HoldResult, FactoryContext>({
   name: "shepherd.hold",
   description: "Hold owner/repo#pr: its run keeps going, but no merge goes through until release; --reviewer names the reviewer whose verdict the run waits for",
   args: HoldArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr, reason, reviewer }, ctx) {
+  async run({ repo, pr, reason, reviewer, actor }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    const held = services.store.get().hold(runId, reason, reviewer);
+    const held = services.store.get().hold(runId, reason, reviewer, { actor });
     return { runId, held: { reason: held.holdReason ?? reason, ...(held.holdReviewer !== null && { reviewer: held.holdReviewer }) } };
   },
 });
 
-const releaseCommand = defineCommand<PrRefArgs, HoldResult, FactoryContext>({
+const ReleaseArgs = PrRefArgs.extend({ actor: ActorArg, head: ReleaseHeadArg, holdClass: z.enum(HOLD_CLASSES).optional() });
+
+const releaseCommand = defineCommand<z.infer<typeof ReleaseArgs>, HoldResult, FactoryContext>({
   name: "shepherd.release",
-  description: "Release a hold on owner/repo#pr so a merge its run reaches can go through",
-  args: PrRefArgs,
+  description: "Release one hold on owner/repo#pr at the head the seat reviewed (--head): the hold of --class, or the only hold; refused when the PR's head is another sha",
+  args: ReleaseArgs,
   result: z.custom<HoldResult>(),
-  async run({ repo, pr }, ctx) {
+  async run({ repo, pr, head, actor, holdClass }, ctx) {
     const services = servicesOf(ctx);
     const { runId } = await locate(services, repo, pr);
-    services.store.get().release(runId);
-    return { runId, held: null };
+    const after = await releaseAtHead(services.store.get(), services.port, { runId, repo, pr, head, actor, ...(holdClass && { holdClass }) });
+    return { runId, held: after.held ? { reason: after.holdReason ?? "held", ...(after.holdReviewer !== null && { reviewer: after.holdReviewer }) } : null };
   },
 });
 
@@ -380,6 +381,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.hold": holdCommand,
   "shepherd.release": releaseCommand,
   "shepherd.merge": mergeCommand,
+  "shepherd.review": reviewCommand,
   "shepherd.resync": resyncCommand,
 };
 

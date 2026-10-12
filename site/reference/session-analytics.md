@@ -165,14 +165,27 @@ teleport lines of the same log.
 
 ### events.db readers
 
-`readVerdicts`, `readSpawns` and `readLastPrompts` read agent-chat's `events.db` through a
+`readVerdicts`, `readSpawns`, `readLastPrompts` and `readHandoffs` read agent-chat's `events.db` through a
 connection the caller opened read-only; the package never opens the file or checks it exists.
-Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the
+Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`, `HANDOFFS_SQL`), and the
 matching `*_SOURCES` command is `eventsDbCommand(sql)` over that same constant, so the printed
 re-read runs the reader's own query. `eventsDbCommand` binds each `@name` parameter with
 sqlite3's `.parameter set` to an epoch-millisecond placeholder such as `<asOf epoch ms>`.
 `EVENTS_TABLE_DDL` is agent-chat's events table as the readers expect it; a test fixture
 creates it with this rather than a copy.
+
+### seatGenerations
+
+`seatGenerations({ handoffs, broker, agentSessions, seat, since })` lists the agent processes
+that held one seat's name, in start order: `{ generation, agentId, agentName, sessionIds,
+start, end, endedBy }`. A committed `agent_handoff` row (`readHandoffs(db)`) or a
+`teleport_completed` broker line ends a generation and starts its successor; the row wins when
+both record the same handover. An `agent_exited` line ends one with `exit`, an `agent_spawned`
+line starts one, and a generation with neither end is `open`. An aborted handoff, one the
+predecessor never stood down after, ends nothing. `since` drops generations that ended before it
+and keeps the one running at it, so read handoffs without a bound. `sessionIds` comes from
+`readAgentSessions(db)` over the session graph and is empty, not dropped, when the graph has no
+session for the agent. `start` is null when the spawn line has rotated out of the broker log.
 
 ### reviewFillReport
 
@@ -182,6 +195,26 @@ miner fills from transcripts, and places each chat verdict in the context band o
 that sent it, per model. An approve counts as an error when the same PR later got
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
+
+### costPerOutcome
+
+`costPerOutcome(db, assignments, { since, until })` costs generic assignment records
+(`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
+`byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
+count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
+split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
+reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
+tables with the list-price caveat.
+
+### scorecardJournalRows
+
+`scorecardJournalRows({ eventsDb, dispatchRecords, since, now })` returns the scorecard rows read
+from `events.db` verdicts and seat `dispatch.jsonl` journals: first-pass FIX_FIRST share,
+mechanical first-blocker share, coordinator spawns for milestone tasks and cost per merged PR.
+`readDispatchJournal(dir)` reads the journals. An absent or empty source gives `value: null`,
+which `scorecardRowText` prints as `not measured`; the cost row also stays unmeasured below the
+0.8 `usd_est` coverage floor (`MIN_COST_COVERAGE`). Baselines and targets are the caller's.
 
 ### taskActuals
 
@@ -197,6 +230,10 @@ capped, so a first request adds nothing. `usd` is `request_cost` at list price. 
 linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
 task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
 implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+`peakContext` is the largest main-thread `context_tokens` over the implementer sessions.
+`contextAtFirstDeliverable` is the context of the first implementer request at or after the
+earliest `status_report` or `pr_create` signal, in that signal's session. Reviewer sessions count
+toward neither, and each is null when there is nothing to read.
 
 | Flag | Meaning |
 |---|---|
@@ -213,6 +250,55 @@ however long it lived. The worker report's standing-peer override is not applied
 linked to the task either counts in `implAgentHours` or `reviewAgentHours`, or is counted in
 `unmappedSessions` and raises `unmapped-role`: planner, researcher, coordinator and peer profiles,
 and profiles with no role. Nothing is dropped without the row saying so. `capMinutes` must be positive.
+
+### seatContext
+
+`seatContext(db, { window, sessions })` measures how full each standing seat's context runs.
+The caller names each seat and passes its session ids (`{ name, sessionIds }`); the function
+does not detect seats. Per seat it returns `requests`, `p50`, `p90` and `max` of the context
+per call, and `compactions: { auto, manual }` from the `compaction` table of those sessions alone.
+
+A call's context is input plus cache read plus cache write tokens. Sidechain requests and
+`<synthetic>` records are left out, and a request copied into a second transcript counts once.
+A percentile is `v[floor(n * q)]` of the sorted values, the method of the `ctx.py` script it
+replaces, so its p90 is the upper of two neighbours rather than an interpolation.
+The miner exposes it as `titan-miner seat-context --since 7d --seat name=id,id [--p90-max N]
+[--auto-max N]`, which prints one line per seat ending in `PASS` or `FAIL <reason>` and exits 1
+on any failure.
+
+### Coordinator duty meter
+
+`mergeCopies(copies, options)` splits a coordinator seat's spend by duty: merges, CI watching,
+briefing, pacing, no-op ticks and so on. Each copy is one transcript file: its `seat`,
+`sessionId`, byte `size`, its pool's window start `lo` and the raw JSONL `lines`. Pass `lines`
+as an iterable, so a large file streams. The meter reads raw lines rather than the graph,
+because the rules need tool inputs the graph does not keep, such as a `chat_send` recipient or
+a resume message. `seatOf(lines, seats)` names a file's seat from its `as seat <seat>` boot
+prompt or its `chat_register` call.
+
+- **Calls and turns.** A call is an assistant message id with usage; `<synthetic>` is dropped.
+  A turn runs from one prompt that is not a tool result to the next. Sidechain records are skipped.
+- **Copies.** The copies of a session run largest first, and a message id is priced only the
+  first time it is seen. A turn counts only if it holds a newly priced call.
+- **Window.** A call counts when `lo <= ts < hi`. A bound with no offset is UTC.
+- **Triggers and outcomes.** Each turn gets a trigger, such as `cron-heartbeat`, `boot` or
+  `peer-seat msg`, from its prompt prefix. `ops` names the operator sessions. Its outcome is the
+  first of `dispatch`, `merge`, `retire`, `task`, `peer-reply`, `file-write` and `teleport`
+  that its tools hit, or `NO-OP`.
+- **Duties.** `rules` is `TP1550_RULES` (the 2026-10-04 baseline) or `V3_RULES` (2026-10-09). In
+  both, the first matching rule wins, and `owners` holds the recipient prefixes that count as
+  owner communication. Every call of a NO-OP turn becomes `noop:<trigger>`, unless the trigger
+  is `boot`; reads in a boot turn count as handoff. An unclassified call inherits a duty: with
+  `inherit: "nearest"` from the nearest earlier classified call, and with `"dominant"` from the
+  turn's highest-dollar duty.
+- **Pricing.** Calls go through `priceRequest`. A model with no price row costs 0 and is counted
+  in `inputs.unpriced`. A cache write with no 5m/1h split prices at
+  `SPLITLESS_CACHE_WRITE_TTL` (5m); `splitlessCacheWrite: "1h"` reprices it for comparison.
+
+`dutyTable(result, { window, seats, rules, mergedPrs })` totals the result for each duty: calls,
+USD, share, $ per merged PR, kind (`det`, `judge`, `half`, `handoff` or `incident`), its TP-1550
+report group, and dollars per seat. It also lists turns, NO-OP turns and dollars per trigger,
+and validates against `coordDutyTableSchema`.
 
 ## What it deliberately does not do
 

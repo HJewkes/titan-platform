@@ -102,6 +102,52 @@ author's own `## Changes` or `Refs:` stays. The `titan-squash-message` bin reads
 input as JSON on stdin and prints the subject, a blank line and the body, or `{ subject, body }`
 with `--json`; bad input exits 2 naming the field.
 
+`ciVerdict({ rules, runs, statuses })` is pure and folds a sha's check-runs and commit statuses
+into `{ verdict: "green" | "red" | "pending", reasons }`. With required contexts, each must be
+`success` from its pinned app, else from GitHub Actions (15368) or a commit status; a skipped or
+neutral required context is red, and runs that are not required are ignored. With none, every
+run and status must pass and at least one check-run must exist. `loadRequiredContexts(port,
+repo, branch)` reads rulesets, then classic protection; both reads treat a free-plan 403
+("Upgrade to GitHub Pro") as no rules and throw on any other 403. `resolveCommit(repo, sha)`
+expands an abbreviation (null when GitHub has no such commit) and `commitStatuses(repo, sha)`
+reads the combined status. `ciWait(port, options)` polls those until green, red or the deadline,
+reading the rules once and retrying a failed read. The `titan-gh` bin wraps it:
+
+```
+titan-gh ci-wait <owner/repo> <sha> [--base <branch>] [--timeout <seconds>] [--interval <seconds>]
+```
+
+It prints `GREEN <repo> <sha>`, `RED <repo> <sha>: <name>=<conclusion>; ...` or
+`TIMEOUT <repo> <sha> after <n>s: pending <names>`, and exits 0 green, 1 red, 2 timeout (run it
+again) and 64 on bad arguments or a sha GitHub does not have. Defaults: 540 second timeout,
+30 second interval, the repo's default branch.
+
+Its `pr-status` and `pr-context` verbs read one PR over the caller's `gh` login, in place of `gh pr view --json`
+piped to `jq`. `titan-gh pr-status <owner/repo#N>` prints one line: state (`open`, `draft`,
+`closed` or `merged`), the head's first seven characters, `mergeableState`, how many required
+checks passed with each non-passing one as `name:state`, and `ready` or the `mergeReadiness`
+blocker reasons. Required checks come from the base's rulesets, or from classic protection when
+the rulesets require none. Approval lives in Shepherd, not on GitHub, so it never reports
+`unapproved`. `titan-gh pr-context <owner/repo#N>` prints the title, base, head sha, changed
+files and body for a reviewer; past GitHub's 3,000-file cap it gives the count and lists none.
+`--json` prints either as one object; an unknown verb or a ref that is not `owner/repo#N` prints
+usage and exits 64.
+
+`titan-gh premerge <owner/repo#N> <sha> --approved-head <sha> [--clone <dir>] [--json]` is the
+read-only half of agent-chat's `scripts/seat/premerge`; the caller looks up the verdict and passes
+the head it approved. It reads the PR, the base's required contexts, the head's check runs and
+statuses, and the compare, then fails on a PR that is closed, merged or a draft, a head other than
+`<sha>`, a red or pending required check (judged as `ciVerdict` judges them), a strict ruleset with
+the head behind, a conflict, or an approved head `approvedHeadWalk` cannot reach. With
+`--clone <dir>`, a fetched local clone, the bin runs `git merge-tree --write-tree` there: once to
+prove the walk, and once to merge the head into the base tip GitHub reports now, by sha, failing on
+a conflict, a git error, or a clone that lacks that commit. It never trusts a local `origin/<base>`,
+which can be stale or shadowed, so fetch the base first. Without it, an approved head other than the PR head fails, and a conflict rests on GitHub's
+mergeability: `unknown` is re-read after 1, 2 and 4 seconds and fails if it never resolves. It prints
+`OK <repo>#<N> head=<sha> base=<base> req=[<contexts>] strict=<bool> behind=<n>` or
+`FAIL <repo>#<N>: <reason>; ...`, and exits 0, 1, or 2 on usage. `--json` prints
+`{ repo, number, ok, reasons, head, base, required, strict, behindBy }`.
+
 `fakeGitHub()` is an in-memory `GitHubWire` with effect counters, for tests only.
 
 Reference: [site/reference/github.md](../../site/reference/github.md).

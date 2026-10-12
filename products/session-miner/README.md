@@ -21,10 +21,13 @@ titan-miner playbook add "Pin npm to 11 in release jobs" --tag ci --tag release
 titan-miner playbook recall "release job npm"
 titan-miner playbook reflect <session-id>   # renders the diary; applies nothing
 titan-miner playbook status
+titan-miner memory scan        # count auto-memory fact files by account and type
+titan-miner memory report      # dedupe and group them, write report.md and decisions.yml for review
 titan-miner insights spend-by-action --since 2026-09-01 --role coordinator
 titan-miner serve --port 7400  # /rpc, /mcp, /events on loopback
 titan-miner mcp                # MCP over stdio
 titan-miner --graph <file> graph-refresh -- <owner refresh...>   # scheduled refresh; see below
+titan-miner --graph <file> tool-gap-weekly --notify-command <path>  # weekly tool-gap pass; see below
 ```
 
 Every command takes `--json` for the envelope. `--state <dir>` and `--corpus <dir>` (or
@@ -83,25 +86,39 @@ it runs on the CLI, as the MCP tool `miner__insights__<question>`, and at
 
 | Question | Command | Answers | Own options |
 | --- | --- | --- | --- |
+| Q0 | `insights prices` | the price table as data, the models in the window no row prices, and every model in a published price file the table prices differently or not at all; no cost claim until that list is empty | `--published <file>` (CLI only): JSON `[{ model, input, cacheRead, cacheWrite5m, cacheWrite1h, output }]` in USD per million tokens |
 | Q1 | `insights spend-by-action` | each role's spend by turn action, and the mechanical share | `--mechanical <class>` |
 | Q2 | `insights handoff-threshold` | boot cost, fill growth and the best handoff threshold K per role | `--k <tokens>`, `--reviewer-prs <n>`, `--broker-log <path>` (CLI only) |
 | Q3 | `insights cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | Q4 | `insights wake-economics` | what wakes a coordinator, and the requests and cost per wake episode | `--episode-role <role>` |
+| Q5 | `insights tool-errors` | error tool results and classifier denials per local day, by error class and by tool, with sessions and agents, and denials by classifier reason | `--transcript <seat>=<path>` (CLI only) |
+| Q6 | `insights round-trips` | per local day, a parent's follow-ups to the agents it spawned by class (`brief-fix`, `poll`, `correction`, `other`), and per PR the verdict sequence with FIX_FIRST rounds and re-reviews, plus verdicts with no PR line | none |
 | Q7 | `insights blocked-flow` | per repo: verdict-to-merge minutes, open PRs holding MERGE, classifier denials, idle implementer slots | `--seat <seat>`, `--split-at <time>`, `--transcript <seat>=<path>`, `--journal <seat>=<path>`, `--pulls <file>` (last three CLI only) |
 | Q8 | `insights liveness` | seats dark over 5 min with and without a teleport, routes that missed a recipient, unreported exits by profile, agents whose last event is a permission prompt over 10 min old | `--seat <name>`, `--broker-log <file>` (CLI only) |
 | Q9 | `insights tool-gaps` | post-filters agents pipe after our CLIs, grouped by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top <n>` |
-| Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship | none |
+| Q10 | `insights tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines it replaces, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
+| Q11 | `insights probes` | one row per probe per local day: a named Q5 or Q6 measure against its target, HOLDING, REGRESSED or NO-DATA | `--probes <file>` (required, CLI only) |
+| Q12 | `insights data-quality` | faults to clear before any analysis, one row each with severity, evidence and a suggested task title: graph stale, transcripts discovered but not indexed, facet backlog, unpriced models, and with `--assignments` bad lines, unknown outcomes and agents with no session | `--max-lag <minutes>` (default 60), `--assignments <file>` (CLI only), `--known-outcome <word>` |
+| Q14 | `insights seat-generations` | each agent that held a seat's name in the window, in start order, with its start, end, how it ended (`handoff`, `teleport`, `exit` or `open`) and its graph sessions, plus a ready `--session` argument string for the graph questions | `--seat <name>` (required), `--broker-log <file>` (CLI only) |
 
 Every question takes the same filters, which combine with AND: `--session <id>` and
 `--role <role>` (both repeatable), `--agent-prefix <prefix>` for agent-chat names, and
 `--since` (inclusive) and `--until` (exclusive) on request time. Roles are the cost
 report's `byRole` names, such as `coordinator` or `worker:reviewer`. Compactions and
 coverage stay window-wide. Dates must parse and are compared in UTC, so an offset timestamp
-works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` because it reads a local file.
+works. MCP and HTTP refuse an unknown key, and refuse `brokerLog` and `published` because they read a local file.
 
 With `--json` the envelope's data is `{ question, caveat, filters, answer }`, where
 `answer` matches the question's zod schema. Without it the question prints its text
 renderer. Both carry `LIST_PRICE_CAVEAT`: the figures are list prices, not a bill.
+
+Q12 runs first. The graph is stale when its newest request trails `--until` (or now) by more
+than `--max-lag` minutes. An `error` fault means the numbers it touches are wrong and no claim
+should rest on them; a `warn` fault means they are incomplete. `--assignments` takes JSONL in
+session-analytics' `assignmentSchema` shape: a line that fails the schema is counted, not thrown;
+an outcome outside `merged`, `done` and any `--known-outcome` is flagged; and agents the
+cost-per-outcome join cannot find in the graph are listed. The code only reports; the
+session-insights skill files the tasks.
 
 Q7 reads outside the graph, so it refuses `--session`, `--agent-prefix` and `--role`; narrow it
 with `--seat`. Reviewer verdicts come from agent-chat's events table, opened read-only at
@@ -126,6 +143,14 @@ A prompt is skipped once its actor has an `agent_exited` or `agent_retired` row,
 restarted after it and the actor never registered again. Each row cites its `broker.log:<line>` or `events#<id>`. Q8 is registered from
 `AGENT_CHAT_QUESTIONS`, because the shared tests run every other question against the graph.
 
+Q14 resolves a seat to its generations through session-analytics' `seatGenerations`. It reads
+`agent_handoff` rows from the events table and spawn, exit and `teleport_completed` lines from the
+broker log, and maps each agent id to its graph sessions. It refuses the session filters; name the
+seat with `--seat`. A generation that ended before `--since` or started at or after `--until` is
+left out, and one with no graph session stays listed with no sessions. `sessionArgs` joins only
+the sessions the graph knows; appended to any graph question, it runs that question over a seat
+since a time. Q14 is registered from `AGENT_CHAT_QUESTIONS`.
+
 Q9 reads each Bash call in the window back from its transcript, since the graph keeps no command
 text; a call whose `command_heads` signal names none of our CLIs is never read. It keeps every
 pipeline whose head is `active-work`, `agent-chat`, `titan-factory`, `basement-suite`, `gh`, or
@@ -139,16 +164,56 @@ already passes, NEW when it names none, and UNKNOWN when the help cannot be run.
 result characters of the calls. It refuses `--role`. Q9 is registered from `TRANSCRIPT_QUESTIONS`,
 and its tests inject the transcript reader and the help runner.
 
-Q10 tracks the flags and verbs listed in `src/insights/adoption-registry.ts`. Each entry names the
-task and merged PR, the merge time, the old head with the Q9 patterns the new form replaces, and the
-new head with the flags of which any one marks the new form (none when the verb itself is new). It
-reads Bash calls back like Q9, from `--since` or else the earliest ship, and counts a pipeline as the
+Q10 tracks the flags and verbs listed in `src/insights/adoption-registry.ts`, seeded with the 15
+ranked rows of `bash-to-tool-mining-2026-10-08.md` (each entry carries its `row`). A shipped entry
+names the task and merged PR, the merge time, the old head with the Q9 patterns the new form
+replaces, and the new head with the flags of which any one marks the new form (none when the verb
+itself is new; a flagless new form on the old head is never counted). A `baseline` entry has not
+shipped: its task is null until one is filed, it counts the old patterns alone from the window
+start, is never flagged, and shows `baseline` in the flags column, so it has its "before" numbers on
+the day it ships. A `note` says what Q10 cannot see, such as an MCP argument or a guard denial. It
+reads Bash calls back like Q9, from `--since` or else the earliest ship (four weeks back when
+nothing has shipped), and counts a pipeline as the
 new form when it passes one of those flags, piped on or not, and as the old one when its normalised
 tail is one of the patterns. Uses before an entry's ship are ignored. Rows give weekly new/old counts
 from ship to `--until` (or now), and the old patterns with their Q9 `patternId`. Two weeks after
 ship an entry is flagged `unadopted` while the old patterns outnumber the new form in the uses since
 then, and `unused` while nobody ran the new form; before that it is `watching`. It refuses `--role`.
-To track a new opportunity, add an entry with the patterns Q9 reported for it.
+To track a new opportunity, add a baseline entry with the patterns Q9 reported for it, and make it
+`shipped` with the PR and merge time when it lands.
+
+Q5 reads each error tool result in the window (an `inbound` row of cause `tool_result` with
+`is_error`) back from its transcript, since the graph keeps no result text, and gives it the first
+matching class of the self-improve extractor: `classifier-denial`, `permission-denied`,
+`user-rejected`, `sleep-block`, `wrong-tool-name`, `hook-block`, `edit-not-read`, `edit-no-match`,
+`file-missing`, `gh-graphql-ratelimit`, `gh-secondary-ratelimit`, `gh-other`, `git-error`, `timeout`,
+`mcp-tool-error`, `agent-chat-refused`, `test-fail`, `lint-type`, `exit-code`, else `other`; a result
+whose line is gone is `unreadable`. Rows are per local day (this machine's clock) by class and by
+tool, an MCP tool named by its last segment, with distinct sessions and agent-chat names. Classifier
+denials are also counted by their bracketed reason. Each `--transcript` adds the denials it holds
+that the graph has not already counted under the same `tool_use_id`, with the seat as the agent; it
+cannot be combined with `--session` or `--agent-prefix`. Q5 refuses `--role`.
+
+Q6 reads agent-chat's events table read-only, like Q7, and refuses `--session`, `--agent-prefix`
+and `--role`. A follow-up is a message in the window from an agent to one it spawned (the
+`agent_spawned` row, however long before `--since`). Its first 1500 characters are classed by the
+first match of `brief-fix` (a brief update, correction or "you missed"), `poll` (a status ask) and
+`correction` (the self-improve correction phrases), else `other`. Verdicts are messages with a
+`Verdict: <WORD>` line, grouped by their `PR:` line, `owner/repo#n` or a pull URL; a verdict
+without one is counted on its day only. Each PR lists its verdicts in order: FIX_FIRST rounds are
+the verdicts that are not MERGE, re-reviews every verdict after the first, and a first-pass merge a
+PR whose first verdict in the window is MERGE. Q6 is registered from `AGENT_CHAT_QUESTIONS`.
+
+Q11 reads its probes from `--probes`, a JSON array of `{ id, task, measure, target, op, since? }`
+where `op` is `<=` or `>=` and `since` a `YYYY-MM-DD` the probe starts on. A probe is data: add one
+per landed fix, naming its task and target, and keep the file outside this repo. The measures are
+`sleep_blocks`, `graphql_ratelimit_errors` and `wrong_tool_name` (Q5 counts of `sleep-block`,
+`gh-graphql-ratelimit` and `wrong-tool-name`), `classifier_merge_denials` (Q5 denials whose reason
+is "Merge Without Review"), `verdict_without_pr_line_share` and `first_pass_merge_rate` (from Q6,
+the latter only on a day with at least 5 first verdicts). A file naming any other measure, or not
+matching that shape, is a usage error (exit 64). A count is 0 on a day the graph has a request but
+no matching error, and a day a measure has no data for is NO-DATA. Q11 computes only the questions
+its probes name and refuses `--session`, `--agent-prefix` and `--role`.
 
 To add a question, write its analysis in `session-analytics` first: a pure function over
 the graph, a zod schema, a text renderer that ends with `LIST_PRICE_CAVEAT`, and a
@@ -157,6 +222,29 @@ synthetic-fixture test. Then add one `defineInsight({...})` to
 options and flags, the schema, and an `answer` that calls the analysis and its renderer.
 Append it to `INSIGHT_QUESTIONS`. The shared tests then cover its envelope, its caveat,
 every filter, and its presence on all three surfaces.
+
+### Verifying findings (TP-499)
+
+An analyst reading these answers writes each finding as `findingSchema` (exported from
+`src/insights/citations.ts`): `{ id, claim, citations, falsifier }`. A finding with no citation
+or an empty `falsifier` fails the schema. Each citation is
+`{ question, args, field, value, tolerance? }`: `question` is an insight name such as
+`spend-by-action`, `args` its flags as an object (`--agent-prefix`, `agent-prefix` and
+`agentPrefix` are the same key), and `field` a JSON pointer into the answer, such as
+`/totals/sessions`.
+
+```json
+[{ "id": "F1", "claim": "reviewers ran one session", "falsifier": "a second reviewer session in the window",
+   "citations": [{ "question": "spend-by-action", "args": { "since": "2026-09-10", "agent-prefix": "rev-" },
+                   "field": "/totals/sessions", "value": 1 }] }]
+```
+
+`titan-miner insights verify-citations --findings <file>` re-runs each cited question once per
+distinct question and args, and gives every citation a status: `ok`, `mismatch` (with the
+`actual` value), `missing-field`, `unknown-question`, or `error` (the run failed, such as invalid
+args or a missing events db). A number matches within `tolerance` relative to the cited value,
+0.01 by default; strings, booleans and null match exactly. It exits non-zero and lists the
+failures when any citation is not ok. `--findings` is accepted only on the CLI.
 
 ## The playbook (TP-19)
 
@@ -178,6 +266,34 @@ curator rather than by the model.
 
 The playbook is strictly downstream. It reads the graph and never writes back, so the
 index stays valid with the playbook ignored, and a test asserts the row counts do not move.
+
+## Auto-memory review (TP-604)
+
+Claude Code writes auto-memory facts to `<config dir>/projects/<project>/memory/*.md`,
+indexed by a `MEMORY.md` beside them. These commands give the owner a view of all of it.
+
+- `memory scan` reads every memory directory under the roots `claudeTranscriptRoots()`
+  finds (`~/.claude`, each `~/.claude-profiles/<name>`, or `CLAUDE_CONFIG_DIRS`, plus
+  mirror roots). It returns counts by account and type, plus the files it could not parse.
+  A symlinked memory directory is skipped.
+- `memory report` runs the scan, then `@titan-design/memory`'s `dedupeFacts`, `groupFacts`
+  and `proposeDestination` against the skills under `--skills-root` (repeatable; default
+  `~/.claude/skills`). It writes `report.md` and `decisions.yml` to
+  `<state>/memory-miner/<reportId>/`, or under `--out`. The directory is mode 0700 and the
+  files are 0600, because memory bodies can hold anything. Every group starts as
+  `decision: pending`, with an editable `destination`, a `reason`, and each source's path
+  and content hash. The `reportId` is the UTC time plus a digest of the facts' content
+  hashes.
+
+The envelope carries paths and counts (groups, singletons, largest group, groups per
+destination), never fact text, so MCP and HTTP callers see no memory bodies.
+`--skills-root` and `--out` are accepted only on the CLI. Neither command opens the graph.
+
+`--group-threshold` (default 0.12) is the topic Jaccard that links two facts. Grouping is
+single-link, so a lower value chains most facts into one group, and a higher one leaves
+most facts on their own. The default was measured on a real corpus of about 300 facts.
+
+`memory apply`, which acts on accepted groups, is the next slice.
 
 ## Not yet here
 
@@ -231,6 +347,42 @@ systemctl --user enable --now session-miner-refresh.timer
 Then `systemctl --user start session-miner-refresh.service` runs a pass at once,
 `journalctl --user -u session-miner-refresh` shows its log, and a failed pass leaves the
 unit in `systemctl --user --failed`.
+
+## Weekly tool-gap pass (TP-2076)
+
+`titan-miner tool-gap-weekly --notify-command <path>` is one weekly pass over Q9
+`tool-gaps` and Q10 `tool-adoption`. It files and notes tasks and reports; it never builds a tool.
+
+1. It takes `<state>/tool-gap-weekly/run.lock` without waiting; a second live run exits 75.
+2. It runs both questions over the 7 days ending now and diffs them against
+   `<state>/tool-gap-weekly/latest.json`, last week's answers. A first run counts every row as new.
+3. For each pattern id with at least `--min-calls` calls (default 50) and `--min-sessions`
+   sessions (default 10) that the adoption registry does not already name, it files one task in
+   `--initiative <slug>` (default `titan-platform`) through `active-work task add`, tagged
+   `tool-gap`, `tool-gap:<patternId>` and `item-114`. If an open task already carries
+   `tool-gap:<patternId>`, it appends this week's counts with `active-work task note` instead.
+4. It runs the notify command once, with the digest on stdin: new gaps, task actions, adoption
+   results and removal candidates (shipped, unused 28 days or more after ship). The digest is a
+   notice and asks nothing.
+5. Only then does it replace `latest.json`. If a task action or the notifier fails, the pass logs
+   `tool-gap-weekly: FAILED: …`, exits 70 and keeps last week's snapshot, so the next run diffs
+   against the same base. A rerun in the same week notes the tasks the failed run did file.
+
+Stdout carries one JSON line: `outcome` (`ok`, `locked` or `failed`), the actions taken, and
+`exitCode`. agent-chat has no CLI verb that posts a notice, so the operator picks the notifier:
+any executable that reads stdin.
+
+`ops/systemd/session-miner-tool-gaps.{service,timer}` run it every Monday at 05:30, catching up a
+missed week on boot. The service reads `ACTIVE_ROOT`, `TITAN_MINER_GRAPH` and `TITAN_MINER_NOTIFY`
+from `~/.config/titan-session-miner/tool-gaps.env`, which it requires. To install (an owner step,
+same build and checkout as the hourly refresh):
+
+```sh
+printf 'ACTIVE_ROOT=<root>\nTITAN_MINER_GRAPH=<root>/.miner/graph.sqlite3\nTITAN_MINER_NOTIFY=<notifier>\n' > ~/.config/titan-session-miner/tool-gaps.env
+install -m 644 -t ~/.config/systemd/user ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.service ~/projects/titan-platform/ops/systemd/session-miner-tool-gaps.timer
+systemctl --user daemon-reload
+systemctl --user enable --now session-miner-tool-gaps.timer
+```
 
 ## Codex sessions
 

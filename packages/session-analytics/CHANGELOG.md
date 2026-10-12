@@ -1,5 +1,102 @@
 # @titan-design/session-analytics
 
+## 0.16.0
+
+### Minor Changes
+
+- cd01cfa: Add `scorecardJournalRows` and `readDispatchJournal`: the W41 scorecard rows read from events.db verdicts and seat `dispatch.jsonl` journals (first-pass FIX_FIRST share, mechanical first-blocker share, coordinator spawns for milestone tasks, cost per merged PR with a 0.8 `usd_est` coverage floor), each `not measured` when its source is absent or empty. Ported from agent-chat's `scripts/seat/scorecard`.
+
+### Patch Changes
+
+- de21f12: Regenerate the committed API surface snapshots so they match the current exports; no source change.
+
+## 0.15.1
+
+### Patch Changes
+
+- 7b9335c: session-read keeps an agent-chat channel tag's `broadcast="true"` attribute as `Inbound.broadcast` (false for a direct message, null without a channel tag) and bumps `EXTRACT_VERSION` to 8, so `backfillFacets` re-extracts stored inbound rows. session-graph adds `inbound.broadcast` in migration 12 and writes it. session-analytics wake episodes read the flag for the `broadcast` sender kind, so a direct message a forked session copied is no longer a broadcast; msg_id fan-out remains the fallback for rows extracted before version 8.
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-graph@0.16.2
+
+## 0.15.0
+
+### Minor Changes
+
+- f640f72: `taskActuals` rows carry `peakContext`, the largest main-thread context over the task's implementer sessions, and `contextAtFirstDeliverable`, the context of the first implementer request at or after the earliest `status_report` or `pr_create` signal (null when there is none).
+- 3ecb1c7: Add `costPerOutcome`, `assignmentSchema`, `costPerOutcomeSchema` and `renderCostPerOutcomeText`: cost generic seat/agent assignment records against `request_cost` over a window and report what each merged and done outcome cost per seat, kind, initiative and value tag. An agent in several assignments is costed once, an agent with no name match joins by `session_origin.task_ids`, unmatched agents are listed rather than dropped, and seat sessions are reported apart in `seatCostUsd`.
+
+### Patch Changes
+
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
+## 0.14.0
+
+### Minor Changes
+
+- 11df74d: `taskActuals` accepts optional `shepherdRuns` (the records `titan-factory shepherd stats --per-run --json` prints) and `shepherdSince`. When passed, each row gains `reviewRounds`, `stageMinutes`, `serviceWallHours` (first implementer request to the earliest merge) and `mergePath` (`shepherd`, `outside` when a merged PR has no run, else null), joined by task id and then by `repo#pr`. A row merged before `shepherdSince` gets null Shepherd facts.
+- b924847: Add `successorReworkReport` and `successorReworkSchema`: per role, how many files a successor session re-reads in its first boot requests (default 30) that its same-named predecessor already read, from `file_read` signals only, with the cost of those boot requests counted once each. Overlapping same-name sessions are never paired, and `fileReadData` is false when the graph holds no `file_read` signal.
+
+### Patch Changes
+
+- Updated dependencies [662f42b]
+  - @titan-design/session-read@0.13.1
+
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-graph@0.15.1
+
+## 0.13.1
+
+### Patch Changes
+
+- 3873ce6: Count each inbound once when a session is held in two transcripts: `humanTurnCount`, `inboundKinds` and episode inbounds now keep only the first copy (`INBOUND_COPY_RANK`, the inbound twin of `SIGNAL_COPY_RANK`).
+
+## 0.13.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [3d3cc58]
+  - @titan-design/session-read@0.12.2
+
+## 0.12.0
+
+### Minor Changes
+
+- be6e34c: Add the coordinator duty meter core. `mergeCopies` meters seat transcript lines into duty-classified, priced calls and turns, with copy dedupe, per-pool window starts, rebuilt triggers and outcomes, and the `TP1550_RULES` and `V3_RULES` rule sets. `dutyTable` totals them into the `titan.coord-duty/v1` duty table, and `seatOf` names a transcript's seat.
+
+## 0.11.0
+
+### Minor Changes
+
+- 5c659a3: Add `taskActuals(minerDb, tasks, options)`: one row per done task with implementer and reviewer agent-hours (request gaps capped at 15 minutes, with the 5 and 60 minute values alongside), list-price cost, implementer session count and first and last request, linked PRs with merge time, and the flags `no-impl-session`, `weak-link`, `multi-task`, `reopened` and `unpriced`. Initiatives come from an allowlist option. A session's role comes from its spawn profile (`fable-implementer` and `fable-reviewer` included); a linked session that counts toward neither total is reported in `unmappedSessions` and raises `unmapped-role`.
+
+### Patch Changes
+
+- 3bf2ac3: Index transcripts mirrored from another host as children of the same session. session-read's `claudeTranscriptRoots` adds a root for each `<dir>/<account>/projects` named by `CLAUDE_TRANSCRIPT_MIRRORS` (`<host>=<dir>` entries), and `TranscriptRoot` and `DiscoveredTranscript` gain an optional `host`. When a session has facts in more than one transcript, session-graph's rollup recounts `turn_count`, `commit_count` and `push_count` without counting any copy twice. `purgeTranscript` on one copy keeps the shared session row, moves rows the other copy also holds to its lines, recounts the session and returns the ids it handed off, and the new `SIGNAL_COPY_RANK` export ranks the copies of a `session_signal` row. session-analytics episodes read each signal once.
+- dcf8e04: Read task-actuals query rows through type guards instead of type assertions.
+- Updated dependencies [3bf2ac3]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+
 ## 0.10.0
 
 ### Minor Changes

@@ -28,13 +28,14 @@ const NEXT: Record<SeatNotice, string> = {
   "ci-failed": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "sh-sent-back": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
-  held: "Nothing pushes while the run is held. Release the hold and Shepherd resumes the fix round at this head, or push a fix yourself, or close the PR to end the run.",
+  held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
 type SeatNoticeInput = z.infer<typeof SeatNoticeInput>;
 
-const SeatNoticeResult = z.looseObject({ sent: z.boolean(), detail: z.string(), seat: z.string().optional() });
+/** `gate` and `headSha` let the seat digest see a told seat's fix round; records older than them carry neither. */
+const SeatNoticeResult = z.looseObject({ sent: z.boolean(), detail: z.string(), seat: z.string().optional(), gate: z.enum(SEAT_NOTICES).optional(), headSha: z.string().optional() });
 type SeatNoticeResult = z.infer<typeof SeatNoticeResult>;
 
 function seatNoticeText({ repo, pr, headSha, gate, why }: SeatNoticeInput): string {
@@ -55,7 +56,7 @@ async function sendSeatNotice(ports: ExitNoticePorts | undefined, input: SeatNot
     seat = addressee(ports, input);
     if (seat === undefined) return { sent: false, detail: input.gate === "held" ? "the run names no seat and no hub seat is set" : `no single seat owns ${input.repo}` };
     await ports.send(seat, seatNoticeText(input));
-    return { sent: true, seat, detail: `told ${seat}` };
+    return { sent: true, seat, gate: input.gate, headSha: input.headSha, detail: `told ${seat}` };
   } catch (error) {
     return { sent: false, ...(seat && { seat }), detail: `the seat notice failed: ${failureOf(error)}` };
   }

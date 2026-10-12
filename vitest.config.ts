@@ -7,12 +7,14 @@ const needsProcess = [
   "packages/code-graph/src/extractors/ts-morph-extractor-type-roots.test.ts",
   "packages/session-read/src/discover-roots.test.ts",
   "products/factory/src/shepherd/reviewer-dispatch.test.ts",
+  "products/session-miner/src/commands/memory.test.ts",
   "products/session-miner/src/insights/blocked-flow.test.ts",
   "products/session-miner/src/insights/define.test.ts",
+  "products/session-miner/src/memory/discover.test.ts",
 ];
 
-// A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with 4 threads and
-// 1 fork, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
+// A worker's heap cap, so a runaway test dies with an out-of-memory error instead of filling swap; with at most 4
+// workers, test workers stay under 10 GB. Worker threads reject heap flags in execArgv but take V8 flags set before
 // the pool starts; forks are child processes and take execArgv.
 const workerHeapMb = 2048;
 setFlagsFromString(`--max-old-space-size=${workerHeapMb}`);
@@ -32,11 +34,7 @@ export default defineConfig({
       include: ["packages/*/src/**/*.{ts,tsx}", "products/*/src/**/*.{ts,tsx}", "apps/*/src/**/*.{ts,tsx}"],
       exclude: ["**/*.test.{ts,tsx}", "**/index.ts"],
     },
-    // Pool options are global in vitest 3; per-project values are ignored. minThreads is set because its default exceeds the cap.
-    poolOptions: {
-      threads: { minThreads: 1, maxThreads: 4 },
-      forks: { minForks: 1, maxForks: 1, execArgv: forksHeap },
-    },
+    maxWorkers: 4,
     projects: [
       {
         extends: true,
@@ -61,6 +59,9 @@ export default defineConfig({
         test: {
           name: "forks",
           pool: "forks",
+          // One fork, run apart from the threads, as its own sequential group.
+          maxWorkers: 1,
+          execArgv: forksHeap,
           include: needsProcess,
         },
       },

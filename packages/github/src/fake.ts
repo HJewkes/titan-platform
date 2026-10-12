@@ -5,7 +5,7 @@ import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
 import type { OpenPrList, OpenPrRequest } from "./pr-list.js";
 import type { ReviewComment } from "./review-comment.js";
-import type { CheckRun, Commit, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMessage, MergeMethod, PullRequest, PutFileRequest, RequiredChecks, SquashSource } from "./port.js";
+import type { CheckRun, Commit, CommitStatus, IssueComment, LoggedCommit, PrFile, GitHubWire, MergeMessage, MergeMethod, PullRequest, PutFileRequest, RequiredChecks, SquashSource } from "./port.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -18,6 +18,9 @@ export interface FakeEffects {
   merge: number;
   rerunFailedJobs: number;
 }
+
+/** Reads a test can make fail, for a caller that must treat a failed read as transient. */
+export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit";
 
 export interface FakeGitHub {
   wire: GitHubWire;
@@ -55,6 +58,10 @@ export interface FakeGitHub {
   /** Every check run created, with the title, summary and external id that `CheckRun` does not carry. */
   createdCheckRuns: { id: number; repo: string; request: CreateCheckRunRequest }[];
   commits: Map<string, Commit>;
+  /** Sha to its combined status, newest per context. */
+  statuses: Map<string, CommitStatus[]>;
+  /** Errors the next calls of a read throw, one per call, before it answers. */
+  readFaults: Partial<Record<FakeFaultyRead, Error[]>>;
   refs: Map<string, string>;
   /** Job id to full log text, for `getJobLog`. */
   jobLogs: Map<number, string>;
@@ -126,6 +133,8 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     branchProtected: false,
     createdCheckRuns: [],
     commits: new Map(),
+    statuses: new Map(),
+    readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
     jobLogs: new Map(),
     files: new Map(),
@@ -141,7 +150,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviewComments: new Map(),
     forcePushes: new Map(),
     addPr(fields) {
-      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, ...fields };
+      const pr: PullRequest = { number: prs.size + 1, state: "open", merged: false, mergeSha: null, mergedAt: null, headRef: `topic-${prs.size + 1}`, headRepo: repo, baseRef: base, draft: false, mergeableState: "clean", behind: false, autoMerge: false, ...fields };
       if (pr.merged && pr.mergedAt === null) pr.mergedAt = FAKE_MERGED_AT;
       prs.set(pr.number, pr);
       return { ...pr };
@@ -153,6 +162,11 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
   } as Omit<FakeGitHub, "wire"> as FakeGitHub;
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
+  const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
+    const fault = (fake.calls.push(name), fake.readFaults[name]?.shift());
+    if (fault) throw fault;
+    return answer();
+  };
   fake.wire = {
     getRef: async (_repo, branch) => record("getRef", fake.refs.get(branch) ?? null),
     createRef: async (_repo, branch, sha) => {
@@ -172,7 +186,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       if (!fake.refs.delete(branch)) throw new FakeHttpError(422, "Reference does not exist");
       effects.deleteRef += 1;
     },
-    getDefaultBranch: async () => record("getDefaultBranch", base),
+    getDefaultBranch: async () => read("getDefaultBranch", () => base),
     getContent: async (_repo, path, ref) => {
       const file = fake.files.get(`${ref}:${path}`);
       return record("getContent", file ? { path, blobSha: file.blobSha, content: file.content } : null);
@@ -188,13 +202,15 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
       fake.onGetPr?.(pr, reads.get(number)!);
       return record("getPr", { ...pr });
     },
-    getBranchRules: async () => record("getBranchRules", { ...fake.rules, contexts: [...fake.rules.contexts] }),
-    getClassicRequiredChecks: async () => record("getClassicRequiredChecks", { ...fake.classicRules, contexts: [...fake.classicRules.contexts] }),
+    getBranchRules: async () => read("getBranchRules", () => ({ ...fake.rules, contexts: [...fake.rules.contexts] })),
+    getClassicRequiredChecks: async () => read("getClassicRequiredChecks", () => ({ ...fake.classicRules, contexts: [...fake.classicRules.contexts] })),
     reviewRulesBypassable: async () => record("reviewRulesBypassable", fake.reviewBypass),
     getBranchProtected: async () => record("getBranchProtected", fake.branchProtected),
-    listCheckRuns: async (_repo, sha) => record("listCheckRuns", [...(runs.get(sha) ?? [])]),
+    listCheckRuns: async (_repo, sha) => read("listCheckRuns", () => [...(runs.get(sha) ?? [])]),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
+    resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),
+    listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? "completed"),
     getJobLog: async (_repo, jobId) => {
       const log = fake.jobLogs.get(jobId);
@@ -250,6 +266,12 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
   };
   return fake;
+}
+
+/** A commit is known when it was created, is a ref's tip, or has runs or statuses; only a unique prefix expands, as on GitHub. */
+function resolveCommit(fake: FakeGitHub, runs: Map<string, CheckRun[]>, sha: string): string | null {
+  const matches = [...new Set([...fake.commits.keys(), ...fake.refs.values(), ...runs.keys(), ...fake.statuses.keys()])].filter((full) => full.startsWith(sha));
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 /** Like GitHub, the run is stamped with the posting App's id, which is what `latestCheckRuns` and `mergeReadiness` read. */

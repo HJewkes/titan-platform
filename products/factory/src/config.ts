@@ -30,6 +30,8 @@ export const ReviewConfigSchema = z.strictObject({
   /** A PR over this many changed lines, generated files left out, gets the g10 profile; absent means 400. */
   g10ChangedLines: z.number().int().positive().optional(),
   configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional(),
+  /** Claude config directories a review moves to, in order, while `configDir` is out of usage; absent means the review holds. */
+  fallbackConfigDirs: z.array(argvWord.refine(isAbsolute, "must be an absolute path")).optional(),
   verdictTimeoutMs: z.number().int().positive().optional(),
   sessionStartTimeoutMs: z.number().int().positive().optional(),
   /** Repos whose CI uploads a `codewatch-report` artifact; their reviewer briefs get its questions. */
@@ -43,6 +45,16 @@ export const ReviewConfigSchema = z.strictObject({
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
+
+/** A repo Shepherd works on with no seat behind it; strict, so a misspelt `path` fails the load instead of leaving no checkout. */
+export const ShepherdRepoConfigSchema = z.strictObject({
+  /** The repo's main checkout, used when no seat binds the repo; a seat's path wins. */
+  path: z.string().min(1).optional(),
+  /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
+  advisory: z.boolean().optional(),
+});
+
+export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
 export const FixerConfigSchema = z.strictObject({
@@ -107,6 +119,8 @@ export const ServiceConfigSchema = z.strictObject({
   deployCheckout: absolutePath.optional(),
   /** What deploy clones the checkout from when it is absent; absent means the origin of the checkout the CLI runs from. */
   deployRemote: noNul.min(1).optional(),
+  /** How long `service deploy` watches a restarted build before it counts as deployed; absent means 2 minutes. */
+  deployWatchMs: z.number().int().min(0).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
@@ -155,6 +169,7 @@ export const FactoryConfigSchema = z.object({
       fixer: FixerConfigSchema.optional(),
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
+      repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), ShepherdRepoConfigSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
@@ -197,7 +212,12 @@ function parseJson(path: string): unknown {
 }
 
 export function loadConfig(path: string): FactoryConfig {
-  if (!existsSync(path)) return {};
+  return readConfig(path) ?? {};
+}
+
+/** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
+export function readConfig(path: string): FactoryConfig | undefined {
+  if (!existsSync(path)) return undefined;
   const raw = parseJson(path);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);

@@ -17,6 +17,7 @@ const REPO_NAME = /^[A-Za-z0-9._-]+$/;
 /** GitHub's owner grammar: 1 to 39 alphanumerics and single hyphens, never leading or trailing. */
 const REPO_OWNER = /^(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const SHA = /^[0-9a-f]{40}$/;
+const SHA_PREFIX = /^[0-9a-f]{7,40}$/;
 /** git check-ref-format's forbidden characters, plus `?`, `#` and `%`, which a URL path would decode or split on. */
 const REF_FORBIDDEN = /[ ~^:?*[\\#%]/;
 const PATH_FORBIDDEN = /[?#\\%]/;
@@ -59,6 +60,12 @@ function refProblem(ref: string): string | undefined {
 
 export function checkSha(field: string, sha: string): string {
   if (!SHA.test(sha)) throw new GitHubInputError(field, sha, "expected 40 lower-case hex characters");
+  return sha;
+}
+
+/** A full sha or an abbreviation of at least seven characters, as `git` prints one. */
+export function checkShaPrefix(field: string, sha: string): string {
+  if (!SHA_PREFIX.test(sha)) throw new GitHubInputError(field, sha, "expected 7 to 40 lower-case hex characters");
   return sha;
 }
 

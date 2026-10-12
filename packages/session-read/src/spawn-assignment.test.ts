@@ -110,6 +110,16 @@ describe("assignedTaskIds", () => {
     expect(assign(brief)).toEqual({ taskIds: ["TP-31"], source: "brief-anchor" });
   });
 
+  it("assignedTaskIds finds the task after a renamed orientation block when briefingChars is given", () => {
+    const block = orientation(RENAMED);
+    const brief = `${block}\n\nBuild the exporter for TP-40.`;
+
+    expect(assignedTaskIds({ agentName: "impl-worker", brief, isKnown: everyId, briefingChars: block.length })).toEqual({
+      taskIds: ["TP-40"],
+      source: "brief-paragraph",
+    });
+  });
+
   it("links nothing for an empty brief and an empty name", () => {
     expect(assign("", "")).toEqual({ taskIds: [], source: "none" });
   });
@@ -135,7 +145,27 @@ describe("assignedTaskIds", () => {
   });
 });
 
+const RENAMED = "## Backlog (2)\n\n- TP-1: an open task\n- TP-2: another open task";
+
 describe("orientationEnd", () => {
+  it("uses briefingChars over the heading text when the headings were renamed", () => {
+    const block = orientation(RENAMED);
+    const brief = `${block}\n\nBuild the exporter for TP-40.`;
+
+    expect(orientationEnd(brief)).toBeNull();
+    expect(brief.slice(orientationEnd(brief, block.length) ?? 0)).toBe("Build the exporter for TP-40.");
+  });
+
+  it("ignores briefingChars when the brief has no orientation header", () => {
+    expect(orientationEnd("TASK: TP-1 add the widget", 10)).toBe(0);
+  });
+
+  it("falls back to the heading rules when briefingChars is out of range", () => {
+    const brief = `${orientation(OPEN_TASKS, RELATED)}\n\nAssignment text`;
+
+    expect(brief.slice(orientationEnd(brief, brief.length + 1) ?? 0)).toBe("Assignment text");
+  });
+
   it("returns zero for a brief without an orientation block", () => {
     expect(orientationEnd("TASK: TP-1")).toBe(0);
   });

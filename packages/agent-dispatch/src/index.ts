@@ -1,6 +1,7 @@
 export {
   BrokerUnavailableError,
   DispatchError,
+  DispatchTimeoutError,
   PEER_NAME_PATTERN,
   agentChatEnv,
   buildSpawnArgs,
@@ -8,6 +9,7 @@ export {
   type DispatchRequest,
   type DispatchResult,
 } from "./dispatch.js";
+export { assertInstalledHeadless, installedProfilesDir } from "./profile-guard.js";
 export {
   ExecError,
   ExecTimeoutError,
@@ -33,7 +35,6 @@ export {
 export { buildMessageArgs, messageAgent } from "./message.js";
 export { dataFence } from "./fence.js";
 export {
-  DispatchTimeoutError,
   buildListAgentsArgs,
   buildRetireArgs,
   listAgents,
@@ -42,3 +43,12 @@ export {
   type AgentRow,
   type RetireResult,
 } from "./agents.js";
+export {
+  ASK_LABEL_PATTERN,
+  askHuman,
+  dismissAsk,
+  readAnswers,
+  type AnswersPage,
+  type AskRequest,
+  type ServiceAnswer,
+} from "./ask.js";

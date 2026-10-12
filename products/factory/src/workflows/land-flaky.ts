@@ -55,10 +55,10 @@ export async function rerunIfFlaky(port: GitHubPort, input: FlakyTarget, red: Ci
     return true;
   }
   const rerun = await rerunAll(port, input.repo, failing);
-  if (!rerun) return false;
+  if (rerun.length === 0) return false;
   flaky.rerun.add(flakyKey(input, red.headSha));
   const clock = deadline({ ...timing, timeoutMs: 5 * 60_000 });
-  while (!clock.expired() && !(await replaced(port, input, red.headSha, failing))) await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
+  while (!clock.expired() && !(await replaced(port, input, red.headSha, rerun))) await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
   return true;
 }
 
@@ -71,11 +71,14 @@ async function failedRunsState(port: GitHubPort, input: FlakyTarget, headSha: st
   return stillFailed ? "failed" : "changed";
 }
 
-/** False when GitHub refused every rerun (e.g. a run still in progress); a partial refusal still counts, because a rerun is under way. */
-async function rerunAll(port: GitHubPort, repo: string, failing: FailingCheck[]): Promise<boolean> {
-  let any = false;
-  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) any = (await port.rerunFailed(repo, runId)).done || any;
-  return any;
+/**
+ * The failing checks whose run GitHub accepted a rerun for; empty when it refused every one (e.g. a run still in progress).
+ * A partial refusal still counts, because a rerun is under way, but only the accepted runs can be waited on: a refused run never gets replaced.
+ */
+async function rerunAll(port: GitHubPort, repo: string, failing: FailingCheck[]): Promise<FailingCheck[]> {
+  const accepted = new Set<number>();
+  for (const runId of new Set(failing.map((check) => check.workflowRunId!))) if ((await port.rerunFailed(repo, runId)).done) accepted.add(runId);
+  return failing.filter((check) => accepted.has(check.workflowRunId!));
 }
 
 async function replaced(port: GitHubPort, input: FlakyTarget, headSha: string, failing: FailingCheck[]): Promise<boolean> {

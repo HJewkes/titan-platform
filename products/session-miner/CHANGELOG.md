@@ -1,5 +1,144 @@
 # @titan-design/session-miner
 
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
+## 0.9.0
+
+### Minor Changes
+
+- d58ce99: Add insights question Q5, `tool-errors`: error tool results and classifier denials per local day, by the self-improve extractor's error classes and by tool, with sessions and agents. Add Q6, `round-trips`: parent-to-child follow-ups by class and per-PR verdict rounds per local day from agent-chat's events. Add Q11, `probes`: each probe in a `--probes` JSON file, a named Q5 or Q6 measure, against its target per local day as HOLDING, REGRESSED or NO-DATA.
+
+### Patch Changes
+
+- Updated dependencies [cd830c1]
+  - @titan-design/github@0.9.0
+
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-graph@0.16.2
+  - @titan-design/session-analytics@0.15.1
+
+## 0.8.0
+
+### Minor Changes
+
+- a1a3638: Add `titan-miner memory scan` and `titan-miner memory report`. They read every Claude Code auto-memory directory, then dedupe, group and propose a destination per group. The report is written as `report.md` and `decisions.yml`, mode 0600, and the envelope carries counts and paths only.
+
+### Patch Changes
+
+- a260d28: Add the pure core of the weekly tool-gap workflow: `diffWeeks` compares two weeks of Q9 `tool-gaps` and Q10 `tool-adoption`, `planTaskActions` plans at most one task add or note per pattern id (deduped by the `tool-gap:<patternId>` tag) for patterns above a calls and sessions threshold that the adoption registry does not already track, and `renderDigest` writes one owner notice listing new gaps, task actions, adoption results and removal candidates.
+
+## 0.7.3
+
+### Patch Changes
+
+- ad09028: Name the build tasks TP-2315..2320 on their adoption-registry baselines, add `--task` to the shepherd status filters, and count `titan-gh` as one of Q9's CLIs.
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
+## 0.7.0
+
+### Minor Changes
+
+- 89a7e88: The adoption registry holds unshipped `baseline` entries beside shipped ones and is seeded with the 15 ranked rows of the 2026-10-08 bash-to-tool mining. Q10 `tool-adoption` counts a baseline's old pipelines from the window start, never flags it, and marks it `baseline` in the text table. Rows gain `row`, `status` and `note`; `task`, `pr`, `shipped` and `daysSinceShip` are null for a baseline. With nothing shipped and no `--since`, the window starts four weeks back. A new form on the old head with no flags is no longer counted.
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [aeedb5d]
+  - @titan-design/session-graph@0.16.0
+  - @titan-design/session-analytics@0.13.3
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [7c73654]
+  - @titan-design/session-read@0.13.0
+  - @titan-design/session-analytics@0.13.2
+  - @titan-design/session-graph@0.15.1
+
+## 0.6.0
+
+### Minor Changes
+
+- 587f2de: Add `seatContext`: per-seat context p50, p90 and max per call over a window, with auto and manual compactions counted from the seat's own sessions. The miner exposes it as `seat-context`, with optional `--p90-max` and `--auto-max` limits that fail the run.
+
+### Patch Changes
+
+- Updated dependencies [579886b]
+- Updated dependencies [587f2de]
+- Updated dependencies [3d3cc58]
+  - @titan-design/github@0.8.0
+  - @titan-design/session-analytics@0.13.0
+  - @titan-design/session-read@0.12.2
+
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [be6e34c]
+  - @titan-design/session-analytics@0.12.0
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [df3e9c3]
+  - @titan-design/memory@0.2.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [3bf2ac3]
+- Updated dependencies [c0701a9]
+- Updated dependencies [91eea82]
+- Updated dependencies [e4dd79b]
+- Updated dependencies [845a0cf]
+- Updated dependencies [5c659a3]
+- Updated dependencies [dcf8e04]
+  - @titan-design/session-read@0.12.0
+  - @titan-design/session-graph@0.15.0
+  - @titan-design/session-analytics@0.11.0
+  - @titan-design/github@0.7.0
+
 ## 0.5.1
 
 ### Patch Changes

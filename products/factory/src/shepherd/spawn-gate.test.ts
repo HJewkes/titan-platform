@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { agentChatAgents } from "./agents.js";
 import { fixersOver } from "./main-red.js";
 import { ReviewerBrokerBusy } from "./review.js";
@@ -138,6 +138,43 @@ describe("spawnGate", () => {
   });
 });
 
+describe("spawnGate tells the machine-stop ledger", () => {
+  const scene = (readings: MachineReadings) => {
+    const state = { now: 1_000, stops: [] as [number, string][] };
+    const gate = spawnGate({ read: () => readings, now: () => state.now, log: () => undefined, onStop: (at, reason) => void state.stops.push([at, reason]) });
+    return { state, gate };
+  };
+
+  it("notes a load5 past the machine stop even though the spawn is deferred", () => {
+    const { gate, state } = scene({ ...idle, load5: 40 });
+
+    expect(() => gate.admit("rv-octo-demo-7")).toThrow(SpawnDeferred);
+    expect(state.stops).toEqual([[1_000, "load5 40 (limit 28)"]]);
+  });
+
+  it("notes memory pressure at the stop level", () => {
+    const { gate, state } = scene({ ...idle, pressureLevel: 2 });
+
+    expect(() => gate.admit("rv-octo-demo-7")).toThrow(SpawnDeferred);
+    expect(state.stops).toEqual([[1_000, "memory pressure level 2 (limit 2)"]]);
+  });
+
+  it("notes nothing for a deferral on pace alone", () => {
+    const { gate, state } = scene({ ...idle, load5: 1 });
+
+    gate.admit("rv-a-1");
+    expect(() => gate.admit("rv-b-2")).toThrow(SpawnDeferred);
+    expect(state.stops).toEqual([]);
+  });
+
+  it("notes nothing for a deferral past the build limit but under the machine stop", () => {
+    const { gate, state } = scene({ ...idle, load5: 21 });
+
+    expect(() => gate.admit("rv-octo-demo-7")).toThrow(SpawnDeferred);
+    expect(state.stops).toEqual([]);
+  });
+});
+
 describe("spawnGate under reviews retrying on the busy wait", () => {
   /** Runs one busy-wait loop per review against the gate on a virtual clock; each resolves "started" or "gave up". */
   async function drain(startTimes: readonly number[], readings: MachineReadings): Promise<string[]> {
@@ -244,8 +281,17 @@ describe("spawnGate review priority", () => {
 
 describe("every factory-started agent passes the one gate", () => {
   let dir: string;
-  beforeEach(() => void (dir = mkdtempSync(join(tmpdir(), "titan-spawn-gate-"))));
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "titan-spawn-gate-"));
+    // agent-dispatch reads ~/.agent-chat/profiles before a spawn; keep it off the real home.
+    vi.stubEnv("HOME", dir);
+    mkdirSync(join(dir, ".agent-chat", "profiles"), { recursive: true });
+    writeFileSync(join(dir, ".agent-chat", "profiles", "rv.json"), JSON.stringify({ surface: "headless" }));
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   const bin = () => {
     const path = join(dir, "agent-chat");

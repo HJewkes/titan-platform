@@ -3,6 +3,8 @@ import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
+import type { LandPrState } from "../workflows/land-pr.js";
+import { rerunFlakyHead } from "./flake-check.js";
 import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun } from "./gates.js";
 import type { ShepherdDeps, WakeRequest } from "./phases.js";
@@ -17,7 +19,7 @@ export const HELD_REPAIR_STEPS: readonly StepDeclaration[] = [
 const DEFAULT_POLL_MS = 30_000;
 
 const HeldCheckResult = z.looseObject({ held: z.boolean(), reason: z.string().optional(), seat: z.string().optional() });
-const HeldWaitResult = z.looseObject({ moved: z.boolean() });
+const HeldWaitResult = z.looseObject({ moved: z.boolean(), headSha: z.string().optional() });
 const RedPayload = z.looseObject({ failing: z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullish() })) });
 const VerdictPayload = z.looseObject({ kind: z.string() });
 
@@ -29,7 +31,7 @@ interface HeldInput {
 }
 
 /** A joined seat or `none` names no one agent to message, so the hub seat stands in. */
-const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
+export const singleSeat = (seat: string | undefined): string | undefined => (seat === undefined || seat === "none" || seat.includes("+") ? undefined : seat);
 
 function heldCheck(registration: Registration | undefined): z.infer<typeof HeldCheckResult> {
   if (!registration?.held) return { held: false };
@@ -37,12 +39,16 @@ function heldCheck(registration: Registration | undefined): z.infer<typeof HeldC
   return { held: true, reason: registration.holdReason ?? "held", ...(seat && { seat }) };
 }
 
-/** Polls until the hold is released or replaced, or the PR leaves the held head; a failed read is polled again. */
+/**
+ * Polls until the hold is released or replaced, or the PR leaves the held head; a failed read is polled again.
+ * A move records the open PR's new head, because shepherd status reads its head from completed results and the
+ * next ci-wait has none while it runs.
+ */
 async function awaitRelease(deps: ShepherdDeps, input: HeldInput & { reason: string }, signal: AbortSignal): Promise<z.infer<typeof HeldWaitResult>> {
   for (;;) {
     signal.throwIfAborted();
     const pr = await deps.port.getPr(input.repo, input.pr).catch(() => undefined);
-    if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { moved: true };
+    if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { moved: true, ...(pr.state === "open" && { headSha: pr.headSha }) };
     const now = heldCheck(deps.store.get().byRun(input.runId));
     if (!now.held || now.reason !== input.reason) return { moved: false };
     await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
@@ -69,16 +75,28 @@ function causeOf(kind: WakeRequest["kind"], payload: unknown): string {
   return `the review said ${verdict.success ? verdict.data.kind : kind}`;
 }
 
+const isRerunStep = (stepId: string): boolean => /^rerun:\d+$/.test(stepId);
+
+/** True while replaying, when the record's next step is not the one this wake would record: the record predates it. */
+function recordedWithout(run: GateRun, records: (stepId: string) => boolean): boolean {
+  const next = run.ctx.historyNext();
+  return next !== undefined && !records(next);
+}
+
 /**
  * G10: a held run wakes no fixer and spends no repair, so nothing pushes while it is held. The seat is told once per
  * hold, head and cause, and the run waits. True means the head moved and the next round lands; false means the run is
  * not held, or its hold was released at this head, and the repair goes ahead as usual.
+ * A run that is not held first reruns a red head's failed jobs once, so a flaky check never wakes the implementer.
+ * The hold check and the rerun shipped in separate deploys, so a replay checks its record before each: a record that
+ * went on without one took the path from before it, and a run that landed on that path must not touch CI again.
  */
-export async function heldRepair(run: GateRun, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+export async function heldRepair(run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
+  if (recordedWithout(run, (stepId) => stepId === HELD_CHECK_STEP)) return false;
   const input: HeldInput = { runId: run.ctx.runId, ...run.target, headSha };
   for (;;) {
     const hold = await step(run.ctx, HELD_CHECK_STEP, input, HeldCheckResult);
-    if (!hold.held) return false;
+    if (!hold.held) return !recordedWithout(run, isRerunStep) && rerunFlakyHead(run, kind, headSha, payload);
     const reason = hold.reason ?? "held";
     const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });
