@@ -5,6 +5,7 @@ import { PRICE_TABLE, PRICE_TABLE_VERSION } from "@titan-design/session-analytic
 import { openSessionGraph, syncPrices } from "@titan-design/session-graph";
 import type { Db } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "../cli.js";
 import { DEFAULT_THROUGHPUT_INITIATIVES, resolveConfig } from "../config.js";
 
@@ -99,7 +100,7 @@ async function cli(args: string[], root: string[] = ["--graph", graphFile]): Pro
 async function json<T>(args: string[], root?: string[]): Promise<T> {
   const { code, stdout, stderr } = await cli(["--json", ...args], root);
   expect(code, stderr).toBe(0);
-  return (JSON.parse(stdout) as { data: T }).data;
+  return z.object({ data: z.custom<T>() }).parse(JSON.parse(stdout)).data;
 }
 
 interface TableData {

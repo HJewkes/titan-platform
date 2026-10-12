@@ -89,8 +89,10 @@ function loadRows(ctx: MinerContext, capMinutes: number | undefined): LoadedRows
   }
 }
 
+const CountRow = z.object({ n: z.number() });
+
 function countTaskLinkedOrigins(graph: SessionGraph): number {
-  return (graph.db.prepare("SELECT count(*) AS n FROM session_origin WHERE task_ids IS NOT NULL").get() as { n: number }).n;
+  return CountRow.parse(graph.db.prepare("SELECT count(*) AS n FROM session_origin WHERE task_ids IS NOT NULL").get()).n;
 }
 
 function fitTable(loaded: LoadedRows, args: TableArgs): { table: ClassTable; inputs: ThroughputInputs } {
