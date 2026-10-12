@@ -148,9 +148,10 @@ different optional fourth line directly after `Head:`, `CI-policy: unchanged` or
 `CI-policy: weakened <keys>` (TP-2407), where the keys are comma-and-space separated, each at most
 once, from the closed set `CI_POLICY_KEYS`: `required-check`, `permissions`, `pull_request_target`,
 `secrets`, `ruleset` and `other`. It is returned as `ciPolicy` (`{ kind: "unchanged" }` or
-`{ kind: "weakened", keys }`). With no visible line labelled CI-policy, `ciPolicy` is undefined.
-The label is matched with its case, spacing and separator folded (`ci-policy :`, `CI policy:`), so
-any labelled line that is not the one exact line directly after `Head:` returns
+`{ kind: "weakened", keys }`). A visible line counts as labelled when it folds to `cipolicy:`
+once list and quote markers, markdown emphasis, case and every Unicode dash, space and format
+character are removed (`**CI-policy:**`, `- ci policy:`, `CI–policy:`). With no labelled line,
+`ciPolicy` is undefined. Any labelled line that is not the one exact line directly after `Head:` returns
 `{ kind: "malformed" }`: an unknown or repeated key, an empty list, other casing, a trailing note, a
 second labelled line anywhere, or the line anywhere else. Shepherd's merge guard gates a malformed
 line on any PR. On `FIX_FIRST` or `WAIT` the line is ignored. Text that may be someone

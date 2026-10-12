@@ -542,9 +542,10 @@ declare function parseReviewVerdicts(text: string): ReviewVerdictMatch[];
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
- *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. With no visible line
- *   labelled CI-policy (label case, spacing and separator folded) `ciPolicy` is undefined. Any labelled line that is
- *   not exactly one well-formed line at Head+1 (an unknown or repeated key, an empty list, other casing, a second
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. A visible line is labelled
+ *   when it folds to `cipolicy:` (see `isCiPolicyLabelled`): list and quote markers, markdown emphasis, case, and every
+ *   Unicode dash, space and format character are folded away. With no labelled line `ciPolicy` is undefined. Any
+ *   labelled line that is not exactly one well-formed line at Head+1 (an unknown or repeated key, an empty list, other casing, a second
  *   labelled line anywhere, or a line anywhere else) reads `{ kind: "malformed" }`, which the merge guard gates on
  *   any PR: a reviewer who wrote the line meant something, so a misspelt `weakened` never reads as silence.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even

@@ -114,6 +114,14 @@ describe("a CI-policy line that is present but malformed", () => {
     ["a bare weakened", "CI-policy: weakened"],
     ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nMore.\nci-policy: weakened secrets"],
     ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
+    ["a bold label", "**CI-policy:** weakened secrets"],
+    ["a dash list marker", "- CI-policy: weakened secrets"],
+    ["a code span", "`CI-policy: weakened secrets`"],
+    ["an en dash", "CI\u2013policy: weakened secrets"],
+    ["an em dash", "CI\u2014policy: weakened secrets"],
+    ["a quoted line", "> CI-policy: weakened secrets"],
+    ["a star list marker", "* CI-policy: weakened secrets"],
+    ["an underscore-emphasised label", "__CI-policy__: weakened secrets"],
   ];
   const paths = [["src/", "src/x.ts"], ["a root action.yml", "action.yml"], [".github/", CI_YML]];
 

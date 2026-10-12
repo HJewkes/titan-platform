@@ -334,12 +334,24 @@ describe("the optional CI-policy line", () => {
     ["a later unchanged after weakened", "CI-policy: weakened permissions\nProse.\nCI-policy: unchanged"],
     ["the line one line late", "\nCI-policy: unchanged"],
     ["prose between", "Note.\nCI-policy: unchanged"],
+    ["a bold label", "**CI-policy:** weakened secrets"],
+    ["a dash list marker", "- CI-policy: weakened secrets"],
+    ["a star list marker", "* CI-policy: weakened secrets"],
+    ["a numbered list marker", "1. CI-policy: weakened secrets"],
+    ["a code span", "`CI-policy: weakened secrets`"],
+    ["an en dash", "CI\u2013policy: weakened secrets"],
+    ["an em dash", "CI\u2014policy: weakened secrets"],
+    ["a non-breaking space", "CI\u00a0policy: weakened secrets"],
+    ["a zero-width joiner", "CI-\u200dpolicy: weakened secrets"],
+    ["a fullwidth colon", "CI-policy\uff1a weakened secrets"],
+    ["a quoted line", "> CI-policy: weakened secrets"],
+    ["an underscore-emphasised label", "__CI-policy__: weakened secrets"],
+    ["a bold label after a canonical unchanged", "CI-policy: unchanged\n**CI-policy:** weakened secrets"],
   ])("reads as malformed for %s while the verdict still parses", (_name, tail) => {
     expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(malformed);
   });
 
   it.each([
-    ["a quoted line", "> CI-policy: unchanged"],
     ["an indented-code line", "    CI-policy: unchanged"],
     ["a fenced line", "```\nCI-policy: unchanged\n```"],
   ])("reads as missing for %s while the verdict still parses", (_name, tail) => {
