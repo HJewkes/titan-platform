@@ -58,6 +58,9 @@ const PAREN_JOINS: Array<[string, (guarded: string) => string]> = [
   ["a join between the parens of a top-level ((", (g) => `true || (${JOIN}( 1 #)); ${g}\n))`],
 ];
 
+/** Bash joins a `<<-` body line before it strips the leading tabs, so `<TAB>\<NL><TAB>E` is the delimiter `E`. */
+const TAB_JOINS: Array<[string, (guarded: string) => string]> = [["a <<- delimiter joined across tabbed lines", (g) => `cat <<-E\n\t${JOIN}\tE\n${g}\nE`]];
+
 /** Each hides the guarded command after it from a reader that takes the opener for text. */
 const HIDERS: Array<[string, (guarded: string) => string]> = [
   ["a # inside a top-level $[ ]", (g) => `true || : $[ #]; ${g}`],
@@ -75,6 +78,7 @@ const HIDERS: Array<[string, (guarded: string) => string]> = [
   ["a joined variable as the subcommand", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $${JOIN}ab`)],
   ["a variable name joined in the middle", (g) => g.replace(/^(\S+) (\S+)/, `ab=$2; a=x; $1 $a${JOIN}b`)],
   ...PAREN_JOINS,
+  ...TAB_JOINS,
   ["a joined heredoc delimiter", (g) => `cat <<EOF\nEO${JOIN}F\n${g}\nEOF`],
   ["a subscript assignment joined before its =", (g) => `Y[ 0 ]${JOIN}=x ${g}`],
   ["a joined $( ) inside a spaced subscript", (g) => `Y[ $${JOIN}(echo 0) ]=x ${g}`],
@@ -96,7 +100,7 @@ describe("a guarded command next to a $-opener", () => {
     expect(builtHookStdout(`true || : $${JOIN}[ #]; ${guarded}`)).toContain(DENY);
   });
 
-  it.each(GUARDED.flatMap(([name, g]) => PAREN_JOINS.map(([join, line]) => [name, join, line(g)] as const)))("the built hook denies %s after %s", (_name, _join, command) => {
+  it.each(GUARDED.flatMap(([name, g]) => [...PAREN_JOINS, ...TAB_JOINS].map(([join, line]) => [name, join, line(g)] as const)))("the built hook denies %s after %s", (_name, _join, command) => {
     expect(builtHookStdout(command)).toContain(DENY);
   });
 
@@ -141,6 +145,14 @@ describe("where the lexer ends a $-opener", () => {
     ["<<", `cat <${JOIN}<EOF\nx\nEOF`],
   ])("joins the operator %s across a backslash-newline", (op, command) => {
     expect(tokenize(command).some((t) => (t.type === "op" || t.type === "redirect") && (t.type === "op" ? t.value : t.op) === op)).toBe(true);
+  });
+
+  it.each([
+    ["ends at a delimiter joined across tabbed lines", `cat <<-E\n\t${JOIN}\tE\nx\nE`, ""],
+    ["keeps the tab inside a joined body line", `cat <<-E\n\tbody${JOIN}\tE\nE`, "body\tE\n"],
+  ])("a <<- heredoc %s", (_name, command, body) => {
+    const redirect = tokenize(command).find((t) => t.type === "redirect");
+    expect(redirect?.type === "redirect" && redirect.body).toBe(body);
   });
 
   it("keeps a quoted heredoc's backslash-newline, so its delimiter does not join", () => {

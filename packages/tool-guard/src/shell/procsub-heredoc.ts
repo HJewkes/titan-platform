@@ -29,15 +29,19 @@ function readHeredocBodies(s: LexState): void {
 
 /**
  * The next line of a heredoc body. In an unquoted one bash joins a line ending in a backslash-newline to the next
- * before it compares the delimiter, so `EO\<NL>F` ends `<<EOF`; `<<-` strips tabs from the first line only.
+ * before it compares the delimiter, so `EO\<NL>F` ends `<<EOF`; `<<-` strips leading tabs from the joined line.
  */
 function bodyLine(s: LexState, stripTabs: boolean, joins: boolean): string {
+  const line = joinedLine(s, joins);
+  return stripTabs ? line.replace(/^\t+/, "") : line;
+}
+
+function joinedLine(s: LexState, joins: boolean): string {
   let line = "";
-  for (let first = true; ; first = false) {
+  for (;;) {
     const newline = s.src.indexOf("\n", s.i);
     const end = newline === -1 ? s.src.length : newline;
-    const part = s.src.slice(s.i, end);
-    line += stripTabs && first ? part.replace(/^\t+/, "") : part;
+    line += s.src.slice(s.i, end);
     s.i = end + 1;
     if (!joins || newline === -1 || !endsInJoin(line)) return line;
     line = line.slice(0, -1);
