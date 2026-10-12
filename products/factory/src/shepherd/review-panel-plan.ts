@@ -9,7 +9,7 @@ import { DEFAULT_REVIEWER_ROLES, prChangedLines, type ReviewerRoles } from "./re
 export type PanelMode = "off" | "shadow" | "on";
 
 /** Opus is always allowed until TP-1931 asks the spawn gate. */
-export const OPEN_HEADROOM: Headroom = { opus: true };
+const OPEN_HEADROOM: Headroom = { opus: true };
 
 type PanelDeps = Pick<ShepherdDeps, "store" | "port">;
 
@@ -74,6 +74,6 @@ export function intentPlan({ facts, sizeUnread }: PanelFacts, policy: PanelPolic
 const PLAN_KEYS: ReadonlySet<string> = new Set(["class", "touches", "plan"]);
 
 /** The intent `sh-review` takes: the plan stays on the intent's record, so a shadow dispatch gets the input an `off` one does. */
-export function withoutPlan<T extends object>(intent: T): T {
-  return Object.fromEntries(Object.entries(intent).filter(([key]) => !PLAN_KEYS.has(key))) as T;
+export function withoutPlan(intent: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(intent).filter(([key]) => !PLAN_KEYS.has(key)));
 }
