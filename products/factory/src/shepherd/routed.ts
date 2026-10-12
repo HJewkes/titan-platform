@@ -1,7 +1,11 @@
-import type { LandOutcome } from "../workflows/land.js";
+import type { RepoSlug } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
+import { z } from "zod";
+import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
+import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
   headSha: string;
@@ -11,20 +15,28 @@ export interface Routed {
   route: Route;
 }
 
-/** The run's round counters `countRound` advances. */
+/** The run's round counters `countRound` advances; its FIX_FIRST count is the run's recorded `FIX_FIRST_STEP`s. */
 interface RoundCounts {
+  ctx: WorkflowContext;
+  target: { repo: RepoSlug; pr: number };
   failedRounds: number;
   throttledRounds: number;
-  fixFirsts: number;
   closer: CloserStreak;
 }
 
+const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });
+
+/** Records a FIX_FIRST at its round, before any hold or wake, so a held or unwoken FIX_FIRST counts as surely as a woken one. */
+export async function recordFixFirst(ctx: WorkflowContext, at: { repo: RepoSlug; pr: number; headSha: string }): Promise<number> {
+  return (await step(ctx, FIX_FIRST_STEP, { ...at, fixFirst: fixFirstCount(ctx) + 1 }, FixFirstRecord)).fixFirst;
+}
+
 /** Counts the round; a conflict's own escalation is `onConflict`'s, so a stuck conflict only adds to the count here. */
-export function countRound(run: RoundCounts, routed: Routed): Escalated | undefined {
+export async function countRound(run: RoundCounts, routed: Routed): Promise<Escalated | undefined> {
   const { route, outcome, headSha } = routed;
   const kind = roundKind(route, outcome);
   run.closer = nextCloserStreak(run.closer, kind, routed.verdict, headSha);
-  if (kind === "fix-first") return fixFirstEscalation(++run.fixFirsts, run.closer.streak, headSha);
+  if (kind === "fix-first") return fixFirstEscalation(await recordFixFirst(run.ctx, { ...run.target, headSha }), run.closer.streak, headSha);
   if (kind === "throttled" && ++run.throttledRounds <= MAX_THROTTLED_ROUNDS) return undefined;
   if (kind !== "stuck" && kind !== "throttled") return undefined;
   run.failedRounds += 1;

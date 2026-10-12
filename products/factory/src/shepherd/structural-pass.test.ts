@@ -12,6 +12,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import { REVIEW_STEPS, reviewPhase, reviewRoutes, type ReviewerAgent, type ReviewerDispatch, type ReviewerReader } from "./review.js";
 import { holdReviewerMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration } from "./store.js";
 import { FIX_FIRST_STEP } from "./wake-brief.js";
+import { recordFixFirst } from "./routed.js";
 import { WAKE_STEPS, wakePhase, wakeRoutes, type ImplementerAgents } from "./wake.js";
 
 const REPO = "octo/demo";
@@ -69,7 +70,7 @@ describe("a PR's second FIX_FIRST", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  /** Reviews and sends back each head in turn, as shepherd-pr does on FIX_FIRST, with a new head between the reviews. */
+  /** Reviews, counts and sends back each head in turn, as shepherd-pr does on FIX_FIRST, with a new head between the reviews. */
   async function sendBackTwice(findingsFor: (head: string) => string) {
     const fake = fakeGitHub({ repo: REPO });
     fake.addPr({ headSha: HEADS[0], headRef: "feat/demo-fix" });
@@ -85,6 +86,7 @@ describe("a PR's second FIX_FIRST", () => {
       for (const [round, headSha] of HEADS.slice(0, 2).entries()) {
         const verdict = await reviewPhase(ctx, { repo: REPO, pr: 1, round, headSha });
         verdicts.push(verdict);
+        await recordFixFirst(ctx, { repo: REPO, pr: 1, headSha });
         await wakePhase(ctx, { kind: "review", repo: REPO, pr: 1, round, headSha, payload: verdict });
       }
     };
