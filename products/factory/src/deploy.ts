@@ -330,8 +330,8 @@ async function restartAndConfirm({ ports, io, options }: Deploy, target: string)
   const sha = buildShaOf(health);
   if (health === undefined || sha === undefined) return `/health answered no build sha in ${SHA_POLLS} tries`;
   if (sha !== target) return `/health reports build ${sha}, not ${target}`;
-  const probe = () => ports.healthWithin(options.port, SHA_PROBE_TIMEOUT_MS);
-  return watchServe({ probe, sleep: ports.sleep }, health, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
+  const probe = (timeoutMs: number) => ports.healthWithin(options.port, timeoutMs);
+  return watchServe({ probe, sleep: ports.sleep, now: ports.now, alive: ports.isAlive }, health, target, { ...DEFAULT_WATCH_WINDOW, ...options.watch });
 }
 
 /** A failed build may have half-cleaned dist while the old process still runs, so restore before anything respawns it. */
