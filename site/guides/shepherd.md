@@ -445,6 +445,7 @@ titan-factory shepherd status owner/repo#123   # one pull request
 titan-factory shepherd status --active --branch-prefix pc-   # live runs on agent-chat/pc-* branches
 titan-factory shepherd status --phase review,merging --task TP-42
 titan-factory shepherd waiting                 # pending gates, oldest first
+titan-factory shepherd prs owner/repo --json   # open PRs from the snapshot, plus Shepherd's merges
 titan-factory shepherd list --state all        # active (default), finished or all
 titan-factory shepherd timeline owner/repo#123
 titan-factory shepherd timeline owner/repo#123 --last 8 --width 300
@@ -507,6 +508,19 @@ is listed apart, because those are routed to the seat that owns the PR. `--json`
 the gate names is the run's current head, false when the run has moved on, null when the gate names
 none. The verb exits 1 when an owner gate is older than 24 hours, and its text says how many are.
 The factory digest lists the five oldest owner gates under "Waiting on you".
+
+`shepherd prs [owner/repo] [--json]` lists the open PRs of every seat repo, or of the repo
+named, from Shepherd's PR snapshot (`products/factory/src/shepherd/prs.ts`). A seat repo with no
+run in it is listed too. The answer makes no GitHub call while the repo's open list is under a
+minute old, and concurrent callers share one list read. The PRs Shepherd itself merged in the last
+24 hours follow, built from each run's `merge` step, so their `mergeSha` costs no PR read. Each
+row is `{ repo, number, branch, headSha, base, state, mergedAt, mergeSha, title, body, draft,
+registered, runId?, phase?, ci?, source, at }`. `state` is `open` or `merged`. `source` is
+`snapshot` or `merge-step`, and `at` is when that source was read. `ci` is
+`{ head, state, requiredMissing, at }`, where `state` is `pending`, `green`, `red` or `none`. It
+appears only when the snapshot already holds the head's check runs. A head it holds none for
+leaves `ci` out rather than reading GitHub. `requiredMissing` names the run's required contexts
+that have no check run on the head. A serve wired without a snapshot refuses with exit 69.
 
 ## Stats {#stats}
 

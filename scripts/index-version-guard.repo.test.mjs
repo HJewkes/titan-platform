@@ -109,3 +109,36 @@ it("passes a PR that never touches indexer.ts while main bumps", () => {
   expect(result.status).toBe(0);
   expect(result.stdout).toContain("untouched");
 });
+
+function commitChangeset(text) {
+  mkdirSync(path.join(repo, ".changeset"), { recursive: true });
+  writeFileSync(path.join(repo, ".changeset", "pr-bump.md"), `---\n"@titan-design/code-graph": minor\n---\n\n${text}\n`);
+  git("add", ".changeset");
+  git("commit", "-q", "-m", "changeset");
+}
+
+// Rebasing onto a main that already holds the same bump drops the bump commit, so only the changeset still says so.
+it("fails a rebased branch whose bump commit became empty, through its changeset", () => {
+  git("switch", "-q", "pr");
+  commitIndexVersion("0.28.0");
+  commitChangeset("`INDEX_VERSION` is now 0.28.0, so the first index reparses every file.");
+  git("switch", "-q", "main");
+  commitIndexVersion("0.28.0");
+  git("switch", "-q", "pr");
+  git("rebase", "-q", "main");
+
+  const result = runGuard();
+
+  expect(git("log", "--format=%s", "main..pr").trim()).toBe("changeset");
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("INDEX_VERSION 0.28.0 is not above base 0.28.0");
+});
+
+it("passes a changeset that says INDEX_VERSION stays while main bumps", () => {
+  git("switch", "-q", "pr");
+  commitChangeset("`INDEX_VERSION` stays at 0.27.0.");
+  git("switch", "-q", "main");
+  commitIndexVersion("0.28.0");
+
+  expect(runGuard().status).toBe(0);
+});
