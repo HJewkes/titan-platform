@@ -423,6 +423,8 @@ declare class WorkflowRunStore {
     create(run: WorkflowRun): void;
     get(id: string): WorkflowRun | undefined;
     listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[];
+    /** Counts from the status index alone: a caller that only needs totals never loads or parses a run's step results. */
+    countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined;
     save(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
     renew(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;

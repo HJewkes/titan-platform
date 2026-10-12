@@ -129,6 +129,22 @@ describe("WorkflowRunStore ownership", () => {
   });
 });
 
+describe("WorkflowRunStore countByStatus", () => {
+  it("counts each asked status, zero when no run has it, and leaves other statuses out", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1)]);
+    const store = new WorkflowRunStore(db);
+    for (const id of ["a", "b", "c", "d"]) store.create(newRun(id, "demo", {}));
+    db.prepare("UPDATE workflow_run SET status = 'completed' WHERE id IN ('c', 'd')").run();
+    db.prepare("UPDATE workflow_run SET status = 'paused' WHERE id = 'b'").run();
+
+    const counts = store.countByStatus(["running", "completed", "failed"]);
+
+    expect(Object.fromEntries(counts)).toEqual({ running: 1, completed: 2, failed: 0 });
+    expect(counts.get("running")).toBe(store.listByStatus(["running"]).length);
+  });
+});
+
 function iso(milliseconds: number): string {
   return new Date(milliseconds).toISOString();
 }

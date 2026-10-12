@@ -21,7 +21,7 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { prChangedLines, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { prChangedLines, prTouchesDependency, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
 import { withReviewerProfile } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
@@ -204,8 +204,10 @@ function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerF
 /** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */
 async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: number | undefined): Promise<ReviewerFacts> {
   try {
-    const changedLines = prChangedLines(await deps.port.listPrFiles(repo, pr), limit);
-    return changedLines === undefined ? { sizeUnread: true } : { changedLines };
+    const files = await deps.port.listPrFiles(repo, pr);
+    const changedLines = prChangedLines(files, limit);
+    const dependency = prTouchesDependency(files) && { dependencyTouch: true };
+    return changedLines === undefined ? { sizeUnread: true, ...dependency } : { changedLines, ...dependency };
   } catch {
     return { sizeUnread: true };
   }

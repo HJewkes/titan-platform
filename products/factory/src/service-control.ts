@@ -65,6 +65,9 @@ const UNLOAD_POLLS = 40;
 const LOG_TAIL_LINES = 20;
 const FAILURE = 1;
 
+/** True once `polls` poll intervals of wall time have passed, so a probe slower than its interval cannot stretch a wait past its nominal length. */
+const pollBudgetSpent = (ports: ServicePorts, startedAt: number, polls: number): boolean => ports.now() - startedAt >= polls * POLL_MS;
+
 const labelOf = (ports: ServicePorts): string => serviceLabel(ports.labelPrefix);
 const serviceTarget = (ports: ServicePorts): string => `gui/${ports.uid}/${labelOf(ports)}`;
 const detail = (result: CommandResult): string => (result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`);
@@ -155,9 +158,10 @@ async function probeJob(ports: ServicePorts, port: number): Promise<Probe> {
 /** A failed GitHub check ends the wait at once: serve caches it for a minute, so polling on cannot change it. */
 async function awaitHealthy(ports: ServicePorts, io: ServiceIo, port: number, logDir: string): Promise<boolean> {
   let last: Probe = { state: "up" };
+  const startedAt = ports.now();
   for (let poll = 0; poll < HEALTH_POLLS; poll++) {
     last = await probeJob(ports, port);
-    if (last.state !== "waiting") break;
+    if (last.state !== "waiting" || pollBudgetSpent(ports, startedAt, HEALTH_POLLS)) break;
     await ports.sleep(POLL_MS);
   }
   if (last.state === "up") return true;
@@ -289,9 +293,10 @@ export async function serviceStatus(ports: ServicePorts, io: ServiceIo, port: nu
 
 /** serve reports `checking` until its first gh probe lands, within its 10 s timeout. */
 export async function settledHealth(ports: ServicePorts, port: number): Promise<Record<string, unknown> | null> {
+  const startedAt = ports.now();
   for (let poll = 0; poll < GITHUB_SETTLE_POLLS; poll++) {
     const health = await ports.health(port);
-    if (health?.github !== PROBE_PENDING) return health;
+    if (health?.github !== PROBE_PENDING || pollBudgetSpent(ports, startedAt, GITHUB_SETTLE_POLLS)) return health;
     await ports.sleep(POLL_MS);
   }
   return ports.health(port);
