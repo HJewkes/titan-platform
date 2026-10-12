@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { nodeContext } from "../context.js";
 import type { ReadFs } from "../context.js";
 import { decide } from "../decide.js";
@@ -21,6 +21,27 @@ const noFs: ReadFs = {
   },
   isFile: () => false,
 };
+
+/** Far above the few join tests a linear reading spends per join, far below the run length a quadratic one spends. */
+const WORK_PER_JOIN = 100;
+
+class WorkCapExceeded extends Error {}
+
+/** Calls `read` with `String.prototype.startsWith` counted, stopping it once the count passes `cap`. */
+function countStartsWith(read: () => unknown, cap: number): number {
+  const original = String.prototype.startsWith;
+  let calls = 0;
+  String.prototype.startsWith = function (this: string, search: string, position?: number) {
+    if (++calls > cap) throw new WorkCapExceeded(`more than ${cap} startsWith calls`);
+    return original.call(this, search, position);
+  };
+  try {
+    read();
+    return calls;
+  } finally {
+    String.prototype.startsWith = original;
+  }
+}
 
 function event(command: string): string {
   return JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: REPO, tool_input: { command } });
@@ -54,15 +75,7 @@ describe("a long run of backslash-newlines", () => {
     ["a spaced subscript", (run: string) => `Y[ ${run}0 ]=x true`],
   ])("tokenizes %s with work linear in its run of joins", (_name, shape) => {
     // Every join test is a startsWith call, so counting them measures work without a clock a loaded runner skews.
-    const work = (joins: number) => {
-      const spy = vi.spyOn(String.prototype, "startsWith");
-      try {
-        tokenize(shape(JOIN.repeat(joins)));
-        return spy.mock.calls.length;
-      } finally {
-        spy.mockRestore();
-      }
-    };
+    const work = (joins: number) => countStartsWith(() => tokenize(shape(JOIN.repeat(joins))), joins * WORK_PER_JOIN);
 
     const ratio = work(32_000) / work(8_000);
 
