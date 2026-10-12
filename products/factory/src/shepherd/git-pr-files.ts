@@ -103,7 +103,7 @@ export function registeredBase(store: ShepherdStoreRef, runId: string | undefine
 }
 
 /** What a file list is read for: a PR, and its head and base branch when the registration names them. */
-export interface FilesTarget {
+interface FilesTarget {
   repo: RepoSlug;
   pr: number;
   head?: string;

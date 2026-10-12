@@ -34,7 +34,7 @@ interface HoldTarget {
   base?: string;
 }
 
-export interface HoldFiles {
+interface HoldFiles {
   /** Reads a head's files from git; absent means the serve process's cached reader. */
   local?: PrFilesRead;
   /** The head to class instead of the registered one: the PR's head as a branch registration first saw it. */
