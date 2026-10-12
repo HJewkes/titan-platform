@@ -5,6 +5,7 @@ import type { GateDecision, GatePolicy, PolicyRule } from "../gate-policy.js";
 import type { LandOptions } from "../workflows/land.js";
 import { decideAutoMerge, isUnsettledGate, shownPaths, type MergeEvidence } from "./merge-facts.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
+import { CiPolicySchema } from "./review-schemas.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
@@ -207,7 +208,10 @@ export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) =
     typeof evidence.record === "object" &&
     evidence.record !== null &&
     (evidence.changedFilesUnread === undefined || typeof evidence.changedFilesUnread === "string");
-  return wellFormed ? (evidence as MergeEvidence) : undefined;
+  if (!wellFormed) return undefined;
+  // Only an absent line parses to undefined, so the stored evidence is returned as it is in that case.
+  const ciPolicy = CiPolicySchema.parse(evidence.ciPolicy);
+  return ciPolicy ? { ...(evidence as MergeEvidence), ciPolicy } : (evidence as MergeEvidence);
 }
 
 function reviewNote(headSha: string | undefined, verdictFor: (headSha: string) => Verdict | undefined): string {

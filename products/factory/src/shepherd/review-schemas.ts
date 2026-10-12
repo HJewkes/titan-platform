@@ -18,11 +18,17 @@ const Identity = z.object({ agentId: z.string().min(1), sessionId: z.string().mi
  */
 const LocatorSchema = z.custom<SourceTextLocator>((value) => typeof value === "object" && value !== null && !Array.isArray(value), "a locator object");
 
-/** The reviewer's CI-policy line as parsed; a stored value of any other shape reads as missing, which the merge guard fails closed on. */
+const CI_POLICY_MALFORMED = { kind: "malformed" } as const;
+
+/** The reviewer's CI-policy line as parsed; a stored value of any other shape reads as malformed, which the merge guard gates on. */
 export const CiPolicySchema = z
-  .discriminatedUnion("kind", [z.strictObject({ kind: z.literal("unchanged") }), z.strictObject({ kind: z.literal("weakened"), keys: z.array(z.enum(CI_POLICY_KEYS)).min(1) })])
+  .discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("unchanged") }),
+    z.strictObject({ kind: z.literal("weakened"), keys: z.array(z.enum(CI_POLICY_KEYS)).min(1) }),
+    z.strictObject({ kind: z.literal("malformed") }),
+  ])
   .optional()
-  .catch(undefined);
+  .catch(() => CI_POLICY_MALFORMED);
 
 const CheckRunFact = z.looseObject({ name: z.string(), appId: z.number(), headSha: z.string(), conclusion: z.string().nullable() });
 const CarryFact = z.looseObject({ fromHead: z.string(), head: z.string(), headTree: z.string(), mergeTree: z.string() });

@@ -148,9 +148,12 @@ different optional fourth line directly after `Head:`, `CI-policy: unchanged` or
 `CI-policy: weakened <keys>` (TP-2407), where the keys are comma-and-space separated, each at most
 once, from the closed set `CI_POLICY_KEYS`: `required-check`, `permissions`, `pull_request_target`,
 `secrets`, `ruleset` and `other`. It is returned as `ciPolicy` (`{ kind: "unchanged" }` or
-`{ kind: "weakened", keys }`). An unknown or repeated key, an empty list, a duplicate visible
-`CI-policy:` line anywhere, the line anywhere but directly after `Head:`, or the line on `FIX_FIRST`
-or `WAIT` leaves `ciPolicy` undefined, which Shepherd's merge guard reads as missing. Text that may be someone
+`{ kind: "weakened", keys }`). With no visible line labelled CI-policy, `ciPolicy` is undefined.
+The label is matched with its case, spacing and separator folded (`ci-policy :`, `CI policy:`), so
+any labelled line that is not the one exact line directly after `Head:` returns
+`{ kind: "malformed" }`: an unknown or repeated key, an empty list, other casing, a trailing note, a
+second labelled line anywhere, or the line anywhere else. Shepherd's merge guard gates a malformed
+line on any PR. On `FIX_FIRST` or `WAIT` the line is ignored. Text that may be someone
 else's only makes the parser stricter. A line is read only when indented 0 to 3 spaces (a tab counts 4, and any
 other character `trim` strips, such as U+00A0, counts 1), since
 a deeper line is an indented code block. Trailing whitespace and CRLF are harmless. A quoted

@@ -1110,14 +1110,17 @@ allows a merge; it only gates one:
 
 - `weakened` gates any PR on `ci-policy-weakened` (class D21), because only the owner accepts
   a weaker CI policy.
+- A line that is present but malformed or repeated (any casing or spacing of the label)
+  gates any PR on `ci-policy-malformed` (class D21), because a misspelt `weakened` must not
+  read as silence. So does a stored line of an unknown shape.
 - A PR whose changed paths, rename sources included, touch `.github/` gates on `github-path`
-  (class D6) when the line is missing, malformed or duplicated. Evidence stored before the
-  line existed reads as missing, so it fails closed; answer it with a fresh review.
+  (class D6) when the line is missing. Evidence stored before the line existed reads as
+  missing, so it fails closed; answer it with a fresh review.
 - `unchanged` leaves a `.github/` change to the authority table and the required checks, as
   TP-1886 left every path.
 
 The line rides with the MERGE through an unsettled re-read, a carried verdict and an external
-review. A coordinator never resolves either gate.
+review. A coordinator never resolves any of these gates.
 
 The `sh-merge-evidence` step collects those facts once per head and posts one comment on the
 pull request. The comment starts with the marker `<!-- shepherd-evidence:<head sha> -->`, so

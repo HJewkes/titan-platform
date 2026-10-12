@@ -16,9 +16,11 @@
  *   only directly after Head and only on FIX_FIRST. Absent, on MERGE or WAIT, or any other value, a duplicate, or
  *   a line anywhere else, it leaves `closer` undefined and the block parses as it would without it.
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
- *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. An unknown or repeated key,
- *   an empty list, a duplicate line anywhere, or a line anywhere else leaves `ciPolicy` undefined, which the merge
- *   guard reads as missing: a `.github/` change then fails closed.
+ *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. With no visible line
+ *   labelled CI-policy (label case, spacing and separator folded) `ciPolicy` is undefined. Any labelled line that is
+ *   not exactly one well-formed line at Head+1 (an unknown or repeated key, an empty list, other casing, a second
+ *   labelled line anywhere, or a line anywhere else) reads `{ kind: "malformed" }`, which the merge guard gates on
+ *   any PR: a reviewer who wrote the line meant something, so a misspelt `weakened` never reads as silence.
  * - Any visible line starting `Verdict:` is a block start, so a second one is refused, even
  *   when identical or malformed. A `Status:` line is ignored.
  */
@@ -31,7 +33,7 @@ export const CI_POLICY_KEYS = ["required-check", "permissions", "pull_request_ta
 
 export type CiPolicyKey = (typeof CI_POLICY_KEYS)[number];
 
-export type CiPolicy = { kind: "unchanged" } | { kind: "weakened"; keys: CiPolicyKey[] };
+export type CiPolicy = { kind: "unchanged" } | { kind: "weakened"; keys: CiPolicyKey[] } | { kind: "malformed" };
 
 export type VerdictBlockRefusal =
   | "no_block"
@@ -51,6 +53,7 @@ const PR_LINE = /^PR: ([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)#([1-9][0-9]{0,15})$/;
 const HEAD_LINE = /^Head: ([0-9a-f]{40})$/;
 const CLOSER_LINE = /^Closer: (yes|no)$/;
 const CI_POLICY_LINE = /^CI-policy: (?:unchanged|weakened ([a-z_-]+(?:, [a-z_-]+)*))$/;
+const CI_POLICY_LABEL = /^ci[\s_-]*policy\s*:/i;
 const FENCE = /^(`{3,}|~{3,})/;
 const TRIMMED_SPACE = /[\s\uFEFF]/;
 const CONTAINER = /^(?:>\s*|[-*+]\s+|\d{1,9}[.)]\s+)/;
@@ -145,15 +148,16 @@ function readCloser(lines: (string | null)[], at: number): VerdictBlockCloser | 
   return match[1] === "yes" ? "yes" : "no";
 }
 
-/** Like Closer, any second visible CI-policy line voids it, so a later `unchanged` never overrides a `weakened`. */
+/** Absent only when no visible line carries the label; anything labelled but not the one exact line at `at` is malformed. */
 function readCiPolicy(lines: (string | null)[], at: number): CiPolicy | undefined {
-  const match = CI_POLICY_LINE.exec(lines[at] ?? "");
-  const duplicated = lines.some((line, index) => index !== at && line?.startsWith("CI-policy:"));
-  if (!match || duplicated) return undefined;
+  const labelled = lines.flatMap((line, index) => (line !== null && CI_POLICY_LABEL.test(line) ? [index] : []));
+  if (labelled.length === 0) return undefined;
+  const match = labelled.length === 1 && labelled[0] === at ? CI_POLICY_LINE.exec(lines[at] ?? "") : null;
+  if (!match) return { kind: "malformed" };
   if (match[1] === undefined) return { kind: "unchanged" };
   const words = match[1].split(", ");
   const keys = words.filter(isCiPolicyKey);
-  if (keys.length !== words.length || new Set(keys).size !== keys.length) return undefined;
+  if (keys.length !== words.length || new Set(keys).size !== keys.length) return { kind: "malformed" };
   return { kind: "weakened", keys };
 }
 

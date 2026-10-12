@@ -311,8 +311,19 @@ describe("the optional CI-policy line", () => {
     expect(parseVerdictBlock(block("MERGE"))).toEqual(merge);
   });
 
+  const malformed = { ...merge, ciPolicy: { kind: "malformed" } };
+
   it.each([
     ["an unknown key", "CI-policy: weakened branch-protection"],
+    ["a capitalised weakened", "CI-policy: Weakened secrets"],
+    ["a lower-case label", "ci-policy: weakened secrets"],
+    ["a label with a space before the colon", "CI-policy : weakened secrets"],
+    ["a label spelt with a space", "CI policy: weakened secrets"],
+    ["a known key beside an unknown one", "CI-policy: weakened required-check, tests"],
+    ["a trailing note", "CI-policy: weakened secrets (see ci.yml)"],
+    ["a blank line before", "\nCI-policy: weakened secrets"],
+    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nProse.\nci-policy: weakened secrets"],
+    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
     ["a duplicated key", "CI-policy: weakened secrets, secrets"],
     ["weakened with no key", "CI-policy: weakened"],
     ["weakened with a trailing space", "CI-policy: weakened "],
@@ -323,6 +334,11 @@ describe("the optional CI-policy line", () => {
     ["a later unchanged after weakened", "CI-policy: weakened permissions\nProse.\nCI-policy: unchanged"],
     ["the line one line late", "\nCI-policy: unchanged"],
     ["prose between", "Note.\nCI-policy: unchanged"],
+  ])("reads as malformed for %s while the verdict still parses", (_name, tail) => {
+    expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(malformed);
+  });
+
+  it.each([
     ["a quoted line", "> CI-policy: unchanged"],
     ["an indented-code line", "    CI-policy: unchanged"],
     ["a fenced line", "```\nCI-policy: unchanged\n```"],
@@ -330,8 +346,8 @@ describe("the optional CI-policy line", () => {
     expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(merge);
   });
 
-  it("is not read when the line sits before the Verdict line", () => {
-    expect(parseVerdictBlock(`CI-policy: unchanged\n${block("MERGE")}`)).toEqual({ ...merge, lineOffset: 1 });
+  it("reads as malformed when the line sits before the Verdict line", () => {
+    expect(parseVerdictBlock(`CI-policy: unchanged\n${block("MERGE")}`)).toEqual({ ...malformed, lineOffset: 1 });
   });
 
   it("is ignored on FIX_FIRST, where Closer still parses", () => {

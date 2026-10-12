@@ -1,5 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan-design/github";
-import type { CiPolicy, SourceTextLocator } from "@titan-design/session-read";
+import { parseVerdictBlock, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { partialFake } from "@titan-design/test-kit";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { evidenceComment } from "./evidence-comment.js";
 import { MERGE_EVIDENCE_STEP, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidence, type MergeEvidenceInput } from "./merge-facts.js";
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
-import { shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
+import { mergeEvidenceAt, shepherdGatePolicy, type EffectivePolicy } from "./policy.js";
 import { verdictOf } from "./take-verdict.js";
 
 const REPO = "octo/demo";
@@ -90,10 +90,45 @@ describe("the CI-policy merge guard", () => {
     expect(evidenceComment(evidence.record)).toContain("the reviewer says the change weakens CI policy");
   });
 
-  it("files github-path under D6 and ci-policy-weakened under D21", () => {
+  it("files github-path under D6, and ci-policy-weakened and ci-policy-malformed under D21", () => {
     const at = (rowId: string) => decisionClassOf({ table: "shepherd-merge-guard", rowId, step: "approve-merge", prompt: "" });
 
-    expect([at("github-path"), at("ci-policy-weakened")]).toEqual(["D6", "D21"]);
+    expect([at("github-path"), at("ci-policy-weakened"), at("ci-policy-malformed")]).toEqual(["D6", "D21", "D21"]);
+  });
+});
+
+/** The reviewer's final message as the parser reads it: a MERGE block at HEAD followed by `tail`. */
+const ciPolicyIn = (tail: string): CiPolicy | undefined => {
+  const block = parseVerdictBlock(`Fine.\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${HEAD}\n${tail}`);
+  return block.ok ? block.ciPolicy : undefined;
+};
+
+describe("a CI-policy line that is present but malformed", () => {
+  const probes = [
+    ["a capitalised value", "CI-policy: Weakened secrets"],
+    ["a lower-case label", "ci-policy: weakened secrets"],
+    ["keys with no space", "CI-policy: weakened secrets,permissions"],
+    ["an unknown key beside a known one", "CI-policy: weakened required-check, tests"],
+    ["a trailing note", "CI-policy: weakened secrets (ci.yml)"],
+    ["a blank line before", "\nCI-policy: weakened secrets"],
+    ["a bare weakened", "CI-policy: weakened"],
+    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nMore.\nci-policy: weakened secrets"],
+    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
+  ];
+  const paths = [["src/", "src/x.ts"], ["a root action.yml", "action.yml"], [".github/", CI_YML]];
+
+  it.each(probes.flatMap(([name, tail]) => paths.map(([where, path]) => [name!, where!, tail!, path!])))("gates %s on a change to %s", async (_name, _where, tail, path) => {
+    const evidence = await evidenceFor(modified(path), ciPolicyIn(tail));
+
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: guard("ci-policy-malformed") });
+  });
+
+  it("gates a stored line of an unknown shape on replay, rather than reading it as missing", async () => {
+    const stored = { ...(await evidenceFor(modified("src/x.ts"))), ciPolicy: { kind: "weakened", keys: [] } };
+    const verdict: Verdict = { kind: "MERGE", headSha: HEAD, evidence: stored };
+
+    expect(mergeEvidenceAt(HEAD, () => verdict)?.ciPolicy).toEqual({ kind: "malformed" });
+    expect(shepherdGatePolicy(AUTO, () => verdict).decide("merge", { headSha: HEAD }).rule).toEqual(guard("ci-policy-malformed"));
   });
 });
 
