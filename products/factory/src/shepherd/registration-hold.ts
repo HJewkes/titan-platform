@@ -10,7 +10,7 @@ const SHEPHERD_MIGRATION_FILES = ["store.ts", "events.ts", "train.ts"].map((name
 const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts"].map((name) => `**/${name}`);
 
 /** Factory's store migrations and Shepherd's merge policy live in plain source files, which the panel's default globs miss. */
-export const SHEPHERD_CLASS_RULES: ClassRules = {
+const SHEPHERD_CLASS_RULES: ClassRules = {
   ...DEFAULT_CLASS_RULES,
   policy: [...DEFAULT_CLASS_RULES.policy, ...MERGE_POLICY_FILES],
   migration: [...DEFAULT_CLASS_RULES.migration, "**/store-migrations.ts", "**/*-migration*.ts", "**/*-store.ts", ...SHEPHERD_MIGRATION_FILES],
