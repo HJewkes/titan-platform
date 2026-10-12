@@ -42,6 +42,14 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
  */
 export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
   if (assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
+  return wordStartSubscriptEnd(src, open);
+}
+
+/**
+ * The end of the span bash may read as one word from a `[` that starts a word, as it does for `[ … ]=x` inside
+ * `NAME=( … )`: its matching `]`, or the end of the source when the scan never closes or crossed an unsure span.
+ */
+export function wordStartSubscriptEnd(src: string, open: number): number {
   const scan = scanOf(src);
   const close = matchingBracket(src, open, scan);
   return close === -1 || scan.unsurePairs.has(open) ? src.length : close;

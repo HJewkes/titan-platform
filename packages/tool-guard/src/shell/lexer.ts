@@ -4,7 +4,7 @@ import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./join
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
-import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar } from "./subscript.js";
+import { assignmentSubscriptEnd, looseSubscriptEnd, isNameSoFar, wordStartSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
@@ -70,9 +70,18 @@ function step(s: LexState): void {
   appendChar(s, c);
 }
 
+/**
+ * Bash also reads a `[` that starts a word through its `]` as one word inside `NAME=( … )` and `NAME+=( … )`. Rather
+ * than predict those positions too, every word-start `[` opens a loose span; `[ x ] # c` and `[[ … ]] # c` keep their
+ * comment, which falls after the matching `]`.
+ */
 function markSubscript(s: LexState): void {
   const w = s.word;
-  if (!w || w.quoted || w.dynamic || s.redirect || !isNameSoFar(w)) return;
+  if (!w) {
+    s.looseSubscriptEnd = Math.max(s.looseSubscriptEnd, wordStartSubscriptEnd(s.src, s.i));
+    return;
+  }
+  if (w.quoted || w.dynamic || s.redirect || !isNameSoFar(w)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
   // A `[` nested in a span closes before the outer `]`, so it must not shorten the span.
   if (s.subscriptEnd === -1) s.looseSubscriptEnd = Math.max(s.looseSubscriptEnd, looseSubscriptEnd(s.src, s.i, s.tokens));
