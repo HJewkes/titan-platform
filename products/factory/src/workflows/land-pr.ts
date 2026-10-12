@@ -4,7 +4,7 @@ import { z } from "zod";
 import { defineWorkflow, type StepDeclaration, type WorkflowDefinition } from "../definition.js";
 import { ciFailedDecision } from "../gate-brief.js";
 import { gateEverything } from "../gate-policy.js";
-import { requireRequiredChecks } from "../required-checks.js";
+import { requireBaseRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
 import { localMergeTree } from "../shepherd/tree-carry.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute } from "./await-head.js";
@@ -127,7 +127,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
 
 async function snapshot(port: GitHubPort, input: LandPrParams): Promise<object> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
+  const required = await requireBaseRequiredChecks(port, input.repo, pr.baseRef);
   const { number, state, merged, draft, headRef, headSha, baseRef } = pr;
   return { pr: { number, state, merged, draft, headRef, headSha, baseRef }, required: required.contexts, strict: required.strict, task: input.task ?? null };
 }

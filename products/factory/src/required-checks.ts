@@ -52,6 +52,21 @@ export async function requireRequiredChecks(port: GitHubPort, repo: RepoSlug, ba
   return checks;
 }
 
+/** For land steps: classic protection is read only when the rulesets require nothing; a 404 is none, anything else unreadable refuses. */
+export async function requireBaseRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecks> {
+  const rulesets = await requireRequiredChecks(port, repo, base);
+  if (rulesets.contexts.length > 0) return rulesets;
+  let classic: RequiredChecks;
+  try {
+    classic = await port.classicRequiredChecks(repo, base);
+  } catch (error) {
+    if ((error as { status?: unknown } | null)?.status === 404) return rulesets;
+    throw new Error(`classic protection of ${repo}@${base} is unreadable: ${statusOf(error)}; land refuses`);
+  }
+  if (!wellFormed(classic)) throw new Error(`classic protection of ${repo}@${base} is unreadable: the answer is malformed; land refuses`);
+  return classic.contexts.length > 0 ? classic : rulesets;
+}
+
 /** Classic branch protection's required status checks; a 404 reads as none, and any other failure is unreadable. */
 export async function readClassicRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecksRead> {
   try {
