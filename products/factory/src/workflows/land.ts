@@ -6,7 +6,7 @@ import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord } from "../evidence.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
-import { requireRequiredChecks } from "../required-checks.js";
+import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
@@ -368,7 +368,7 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
+  const required = await requireBaseRequiredChecks(port, input.repo, pr.baseRef);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 

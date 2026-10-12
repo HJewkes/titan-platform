@@ -2871,11 +2871,6 @@
       "count": 1
     }
   },
-  "products/factory/src/required-checks.ts": {
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
-    }
-  },
   "products/factory/src/resolve-proof.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 2
