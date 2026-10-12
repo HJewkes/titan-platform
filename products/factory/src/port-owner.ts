@@ -28,15 +28,15 @@ export interface PortOwnerPorts extends PortOwnerReaders {
 }
 
 /** The service the fence must leave to its own manager: the unit's cgroup on Linux, the job pid on macOS. */
-export interface ManagedService {
+interface ManagedService {
   name: string;
   pid?: number;
 }
 
-export type ForeignFence = { ok: true } | { ok: false; why: string };
+type ForeignFence = { ok: true } | { ok: false; why: string };
 
-export const FOREIGN_TERM_MS = 15_000;
-export const FOREIGN_KILL_MS = 5_000;
+const FOREIGN_TERM_MS = 15_000;
+const FOREIGN_KILL_MS = 5_000;
 const PORT_POLL_MS = 250;
 
 /** The deploy checkout and a source checkout both run this file; an npm install runs it under the package name. */
