@@ -159,8 +159,12 @@ const brief = shapeBrief("adversary", {
   verdict so evals compare variants, not ids.
 - The tests brief reads only the verdict, counts and flags of a `fix-proof/v1` line. A line
   that does not parse, or names another head, is ignored.
+- `reviewerBrief`'s `fixProofUnverified` (`error`, `untrusted` or `unread`) adds a blocking
+  section: FIX_FIRST unless the reviewer names an added test that fails on the base. A
+  reason outside that set adds nothing, and a reproduced line no longer stops the reviewer
+  rerunning checks.
 - `tests` is advisory in the plan. `aggregate` makes it block when `input.fixProof` is
-  `vacuous` or `no-tests`, and then its MERGE is needed too. When the plan has no `tests`
+  `vacuous`, `no-tests` or `error`, and then its MERGE is needed too. When the plan has no `tests`
   member, that seat counts as missing, so the panel never says MERGE.
 - `aggregate` reads `sonnetFor` from its input, not the plan. Pass the same table you gave
   `planPanel`, or `satisfiesG10` stays false for a custom opus profile.

@@ -813,7 +813,7 @@ Key exports:
 - `accept-verdict`: `acceptVerdict`, `isUsageLimit`
 - `depth-floor`: `isInvestigativeCall`
 - `fix-first-findings`: `boundedFindings`
-- +72 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
+- +73 more in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-panel)
 
 <a id="cap-session-analytics"></a>
 
