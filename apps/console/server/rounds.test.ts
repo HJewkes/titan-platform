@@ -189,6 +189,15 @@ describe("readQueueRounds", () => {
     expect(gaps).toContain("kiln-schedule-r2: feedback.json is not JSON");
   });
 
+  it("keeps a round open and reports a gap when its feedback.json is not feedback@1", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), JSON.stringify({ schema: "titan-review/feedback@1", unit: "kiln-schedule" }));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps.find((gap) => gap.startsWith("kiln-schedule-r2: feedback.json: "))).toBeDefined();
+  });
+
   it("answers no rounds and no gaps when the rounds dir does not exist yet", async () => {
     expect(await readQueueRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], gaps: [] });
   });

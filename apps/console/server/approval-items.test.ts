@@ -69,7 +69,8 @@ describe("roundQueueItems", () => {
 
   it("keeps a round open and reports a gap when its feedback is for another unit", async () => {
     const sent = roundOf(await fixtureRounds(), "kiln-schedule-r1");
-    const misfiled = { ...sent, feedback: { ...(sent.feedback as object), unit: "orbit-retry" } };
+    if (sent.feedback === null) throw new Error("the kiln-schedule-r1 fixture has no feedback");
+    const misfiled = { ...sent, feedback: { ...sent.feedback, unit: "orbit-retry" } };
 
     const items = roundQueueItems([misfiled]);
 

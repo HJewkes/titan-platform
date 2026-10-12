@@ -3,11 +3,11 @@
  * deposits from the inbox spool. Each leg answers `{ open, answered, gaps }` and never throws, so one
  * bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
  */
-import { answeredFromFeedback, fromRoundQuestions, type FeedbackInput, type OwnerItem } from "@titan-design/owner-queue";
+import { answeredFromFeedback, fromRoundQuestions, type OwnerItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
 import type { QueueRound } from "./rounds.js";
 
-export interface QueueItems {
+interface QueueItems {
   open: OwnerItem[];
   answered: OwnerItem[];
   gaps: string[];
@@ -31,7 +31,7 @@ function roundItems(round: QueueRound, items: QueueItems): void {
   }
   try {
     const context = { roundId: round.id, openedAt: round.updatedAt };
-    items.answered.push(...answeredFromFeedback(round.feedback as FeedbackInput, round.manifest, context));
+    items.answered.push(...answeredFromFeedback(round.feedback, round.manifest, context));
   } catch {
     items.gaps.push(`${round.id}: feedback.json does not fit its round`);
     openItems(round, items);

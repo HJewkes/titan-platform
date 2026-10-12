@@ -11,7 +11,7 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { RoundSchema, isLoopbackUrl, type Manifest, type Question } from "@titan-design/review-schema";
+import { FeedbackSchema, RoundSchema, isLoopbackUrl, type Feedback, type Manifest, type Question } from "@titan-design/review-schema";
 import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
@@ -200,15 +200,26 @@ export async function getRound({ dir }: RoundsSource, id: string): Promise<Round
   return detailOf(await loadRound(dir, id));
 }
 
-/** A valid round as the owner queue reads it: `feedback` is the parsed feedback.json, or null while unsent. */
+/** A valid round as the owner queue reads it: `feedback` is the validated feedback.json, or null while unsent. */
 export interface QueueRound {
   id: string;
   updatedAt: string;
   manifest: Manifest;
-  feedback: unknown;
+  feedback: Feedback | null;
 }
 
-type FeedbackRead = { ok: true; feedback: unknown } | { ok: false; reason: string };
+type FeedbackRead = { ok: true; feedback: Feedback | null } | { ok: false; reason: string };
+
+function parseFeedback(text: string): FeedbackRead {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { ok: false, reason: `${FEEDBACK_FILE} is not JSON` };
+  }
+  const result = FeedbackSchema.safeParse(json);
+  return result.success ? { ok: true, feedback: result.data } : { ok: false, reason: `${FEEDBACK_FILE}: ${schemaReason(result.error)}` };
+}
 
 /** A missing or symlinked feedback.json leaves the round unsent, as `statusOf` already does. */
 async function readFeedback(roundDir: string): Promise<FeedbackRead> {
@@ -231,11 +242,7 @@ async function readFeedback(roundDir: string): Promise<FeedbackRead> {
     await handle.close();
   }
   if (text === null) return { ok: false, reason: `${FEEDBACK_FILE} is over ${MAX_ROUND_BYTES} bytes` };
-  try {
-    return { ok: true, feedback: JSON.parse(text) };
-  } catch {
-    return { ok: false, reason: `${FEEDBACK_FILE} is not JSON` };
-  }
+  return parseFeedback(text);
 }
 
 /** A feedback.json that cannot be read is a gap, and the round stays open so its questions are still asked. */
