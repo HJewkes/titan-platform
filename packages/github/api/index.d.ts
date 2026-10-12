@@ -126,6 +126,11 @@ interface LoggedCommit {
     sha: string;
     message: string;
 }
+interface RepoFile {
+    path: string;
+    blobSha: string;
+    content: string;
+}
 interface PutFileRequest {
     path: string;
     branch: string;
@@ -152,11 +157,6 @@ interface SquashSource {
 /** `owner/name`. */
 type RepoSlug = string;
 type MergeMethod = "merge" | "squash" | "rebase";
-interface RepoFile {
-    path: string;
-    blobSha: string;
-    content: string;
-}
 interface PullRequest {
     number: number;
     state: "open" | "closed";
@@ -175,6 +175,8 @@ interface PullRequest {
     mergeableState: string;
     /** The head lacks commits the base has. */
     behind: boolean;
+    /** How many base commits the head lacks; `getPr` reports it for an open PR, list rows never do. */
+    behindBy?: number;
     /** Auto-merge is armed on the PR, read from the REST `auto_merge` field. */
     autoMerge: boolean;
 }
