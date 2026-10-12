@@ -19,7 +19,7 @@ function startedBefore(until: string | undefined) {
   return (g: SeatGeneration) => !until || g.start === null || Date.parse(g.start) < Date.parse(until);
 }
 
-export function sessionArgs(generations: readonly SeatGeneration[]): string {
+function sessionArgs(generations: readonly SeatGeneration[]): string {
   return generations.flatMap((g) => g.sessionIds.map((id) => `--session ${id}`)).join(" ");
 }
 
