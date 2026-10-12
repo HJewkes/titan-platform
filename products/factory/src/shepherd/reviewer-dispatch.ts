@@ -177,7 +177,7 @@ export function agentChatReviewerDispatch(options: AgentChatReviewerDispatchOpti
   };
   return {
     roster: () => askBroker(async () => (await roster.rows()).map(rosterRow)),
-    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
+    spawn: (name, brief, target, facts = {}) => askBroker(() => spawn(name, brief, target, facts.profile ?? reviewerRoleFor(facts, roles), facts.intentAt), options.onMachineHold),
     resume: (name, brief) => askBroker(async () => agents.resume(name, brief, options.gate && (await runningReviews()), reviewAsk(targets.get(name), options.isFixer)), options.onMachineHold),
   };
 }

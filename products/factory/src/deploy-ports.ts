@@ -1,7 +1,7 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { cpSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { probeHealth } from "@titan-design/daemon";
+import { isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import type { CommandResult } from "./service-control.js";
@@ -63,16 +63,6 @@ function rename(from: string, to: string): boolean {
   }
 }
 
-/** EPERM means the pid exists under another user, which still holds the lock. */
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
 /**
  * The service checkout only ever holds a reviewed main commit, so its packageManager pin is
  * trusted: without the switch a global pnpm 10 installs a layout every pinned pnpm then purges.
@@ -105,7 +95,7 @@ export function systemDeployPorts(checkout: string): DeployPorts {
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
     createExclusive,
     rename,
-    isAlive,
+    isAlive: isProcessAlive,
   };
 }
 

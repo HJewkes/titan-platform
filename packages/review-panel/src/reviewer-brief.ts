@@ -20,6 +20,17 @@ export function reviewCheckoutName(pr: number, head: string): string {
 
 export const MAX_REVIEWER_QUESTIONS = 8;
 
+const CI_POLICY_KEYS_LINE = "required-check, permissions, pull_request_target, secrets, ruleset, other";
+
+/** The correction resumes the reviewer's own session, which already holds the key meanings, so it names only the keys. */
+const CI_POLICY_REMINDER = `On MERGE, add after Head \`CI-policy: unchanged\` or \`CI-policy: weakened <keys>\`, keys comma-separated from: ${CI_POLICY_KEYS_LINE}.`;
+
+/** Shepherd's merge guard reads this line (TP-2407): a `.github/` change without it fails closed, and `weakened` reaches the owner. */
+export const CI_POLICY_RULE =
+  "If your verdict is MERGE, add a fourth line directly after the Head line: `CI-policy: unchanged`, or `CI-policy: weakened <keys>` naming, comma-separated, each key that applies: " +
+  "required-check (drops, renames or skips a required check), permissions (widens token permissions), pull_request_target (adds or widens that trigger), " +
+  "secrets (exposes secrets to more code), ruleset (loosens a ruleset or branch protection), other (any other CI weakening). Write it on every MERGE, even with no .github/ change; never on a FIX_FIRST.";
+
 /** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. */
 export const CI_REVIEWER_TEST_RULE =
   "Run no tests, builds, typecheck or lint, and install nothing: your checkout is for reading, and GitHub CI runs the full suite at this head. " +
@@ -172,8 +183,9 @@ function ownerBriefLines(): string[] {
 const VERDICT_CHANNEL = "Write your verdict as text in your final message; Shepherd reads it from your session, so it needs no chat_send.";
 
 function endingInstruction(input: ReviewerBriefInput): string {
-  if (input.ownerBrief) return VERDICT_CHANNEL + " End your final message with these three lines, the verdict filled in, followed only by the owner block described below:";
-  return VERDICT_CHANNEL + " End your final message with exactly these three lines, the verdict filled in and nothing after them" + (fixFirstCount(input) >= 1 ? " but the Closer line a FIX_FIRST adds:" : ":");
+  if (input.ownerBrief) return VERDICT_CHANNEL + " End your final message with these three lines, the verdict filled in, followed only by the CI-policy line a MERGE adds and the owner block described below:";
+  const fourthLine = fixFirstCount(input) >= 1 ? "the CI-policy line a MERGE adds or the Closer line a FIX_FIRST adds" : "the CI-policy line a MERGE adds";
+  return VERDICT_CHANNEL + ` End your final message with exactly these three lines, the verdict filled in and nothing after them but ${fourthLine}:`;
 }
 
 /** Head and base both extract under the run dir, so the one `rm -rf` after the verdict removes everything the reviewer made. */
@@ -214,6 +226,7 @@ export function reviewerBrief(input: ReviewerBriefInput): string {
     ...questionLines(input.questions ?? []),
     "",
     "MERGE means you would merge this head as it is. Anything blocking means FIX_FIRST.",
+    CI_POLICY_RULE,
     `For FIX_FIRST, list every blocking item, then add a section that starts with a line \`${DEFECT_CLASS_HEADING}\` naming the defect class the items share and the boundary where one fix covers it.`,
     ...recurringLines(fixFirstCount(input), input.earlierFindings ?? []),
     "",
@@ -255,8 +268,9 @@ export function correctionPrompt(input: CorrectionPromptInput): string {
   const { repo, pr, head } = input;
   return [
     `Your last message did not end with a verdict Shepherd can read: ${REFUSAL_SENTENCES[input.refusal]}.`,
+    CI_POLICY_REMINDER,
     "Do not review again from scratch. Send one message that holds your whole review again, every blocking item included if your verdict is FIX_FIRST, and end it with exactly these three lines, the verdict filled in and " +
-      (input.ownerBrief ? "followed only by the owner block described below:" : "nothing after them:"),
+      (input.ownerBrief ? "followed only by the CI-policy line and the owner block described below:" : "nothing after them but the CI-policy line:"),
     "",
     "Verdict: <MERGE or FIX_FIRST>",
     `PR: ${repo}#${pr}`,

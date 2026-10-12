@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -62,6 +62,26 @@ describe("assertInstalledHeadless", () => {
     expect(message).toContain("surface of type string");
     expect(message).not.toContain("SECRET-TOKEN");
   });
+
+  it("refuses a traversal name before reading the file it points at", () => {
+    const profilesDir = join(dir, "profiles");
+    mkdirSync(profilesDir);
+    install(JSON.stringify({ surface: "headless" }));
+
+    expect(() => assertInstalledHeadless("../implementer", profilesDir)).toThrow(
+      /invalid profile name/,
+    );
+  });
+
+  it.each(["Implementer", "a/b", "", ".hidden"])("refuses the malformed name %j", (name) => {
+    expect(() => assertInstalledHeadless(name, dir)).toThrow(DispatchError);
+    expect(() => assertInstalledHeadless(name, dir)).toThrow(/invalid profile name/);
+  });
+
+  it.each(["headless-reviewer", "impl_v1.2"])("accepts the well-formed name %j when installed headless", (name) => {
+    writeFileSync(join(dir, `${name}.json`), JSON.stringify({ surface: "headless" }));
+    expect(() => assertInstalledHeadless(name, dir)).not.toThrow();
+  });
 });
 
 describe("installedProfilesDir", () => {
@@ -69,11 +89,25 @@ describe("installedProfilesDir", () => {
 
   it("is agent-chat's profiles directory under HOME", () => {
     vi.stubEnv("HOME", dir);
+    vi.stubEnv("AGENT_CHAT_HOME", undefined);
+    expect(installedProfilesDir()).toBe(join(dir, ".agent-chat", "profiles"));
+  });
+
+  it("is AGENT_CHAT_HOME's profiles directory when that is set", () => {
+    vi.stubEnv("HOME", dir);
+    vi.stubEnv("AGENT_CHAT_HOME", join(dir, "chat"));
+    expect(installedProfilesDir()).toBe(join(dir, "chat", "profiles"));
+  });
+
+  it("falls back to HOME when AGENT_CHAT_HOME is empty", () => {
+    vi.stubEnv("HOME", dir);
+    vi.stubEnv("AGENT_CHAT_HOME", "");
     expect(installedProfilesDir()).toBe(join(dir, ".agent-chat", "profiles"));
   });
 
   it("falls back to the account's home directory when HOME is empty", () => {
     vi.stubEnv("HOME", "");
+    vi.stubEnv("AGENT_CHAT_HOME", undefined);
     expect(installedProfilesDir()).toBe(join(homedir(), ".agent-chat", "profiles"));
   });
 });

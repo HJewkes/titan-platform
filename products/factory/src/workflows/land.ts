@@ -6,7 +6,7 @@ import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord } from "../evidence.js";
 import { stuckBehindDecision } from "../gate-brief.js";
 import type { GateDecision, GatePolicy } from "../gate-policy.js";
-import { requireRequiredChecks } from "../required-checks.js";
+import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
 import { BaseCheckResult, BaseWaitResult, checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import { approveMergeGate, askedApproval, type AskApproval } from "./land-approval.js";
@@ -83,6 +83,8 @@ export interface LandOptions {
   reviewedMerge?: (headSha: string) => boolean;
   /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
+  /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
+  skillPathsAt?: (headSha: string) => readonly string[];
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -286,7 +288,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
-  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge, options.ownerBriefAt);
+  const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, () => trust(state, ci.headSha, "human", base));
 }
 
@@ -366,7 +368,7 @@ function recordRoute<I>(match: string, now: () => number, fn: (input: I, step: R
 
 async function readRules(port: GitHubPort, input: { repo: string; pr: number }): Promise<LandRules> {
   const pr = await port.getPr(input.repo, input.pr);
-  const required = await requireRequiredChecks(port, input.repo, pr.baseRef);
+  const required = await requireBaseRequiredChecks(port, input.repo, pr.baseRef);
   return { base: pr.baseRef, contexts: required.contexts, strict: required.strict };
 }
 

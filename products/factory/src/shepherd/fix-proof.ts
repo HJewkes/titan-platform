@@ -3,6 +3,7 @@ import { GITHUB_ACTIONS_APP_ID, PR_FILES_CAP, type CheckRun, type GitHubPort, ty
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
+import { CHECKS_RECHECK_MS } from "../workflows/await-head.js";
 import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
@@ -19,7 +20,6 @@ export const FIX_PROOF_CHECK = "fix-proof";
 const DEFAULT_FIX_PROOF_WAIT_MS = 35 * 60_000;
 /** A head that has no Actions run this long after the first poll never will: the repo runs no Actions on it. */
 const DEFAULT_NO_ACTIONS_GRACE_MS = 3 * 60_000;
-const DEFAULT_POLL_MS = 30_000;
 const LOG_TAIL_LINES = 200;
 const GATED_KINDS: ReadonlySet<string> = new Set(["correctness", "security"]);
 const FIX_BRANCH_PREFIX = "fix/";
@@ -135,7 +135,7 @@ async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, bind
     if (clock.expired() && chosen !== undefined) return { stalled: `the ${FIX_PROOF_CHECK} run at this head was still ${chosen.run.status} at the deadline` };
     if (clock.expired()) return { missing: `no completed ${FIX_PROOF_CHECK} check run from GitHub Actions at this head before the deadline` };
     settledBefore = settled;
-    await clock.sleep(timing.pollMs ?? DEFAULT_POLL_MS, signal);
+    await clock.sleep(timing.pollMs ?? CHECKS_RECHECK_MS, signal);
   }
 }
 
