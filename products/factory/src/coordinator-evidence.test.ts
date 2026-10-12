@@ -124,6 +124,7 @@ describe("coordinatorEvidencePolicy over main-red and PR gates", () => {
 
 describe("mechanicalAuthorityReason", () => {
   it("reads a gate on a reviewer verdict, required checks or the merge tree alone as mechanical", () => {
+    expect(MECHANICAL).toContain("; MRG-AU-RS unmet: ");
     expect(mechanicalAuthorityReason(MECHANICAL)).toBe(true);
     expect(mechanicalAuthorityReason(authorityGateReason(HEAD, { verdict: { value: "FIX_FIRST", head: HEAD }, mergeTreeClean: false }))).toBe(true);
   });

@@ -36,6 +36,7 @@ export const MERGE_CONDITION_KINDS = [
   "verdict-merge-at-head",
   "verdict-merge-carried-tree-equal",
   "verdict-merge-carried-remerge-clean",
+  "verdict-merge-carried-merge-up-disjoint",
   "pr-kind-not-security",
   "required-contexts-green",
   "no-non-green-run",

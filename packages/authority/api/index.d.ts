@@ -10,11 +10,11 @@ declare const VERDICTS: readonly ["allow", "gate", "deny"];
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 declare const EVIDENCE_KINDS: readonly ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"];
 /** Conditions read from `facts.merge`. */
-declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve"];
+declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve"];
 /** Conditions read from `facts.question`, the gate a decider would answer. */
 declare const QUESTION_CONDITION_KINDS: readonly ["gate-rule-is-question", "category-mode-auto"];
 /** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
-declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "gate-rule-is-question", "category-mode-auto"];
+declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "gate-rule-is-question", "category-mode-auto"];
 type ActorClass = (typeof ACTOR_CLASSES)[number];
 type ResolverClass = (typeof RESOLVER_CLASSES)[number];
 type DelegateResolverClass = (typeof DELEGATE_RESOLVER_CLASSES)[number];
@@ -46,11 +46,15 @@ interface CarryFact {
     /** For a remerge rule, the tree git's own remerge of the head's two parents writes, conflict markers and all. */
     mergeTree: string;
     /** Which probe carried the verdict; absent reads as `tree-equal`. */
-    rule?: "tree-equal" | "remerge-empty" | "remerge-generated-only";
+    rule?: "tree-equal" | "remerge-empty" | "remerge-generated-only" | "merge-up-disjoint";
     /** For a remerge rule: every path the head's remerge-diff or the remerge's conflicts touch. */
     remergePaths?: string[];
     /** For a remerge rule: the paths among `remergePaths` that the repo declares generated. */
     generatedPaths?: string[];
+    /** For `merge-up-disjoint`: every path the merge's base side (merge-base to second parent) changed. */
+    basePaths?: string[];
+    /** For `merge-up-disjoint`: the head's first parent, which the probe found on the reviewed line. */
+    firstParent?: string;
 }
 /** What the caller observed about a pull request it wants to merge. The evaluator re-derives every condition from these. */
 interface MergeFacts {
@@ -135,6 +139,7 @@ declare const ruleSchema: z.ZodObject<{
         "verdict-merge-at-head": "verdict-merge-at-head";
         "verdict-merge-carried-tree-equal": "verdict-merge-carried-tree-equal";
         "verdict-merge-carried-remerge-clean": "verdict-merge-carried-remerge-clean";
+        "verdict-merge-carried-merge-up-disjoint": "verdict-merge-carried-merge-up-disjoint";
         "pr-kind-not-security": "pr-kind-not-security";
         "required-contexts-green": "required-contexts-green";
         "no-non-green-run": "no-non-green-run";
