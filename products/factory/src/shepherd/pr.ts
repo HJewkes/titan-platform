@@ -41,6 +41,7 @@ import { awaitedPast, conflictGate, liveEscalation, type PrTarget, type WakeRun 
 import { ciFailedRoute, routingStuckBehind, seatNoticeRoute, unhandledSendBack } from "./gate-route.js";
 import { afterWake, repairGate, spendRepair } from "./repair.js";
 import { heldRepair, heldRepairRoutes } from "./held-repair.js";
+import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
 
@@ -222,6 +223,7 @@ function onUpdated(run: ShepherdRun, result: unknown): void {
 async function onCiRead(run: ShepherdRun, result: unknown): Promise<void> {
   const ci = CiSnapshotResult.safeParse(result);
   if (!ci.success) return;
+  await recordHeadOrigin(run, ci.data);
   run.lastCi = ci.data;
   expireStaleGates(run.ctx, ci.data.headSha);
   await reholdMovedHead(run, ci.data.headSha);
@@ -347,6 +349,7 @@ export function shepherdRoutes(deps: ShepherdDeps, wiring: ShepherdWiring = {}):
     ...g10ReleaseRoutes(deps),
     ...g10ReholdRoutes(deps, wiring.review?.carry),
     ...heldRepairRoutes(deps),
+    headOriginRoute(deps),
   ];
 }
 
