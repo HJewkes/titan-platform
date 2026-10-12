@@ -19,6 +19,9 @@ import {
   type WorkflowRun,
 } from "./types.js";
 
+/** `abandonsOrphan` names the recovered steps a replay that moved past them may drop instead of parking the run. */
+type WorkflowRegistration = Registration & { abandonsOrphan?: (stepId: string) => boolean };
+
 interface Live {
   ctx: RunContext;
   controller: AbortController;
@@ -28,7 +31,7 @@ interface Live {
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 export class WorkflowRuntime {
-  private readonly workflows = new Map<string, Registration>();
+  private readonly workflows = new Map<string, WorkflowRegistration>();
   private readonly live = new Map<string, Live>();
   private readonly held = new HeldRuns();
   private readonly store: WorkflowRunStore;
@@ -58,10 +61,15 @@ export class WorkflowRuntime {
     };
   }
 
-  /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
-  register(name: string, fn: WorkflowFn, options: { version?: string } = {}): void {
+  /**
+   * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
+   * `abandonsOrphan` is asked, when the workflow returns, about each recovered step its replay never reached: true drops
+   * the step with a `step_abandoned` event, false parks the run. Without it every such orphan parks the run.
+   */
+  register(name: string, fn: WorkflowFn, options: { version?: string; abandonsOrphan?: (stepId: string) => boolean } = {}): void {
     if (this.workflows.has(name)) throw new Error(`workflow already registered: ${name}`);
-    this.workflows.set(name, registration(name, fn, options.version));
+    const { abandonsOrphan } = options;
+    this.workflows.set(name, { ...registration(name, fn, options.version), ...(abandonsOrphan ? { abandonsOrphan } : {}) });
   }
 
   registered(): string[] {
@@ -79,7 +87,7 @@ export class WorkflowRuntime {
       options.onStart?.(run.id);
       return claimed;
     });
-    this.launch(insert.immediate(), workflow.fn, new Map());
+    this.launch(insert.immediate(), workflow, new Map());
     return run.id;
   }
 
@@ -108,7 +116,7 @@ export class WorkflowRuntime {
         this.release(run);
         return null;
       }
-      this.launch(run, workflow.fn, recovered, controller, renewTimer);
+      this.launch(run, workflow, recovered, controller, renewTimer);
       return run.id;
     } catch (error) {
       clearInterval(renewTimer);
@@ -139,22 +147,22 @@ export class WorkflowRuntime {
 
   private launch(
     run: WorkflowRun,
-    fn: WorkflowFn,
+    workflow: WorkflowRegistration,
     recovered: ReadonlyMap<string, RecoveredStep>,
     controller = new AbortController(),
     renewTimer = this.startRenewal(run, controller),
   ): void {
     const deps: ContextDeps = { ...this.baseDeps, recovered, save: (value) => this.save(value) };
     const ctx = new RunContext(run, deps, controller);
-    const done = this.drive(run, fn, ctx, controller);
+    const done = this.drive(run, workflow, ctx, controller);
     this.live.set(run.id, { ctx, controller, done, renewTimer });
   }
 
-  private async drive(run: WorkflowRun, fn: WorkflowFn, ctx: RunContext, controller: AbortController): Promise<void> {
+  private async drive(run: WorkflowRun, workflow: WorkflowRegistration, ctx: RunContext, controller: AbortController): Promise<void> {
     let failure: unknown;
     let rejected = false;
     try {
-      await fn(ctx);
+      await workflow.fn(ctx);
     } catch (error) {
       failure = error;
       rejected = true;
@@ -162,17 +170,21 @@ export class WorkflowRuntime {
     await ctx.settleDispatches();
     try {
       if (rejected) this.settleRejection(run, controller.signal.reason, failure);
-      else this.finishFromSuccess(run, controller.signal.reason);
+      else this.finishFromSuccess(run, controller.signal.reason, ctx, workflow.abandonsOrphan);
     } catch (error) {
       this.settleRejection(run, controller.signal.reason, error);
     }
   }
 
-  private finishFromSuccess(run: WorkflowRun, abortReason: unknown): void {
+  private finishFromSuccess(run: WorkflowRun, abortReason: unknown, ctx: RunContext, abandonsOrphan?: (stepId: string) => boolean): void {
     if (abortReason instanceof RuntimeShutdown || abortReason instanceof WorkflowOwnershipLostError) return this.dropLive(run.id);
+    const orphans = this.dropSafeOrphans(run, ctx.orphanedSteps(), abandonsOrphan);
     const unfinished = Object.values(run.activeSteps)[0];
     if (unfinished) {
-      this.markRecovery(run, unfinished, "unknown", `workflow returned while step ${unfinished.stepId} still required reconciliation`);
+      const evidence = orphans.has(unfinished.stepId)
+        ? `replay never reached recovered step ${unfinished.stepId}`
+        : `workflow returned while step ${unfinished.stepId} still required reconciliation`;
+      this.markRecovery(run, unfinished, "unknown", evidence);
       this.save(run);
       return this.park(run, true);
     }
@@ -181,6 +193,19 @@ export class WorkflowRuntime {
       return this.finish(run, "cancelled", abortReason instanceof WorkflowCancelledError ? abortReason.reason : run.error);
     }
     this.finish(run, "completed", null);
+  }
+
+  /** Drops each orphan the registration allows and returns the step ids of those it kept. */
+  private dropSafeOrphans(run: WorkflowRun, orphans: ActiveStep[], abandonsOrphan?: (stepId: string) => boolean): Set<string> {
+    const dropped = orphans.filter((step) => abandonsOrphan?.(step.stepId) === true);
+    const kept = new Set(orphans.filter((step) => !dropped.includes(step)).map((step) => step.stepId));
+    if (dropped.length === 0) return kept;
+    for (const step of dropped) delete run.activeSteps[step.stepId];
+    this.save(run);
+    for (const step of dropped) {
+      this.baseDeps.emit({ type: "step_abandoned", runId: run.id, stepId: step.stepId, reason: "replay never reached recovered step" });
+    }
+    return kept;
   }
 
   private settleRejection(run: WorkflowRun, abortReason: unknown, error: unknown): void {

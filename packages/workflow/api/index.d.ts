@@ -265,6 +265,11 @@ type WorkflowEvent = {
     stepId: string;
     error: string;
 } | {
+    type: "step_abandoned";
+    runId: string;
+    stepId: string;
+    reason: string;
+} | {
     type: "workflow_recovery_required";
     runId: string;
     stepId: string;
@@ -606,9 +611,14 @@ declare class WorkflowRuntime {
     private readonly now;
     private readonly baseDeps;
     constructor(options: WorkflowRuntimeOptions);
-    /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
+    /**
+     * `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it.
+     * `abandonsOrphan` is asked, when the workflow returns, about each recovered step its replay never reached: true drops
+     * the step with a `step_abandoned` event, false parks the run. Without it every such orphan parks the run.
+     */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
+        abandonsOrphan?: (stepId: string) => boolean;
     }): void;
     registered(): string[];
     /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
@@ -623,6 +633,8 @@ declare class WorkflowRuntime {
     private launch;
     private drive;
     private finishFromSuccess;
+    /** Drops each orphan the registration allows and returns the step ids of those it kept. */
+    private dropSafeOrphans;
     private settleRejection;
     shutdown(): void;
     private finish;
