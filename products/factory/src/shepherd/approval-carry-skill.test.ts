@@ -87,6 +87,25 @@ describe("an owner merge approval meeting a repo skill change", () => {
     expect(r.gates).toEqual([APPROVED, LATER]);
   });
 
+  it("asks the owner again when the merge-up proof names no paths, rather than reading the gap as skill-free", async () => {
+    const r = rig({ remerge: { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", generatedPaths: [] } });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(LATER));
+
+    expect(r.gates).toEqual([APPROVED, LATER]);
+  });
+
+  it("asks a security run's owner again when the own merge-up proof names no PR paths", async () => {
+    const own: OwnMergeUpResult = { carries: true, rule: "own-merge-up", base: "b", headTree: "t", mergeTree: "t", mainPaths: ["other.txt"] };
+    const r = rig({ kind: "security", own });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(LATER));
+
+    expect(r.gates).toEqual([APPROVED, LATER]);
+  });
+
   it("still follows a skill-free small fix without asking the owner", async () => {
     const r = rig({ fix: smallFix(["src/a.ts", "docs/skills/x.md"]) });
 

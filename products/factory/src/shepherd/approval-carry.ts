@@ -39,32 +39,27 @@ interface Followed {
   rule: string;
   /** The tree or diff facts the carry rests on, recorded with the answer. */
   proof: Record<string, unknown>;
+  /** The paths the rule vouches for: the remerge or fix delta, or the PR's own paths for an own merge-up. */
+  paths: readonly string[] | undefined;
 }
 
-const PROOF_PATH_KEYS = ["paths", "prPaths"] as const;
-
-/** A proof whose paths hold a repo skill would carry an approval onto a skill diff the owner has not seen at this head. */
-function touchesSkill(followed: Followed): boolean {
-  return PROOF_PATH_KEYS.some((key) => {
-    const paths = followed.proof[key];
-    return Array.isArray(paths) && skillPathsIn(paths.filter((path): path is string => typeof path === "string")).length > 0;
-  });
-}
+/** A proof whose paths hold a repo skill, or that names no paths at all, would carry an approval onto a diff the owner has not seen. */
+const touchesSkill = (followed: Followed): boolean => followed.paths === undefined || skillPathsIn(followed.paths).length > 0;
 
 /** The merge-up probe first; a head it refuses may still be the approved head merged with the base plus a small fix. */
 async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const remerge = await remergeStep(ctx, { repo: target.repo, baseRef, fromHead, head });
-  if (remerge.carries && remerge.rule) return { rule: remerge.rule, proof: { headTree: remerge.headTree, mergeTree: remerge.remergeTree, paths: remerge.paths } };
+  if (remerge.carries && remerge.rule) return { rule: remerge.rule, proof: { headTree: remerge.headTree, mergeTree: remerge.remergeTree, paths: remerge.paths }, paths: remerge.paths };
   const fix = await fixCarryStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (!fix.carries || !fix.rule) return undefined;
-  return { rule: fix.rule, proof: { base: fix.base, headTree: fix.headTree, mergeTree: fix.mergeTree, changedLines: fix.changedLines, paths: fix.paths } };
+  return { rule: fix.rule, proof: { base: fix.base, headTree: fix.headTree, mergeTree: fix.mergeTree, changedLines: fix.changedLines, paths: fix.paths }, paths: fix.paths };
 }
 
 /** Shepherd's own disjoint merge-up and nothing wider, for a kind that never follows the remerge or small-fix rules. */
 async function ownMergeUpProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const own = await ownMergeUpStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (!own.carries || !own.rule) return undefined;
-  return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths } };
+  return { rule: own.rule, proof: { base: own.base, headTree: own.headTree, mergeTree: own.mergeTree, prPaths: own.prPaths, mainPaths: own.mainPaths }, paths: own.prPaths };
 }
 
 /** The proof for the run's kind: the remerge and small-fix rules for a carrying kind, else the own-merge-up rule, else none. */
@@ -79,7 +74,7 @@ async function followedAnswer(ctx: WorkflowContext, target: CarryTarget, fromHea
   const carried = await followedProof(ctx, target, fromHead, head);
   if (!carried || touchesSkill(carried)) return undefined;
   const stepId = `${APPROVAL_CARRY_STEP}:${head}`;
-  const followed = await step(ctx, stepId, { decision: "merge", headSha: head, fromHead, ...carried }, MergeAnswer);
+  const followed = await step(ctx, stepId, { decision: "merge", headSha: head, fromHead, rule: carried.rule, proof: carried.proof }, MergeAnswer);
   return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: followed.decision, headSha: followed.headSha } };
 }
 
