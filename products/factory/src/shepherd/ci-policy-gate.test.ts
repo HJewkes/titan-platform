@@ -104,32 +104,44 @@ const ciPolicyIn = (tail: string): CiPolicy | undefined => {
   return block.ok ? block.ciPolicy : undefined;
 };
 
-describe("a CI-policy line that is present but malformed", () => {
+describe("a CI-policy line that is decorated, hidden or malformed", () => {
   const probes = [
-    ["a capitalised value", "CI-policy: Weakened secrets"],
-    ["a lower-case label", "ci-policy: weakened secrets"],
-    ["keys with no space", "CI-policy: weakened secrets,permissions"],
-    ["an unknown key beside a known one", "CI-policy: weakened required-check, tests"],
-    ["a trailing note", "CI-policy: weakened secrets (ci.yml)"],
-    ["a blank line before", "\nCI-policy: weakened secrets"],
-    ["a bare weakened", "CI-policy: weakened"],
-    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nMore.\nci-policy: weakened secrets"],
-    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets"],
-    ["a bold label", "**CI-policy:** weakened secrets"],
-    ["a dash list marker", "- CI-policy: weakened secrets"],
-    ["a code span", "`CI-policy: weakened secrets`"],
-    ["an en dash", "CI\u2013policy: weakened secrets"],
-    ["an em dash", "CI\u2014policy: weakened secrets"],
-    ["a quoted line", "> CI-policy: weakened secrets"],
-    ["a star list marker", "* CI-policy: weakened secrets"],
-    ["an underscore-emphasised label", "__CI-policy__: weakened secrets"],
+    ["a capitalised value", "CI-policy: Weakened secrets", "ci-policy-weakened"],
+    ["a lower-case label", "ci-policy: weakened secrets", "ci-policy-weakened"],
+    ["keys with no space", "CI-policy: weakened secrets,permissions", "ci-policy-weakened"],
+    ["a blank line before", "\nCI-policy: weakened secrets", "ci-policy-weakened"],
+    ["a later lower-case weakened after unchanged", "CI-policy: unchanged\nMore.\nci-policy: weakened secrets", "ci-policy-weakened"],
+    ["a later spaced weakened after unchanged", "CI-policy: unchanged\nCI-policy : weakened secrets", "ci-policy-weakened"],
+    ["a later fenced weakened after unchanged", "CI-policy: unchanged\n```\nCI-policy: weakened secrets\n```", "ci-policy-weakened"],
+    ["a fenced weakened", "```\nCI-policy: weakened secrets\n```", "ci-policy-weakened"],
+    ["an unterminated fence", "```\nCI-policy: weakened secrets", "ci-policy-weakened"],
+    ["a 4-space indent", "    CI-policy: weakened secrets", "ci-policy-weakened"],
+    ["an HTML comment", "<!--\nCI-policy: weakened secrets\n-->", "ci-policy-weakened"],
+    ["a heading", "## CI-policy: weakened secrets", "ci-policy-weakened"],
+    ["a table row", "| CI-policy | weakened secrets |", "ci-policy-weakened"],
+    ["a slash", "CI/policy: weakened secrets", "ci-policy-weakened"],
+    ["a dot", "CI.policy: weakened secrets", "ci-policy-weakened"],
+    ["no colon", "CI-policy weakened secrets", "ci-policy-weakened"],
+    ["a bold label", "**CI-policy:** weakened secrets", "ci-policy-weakened"],
+    ["a dash list marker", "- CI-policy: weakened secrets", "ci-policy-weakened"],
+    ["a code span", "`CI-policy: weakened secrets`", "ci-policy-weakened"],
+    ["an en dash", "CI\u2013policy: weakened secrets", "ci-policy-weakened"],
+    ["an em dash", "CI\u2014policy: weakened secrets", "ci-policy-weakened"],
+    ["a quoted line", "> CI-policy: weakened secrets", "ci-policy-weakened"],
+    ["a star list marker", "* CI-policy: weakened secrets", "ci-policy-weakened"],
+    ["an underscore-emphasised label", "__CI-policy__: weakened secrets", "ci-policy-weakened"],
+    ["an unknown key beside a known one", "CI-policy: weakened required-check, tests", "ci-policy-malformed"],
+    ["a trailing note", "CI-policy: weakened secrets (ci.yml)", "ci-policy-malformed"],
+    ["a bare weakened", "CI-policy: weakened", "ci-policy-malformed"],
+    ["a fenced unchanged", "```\nCI-policy: unchanged\n```", "ci-policy-malformed"],
+    ["a bold unchanged", "**CI-policy:** unchanged", "ci-policy-malformed"],
   ];
   const paths = [["src/", "src/x.ts"], ["a root action.yml", "action.yml"], [".github/", CI_YML]];
 
-  it.each(probes.flatMap(([name, tail]) => paths.map(([where, path]) => [name!, where!, tail!, path!])))("gates %s on a change to %s", async (_name, _where, tail, path) => {
+  it.each(probes.flatMap(([name, tail, row]) => paths.map(([where, path]) => [name!, where!, tail!, row!, path!])))("gates %s on a change to %s", async (_name, _where, tail, row, path) => {
     const evidence = await evidenceFor(modified(path), ciPolicyIn(tail));
 
-    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: guard("ci-policy-malformed") });
+    expect(evidence.record.decision).toMatchObject({ outcome: "gate", rule: guard(row) });
   });
 
   it("gates a stored line of an unknown shape on replay, rather than reading it as missing", async () => {
