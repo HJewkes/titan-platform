@@ -71,7 +71,7 @@ export function intentPlan({ facts, sizeUnread }: PanelFacts, policy: PanelPolic
   return { class: cls.class, touches: cls.touches, plan: planPanel(cls, policy, headroom) };
 }
 
-const PLAN_KEYS: ReadonlySet<string> = new Set(["class", "touches", "plan"]);
+const PLAN_KEYS: ReadonlySet<string> = new Set(["class", "touches", "plan", "panel", "panelReviewers"]);
 
 /** The intent `sh-review` takes: the plan stays on the intent's record, so a shadow dispatch gets the input an `off` one does. */
 export function withoutPlan(intent: object): Record<string, unknown> {

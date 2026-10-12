@@ -1,6 +1,6 @@
 # evals
 
-**Product.** Private, never published. Depends on `zod` and `commander` only so far.
+**Product.** Private, never published. Depends on `zod`, `commander` and its sibling `@titan-design/*` packages.
 
 ```sh
 pnpm --filter @titan-design/evals build
@@ -46,6 +46,48 @@ whose child is `"champion"` is recorded in `champions`, keyed by step path (`del
 into the scorecard key, so two different champions never share a key. A trial with no
 champion steps omits `champions`, and its key hash is the same as before the field existed.
 Old trial records and scorecards without `champions` still load and keep their old key.
+
+## Trials
+
+`createTrialHost` runs one variant on one case in a workflow runtime over the trial's own
+SQLite file. Its routes come from the variant's steps: a `code` step runs the topology's
+in-process implementation, `agent` and `llm` steps go through an injected launch port, and
+`gate` and `unit` steps are refused by name. The record holds every attempt, a call per
+`tool_use` block, and cost from the launch's usage. A session that ran a model other than
+the step's fails the trial; `rate_limited`, `auth_misconfigured` and `runtime_error`, and a
+run parked for recovery after a crash, mark it `infra`.
+
+`runTrials` runs every variant on every case `trials` times, one trial at a time.
+
+- **Identity.** `trialId(variantHash, caseHash, index, runId)` is a SHA-256 of the four, so
+  the same run directory and run id always name the same trials.
+- **Directory.** `runDir/<trialId>/` holds `trial.sqlite3`, `identity.json`, a `workspace/`
+  the agent works in, a `config/` passed as `CLAUDE_CONFIG_DIR`, and `record.json`, written
+  by temp file and rename when the trial settles.
+- **Resume.** Run it again with the same `runDir` and `runId`. A trial with `record.json`
+  is read back, not run. A trial with only a trial file is hydrated: finished steps replay
+  from the file and the active one follows its `onRestart`. Any other trial starts. Abort
+  `signal` to stop a run the way a crash would.
+- **Infra.** An `infra` trial is recorded in `infra.json`, its sandbox is cleared, and it
+  runs once more. The second result is the record, infra or not.
+
+`agentRoute(sandbox)` is the default launch port: it calls `runAgent` with `cwd` set to the
+trial workspace and `CLAUDE_CONFIG_DIR` set to the trial config dir. Pass `launch` to swap
+the launcher; the sealed launch replaces the default in TP-2299. No CLI verb runs trials yet.
+
+```ts
+import { agentRoute, runTrials } from "@titan-design/evals";
+
+const records = await runTrials({
+  runDir: "runs/2026-10-12",
+  runId: "2026-10-12",
+  unit,
+  variants: [{ variant, topology }],
+  cases,
+  trials: 3,
+  launchFor: (dirs) => agentRoute(dirs),
+});
+```
 
 ## Review outcome corpus
 
@@ -95,8 +137,10 @@ if (variant.schema === "titan.variant/v1") {
 
 ## What it deliberately does not do
 
-No trial host beyond `startTrial`'s identity record, no check engine, judge runner or scorecard aggregation yet; those are slices
-E3 to E7. Skill trees and topology modules are hashed by their stored digests, not re-read.
+No check engine, judge runner or scorecard aggregation yet; those are slices E4 to E7. A
+resumed trial records only the attempts made after the restart: steps that finished before
+the crash replay from the trial file without a dispatch, so their attempts and cost are not
+in the record. Skill trees and topology modules are hashed by their stored digests, not re-read.
 
 ## Gotchas
 

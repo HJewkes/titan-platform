@@ -10,6 +10,7 @@ import { noticeHeldSeat } from "./gate-route.js";
 import type { GateRun, PrTarget } from "./gates.js";
 import { singleSeat } from "./held-repair.js";
 import type { ShepherdDeps } from "./phases.js";
+import { PUSH_WATCH_TICK_MS, headPoll, type HeadPoll } from "./push-signal.js";
 
 const FREEZE_HOLD_STEP = "sh-freeze-hold";
 const FREEZE_WAIT_STEP = "sh-freeze-wait";
@@ -19,7 +20,6 @@ export const FREEZE_HOLD_STEPS: readonly StepDeclaration[] = [
   { id: FREEZE_WAIT_STEP, kind: "dispatch" },
   { id: BASE_WAIT_STEP, kind: "dispatch" },
 ];
-const DEFAULT_POLL_MS = 30_000;
 /** How long one wait holds the run before the run reads CI and decides again; a hold that still applies waits again. */
 const FREEZE_WAIT_LIMIT_MS = 60 * 60_000;
 
@@ -167,36 +167,44 @@ function mainRecheck(port: GitHubPort, freezes: FreezeStore, repo: RepoSlug, hel
   };
 }
 
-/** Polls until the hold's episode is no longer live, the PR moves off the held head, or the wait reaches its limit; a failed read is polled again. */
+/** The freeze is a local read made every tick; the PR is read on a push to its branch or once per backstop, and a failed read is read again. */
+const prPoll = (deps: ShepherdDeps, input: PrTarget & { headSha: string }): HeadPoll =>
+  headPoll({ pushes: deps.pushes, repo: input.repo, headSha: input.headSha, tickMs: PUSH_WATCH_TICK_MS, read: () => deps.port.getPr(input.repo, input.pr).catch(() => undefined) });
+
+/** Waits until the hold's episode is no longer live, the PR moves off the held head, or the wait reaches its limit. */
 async function awaitThaw(deps: ShepherdDeps, freezes: FreezeStore, input: WaitInput, signal: AbortSignal): Promise<Waited> {
   const startedAt = deps.now();
   const recheck = mainRecheck(deps.port, freezes, input.repo, input.baseRef);
+  const poll = prPoll(deps, input);
   for (;;) {
     signal.throwIfAborted();
     const live = freezes.live(input.repo, input.episode);
     if (!live) return { thawed: true, headSha: input.headSha };
-    const pr = await deps.port.getPr(input.repo, input.pr).catch(() => undefined);
+    const polled = await poll.next();
+    const pr = polled.read ? polled.pr : undefined;
     if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { thawed: false, headSha: pr.headSha };
     if (deps.now() - startedAt >= FREEZE_WAIT_LIMIT_MS) return { thawed: false, expired: true, headSha: input.headSha };
     if (await recheck(deps.now(), pr?.baseRef, live)) continue;
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    await deps.sleep(poll.tickMs, signal);
   }
 }
 
 /**
- * Polls until the PR's base head is no longer the red one, the PR moves off the held head, or the wait reaches its
- * limit; a failed read is polled again.
+ * Waits until the PR's base head is no longer the red one, the PR moves off the held head, or the wait reaches its
+ * limit. The base is read along with each read of the PR.
  */
 async function awaitBaseMove(deps: ShepherdDeps, input: BaseWaitInput, signal: AbortSignal): Promise<BaseWaited> {
   const startedAt = deps.now();
+  const poll = prPoll(deps, input);
   for (;;) {
     signal.throwIfAborted();
-    const pr = await deps.port.getPr(input.repo, input.pr).catch(() => undefined);
+    const polled = await poll.next();
+    const pr = polled.read ? polled.pr : undefined;
     if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { baseMoved: false, headSha: pr.headSha };
-    const base = await deps.port.getHeadSha(input.repo, pr?.baseRef ?? input.baseRef).catch(() => undefined);
+    const base = polled.read ? await deps.port.getHeadSha(input.repo, pr?.baseRef ?? input.baseRef).catch(() => undefined) : undefined;
     if (base != null && base !== input.baseSha) return { baseMoved: true, headSha: input.headSha };
     if (deps.now() - startedAt >= FREEZE_WAIT_LIMIT_MS) return { baseMoved: false, expired: true, headSha: input.headSha };
-    await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);
+    await deps.sleep(poll.tickMs, signal);
   }
 }
 

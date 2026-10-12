@@ -34,12 +34,16 @@
   },
   "private": true,
   "dependencies": {
+    "@titan-design/agent": "workspace:^",
     "@titan-design/authority": "workspace:^",
     "@titan-design/evidence": "workspace:^",
     "@titan-design/health": "workspace:^",
+    "@titan-design/hitl": "workspace:^",
     "@titan-design/review-panel": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-read": "workspace:^",
+    "@titan-design/store-sqlite": "workspace:^",
+    "@titan-design/workflow": "workspace:^",
     "commander": "^14.0.3",
     "zod": "^4.4.3"
   },

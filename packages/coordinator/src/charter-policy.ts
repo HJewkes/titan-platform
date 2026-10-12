@@ -22,8 +22,8 @@ export const HARD_STOP_CLASSES = [
 export const hardStopClassSchema = z.enum(HARD_STOP_CLASSES);
 
 // Scorer terms are required because the scorer has no fallback for them; keys with no
-// reader yet (gate_free_bonus, stale_pr_days, heartbeat_cron) stay optional so their
-// owning slices can move them without breaking the parse.
+// reader yet (gate_free_bonus, stale_pr_days, heartbeat_cron, worktrees_per_repo_per_seat)
+// stay optional so their owning slices can move them without breaking the parse.
 export const charterDefaultsSchema = z.looseObject({
   kind_weights: weights,
   share_caps: weights,
@@ -36,7 +36,7 @@ export const charterDefaultsSchema = z.looseObject({
   gate_free_bonus: weight.optional(),
   retire_k: z.looseObject({ implementer: count, reviewer: count, planner: count }),
   teleport_k: count,
-  worktrees_per_repo_per_seat: count,
+  worktrees_per_repo_per_seat: count.optional(),
   worktrees_left_free_per_repo: count,
   stale_pr_days: count.optional(),
   heartbeat_cron: z.string().optional(),

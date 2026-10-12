@@ -685,6 +685,39 @@ describe("shepherd-pr on a red main", () => {
     expect(w.freezes().isFrozen(REPO)).toBe(false);
   });
 
+  it("spawns no fixer and opens no main-frozen gate when a seat marks its fix PR before the spawn step", async () => {
+    const ports = mainRedPorts();
+    let mark = (): void => undefined;
+    const tasks = ports.mainRed.tasks!;
+    const mainRed = { ...ports.mainRed, tasks: { ...tasks, add: async (...args: Parameters<typeof tasks.add>) => (mark(), tasks.add(...args)) } };
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, mainRed);
+    mark = () => void w.freezes().markFixPr(REPO, 1, 1, "coord-a");
+    const runId = await registeredToMerge(w, "demo/TP-1", "impl-a");
+
+    await w.host.runtime.wait(runId);
+
+    expect(ports.spawned).toEqual([]);
+    expect(stepIds(w, runId)).not.toContain("main-frozen");
+    expect(w.host.gates.listPending()).toEqual([]);
+    expect(w.freezes().get(REPO)).toMatchObject({ fixTask: "demo/FX-1", fixer: null, fixPr: 1 });
+  });
+
+  it("opens main-red-again naming the marked fix PR on a red while it is marked, and spawns no fixer", async () => {
+    const ports = mainRedPorts();
+    const w = shepherdWorld(() => [successRun("validate", 5, undefined, "failure")], undefined, ports.mainRed);
+    const freezes = w.freezes();
+    freezes.freeze(REPO, EARLIER_RED);
+    freezes.setFixTask(REPO, 1, "demo/FX-1");
+    freezes.markFixPr(REPO, 1, 1, "coord-a");
+    const runId = await registeredToMerge(w, "demo/TD-473", "coord-a");
+
+    await gateOpened(w.host, gateId(runId, "main-red-again"));
+
+    expect(w.host.gates.get(gateId(runId, "main-red-again"))?.prompt).toContain("already frozen with fix PR #1 on task demo/FX-1");
+    expect(ports.added).toEqual([]);
+    expect(ports.spawned).toEqual([]);
+  });
+
   it("opens no gate when the fixer's green merge thaws the repo", async () => {
     const w = shepherdWorld(() => [successRun("validate", 5)], undefined, mainRedPorts().mainRed);
     frozenWithFixer(w);

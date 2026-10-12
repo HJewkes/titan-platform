@@ -19,6 +19,14 @@ describe("openRepoFindings", () => {
     expect(openRepoFindings(HEAD, [run("a", 1), run("b", 2, "neutral"), run("c", 3, "skipped")])).toEqual([]);
   });
 
+  it("is a missing finding when every Actions run was skipped or neutral, so no job actually passed", () => {
+    expect(openRepoFindings(HEAD, [run("a", 1, "skipped"), run("b", 2, "neutral")])).toEqual([{ kind: "missing", name: "a successful GitHub Actions check-run" }]);
+  });
+
+  it("is empty when one Actions run succeeded beside a skipped one", () => {
+    expect(openRepoFindings(HEAD, [run("a", 1, "skipped"), run("b", 2)])).toEqual([]);
+  });
+
   it("is a missing finding when no run reported, so an empty set never lands", () => {
     expect(openRepoFindings(HEAD, [])).toEqual([{ kind: "missing", name: expect.any(String) }]);
   });
@@ -207,6 +215,16 @@ describe("land on a repo whose base requires no status checks", () => {
 
   it("never lands on a green check-run from another app with no Actions runs", async () => {
     const scenario = openScenario([successRun("external", 1, undefined, "success", OTHER_APP)], 60_000);
+    const { host, runId } = start(scenario);
+
+    const result = await host.runtime.wait(runId).catch((failure: unknown) => failure);
+
+    expect(JSON.stringify([result, host.runtime.status(runId)])).toContain("ci-wait timed out");
+    expect(scenario.fake.effects.merge).toBe(0);
+  });
+
+  it("never lands when every Actions check-run at the head was skipped, and times out through ci-wait", async () => {
+    const scenario = openScenario([successRun("lint", 1, undefined, "skipped"), successRun("test", 2, undefined, "skipped")], 60_000);
     const { host, runId } = start(scenario);
 
     const result = await host.runtime.wait(runId).catch((failure: unknown) => failure);
