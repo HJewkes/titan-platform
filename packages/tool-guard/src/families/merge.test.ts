@@ -115,6 +115,7 @@ describe("one fixture per bash.merge spelling", () => {
     ["a write to a file, then ;", "git checkout -b feat/z && echo x > log; git merge x", ["bash.merge.git-merge-protected"]],
     ["a write to /dev/null, then ;", "git switch -c feat/z && echo x > /dev/null; git push origin HEAD", ["bash.merge.git-push-protected"]],
     ["a printf write, then a newline", "git switch -c feat/z && printf ok > out.txt\ngit push", ["bash.merge.git-push-implicit"]],
+    ["zsh's >! write, then ;", "git checkout -b feat/z && echo x >! log; git push origin HEAD", ["bash.merge.git-push-protected"]],
   ])("drops the trust in a branch created from main once the && chain breaks, after a step that writes a file: %s", (_how, command, expected) => {
     expect(spellings(bash(command, "main"))).toEqual(expected);
   });

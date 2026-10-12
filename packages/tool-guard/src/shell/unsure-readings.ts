@@ -56,6 +56,15 @@ export class ScriptBudgetError extends ReadingLimitError {
   }
 }
 
+/** A line that runs a script after writing it in a way the guard does not follow; the hook denies it unchecked. */
+export class UntrackedWriteError extends ReadingLimitError {
+  constructor() {
+    super();
+    this.message = "a script the line wrote in a way the guard cannot follow";
+    this.name = "UntrackedWriteError";
+  }
+}
+
 /** A line bash 5 and bash 3.2 read differently; the hook denies it unchecked. */
 export class SplitReadingError extends ReadingLimitError {
   constructor(readonly split: Split) {
