@@ -268,6 +268,10 @@ sit beside), and `symbol_pass_through` (1 when the body is one call that forward
 parameter in order). Per file: `except_count`, `except_density` (per 100 non-blank lines),
 and `swallowed_except` (handlers whose body is empty, `pass`, a bare return, or one logger
 call; a Python `except ImportError` or `ModuleNotFoundError` is exempt).
+Line density is written on every file too: `long_line_share_160` (share of non-blank lines
+over 160 characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+excluded) and `bool_ops_per_line` (`&&`, `||`, `??` and ternaries, or Python `and`, `or` and
+conditional expressions, per non-blank line, counted from the syntax tree).
 
 **Call-graph metrics** come from symbol `calls` edges, one per caller and callee, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a

@@ -428,6 +428,11 @@ Python, and are written on every function or file, zeros included:
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
   `print`, `warn` or `console`).
+- Per file, line density (TP-2474): `long_line_share_160` (share of non-blank lines over 160
+  characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+  excluded) and `bool_ops_per_line` (syntax-tree `&&`, `||`, `??` and ternaries, or Python
+  `and`, `or` and conditional expressions, per non-blank line; strings and comments never
+  count).
 
 Call-graph metrics (TP-323) come from `calls` edges, one per caller and callee symbol, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a

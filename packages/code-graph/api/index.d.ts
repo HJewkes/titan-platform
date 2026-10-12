@@ -1267,7 +1267,7 @@ type MetricDirection = "higher-worse" | "lower-worse" | "neutral";
 /** A missing row reads as zero (a sparse writer's floor) or is left out of means, percentiles, and ranks. */
 type MetricAbsence = "zero" | "exclude";
 /** The code-graph module that writes the metric, for provenance. */
-type MetricSource = "degree" | "source-metrics" | "lcom" | "call-graph" | "exception-handling" | "dead-code" | "growth-risk" | "history" | "test-linker" | "test-kinds" | "coverage";
+type MetricSource = "degree" | "source-metrics" | "lcom" | "call-graph" | "exception-handling" | "line-density" | "dead-code" | "growth-risk" | "history" | "test-linker" | "test-kinds" | "coverage";
 interface MetricDescriptor {
     /** The stored name, or a template such as `churn_{w}` when {@link windowed} is set. */
     name: string;
