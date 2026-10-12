@@ -1,6 +1,11 @@
 name: fix-proof
 
 # pull_request only, never pull_request_target: the PR's code runs here with a read-only token and no secrets.
+#
+# Three jobs, so no PR-head code can reach the verdict. fix-proof-base and fix-proof-head each build and test one side
+# and pass encoded reports on as job outputs. fix-proof, the check run Shepherd reads, runs only code built from the
+# merge base: it decodes those reports and prints the one result line. A head process cannot write into another job's
+# VM, outputs or log.
 on:
   pull_request:
 
@@ -12,9 +17,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  fix-proof:
+  fix-proof-base:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    outputs:
+      report: ${{ steps.emit.outputs.report }}
+      rerun: ${{ steps.emit.outputs.rerun }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,13 +44,13 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
+      # The event's base sha, not the moving base branch, so all three jobs agree on the merge base.
       - name: Find the merge base
         id: merge-base
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: echo "sha=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
-      # The runner is built from the merge base, so a PR cannot change the code that judges it.
+        run: echo "sha=$(git merge-base "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
       - name: Build the runner at the merge base
         env:
           MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
@@ -52,13 +60,123 @@ jobs:
           cd "$RUNNER_TEMP/runner"
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
-      # The verdict is the printed fix-proof/v1 line; the runner always exits 0, so this step passes whatever it says.
-      # A merge base that built no runner bin prints a skipped line instead of failing. The script comes from the
-      # workflow's commit but only chooses between printing and running the merge-base bin; the judging code is still
-      # the base's.
-      - name: Prove the fix
+      # The runner builds the merge base before it overlays any head file, then runs the head's tests on it twice.
+      - name: Run the base side
         env:
           MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TURBO_TELEMETRY_DISABLED: 1
-        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA"
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec base "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
+      - name: Pass the reports to the judge
+        id: emit
+        if: ${{ !cancelled() }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit base "$RUNNER_TEMP/fix-proof-out"
+
+  fix-proof-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      report: ${{ steps.emit.outputs.report }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .fix-proof-workflow
+          sparse-checkout: scripts/fix-proof-run.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Find the merge base
+        id: merge-base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "sha=$(git merge-base "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
+      - name: Build the runner at the merge base
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          TURBO_TELEMETRY_DISABLED: 1
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/runner" "$MERGE_BASE"
+          cd "$RUNNER_TEMP/runner"
+          pnpm install --frozen-lockfile
+          pnpm --filter @titan-design/fix-proof... run build
+      # Head install, build and vitest run here, and nothing this job does can reach the judge but its report output.
+      - name: Run the head side
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TURBO_TELEMETRY_DISABLED: 1
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec head "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
+      - name: Pass the report to the judge
+        id: emit
+        if: ${{ !cancelled() }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh emit head "$RUNNER_TEMP/fix-proof-out"
+
+  # The check run Shepherd reads. No cache: a store saved by an exec job must not reach it. Every tool and dependency
+  # comes from the merge-base tree in runner/; the head checkout in src/ is only read by git, never built or run.
+  fix-proof:
+    needs: [fix-proof-base, fix-proof-head]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: src
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: .fix-proof-workflow
+          sparse-checkout: scripts/fix-proof-run.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Check out the merge base
+        id: merge-base
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          sha=$(git -C src merge-base "$BASE_SHA" "$HEAD_SHA")
+          git -C src worktree add --detach "$GITHUB_WORKSPACE/runner" "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: runner/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: runner/.node-version
+      - name: Build the judge at the merge base
+        working-directory: runner
+        env:
+          TURBO_TELEMETRY_DISABLED: 1
+        run: |
+          pnpm install --frozen-lockfile --filter @titan-design/fix-proof...
+          pnpm --filter @titan-design/fix-proof... run build
+      # toJSON keeps a forged multi-line output on one line where the step log echoes its env block.
+      - name: Receive the reports
+        env:
+          REPORT_BASE: ${{ toJSON(needs.fix-proof-base.outputs.report) }}
+          REPORT_BASE_RERUN: ${{ toJSON(needs.fix-proof-base.outputs.rerun) }}
+          REPORT_HEAD: ${{ toJSON(needs.fix-proof-head.outputs.report) }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh receive "$RUNNER_TEMP/fix-proof-reports"
+      # The verdict is the printed fix-proof/v1 line and the judge always exits 0. A report that failed to arrive is an
+      # error verdict, so this runs whatever the steps before it did.
+      - name: Judge the proof
+        if: ${{ !cancelled() }}
+        env:
+          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh judge "$GITHUB_WORKSPACE/runner" "$GITHUB_WORKSPACE/src" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-reports"
