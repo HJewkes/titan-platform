@@ -113,6 +113,46 @@ describe("shepherd stats verb", () => {
     expect(JSON.parse(out.join("")).ownerFriction).toEqual([{ day: "2026-10-07", ownerTouches: 1, kinds: [{ kind: "approve-merge", gates: 1, medianHours: 3, maxHours: 3 }] }]);
   });
 
+  it("meters gates per policy row and resolver over --since with --gates --json", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    let clock = Date.now() - 3 * 3_600_000;
+    const gates = new SqliteGateStore(store, { migrate: false, now: () => clock });
+    gates.create({ id: "run-1/approve-merge:0", prompt: "Merge? Policy authority/MRG-AU: owner merges" });
+    gates.create({ id: "run-2/approve-merge:0", prompt: "Merge? Policy authority/MRG-AU: owner merges" });
+    clock += 2 * 3_600_000;
+    gates.resolve("run-1/approve-merge:0", { decision: "merge" }, { class: "owner-terminal", id: "owner", channel: "terminal" });
+    store.close();
+    const { out, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", "--gates", "--since", "7d", "--json"], io);
+
+    expect(code).toBe(0);
+    const rows = JSON.parse(out.join("")).gates;
+    expect(rows.map((row: { resolver: string; decisions: object; pending: number }) => [row.resolver, row.decisions, row.pending])).toEqual([
+      ["owner-terminal", { merge: 1 }, 0],
+      ["unanswered", {}, 1],
+    ]);
+    expect(rows[0]).toMatchObject({ policyRow: "authority/MRG-AU", count: 1, medianHours: 2, maxHours: 2 });
+  });
+
+  it.each([
+    [["--since", "7d"], "--since applies only to --gates"],
+    [["--gates"], "--gates needs --since"],
+    [["--gates", "--since", "7d", "--from", "2026-10-01"], "--gates takes --since, not --from/--to"],
+    [["--gates", "--since", "7x"], "--since expects a window like 90m, 6h or 2d"],
+  ])("refuses %j as a usage error", async (args, message) => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const { err, io } = capture();
+
+    const code = await runCli(["--db", db, "shepherd", "stats", ...args], io);
+
+    expect(code).toBe(2);
+    expect(err.join("")).toContain(message);
+  });
+
   it("prints the review cost section alone under --cost", async () => {
     const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
     openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();

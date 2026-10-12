@@ -28,30 +28,33 @@ interface Wait {
 }
 
 const OWNER_CLASSES: readonly string[] = RESOLVER_CLASSES;
-const isOwnerResolve = (gate: GateRecord): boolean => gate.status === "resolved" && gate.resolvedBy !== undefined && OWNER_CLASSES.includes(gate.resolvedBy.class);
+
+/** An owner-class resolve made under a grant was the delegate's call, not the owner's, so it is no touch. */
+export const isOwnerTouch = (gate: GateRecord): boolean =>
+  gate.status === "resolved" && gate.resolvedBy !== undefined && OWNER_CLASSES.includes(gate.resolvedBy.class) && gate.resolvedEvidence?.grant === undefined;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 const gateKind = (gateId: string): string => gateId.slice(gateId.indexOf("/") + 1).split(":")[0]!;
 
 const day = (at: number): string => new Date(at).toISOString().slice(0, 10);
-const round = (value: number): number => Math.round(value * 100) / 100;
+export const round = (value: number): number => Math.round(value * 100) / 100;
 
 /** A gate the owner resolved waited until its resolve; a gate still pending is the owner's, so it waits until `now`. Anything else was not the owner's to answer. */
 function waitOf(gate: GateRecord, now: number): Wait | undefined {
   const opened = Date.parse(gate.createdAt);
   if (gate.status === "pending") return { day: day(now), kind: gateKind(gate.id), hours: (now - opened) / HOUR_MS, touch: false };
-  if (!isOwnerResolve(gate) || gate.resolvedAt === undefined) return undefined;
+  if (!isOwnerTouch(gate) || gate.resolvedAt === undefined) return undefined;
   const closed = Date.parse(gate.resolvedAt);
   return { day: day(closed), kind: gateKind(gate.id), hours: (closed - opened) / HOUR_MS, touch: true };
 }
 
-function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
+export function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const item of items) groups.set(keyOf(item), [...(groups.get(keyOf(item)) ?? []), item]);
   return groups;
 }
 
-function median(sorted: readonly number[]): number {
+export function median(sorted: readonly number[]): number {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
