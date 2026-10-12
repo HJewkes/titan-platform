@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -132,5 +132,15 @@ describe("execSafeAsync", () => {
   it("closes stdin when no input is given, so a reading child does not hang", async () => {
     const result = await execSafeAsync("/bin/cat", [], minimalEnv(), 5_000);
     expect(result.stdout).toBe("");
+  });
+
+  it("runs the child in cwd when one is given", async () => {
+    const result = await execSafeAsync("/bin/pwd", ["-P"], minimalEnv(), 5_000, undefined, dir);
+    expect(result.stdout.trim()).toBe(realpathSync(dir));
+  });
+
+  it("inherits the caller's cwd when none is given", async () => {
+    const result = await execSafeAsync("/bin/pwd", ["-P"], minimalEnv(), 5_000);
+    expect(result.stdout.trim()).toBe(realpathSync(process.cwd()));
   });
 });

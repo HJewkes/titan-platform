@@ -158,7 +158,8 @@ export function execSafe(
 /**
  * `execSafe` without blocking the event loop: same timeout, no-shell and
  * error mapping, for callers (a long-lived server) that cannot afford to
- * stall while a slow child answers. `input` follows `execSafe`'s rule.
+ * stall while a slow child answers. `input` and `cwd` follow `execSafe`'s
+ * opt-in rule; `cwd` is last so existing `input` callers keep their order.
  */
 export function execSafeAsync(
   bin: string,
@@ -166,23 +167,42 @@ export function execSafeAsync(
   env: Record<string, string>,
   timeoutMs: number,
   input?: string,
+  cwd?: string,
 ): Promise<SafeExecResult> {
+  const options = {
+    env,
+    timeout: timeoutMs,
+    encoding: "utf8" as const,
+    shell: false,
+    maxBuffer: 64 * 1024 * 1024,
+    ...(cwd === undefined ? {} : { cwd }),
+  };
   return new Promise((resolve, reject) => {
-    const child = execFile(
-      bin,
-      args,
-      { env, timeout: timeoutMs, encoding: "utf8", shell: false, maxBuffer: 64 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err === null) return resolve({ stdout, stderr, status: 0 });
-        const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null };
-        if (e.killed === true || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
-          return reject(new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`));
-        }
-        if (typeof e.code === "number") return resolve({ stdout, stderr, status: e.code });
-        reject(new ExecError(`${bin} could not be started: ${e.message}`));
-      },
-    );
+    const child = execFile(bin, args, options, (err, stdout, stderr) => {
+      try {
+        resolve(settleAsync(bin, timeoutMs, err, stdout, stderr));
+      } catch (error) {
+        reject(error);
+      }
+    });
     // execFileSync closes the child's stdin; a child that reads it would otherwise wait forever.
     child.stdin?.end(input);
   });
+}
+
+/** `execSafe`'s mapping for an `execFile` callback: a non-zero exit is a result, a timeout or failed start throws. */
+function settleAsync(
+  bin: string,
+  timeoutMs: number,
+  err: Error | null,
+  stdout: string,
+  stderr: string,
+): SafeExecResult {
+  if (err === null) return { stdout, stderr, status: 0 };
+  const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string | null };
+  if (e.killed === true || e.signal === "SIGTERM" || e.code === "ETIMEDOUT") {
+    throw new ExecTimeoutError(`${bin} timed out after ${timeoutMs}ms`);
+  }
+  if (typeof e.code === "number") return { stdout, stderr, status: e.code };
+  throw new ExecError(`${bin} could not be started: ${e.message}`);
 }
