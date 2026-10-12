@@ -48,7 +48,7 @@ import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
-import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
 import type { PanelMode } from "./review-panel-plan.js";
@@ -516,6 +516,8 @@ describe("sh-review", () => {
     changedFiles?: number;
     /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
     removals?: string[];
+    /** Acts on the bound store after the registration is written, before any step runs. */
+    prepare?: (store: ShepherdStore) => void;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -527,7 +529,9 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const store = boundStore(options.registered ?? registration);
+    options.prepare?.(store.get());
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -616,6 +620,44 @@ describe("sh-review", () => {
       const sized = await spawnSized();
 
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    const smallMigration: PrFile[] = [{ path: "products/factory/src/shepherd/store-migrations.ts", status: "modified", additions: 20, deletions: 10 }];
+    const spawnHeld = async (prepare: (store: ShepherdStore) => void) => {
+      const dispatch = fakeDispatch();
+      const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallMigration, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      return { facts: dispatch.spawns[0]?.facts, profile: result?.kind === "dispatched" ? result.profile : undefined };
+    };
+
+    it("gives a 30-line migration PR held g10-review the g10 profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "g10-review: store migration"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", g10Hold: true, changedLines: 30 }, profile: "bd-reviewer" });
+    });
+
+    it("gives a 30-line PR whose g10-review hold was released the g10 profile", async () => {
+      const sized = await spawnHeld((store) => {
+        store.hold("run-1", "g10-review: store migration");
+        store.release("run-1");
+      });
+
+      expect(sized.profile).toBe("bd-reviewer");
+    });
+
+    it("gives a 30-line PR under a non-G10 hold the standard profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "stalled: seat away"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+    });
+
+    it("gives the g10 profile when the run's hold events cannot be read", async () => {
+      const sized = await spawnHeld((store) => {
+        store.eventsOf = () => {
+          throw new Error("disk I/O error");
+        };
+      });
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, unread: true, changedLines: 30 }, profile: "bd-reviewer" });
     });
   });
 
