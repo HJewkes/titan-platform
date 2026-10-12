@@ -275,6 +275,9 @@ cycle of one. `import type` and `export type … from` edges are left out unless
 `includeTypeOnly: true`. An all-inline `{ type T }` import still counts, because under
 `verbatimModuleSyntax` it compiles to an import that loads the module. `exclude` and
 `excludeRoles` take files out of the graph.
+Each cycle carries `cycleKind`: `value` when its value imports alone still close a cycle among
+its members, otherwise `type-only`. A type-only cycle also names its `hub`, the member with the
+most type-only imports in from the other members, and its evidence says so.
 The baseline key is the rule id plus every member, so it does not depend on edge order. Against
 a baseline, a cycle whose members all sit inside one known cycle is a carryover, so a shrunk or
 split cycle passes, while a cycle that gains a file or merges two known cycles is new.
@@ -425,6 +428,11 @@ Python, and are written on every function or file, zeros included:
   (per 100 non-blank lines), and `swallowed_except` (handlers whose body is empty, `pass`,
   `...`, `continue`, a bare or `None`/`null`/`undefined` return, or one call to a logger,
   `print`, `warn` or `console`).
+- Per file, line density (TP-2474): `long_line_share_160` (share of non-blank lines over 160
+  characters), `chars_per_sloc` (characters per non-blank line, surrounding whitespace
+  excluded) and `bool_ops_per_line` (syntax-tree `&&`, `||`, `??` and ternaries, or Python
+  `and`, `or` and conditional expressions, per non-blank line; strings and comments never
+  count).
 
 Call-graph metrics (TP-323) come from `calls` edges, one per caller and callee symbol, each
 carrying the literal arguments of every call site in `attrs.sites`. TypeScript resolves a

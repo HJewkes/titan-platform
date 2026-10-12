@@ -5,7 +5,7 @@ import { reviewerBrief, type ReviewerBriefInput } from "@titan-design/review-pan
 import { describe, expect, it } from "vitest";
 import { parseSpec } from "../spec/index.js";
 import { validateSpec } from "../validate.js";
-import { bundleLines, reviewPrBrief } from "./brief.js";
+import { TRIAL_TEST_RULE, bundleLines, reviewPrBrief } from "./brief.js";
 
 const UNIT_ROOT = fileURLToPath(new URL("../../units/review-pr/", import.meta.url));
 const readUnitFile = (path: string) => readFile(`${UNIT_ROOT}${path}`);
@@ -28,8 +28,8 @@ describe("reviewPrBrief", () => {
   it.each([
     ["plain", PLAIN],
     ["re-review to owner", RE_REVIEW_TO_OWNER],
-  ] as const)("keeps every line but the checkout lines byte-identical to reviewerBrief (%s)", (_name, input) => {
-    const live = reviewerBrief(input);
+  ] as const)("keeps every line but the checkout lines byte-identical to reviewerBrief with the trial rule (%s)", (_name, input) => {
+    const live = reviewerBrief({ ...input, testRule: TRIAL_TEST_RULE });
     const liveBlock = live.split("\n").filter((line) => line.startsWith("  ") || line.startsWith("If you need the base"));
 
     const trial = reviewPrBrief(input, BUNDLE);
@@ -45,6 +45,13 @@ describe("reviewPrBrief", () => {
     expect(trial).toContain(`"${BUNDLE}/head"`);
     expect(trial).toContain(`"${BUNDLE}/diff.patch"`);
     expect(trial).toContain(`"${BUNDLE}/base"`);
+  });
+
+  it("tells the trial reviewer there is no CI to read, so a missing check never decides its verdict", () => {
+    const trial = reviewPrBrief(PLAIN, BUNDLE);
+
+    expect(trial).toContain(TRIAL_TEST_RULE);
+    expect(trial).not.toMatch(/check-runs|\bgh api\b|basement-suite/);
   });
 });
 

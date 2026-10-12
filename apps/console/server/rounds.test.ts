@@ -65,7 +65,8 @@ describe("rounds.list", () => {
   });
 
   it("answers an empty list when the rounds dir does not exist yet", async () => {
-    expect(await listRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], truncated: false });
+    const missing = path.join(root, "missing");
+    expect(await listRounds({ dir: missing })).toEqual({ rounds: [], truncated: false, dir: missing });
   });
 });
 
