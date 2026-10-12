@@ -1,6 +1,6 @@
 import type { RepoSlug } from "@titan-design/github";
 import { EXIT, defineCommand } from "@titan-design/registry";
-import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
+import type { StepRoute, WorkflowContext, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { FactoryContext } from "../registry.js";
@@ -8,6 +8,7 @@ import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdServices } from "./commands.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { LeaveLand } from "./leave-land.js";
+import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import type { CauseTrail } from "./review-cause.js";
 import { VERSION_PACKAGES_BRANCH } from "./release.js";
 import { FINISHED_RUN_STATUSES } from "./run-status.js";
@@ -43,13 +44,14 @@ interface ReviewedRun {
 }
 
 /**
- * The verdict the run already took at `headSha`, unless a seat's untaken ask stands there: then the verdict is set aside, the
- * trail marks the head so its next review is Shepherd's own and never a carry, and the land round ends. `land` trusts a head
- * for the rest of its round once the old verdict let it through, so only a new round asks the policy or the owner again.
+ * The verdict the run already took at `headSha`, unless a seat's untaken ask stands there: then a verdict other than MERGE is
+ * set aside, the trail marks the head so its next review is Shepherd's own and never a carry, and the land round ends. A MERGE
+ * stands and the ask is spent, since a second reviewer of the same code adds a round and no information (TP-2392). `land`
+ * trusts a head for the rest of its round once the old verdict let it through, so only a new round asks the policy or the owner again.
  */
 export async function standingVerdict(run: ReviewedRun, headSha: string): Promise<Verdict | undefined> {
   const verdict = run.reviews.get(headSha);
-  if (verdict === undefined || run.release || !(await reviewRequested(run.ctx, headSha))) return verdict;
+  if (verdict === undefined || run.release || !(await reviewRequested(run.ctx, headSha)) || verdict.kind === "MERGE") return verdict;
   run.reviews.delete(headSha);
   run.trail.seatAsked.add(headSha);
   throw new LeaveLand();
@@ -82,7 +84,9 @@ export interface ReviewAsk {
 
 const refused = (message: string, code: number): Error => Object.assign(new Error(message), { code });
 
-/** Only a registered PR's run can take an ask, and a finished or release run reads none, so each is refused before anything is recorded. */
+const mergedAt = (run: WorkflowRun, head: string): boolean => Object.values(run.stepResults).some((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${head}`);
+
+/** Only a registered PR's run can take an ask, and a finished or release run reads none, nor does a head that already took a MERGE, so each is refused before anything is recorded. */
 async function askReview({ repo, pr }: { repo: RepoSlug; pr: number }, ctx: FactoryContext): Promise<ReviewAsk> {
   const services: ShepherdServices | undefined = ctx.shepherd;
   if (!services) throw refused("shepherd commands need the shepherd routes, and this host was opened without them", EXIT.UNAVAILABLE);
@@ -92,12 +96,13 @@ async function askReview({ repo, pr }: { repo: RepoSlug; pr: number }, ctx: Fact
   if (run === undefined || FINISHED_RUN_STATUSES.has(run.status)) throw refused(`shepherd run ${registration.runId} already ended (${run?.status ?? "missing"}), so no review was asked`, EXIT.DATAERR);
   if (run.params.branch === VERSION_PACKAGES_BRANCH) throw refused(`shepherd run ${run.id} lands the Version Packages PR, whose release preflight stands in for a reviewer, so no review was asked`, EXIT.DATAERR);
   const { headSha } = await services.port.getPr(repo, pr);
+  if (mergedAt(run, headSha)) throw refused(`shepherd run ${run.id} already took a MERGE at ${headSha}, so no review was asked; push a change or raise a hold`, EXIT.DATAERR);
   return { runId: registration.runId, head: headSha, requested: services.store.get().requestReview(registration.runId, headSha) };
 }
 
 export const reviewCommand = defineCommand<{ repo: RepoSlug; pr: number }, ReviewAsk, FactoryContext>({
   name: "shepherd.review",
-  description: "Ask for Shepherd's own fresh review of owner/repo#pr at its current head, set beside any verdict the run already took there; a repeat at the same head asks nothing",
+  description: "Ask for Shepherd's own fresh review of owner/repo#pr at its current head, set beside a verdict other than MERGE the run already took there; a head that took a MERGE is refused, and a repeat at the same head asks nothing",
   args: z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), pr: z.number().int().positive() }),
   result: z.custom<ReviewAsk>(),
   run: askReview,

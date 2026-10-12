@@ -253,7 +253,9 @@ Resync also supersedes an MRG-AU `approve-merge` gate whose cause may since have
 MRG-AU allow row must have had only transient conditions unmet, `merge-tree-clean`,
 `repo-not-frozen` or both, and the gate must still be at the pull request's head. The cancel
 reason starts `superseded: review again: ` and names the conditions, and the run asks the
-policy again at the same head. A row with any other unmet condition, such as
+policy again at the same head. A head that already took a `MERGE` keeps it: the run records
+`sh-review-refused` with reason `merge-standing`, reads the merge evidence again, and
+dispatches no reviewer. A row with any other unmet condition, such as
 `verdict-merge-at-head`, leaves the gate with the owner, and so does a repo the freeze store
 still holds frozen. When a freeze thaws, whichever path thawed it, `titan-factory serve` runs
 the same sweep at once for that repo's gates. If a pull request's head cannot be read during
@@ -835,10 +837,15 @@ never the standing reviewer or the named reviewer of a `hold --reviewer`, record
 `requested: true` when it takes the ask. A retry at that head, after a silent or timed-out
 reviewer, spawns again too.
 
+A head where the run already took a `MERGE`, its own or carried, is refused with exit 65
+(DATAERR): the same code would get a second reviewer and no new information, so push a change
+or raise a hold instead. An ask that reaches the run at such a head anyway is taken and the
+`MERGE` stands.
+
 A run waiting in `merging` at that head stops waiting without merging and reads CI again,
 held or not: an ask also stops an unheld pull request's merge at that head, which fails safe.
 The `sh-review-request` step then takes the ask and sets aside the verdict the run already
-had there, whether a seat reviewer's, a carried `MERGE` or Shepherd's own. It also ends the
+had there, if it was not a `MERGE`. It also ends the
 land round, because `land` trusts a head for the rest of a round once its old verdict let it
 through. The next round asks the policy, or the owner, again, so an asked review that
 escalates opens `approve-merge` instead of merging. That review is named `seat-request`,

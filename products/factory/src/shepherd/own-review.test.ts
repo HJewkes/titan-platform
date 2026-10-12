@@ -137,38 +137,32 @@ describe("a hold that names a seat reviewer", () => {
 
 const gatePrompt = (w: World): string | undefined => w.host.pendingGates().find((gate) => gate.runId === w.runId)?.gate.prompt;
 
-/** Releases the hold once the run took the ask, then waits for the run to merge or open approve-merge. */
-async function releasedAfterAsk(w: World): Promise<void> {
-  await vi.waitFor(() => expect(w.store.byRun(w.runId)?.reviewRequest?.takenAt).not.toBeNull(), { timeout: 5_000 });
-  w.store.release(w.runId);
-  await vi.waitFor(() => expect(w.fake.pr(1).merged || gatePrompt(w) !== undefined).toBe(true), { timeout: 5_000 });
-}
-
-describe("an ask whose review escalates", () => {
-  it("opens approve-merge, never merges, when the asked reviewers stay silent until the failed-rounds cap", async () => {
-    const w = heldRun(G10_ADVERSARY, undefined, { say: (spawn, head) => (spawn === 0 ? block("MERGE", head) : undefined) });
+describe("an ask at a head that already took a MERGE", () => {
+  it("is refused with DATAERR, records no ask, and the run merges on its standing MERGE with no second reviewer", async () => {
+    const w = heldRun(G10_ADVERSARY);
     await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 1).toBe(true), { timeout: 5_000 });
 
-    await ask(w);
-    await releasedAfterAsk(w);
+    const asked = await ask(w);
+    w.store.release(w.runId, { headSha: H1 });
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
 
-    expect(w.fake.pr(1).merged).toBe(false);
-    expect(gatePrompt(w)).toContain("failed-rounds");
+    expect(asked).toMatchObject({ ok: false, code: 65, error: expect.stringContaining(`already took a MERGE at ${H1}`) });
+    expect(w.store.byRun(w.runId)?.reviewRequest).toBeNull();
+    expect(w.spawned).toHaveLength(1);
   });
 
-  it("opens approve-merge, never merges, when the asked FIX_FIRST is the run's sixth", async () => {
-    const w = heldRun(G10_ADVERSARY, undefined, { say: (spawn, head) => block(spawn === 5 ? "MERGE" : "FIX_FIRST", head) });
-    for (let fix = 1; fix <= 5; fix += 1) {
-      await vi.waitFor(() => expect(w.spawned.length === fix && /^sh-held-wait/.test(w.host.runtime.status(w.runId)?.currentStep ?? "")).toBe(true), { timeout: 5_000 });
-      w.fake.pushHead(1, fakeSha(`fix-${fix}`));
-    }
-    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 6).toBe(true), { timeout: 5_000 });
+  it("keeps the MERGE when an ask recorded at that head reaches the run, and spends the ask", async () => {
+    const w = heldRun(G10_ADVERSARY);
+    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 1).toBe(true), { timeout: 5_000 });
 
-    expect(await ask(w)).toMatchObject({ ok: true, data: { head: fakeSha("fix-5"), requested: true } });
-    await releasedAfterAsk(w);
+    w.store.requestReview(w.runId, H1);
+    await vi.waitFor(() => expect(w.store.byRun(w.runId)?.reviewRequest?.takenAt).not.toBeNull(), { timeout: 5_000 });
+    w.store.release(w.runId, { headSha: H1 });
+    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
 
-    expect(w.fake.pr(1).merged).toBe(false);
-    expect(gatePrompt(w)).toContain("fix-first-runaway");
+    expect(w.spawned).toHaveLength(1);
+    expect(resultsOf(w, "sh-review-intent")).toHaveLength(1);
+    expect(resultsOf(w, "sh-review-request")).toContainEqual({ requested: true });
   });
 });
 
@@ -202,24 +196,6 @@ describe("Shepherd's own reviewer under the machine stop", () => {
 });
 
 describe("shepherd review", () => {
-  it("spawns a fresh reviewer of Shepherd's own at the head a held run already reviewed, once per head", async () => {
-    const w = heldRun(G10_ADVERSARY);
-    await vi.waitFor(() => expect(waitingToMerge(w) && w.spawned.length === 1).toBe(true), { timeout: 5_000 });
-
-    const first = await ask(w);
-    await vi.waitFor(() => expect(w.store.byRun(w.runId)?.reviewRequest?.takenAt).not.toBeNull(), { timeout: 5_000 });
-    const repeat = await ask(w);
-    w.store.release(w.runId, { headSha: H1 });
-    await vi.waitFor(() => expect(w.fake.pr(1).merged).toBe(true), { timeout: 5_000 });
-
-    expect(first).toEqual({ ok: true, data: { runId: w.runId, head: H1, requested: true } });
-    expect(repeat).toEqual({ ok: true, data: { runId: w.runId, head: H1, requested: false } });
-    expect(w.spawned).toHaveLength(2);
-    expect(new Set(w.spawned).size).toBe(2);
-    expect(resultsOf(w, "sh-review-intent")).toEqual([expect.objectContaining({ mode: "spawn" }), expect.objectContaining({ mode: "spawn", cause: { cause: "seat-request" } })]);
-    expect(resultsOf(w, "sh-review-request")).toContainEqual({ requested: true });
-  });
-
   it("spawns Shepherd's own reviewer when the hold's named reviewer would otherwise review the head", async () => {
     const w = heldRun(G10_REVIEW, SEAT_REVIEWER);
     w.store.requestReview(w.runId, H1);

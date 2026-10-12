@@ -151,15 +151,16 @@ describe("a seat's ask at the reviewed head before a clean merge-up", () => {
 });
 
 describe("a seat's ask at a head a MERGE was carried to", () => {
-  it("sets the carried MERGE aside and spawns a fresh reviewer at H2 instead of carrying it again", async () => {
+  it("is refused with DATAERR, so the carried MERGE stands and no second reviewer is spawned at H2", async () => {
     const w = heldBehindRun({ hold: G10_ADVERSARY });
     await vi.waitFor(() => expect(settledAtH2(w) && stepIds(w).includes(`${MERGE_UP_STEP}:${h2(w)}`)).toBe(true), { timeout: 5_000 });
 
     const asked = await callCommand(w.host, w.routes, "shepherd.review", { repo: REPO, pr: 1 });
-    await vi.waitFor(() => expect(w.spawned).toHaveLength(2), { timeout: 5_000 });
 
-    expect(asked).toMatchObject({ ok: true, data: { head: h2(w), requested: true } });
-    expect(resultOf(w, `sh-review-intent:${h2(w)}`)).toMatchObject({ mode: "spawn", cause: { cause: "seat-request" } });
+    expect(asked).toMatchObject({ ok: false, code: 65, error: expect.stringContaining(`already took a MERGE at ${h2(w)}`) });
+    expect(w.store.byRun(w.runId)?.reviewRequest).toBeNull();
+    expect(w.spawned).toHaveLength(1);
+    expect(stepIds(w)).not.toContain(`sh-review-intent:${h2(w)}`);
   });
 });
 
