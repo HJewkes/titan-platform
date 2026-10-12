@@ -118,6 +118,41 @@ reason, and the `WatchRow` `outcome` field reads `merged` or `stopped` with that
 Shepherd runs no deploy, release or activation stage and does not run the factory's
 `postMerge` chore.
 
+### Review panel {#review-panel}
+
+`shepherd.review.panel` in the factory config chooses how many reviewers a head gets. It
+takes `off`, `shadow` or `on`, and an absent key means `off`.
+
+| Value | What a head's review does |
+| --- | --- |
+| `off` | One reviewer, under `sh-review:<head>` and `sh-await-verdict:<head>`, as before the flag |
+| `shadow` | The same single reviewer; `sh-review-intent` also records the head's `class`, `touches` and panel `plan` |
+| `on` | The planned panel: every member reviews the head, and `sh-review-panel:<head>` records their aggregate verdict |
+
+Under `on` the intent also records `panel: "on"` and `panelReviewers`, the name of each
+member other than correctness: the correctness reviewer's name with the shape as a suffix
+(`rv-octo-demo-12-adversary`). A standing reviewer serves many PRs, so its members take the
+PR's fresh-reviewer base instead. Either way, round-end parking and cleanup find a member by
+the PR's base, just as they find its fresh reviewers. The correctness member keeps today's steps, including its late
+read, correction turn and usage-limit hold. Every other member gets `sh-review:<head>:<shape>`
+and `sh-await-verdict:<head>:<shape>`, at its planned profile, with its shape's brief, and
+checks out under `<review checkouts>/<shape>`. All members are started before any verdict is
+awaited.
+
+The aggregate decides:
+
+- A `FIX_FIRST` from any blocking member sends the head back. The findings carry each
+  member's text under its shape, and end with the panel's `Defect class:` line, which the
+  fixer's structural brief reads.
+- A MERGE needs a MERGE at the head from every blocking member. It carries
+  `panel: {satisfiesG10, degraded, members}`, naming each member that gave a verdict.
+- A blocking member that gave no verdict ends the review with no verdict, never a MERGE.
+- An advisory member's finding is kept only when the files it cites read at the head.
+
+The plan is read from the recorded intent, so a run whose intent was recorded with no plan
+(before the flag, or under `off` or `shadow`) finishes as a single reviewer even after a
+restart onto `on`.
+
 ## After the merge {#after-the-merge}
 
 The `sh-main-ci` step reads main CI on the merge commit once, for up to 60 minutes. What

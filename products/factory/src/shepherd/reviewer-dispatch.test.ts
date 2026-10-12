@@ -171,6 +171,12 @@ describe("agentChatReviewerDispatch spawn", () => {
     expect(recordedArgv()[3]).toBe("reviewer");
   });
 
+  it("spawns a panel member at its planned profile whatever class the PR is", async () => {
+    await dispatchOver(undefined, { roles: { g10: "bd-reviewer", standard: "reviewer" } }).spawn("rv-demo-7-adversary", BRIEF, target, { kind: "security", profile: "reviewer" });
+
+    expect(recordedArgv()[3]).toBe("reviewer");
+  });
+
   it("spawns with whichever profile was configured", async () => {
     await dispatchOver(undefined, { roles: { g10: "rv-other", standard: "rv-other" } }).spawn("rv-demo-7", BRIEF, target);
 

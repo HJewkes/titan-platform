@@ -90,18 +90,23 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
   return result;
 }
 
-/** A fixer is spawned at most once per episode; a red while one exists, its own merge included, goes to the owner instead. */
+function fixOf(frozen: z.infer<typeof FreezeResult>): string {
+  const pr = frozen.fixPr ?? null;
+  return pr !== null ? `fix PR #${pr}` : `fixer ${frozen.fixer}`;
+}
+
+/** A fixer is spawned at most once per episode, and never while a seat's fix PR is marked; a red while either exists goes to the owner instead. */
 async function onMainRed(ctx: WorkflowContext, red: RedInput, fixer: boolean, detail: string): Promise<void> {
   const where = `Main CI on ${red.repo} at merge ${red.mergeSha} (PR #${red.pr}) is red: ${detail}.`;
   const frozen = await step(ctx, "sh-freeze", red, FreezeResult);
   const episode = { ...red, episode: frozen.episode };
-  if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with fixer ${frozen.fixer} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
+  if (frozen.state === "again") return askFrozen(ctx, "main-red-again", episode, `${where} The repo was already frozen with ${fixOf(frozen)} on task ${frozen.fixTask}. Stay frozen, or unfreeze?`);
   if (frozen.state === "unwired") return askOwner(ctx, "main-red", `${where} No freeze store is wired. Acknowledge.`, { ...red, headline: `Main CI on ${red.repo} is red`, detail: `${detail}. No freeze store is wired.` });
   const filed = await step(ctx, "sh-file-fix-task", episode, FixTaskResult);
   if (filed.thawed) return;
   if (filed.task === null) return askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen; no fix task was filed: ${filed.detail}. ${NO_FIXER_EXIT}`);
   const spawned = await step(ctx, "sh-spawn-fixer", { repo: red.repo, mergeSha: red.mergeSha, task: filed.task, fixer, episode: frozen.episode }, FixerResult);
-  if (spawned.fixer === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
+  if (spawned.fixer === null && (spawned.fixPr ?? null) === null && !spawned.thawed) await askFrozen(ctx, "main-frozen", episode, `${where} The repo is frozen with fix task ${filed.task}; no fixer was spawned: ${spawned.detail}. ${NO_FIXER_EXIT}`);
 }
 
 const NO_FIXER_EXIT = "No PR is exempt from the freeze, so nothing Shepherd merges can clear it. Stay frozen until a green head on main thaws it, or unfreeze now?";
