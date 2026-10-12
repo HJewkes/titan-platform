@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { ReviewerBrokerBusy, notStarted, startedSession, whileBrokerBusy } from "./review-wait.js";
+import { ReviewerBrokerBusy, notStarted, startedSession, timedOutUnseen, whileBrokerBusy } from "./review-wait.js";
 
 const LEAKY = "refused at https://db.example.invalid/x with tok_FAKE0000SECRET";
 const leaks = (text: string) => text.includes("db.example.invalid") || text.includes("tok_FAKE0000SECRET");
 
 describe("what a busy or unreadable broker leaves in a step output", () => {
+  it("a timed-out ask nobody saw start is not-started, and its reason carries only the class and budget", () => {
+    expect(timedOutUnseen(300_000, [])).toEqual({ kind: "none", notStarted: true, reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (no reviewer seen after 5 min)" });
+  });
+
   it("keeps neither a URL nor a token from a busy refusal in the waits or the not-started reason", async () => {
     let now = 0;
     const timing = { now: () => now, sleep: async (ms: number) => void (now += ms), busyWaitMs: 2 * 60_000 };
