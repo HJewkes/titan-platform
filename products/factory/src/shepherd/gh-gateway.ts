@@ -9,7 +9,7 @@ import { coded } from "./register-args.js";
  * One gateway read. `source` says where the body came from: GitHub (a 304 included), this gateway's memory within
  * `maxAgeMs`, or the PR snapshot, whose body is the port's `PullRequest`, not GitHub's JSON.
  */
-export interface GhReadAnswer {
+interface GhReadAnswer {
   status: number;
   body: unknown;
   /** ISO time the body was read from GitHub or the snapshot. */
@@ -29,7 +29,7 @@ export interface GhCallLine {
   status: number;
 }
 
-export interface GhReadRequest {
+interface GhReadRequest {
   path: string;
   maxAgeMs?: number;
   caller?: string;
@@ -40,7 +40,7 @@ export interface GhGateway {
   budget(): GatewayBudget;
 }
 
-export interface GhGatewayDeps {
+interface GhGatewayDeps {
   /** The process's shared client, so gateway reads spend the same throttled budget as Shepherd's own. */
   client: GitHubClient;
   snapshot?: PrSnapshot;
@@ -83,7 +83,7 @@ interface Matched {
 }
 
 /** The whitelist: a path matches one route exactly, with only that route's query keys and plain values. */
-export function matchRoute(path: string): Matched | undefined {
+function matchRoute(path: string): Matched | undefined {
   const [pathname = "", query = "", ...rest] = path.replace(/^\//, "").split("?");
   const parts = REPO_PREFIX.exec(pathname);
   if (rest.length > 0 || !parts) return undefined;
