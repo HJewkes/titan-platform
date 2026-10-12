@@ -30,7 +30,7 @@ export function writeAuditFile(path: string, markdown: string, { force = false }
     if (force) renameSync(temp, path);
     else linkSync(temp, path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "EEXIST" && !force) throw new AuditExists(path);
+    if (!force && error instanceof Error && "code" in error && error.code === "EEXIST") throw new AuditExists(path);
     throw error;
   } finally {
     rmSync(temp, { force: true });

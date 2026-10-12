@@ -1,3 +1,4 @@
+import type { ActorClass } from "@titan-design/authority";
 import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 
@@ -7,7 +8,7 @@ export const iso = (at: number): string => new Date(at).toISOString();
 interface GateSpec {
   id: string;
   resolvedAt?: number;
-  by?: string;
+  by?: ActorClass;
   decision?: string;
   status?: GateRecord["status"];
   evidence?: Record<string, unknown>;
@@ -25,7 +26,7 @@ export function auditGate({ id, resolvedAt, by = "owner-terminal", decision = "m
     createdAt: iso((resolvedAt ?? Date.parse("2026-10-05T00:00:00Z")) - 2 * HOUR),
     resolvedAt: closed ? iso(resolvedAt) : undefined,
     expiresAt: undefined,
-    resolvedBy: closed ? ({ class: by, id: "henry", channel: "terminal" } as GateRecord["resolvedBy"]) : undefined,
+    resolvedBy: closed ? { class: by, id: "henry", channel: "terminal" } : undefined,
     resolvedEvidence: evidence,
     rule: undefined,
     summary: undefined,

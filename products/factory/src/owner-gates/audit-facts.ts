@@ -29,8 +29,8 @@ export interface OutcomeFacts {
 export const runIdOf = (gateId: string): string => gateId.slice(0, gateId.indexOf("/"));
 
 function decisionOf(payload: unknown): string | undefined {
-  const decision = typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>).decision : undefined;
-  return typeof decision === "string" ? decision : undefined;
+  if (typeof payload !== "object" || payload === null || !("decision" in payload)) return undefined;
+  return typeof payload.decision === "string" ? payload.decision : undefined;
 }
 
 function resultsOf(run: WorkflowRun | undefined, name: string): StepResult[] {

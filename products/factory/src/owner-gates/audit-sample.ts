@@ -3,8 +3,6 @@ import type { GateRecord } from "@titan-design/hitl";
 import { isOwnerTouch } from "../shepherd/owner-friction.js";
 import { isoWeek } from "../shepherd/stats.js";
 
-export { isoWeek };
-
 const DAY_MS = 86_400_000;
 const WEEK = /^(\d{4})-W(\d{2})$/;
 
