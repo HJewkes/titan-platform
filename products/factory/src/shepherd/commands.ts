@@ -206,6 +206,18 @@ export async function registerVersionPackages(ctx: FactoryContext, repo: RepoSlu
   return register({ repo, pr, task: releaseTask(repo), implementer: RELEASE_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
 }
 
+/** The registration's implementer: the factory toolchain sweep wrote this PR, so a wake for it is never handled. */
+export const TOOLCHAIN_IMPLEMENTER = "toolchain-fanout";
+
+function toolchainTask(repo: RepoSlug): string {
+  return `${repo.split("/")[1] ?? repo}/toolchain`;
+}
+
+/** Registers a toolchain adoption PR with no fixer: the factory sweep wrote it from a plan, so no agent can fix it. */
+export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
+  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
+}
+
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */
 async function locate(services: ShepherdServices, repo: RepoSlug, pr: number): Promise<Registration> {
   const direct = services.store.get().byPr(repo, pr);

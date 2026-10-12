@@ -32,6 +32,7 @@ import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestP
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
 import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
+import { TOOLCHAIN_SWEEP_MS, sweepToolchain } from "./shepherd/toolchain-sweep.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -56,6 +57,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   goneSweepMs?: number;
   /** How often the Version Packages sweep runs; defaults to `RELEASE_SWEEP_MS`. */
   releaseSweepMs?: number;
+  /** How often the toolchain adoption sweep runs; defaults to `TOOLCHAIN_SWEEP_MS`. */
+  toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
@@ -119,6 +122,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   });
   await goneSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
+  const toolchainSweep = services && startSweep(() => sweepToolchains(host, services, log), options.toolchainSweepMs ?? TOOLCHAIN_SWEEP_MS, "toolchain adoption sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   const deploySweep = startDeployWatch(options.deployWatch, log);
@@ -132,7 +136,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
+    for (const later of [goneSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -357,6 +361,10 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
   for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
+}
+
+async function sweepToolchains(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  for (const note of await sweepToolchain(host, services)) log.info({ ...note }, "swept a toolchain adoption");
 }
 
 export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {
