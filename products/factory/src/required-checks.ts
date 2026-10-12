@@ -4,13 +4,18 @@ export type RequiredChecksRead = { readable: true; checks: RequiredChecks } | { 
 
 /** Only the HTTP status, so a reason that reaches a PR comment carries nothing from the error's text. */
 export function statusOf(error: unknown): string {
-  const status = (error as { status?: unknown } | null)?.status;
+  const status = statusField(error);
   return typeof status === "number" ? `HTTP ${status}` : "no HTTP status";
 }
 
+function statusField(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
+}
+
 function wellFormed(value: unknown): value is RequiredChecks {
-  const checks = value as Partial<RequiredChecks> | null | undefined;
-  return Array.isArray(checks?.contexts) && checks.contexts.every((context) => typeof context === "string") && typeof checks.strict === "boolean";
+  if (typeof value !== "object" || value === null || !("contexts" in value) || !("strict" in value)) return false;
+  const { contexts, strict } = value;
+  return Array.isArray(contexts) && contexts.every((context) => typeof context === "string") && typeof strict === "boolean";
 }
 
 /** An empty list is a read; an error, a 403, a 404 or a malformed answer is not, and must never pass for "no rules". */
@@ -50,6 +55,21 @@ export async function requireRequiredChecks(port: GitHubPort, repo: RepoSlug, ba
   }
   if (!wellFormed(checks)) throw new Error(`required checks of ${repo}@${base} are unreadable: the answer is malformed; land refuses`);
   return checks;
+}
+
+/** For land steps: classic protection is read only when the rulesets require nothing; a 404 is none, anything else unreadable refuses. */
+export async function requireBaseRequiredChecks(port: GitHubPort, repo: RepoSlug, base: string): Promise<RequiredChecks> {
+  const rulesets = await requireRequiredChecks(port, repo, base);
+  if (rulesets.contexts.length > 0) return rulesets;
+  let classic: RequiredChecks;
+  try {
+    classic = await port.classicRequiredChecks(repo, base);
+  } catch (error) {
+    if (statusField(error) === 404) return rulesets;
+    throw new Error(`classic protection of ${repo}@${base} is unreadable: ${statusOf(error)}; land refuses`);
+  }
+  if (!wellFormed(classic)) throw new Error(`classic protection of ${repo}@${base} is unreadable: the answer is malformed; land refuses`);
+  return classic.contexts.length > 0 ? classic : rulesets;
 }
 
 /** Classic branch protection's required status checks; a 404 reads as none, and any other failure is unreadable. */

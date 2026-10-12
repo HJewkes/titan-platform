@@ -1,7 +1,10 @@
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { describe, expect, it } from "vitest";
+import { AWAIT_HEAD_BACKSTOP_MS, PUSH_WATCH_TICK_MS, pushSignal } from "../shepherd/push-signal.js";
 import { H1, REPO } from "../test-support/land.js";
-import { AWAIT_HEAD_POLL_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
+import { fixtureClone } from "../test-support/reflog.js";
+import { CHECKS_RECHECK_MS, awaitHeadOrExit, awaitNewHead, awaitNewHeadRoute } from "./await-head.js";
+import { prSnapshot } from "./pr-snapshot.js";
 
 const H2 = fakeSha("head2");
 
@@ -106,14 +109,14 @@ describe("awaitHeadOrExit after a red ci-wait", () => {
 });
 
 describe("awaitNewHead", () => {
-  it("keeps polling every 30 s while the head is unchanged and returns the first read that shows a new head", async () => {
+  it("with no reflog watched, reads once per backstop and returns the first read that shows a new head", async () => {
     const { fake, sleeps, sleep } = world();
     fake.onGetPr = (pr, reads) => void (reads === 4 && (pr.headSha = H2));
 
     const pr = await awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep });
 
     expect(pr.headSha).toBe(H2);
-    expect(sleeps).toEqual([AWAIT_HEAD_POLL_MS, AWAIT_HEAD_POLL_MS, AWAIT_HEAD_POLL_MS]);
+    expect(sleeps).toEqual([AWAIT_HEAD_BACKSTOP_MS, AWAIT_HEAD_BACKSTOP_MS, AWAIT_HEAD_BACKSTOP_MS]);
   });
 
   it("returns on an unchanged head only once the pull request is no longer open", async () => {
@@ -132,10 +135,10 @@ describe("awaitNewHead", () => {
       pr.headSha = H2;
     };
 
-    const pr = await awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep, pollMs: 10 });
+    const pr = await awaitNewHead(githubPort(fake.wire), target, new AbortController().signal, { sleep });
 
     expect(pr.headSha).toBe(H2);
-    expect(sleeps).toEqual([10]);
+    expect(sleeps).toEqual([AWAIT_HEAD_BACKSTOP_MS]);
   });
 
   it.each([401, 403, 404])("fails the wait at once on a %i read, naming the pull request and the status", async (status) => {
@@ -169,10 +172,10 @@ describe("awaitNewHead", () => {
     const reads = [Promise.reject("socket hang up"), Promise.resolve({ headSha: H2, state: "open" })];
     const port = { getPr: () => reads.shift()! } as unknown as Parameters<typeof awaitNewHead>[0];
 
-    const pr = await awaitNewHead(port, target, new AbortController().signal, { sleep, pollMs: 10 });
+    const pr = await awaitNewHead(port, target, new AbortController().signal, { sleep });
 
     expect(pr.headSha).toBe(H2);
-    expect(sleeps).toEqual([10]);
+    expect(sleeps).toEqual([AWAIT_HEAD_BACKSTOP_MS]);
   });
 
   it("stops waiting when aborted between polls", async () => {
@@ -195,5 +198,112 @@ describe("awaitNewHead", () => {
 
     expect(route).toMatchObject({ match: "sh-await-new-head", onRestart: "repeat" });
     expect(outcome.ok && JSON.parse(outcome.output)).toMatchObject({ result: { headSha: H2, state: "open", merged: false } });
+  });
+});
+
+describe("awaitNewHead on the push reflog", () => {
+  const BRANCH = "agent-chat/tc-demo-a";
+  const H0 = fakeSha("head0");
+
+  /** A PR on `branch` at H1, its clone's reflog ending on H1, and a sleep that runs `onSleep` with the total slept so far. */
+  function pushWorld(branch = BRANCH) {
+    const fake = fakeGitHub();
+    fake.addPr({ headSha: H1, headRef: branch });
+    const { clone, push } = fixtureClone();
+    push(branch, H0, H1);
+    const controller = new AbortController();
+    const sleeps: number[] = [];
+    let onSleep: (slept: number) => void = () => undefined;
+    const sleep = async (ms: number): Promise<void> => {
+      sleeps.push(ms);
+      onSleep(sleeps.reduce((sum, each) => sum + each, 0));
+    };
+    const getPrs = () => fake.calls.filter((call) => call === "getPr").length;
+    const timing = { sleep, pushes: pushSignal(() => clone) };
+    return { fake, push, controller, sleeps, getPrs, timing, after: (hook: (slept: number) => void) => void (onSleep = hook) };
+  }
+
+  it("ends within one watch tick of a reflog append, with one getPr after it", async () => {
+    const world = pushWorld();
+    let atPush = 0;
+    world.after((slept) => {
+      if (slept !== 2 * PUSH_WATCH_TICK_MS) return;
+      atPush = world.getPrs();
+      world.push(BRANCH, H1, H2);
+      world.fake.pushHead(1, H2);
+    });
+
+    const pr = await awaitNewHead(githubPort(world.fake.wire), target, world.controller.signal, world.timing);
+
+    expect(pr.headSha).toBe(H2);
+    expect(world.sleeps).toEqual([PUSH_WATCH_TICK_MS, PUSH_WATCH_TICK_MS]);
+    expect(world.getPrs() - atPush).toBe(1);
+  });
+
+  it("confirms a reflog append through the snapshot after dropping its stale row", async () => {
+    const world = pushWorld();
+    const port = githubPort(world.fake.wire);
+    const snapshot = prSnapshot(port, { now: () => 0 });
+    await snapshot.getPr(REPO, 1);
+    world.after(() => (world.push(BRANCH, H1, H2), world.fake.pushHead(1, H2)));
+
+    const pr = await awaitNewHead(port, target, world.controller.signal, { ...world.timing, snapshot });
+
+    expect(pr.headSha).toBe(H2);
+    expect(world.sleeps).toHaveLength(1);
+  });
+
+  it("with no reflog append, reads the PR once per five minutes", async () => {
+    const world = pushWorld();
+    world.after((slept) => void (slept > 15 * 60_000 && world.controller.abort(new Error("test over"))));
+
+    await expect(awaitNewHead(githubPort(world.fake.wire), target, world.controller.signal, world.timing)).rejects.toThrow("test over");
+
+    expect(world.getPrs()).toBe(4);
+  });
+
+  it("ends through the backstop on a branch with no reflog, as after a push from outside the clone", async () => {
+    const world = pushWorld("feature/demo");
+    world.after((slept) => void (slept === PUSH_WATCH_TICK_MS && world.fake.pushHead(1, H2)));
+
+    const pr = await awaitNewHead(githubPort(world.fake.wire), target, world.controller.signal, world.timing);
+
+    expect(pr.headSha).toBe(H2);
+    expect(world.sleeps.reduce((sum, each) => sum + each, 0)).toBe(AWAIT_HEAD_BACKSTOP_MS);
+    expect(world.getPrs()).toBe(2);
+  });
+
+  it("ignores a reflog append for another branch", async () => {
+    const world = pushWorld();
+    world.after((slept) => {
+      if (slept === PUSH_WATCH_TICK_MS) world.push("agent-chat/tc-demo-b", H0, H2);
+      if (slept >= 4 * PUSH_WATCH_TICK_MS) world.controller.abort(new Error("test over"));
+    });
+
+    await expect(awaitNewHead(githubPort(world.fake.wire), target, world.controller.signal, world.timing)).rejects.toThrow("test over");
+
+    expect(world.getPrs()).toBe(1);
+  });
+
+  it("confirms at once a push the reflog shows that the first read missed", async () => {
+    const world = pushWorld();
+    world.push(BRANCH, H1, H2);
+    world.fake.onGetPr = (pr, reads) => void (reads === 2 && (pr.headSha = H2));
+
+    const pr = await awaitNewHead(githubPort(world.fake.wire), target, world.controller.signal, world.timing);
+
+    expect(pr.headSha).toBe(H2);
+    expect(world.sleeps).toEqual([PUSH_WATCH_TICK_MS]);
+  });
+
+  it("after a red ci-wait, reads the unchanged head's checks once per pending cadence, not per tick", async () => {
+    const world = pushWorld();
+    world.fake.setRuns(H1, [successRun("validate", 1, undefined, "failure")]);
+    world.after((slept) => void (slept >= 3 * CHECKS_RECHECK_MS && world.controller.abort(new Error("test over"))));
+
+    const wait = awaitHeadOrExit(githubPort(world.fake.wire), { ...target, untilGreen: true }, world.controller.signal, world.timing);
+
+    await expect(wait).rejects.toThrow("test over");
+    expect(world.fake.calls.filter((call) => call === "listCheckRuns")).toHaveLength(3);
   });
 });
