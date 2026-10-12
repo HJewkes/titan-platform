@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
-import { renderSummary, summarizeFile } from "./codewatch-summary.mjs";
+import { annotations, renderSummary, summarizeFile } from "./codewatch-summary.mjs";
 
 const fixturePath = (name) => new URL(`../.codewatch/fixtures/${name}`, import.meta.url);
 const readFixture = (name) => JSON.parse(readFileSync(fixturePath(name), "utf8"));
@@ -51,6 +51,26 @@ describe("renderSummary", () => {
   });
 });
 
+describe("security slice flag", () => {
+  const sized = (size) => ({ ...readFixture("pr-report-clean.json"), size });
+  const flagged = sized({ lines: 500, cap: 400, guardPaths: ["packages/tool-guard/src/heredoc.ts"], flagged: true });
+
+  it("renders the section and exactly one warning for a flagged report", () => {
+    expect(renderSummary(flagged)).toContain(
+      "### Security slice over cap\n\nThis guard-area PR is 500 non-generated lines, over the 400-line security slice cap. It touches packages/tool-guard/src/heredoc.ts.",
+    );
+    expect(annotations(flagged)).toEqual([expect.stringMatching(/^::warning title=Security slice over cap::This guard-area PR is 500 /)]);
+  });
+
+  it.each([
+    ["an unflagged size", sized({ lines: 900, cap: 400, guardPaths: [], flagged: false })],
+    ["a report with no size", readFixture("pr-report-clean.json")],
+  ])("renders neither for %s", (_, report) => {
+    expect(renderSummary(report)).not.toContain("Security slice");
+    expect(annotations(report)).toEqual([]);
+  });
+});
+
 describe("summarizeFile", () => {
   it("renders a report read from disk", () => {
     expect(summarizeFile(fixturePath("pr-report-worsened.json").pathname)).toContain("Check failed");
@@ -76,5 +96,18 @@ describe("summary CLI", () => {
 
     expect(run.status).toBe(0);
     expect(run.stdout).toContain("Check failed");
+  });
+
+  it("prints the warning command with --annotate and nothing for a missing report", () => {
+    const script = fileURLToPath(new URL("./codewatch-summary.mjs", import.meta.url));
+    const file = join(tempDir(), "report.json");
+    writeFileSync(file, JSON.stringify({ ...readFixture("pr-report-clean.json"), size: { lines: 401, cap: 400, guardPaths: [], flagged: true } }));
+
+    const flagged = spawnSync(process.execPath, [script, "--annotate", file], { encoding: "utf8" });
+    const missing = spawnSync(process.execPath, [script, "--annotate", join(tempDir(), "absent.json")], { encoding: "utf8" });
+
+    expect(flagged.status).toBe(0);
+    expect(flagged.stdout).toMatch(/^::warning title=Security slice over cap::.*401 non-generated lines.*\n$/);
+    expect(missing).toMatchObject({ status: 0, stdout: "" });
   });
 });

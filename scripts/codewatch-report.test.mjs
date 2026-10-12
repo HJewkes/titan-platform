@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SCHEMA_ID, collectReport, renderQuestions, writeReport } from "./codewatch-report.mjs";
+import { SCHEMA_ID, collectReport, parseNumstat, renderQuestions, writeReport } from "./codewatch-report.mjs";
 
 const readJson = (rel) => JSON.parse(readFileSync(new URL(`../.codewatch/${rel}`, import.meta.url), "utf8"));
 const roots = [];
@@ -212,5 +212,60 @@ describe("collectReport", () => {
     const report = collectReport(graph, store, { snapshot: HEAD, result }, RULES);
 
     expect(report).toMatchObject({ base: null, deltas: [], exports: [], questions: [], check: { carryover: 0 } });
+  });
+});
+
+describe("size block", () => {
+  const validate = new Ajv2020({ allErrors: true }).compile(readJson("pr-report.schema.json"));
+  const numstat = (name) => () => readFileSync(new URL(`../.codewatch/fixtures/${name}`, import.meta.url), "utf8");
+  const reportFor = (readNumstat) => {
+    const { graph, store } = fakeGraph();
+    return collectReport(graph, store, { snapshot: HEAD, baselineSnapshot: BASE, result: passing }, RULES, { readNumstat });
+  };
+
+  it("flags a guard-area PR over the cap by additions plus deletions, leaving generated files out", () => {
+    const report = reportFor(numstat("numstat-security-oversize.txt"));
+
+    expect(report.size).toEqual({
+      lines: 500,
+      cap: 400,
+      guardPaths: ["packages/tool-guard/src/heredoc.ts", "packages/tool-guard/src/heredoc.test.ts"],
+      flagged: true,
+    });
+    expect(validate(report)).toBe(true);
+  });
+
+  it.each([
+    ["a 399-line guard-area PR", "numstat-security-399.txt", 399],
+    ["a 900-line PR outside the guard area", "numstat-large-nonguard.txt", 900],
+  ])("does not flag %s", (_, fixture, lines) => {
+    const report = reportFor(numstat(fixture));
+
+    expect(report.size).toEqual({ lines, cap: 400, guardPaths: [], flagged: false });
+    expect(validate(report)).toBe(true);
+  });
+
+  it("leaves the size out and still writes a valid report when numstat fails", () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const file = join(tempDir(), "report.json");
+
+    writeReport(file, () => reportFor(() => { throw new Error("git diff failed"); }));
+
+    const report = JSON.parse(readFileSync(file, "utf8"));
+    expect(report).not.toHaveProperty("size");
+    expect(validate(report)).toBe(true);
+    expect(stderr).toHaveBeenCalledWith(expect.stringMatching(/size left out: git diff failed/));
+  });
+});
+
+describe("parseNumstat", () => {
+  it("reads -z records, renames and binary files", () => {
+    const text = "3\t1\tsrc/a.ts\0" + "2\t2\t\0src/old.ts\0src/new.ts\0" + "-\t-\tlogo.png\0";
+
+    expect(parseNumstat(text)).toEqual([
+      { path: "src/a.ts", additions: 3, deletions: 1 },
+      { path: "src/new.ts", previousPath: "src/old.ts", additions: 2, deletions: 2 },
+      { path: "logo.png", additions: 0, deletions: 0 },
+    ]);
   });
 });

@@ -19,6 +19,9 @@ const REPORT_METRIC = new Map(Object.entries(STORED_METRIC).map(([report, stored
 // Budgets in check.json exclude these roles, so their metrics would only add noise.
 const SKIPPED_ROLES = new Set(["test", "fixture"]);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const GUARD_PATH_LIMIT = 10;
+// The slice rule lives in review-panel; a missing build leaves the size block out instead of breaking dag-check.
+const reviewPanel = await import("../packages/review-panel/dist/index.js").catch(() => null);
 
 /** Best effort: a failure logs to stderr and never reaches the caller, so dag-check's exit code holds. */
 export function writeReport(file, build) {
@@ -45,7 +48,57 @@ export function collectReport(graph, store, { snapshot, baselineSnapshot, result
     exports: baseId === undefined ? [] : collectExports(graph, store, snapshot.id, baseId, lineOf),
   };
   const questions = renderQuestions(full);
-  return { ...full, deltas: full.deltas.slice(0, DELTA_LIMIT), exports: full.exports.slice(0, EXPORT_LIMIT), questions };
+  const size = sizeBlock(options.readNumstat ?? gitNumstat(base, snapshot.commitHash));
+  const report = { ...full, deltas: full.deltas.slice(0, DELTA_LIMIT), exports: full.exports.slice(0, EXPORT_LIMIT), questions };
+  return size ? { ...report, size } : report;
+}
+
+/** The PR's non-generated size and whether it is a guard-area slice over the cap; any failure leaves it out. */
+export function sizeBlock(readNumstat) {
+  try {
+    if (!reviewPanel) return undefined;
+    const changedFiles = parseNumstat(readNumstat());
+    const lines = reviewPanel.changedLineCount(changedFiles);
+    if (lines === undefined) return undefined;
+    const flag = reviewPanel.securitySliceFlag({ changedFiles });
+    const guardPaths = (flag?.guardPaths ?? []).slice(0, GUARD_PATH_LIMIT);
+    return { lines, cap: reviewPanel.SECURITY_SLICE_LINES, guardPaths, flagged: flag !== undefined };
+  } catch (err) {
+    console.error(`codewatch-report: size left out: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
+
+/**
+ * Parses `git diff --numstat -z -M`: `add\tdel\tpath`, or `add\tdel\t` then the old and new paths for a rename.
+ * Newlines also separate records, so a fixture stays readable. A binary file (`-`) has no lines to review.
+ */
+export function parseNumstat(text) {
+  const tokens = text.split(/[\0\n]/);
+  const files = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === "") continue;
+    const [add, del, name] = tokens[i].split("\t");
+    const counts = { additions: lineCount(add), deletions: lineCount(del) };
+    if (name) {
+      files.push({ path: name, ...counts });
+      continue;
+    }
+    files.push({ path: tokens[i + 2], previousPath: tokens[i + 1], ...counts });
+    i += 2;
+  }
+  return files;
+}
+
+function lineCount(field) {
+  return field === "-" ? 0 : Number.parseInt(field, 10);
+}
+
+function gitNumstat(base, head) {
+  return () => {
+    if (!base) throw new Error("no baseline commit");
+    return execFileSync("git", ["diff", "--numstat", "-z", "-M", base, head], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  };
 }
 
 function checkBlock(result) {
