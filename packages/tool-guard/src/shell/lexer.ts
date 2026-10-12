@@ -4,7 +4,7 @@ import { dropJoins, joinedDollar, nextAfter, pastJoins, readAhead } from "./join
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
-import { assignmentSubscriptEnd, isNameSoFar } from "./subscript.js";
+import { ambiguousSubscriptEnd, assignmentSubscriptEnd, isNameSoFar } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
 import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle, variableName } from "./word-build.js";
 
@@ -25,7 +25,7 @@ export function tokenize(src: string, trials = newTrials(src)): Token[] {
 }
 
 function newState(src: string, i: number, nested: boolean, trials: ArithTrials): LexState {
-  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, arithEnd: -1, trials };
+  return { src, i, nested, depth: 0, tokens: [], word: null, heredocs: [], leftOpen: false, redirect: null, subscriptEnd: -1, softSubscriptEnd: -1, arithEnd: -1, trials };
 }
 
 function lex(s: LexState): void {
@@ -57,11 +57,12 @@ function step(s: LexState): void {
   const ahead = readAhead(s.src, s.i, 3);
   const end = (length: number) => ahead.ends[length - 1] ?? s.src.length;
   if (c === "(" && ahead.text[1] === "(" && !s.word && s.i > s.arithEnd) s.arithEnd = cachedEnd(s.trials, s.i, () => arithmeticEnd(s, end(2)));
-  if (s.i < s.arithEnd && ahead.text.startsWith("<<")) return appendShift(s, end(2));
+  const inSpan = s.i < s.arithEnd || s.i < s.softSubscriptEnd;
+  if (inSpan && ahead.text.startsWith("<<")) return appendShift(s, end(2));
   const reader = Object.hasOwn(READERS, c) ? READERS[c] : undefined;
   if (c === "$" || c === "`") ensureWord(s).unquotedExpansion = true;
   if (reader) return reader(s);
-  if (c === "#" && !s.word && s.i >= s.arithEnd) return skipComment(s);
+  if (c === "#" && !s.word && !inSpan) return skipComment(s);
   if (c === "&" && ahead.text[1] === ">") return readRedirect(s);
   const op = OPERATORS.find((o) => ahead.text.startsWith(o));
   if (op) return readOperator(s, op, end(op.length));
@@ -73,6 +74,8 @@ function markSubscript(s: LexState): void {
   const w = s.word;
   if (!w || w.quoted || w.dynamic || s.redirect || !isNameSoFar(w)) return;
   s.subscriptEnd = assignmentSubscriptEnd(s.src, s.i, s.tokens);
+  // A `[` nested in the span closes before the outer `]`, so it must not shorten the span.
+  if (s.subscriptEnd === -1) s.softSubscriptEnd = Math.max(s.softSubscriptEnd, ambiguousSubscriptEnd(s.src, s.i, s.tokens));
 }
 
 /**
