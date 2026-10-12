@@ -121,7 +121,7 @@ function routeWhy(rowId: string, reason: string): WhyAsked {
   return { gateClass: "accidental", ruleId, sentence: `Not by design: Shepherd's review loop stopped because ${words} (accidental: the loop ran out before a mergeable verdict).` };
 }
 
-export interface GateContext {
+interface GateContext {
   ownerGateReason?: OwnerGateReason;
   /** The mergeable_state the merge evidence judged (TP-1688), which tells a transient merge-tree read from a conflict. */
   mergeableState?: string;
