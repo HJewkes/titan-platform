@@ -973,14 +973,14 @@ describe("the Version Packages PR", () => {
   }
 
   /** The changesets PR as PR 1, registered the way the release sweep registers it. */
-  function releaseWorld(registry: PackageRegistry): { w: World; runId: string; reviews: ReviewRequest[] } {
+  function releaseWorld(registry: PackageRegistry, policy = RELEASE_POLICY): { w: World; runId: string; reviews: ReviewRequest[] } {
     const { phases, reviews } = fakePhases({});
     const w = world(phases, undefined, undefined, undefined, registry);
     w.fake.addPr({ headSha: H1, headRef: VERSION_PACKAGES_BRANCH, headRepo: REPO, mergeSha: fakeSha("test-merge") });
     w.fake.prFiles.set(1, RELEASE_FILES);
     setWidgetManifest(w.fake, H1);
-    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(RELEASE_POLICY) });
-    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy: RELEASE_POLICY });
+    const runId = w.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", branch: VERSION_PACKAGES_BRANCH, policy: JSON.stringify(policy) });
+    w.store.register({ repo: REPO, pr: 1, branch: VERSION_PACKAGES_BRANCH, runId, task: "demo/version-packages", implementer: "changesets", policy });
     return { w, runId, reviews };
   }
 
@@ -1008,6 +1008,52 @@ describe("the Version Packages PR", () => {
     );
     expect(w.fake.effects.merge).toBe(0);
     expect(w.store.byRun(runId)?.releaseReady).toBeNull();
+  });
+
+  /** tp#1152: an auto seat without the release-merge grant gates at H1; the release head then moves to H2 while paused. */
+  async function releaseGateMoved(): Promise<{ w: World; runId: string }> {
+    const { w, runId } = releaseWorld(async () => "trusted", AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-release/no-release-grant");
+    setWidgetManifest(w.fake, H2);
+    w.fake.pushHead(1, H2);
+    return { w, runId };
+  }
+
+  it("supersedes a release gate whose head moved, and gates afresh at the new head after a new preflight (tp#1152)", async () => {
+    const { w, runId } = await releaseGateMoved();
+
+    const superseded = await supersedeMovedGates(w.host, w.services);
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: H1, to: H2, condition: "head-moved" }]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))).toMatchObject({ status: "cancelled", reason: expect.stringMatching(/^superseded: /) });
+    await gateOpened(w.host, gateId(runId, "approve-merge", 1));
+    const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
+    expect(prompt).toContain(`at head ${H2}`);
+    expect(prompt).toContain("Policy shepherd-release/no-release-grant");
+    expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H2}`);
+    expect(w.host.runtime.status(runId)?.status).not.toBe("failed");
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("reports a moved release gate on a dry run and cancels nothing", async () => {
+    const { w, runId } = await releaseGateMoved();
+
+    const superseded = await supersedeMovedGates(w.host, w.services, { dryRun: true });
+
+    expect(superseded).toEqual([{ runId, gateId: gateId(runId, "approve-merge"), from: H1, to: H2, condition: "head-moved" }]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
+  });
+
+  it("leaves a release gate at the PR's current head with the owner", async () => {
+    const { w, runId } = releaseWorld(async () => "trusted", AUTO_POLICY);
+    await gateOpened(w.host, gateId(runId, "approve-merge"));
+
+    const superseded = await supersedeMovedGates(w.host, w.services);
+
+    expect(superseded).toEqual([]);
+    expect(w.host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("pending");
   });
 
   it("defers another PR's merge while the Version Packages PR is ready, then re-reads CI and merges once it lands", async () => {

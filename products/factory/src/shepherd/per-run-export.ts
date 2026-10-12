@@ -1,6 +1,7 @@
-import type { WorkflowRun } from "@titan-design/workflow";
+import { isUsageLimit } from "@titan-design/review-panel";
+import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { stageSpans, STAGES } from "./stage-times.js";
-import { inRange, mergedAt, outsideAt, stepName, type StatsRange } from "./stats.js";
+import { inRange, mergedAt, outsideAt, payloadOf, type StatsRange } from "./stats.js";
 
 type Stage = (typeof STAGES)[number];
 
@@ -15,7 +16,7 @@ interface PerRunRecord {
   startedAt: string;
   completedAt: string | null;
   stageMinutes: Partial<Record<Stage, number>>;
-  /** Distinct heads among the run's verdict steps, so a retry or correction at one head is one round. */
+  /** Distinct heads among the run's verdict steps, so a retry or correction at one head is one round; a head whose every round ended in a usage limit is no round. */
   reviewRounds: number;
   mergedAt: string | null;
   mergePath: "shepherd" | "outside" | null;
@@ -30,12 +31,28 @@ function stageMinutes(run: WorkflowRun): Partial<Record<Stage, number>> {
   return Object.fromEntries(STAGES.flatMap((stage) => (totals[stage] === undefined ? [] : [[stage, round(totals[stage])]])));
 }
 
-/** The verdict step id is `sh-await-verdict:<head>[:<iter>]`. */
+const VERDICT_READS = new Set(["sh-await-verdict", "sh-late-verdict"]);
+
+const isLimitRead = (result: StepResult): boolean => {
+  const payload = payloadOf(result);
+  return isUsageLimit({ kind: String(payload.kind), reason: payload.reason, notice: payload.notice });
+};
+
+/**
+ * Verdict reads are `sh-await-verdict:<head>`, its `:corrected` reply and `sh-late-verdict:<head>`. Each on-time await opens a round
+ * and each usage-limit read ends one unreviewed, so a head counts only while its on-time awaits outnumber its limit reads.
+ */
 function reviewRounds(run: WorkflowRun): number {
-  const heads = Object.values(run.stepResults)
-    .filter((result) => stepName(result.stepId) === "sh-await-verdict")
-    .map((result) => result.stepId.split(":")[1] ?? "");
-  return new Set(heads).size;
+  const tally = new Map<string, { awaits: number; limits: number }>();
+  for (const result of Object.values(run.stepResults)) {
+    const [name, head = "", suffix] = result.stepId.split(":");
+    if (!VERDICT_READS.has(name!)) continue;
+    const counts = tally.get(head) ?? { awaits: 0, limits: 0 };
+    if (name === "sh-await-verdict" && suffix !== "corrected") counts.awaits += 1;
+    if (isLimitRead(result)) counts.limits += 1;
+    tally.set(head, counts);
+  }
+  return [...tally.values()].filter(({ awaits, limits }) => awaits > limits).length;
 }
 
 function mergeOf(run: WorkflowRun): Pick<PerRunRecord, "mergedAt" | "mergePath"> {
