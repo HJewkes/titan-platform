@@ -7,7 +7,7 @@ import { EXIT } from "@titan-design/registry";
 import { resolveConfig } from "./config.js";
 import { startConsoleDaemon } from "./daemon.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { MAX_ROUND_BYTES, getRound, listRounds, roundsCommands, type RoundDetail, type RoundSummary } from "./rounds.js";
+import { MAX_ROUND_BYTES, getRound, listRounds, readQueueRounds, roundsCommands, type QueueRound, type RoundDetail, type RoundSummary } from "./rounds.js";
 import { closedPort, send } from "./test-support.js";
 
 const FIXTURES = FIXTURE_ROUNDS.dir;
@@ -145,6 +145,52 @@ describe("the rounds dir defences", () => {
   it("classes both commands as reads", () => {
     const commands = roundsCommands({ dir });
     expect([commands["rounds.list"].commandClass, commands["rounds.get"].commandClass]).toEqual(["read", "read"]);
+  });
+});
+
+describe("readQueueRounds", () => {
+  const queueRound = (rounds: readonly QueueRound[], id: string): QueueRound | undefined => rounds.find((round) => round.id === id);
+
+  it("reads every valid round with its feedback and reports each invalid one as a gap", async () => {
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(rounds.map((round) => round.id)).toEqual(["kiln-schedule-r1", "kiln-schedule-r2", "lantern-cards-r1", "orbit-retry-r1"]);
+    expect(queueRound(rounds, "kiln-schedule-r1")?.feedback).toMatchObject({ unit: "kiln-schedule", round: 1 });
+    expect(queueRound(rounds, "kiln-schedule-r2")).toMatchObject({ feedback: null, manifest: { unit: "kiln-schedule", round: 2 } });
+    expect(gaps).toHaveLength(2);
+    expect(gaps).toContain("unreadable-r1: round.json is not JSON");
+    expect(gaps.find((gap) => gap.startsWith("legacy-r1: "))).toBeDefined();
+  });
+
+  it("reads a round with a symlinked feedback.json as unsent", async () => {
+    await symlink(path.join(dir, "kiln-schedule-r1", "feedback.json"), path.join(dir, "kiln-schedule-r2", "feedback.json"));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps.filter((gap) => gap.startsWith("kiln-schedule-r2"))).toEqual([]);
+  });
+
+  it("keeps a round open and reports a gap when its feedback.json is over the size cap", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), " ".repeat(MAX_ROUND_BYTES + 1));
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps).toContain(`kiln-schedule-r2: feedback.json is over ${MAX_ROUND_BYTES} bytes`);
+  });
+
+  it("keeps a round open and reports a gap when its feedback.json is not JSON", async () => {
+    await writeFile(path.join(dir, "kiln-schedule-r2", "feedback.json"), "{ not json");
+
+    const { rounds, gaps } = await readQueueRounds({ dir });
+
+    expect(queueRound(rounds, "kiln-schedule-r2")?.feedback).toBeNull();
+    expect(gaps).toContain("kiln-schedule-r2: feedback.json is not JSON");
+  });
+
+  it("answers no rounds and no gaps when the rounds dir does not exist yet", async () => {
+    expect(await readQueueRounds({ dir: path.join(root, "missing") })).toEqual({ rounds: [], gaps: [] });
   });
 });
 
