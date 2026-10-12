@@ -5,7 +5,7 @@ import { deadline } from "../workflows/deadline.js";
 import { bounded, type AwaitVerdictTiming } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { holdClassOf } from "./g10-release.js";
-import type { AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { AwaitVerdictInput, AwaitVerdictResult, ReviewTarget, ReviewWiring, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
 import { fixFirstFindings, namesTarget } from "@titan-design/review-panel";
@@ -58,6 +58,19 @@ export function latestSession(name: string, roster: readonly ReviewerAgent[]): R
   return roster.filter((agent) => agent.name === name && agent.sessionId !== "").at(-1);
 }
 
+/**
+ * A named reviewer's session read as a seat reviewer's is: at any presence, `chat_send` messages counted, and cached until
+ * the transcript changes. A reader with no seat read falls back to the finished-session read. A failure propagates.
+ */
+export function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
+  return reader.readSeat ? reader.readSeat(input) : reader.read(input);
+}
+
+/** A named reviewer's messages where a failed read only means no verdict yet: a damaged transcript gives its complete records, any other failure none. */
+export function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
+  return readNamedReviewer(reader, input).catch((error: unknown) => (error instanceof DamagedTranscriptError ? error.readable : []));
+}
+
 /** Polls the hold's reviewer for a verdict at this head; Shepherd starts nobody, and the deadline ends the wait with `none`. */
 export async function awaitExternalVerdict(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, input: ExternalVerdictInput, timing: AwaitVerdictTiming, signal: AbortSignal): Promise<AwaitVerdictResult> {
   const clock = deadline(timing);
@@ -65,7 +78,7 @@ export async function awaitExternalVerdict(roster: () => Promise<readonly Review
     const row = latestSession(input.external, await roster().catch(() => []));
     if (row) {
       const read = { repo: input.repo, pr: input.pr, head: input.head, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
-      const result = acceptExternalVerdict(input, row, await reader.read(read).catch(() => []));
+      const result = acceptExternalVerdict(input, row, await readNamedReviewerOrNone(reader, read));
       if (result.kind === "verdict") return result;
     }
     if (clock.expired()) return { kind: "none" };
@@ -116,10 +129,7 @@ interface NameRead {
 
 /** Every session the roster lists under one name; a message the reader attributes to any other session is dropped. A damaged session still gives its complete records. */
 async function readReviewer(reader: ReviewerReader, target: ReviewTarget, rows: readonly ReviewerAgent[]): Promise<NameRead> {
-  const read = async (row: ReviewerAgent) => {
-    const input = { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
-    return reader.readSeat ? reader.readSeat(input) : reader.read(input);
-  };
+  const read = (row: ReviewerAgent) => readNamedReviewer(reader, { ...target, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
   const owned = (message: ReviewerMessage) => rows.some((row) => row.agentId === message.agentId && row.sessionId === message.sessionId);
   const messages: ReviewerMessage[] = [];
   const failures: unknown[] = [];

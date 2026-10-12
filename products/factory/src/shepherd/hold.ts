@@ -3,10 +3,10 @@ import { parseVerdictBlock } from "@titan-design/session-read";
 import { redactForEvidence } from "../redact.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute } from "../workflows/land.js";
-import { acceptExternalVerdict, externalReviewer, latestSession } from "./external-review.js";
+import { acceptExternalVerdict, externalReviewer, latestSession, readNamedReviewerOrNone } from "./external-review.js";
 import type { FreezeGuard } from "./freeze.js";
 import { provablyIndependent } from "./lineage.js";
-import type { ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
+import type { ReviewerAgent, ReviewerReader } from "./review.js";
 import type { HoldLookup, Registration, ShepherdStore } from "./store.js";
 import { openOrRead } from "./snapshot-reads.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
@@ -52,7 +52,7 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
     const row = latestSession(reviewer, roster);
     if (row === undefined || !independent(row, registration, roster, store)) return;
     const read = { repo, pr, head: sha, reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 };
-    const messages = await deps.reader.read(read).catch(() => []);
+    const messages = await readNamedReviewerOrNone(deps.reader, read);
     const verdict = acceptExternalVerdict({ repo, pr, head: sha, external: reviewer }, row, messages);
     if (verdict.kind === "none" && verdict.reason === "wait" && registration.holdSatisfied?.head === sha) return store.unsatisfyHold(registration.runId);
     if (verdict.kind !== "verdict") {
@@ -69,7 +69,7 @@ export function holdSatisfier(deps: HoldSatisfierDeps): HoldSatisfier {
 async function newestOwn(reader: ReviewerReader, rows: readonly ReviewerAgent[], repo: RepoSlug, pr: number): Promise<"MERGE" | "FIX_FIRST" | "WAIT" | undefined> {
   let newest: { at: number; verdict: "MERGE" | "FIX_FIRST" | "WAIT" } | undefined;
   for (const row of rows) {
-    const messages = await reader.read({ repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 }).catch((): readonly ReviewerMessage[] => []);
+    const messages = await readNamedReviewerOrNone(reader, { repo, pr, head: "", reviewerAgentId: row.agentId, reviewerSessionId: row.sessionId, dispatchedAt: 0 });
     for (const message of messages) {
       const block = parseVerdictBlock(message.text);
       const verdict = block.ok ? block.verdict : block.reason === "wait" ? "WAIT" : undefined;

@@ -1,9 +1,14 @@
 import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
-import { describe, expect, it, vi } from "vitest";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
-import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { transcriptReviewerReader } from "./reviewer-reader.js";
+import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -354,5 +359,35 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
     expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+  });
+});
+
+describe("awaitExternalVerdict over a real transcript", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "titan-external-review-"));
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** One read, then the deadline: what the hold's reviewer said by the first poll. */
+  function awaitOnce(row: SeatRow) {
+    const reader = transcriptReviewerReader({ roster: async () => [row], namespace: "host-a" });
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1, timeoutMs: 0 };
+    return awaitExternalVerdict(async () => [row], reader, { ...target, external: row.name }, timing, new AbortController().signal);
+  }
+
+  it("returns MERGE for a live reviewer whose verdict went out in a chat_send", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "live").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+
+    expect(await awaitOnce(seat.row)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, reviewer: { agentId: seat.row.agentId, sessionId: seat.row.sessionId } });
+  });
+
+  it("returns the MERGE an exited reviewer sent before its transcript ended in a partial record", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE")).text("Sent.");
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+
+    expect(await awaitOnce(seat.row)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD });
   });
 });
