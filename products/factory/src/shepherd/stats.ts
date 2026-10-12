@@ -28,7 +28,7 @@ export interface StatsRow {
   foreignMergeUps: number;
 }
 
-export interface MergeUps {
+interface MergeUps {
   landTime: number;
   strictChase: number;
   freezeHold: number;
@@ -84,7 +84,7 @@ interface Event {
 }
 
 /** True when an owner `approve-merge` gate resolved inside the MERGE-to-merged wait, so the owner held the merge. */
-export function ownerGatedBetween(run: WorkflowRun, verdictAt: number, merged: number): boolean {
+function ownerGatedBetween(run: WorkflowRun, verdictAt: number, merged: number): boolean {
   return Object.entries(run.stepResults).some(([key, result]) => {
     const at = Date.parse(result.completedAt);
     return stepName(key) === "approve-merge" && at > verdictAt && at <= merged;
@@ -104,7 +104,7 @@ function eventOf(run: WorkflowRun): Event | undefined {
   return outside === undefined ? undefined : { repo, at: outside, ownerGated: false, outside: true };
 }
 
-export type MergeUpClass = keyof MergeUps;
+type MergeUpClass = keyof MergeUps;
 
 interface Ordered {
   key: string;
@@ -127,7 +127,7 @@ function classOf(key: string, previous: string | undefined, lastCi: Record<strin
 }
 
 /** Each of Shepherd's own update-branch steps in step order, with its class and when it completed. */
-export function mergeUpsOf(run: WorkflowRun): { kind: MergeUpClass; at: number }[] {
+function mergeUpsOf(run: WorkflowRun): { kind: MergeUpClass; at: number }[] {
   const ups: { kind: MergeUpClass; at: number }[] = [];
   let previous: string | undefined;
   let lastCi: Record<string, unknown> | undefined;
@@ -140,7 +140,7 @@ export function mergeUpsOf(run: WorkflowRun): { kind: MergeUpClass; at: number }
 }
 
 /** When each `land-rules` read that found the repo strict completed. */
-export function strictRoundsOf(run: WorkflowRun): number[] {
+function strictRoundsOf(run: WorkflowRun): number[] {
   return Object.entries(run.stepResults)
     .filter(([key, result]) => stepName(key) === "land-rules" && payloadOf(result).strict === true)
     .map(([, result]) => Date.parse(result.completedAt));
