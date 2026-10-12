@@ -4,10 +4,11 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import { acknowledgeBrief, frozenDecision } from "../gate-brief.js";
 import { deadline } from "../workflows/deadline.js";
-import { codeRoute, step } from "../workflows/land.js";
+import { codeRoute, step, type LandedPr } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
-import { judgeMain, mainRulesReader, readMainRules, warningOf, type MainRules, type RulesReader } from "./main-verdict.js";
+import { judgeMain, mainRulesReader, readMainRules, warningOf, type BaseReader, type MainRules, type RulesReader } from "./main-verdict.js";
 import { CleanupResult, runCleanup, type CleanupInput } from "./cleanup.js";
+import { MainCiReads } from "./main-watch.js";
 import { FixTaskResult, FixerResult, FreezeResult, UnfreezeResult, mainRedRoutes, type MainRedWiring, type RedInput, type EpisodeInput } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
 import { REDEPLOY_STEP, redeployStep } from "./redeploy.js";
@@ -66,6 +67,8 @@ export interface MergedTarget {
   repo: RepoSlug;
   pr: number;
   mergeSha: string;
+  /** What the run's own merge step read of the PR; absent for a PR merged elsewhere, so each step reads the PR instead. */
+  landed?: LandedPr;
 }
 
 const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.string() });
@@ -76,7 +79,7 @@ const OwnerAck = z.object({ decision: z.literal("acknowledged"), mergeSha: z.str
  * the owner. Then cleans up. Runs no after stage.
  */
 export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget, after: readonly AfterStage[], fixer = false): Promise<MainCi> {
-  const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after }, MainCiResult);
+  const result = await step(ctx, "sh-main-ci", { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, after, ...(target.landed && { baseRef: target.landed.baseRef }) }, MainCiResult);
   const red = { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha, runId: ctx.runId };
   if (result.verdict === "green") {
     await redeployStep(ctx, { repo: target.repo, pr: target.pr, mergeSha: target.mergeSha });
@@ -86,8 +89,16 @@ export async function shepherdMainCi(ctx: WorkflowContext, target: MergedTarget,
   else if (target.mergeSha !== "") await askOwner(ctx, "main-ci-timeout", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is not red, but unread: ${result.detail}. Acknowledge.`, { ...target, headline: `No completed main CI run on ${target.repo} contains the merge`, detail: result.detail });
   else await askOwner(ctx, "main-red", `Main CI on ${target.repo} at merge ${target.mergeSha} (PR #${target.pr}) is ${result.verdict}: ${result.detail}. Acknowledge.`, { ...target, headline: `Main CI on ${target.repo} is ${result.verdict}`, detail: result.detail });
   if (result.after.length > 0) await askOwner(ctx, "after-stages", `PR #${target.pr} in ${target.repo} merged as ${target.mergeSha} with after stages [${result.after.join(", ")}]. Shepherd runs none of them; do them by hand, then acknowledge.`, { ...target, headline: `PR #${target.pr} in ${target.repo} merged with after stages`, detail: `Do by hand: ${result.after.join(", ")}.` });
-  await step(ctx, "sh-cleanup", { repo: target.repo, pr: target.pr, runId: ctx.runId }, CleanupResult);
+  await step(ctx, "sh-cleanup", cleanupInput(ctx, target), CleanupResult);
   return result;
+}
+
+/** A merge that named no merge sha leaves cleanup to read the PR, so the task still cites the sha GitHub reports. */
+function cleanupInput(ctx: WorkflowContext, target: MergedTarget): CleanupInput {
+  const input = { repo: target.repo, pr: target.pr, runId: ctx.runId };
+  if (target.landed === undefined || target.mergeSha === "") return input;
+  const { headRef, headRepo, headSha } = target.landed;
+  return { ...input, merged: { headRef, headRepo, headSha, mergeSha: target.mergeSha } };
 }
 
 function fixOf(frozen: z.infer<typeof FreezeResult>): string {
@@ -136,6 +147,8 @@ export interface MainCiInput {
   repo: RepoSlug;
   /** The merged PR, read for its base branch; absent means a cancelled run is never followed to a newer push. */
   pr?: number;
+  /** The base the run's own merge landed in; with it the PR is never read. */
+  baseRef?: string;
   mergeSha: string;
   after: AfterStage[];
 }
@@ -143,8 +156,9 @@ export interface MainCiInput {
 /** Absent `mainRed` still routes every step: a red main then goes to the owner with nothing frozen. */
 export function postMergeRoutes(deps: ShepherdDeps, mainRed?: MainRedWiring): StepRoute[] {
   const timing = { now: deps.now, sleep: deps.sleep, pollMs: deps.pollMs ?? SH_MAIN_CI_POLL_MS, timeoutMs: SH_MAIN_CI_TIMEOUT_MS };
+  const mainReads = new MainCiReads(deps.port, deps.now, timing.pollMs).over(deps.port);
   return [
-    codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(deps.port, input, timing, signal)),
+    codeRoute("sh-main-ci", deps.now, (input: MainCiInput, signal) => readMainCi(mainReads, input, timing, signal)),
     ...mainRedRoutes(deps, mainRed),
     codeRoute("sh-cleanup", deps.now, (input: CleanupInput, signal) => runCleanup(deps, input, signal)),
   ];
@@ -179,19 +193,20 @@ interface Watch {
 export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: Timing, signal: AbortSignal): Promise<MainCi> {
   const base = { mergeSha: input.mergeSha, after: input.after };
   if (input.mergeSha === "") return { ...base, verdict: "none", detail: "land returned no merge sha" };
-  const acknowledge = greenContainingReader(port, input);
-  const rules = mainRulesReader(port, input.repo, input.pr);
+  const main: MainRead = { port, repo: input.repo, mergeSha: input.mergeSha, base: baseReader(port, input) };
+  const acknowledge = greenContainingReader(main);
+  const rules = mainRulesReader(port, input.repo, main.base);
   const watch: Watch = { sha: input.mergeSha, last: "no read yet", queued: false };
   let clock = deadline(timing);
   let rechecks = 0;
   for (;;) {
     const wasRed = watch.red !== undefined;
-    const settled = await pollOnce(port, input, watch, acknowledge, rules).catch((error: unknown) => failedPoll(watch, error));
+    const settled = await pollOnce(main, watch, acknowledge, rules).catch((error: unknown) => failedPoll(watch, error));
     if (settled !== undefined) return { ...base, ...settled };
     if (!wasRed && watch.red !== undefined) clock = deadline(timing);
     if (clock.expired()) {
       if (watch.red !== undefined) return { ...base, ...watch.red };
-      const newest = await newestSettled(port, input, watch.sha, await rules()).catch(() => undefined);
+      const newest = await newestSettled(main, watch.sha, await rules()).catch(() => undefined);
       if (newest !== undefined) return { ...base, readSha: newest.sha, verdict: newest.verdict, detail: newest.detail };
       if (!watch.queued || rechecks >= SH_MAIN_CI_RECHECKS) return { ...base, verdict: "none", detail: `no completed main run containing ${input.mergeSha} within ${((rechecks + 1) * timing.timeoutMs) / 60_000} min: ${watch.last}` };
       rechecks += 1;
@@ -201,10 +216,34 @@ export async function readMainCi(port: GitHubPort, input: MainCiInput, timing: T
   }
 }
 
+/** One run's view of main: the repo, the merge it follows, and the merged PR's base branch, if a PR names one. */
+interface MainRead {
+  port: GitHubPort;
+  repo: RepoSlug;
+  mergeSha: string;
+  base: BaseReader | undefined;
+}
+
+/**
+ * The base branch from the step input, else the merged PR's, read once a run; a failed read is tried again next time.
+ * Undefined with no PR, so nothing is followed to a newer push or acknowledged on a guess.
+ */
+function baseReader(port: GitHubPort, input: MainCiInput): BaseReader | undefined {
+  const { pr, baseRef } = input;
+  if (pr === undefined) return undefined;
+  if (baseRef !== undefined) return async () => baseRef;
+  let read: Promise<string> | undefined;
+  const forget = (error: unknown): never => {
+    read = undefined;
+    throw error;
+  };
+  return () => (read ??= port.getPr(input.repo, pr).then((found) => found.baseRef, forget));
+}
+
 /** One poll: green settles; red, cancelled or missing asks for a green main commit containing the merge. */
-async function pollOnce(port: GitHubPort, input: MainCiInput, watch: Watch, acknowledge: () => Promise<string | undefined>, rules: RulesReader): Promise<Settled | undefined> {
-  const at = watch.sha !== input.mergeSha ? { readSha: watch.sha } : {};
-  const read = await readAt(port, input, watch.sha, await rules());
+async function pollOnce(main: MainRead, watch: Watch, acknowledge: () => Promise<string | undefined>, rules: RulesReader): Promise<Settled | undefined> {
+  const at = watch.sha !== main.mergeSha ? { readSha: watch.sha } : {};
+  const read = await readAt(main, watch.sha, await rules());
   watch.queued = read.verdict === "pending" && read.queued === true;
   watch.last = read.detail;
   if (read.verdict === "newer") {
@@ -230,20 +269,19 @@ function failedPoll(watch: Watch, error: unknown): undefined {
  * contains the merge sha and judgeMain finds nothing on it. No PR, unreadable or empty rules, or a tip that does not
  * contain the merge answers undefined, so nothing is acknowledged on a guess.
  */
-function greenContainingReader(port: GitHubPort, input: MainCiInput): () => Promise<string | undefined> {
+function greenContainingReader(main: MainRead): () => Promise<string | undefined> {
   let rules: { base: string; rules: MainRules } | undefined;
   return async () => {
-    if (input.pr === undefined) return undefined;
-    rules ??= await baseMainRules(port, input.repo, input.pr);
+    if (main.base === undefined) return undefined;
+    rules ??= await baseMainRules(main.port, main.repo, await main.base());
     if (rules === undefined) return undefined;
-    const tip = await port.getHeadSha(input.repo, rules.base);
-    if (tip === null || !(await contains(port, input.repo, tip, input.mergeSha))) return undefined;
-    return judgeMain(tip, await port.checkRuns(input.repo, tip), rules.rules).findings.length === 0 ? tip : undefined;
+    const tip = await main.port.getHeadSha(main.repo, rules.base);
+    if (tip === null || !(await contains(main.port, main.repo, tip, main.mergeSha))) return undefined;
+    return judgeMain(tip, await main.port.checkRuns(main.repo, tip), rules.rules).findings.length === 0 ? tip : undefined;
   };
 }
 
-async function baseMainRules(port: GitHubPort, repo: RepoSlug, pr: number): Promise<{ base: string; rules: MainRules } | undefined> {
-  const { baseRef } = await port.getPr(repo, pr);
+async function baseMainRules(port: GitHubPort, repo: RepoSlug, baseRef: string): Promise<{ base: string; rules: MainRules } | undefined> {
   const { rules } = await readMainRules(port, repo, baseRef);
   return rules === undefined ? undefined : { base: baseRef, rules };
 }
@@ -254,18 +292,18 @@ async function contains(port: GitHubPort, repo: RepoSlug, tip: string, sha: stri
 }
 
 /** The verdict of the base branch's tip when it is a later push containing `sha` and its runs have finished. */
-async function newestSettled(port: GitHubPort, input: MainCiInput, sha: string, rules: MainRules | undefined): Promise<{ verdict: "green" | "red"; sha: string; detail: string } | undefined> {
-  const tip = await newerMainPush(port, input, sha);
+async function newestSettled(main: MainRead, sha: string, rules: MainRules | undefined): Promise<{ verdict: "green" | "red"; sha: string; detail: string } | undefined> {
+  const tip = await newerMainPush(main, sha);
   if (tip === undefined) return undefined;
-  const read = evaluate(tip, await port.checkRuns(input.repo, tip), rules);
+  const read = evaluate(tip, await main.port.checkRuns(main.repo, tip), rules);
   return read.verdict === "green" || read.verdict === "red" ? { verdict: read.verdict, sha: tip, detail: read.detail } : undefined;
 }
 
 /** One read at `sha`, routed by MAIN_CI_ROUTES once it has finished. */
-async function readAt(port: GitHubPort, input: MainCiInput, sha: string, rules: MainRules | undefined): Promise<Read> {
-  const read = evaluate(sha, await port.checkRuns(input.repo, sha), rules);
+async function readAt(main: MainRead, sha: string, rules: MainRules | undefined): Promise<Read> {
+  const read = evaluate(sha, await main.port.checkRuns(main.repo, sha), rules);
   if (read.verdict === "pending") return { verdict: "pending", detail: read.detail, ...(read.queued && { queued: true as const }) };
-  const newer = read.verdict === "cancelled" ? await newerMainPush(port, input, sha) : undefined;
+  const newer = read.verdict === "cancelled" ? await newerMainPush(main, sha) : undefined;
   const classified: Classified = newer === undefined ? { read: read.verdict } : { read: "cancelled-superseded", newer };
   const routed = routeOf(classified);
   switch (routed.route) {
@@ -301,12 +339,11 @@ function routeOf(classified: Classified): Routed {
 }
 
 /** The base branch's tip when it is a later push that contains `sha`, else undefined. */
-async function newerMainPush(port: GitHubPort, input: MainCiInput, sha: string): Promise<string | undefined> {
-  if (input.pr === undefined) return undefined;
-  const { baseRef } = await port.getPr(input.repo, input.pr);
-  const tip = await port.getHeadSha(input.repo, baseRef);
+async function newerMainPush(main: MainRead, sha: string): Promise<string | undefined> {
+  if (main.base === undefined) return undefined;
+  const tip = await main.port.getHeadSha(main.repo, await main.base());
   if (tip === null || tip === sha) return undefined;
-  return (await port.compareFiles(input.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
+  return (await main.port.compareFiles(main.repo, sha, tip)).mergeBaseSha === sha ? tip : undefined;
 }
 
 type Evaluated = { verdict: Exclude<MainCiRead, "cancelled-superseded" | "green">; detail: string } | { verdict: "green"; detail: string; warning?: string } | { verdict: "pending"; detail: string; queued?: true };
