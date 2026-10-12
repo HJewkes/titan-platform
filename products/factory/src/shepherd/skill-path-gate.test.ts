@@ -8,7 +8,7 @@ import { decisionClassOf } from "../decision-class.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import { authorityGateReason, pendingCheck } from "../test-support/authority-reason.js";
 import { evidenceComment } from "./evidence-comment.js";
-import { decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
+import { MERGE_GUARD_ROWS, decideAutoMerge, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
 import { isSkillPath } from "./skill-paths.js";
 
 const REPO = "octo/demo";
@@ -26,8 +26,6 @@ const locator: SourceTextLocator = {
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 };
 const SKILL_FILE = ".claude/skills/x/SKILL.md";
-/** Every row `guardRule()` emits in merge-facts.ts; a new row needs words in the evidence comment and a decision class. */
-const GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled"];
 const SKILL_RULE = { table: "shepherd-merge-guard", rowId: "skill-path", version: 1 };
 
 const input: MergeEvidenceInput = {
@@ -93,7 +91,7 @@ describe("the skill-path merge guard", () => {
     expect(body).toContain(`- \`${SKILL_FILE}\``);
   });
 
-  it.each(GUARD_ROWS)("names guard row %s in words and gives it a decision class", async (rowId) => {
+  it.each(MERGE_GUARD_ROWS)("names guard row %s in words and gives it a decision class", async (rowId) => {
     const { record } = await evidenceFor(SKILL_FREE);
     const decision = { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId, version: 1 }, reason: "synthetic" } as const;
 

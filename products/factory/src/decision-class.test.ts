@@ -13,7 +13,14 @@ function seatPrompt(ownerGateReason?: EffectivePolicy["ownerGateReason"]): strin
 
 const byRow = (table: string, rowId: string, prompt = "") => decisionClassOf({ table, rowId, step: "approve-merge", prompt });
 
+/** The rows decision-routing-plan-2026-10-12 places at d: only the owner decides them. */
+const OWNER_ONLY_CLASSES = ["D2", "D12", "D19", "D21", "D24", "D31", "D36", "D37", "D38", "D41", "D42", "D43", "D44", "D45", "D46"];
+
 describe("decisionClassOf", () => {
+  it("classes a repo skill change as an owner-only row, never one a reviewer or decider answers", () => {
+    expect(OWNER_ONLY_CLASSES).toContain(byRow("shepherd-merge-guard", "skill-path"));
+  });
+
   it.each([
     ["gate-2-visual", "D2"],
     ["owner-asked", "D19"],
@@ -32,7 +39,7 @@ describe("decisionClassOf", () => {
     ["shepherd-merge-guard", "visual-path", "D2"],
     ["shepherd-merge-guard", "files-unread", "D2"],
     ["shepherd-merge-guard", "github-path", "D6"],
-    ["shepherd-merge-guard", "skill-path", "D6"],
+    ["shepherd-merge-guard", "skill-path", "D21"],
     ["shepherd-merge-guard", "ci-policy-weakened", "D21"],
     ["shepherd-merge-guard", "merge-state-unsettled", "D5"],
     ["shepherd-merge-guard", "no-facts", "D5"],

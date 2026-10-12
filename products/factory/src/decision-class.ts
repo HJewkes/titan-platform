@@ -25,7 +25,7 @@ const MERGE_GUARD_CLASS: Record<string, DClass> = {
   "visual-path": "D2",
   "files-unread": "D2",
   "github-path": "D6",
-  "skill-path": "D6",
+  "skill-path": "D21",
   "ci-policy-weakened": "D21",
   "merge-state-unsettled": "D5",
   "no-facts": "D5",
