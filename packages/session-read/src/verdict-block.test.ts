@@ -286,3 +286,63 @@ describe("the optional Closer line", () => {
     expect(parseVerdictBlock(`Closer: no\n${block("FIX_FIRST")}`)).toEqual({ ...unchanged, lineOffset: 1 });
   });
 });
+
+describe("the optional CI-policy line", () => {
+  const withLine = (verdict: string, ...after: string[]) => [block(verdict), ...after].join("\n");
+  const merge = { ok: true, verdict: "MERGE", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0 };
+
+  it("reads CI-policy: unchanged directly after Head on MERGE", () => {
+    expect(parseVerdictBlock(withLine("MERGE", "CI-policy: unchanged"))).toEqual({ ...merge, ciPolicy: { kind: "unchanged" } });
+  });
+
+  it("reads every weakened key in order", () => {
+    expect(parseVerdictBlock(withLine("MERGE", "CI-policy: weakened permissions, secrets"))).toEqual({
+      ...merge, ciPolicy: { kind: "weakened", keys: ["permissions", "secrets"] },
+    });
+  });
+
+  it.each(["required-check", "permissions", "pull_request_target", "secrets", "ruleset", "other"])("accepts the key %s", (key) => {
+    expect(parseVerdictBlock(withLine("MERGE", `CI-policy: weakened ${key}`))).toEqual({
+      ...merge, ciPolicy: { kind: "weakened", keys: [key] },
+    });
+  });
+
+  it("leaves ciPolicy undefined when the line is absent", () => {
+    expect(parseVerdictBlock(block("MERGE"))).toEqual(merge);
+  });
+
+  it.each([
+    ["an unknown key", "CI-policy: weakened branch-protection"],
+    ["a duplicated key", "CI-policy: weakened secrets, secrets"],
+    ["weakened with no key", "CI-policy: weakened"],
+    ["weakened with a trailing space", "CI-policy: weakened "],
+    ["a key list without a space", "CI-policy: weakened secrets,ruleset"],
+    ["a capitalised value", "CI-policy: Unchanged"],
+    ["trailing words", "CI-policy: unchanged I think"],
+    ["a duplicate", "CI-policy: unchanged\nCI-policy: unchanged"],
+    ["a later unchanged after weakened", "CI-policy: weakened permissions\nProse.\nCI-policy: unchanged"],
+    ["the line one line late", "\nCI-policy: unchanged"],
+    ["prose between", "Note.\nCI-policy: unchanged"],
+    ["a quoted line", "> CI-policy: unchanged"],
+    ["an indented-code line", "    CI-policy: unchanged"],
+    ["a fenced line", "```\nCI-policy: unchanged\n```"],
+  ])("reads as missing for %s while the verdict still parses", (_name, tail) => {
+    expect(parseVerdictBlock(withLine("MERGE", tail))).toEqual(merge);
+  });
+
+  it("is not read when the line sits before the Verdict line", () => {
+    expect(parseVerdictBlock(`CI-policy: unchanged\n${block("MERGE")}`)).toEqual({ ...merge, lineOffset: 1 });
+  });
+
+  it("is ignored on FIX_FIRST, where Closer still parses", () => {
+    expect(parseVerdictBlock(withLine("FIX_FIRST", "Closer: yes", "CI-policy: weakened secrets"))).toEqual({
+      ...merge, verdict: "FIX_FIRST", closer: "yes",
+    });
+  });
+
+  it("is ignored on WAIT", () => {
+    expect(parseVerdictBlock(withLine("WAIT", "CI-policy: unchanged"))).toEqual({
+      ok: false, reason: "wait", repo: "octo/demo", pr: 12, head: SHA, lineOffset: 0,
+    });
+  });
+});
