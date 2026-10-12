@@ -5,7 +5,9 @@ import {
   itemsDigest,
   keyIdOf,
   keyRing,
+  holdDigest,
   StatementSchema,
+  verifyHoldRelease,
   verifyProof,
   type KeyRing,
   type ProofInput,
@@ -59,7 +61,7 @@ function setup(): { publicKey: KeyObject; privateKey: KeyObject; keys: KeyRing }
   return { publicKey, privateKey, keys: keyRing([publicKey]) };
 }
 
-const refusal = (result: ProofResult): Refusal | "accepted" => (result.ok ? "accepted" : result.refusal);
+const refusal = (result: ProofResult | { ok: false; refusal: Refusal } | { ok: true }): Refusal | "accepted" => (result.ok ? "accepted" : result.refusal);
 
 function flip(b64: string, at: number): string {
   const bytes = Buffer.from(b64, "base64url");
@@ -269,6 +271,51 @@ describe("verifyProof", () => {
     const { publicKey, privateKey, keys } = setup();
     const spaced = JSON.stringify(statementFor(publicKey), null, 2);
     expect(refusal(verifyProof(proofFrom(privateKey, spaced), keys, NOW, AUD))).toBe("accepted");
+  });
+});
+
+describe("verifyHoldRelease", () => {
+  const holdStatement = (publicKey: KeyObject, over: Record<string, unknown> = {}) => ({
+    v: 1,
+    type: "titan-factory.hold-release",
+    aud: AUD,
+    keyId: keyIdFor(publicKey),
+    nonce: "0123456789abcdef0123456789abcdef",
+    iat: NOW - 10,
+    exp: NOW + 110,
+    items: [{ runId: "run", repo: "owner/repo", pr: 837, holdDigest: holdDigest("g10-adversary: x"), holdSince: "2026-10-12T07:00:00.000Z", headSha: HEAD }],
+    ...over,
+  });
+
+  it("accepts a hold-release statement signed by a ring key", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const result = verifyHoldRelease(proofFrom(privateKey, holdStatement(publicKey)), keys, NOW, AUD);
+    expect(result).toMatchObject({ ok: true, keyId: keyIdFor(publicKey), statement: { type: "titan-factory.hold-release" } });
+  });
+
+  it("never reads a hold-release statement as a gate resolve, or the reverse", () => {
+    const { publicKey, privateKey, keys } = setup();
+    expect(refusal(verifyProof(proofFrom(privateKey, holdStatement(publicKey)), keys, NOW, AUD))).toBe("malformed");
+    expect(refusal(verifyHoldRelease(proofFrom(privateKey, statementFor(publicKey)), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("refuses a statement releasing more than one hold", () => {
+    const { publicKey, privateKey, keys } = setup();
+    const [one] = holdStatement(publicKey).items;
+    expect(refusal(verifyHoldRelease(proofFrom(privateKey, holdStatement(publicKey, { items: [one, { ...one, runId: "run2" }] })), keys, NOW, AUD))).toBe("malformed");
+  });
+
+  it("applies the same window and audience rules as a gate resolve", () => {
+    const { publicKey, privateKey, keys } = setup();
+    expect(refusal(verifyHoldRelease(proofFrom(privateKey, holdStatement(publicKey, { aud: "other" })), keys, NOW, AUD))).toBe("wrong-aud");
+    expect(refusal(verifyHoldRelease(proofFrom(privateKey, holdStatement(publicKey, { exp: NOW + 400 })), keys, NOW, AUD))).toBe("window-too-long");
+  });
+});
+
+describe("holdDigest", () => {
+  it("is the sha256 hex of the exact reason", () => {
+    expect(holdDigest("a")).toBe("ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
+    expect(holdDigest("a ")).not.toBe(holdDigest("a"));
   });
 });
 

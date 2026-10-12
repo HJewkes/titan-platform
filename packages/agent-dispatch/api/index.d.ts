@@ -296,8 +296,11 @@ interface ParkResult {
     lines: string[];
 }
 declare function buildParkArgs(name: string): string[];
-/** Remove the agent's worktree and keep its branch; throws `DispatchError` when the broker refuses. */
-declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs?: number): ParkResult;
+/**
+ * Remove the agent's worktree and keep its branch; rejects with `DispatchError` when the broker refuses. Async because
+ * `agent park` may read the caller back (agent-chat asks Shepherd about a fix round), and a blocked caller cannot answer.
+ */
+declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs?: number): Promise<ParkResult>;
 
 /**
  * Message a live agent through `agent-chat debug send`: the broker delivers the
