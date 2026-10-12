@@ -154,7 +154,9 @@ that is not green as `ciVerdict` judges it, a strict ruleset with the head behin
 or an approved head that `approvedHeadWalk` cannot reach through base merges. A merge gate
 fails closed on conflicts. With `--clone`, the bin runs `git merge-tree --write-tree` in that
 clone, which must be fetched and hold the commits: once for the walk's tree proof, and once to
-merge the head into `origin/<base>`, where a conflict or a git error fails. The bin is the only
+merge the head into the base tip GitHub reports now. That merge uses the tip's sha, never a local
+`origin/<base>` ref, which can be stale or shadowed by a branch or tag of that name, so fetch the
+base before the call: a conflict, a git error or a missing tip commit fails. The bin is the only
 place that runs git. Without `--clone`, an approved head other than the PR head fails, and
 conflicts rest on GitHub's mergeability: `dirty` fails, and `unknown` is re-read after 1, 2 and
 4 seconds and fails if it is still unknown. Bad arguments, including a sha that is not 40 lower-case hex characters, print usage

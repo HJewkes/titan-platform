@@ -7,6 +7,7 @@ import { formatPremerge, MERGEABILITY_RETRY_MS, premerge } from "./premerge.js";
 const S = fakeSha("pr-head");
 const R = fakeSha("reviewed");
 const B1 = fakeSha("base-1");
+const TIP = fakeSha("base-tip");
 
 function world(pr: Partial<PullRequest> = {}): FakeGitHub {
   const fake = fakeGitHub();
@@ -99,23 +100,37 @@ describe("premerge conflicts", () => {
     expect(sleeps).toEqual([...MERGEABILITY_RETRY_MS]);
   });
 
-  it("with a clone, merges the head into origin/<base> instead of waiting on GitHub", async () => {
+  it("with a clone, merges the head into the base tip GitHub reports instead of waiting on GitHub", async () => {
     const asked: [string, string][] = [];
-    const result = await gate(world({ mergeableState: "unknown" }), async (base, head) => (asked.push([base, head]), fakeSha("tree")));
+    const fake = world({ mergeableState: "unknown" });
+    fake.refs.set("main", TIP);
+    const result = await gate(fake, async (base, head) => (asked.push([base, head]), fakeSha("tree")));
 
     expect(result).toMatchObject({ ok: true });
-    expect(asked).toEqual([["origin/main", S]]);
+    expect(asked).toEqual([[TIP, S]]);
     expect(sleeps).toEqual([]);
   });
 
-  it("with a clone, fails a head that conflicts with origin/<base> while GitHub's mergeability is unknown", async () => {
-    expect(await gate(world({ mergeableState: "unknown" }), async () => null)).toMatchObject({ ok: false, reasons: ["merge-tree conflict vs origin/main"] });
+  it("with a clone, fails a head that conflicts with the base tip while GitHub's mergeability is unknown", async () => {
+    const fake = world({ mergeableState: "unknown" });
+    fake.refs.set("main", TIP);
+
+    expect(await gate(fake, async () => null)).toMatchObject({ ok: false, reasons: [`merge-tree conflict vs main tip ${TIP}`] });
+  });
+
+  it("with a clone, fails when GitHub reports no tip for the base branch", async () => {
+    const fake = world();
+    fake.refs.delete("main");
+
+    expect(await gate(fake, async () => fakeSha("tree"))).toMatchObject({ ok: false, reasons: ["base branch main has no tip on GitHub, so a conflict cannot be ruled out"] });
   });
 
   it("with a clone, fails when the merge-tree cannot be computed", async () => {
-    const result = await gate(world(), async () => Promise.reject(new Error("git merge-tree exited 128: bad revision")));
+    const fake = world();
+    fake.refs.set("main", TIP);
+    const result = await gate(fake, async () => Promise.reject(new Error("git merge-tree exited 1: not something we can merge")));
 
-    expect(result).toMatchObject({ ok: false, reasons: [`merge-tree of ${S} and origin/main failed: git merge-tree exited 128: bad revision`] });
+    expect(result).toMatchObject({ ok: false, reasons: [`merge-tree of ${S} and main tip ${TIP} failed: git merge-tree exited 1: not something we can merge`] });
   });
 
   it("with a clone, still fails a PR GitHub reports as conflicting", async () => {

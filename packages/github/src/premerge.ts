@@ -11,8 +11,8 @@ interface PremergeInput {
   /** The head the caller's verdict approved; the caller owns verdicts, so this is taken on trust. */
   approvedHead: string;
   /**
-   * A local clone's merge-tree. It proves a walked approval and checks the head merges cleanly into
-   * `origin/<base>`. Absent, any approved head other than the PR head fails, and conflicts rest on GitHub's mergeability.
+   * A local clone's merge-tree. It proves a walked approval and checks the head merges cleanly into the
+   * base branch's current tip. Absent, any approved head other than the PR head fails, and conflicts rest on GitHub's mergeability.
    */
   cleanMergeTree?: CleanMergeTree;
   /** Waits between re-reads of a PR whose mergeability GitHub has not computed; only used without `cleanMergeTree`. */
@@ -51,7 +51,7 @@ export async function premerge(port: GitHubPort, input: PremergeInput): Promise<
   const reasons = [
     ...(pr.headSha === headSha ? [] : [`head ${pr.headSha} != ${headSha}`]),
     ...readiness.blockers.filter((blocker) => !IGNORED.has(blocker.reason)).map((blocker) => blocker.detail),
-    ...(await conflictReasons(pr, headSha, cleanMergeTree)),
+    ...(await conflictReasons(port, repo, pr, headSha, cleanMergeTree)),
     ...checkReasons(ciVerdict({ rules, runs, statuses })),
   ];
   return { repo, number: pr.number, ok: reasons.length === 0, reasons, head: headSha, base: pr.baseRef, required: rules.contexts, strict: rules.strict, behindBy: behindByOf(pr) };
@@ -69,15 +69,20 @@ async function readPr(port: GitHubPort, { repo, number, cleanMergeTree, sleep }:
   return pr;
 }
 
-/** A gate before a merge: a conflict, or no way to rule one out, fails. `dirty` is already a `mergeReadiness` blocker. */
-async function conflictReasons(pr: PullRequest, headSha: string, cleanMergeTree: CleanMergeTree | undefined): Promise<string[]> {
+/**
+ * A gate before a merge: a conflict, or no way to rule one out, fails. `dirty` is already a `mergeReadiness` blocker.
+ * The clone merges against the base tip GitHub reports now, by sha, never a local ref: a stale or shadowed
+ * `origin/<base>` would pass a head that conflicts with the real base. A clone lacking that commit fails.
+ */
+async function conflictReasons(port: GitHubPort, repo: RepoSlug, pr: PullRequest, headSha: string, cleanMergeTree: CleanMergeTree | undefined): Promise<string[]> {
   if (pr.state !== "open") return [];
   if (!cleanMergeTree) return pr.mergeableState === "unknown" ? [`GitHub has not computed mergeability of ${pr.headRef}, so a conflict cannot be ruled out`] : [];
-  const base = `origin/${pr.baseRef}`;
+  const tip = await port.getHeadSha(repo, pr.baseRef);
+  if (tip === null) return [`base branch ${pr.baseRef} has no tip on GitHub, so a conflict cannot be ruled out`];
   try {
-    return (await cleanMergeTree(base, headSha)) === null ? [`merge-tree conflict vs ${base}`] : [];
+    return (await cleanMergeTree(tip, headSha)) === null ? [`merge-tree conflict vs ${pr.baseRef} tip ${tip}`] : [];
   } catch (error) {
-    return [`merge-tree of ${headSha} and ${base} failed: ${error instanceof Error ? error.message : String(error)}`];
+    return [`merge-tree of ${headSha} and ${pr.baseRef} tip ${tip} failed: ${error instanceof Error ? error.message : String(error)}`];
   }
 }
 

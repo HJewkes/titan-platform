@@ -4,8 +4,9 @@ import type { CleanMergeTree } from "./approved-head-walk.js";
 const OID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
 /**
- * `git merge-tree --write-tree` in a local clone that already has both commits. Only the titan-gh bin
- * wires this in, for `premerge --clone`; the package's cores never run git.
+ * `git merge-tree --write-tree` in a local clone that already has both commits. Callers pass shas, never
+ * ref names a local branch or tag could shadow. Only the titan-gh bin wires this in, for
+ * `premerge --clone`; the package's cores never run git.
  */
 export function gitMergeTree(clone: string): CleanMergeTree {
   return (baseParent, reviewed) =>
