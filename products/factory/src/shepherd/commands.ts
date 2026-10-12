@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "@titan-design/github";
+import type { RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import { EXIT, defineCommand, type AnyCommand } from "@titan-design/registry";
 import type { WorkflowRun } from "@titan-design/workflow";
@@ -6,7 +6,6 @@ import { z } from "zod";
 import type { GateDecision } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../registry.js";
-import type { FreezeStoreRef } from "./freeze.js";
 import { RegistrationRefused, runPolicyCeiling, shepherdGatePolicy, stricterPolicy, type EffectivePolicy } from "./policy.js";
 import { HoldReasonSchema, OWNER_HOLD_CLASS, ReleasableClassSchema, type HoldResult } from "./hold-reason.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
@@ -19,30 +18,15 @@ import { restartFor } from "./restart.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
 import { reviewCommand } from "./review-request.js";
 import { findRegistration, releaseFinishedBranch } from "./registration-lookup.js";
-import type { SeatBook } from "./seats.js";
-import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
-import type { MergeTrainRef } from "./train.js";
-import type { SnapshotServices } from "./snapshot-reads.js";
+import type { Registration, ShepherdStore } from "./store.js";
+import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./services.js";
 import type { Phase } from "./step-phase.js";
 import { waitingCommand } from "./waiting.js";
 import { timelineEntries, type PrTimeline, type WatchRow } from "./view.js";
 import { LIST_FILTER, rowOf, waitingFilter, watchRows } from "./watch-rows.js";
 
-export const SHEPHERD_WORKFLOW = "shepherd-pr";
-
-/** What the shepherd commands read beyond the host; the route set that binds the store carries it. */
-export interface ShepherdServices extends SnapshotServices {
-  store: ShepherdStoreRef;
-  port: GitHubPort;
-  /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
-  seats: () => SeatBook;
-  /** Absent means no row reports a run waiting for its repo's merge train. */
-  train?: MergeTrainRef;
-  /** Read before a gate a freeze caused is superseded, and watched for thaws; absent means no repo is ever frozen. */
-  freeze?: FreezeStoreRef;
-  /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
-  now?: () => number;
-}
+/** Transitional, for workflows.ts until TP-2466 b repoints it. */
+export type { ShepherdServices } from "./services.js";
 
 export interface Registered {
   runId: string;
