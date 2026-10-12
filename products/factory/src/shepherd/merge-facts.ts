@@ -114,11 +114,15 @@ export interface DecidableEvidence {
   changedFilesUnread?: string;
 }
 
-function guardRule(rowId: string): PolicyRule {
+/** Every row the merge guard gates on; the owner section words each one (why-asked.ts). */
+export const MERGE_GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "visual-path", "required-checks-unknown", "merge-state-unsettled"] as const;
+export type MergeGuardRow = (typeof MERGE_GUARD_ROWS)[number];
+
+function guardRule(rowId: MergeGuardRow): PolicyRule {
   return { table: "shepherd-merge-guard", rowId, version: 1 };
 }
 
-const UNSETTLED_ROW = "merge-state-unsettled";
+const UNSETTLED_ROW: MergeGuardRow = "merge-state-unsettled";
 
 /** The one gate a later read at the same head may clear: GitHub had not computed mergeability on any read. */
 export function isUnsettledGate(decision: GateDecision): boolean {

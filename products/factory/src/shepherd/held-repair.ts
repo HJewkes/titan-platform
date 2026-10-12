@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { StepRoute } from "@titan-design/workflow";
 import { z } from "zod";
-import type { StepDeclaration } from "../definition.js";
+import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
 import type { LandPrState } from "../workflows/land-pr.js";
 import { rerunFlakyHead } from "./flake-check.js";
@@ -77,6 +77,22 @@ function causeOf(kind: WakeRequest["kind"], payload: unknown): string {
 
 const isRerunStep = (stepId: string): boolean => /^rerun:\d+$/.test(stepId);
 
+interface HeldStepIds {
+  check: string;
+  wait: string;
+}
+
+/**
+ * A live check is keyed by round and head, so only this wake's own record can answer it: a run-wide counter let a
+ * replay's back-filled `{held:false}` memo answer a later live wake on a held run (TP-2452). A replay whose record
+ * goes on with the bare check keeps the bare ids, so a record from before the keying replays as it ran.
+ */
+function heldStepIds(run: GateRun & { state: LandPrState }, headSha: string): HeldStepIds {
+  if (run.ctx.historyNext() === HELD_CHECK_STEP) return { check: HELD_CHECK_STEP, wait: HELD_WAIT_STEP };
+  const key = `r${run.state.round}:${headSha}`;
+  return { check: `${HELD_CHECK_STEP}:${key}`, wait: `${HELD_WAIT_STEP}:${key}` };
+}
+
 /** True while replaying, when the record's next step is not the one this wake would record: the record predates it. */
 function recordedWithout(run: GateRun, records: (stepId: string) => boolean): boolean {
   const next = run.ctx.historyNext();
@@ -92,14 +108,15 @@ function recordedWithout(run: GateRun, records: (stepId: string) => boolean): bo
  * went on without one took the path from before it, and a run that landed on that path must not touch CI again.
  */
 export async function heldRepair(run: GateRun & { state: LandPrState }, kind: WakeRequest["kind"], headSha: string, payload: unknown): Promise<boolean> {
-  if (recordedWithout(run, (stepId) => stepId === HELD_CHECK_STEP)) return false;
+  if (recordedWithout(run, (stepId) => stepIdMatches(HELD_CHECK_STEP, stepId))) return false;
+  const ids = heldStepIds(run, headSha);
   const input: HeldInput = { runId: run.ctx.runId, ...run.target, headSha };
   for (;;) {
-    const hold = await step(run.ctx, HELD_CHECK_STEP, input, HeldCheckResult);
+    const hold = await step(run.ctx, ids.check, input, HeldCheckResult);
     if (!hold.held) return !recordedWithout(run, isRerunStep) && rerunFlakyHead(run, kind, headSha, payload);
     const reason = hold.reason ?? "held";
     const why = `the run is held (${reason}), so Shepherd woke no fixer for the ${kind} wake: ${causeOf(kind, payload)}`;
     await noticeHeldSeat(run, JSON.stringify(["held", reason, headSha, kind]), { headSha, why, ...(hold.seat && { seat: hold.seat }) });
-    if ((await step(run.ctx, HELD_WAIT_STEP, { ...input, reason }, HeldWaitResult)).moved) return true;
+    if ((await step(run.ctx, ids.wait, { ...input, reason }, HeldWaitResult)).moved) return true;
   }
 }
