@@ -24,9 +24,10 @@ function rig(files: PrFile[]): { port: GitHubPort; store: ShepherdStoreRef } {
 }
 
 async function awaitPr(port: GitHubPort, store: ShepherdStoreRef): Promise<boolean> {
-  const deps: Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "pollMs"> = { port, store, now: () => 0, sleep: async () => undefined, pollMs: 1 };
-  const step = { prompt: JSON.stringify({ repo: REPO, branch: BRANCH, runId: "run-1" }), signal: new AbortController().signal, attempt: 0, requestKey: "k", stepId: "sh-await-pr:0" };
-  return (await awaitPrRoute(deps as ShepherdDeps).runner.run(step as never)).ok;
+  const deps: ShepherdDeps = { port, store, now: () => 0, sleep: async () => undefined, pollMs: 1, agentChatBin: "agent-chat" };
+  const prompt = JSON.stringify({ repo: REPO, branch: BRANCH, runId: "run-1" });
+  const outcome = await awaitPrRoute(deps).runner.run({ runId: "run-1", workflowName: "shepherd-pr", stepId: "sh-await-pr:0", iteration: 0, prompt, signal: new AbortController().signal, attempt: 0, requestKey: "k" });
+  return outcome.ok;
 }
 
 describe("sh-await-pr on a branch-only registration", () => {

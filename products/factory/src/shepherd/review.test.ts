@@ -626,7 +626,7 @@ describe("sh-review", () => {
     const spawnHeld = async (prepare: (store: ShepherdStore) => void) => {
       const dispatch = fakeDispatch();
       const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallMigration, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
-      return { facts: dispatch.spawns[0]?.facts, profile: (result as { profile?: string } | undefined)?.profile };
+      return { facts: dispatch.spawns[0]?.facts, profile: result?.kind === "dispatched" ? result.profile : undefined };
     };
 
     it("gives a 30-line migration PR held g10-review the g10 profile", async () => {
