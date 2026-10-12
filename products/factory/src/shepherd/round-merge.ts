@@ -9,7 +9,7 @@ import { gateHead } from "./stale-gates.js";
 const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /** How long a Ship stands as the owner's merge approval before the gate it answers opens (TP-1842 Q2 default, item 88). */
-export const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** A Ship stamped further ahead of the reader's clock than this is not believed: a future time would never go stale. */
 const SUBMIT_CLOCK_SKEW_MS = 5 * 60 * 1000;
@@ -151,7 +151,7 @@ export function roundMergeDecisions(
   return { refused: undefined, decisions };
 }
 
-export type ShipAtHead =
+type ShipAtHead =
   | { shipped: true; unit: string; round: number; questionIds: string[]; submittedAt: string }
   | { shipped: false; reason: string };
 
