@@ -610,8 +610,6 @@ declare class WorkflowRuntime {
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
-    /** What `list(statuses)` would return, counted per status without loading a run. */
-    count<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     wait(runId: string): Promise<WorkflowRun>;
     /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
     signal(runId: string, stepId: string, payload: Record<string, unknown>, resolvedBy: GateResolver): void;
