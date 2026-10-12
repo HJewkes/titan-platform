@@ -39,11 +39,13 @@ function trackedReadings(ctx: ClassifyContext, path: string): string[] | null {
  * run time adds nothing (the D6 residual).
  */
 export function afterWrites(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext {
-  const target = stdoutFile(cmd.redirects);
-  const path = target ? resolvePath(cmd.dir, target.target, line.home) : null;
-  const text = path === null ? null : written(cmd);
-  if (path === null || !text) return line;
-  return withFileWrite(line, path, text, target?.op.endsWith(">>") === true);
+  const targets = stdoutFiles(cmd.redirects);
+  const text = targets.length === 0 ? null : written(cmd);
+  if (!text) return line;
+  return targets.reduce((ctx, target) => {
+    const path = resolvePath(cmd.dir, target.target, line.home);
+    return path === null ? ctx : withFileWrite(ctx, path, text, target.op.endsWith(">>"));
+  }, line);
 }
 
 /** The write lands in the state an `&&` chain falls back to as well, since the command ran whether or not the chain breaks later. */
@@ -61,10 +63,12 @@ function withWrite(prior: string[] | null, text: string, append: boolean): strin
   return readings.length > MAX_WRITTEN_READINGS ? null : readings;
 }
 
-/** The file stdout ends at: only the last redirect of stdout receives the output, and a dup sends it to no file. */
-function stdoutFile(redirects: RedirectToken[]): RedirectToken | null {
-  const last = redirects.filter((r) => WRITE_OPS.has(r.op) && (r.op.startsWith("&") || r.fd === null || r.fd === "1")).at(-1);
-  return !last || isDup(last) ? null : last;
+/**
+ * The files stdout is written to. Bash sends it to the last stdout redirect only, and a dup there sends it to no file;
+ * zsh's MULTIOS, on by default, copies it to every one, a dup included, so each file is a reading.
+ */
+function stdoutFiles(redirects: RedirectToken[]): RedirectToken[] {
+  return redirects.filter((r) => WRITE_OPS.has(r.op) && (r.op.startsWith("&") || r.fd === null || r.fd === "1") && !isDup(r));
 }
 
 function isDup(r: RedirectToken): boolean {

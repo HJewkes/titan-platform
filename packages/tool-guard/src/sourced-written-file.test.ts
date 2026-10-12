@@ -54,6 +54,8 @@ const reachedThroughWrite = (cmd: string): [string, string][] => [
   ["'.' of a file a negated echo writes", `! echo '${cmd}' > f; . ./f`],
   ["'.' of a file echo writes behind [ -s f ] ||", `[ -s f ] || echo '${cmd}' > f; . ./f`],
   ["'.' of a file a negated pipeline's echo writes", `! echo '${cmd}' > f | cat; . ./f`],
+  ["'.' of a file zsh copies stdout to before a later redirect", `echo '${cmd}' > f > g; . ./f`],
+  ["'.' of a file zsh copies stdout to before >&2", `echo '${cmd}' > f >&2; . ./f`],
   ["'.' one command after the && chain that wrote the file ends", `git checkout -b feat/z && echo '${cmd}' > f; true; . ./f`],
 ];
 
@@ -92,8 +94,6 @@ const passRows: [string, string][] = [
   ["bash of a benign file a cat heredoc writes", `cat > f <<'E'\necho hi\nE\nbash f`],
   ["a heredoc written to notes that nothing runs", `cat > notes.md <<'E'\n${PUSH}\nE\necho ok`],
   ["'.' of a benign file after a push is written elsewhere", `echo '${PUSH}' > notes.md; . ./f`],
-  ["'.' of a file only opened before stdout moves on", `echo '${PUSH}' > f > g; . ./f`],
-  ["'.' of a file whose push went to stderr instead", `echo '${PUSH}' > f >&2; . ./f`],
   ["a PR body heredoc that names a push", `gh pr create --title t --body "$(cat <<'E'\nRun ${PUSH} after review.\nE\n)"`],
   ["a PR body built up with more appends than the guard reads, which nothing runs", appendedBody],
 ];
