@@ -63,6 +63,32 @@ function feature(change: () => void): string {
   return head;
 }
 
+/** GitHub's pull refs for `pr` at `head`: the head itself, and the head merged onto main's tip. */
+function openPr(pr: number, head: string): void {
+  const tree = git("merge-tree", "--write-tree", "main", head).split("\n")[0]!;
+  const merge = git("commit-tree", tree, "-p", "main", "-p", head, "-m", `Merge ${head} into main`);
+  git("update-ref", `refs/pull/${pr}/head`, head);
+  git("update-ref", `refs/pull/${pr}/merge`, merge);
+}
+
+const LARGE: PrFile[] = [
+  { path: "packages/x/src/a.ts", status: "modified", additions: 1, deletions: 1 },
+  { path: "packages/x/src/big.ts", status: "added", additions: 450, deletions: 0 },
+];
+
+function growLarge(): void {
+  write("packages/x/src/a.ts", lines(10, 3));
+  write("packages/x/src/big.ts", lines(450));
+}
+
+/** A GitHub that answers PR 1's real file list, for a read that falls back from git. */
+function apiAnswering(files: PrFile[]) {
+  const api = fakeGitHub({ repo: REPO });
+  const { number: pr } = api.addPr({ headSha: fakeSha("api-head") });
+  api.prFiles.set(pr, files);
+  return { api, port: githubPort(api.wire), pr };
+}
+
 const gitRead: PrFilesRead = (target) => ((reads += 1), gitPrFiles(target, { stateDir, remote: () => origin }));
 
 const byPath = (files: readonly PrFile[]): PrFile[] => [...files].sort((a, b) => a.path.localeCompare(b.path));
@@ -84,18 +110,7 @@ const CASES: { name: string; change: () => void; recorded: PrFile[]; reason: str
     recorded: [{ path: MIGRATION_FILE, status: "removed", additions: 0, deletions: 20 }],
     reason: "g10-review: store migration",
   },
-  {
-    name: "a diff over 400 changed lines",
-    change: () => {
-      write("packages/x/src/a.ts", lines(10, 3));
-      write("packages/x/src/big.ts", lines(450));
-    },
-    recorded: [
-      { path: "packages/x/src/a.ts", status: "modified", additions: 1, deletions: 1 },
-      { path: "packages/x/src/big.ts", status: "added", additions: 450, deletions: 0 },
-    ],
-    reason: "g10-review: 452 changed lines",
-  },
+  { name: "a diff over 400 changed lines", change: growLarge, recorded: LARGE, reason: "g10-review: 452 changed lines" },
 ];
 
 beforeEach(() => {
@@ -112,14 +127,13 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe("the G10 class from local git", { timeout: 30_000 }, () => {
   it.each(CASES)("equals the class of the recorded GitHub file list for $name", async ({ change, recorded, reason }) => {
     const head = feature(change);
-    const api = fakeGitHub({ repo: REPO });
-    const { number: pr } = api.addPr({ headSha: fakeSha("api-head") });
-    api.prFiles.set(pr, recorded);
+    const { port: apiPort, pr } = apiAnswering(recorded);
+    openPr(pr, head);
     const local = fakeGitHub({ repo: REPO });
 
-    const files = await gitPrFiles({ repo: REPO, base: "main", head }, { stateDir, remote: () => origin });
+    const files = await gitPrFiles({ repo: REPO, pr, base: "main", head }, { stateDir, remote: () => origin });
     const viaGit = await g10HoldAt(githubPort(local.wire), { repo: REPO, pr, kind: "feature", head, base: "main" }, gitRead);
-    const viaApi = await g10HoldAt(githubPort(api.wire), { repo: REPO, pr, kind: "feature" });
+    const viaApi = await g10HoldAt(apiPort, { repo: REPO, pr, kind: "feature" });
 
     expect(byPath(files)).toEqual(byPath(recorded));
     expect(viaGit).toBe(reason);
@@ -129,9 +143,11 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
 
   it("classes a registration again at its new head, though the PR number stays", async () => {
     const small = feature(() => write("packages/x/src/a.ts", lines(10, 3)));
+    openPr(7, small);
     git("checkout", "-q", "feature");
     write("packages/x/src/big.ts", lines(450));
     const large = commitAll("grow");
+    git("checkout", "-q", "main");
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), registrationFactsMigration(24)]);
     const store = new ShepherdStore(db);
@@ -141,6 +157,7 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     store.register({ repo: REPO, pr: 7, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, kind: "feature", headSha: small, base: "main" });
 
     const first = await applyRegistrationHold(port, store, "run-1", { local: read });
+    openPr(7, large);
     store.update("run-1", { task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY, headSha: large });
     const second = await applyRegistrationHold(port, store, "run-1", { local: read });
 
@@ -148,5 +165,62 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     expect(second).toBe("g10-review: 452 changed lines");
     expect(reads).toBe(2);
     expect(fake.calls).toEqual([]);
+  });
+});
+
+describe("a registered head or base that is not the PR's", { timeout: 30_000 }, () => {
+  it("still holds a large PR registered with main's tip as its head", async () => {
+    const head = feature(growLarge);
+    const { api, port, pr } = apiAnswering(LARGE);
+    openPr(pr, head);
+    const forged = git("rev-parse", "main");
+
+    const reason = await g10HoldAt(port, { repo: REPO, pr, kind: "feature", head: forged, base: "main" }, gitRead);
+
+    expect(reason).toBe("g10-review: 452 changed lines");
+    expect(api.calls).toContain("listPrFiles");
+  });
+
+  it("still holds a large PR registered with its own branch as the base", async () => {
+    const head = feature(growLarge);
+    const { api, port, pr } = apiAnswering(LARGE);
+    openPr(pr, head);
+
+    const reason = await g10HoldAt(port, { repo: REPO, pr, kind: "feature", head, base: "feature" }, gitRead);
+
+    expect(reason).toBe("g10-review: 452 changed lines");
+    expect(api.calls).toContain("listPrFiles");
+  });
+
+  it("diffs from GitHub's merge base when the named base branch already holds the head", async () => {
+    const head = feature(growLarge);
+    git("checkout", "-q", "feature");
+    git("merge", "-q", "--no-edit", "main");
+    const merged = git("rev-parse", "HEAD");
+    expect(merged).not.toBe(head);
+    git("checkout", "-q", "main");
+    openPr(1, merged);
+    git("update-ref", "refs/heads/holds-head", merged);
+    const local = fakeGitHub({ repo: REPO });
+
+    const reason = await g10HoldAt(githubPort(local.wire), { repo: REPO, pr: 1, kind: "feature", head: merged, base: "holds-head" }, gitRead);
+
+    expect(reason).toBe("g10-review: 452 changed lines");
+    expect(local.calls).toEqual([]);
+  });
+
+  it("reads an empty diff as unread and holds it adversary", async () => {
+    feature(growLarge);
+    git("checkout", "-q", "-b", "empty-pr", "main");
+    git("commit", "-q", "--allow-empty", "-m", "changes nothing");
+    const head = git("rev-parse", "HEAD");
+    git("checkout", "-q", "main");
+    openPr(1, head);
+    const { api, port } = apiAnswering([]);
+
+    const reason = await g10HoldAt(port, { repo: REPO, pr: 1, kind: "feature", head, base: "main" }, gitRead);
+
+    expect(reason).toBe("g10-adversary: changed files unread at registration (EmptyPrDiff)");
+    expect(api.calls).toEqual([]);
   });
 });

@@ -50,9 +50,9 @@ describe("the head-keyed file cache", () => {
     const { read, seen } = counting();
     const cached = cachedByHead(read);
 
-    await cached({ repo: REPO, base: "main", head: H1 });
-    await cached({ repo: "ACME/widgets", base: "main", head: H1 });
-    await cached({ repo: REPO, base: "main", head: H2 });
+    await cached({ repo: REPO, pr: 1, base: "main", head: H1 });
+    await cached({ repo: "ACME/widgets", pr: 1, base: "main", head: H1 });
+    await cached({ repo: REPO, pr: 1, base: "main", head: H2 });
 
     expect(seen.map((target) => target.head)).toEqual([H1, H2]);
   });
@@ -61,17 +61,17 @@ describe("the head-keyed file cache", () => {
     let calls = 0;
     const cached = cachedByHead(async () => (++calls === 1 ? Promise.reject(new Error("fetch refused")) : LOCAL));
 
-    await expect(cached({ repo: REPO, base: "main", head: H1 })).rejects.toThrow("fetch refused");
-    expect(await cached({ repo: REPO, base: "main", head: H1 })).toEqual(LOCAL);
+    await expect(cached({ repo: REPO, pr: 1, base: "main", head: H1 })).rejects.toThrow("fetch refused");
+    expect(await cached({ repo: REPO, pr: 1, base: "main", head: H1 })).toEqual(LOCAL);
   });
 
   it("forgets the oldest head past its size", async () => {
     const { read, seen } = counting();
     const cached = cachedByHead(read, 1);
 
-    await cached({ repo: REPO, base: "main", head: H1 });
-    await cached({ repo: REPO, base: "main", head: H2 });
-    await cached({ repo: REPO, base: "main", head: H1 });
+    await cached({ repo: REPO, pr: 1, base: "main", head: H1 });
+    await cached({ repo: REPO, pr: 1, base: "main", head: H2 });
+    await cached({ repo: REPO, pr: 1, base: "main", head: H1 });
 
     expect(seen).toHaveLength(3);
   });

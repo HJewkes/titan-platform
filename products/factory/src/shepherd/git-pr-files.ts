@@ -1,13 +1,31 @@
 import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
 import type { ShepherdStoreRef } from "./store.js";
-import { carryCacheDir, carryStateDir, ensureCache, githubRemote, must, remoteBase, serialized, systemGit, type CarryOptions } from "./tree-carry.js";
+import { carryCacheDir, carryStateDir, ensureCache, githubRemote, isAncestor, must, remoteBase, serialized, systemGit, type CarryOptions, type Git } from "./tree-carry.js";
 
 /** A PR's diff as GitHub's file list sees it: the head against its merge base with the base branch. */
 export interface DiffTarget {
   repo: RepoSlug;
-  /** The base branch's name, never a sha, so the diff starts at the merge base as GitHub's does. */
+  /** The PR whose `refs/pull/<n>` refs the caller's head and base are checked against. */
+  pr: number;
+  /** The base branch's name, as the registering caller gave it. */
   base: string;
   head: string;
+}
+
+/** The caller's head or base is not the PR's, as GitHub's own pull refs show it; the files are read from GitHub instead. */
+class PrFactsMismatch extends Error {
+  constructor(readonly fact: "head" | "merge ref" | "base") {
+    super(`the registered ${fact} is not the pull request's`);
+    this.name = "PrFactsMismatch";
+  }
+}
+
+/** A PR always changes something, so an empty diff means the head or base was wrong; it reads as unread, never as 0 lines. */
+class EmptyPrDiff extends Error {
+  constructor() {
+    super("git diff of the pull request is empty");
+    this.name = "EmptyPrDiff";
+  }
 }
 
 export type PrFilesRead = (target: DiffTarget) => Promise<PrFile[]>;
@@ -54,16 +72,40 @@ function prFilesOfDiff(nameStatus: string, numstat: string): PrFile[] {
   return parseNameStatus(nameStatus).map((entry) => ({ ...entry, ...(counts.get(entry.path) ?? { additions: 0, deletions: 0 }) }));
 }
 
-/** Fetches the head and the base branch into Shepherd's git cache and diffs them there; a refused git command throws. */
-export async function gitPrFiles({ repo, base, head }: DiffTarget, options: CarryOptions = {}): Promise<PrFile[]> {
+const pullRef = (pr: number, name: "head" | "merge"): string => `refs/remotes/pull/${pr}/${name}`;
+
+/**
+ * The base commit GitHub merged the head onto, once the caller's facts are checked: `refs/pull/<n>/head` is the head,
+ * the merge ref's second parent is the head, and its first parent is on the named base branch. Diffing from that parent
+ * rather than the named branch keeps a branch that already holds the head from shrinking the diff.
+ */
+async function verifiedBase(git: Git, dir: string, { pr, base, head }: DiffTarget, signal?: AbortSignal): Promise<string> {
+  if ((await must(git, dir, ["rev-parse", pullRef(pr, "head")], signal)) !== head) throw new PrFactsMismatch("head");
+  const [, baseParent, headParent] = (await must(git, dir, ["rev-list", "--parents", "-n", "1", pullRef(pr, "merge")], signal)).split(" ");
+  if (headParent !== head || baseParent === undefined) throw new PrFactsMismatch("merge ref");
+  if (!(await isAncestor(git, dir, baseParent, remoteBase(base), signal))) throw new PrFactsMismatch("base");
+  return baseParent;
+}
+
+function fetchArgs(url: string, { pr, base }: DiffTarget): string[] {
+  const refs = [`+refs/heads/${base}:${remoteBase(base)}`, `+refs/pull/${pr}/head:${pullRef(pr, "head")}`, `+refs/pull/${pr}/merge:${pullRef(pr, "merge")}`];
+  return ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, ...refs];
+}
+
+/**
+ * Fetches the base branch and the PR's pull refs into Shepherd's git cache and diffs the head there, over the git
+ * protocol, so no REST read is spent. A refused git command, a fact that is not the PR's, or an empty diff throws.
+ */
+export async function gitPrFiles(target: DiffTarget, options: CarryOptions = {}): Promise<PrFile[]> {
   const git = options.git ?? systemGit;
-  const dir = carryCacheDir(carryStateDir(options.stateDir), repo);
-  const url = (options.remote ?? githubRemote)(repo);
-  const range = `${remoteBase(base)}...${head}`;
+  const dir = carryCacheDir(carryStateDir(options.stateDir), target.repo);
+  const url = (options.remote ?? githubRemote)(target.repo);
   return serialized(dir, async () => {
     await ensureCache(git, dir, options.signal);
-    await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, head, `+refs/heads/${base}:${remoteBase(base)}`], options.signal);
+    await must(git, dir, fetchArgs(url, target), options.signal);
+    const range = `${await verifiedBase(git, dir, target, options.signal)}...${target.head}`;
     const nameStatus = await must(git, dir, ["diff", "--name-status", "-z", "-M", range], options.signal);
+    if (nameStatus === "") throw new EmptyPrDiff();
     const numstat = await must(git, dir, ["diff", "--numstat", "-z", "-M", range], options.signal);
     return prFilesOfDiff(nameStatus, numstat);
   });
@@ -78,7 +120,7 @@ const CACHE_ENTRIES = 256;
 export function cachedByHead(read: PrFilesRead, entries = CACHE_ENTRIES): PrFilesRead {
   const cache = new Map<string, Promise<PrFile[]>>();
   return (target) => {
-    const key = [target.repo.toLowerCase(), target.base, target.head].join("\0");
+    const key = [target.repo.toLowerCase(), target.pr, target.base, target.head].join("\0");
     const hit = cache.get(key);
     if (hit) return hit;
     const read$ = read(target);
@@ -111,17 +153,17 @@ interface FilesTarget {
 }
 
 /**
- * The PR's files from local git when the head and base are known, else from GitHub. A git failure falls back to GitHub,
- * so a head not yet fetchable still gets its files read rather than an unread class.
+ * The PR's files from local git when the head and base are known, else from GitHub. A head or base that is not the
+ * PR's, or any other git failure, falls back to GitHub's list, so a wrong fact still gets the PR's real class. An empty
+ * diff throws, so every caller reads it as unread and fails closed.
  */
 export async function prFilesOf(port: GitHubPort, target: FilesTarget, local: PrFilesRead = localPrFiles): Promise<PrFile[]> {
   const { repo, pr, head, base } = target;
-  if (head !== undefined && base !== undefined) {
-    try {
-      return await local({ repo, base, head });
-    } catch {
-      return port.listPrFiles(repo, pr);
-    }
+  if (head === undefined || base === undefined) return port.listPrFiles(repo, pr);
+  try {
+    return await local({ repo, pr, base, head });
+  } catch (error) {
+    if (error instanceof EmptyPrDiff) throw error;
+    return port.listPrFiles(repo, pr);
   }
-  return port.listPrFiles(repo, pr);
 }
