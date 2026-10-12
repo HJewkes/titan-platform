@@ -13,7 +13,7 @@ const DEFAULT_WEEKS = 4;
 const DEFAULT_HORIZON_DAYS = 7;
 
 /** What every throughput result says about its inputs, so a reader can tell which model and data produced it. */
-export interface ThroughputInputs {
+interface ThroughputInputs {
   modelHash: string;
   watermark: Watermark;
   initiatives: string[];
@@ -27,11 +27,11 @@ export interface ThroughputInputs {
   missingInitiatives: string[];
 }
 
-export interface ThroughputTableResult extends ThroughputInputs {
+interface ThroughputTableResult extends ThroughputInputs {
   table: ClassTable;
 }
 
-export interface ThroughputBacktestResult extends ThroughputInputs {
+interface ThroughputBacktestResult extends ThroughputInputs {
   backtest: BacktestResult;
 }
 
@@ -139,7 +139,7 @@ export const throughputBacktest = defineCommand<BacktestArgs, ThroughputBacktest
 });
 
 /** `weeks` origins a week apart, the last one a full horizon before the newest done task so its test window is complete. */
-export function weeklyOrigins(newestDoneAt: string, horizonDays: number, weeks: number): string[] {
+function weeklyOrigins(newestDoneAt: string, horizonDays: number, weeks: number): string[] {
   const last = Date.parse(newestDoneAt) - horizonDays * MS_PER_DAY;
   return Array.from({ length: weeks }, (_, i) => new Date(last - (weeks - 1 - i) * 7 * MS_PER_DAY).toISOString());
 }

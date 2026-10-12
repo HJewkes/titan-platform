@@ -7,7 +7,7 @@ import { parse } from "yaml";
 
 const KIND_TAG = "kind:";
 
-export interface DoneTask extends ActualsTask {
+interface DoneTask extends ActualsTask {
   doneAt: string;
   kind: string | null;
   /** True when the task carries more than one `kind:` tag; the first one wins. */
@@ -20,7 +20,7 @@ export interface UnparsedTask {
   reason: string;
 }
 
-export interface DoneTaskLoad {
+interface DoneTaskLoad {
   tasks: DoneTask[];
   unparsed: UnparsedTask[];
   /** Allowlisted initiatives with no `tasks/` directory under the root. */
@@ -69,7 +69,7 @@ function kindTags(task: Task): string[] {
   return (task.tags ?? []).filter((tag) => tag.startsWith(KIND_TAG)).map((tag) => tag.slice(KIND_TAG.length)).filter(Boolean);
 }
 
-export function taskKey(initiative: string, id: string): string {
+function taskKey(initiative: string, id: string): string {
   return `${initiative}/${id}`;
 }
 
