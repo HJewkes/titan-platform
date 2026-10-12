@@ -384,6 +384,26 @@ systemctl --user daemon-reload
 systemctl --user enable --now session-miner-tool-gaps.timer
 ```
 
+## Throughput (TP-2155)
+
+`titan-miner throughput table` fits `@titan-design/throughput`'s class table (kind x size band)
+over done tasks; `titan-miner throughput backtest` scores it at rolling origins. Both read done
+task YAML from `<TITAN_MINER_INITIATIVES_ROOT>/<initiative>/tasks/*.yml` (the root defaults to
+active-work's data root) for the initiatives in `TITAN_MINER_THROUGHPUT_INITIATIVES`, a comma
+list that defaults to the engineering initiatives. A task's kind comes from its `kind:<x>` tag.
+Files that fail pm's `TaskSchema` are counted as `unparsed`, not fatal.
+
+Task-linked sessions live in active-work's graph, so pass it. The graph is always opened
+read-only, the miner's own index included:
+
+```sh
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput table
+titan-miner --graph "<active-work root>/.miner/graph.sqlite3" throughput backtest --weeks 4 --horizon 7
+```
+
+Output leads with the model hash and the watermark (miner `lastIndexedAt`, newest done task).
+`--json` returns the full class table or back-test result beside the same header fields.
+
 ## Codex sessions
 
 Opt in with `--codex-home ~/.codex --namespace workstation-account` (or
