@@ -31,8 +31,7 @@ import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/ma
 import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
-import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
-import { TOOLCHAIN_SWEEP_MS, sweepToolchain } from "./shepherd/toolchain-sweep.js";
+import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -357,14 +356,6 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
   } catch (err) {
     log.error({ err }, "shepherd resync at start failed");
   }
-}
-
-async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
-}
-
-async function sweepToolchains(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepToolchain(host, services)) log.info({ ...note }, "swept a toolchain adoption");
 }
 
 export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {

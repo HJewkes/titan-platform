@@ -34,10 +34,9 @@ export function toolchainWorld(): ToolchainWorld {
     if (!port) throw new Error(`no fake for ${repo}`);
     return port;
   };
-  const methods = Object.keys(portFor(CANONICAL_REPO)) as (keyof GitHubPort)[];
-  const route = (method: keyof GitHubPort) => (repo: RepoSlug, ...rest: unknown[]) => (portFor(repo)[method] as (...args: unknown[]) => unknown)(repo, ...rest);
-  const port: GitHubPort = { ...portFor(CANONICAL_REPO) };
-  for (const method of methods) Object.assign(port, { [method]: route(method) });
+  const port = new Proxy(portFor(CANONICAL_REPO), {
+    get: (_target, method) => (repo: RepoSlug, ...rest: unknown[]) => Reflect.apply(Reflect.get(portFor(repo), method), undefined, [repo, ...rest]),
+  });
   return { fakes, port };
 }
 
