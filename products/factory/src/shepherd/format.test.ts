@@ -54,6 +54,7 @@ describe("the shepherd text view of each verb", () => {
 
   it.each([
     ["a new run", registered({}), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner\n"],
+    ["a new run Shepherd held", registered({ g10Hold: "g10-review: 450 changed lines" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): started; policy owner; held g10-review: 450 changed lines\n"],
     ["a repeat registration", registered({ created: false }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): already registered, metadata updated; policy owner\n"],
     ["a restart after a failed run", registered({ previousRunId: "run-0" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after failed run run-0; policy owner\n"],
     ["a restart after a stopped run", registered({ previousRunId: "run-0", previousStop: "not-mergeable" }), "run run-1 shepherd-pr acme/widgets#1 (feat/x): restarted after run run-0 stopped not-mergeable; policy owner\n"],

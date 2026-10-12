@@ -433,6 +433,17 @@ declare class WorkflowRunStore {
      * run, so no fence applies. False when the run is unfinished or already has that key, so a repeat never rewrites one.
      */
     annotate(id: string, key: string, result: StepResult): boolean;
+    /** Every run's status by id, read without a run's step results, so a caller can pick the few runs it must load. */
+    statuses(): Map<string, WorkflowStatus>;
+    /**
+     * Up to `limit` runs of `statuses` with ids after `after`, in id order, finished at or after `completedSince` when
+     * given; a caller reads a long history a page at a time instead of holding every run at once.
+     */
+    page(statuses: readonly WorkflowStatus[], { after, limit, completedSince }: {
+        after?: string;
+        limit: number;
+        completedSince?: string;
+    }): WorkflowRun[];
     release(run: WorkflowRun, fence: WorkflowOwnerFence): void;
 }
 

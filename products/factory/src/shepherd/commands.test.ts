@@ -218,6 +218,36 @@ describe("shepherd.register kind", () => {
   });
 });
 
+describe("shepherd.register G10 hold", () => {
+  const large = [{ path: "packages/x/src/a.ts", status: "modified", additions: 450, deletions: 0 }];
+
+  it("a new registration of a PR over 400 lines comes back held g10-review by Shepherd", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    w.fake.prFiles.set(1, large);
+
+    const result = await registered(w, pr1);
+
+    expect(result).toMatchObject({ created: true, g10Hold: "g10-review: 450 changed lines", registration: { held: true, holdReason: "g10-review: 450 changed lines" } });
+    expect(w.routes.shepherd!.store.get().eventsOf(result.runId)).toEqual([expect.objectContaining({ kind: "hold", actor: "shepherd" })]);
+  });
+
+  it("a repeat registration of a run a seat held keeps that hold and writes no event", async () => {
+    const w = world({ frozen: true });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const { runId } = await registered(w, pr1);
+    w.fake.prFiles.set(1, large);
+    const store = w.routes.shepherd!.store.get();
+    store.hold(runId, "visual-gate2: screenshots pending");
+
+    const repeat = await registered(w, pr1);
+
+    expect(repeat).toMatchObject({ created: false, registration: { holdReason: "visual-gate2: screenshots pending" } });
+    expect(repeat.g10Hold).toBeUndefined();
+    expect(store.eventsOf(runId)).toHaveLength(1);
+  });
+});
+
 describe("shepherd.register kind on a failed run", () => {
   it("a refused kind move leaves the failed run, its registration and the run count untouched", async () => {
     const w = world({ frozen: true });
@@ -466,7 +496,6 @@ describe("shepherd.register after a stopped run", () => {
 
   it.each([
     ["merged", LANDED],
-    ["abandoned", stoppedStep("abandoned")],
     ["closed", stoppedStep("closed")],
     ["stuck-behind", stoppedStep("stuck-behind")],
     ["merge-denied", stoppedStep("merge-denied")],
@@ -478,6 +507,30 @@ describe("shepherd.register after a stopped run", () => {
 
     expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
     expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run whose gate was abandoned gets a new run at the current head with the current seat book's policy", async () => {
+    const w = world({ frozen: true });
+    const abandonedRunId = await endedAs(w, stoppedStep("abandoned"));
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: abandonedRunId, previousStop: "abandoned", registration: { runId: again.runId } });
+    expect(again.runId).not.toBe(abandonedRunId);
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("a run abandoned on a pull request that has since closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("abandoned"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 
