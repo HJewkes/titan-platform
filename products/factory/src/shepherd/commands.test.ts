@@ -496,7 +496,6 @@ describe("shepherd.register after a stopped run", () => {
 
   it.each([
     ["merged", LANDED],
-    ["abandoned", stoppedStep("abandoned")],
     ["closed", stoppedStep("closed")],
     ["stuck-behind", stoppedStep("stuck-behind")],
     ["merge-denied", stoppedStep("merge-denied")],
@@ -508,6 +507,30 @@ describe("shepherd.register after a stopped run", () => {
 
     expect(again).toMatchObject({ runId, created: false, registration: { implementer: "impl-b" } });
     expect(again.previousRunId).toBeUndefined();
+    expect(shepherdRuns(w.host)).toEqual([runId]);
+  });
+
+  it("a run whose gate was abandoned gets a new run at the current head with the current seat book's policy", async () => {
+    const w = world({ frozen: true });
+    const abandonedRunId = await endedAs(w, stoppedStep("abandoned"));
+    w.fake.pushHead(1, FIXED);
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: abandonedRunId, previousStop: "abandoned", registration: { runId: again.runId } });
+    expect(again.runId).not.toBe(abandonedRunId);
+    expect(w.routes.shepherd!.store.get().byPr(REPO, 1)?.runId).toBe(again.runId);
+    expect(shepherdRuns(w.host)).toHaveLength(2);
+  });
+
+  it("a run abandoned on a pull request that has since closed starts nothing", async () => {
+    const w = world({ frozen: true });
+    const runId = await endedAs(w, stoppedStep("abandoned"));
+    Object.assign(w.fake.pr(1), { state: "closed" });
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ runId, created: false });
     expect(shepherdRuns(w.host)).toEqual([runId]);
   });
 
