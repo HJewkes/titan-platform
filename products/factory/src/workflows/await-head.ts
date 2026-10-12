@@ -60,7 +60,7 @@ export async function awaitNewHead(port: GitHubPort, target: AwaitHeadTarget, si
 }
 
 /** A failed read is not green; the next check reads again. */
-async function greenAtHead(port: GitHubPort, target: AwaitHeadTarget, pr: PullRequest, timing: AwaitHeadTiming): Promise<boolean> {
+export async function greenAtHead(port: GitHubPort, target: AwaitHeadTarget, pr: PullRequest, timing: AwaitHeadTiming): Promise<boolean> {
   const rules = await readRequiredChecks(port, target.repo, pr.baseRef);
   if (!rules.readable) return (timing.onReadError?.(rules.reason), false);
   const contexts = rules.checks.contexts;

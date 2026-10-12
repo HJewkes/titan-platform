@@ -74,6 +74,15 @@ async function settledGreen() {
   return { fake, port, snapshot, advance: (ms: number) => void (clock += ms) };
 }
 
+/** A snapshot on a frozen clock whose port records the ETag each list read sends as If-None-Match. */
+function etagSpy() {
+  const fake = fakeGitHub();
+  const port = githubPort(fake.wire);
+  const sentEtags: (string | null)[] = [];
+  const spied = { ...port, revalidateOpenPrs: (repo: string, etag: string | null) => (sentEtags.push(etag), port.revalidateOpenPrs(repo, etag)) };
+  return { fake, snapshot: prSnapshot(spied, { now: () => 0 }), sentEtags };
+}
+
 const restCalls = (fakes: Map<string, FakeGitHub>): number => [...fakes.values()].reduce((sum, fake) => sum + fake.calls.length, 0);
 
 describe("PR snapshot", () => {
@@ -172,6 +181,76 @@ describe("PR snapshot", () => {
 
     expect(settled.map((run) => run.status)).toEqual(["completed"]);
     expect(fake.calls).toEqual(["listCheckRuns", "listCheckRuns"]);
+  });
+
+  it("revalidates the list with its old ETag after an invalidate: a 304 keeps the rows and a 200 replaces them", async () => {
+    const { fake, snapshot, sentEtags } = etagSpy();
+    fake.addPr({ headSha: fakeSha("one") });
+
+    await snapshot.openPrs("o/r");
+    snapshot.invalidate("o/r");
+    const unchanged = await snapshot.openPrs("o/r");
+    fake.addPr({ headSha: fakeSha("two") });
+    snapshot.invalidate("o/r");
+    const replaced = await snapshot.openPrs("o/r");
+
+    expect(sentEtags[0]).toBeNull();
+    expect(sentEtags[1]).not.toBeNull();
+    expect(sentEtags[2]).toBe(sentEtags[1]);
+    expect(unchanged.map((pr) => pr.headSha)).toEqual([fakeSha("one")]);
+    expect(replaced.map((pr) => pr.headSha)).toEqual([fakeSha("one"), fakeSha("two")]);
+    expect(fake.notModified).toBe(1);
+  });
+
+  it("reads a re-run head's checks again after the invalidate that follows the re-run", async () => {
+    const { fake, snapshot } = etagSpy();
+    const sha = fakeSha("one");
+    const pr = fake.addPr({ headSha: sha });
+    fake.setRuns(sha, [successRun("validate", 1, "2026-01-01T00:00:00Z", "failure")]);
+
+    await snapshot.getPr("o/r", pr.number);
+    await snapshot.checkRuns("o/r", sha, allCompleted);
+    fake.setRuns(sha, [successRun("validate", 1)]);
+    snapshot.invalidate("o/r");
+    await snapshot.getPr("o/r", pr.number);
+    const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
+
+    expect(runs.map((run) => run.conclusion)).toEqual(["success"]);
+    expect(fake.calls).toEqual(["revalidateOpenPrs", "getPr", "listCheckRuns", "revalidateOpenPrs", "getPr", "listCheckRuns"]);
+  });
+
+  it("does not cache a check read that an invalidate overtook, so a re-run's runs are read fresh", async () => {
+    const fake = fakeGitHub();
+    const sha = fakeSha("one");
+    fake.setRuns(sha, [successRun("validate", 1, "2026-01-01T00:00:00Z", "failure")]);
+    const port = githubPort(fake.wire);
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const slow = { ...port, checkRuns: async (repo: string, head: string) => { const runs = await port.checkRuns(repo, head); await held; return runs; } };
+    const snapshot = prSnapshot(slow, { now: () => 0 });
+
+    const inFlight = snapshot.checkRuns("o/r", sha, allCompleted);
+    fake.setRuns(sha, [successRun("validate", 1)]);
+    snapshot.invalidate("o/r");
+    release();
+    await inFlight;
+    const runs = await snapshot.checkRuns("o/r", sha, allCompleted);
+
+    expect(runs.map((run) => run.conclusion)).toEqual(["success"]);
+  });
+
+  it("lists again after an invalidate that lands while a list read is in flight", async () => {
+    const { fake, snapshot } = etagSpy();
+    fake.addPr({ headSha: fakeSha("one") });
+
+    const inFlight = snapshot.openPrs("o/r");
+    snapshot.invalidate("o/r");
+    fake.addPr({ headSha: fakeSha("two") });
+    await inFlight;
+    const after = await snapshot.openPrs("o/r");
+
+    expect(after.map((pr) => pr.headSha)).toEqual([fakeSha("one"), fakeSha("two")]);
+    expect(fake.calls).toEqual(["revalidateOpenPrs", "revalidateOpenPrs"]);
   });
 
   it("reads a closed PR from GitHub every time instead of the open list", async () => {
