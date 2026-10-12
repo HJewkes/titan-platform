@@ -1,6 +1,6 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { FactoryHost, PendingGate } from "../host.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { failureOf } from "./error-class.js";
 import { frozenFor, recheckedFrozen } from "./freeze.js";
 import { LIVE, endRunsGoneElsewhere, type EndedRun } from "./gone-elsewhere.js";

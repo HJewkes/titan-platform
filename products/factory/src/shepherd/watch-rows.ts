@@ -1,7 +1,7 @@
 import type { WorkflowRun, WorkflowStatus } from "@titan-design/workflow";
 import type { FactoryHost, PendingGate } from "../host.js";
 import { sliceClock } from "../loop-slice.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
 import { watchRow, type WatchRow } from "./view.js";
 
