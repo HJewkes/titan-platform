@@ -17,6 +17,17 @@ describe("console config", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7700", TITAN_CONSOLE_AGENT_CHAT_PORT: "7700" }, HOME)).toThrow(/port of its own/);
   });
 
+  it("reaches the factory on 7410 unless TITAN_CONSOLE_FACTORY_PORT is given", () => {
+    expect(resolveConfig({}, HOME).factoryPort).toBe(7410);
+    expect(resolveConfig({ TITAN_CONSOLE_FACTORY_PORT: "7411" }, HOME).factoryPort).toBe(7411);
+    expect(() => resolveConfig({ TITAN_CONSOLE_FACTORY_PORT: "74x" }, HOME)).toThrow(/TITAN_CONSOLE_FACTORY_PORT must be a port number/);
+  });
+
+  it("refuses a console port that is the factory's", () => {
+    expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7410" }, HOME)).toThrow(/port of its own/);
+    expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "7700", TITAN_CONSOLE_FACTORY_PORT: "7700" }, HOME)).toThrow(/port of its own/);
+  });
+
   it("refuses a port that is not a number instead of falling back", () => {
     expect(() => resolveConfig({ TITAN_CONSOLE_PORT: "75oo" }, HOME)).toThrow(/TITAN_CONSOLE_PORT must be a port number/);
     expect(() => resolveConfig({ TITAN_CONSOLE_ACTIVE_WORK_PORT: "70000" }, HOME)).toThrow(/TITAN_CONSOLE_ACTIVE_WORK_PORT/);

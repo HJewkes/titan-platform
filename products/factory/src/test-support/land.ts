@@ -3,7 +3,7 @@ import { expect, vi } from "vitest";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
 import { gateEverything, type GatePolicy } from "../gate-policy.js";
 import type { FactoryHost } from "../host.js";
-import { LAND_STEPS, MAX_UPDATE_CYCLES, UPDATE_BUDGET_MS, land, landRoutes, type LandOutcome } from "../workflows/land.js";
+import { LAND_STEPS, MAX_UPDATE_CYCLES, UPDATE_BUDGET_MS, land, landRoutes, type LandOptions, type LandOutcome } from "../workflows/land.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { OWNER } from "./resolver.js";
 
@@ -35,7 +35,7 @@ export interface LandScenario {
 }
 
 /** One PR on a fake repo whose required checks pass on every head, and a workflow that lands it. */
-export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: number; updateGapMs?: number; taskIds?: string[] } = {}): LandScenario {
+export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: number; updateGapMs?: number; taskIds?: string[]; land?: Omit<LandOptions, "policy"> } = {}): LandScenario {
   const fake = fakeGitHub();
   fake.addPr({ headSha: H1 });
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -51,7 +51,7 @@ export function landScenario(options: { policy?: GatePolicy; ciTimeoutMs?: numbe
   const workflow = defineWorkflow({
     name: "land-test",
     steps: LAND_STEPS,
-    run: async (ctx) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1, ...(options.taskIds ? { taskIds: options.taskIds } : {}) }, { policy: options.policy ?? gateEverything })),
+    run: async (ctx) => void outcomes.push(await land(ctx, { repo: REPO, pr: 1, ...(options.taskIds ? { taskIds: options.taskIds } : {}) }, { ...options.land, policy: options.policy ?? gateEverything })),
   });
   return { fake, routes, workflow, outcomes };
 }

@@ -32,6 +32,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-fix-proof": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
+  "sh-review-panel": "review",
   "sh-review-request": "review",
   "sh-review-refused": "review",
   "sh-review-stop": "review",

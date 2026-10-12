@@ -6,6 +6,7 @@ import { collectTypeDecls, propStatsOf } from "./analysis/prop-metrics.js";
 import { TEST_KIND_SOURCE_METRIC_NAMES, testKindSourceMetrics } from "./analysis/test-kinds.js";
 import { cognitiveSplitOf } from "./cognitive-complexity.js";
 import { computeLcomMetrics } from "./lcom.js";
+import { LINE_DENSITY_METRIC_NAMES, lineDensityMetrics } from "./line-density.js";
 import { PY_FUNCTION_TYPES, TS_BOUND_FUNCTION_TYPES, TS_FUNCTION_DECL_TYPES } from "./node-kinds.js";
 import { qualify, walkScopes } from "./scope-path.js";
 import { functionShapeStats, SYMBOL_METRIC_NAMES, symbolMetrics, type FunctionStats } from "./symbol-metrics.js";
@@ -68,6 +69,7 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
   "class_count",
   "lcom4_max",
   ...EXCEPTION_METRIC_NAMES,
+  ...LINE_DENSITY_METRIC_NAMES,
   // Per-symbol complexity, size, comments and shape (C-58, C-64, TP-317, TP-322), keyed
   // to `symbol` node ids. Source-local like the file-level metrics above, so an
   // unchanged file carries them forward — but their nodeId is `<fileId>#<name>`,
@@ -154,6 +156,7 @@ function metricsForFile(
   out.push(...symbolMetrics(nodeId, stats, symbolNames));
   out.push(...computeLcomMetrics(file, nodeId));
   out.push(...exceptionMetrics(nodeId, file.tree.rootNode, loc));
+  out.push(...lineDensityMetrics(nodeId, file.content, file.tree.rootNode));
   out.push(...testKindSourceMetrics(nodeId, file, symbolNames));
   return out;
 }

@@ -83,6 +83,8 @@ export interface LandOptions {
   reviewedMerge?: (headSha: string) => boolean;
   /** The reviewer's owner brief from a MERGE at exactly this head, shown on the approve-merge gate. */
   ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
+  /** Repo skill paths the PR changes at exactly this head; the approve-merge gate then links the diff and recommends nothing. */
+  skillPathsAt?: (headSha: string) => readonly string[];
   /** A gate this names waits at its head on recorded backoff steps, refreshing the facts each time, before the owner is asked. */
   unsettled?: UnsettledMerge;
   /** Asked in place of the approve-merge gate at the head the policy gated; absent, land opens approve-merge. */
@@ -286,7 +288,7 @@ async function approve(ctx: WorkflowContext, input: LandInput, ci: CiSnapshot, s
   const settleStep = (wait: Omit<SettleInput, "repo" | "baseRef">) => step(ctx, roundId("merge-settle", state.round, state.settles++), { repo: input.repo, baseRef: state.rules.base, ...wait }, SettleResult);
   const decision = await settleOrGate(state.hold, decided, options.unsettled, ci.headSha, settleStep);
   if (!decision) return undefined;
-  const ask = options.askApproval ?? approveMergeGate(decision.rule, options.reviewedMerge, options.ownerBriefAt);
+  const ask = options.askApproval ?? approveMergeGate(decision.rule, options);
   return askedApproval(ctx, ask, { repo: input.repo, pr: input.pr, headSha: ci.headSha, round: state.round, reason: decision.reason, base }, () => trust(state, ci.headSha, "human", base));
 }
 

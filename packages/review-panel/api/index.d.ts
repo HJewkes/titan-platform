@@ -1,4 +1,4 @@
-import { SourceTextLocator, VerdictBlockRefusal, NormalizedSessionObservation } from '@titan-design/session-read';
+import { SourceTextLocator, VerdictBlockRefusal, CiPolicy, NormalizedSessionObservation } from '@titan-design/session-read';
 import { z } from 'zod';
 import { LineSource } from '@titan-design/evidence';
 
@@ -32,6 +32,8 @@ interface ReviewerFacts {
     g10Hold?: boolean;
     /** When the run's review intent was recorded, epoch ms; a spawn gate admits deferred reviews oldest intent first. */
     intentAt?: number;
+    /** The profile a panel member was planned at; when set it wins over the class the other facts pick. */
+    profile?: string;
 }
 /** One roster row, as the dispatch port reports it. */
 interface ReviewerAgent {
@@ -274,6 +276,10 @@ type MalformedRefusal = VerdictBlockRefusal | "wrong_target";
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
+/** Shepherd's merge guard reads this line (TP-2407): a `.github/` change without it fails closed, and `weakened` reaches the owner. */
+declare const CI_POLICY_RULE: string;
+/** CI's required checks already ran the full suite at this head; a reviewer rerunning them costs a host's memory and slots for no new signal. */
+declare const CI_REVIEWER_TEST_RULE: string;
 /** Everything a reviewer brief may carry; it has no field for task or implementer text, so none can reach the prompt. */
 interface ReviewerBriefInput {
     repo: RepoSlug;
@@ -287,7 +293,7 @@ interface ReviewerBriefInput {
     fixFirsts?: number;
     /** True when this run's verdict will reach the owner; the brief then also asks for an OWNER-BRIEF block. */
     ownerBrief?: boolean;
-    /** The reviewer test rule for the host serve runs on; absent means the form for agents off basement. */
+    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`. */
     testRule?: string;
     /** Names of the checks already green at this head; the brief asks the reviewer not to rerun them. */
     greenChecks?: readonly string[];
@@ -369,9 +375,10 @@ interface AcceptedVerdict {
     /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
     reviewerProfile?: string;
 }
-/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them. */
+/** Only a FIX_FIRST keeps the reviewer's words, because the implementer has to read them; only a MERGE carries the CI-policy line. */
 type AwaitVerdictResult = (AcceptedVerdict & {
     verdict: "MERGE";
+    ciPolicy?: CiPolicy;
 }) | (AcceptedVerdict & {
     verdict: "FIX_FIRST";
     text: string;
@@ -492,4 +499,4 @@ interface ShapeBriefInput extends ReviewerBriefInput {
 /** The overlay comes first so the base brief's verdict template stays the end of the prompt. */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
-export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type FixProofUnverified, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };
+export { type AcceptedVerdict, type AggregateInput, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, type ChangedFile, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, type FixProofUnverified, type Headroom, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_REVIEWER_QUESTIONS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, acceptVerdict, aggregate, boundedFindings, changedLineCount, classifyPr, correctionPrompt, findingsText, fixFirstFindings, isInvestigativeCall, isUsageLimit, namesPr, namesTarget, parseOwnerBrief, planPanel, readMalformed, reviewCheckoutName, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency };

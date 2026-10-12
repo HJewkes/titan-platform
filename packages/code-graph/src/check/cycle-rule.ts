@@ -1,21 +1,37 @@
+import { type Adjacency, isCyclic, stronglyConnected } from "../graph-scc.js";
 import type { GraphEdge } from "../types.js";
 import type { RuleContext } from "./context.js";
 import { compilePatterns, matchesAny } from "./patterns.js";
 import { isImportEdge, severityOf } from "./rule-helpers.js";
-import type { CheckViolation, NoImportCyclesRule } from "./types.js";
+import type { CheckViolation, CycleKind, NoImportCyclesRule } from "./types.js";
 
-type Adjacency = Map<string, string[]>;
+interface ImportLink {
+  src: string;
+  dst: string;
+  typeOnly: boolean;
+}
+
+interface CycleShape {
+  kind: CycleKind;
+  hub?: { id: string; typeOnlyInbound: number };
+}
 
 /** Each strongly connected component of two or more files, or one file importing itself, is one cycle. */
 export function runNoImportCyclesRule(rule: NoImportCyclesRule, ctx: RuleContext): CheckViolation[] {
-  const graph = importGraph(rule, ctx);
+  const links = importLinks(rule, ctx);
+  const graph = adjacencyOf(links);
   return stronglyConnected(graph)
-    .filter((scc) => scc.length > 1 || graph.get(scc[0]!)!.includes(scc[0]!))
-    .map((scc) => cycleViolation(rule, scc.sort()));
+    .filter((scc) => isCyclic(graph, scc))
+    .map((scc) => scc.sort())
+    .map((members) => cycleViolation(rule, members, cycleShape(members, links)));
 }
 
-function cycleViolation(rule: NoImportCyclesRule, members: string[]): CheckViolation {
-  const evidence = `import cycle of ${members.length} file(s): ${members.join(", ")}`;
+function cycleViolation(rule: NoImportCyclesRule, members: string[], shape: CycleShape): CheckViolation {
+  const files = `${members.length} file(s): ${members.join(", ")}`;
+  const evidence =
+    shape.kind === "value"
+      ? `import cycle of ${files}`
+      : `type-only import cycle of ${files}; hub ${shape.hub!.id} (${shape.hub!.typeOnlyInbound} type-only import(s) in)`;
   return {
     ruleId: rule.id,
     severity: severityOf(rule),
@@ -24,10 +40,36 @@ function cycleViolation(rule: NoImportCyclesRule, members: string[]): CheckViola
     value: members.length,
     message: evidence,
     evidence,
+    cycleKind: shape.kind,
+    ...(shape.hub ? { hub: shape.hub.id } : {}),
   };
 }
 
-function importGraph(rule: NoImportCyclesRule, ctx: RuleContext): Adjacency {
+/**
+ * A cycle is type-only when its value imports alone close no cycle among its members; then
+ * only type-checking ties the files together, and breaking it means moving the types its hub holds.
+ */
+function cycleShape(members: readonly string[], links: readonly ImportLink[]): CycleShape {
+  const inside = new Set(members);
+  const internal = links.filter((l) => inside.has(l.src) && inside.has(l.dst));
+  const valueGraph = adjacencyOf(internal.filter((l) => !l.typeOnly));
+  if (stronglyConnected(valueGraph).some((scc) => isCyclic(valueGraph, scc))) return { kind: "value" };
+  return { kind: "type-only", hub: typeHub(members, internal) };
+}
+
+/** The member most other members import types from; ties go to the first id in sort order. */
+function typeHub(members: readonly string[], internal: readonly ImportLink[]): { id: string; typeOnlyInbound: number } {
+  const inbound = new Map<string, number>();
+  for (const l of internal) if (l.typeOnly) inbound.set(l.dst, (inbound.get(l.dst) ?? 0) + 1);
+  let hub = { id: members[0]!, typeOnlyInbound: inbound.get(members[0]!) ?? 0 };
+  for (const id of members) {
+    const count = inbound.get(id) ?? 0;
+    if (count > hub.typeOnlyInbound) hub = { id, typeOnlyInbound: count };
+  }
+  return hub;
+}
+
+function importLinks(rule: NoImportCyclesRule, ctx: RuleContext): ImportLink[] {
   const excluders = compilePatterns(rule.exclude);
   const excludedRoles = new Set(rule.excludeRoles ?? []);
   const inGraph = (id: string): boolean => {
@@ -35,18 +77,23 @@ function importGraph(rule: NoImportCyclesRule, ctx: RuleContext): Adjacency {
     if (node?.kind !== "file" || matchesAny(id, excluders)) return false;
     return node.role === undefined || !excludedRoles.has(node.role);
   };
-  const graph: Adjacency = new Map();
-  for (const edge of ctx.edges) {
-    if (!countsAsImport(edge, rule.includeTypeOnly === true)) continue;
-    if (!inGraph(edge.srcId) || !inGraph(edge.dstId)) continue;
-    adjacent(graph, edge.srcId).push(edge.dstId);
-    adjacent(graph, edge.dstId);
-  }
-  return graph;
+  return ctx.edges
+    .filter((edge) => countsAsImport(edge, rule.includeTypeOnly === true))
+    .filter((edge) => inGraph(edge.srcId) && inGraph(edge.dstId))
+    .map((edge) => ({ src: edge.srcId, dst: edge.dstId, typeOnly: edge.attrs?.typeOnly === true }));
 }
 
 function countsAsImport(edge: GraphEdge, includeTypeOnly: boolean): boolean {
   return isImportEdge(edge) && (includeTypeOnly || edge.attrs?.typeOnly !== true);
+}
+
+function adjacencyOf(links: readonly ImportLink[]): Adjacency {
+  const graph: Adjacency = new Map();
+  for (const { src, dst } of links) {
+    adjacent(graph, src).push(dst);
+    adjacent(graph, dst);
+  }
+  return graph;
 }
 
 function adjacent(graph: Adjacency, id: string): string[] {
@@ -56,63 +103,4 @@ function adjacent(graph: Adjacency, id: string): string[] {
     graph.set(id, list);
   }
   return list;
-}
-
-interface Tarjan {
-  graph: Adjacency;
-  index: Map<string, number>;
-  low: Map<string, number>;
-  stack: string[];
-  onStack: Set<string>;
-  frames: { id: string; next: number }[];
-  out: string[][];
-}
-
-/** Iterative Tarjan, so a long import chain cannot overflow the call stack. */
-function stronglyConnected(graph: Adjacency): string[][] {
-  const t: Tarjan = { graph, index: new Map(), low: new Map(), stack: [], onStack: new Set(), frames: [], out: [] };
-  for (const root of graph.keys()) {
-    if (t.index.has(root)) continue;
-    visit(t, root);
-    while (t.frames.length > 0) step(t);
-  }
-  return t.out;
-}
-
-function visit(t: Tarjan, id: string): void {
-  t.index.set(id, t.index.size);
-  t.low.set(id, t.index.get(id)!);
-  t.stack.push(id);
-  t.onStack.add(id);
-  t.frames.push({ id, next: 0 });
-}
-
-function step(t: Tarjan): void {
-  const frame = t.frames[t.frames.length - 1]!;
-  const dst = t.graph.get(frame.id)![frame.next++];
-  if (dst === undefined) {
-    t.frames.pop();
-    finish(t, frame.id, t.frames[t.frames.length - 1]?.id);
-  } else if (!t.index.has(dst)) {
-    visit(t, dst);
-  } else if (t.onStack.has(dst)) {
-    lowerTo(t, frame.id, t.index.get(dst)!);
-  }
-}
-
-function lowerTo(t: Tarjan, id: string, value: number): void {
-  t.low.set(id, Math.min(t.low.get(id)!, value));
-}
-
-function finish(t: Tarjan, id: string, parent: string | undefined): void {
-  if (parent !== undefined) lowerTo(t, parent, t.low.get(id)!);
-  if (t.low.get(id) !== t.index.get(id)) return;
-  const scc: string[] = [];
-  let member: string;
-  do {
-    member = t.stack.pop()!;
-    t.onStack.delete(member);
-    scc.push(member);
-  } while (member !== id);
-  t.out.push(scc);
 }

@@ -43,6 +43,7 @@ beforeEach(async () => {
     stateDir: path.join(dir, "state"),
     activeWorkPort: await closedPort(),
     agentChatPort: await closedPort(),
+    factoryPort: await closedPort(),
     agentChatTokenPath: path.join(dir, "ui.token"),
     agentChatEventsDbPath: path.join(dir, "events.db"),
     seatPrefixes: [],

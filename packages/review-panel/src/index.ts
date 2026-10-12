@@ -25,6 +25,8 @@ export {
 } from "./plan.js";
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {
+  CI_POLICY_RULE,
+  CI_REVIEWER_TEST_RULE,
   DEFECT_CLASS_HEADING,
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_HEADING,

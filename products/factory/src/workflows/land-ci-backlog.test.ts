@@ -14,6 +14,7 @@ const red = (name: string, id: number): CheckRun => ({ ...successRun(name, id), 
 /** A PR whose checks are `before` until `turnsAtMs` on the fake clock, then `after`; no real timer runs. */
 function harness(before: CheckRun[], options: { after?: CheckRun[]; turnsAtMs?: number } = {}) {
   const fake = fakeGitHub();
+  fake.rules = { contexts: ["validate"], strict: false };
   fake.addPr({ headSha: HEAD, mergeableState: "clean" });
   fake.setRuns(HEAD, before);
   const clock = { now: 0 };

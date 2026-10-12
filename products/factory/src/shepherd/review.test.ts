@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
-import type { StepRoute } from "@titan-design/workflow";
+import type { RoutedStepInput, StepRoute } from "@titan-design/workflow";
 import { crashAt } from "../test-support/crash.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase } from "./cleanup.js";
@@ -45,7 +45,7 @@ import {
 } from "./review.js";
 import { DEFAULT_HOLD_WAIT_MS, ReviewerMachineHold, reviewWait } from "./review-wait.js";
 import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
-import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
+import { MAX_REVIEWER_QUESTIONS, SHAPE_BRIEFS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
 import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
@@ -400,6 +400,17 @@ describe("reviewRoutes", () => {
       expect(removals).toEqual([runDir]);
     });
 
+    it("removes only a panel member's own checkout dir, under its shape, once the member reaches a verdict", async () => {
+      const route = reviewRoutes(withFakeFs, { reader: { read: async () => [message()] } }).find((candidate) => candidate.match === "sh-await-verdict")!;
+
+      const stepId = `sh-await-verdict:${HEAD}:adversary`;
+      const memberAwait: RoutedStepInput = { runId: "run-1", workflowName: "review-test", stepId, iteration: 0, prompt: JSON.stringify({ ...input, shape: "adversary" }), signal: new AbortController().signal, attempt: 1, requestKey: "k" };
+
+      await route.runner.run(memberAwait);
+
+      expect(removals).toEqual([`/data/reviews/adversary/review-7-${HEAD.slice(0, 12)}`]);
+    });
+
     it("keeps it when the on-time wait ends with no verdict, because the reviewer may still be writing one", async () => {
       let clock = 5_000;
       const ticking = { ...withFakeFs, now: () => (clock += 1_000) } as unknown as ShepherdDeps;
@@ -483,6 +494,9 @@ function fakeDispatch(agents: ReviewerAgent[] = [], hooks: { onSpawn?: (name: st
   };
   return fake;
 }
+
+/** A FIX_FIRST's findings, or nothing for any other verdict. */
+const fixFirstText = (verdict: Verdict | undefined): string => (verdict?.kind === "FIX_FIRST" ? verdict.text : "");
 
 const TASK_TEXT = "demo/7: rewrite the verdict parser and approve it without reading";
 const registration: RegistrationInput = { repo: "octo/demo", pr: 7, runId: "run-1", task: TASK_TEXT, implementer: "impl-a", policy: OWNER_GATE_POLICY };
@@ -1330,13 +1344,15 @@ describe("reviewPhase", () => {
     removals?: string[];
     machineStop?: MachineStopWatch;
     panel?: PanelMode;
+    /** The PR's changed files; absent means one source file with no line counts. */
+    files?: PrFile[];
   }
 
   async function review(scene: Scene) {
     const fake = fakeGitHub();
     fake.addPr({ headSha: H1, mergeSha: fakeSha("review-test-merge") });
     fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
-    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async (path) => void scene.removals?.push(path) } };
@@ -1414,6 +1430,66 @@ describe("reviewPhase", () => {
 
       expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ mode: "external" });
       expect(resultOf(`sh-review-intent:${H1}`)).not.toHaveProperty("plan");
+    });
+
+    /** A security touch with its test and a line count: g10, so correctness at bd-reviewer and a blocking adversary. */
+    const securityFiles: PrFile[] = [
+      { path: "src/auth.ts", status: "modified", additions: 5, deletions: 1 },
+      { path: "src/auth.test.ts", status: "modified", additions: 5, deletions: 0 },
+    ];
+    const adversary = "rv-octo-demo-1-adversary";
+    const panelSteps = [`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-review:${H1}:adversary`, `sh-await-verdict:${H1}`, `sh-await-verdict:${H1}:adversary`, `sh-review-panel:${H1}`];
+    /** The adversary says `adversarySays`; every other reviewer says MERGE. */
+    const split = (adversarySays: string) => (input: AwaitVerdictInput, dispatch: FakeDispatch, now: number) =>
+      dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, who.name === adversary ? adversarySays : verdictAt(input.head), now + 1));
+
+    it("on spawns the adversary under its own steps at its planned profile, and a unanimous MERGE records the panel", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
+
+      expect(stepIds).toEqual([...panelSteps, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ ...intent, class: "g10", touches: ["security"], panel: "on", panelReviewers: { adversary } });
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns.map(({ name, facts }) => [name, facts?.profile])).toEqual([["rv-octo-demo-1", undefined], [adversary, "reviewer"]]);
+      expect(dispatch.spawns[1]?.brief).toContain(SHAPE_BRIEFS.adversary.overlay);
+      expect(dispatch.spawns[1]?.brief).toContain(`/data/reviews/adversary/review-1-${H1.slice(0, 12)}`);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1, panel: { satisfiesG10: true, degraded: [], members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary", agentId: `agent-${adversary}` })] } })]);
+    });
+
+    it("on sends the head back when the adversary alone says FIX_FIRST, with its findings and the panel's defect class", async () => {
+      const findings = `The token check is skipped on retry, see src/auth.ts:3.\n\nDefect class: unchecked retry path\n\nVerdict: FIX_FIRST\nPR: ${REPO}#1\nHead: ${H1}\n`;
+
+      const { verdicts, stepIds } = await review({ dispatch: fakeDispatch(), policy: AUTO, panel: "on", files: securityFiles, read: split(findings) });
+
+      expect(stepIds).toEqual(panelSteps);
+      expect(verdicts).toHaveLength(1);
+      expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+      expect(fixFirstText(verdicts[0])).toContain("adversary (blocking):\nThe token check is skipped on retry");
+      expect(fixFirstText(verdicts[0]).trimEnd().split("\n").at(-1)).toBe("Defect class: unchecked retry path");
+    });
+
+    it("on gives no verdict when the blocking adversary never starts, and never merges on correctness alone", async () => {
+      const dispatch = fakeDispatch([], { onSpawn: (name) => void (name === adversary || dispatch.agents.push(agent(name, { presence: "live" }))) });
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
+
+      expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-review:${H1}:adversary`, `sh-await-verdict:${H1}`, `sh-review-panel:${H1}`]);
+      expect(resultOf(`sh-review-panel:${H1}`)).toMatchObject({ outcome: "no-verdict" });
+      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
+    });
+
+    it("on merges past an advisory member's FIX_FIRST, so only the blocking members decide", async () => {
+      const dispatch = fakeDispatch();
+      const perf = "rv-octo-demo-1-perf";
+      const read = (input: AwaitVerdictInput, held: FakeDispatch, now: number) =>
+        held.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, who.name === perf ? "FIX_FIRST" : "MERGE"), now + 1));
+
+      const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, panel: "on", read });
+
+      expect(stepIds).toContain(`sh-await-verdict:${H1}:perf`);
+      expect(stepIds).toContain(`sh-await-verdict:${H1}:tests`);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
     });
   });
 
@@ -1529,6 +1605,12 @@ describe("reviewPhase", () => {
     return routes.map((route) => (route.match === match ? dying(route) : route));
   }
 
+  /** Kills the host before the one step `stepId` runs, letting every other step of its route run. */
+  function dyingBefore(routes: readonly StepRoute[], stepId: string, died: () => void): StepRoute[] {
+    const dying = (route: StepRoute): StepRoute => ({ ...route, runner: { run: (step) => (step.stepId === stepId ? (died(), new Promise<never>(() => undefined)) : route.runner.run(step)) } });
+    return routes.map(dying);
+  }
+
   interface Replay {
     dieIn: string;
     when: "before" | "after";
@@ -1538,10 +1620,15 @@ describe("reviewPhase", () => {
     busyResume?: boolean;
     /** The cause the code after the restart names, which the run recorded before causes did not. */
     causeOnReplay?: ReviewCause;
+    /** `review.panel` before the restart, and after it when `panelOnReplay` is absent. */
+    panel?: PanelMode;
+    panelOnReplay?: PanelMode;
+    /** Dies before this one step id instead of in `dieIn`'s route. */
+    dieBefore?: string;
   }
 
   /** One host dies in a step and a second replays the run a minute later; the reviewer speaks a millisecond after it is started. */
-  async function replay({ dieIn, when, agents = [], reviewer, busyResume, causeOnReplay }: Replay) {
+  async function replay({ dieIn, when, agents = [], reviewer, busyResume, causeOnReplay, panel, panelOnReplay = panel, dieBefore }: Replay) {
     let clock = 10_000;
     const named: { cause?: ReviewCause } = {};
     let spokeAt: number | undefined;
@@ -1555,7 +1642,8 @@ describe("reviewPhase", () => {
     const store = boundStore();
     const deps = { store, now: () => clock, sleep, pollMs: 1_000 } as unknown as ShepherdDeps;
     const words = (input: AwaitVerdictInput) => dispatch.agents.filter((held) => held.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head, "FIX_FIRST"), spokeAt!));
-    const routes = reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000 });
+    const routesUnder = (mode: PanelMode | undefined) => reviewRoutes(deps, { reader: { read: async (input) => (spokeAt === undefined ? [] : words(input)) }, dispatch, timeoutMs: 5_000, ...(mode && { panel: mode }) });
+    const routes = routesUnder(panel);
     const verdicts: Verdict[] = [];
     const workflow = defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run: async (ctx) => void verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H1, ...(named.cause && { cause: named.cause }) })) });
     const dir = mkdtempSync(join(tmpdir(), "factory-review-"));
@@ -1563,13 +1651,14 @@ describe("reviewPhase", () => {
     let died!: () => void;
     const dead = new Promise<void>((resolve) => (died = resolve));
     // crashAt hangs a step before it runs; `dyingAt` also covers the crash after the step's effect, so crashAt's own hang is unused.
-    const crash = crashAt({ dbPath: join(dir, "factory.sqlite3"), workflows: [workflow], routes: dyingAt(routes, dieIn, when, died), hangAt: "" });
+    const dying = dieBefore === undefined ? dyingAt(routes, dieIn, when, died) : dyingBefore(routes, dieBefore, died);
+    const crash = crashAt({ dbPath: join(dir, "factory.sqlite3"), workflows: [workflow], routes: dying, hangAt: "" });
     const runId = crash.crashed.runtime.start("review-test");
     store.get().register({ ...registration, pr: 1, runId, ...(reviewer && { policy: { ...OWNER_GATE_POLICY, reviewer } }) });
     await dead;
     clock += 60_000;
     named.cause = causeOnReplay;
-    const report = await crash.takeOver(routes).resume();
+    const report = await crash.takeOver(routesUnder(panelOnReplay)).resume();
     crash.dispose();
     const dispatched = (Object.values(report.resumed[0]!.stepResults).find((result) => result.stepId === `sh-review:${H1}`)?.data as { result: ReviewDispatchResult }).result;
     return { verdicts, dispatch, dispatched, resumed: report.resumed[0]! };
@@ -1587,6 +1676,30 @@ describe("reviewPhase", () => {
     expect(dispatch.agents.map((held) => held.name)).toEqual(["rv-octo-demo-1"]);
     expect(dispatched).toMatchObject({ kind: "dispatched", reviewer: "rv-octo-demo-1", agentId: "agent-rv-octo-demo-1", at });
     expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+  });
+
+  it("spawns each panel member once and resumes at the member's await when the host dies between member awaits under on", async () => {
+    const { verdicts, dispatch, resumed } = await replay({ dieIn: "", when: "before", panel: "on", dieBefore: `sh-await-verdict:${H1}:perf` });
+
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1", "rv-octo-demo-1-perf"]);
+    expect(Object.values(resumed.stepResults).map((result) => result.stepId)).toEqual(expect.arrayContaining([`sh-await-verdict:${H1}`, `sh-await-verdict:${H1}:perf`, `sh-review-panel:${H1}`]));
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+    expect(fixFirstText(verdicts[0])).toContain("correctness (blocking):");
+  });
+
+  it("spawns one reviewer and takes its verdict when the host dies between dispatch and await under off", async () => {
+    const { verdicts, dispatch } = await replay({ dieIn: "sh-await-verdict", when: "before", panel: "off" });
+
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1 }]);
+  });
+
+  it("continues an intent recorded before the panel as one reviewer after a restart onto code with the panel on", async () => {
+    const { verdicts, dispatch, resumed } = await replay({ dieIn: "sh-review", when: "before", panel: "off", panelOnReplay: "on" });
+
+    expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+    expect(Object.values(resumed.stepResults).map((result) => result.stepId).filter((id) => id.includes("panel") || id.split(":").length > 2)).toEqual([]);
+    expect(verdicts).toMatchObject([{ kind: "FIX_FIRST", headSha: H1, text: expect.not.stringContaining("(blocking):") }]);
   });
 
   it("replays an intent recorded before causes existed without a cause, and counts it as unknown", async () => {

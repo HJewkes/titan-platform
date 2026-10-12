@@ -249,7 +249,7 @@ describe("sweepCheckouts", () => {
     await sweepCheckouts(log, {
       root,
       now: () => T0,
-      list: async () => ["review-7-0123456789ab"],
+      list: async (dir) => (dir === root ? ["review-7-0123456789ab"] : []),
       stat: async () => ({ isDirectory: true, mtimeMs: 0 }),
       remove: async () => {
         throw new Error("EBUSY");

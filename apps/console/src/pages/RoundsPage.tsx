@@ -30,7 +30,8 @@ export function RoundsPage(): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
   if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error.message}`} />;
-  const { rounds, truncated } = list.data;
+  const { rounds, truncated, dir } = list.data;
+  if (rounds.length === 0 && !truncated) return <NoRounds dir={dir} />;
   return (
     <VStack gap={6}>
       {truncated ? <Alert status="warning" message={`Showing the first ${rounds.length} rounds; the rounds dir holds more.`} /> : null}
@@ -38,6 +39,11 @@ export function RoundsPage(): ReactNode {
       <RoundsSection title="Sent rounds" subtitle="Answered; the feedback sits beside the round" rounds={rounds.filter((round) => round.status === "sent")} empty="No sent rounds" />
     </VStack>
   );
+}
+
+/** A blank page left the owner guessing; this names the dir the server reads and the verb that fills it. */
+function NoRounds({ dir }: { dir: string }): ReactNode {
+  return <EmptyState title="No review rounds yet" description={`The console reads rounds from ${dir}. Import one with: titan-console rounds import <round-dir>`} />;
 }
 
 function RoundsSection({ title, subtitle, rounds, empty }: { title: string; subtitle: string; rounds: readonly RoundSummary[]; empty: string }): ReactNode {
