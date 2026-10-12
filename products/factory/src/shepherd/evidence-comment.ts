@@ -93,7 +93,7 @@ function shortSha(sha: string): string {
 export function evidenceComment(record: EvidenceRecord): string {
   const { decision } = record;
   const gated = gatedPaths(decision);
-  const reason = gated ? GUARD_RULE_WORDS["visual-path"]! : decision.reason;
+  const reason = gated ? ruleInWords(decision.rule) : decision.reason;
   const carried = record.carry ? [``, `Carried the MERGE reviewed at \`${record.carry.fromHead}\` by ${record.carry.rule ?? "tree-equal"} (merge-tree \`${record.carry.mergeTree}\`) to a head whose tree is \`${record.carry.headTree}\`.`] : [];
   const rule = decision.outcome === "allow" ? [] : ["", `Rule: ${ruleInWords(decision.rule)} (${decision.rule.table}/${decision.rule.rowId}).`];
   const posted = { ...record, verdictLocator: locatorReference(record.verdictLocator) };

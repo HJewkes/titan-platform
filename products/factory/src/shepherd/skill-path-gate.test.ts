@@ -4,6 +4,7 @@ import type { SourceTextLocator } from "@titan-design/session-read";
 import { describe, expect, it } from "vitest";
 import { toJSONSchema } from "zod";
 import { coordinatorEvidencePolicy } from "../coordinator-evidence.js";
+import { decisionClassOf } from "../decision-class.js";
 import { approveMergeDecision } from "../gate-brief.js";
 import { authorityGateReason, pendingCheck } from "../test-support/authority-reason.js";
 import { evidenceComment } from "./evidence-comment.js";
@@ -25,6 +26,8 @@ const locator: SourceTextLocator = {
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 };
 const SKILL_FILE = ".claude/skills/x/SKILL.md";
+/** Every row `guardRule()` emits in merge-facts.ts; a new row needs words in the evidence comment and a decision class. */
+const GUARD_ROWS = ["no-facts", "head-mismatch", "files-unread", "skill-path", "visual-path", "required-checks-unknown", "merge-state-unsettled"];
 const SKILL_RULE = { table: "shepherd-merge-guard", rowId: "skill-path", version: 1 };
 
 const input: MergeEvidenceInput = {
@@ -84,8 +87,20 @@ describe("the skill-path merge guard", () => {
 
     const body = evidenceComment(evidence.record);
 
+    expect(body).toContain(`**Shepherd gated** at \`${HEAD.slice(0, 7)}\`: the pull request changes repo skills`);
+    expect(body).not.toContain("visual paths");
     expect(body).toContain("Rule: the pull request changes repo skills (shepherd-merge-guard/skill-path).");
     expect(body).toContain(`- \`${SKILL_FILE}\``);
+  });
+
+  it.each(GUARD_ROWS)("names guard row %s in words and gives it a decision class", async (rowId) => {
+    const { record } = await evidenceFor(SKILL_FREE);
+    const decision = { outcome: "gate", rule: { table: "shepherd-merge-guard", rowId, version: 1 }, reason: "synthetic" } as const;
+
+    const body = evidenceComment({ ...record, decision });
+
+    expect(body).not.toContain(`Rule: shepherd-merge-guard/${rowId} (`);
+    expect(decisionClassOf({ table: "shepherd-merge-guard", rowId, step: "device-confirm", prompt: "" })).toMatch(/^D\d+$/);
   });
 });
 

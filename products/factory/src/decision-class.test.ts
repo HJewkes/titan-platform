@@ -32,6 +32,7 @@ describe("decisionClassOf", () => {
     ["shepherd-merge-guard", "visual-path", "D2"],
     ["shepherd-merge-guard", "files-unread", "D2"],
     ["shepherd-merge-guard", "github-path", "D6"],
+    ["shepherd-merge-guard", "skill-path", "D6"],
     ["shepherd-merge-guard", "ci-policy-weakened", "D21"],
     ["shepherd-merge-guard", "merge-state-unsettled", "D5"],
     ["shepherd-merge-guard", "no-facts", "D5"],
