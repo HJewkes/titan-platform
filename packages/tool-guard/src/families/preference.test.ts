@@ -5,6 +5,7 @@ import type { PreferenceContext, PreferenceId } from "./preference.js";
 
 const AGENT: PreferenceContext = { seat: false };
 const SEAT: PreferenceContext = { seat: true };
+const WORKTREE: PreferenceContext = { seat: false, agentWorktree: true };
 
 function ids(command: string, ctx: PreferenceContext = AGENT): PreferenceId[] {
   return checkPreferences(extractCommands(command, { cwd: "/home/you/projects/app", home: "/home/you" }), ctx).map((h) => h.id);
@@ -174,6 +175,50 @@ describe("R164: never skip hooks", () => {
     "git log -n 5",
   ])("passes %s", (command) => {
     expect(ids(command)).not.toContain("R164");
+  });
+});
+
+describe("R175: an agent worktree runs affected tests, never the whole suite", () => {
+  const AFFECTED =
+    "Run `pnpm test:affected` or named test files with a timeout, not the whole suite, because CI runs the full suite on the PR.";
+
+  it.each([
+    "pnpm test",
+    "npm test",
+    "pnpm run test",
+    "npm run test",
+    "vitest run",
+    "pnpm vitest run",
+    "pnpm exec vitest run",
+    "npx vitest run",
+    "npx vitest run --project threads --testTimeout 20000",
+    "pnpm -r test",
+    "timeout 300 npx vitest run --testTimeout=20000",
+    "pnpm build && pnpm test",
+    "bash -c 'pnpm test'",
+  ])("matches %s in an agent worktree", (command) => {
+    expect(checkPreferences(extractCommands(command), WORKTREE)).toEqual([{ id: "R175", message: AFFECTED }]);
+  });
+
+  it.each([
+    "pnpm test packages/tool-guard",
+    "pnpm test -- packages/tool-guard/src/families/preference.test.ts",
+    "npm test -- src/a.test.ts",
+    "vitest run src/a.test.ts",
+    "pnpm vitest run src/a.test.ts",
+    "pnpm exec vitest run src/a.test.ts",
+    "timeout 300 npx vitest run packages/x/src/a.test.ts --testTimeout=20000",
+    "npx vitest run --changed origin/main",
+    "pnpm --filter @titan-design/tool-guard test",
+    "pnpm test:affected",
+    "pnpm test:watch",
+    "npx vitest list",
+  ])("passes %s in an agent worktree", (command) => {
+    expect(ids(command, WORKTREE)).not.toContain("R175");
+  });
+
+  it.each(["pnpm test", "npx vitest run"])("passes %s outside an agent worktree", (command) => {
+    expect(ids(command, AGENT)).not.toContain("R175");
   });
 });
 
