@@ -243,6 +243,57 @@ describe("a run held at registration waiting in its merge step", () => {
   });
 });
 
+describe("a g10-review hold whose review recorded no verdict (TP-2455)", () => {
+  const H1 = "1".repeat(40);
+  const waitedFrom = Date.parse("2026-01-01T00:10:00.000Z");
+  const reason = "g10-review: +415/-0 diff over 400";
+  const held = { ...registration, held: true, holdReason: reason, holdSatisfied: null } as Registration;
+  const minutesIn = (minutes: number) => new Date(waitedFrom + minutes * MINUTE_MS);
+
+  /** Shepherd's review at `H1` recorded `verdict` (none unless given), CI went green, and the run has sat in `currentStep` since. */
+  function waitingAt(currentStep: string, verdict: object = { kind: "none" }): WorkflowRun {
+    const run = { ...pausedAt(currentStep), status: "running" } as WorkflowRun;
+    const record = (stepId: string, at: number, result: object) => {
+      run.stepResults[stepId] = { stepId, iteration: 0, agentId: null, signal: null, completedAt: new Date(at).toISOString(), data: { result } };
+    };
+    record(`sh-await-verdict:${H1}`, waitedFrom - 2000, verdict);
+    record("ci-wait:1", waitedFrom, { verdict: "green", headSha: H1 });
+    return run;
+  }
+
+  it("reads the merge wait as stalled after 61 minutes, and not after 59", () => {
+    const early = watchRow({ registration: held, run: waitingAt("merge:0"), now: minutesIn(59) });
+    const late = watchRow({ registration: held, run: waitingAt("merge:0"), now: minutesIn(61) });
+
+    expect(early.stalled).toBeNull();
+    expect(late.stalled?.reason).toMatch(/^g10-review hold at 1111111 has no reviewer verdict; 61 min waiting, over the 60 min limit$/);
+  });
+
+  it("reads a run parked in sh-held-wait as stalled after 61 minutes", () => {
+    const row = watchRow({ registration: held, run: waitingAt(`sh-held-wait:r0:${H1}`), now: minutesIn(61) });
+
+    expect(row).toMatchObject({ phase: "awaiting-approval", stalled: { reason: expect.stringMatching(/^g10-review hold at 1111111 has no reviewer verdict/) } });
+  });
+
+  it("leaves a hold of another class unstalled at 61 minutes", () => {
+    const adversary = { ...held, holdReason: "g10-adversary: touches auth" } as Registration;
+
+    expect(watchRow({ registration: adversary, run: waitingAt("merge:0"), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  it("leaves a g10-review hold with a recorded MERGE at the head unstalled at 61 minutes", () => {
+    const merge = { kind: "verdict", verdict: "MERGE", head: H1, locator: {}, reviewer: { agentId: "agent-rv-own" } };
+
+    expect(watchRow({ registration: held, run: waitingAt("merge:0", merge), now: minutesIn(61) }).stalled).toBeNull();
+  });
+
+  it("leaves an owner hold unstalled at 61 minutes", () => {
+    const owner: Registration = { ...held, ownerHold: { reason: "owner wants a look", at: new Date(waitedFrom).toISOString(), askedAt: null } };
+
+    expect(watchRow({ registration: owner, run: waitingAt("merge:0"), now: minutesIn(61) }).stalled).toBeNull();
+  });
+});
+
 describe("shepherd view stalls", () => {
   function reviewedRun(outcomes: readonly ("started" | "not-started")[], shape: "nested" | "top-level" = "nested"): WorkflowRun {
     const run = pausedAt("sh-review:abc1234");
