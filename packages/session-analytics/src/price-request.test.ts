@@ -59,4 +59,31 @@ describe("priceRequest", () => {
   it("treats missing token fields as zero", () => {
     expect(priceRequest({}, "claude-opus-5", TS)).toMatchObject({ costUsd: 0, priced: true });
   });
+
+  it("bills every component of a haiku 5.5 request at 5x once its prompt passes 100K", () => {
+    const at = (cacheReadTokens: number) =>
+      priceRequest({ inputTokens: 1_000, cacheReadTokens, cacheCreation5mTokens: 2_000, cacheCreation1hTokens: 3_000, outputTokens: 4_000 }, "claude-haiku-5-5", TS);
+    const base = at(94_000);
+    const long = at(94_001);
+
+    expect(long.priced).toBe(true);
+    expect(long.inputUsd).toBeCloseTo(base.inputUsd * 5, 12);
+    expect(long.cacheReadUsd).toBeCloseTo((base.cacheReadUsd * 5 * 94_001) / 94_000, 12);
+    expect(long.cacheWrite5mUsd).toBeCloseTo(base.cacheWrite5mUsd * 5, 12);
+    expect(long.cacheWrite1hUsd).toBeCloseTo(base.cacheWrite1hUsd * 5, 12);
+    expect(long.outputUsd).toBeCloseTo(base.outputUsd * 5, 12);
+  });
+
+  it("counts a split-less cache write toward the long-prompt threshold", () => {
+    const p = priceRequest({ inputTokens: 1, cacheCreationTokens: 100_000 }, "claude-haiku-5-5", TS);
+
+    expect(p.inputUsd).toBeCloseTo(0.5 / 1_000_000, 15);
+    expect(p.cacheWrite5mUsd).toBeCloseTo(0.0625, 12);
+  });
+
+  it("leaves an unknown haiku id unpriced however long its prompt", () => {
+    const p = priceRequest({ inputTokens: 400_000, outputTokens: 1_000 }, "claude-haiku-5-6", TS);
+
+    expect(p).toMatchObject({ costUsd: 0, priced: false });
+  });
 });
