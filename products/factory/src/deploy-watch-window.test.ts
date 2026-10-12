@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FAST_PROBE_TIMEOUT_MS, SLOW_PROBE_TIMEOUT_MS, watchServe, type WatchWindow } from "./deploy-watch-window.js";
+import { DEFAULT_WATCH_WINDOW, FAST_PROBE_TIMEOUT_MS, SLOW_PROBE_TIMEOUT_MS, watchServe, type WatchWindow } from "./deploy-watch-window.js";
 
 const TARGET = "a".repeat(40);
 const PID = 4242;
@@ -107,5 +107,13 @@ describe("watchServe slow versus down", () => {
     const why = await watchServe(dying, baseline, TARGET, WINDOW);
 
     expect(why).toContain("serve stopped answering /health (3 probes in a row)");
+  });
+
+  it("passes the default watch when a restarted serve stalls through two start-up ticks and then answers", async () => {
+    const { ports } = scripted(["stall", "stall", "answer"]);
+
+    const why = await watchServe(ports, baseline, TARGET, DEFAULT_WATCH_WINDOW);
+
+    expect(why).toBeUndefined();
   });
 });
