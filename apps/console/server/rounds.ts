@@ -3,9 +3,10 @@
  * under the rounds dir, validated with review-schema's `RoundSchema`. This module only reads.
  *
  * Another process writes the dir, so every read is defended: a round id is a plain name (no
- * dot, no slash), a round directory or file that is a symlink is refused, `round.json` is read
- * through `O_NOFOLLOW` up to a size cap, and no path a manifest names (an image, a frame) is
- * ever opened. A round is `sent` once a `feedback.json` sits beside it.
+ * dot, no slash), a round directory or file that is a symlink is refused, `round.json` and
+ * `feedback.json` are read through `O_NOFOLLOW` and `O_NONBLOCK` (a planted FIFO cannot hang the
+ * open) up to a size cap, and no path a manifest names (an image, a frame) is ever opened. A
+ * round is `sent` once a `feedback.json` sits beside it.
  */
 import { constants } from "node:fs";
 import { lstat, open, readdir, type FileHandle } from "node:fs/promises";
@@ -27,6 +28,7 @@ const ROUND_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const ROUND_FILE = "round.json";
 const FEEDBACK_FILE = "feedback.json";
 const MAX_REASON_ISSUES = 5;
+const OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const roundStatus = z.enum(["open", "sent"]);
 type RoundStatus = z.infer<typeof roundStatus>;
@@ -117,7 +119,7 @@ function unreadableReason(error: unknown): string {
 async function readManifest(roundDir: string): Promise<{ parsed: Parsed; updatedAt: string | null }> {
   let handle: FileHandle;
   try {
-    handle = await open(path.join(roundDir, ROUND_FILE), constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(path.join(roundDir, ROUND_FILE), OPEN_FLAGS);
   } catch (error) {
     return { parsed: { ok: false, reason: unreadableReason(error) }, updatedAt: null };
   }
@@ -225,7 +227,7 @@ function parseFeedback(text: string): FeedbackRead {
 async function readFeedback(roundDir: string): Promise<FeedbackRead> {
   let handle: FileHandle;
   try {
-    handle = await open(path.join(roundDir, FEEDBACK_FILE), constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(path.join(roundDir, FEEDBACK_FILE), OPEN_FLAGS);
   } catch (error) {
     const code = errnoOf(error);
     if (code === "ENOENT" || code === "ELOOP") return { ok: true, feedback: null };
