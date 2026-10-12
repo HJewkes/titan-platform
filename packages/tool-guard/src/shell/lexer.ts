@@ -1,11 +1,11 @@
-import { decodeAnsiC } from "./ansi-c.js";
 import { type ArithTrials, cachedEnd, chargeTrial, newTrials, sameSpend, spent } from "./arith-trials.js";
-import { ansiCEnd, backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
+import { backtickEnd, balancedEnd, type DollarOpener, dollarOpener, type NestedReaders, QUOTED_LITERAL_OPENERS } from "./balanced.js";
 import { nested } from "./nesting.js";
 import { ParseError, refusingAs, SplitParseError } from "./parse-error.js";
 import { readLineEnd } from "./procsub-heredoc.js";
 import { assignmentSubscriptEnd } from "./subscript.js";
 import type { LexState, RedirectToken, Token, WordToken } from "./tokens.js";
+import { appendChar, endWord, ensureWord, markComputed, markCut, markQuoted, pushRef, readAnsiC, readEscape, readSingle } from "./word-build.js";
 
 export { ParseError, SplitParseError } from "./parse-error.js";
 export type { LexState, OpToken, RedirectToken, SubsToken, Token, VarRef, WordToken } from "./tokens.js";
@@ -104,30 +104,6 @@ function readBlank(s: LexState): void {
   s.i++;
 }
 
-function ensureWord(s: LexState): WordToken {
-  s.word ??= { type: "word", value: "", dynamic: false, quoted: false, spliced: false, computed: false, refs: [], subs: [] };
-  return s.word;
-}
-
-function appendChar(s: LexState, c: string): void {
-  ensureWord(s).value += c;
-  s.i++;
-}
-
-function endWord(s: LexState): void {
-  const w = s.word;
-  if (!w) return;
-  s.word = null;
-  const pending = s.redirect;
-  s.redirect = null;
-  if (!pending) {
-    s.tokens.push(w);
-    return;
-  }
-  pending.token.target = w;
-  if (pending.token.body !== null) s.heredocs.push(pending);
-}
-
 function readOperator(s: LexState, op: string): void {
   endWord(s);
   s.i += op.length;
@@ -135,32 +111,6 @@ function readOperator(s: LexState, op: string): void {
   if (op === ")") s.depth--;
   s.tokens.push({ type: "op", value: op });
   if (op === "\n") readLineEnd(s);
-}
-
-function readEscape(s: LexState): void {
-  const next = s.src[s.i + 1];
-  s.i += 2;
-  if (next !== undefined && next !== "\n") {
-    const w = ensureWord(s);
-    w.value += next;
-    w.quoted = true;
-    w.spliced = true;
-  }
-}
-
-function readSingle(s: LexState): void {
-  const end = s.src.indexOf("'", s.i + 1);
-  if (end === -1) throw new ParseError("unterminated '");
-  const w = markQuoted(ensureWord(s));
-  w.value += s.src.slice(s.i + 1, end);
-  s.i = end + 1;
-}
-
-/** A quoted part after other text splits the word. */
-function markQuoted(w: WordToken): WordToken {
-  if (w.value !== "") w.spliced = true;
-  w.quoted = true;
-  return w;
 }
 
 function readDouble(s: LexState): void {
@@ -186,16 +136,6 @@ function readBacktick(s: LexState): void {
   s.i = scanBacktick(s.src, s.i, w.subs, s.trials) + 1;
 }
 
-function markCut(w: WordToken): void {
-  (w.cuts ??= []).push({ at: w.value.length, sub: w.subs.length });
-}
-
-function markComputed(w: WordToken): WordToken {
-  w.dynamic = true;
-  w.computed = true;
-  return w;
-}
-
 const DOLLAR_READERS: Record<DollarOpener, (s: LexState, w: WordToken) => void> = {
   pid: readVariable,
   braced: (s, w) => refusingAs("unclosed-expansion", () => readBraced(s, w)),
@@ -218,12 +158,6 @@ function readVariable(s: LexState, w: WordToken): void {
   if (!name) return appendChar(s, "$");
   pushRef(w, name, `$${name}`);
   s.i += 1 + name.length;
-}
-
-function pushRef(w: WordToken, name: string, text: string): void {
-  w.dynamic = true;
-  w.refs.push({ name, start: w.value.length, end: w.value.length + text.length });
-  w.value += text;
 }
 
 /** Every substitution on a line is lexed here, so a heredoc it leaves open stays pending on `line`, where bash 5 reads its body. */
@@ -358,14 +292,6 @@ function scanBacktick(src: string, start: number, found: Token[][], trials: Arit
   const end = backtickEnd(src, start);
   found.push(nested(trials.nesting, () => tokenize(src.slice(start + 1, end).replace(/\\([`\\$])/g, "$1"), sameSpend(trials))));
   return end;
-}
-
-function readAnsiC(s: LexState, w: WordToken): void {
-  const end = ansiCEnd(s.src, s.i + 1);
-  w.value += decodeAnsiC(s.src.slice(s.i + 2, end));
-  w.quoted = true;
-  w.spliced = true;
-  s.i = end + 1;
 }
 
 /** A `$"…"` is translated through the locale's message catalog at run time, so its value is not the text. */
