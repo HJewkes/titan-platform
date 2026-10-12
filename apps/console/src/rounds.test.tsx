@@ -26,8 +26,8 @@ async function recorded(): Promise<Snapshot> {
   };
 }
 
-async function renderConsole(hash: string): Promise<void> {
-  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", await recorded()), "text/html");
+async function renderConsole(hash: string, snapshot?: Snapshot): Promise<void> {
+  const page = new DOMParser().parseFromString(embedSnapshot("<html><head></head><body></body></html>", snapshot ?? (await recorded())), "text/html");
   window.location.hash = hash;
   render(
     <RpcProvider source={pageDataSource({ doc: page })}>
@@ -63,6 +63,19 @@ describe("the rounds list", () => {
     expect(within(legacy).getByText("invalid")).toBeTruthy();
     expect(within(legacy).getByText(/titan-review\/round@1 predates the review contract/)).toBeTruthy();
     expect(within(screen.getByTestId("round-row-unreadable-r1")).getByText("round.json is not JSON")).toBeTruthy();
+  });
+
+  it("names the rounds dir and the import command when there are no rounds", async () => {
+    const empty: Snapshot = {
+      format: SNAPSHOT_FORMAT,
+      createdAt: "2031-03-05T00:00:00.000Z",
+      calls: { [snapshotKey("rounds.list", {})]: successEnvelope({ rounds: [], truncated: false, dir: "/state/rounds" }) },
+    };
+    await renderConsole("#/rounds", empty);
+    expect(await screen.findByText("No review rounds yet")).toBeTruthy();
+    expect(screen.getByText(/\/state\/rounds/)).toBeTruthy();
+    expect(screen.getByText(/titan-console rounds import <round-dir>/)).toBeTruthy();
+    expect(screen.queryByText("Open rounds")).toBeNull();
   });
 
   it("opens a round from its row", async () => {

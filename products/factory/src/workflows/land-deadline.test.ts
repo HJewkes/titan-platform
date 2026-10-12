@@ -20,6 +20,7 @@ interface Harness {
 /** A fake clock whose `jumpAtSleep`-th sleep also overshoots by `jumpMs`, and a PR whose mergeable_state stays unknown. */
 function harness(options: { jumpAtSleep?: number; greenAfterMs?: number } = {}): Harness {
   const fake = fakeGitHub();
+  fake.rules = { contexts: ["validate"], strict: false };
   fake.addPr({ headSha: fakeSha("head1"), mergeableState: "unknown" });
   fake.setRuns(fakeSha("head1"), [successRun("validate", 1)]);
   const clock = { now: 0 };
