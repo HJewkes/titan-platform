@@ -1,5 +1,6 @@
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { deployPnpmEnv, runCommand } from "./deploy-ports.js";
+import { deployPnpmEnv, runCommand, systemDeployPorts } from "./deploy-ports.js";
 
 const INSTALL = ["install", "--frozen-lockfile"];
 const BUILD = ["--filter", "@titan-design/factory...", "build"];
@@ -56,5 +57,25 @@ describe("runCommand", () => {
     const result = await runCommand("no-such-binary-tp-1715", [], process.cwd(), 1_000, { PATH: "/nonexistent" });
 
     expect(result.code).toBe(127);
+  });
+});
+
+describe("systemDeployPorts liveness", () => {
+  it("a deploy never reads pid 0 as a live holder", () => {
+    const ports = systemDeployPorts(tmpdir());
+
+    expect(ports.isAlive(0)).toBe(false);
+  });
+
+  it("a negative or non-finite pid is not alive", () => {
+    const ports = systemDeployPorts(tmpdir());
+
+    expect([-1, Number.NaN, Number.POSITIVE_INFINITY].map((pid) => ports.isAlive(pid))).toEqual([false, false, false]);
+  });
+
+  it("this process is alive", () => {
+    const ports = systemDeployPorts(tmpdir());
+
+    expect(ports.isAlive(process.pid)).toBe(true);
   });
 });
