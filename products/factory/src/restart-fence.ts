@@ -15,7 +15,7 @@ export interface RestartFencePorts {
   log: (line: string) => void;
 }
 
-export type FenceOutcome = { ok: true; pid: number; fenced?: number } | { ok: false; why: string };
+type FenceOutcome = { ok: true; pid: number; fenced?: number } | { ok: false; why: string };
 
 /**
  * Above the slowest clean stop seen (27 s) and below systemd's 90 s default, which outlasts the
