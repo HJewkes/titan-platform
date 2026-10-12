@@ -720,6 +720,9 @@ made before lines were inserted above the function still lands on it at HEAD. An
 the innermost symbol it overlaps, so a method edit does not count again for its class. A
 threshold such as "3+ ids in 7 days" is a finding policy, not part of the metric. The patch
 log has a 256 MiB buffer; overflow lands in `warnings` like the churn log's.
+The carry assumes linear history: `--no-merges` reads commits in date order, so on a repo that
+merges side branches an edit can be carried through mainline hunks that are not its ancestors
+and land on the wrong lines. Squash- or rebase-merged repos are exact.
 
 When git is present but its log overflowed or failed, the index has no (or partial) history
 metrics and `IndexResult.warnings` says why. The field is absent when history loaded, and
