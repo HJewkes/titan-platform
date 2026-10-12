@@ -382,11 +382,21 @@ owner is not asked twice, in two cases and no others:
 
 Both need a standing reviewer verdict `MERGE` at exactly the new head, and land opens the gate
 only after required CI is green at that head, so a head with no verdict or a red check asks the
-owner again. A `security` or `unknown` run never carries, and neither does an escalation gate.
+owner again. An `unknown` run never carries, and neither does an escalation gate. A `security` run follows
+only the rule below.
 Any error computing the tree or the diff asks again. The run records an
 `sh-approval-carry:<head>` step with the approved head, the new head, the rule (`remerge-empty`,
 `remerge-generated-only`, `merge-up` or `small-fix`) and the proof: both trees, or the changed line count and
 paths. The probe itself is the `sh-approval-carry:fix:<head>` step.
+
+A `security` run's answer follows one head move only: Shepherd's own clean merge-up
+(`products/factory/src/shepherd/own-merge-up.ts`, step `sh-approval-carry:own:<head>`). The new head
+must have exactly two parents, the first the approved head and the second on the base branch, its
+tree must equal `git merge-tree` of the two, and none of the files the base side changed since the
+pull request left it may be a file the pull request changed (a rename counts as both sides). A
+non-merge commit, another first parent, a second parent off the base, a hand-resolved or amended
+tree, or one overlapping file asks the owner again. The `sh-approval-carry:<head>` step records the
+rule `own-merge-up`, both trees, the base commit, and the pull request's and the base side's paths.
 
 ## Watch
 

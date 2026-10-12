@@ -11,6 +11,7 @@ import { registeredKind } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { mergeVerdict, type ReviewWiring } from "./review.js";
 import { FIX_CARRY_STEP, fixCarryRoute } from "./fix-carry.js";
+import { OWN_MERGE_UP_STEP, ownMergeUpRoute } from "./own-merge-up.js";
 import { MERGE_UP_STEP, mergeUpRoute, recordMergeUp, treeCarries } from "./merge-up-carry.js";
 import { REMERGE_STEP, remergeRoute, remergeStep, type CarryRule, type RemergeResult } from "./remerge-carry.js";
 import { carryStep, type CarryInput, type CarryResult } from "./tree-carry.js";
@@ -24,12 +25,19 @@ export const CARRY_SCOPE_STEPS: readonly StepDeclaration[] = [
   { id: CARRY_SEAT_STEP, kind: "dispatch" },
   { id: REMERGE_STEP, kind: "dispatch" },
   { id: FIX_CARRY_STEP, kind: "dispatch" },
+  { id: OWN_MERGE_UP_STEP, kind: "dispatch" },
   { id: APPROVAL_CARRY_STEP, kind: "dispatch" },
   { id: MERGE_UP_STEP, kind: "dispatch" },
 ];
 
 /** Kinds whose reviewed MERGE a tree-equal update may reuse; a security change always gets a fresh reviewer. */
 export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
+
+/**
+ * Kinds whose owner approve-merge answer may follow Shepherd's own disjoint clean merge-up and nothing else (G10): the
+ * remerge and small-fix rules stay closed to them, and a reviewed MERGE never carries (`CARRYING_KINDS`).
+ */
+export const OWN_MERGE_UP_KINDS: ReadonlySet<string> = new Set(["security"]);
 
 export interface CarryTarget {
   repo: RepoSlug;
@@ -39,14 +47,31 @@ export interface CarryTarget {
 /** `askedHead` is the head of the run's `shepherd review` ask, taken or not; a scope recorded before asks existed reads none. */
 const ScopeResult = z.looseObject({ kind: z.string().nullable(), baseRef: z.string().nullable(), askedHead: z.string().nullable().optional() });
 
+/** What a carry reads once per head: the registration's kind and the PR's base branch, unless a seat asked for its own review at a vouched head. */
+async function readScope(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[]): Promise<{ kind: string | null; baseRef: string | null } | undefined> {
+  const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${read}`, { ...target, runId: ctx.runId }, ScopeResult);
+  return scope.askedHead && vouched.includes(scope.askedHead) ? undefined : scope;
+}
+
 /**
  * The base branch a carry probes against, or undefined when the run's kind does not carry, the base is unknown, or a seat
  * asked for Shepherd's own review at one of `vouched`, the heads the carried MERGE would stand for.
  */
 export async function carryingBase(ctx: WorkflowContext, target: CarryTarget, read: string, vouched: readonly string[] = []): Promise<string | undefined> {
-  const scope = await step(ctx, `${CARRY_SCOPE_STEP}:${read}`, { ...target, runId: ctx.runId }, ScopeResult);
-  if (scope.askedHead && vouched.includes(scope.askedHead)) return undefined;
-  return scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
+  const scope = await readScope(ctx, target, read, vouched);
+  return scope && scope.kind !== null && CARRYING_KINDS.has(scope.kind) && scope.baseRef !== null ? scope.baseRef : undefined;
+}
+
+/**
+ * The base an owner's approve-merge answer follows a head move on, read once per head: `carrying` for a kind that may carry
+ * (`CARRYING_KINDS`), `ownMergeUp` for one that may follow only Shepherd's own merge-up (`OWN_MERGE_UP_KINDS`). Both are
+ * undefined for every other kind, an unknown base, or a seat's own-review ask.
+ */
+export async function followBases(ctx: WorkflowContext, target: CarryTarget, read: string): Promise<{ carrying?: string; ownMergeUp?: string }> {
+  const scope = await readScope(ctx, target, read, []);
+  if (!scope || scope.kind === null || scope.baseRef === null) return {};
+  if (CARRYING_KINDS.has(scope.kind)) return { carrying: scope.baseRef };
+  return OWN_MERGE_UP_KINDS.has(scope.kind) ? { ownMergeUp: scope.baseRef } : {};
 }
 
 /** The registration's kind and the PR's base branch, both read by code; the reviewer's text and the PR's labels, title and body never reach this step. */
@@ -231,6 +256,7 @@ export function carryRoutes(deps: Pick<ShepherdDeps, "port" | "store" | "now">, 
     carrySeatRoute(deps, wiring),
     remergeRoute(deps.now, wiring?.carry),
     fixCarryRoute(deps.now, wiring?.carry),
+    ownMergeUpRoute(deps.now, wiring?.carry),
     codeRoute(APPROVAL_CARRY_STEP, deps.now, async (input: object) => input),
     mergeUpRoute(deps.now),
   ];

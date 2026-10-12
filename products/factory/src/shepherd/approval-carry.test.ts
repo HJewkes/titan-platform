@@ -3,6 +3,7 @@ import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { followingApprovals } from "./approval-carry.js";
 import type { FixCarryResult } from "./fix-carry.js";
+import type { OwnMergeUpResult } from "./own-merge-up.js";
 import type { RemergeResult } from "./remerge-carry.js";
 
 const REPO = "acme/widgets";
@@ -12,6 +13,7 @@ const MERGED_UP = fakeSha("merged-up");
 const LATER = fakeSha("later");
 const EMPTY: RemergeResult = { carries: true, rule: "remerge-empty", headTree: "t", remergeTree: "t", paths: [], generatedPaths: [] };
 const NO_FIX: FixCarryResult = { carries: false, reason: "the fix changes 41 lines, over 40" };
+const OWN: OwnMergeUpResult = { carries: true, rule: "own-merge-up", base: "b", headTree: "t", mergeTree: "t", prPaths: ["src/a.ts"], mainPaths: ["other.txt"] };
 const RESOLVED: RemergeResult = { carries: false, paths: ["src/a.ts"], generatedPaths: [], reason: "the merge changed 1 path(s) outside the declared generated files" };
 
 const landPrompt = (head: string, table = "authority", row = "MRG-AU"): string =>
@@ -28,19 +30,21 @@ interface RigOptions {
   kind?: string;
   remerge?: RemergeResult;
   fix?: FixCarryResult;
+  own?: OwnMergeUpResult;
   /** Heads whose review is a MERGE; every head by default. */
   reviewed?: (head: string) => boolean;
   /** The owner's answer at each gate; merge at the asked head by default. */
   answer?: (head: string) => Record<string, unknown>;
 }
 
-function rig({ kind = "correctness", remerge = EMPTY, fix = NO_FIX, reviewed = () => true, answer = (head) => ({ decision: "merge", headSha: head }) }: RigOptions = {}): Rig {
+function rig({ kind = "correctness", remerge = EMPTY, fix = NO_FIX, own = { carries: false, reason: "refused" }, reviewed = () => true, answer = (head) => ({ decision: "merge", headSha: head }) }: RigOptions = {}): Rig {
   const gates: string[] = [];
   const steps: Rig["steps"] = [];
   const respond = (stepId: string, input: Record<string, unknown>): object => {
     if (stepId.startsWith("sh-carry-scope:")) return { kind, baseRef: "main" };
     if (stepId.startsWith("sh-remerge:")) return remerge;
     if (stepId.startsWith("sh-approval-carry:fix:")) return fix;
+    if (stepId.startsWith("sh-approval-carry:own:")) return own;
     return input;
   };
   const dispatch = async (stepId: string, _template: string, options: { vars: Record<string, string> }) => {
@@ -152,14 +156,61 @@ describe("an approve-merge answer following the head", () => {
     expect(r.steps.find((step) => step.stepId === `sh-remerge:${LATER}`)!.input).toMatchObject({ fromHead: MERGED_UP });
   });
 
-  it("never follows for a security run and never probes it", async () => {
-    const r = rig({ kind: "security" });
+  it("follows Shepherd's own disjoint merge-up for a security run, and records why", async () => {
+    const r = rig({ kind: "security", own: OWN });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    const answer = await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(answer.data).toEqual({ decision: "merge", headSha: MERGED_UP });
+    expect(r.gates).toEqual([APPROVED]);
+    expect(r.steps.find((step) => step.stepId === `sh-approval-carry:own:${MERGED_UP}`)!.input).toMatchObject({ fromHead: APPROVED, head: MERGED_UP, baseRef: "main" });
+    expect(r.steps.find((step) => step.stepId === `sh-approval-carry:${MERGED_UP}`)!.input).toEqual({
+      decision: "merge",
+      headSha: MERGED_UP,
+      fromHead: APPROVED,
+      rule: "own-merge-up",
+      proof: { base: "b", headTree: "t", mergeTree: "t", prPaths: ["src/a.ts"], mainPaths: ["other.txt"] },
+    });
+  });
+
+  it("asks a security run's owner again when the own merge-up probe refuses, and never tries the looser rules", async () => {
+    const r = rig({ kind: "security", own: { carries: false, reason: "main changes 1 file(s) the PR changes" }, remerge: EMPTY });
 
     await r.ask("approve-merge", landPrompt(APPROVED));
     await r.ask("approve-merge:1", landPrompt(MERGED_UP));
 
     expect(r.gates).toEqual([APPROVED, MERGED_UP]);
-    expect(r.steps.some((step) => step.stepId.startsWith("sh-remerge"))).toBe(false);
+    expect(r.steps.map((step) => step.stepId).filter((id) => id.startsWith("sh-approval-carry") || id.startsWith("sh-remerge"))).toEqual([`sh-approval-carry:own:${MERGED_UP}`]);
+  });
+
+  it.each(["unknown", "none"])("never follows a %s run through the own merge-up rule", async (kind) => {
+    const r = rig({ kind: kind === "none" ? (undefined as unknown as string) : kind, own: OWN, remerge: RESOLVED });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.steps.some((step) => step.stepId.startsWith("sh-approval-carry:own"))).toBe(false);
+  });
+
+  it("never lets a carrying kind use the own merge-up rule", async () => {
+    const r = rig({ kind: "refactor", own: OWN, remerge: RESOLVED });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId.startsWith("sh-approval-carry:own"))).toBe(false);
+  });
+
+  it("asks a security run's owner again at a head with no standing MERGE", async () => {
+    const r = rig({ kind: "security", own: OWN, reviewed: (head) => head !== MERGED_UP });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps).toEqual([]);
   });
 
   it("asks again at a head whose review is not a standing MERGE", async () => {
