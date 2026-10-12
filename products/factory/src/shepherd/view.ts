@@ -2,10 +2,9 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
-import { verdictAt } from "../verdict-at.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
-import { holdClassOf } from "./g10-release.js";
+import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
@@ -245,26 +244,6 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
   const limit = PHASE_STALL_LIMIT_MS[phase];
   const elapsed = now.getTime() - Date.parse(since);
   return limit !== undefined && elapsed > limit ? `${Math.floor(elapsed / MINUTE)} min in ${phase}, over the ${limit / MINUTE} min limit` : undefined;
-}
-
-/** Longest a g10-review hold may wait with no reviewer verdict at its head: nothing else releases it, so past this it is stuck, not waiting. */
-const G10_UNREVIEWED_LIMIT_MS = 60 * MINUTE;
-
-interface HoldWait {
-  registration: Registration;
-  headSha: string | null;
-  holding: boolean;
-}
-
-/** A g10-review hold releases only on a reviewer's MERGE at the head; with none recorded, waiting past the limit is a stall (TP-2455). */
-function g10UnreviewedStall(run: WorkflowRun, { registration, headSha, holding }: HoldWait, since: string, now: Date): string | undefined {
-  const { held, holdReason, holdSatisfied, ownerHold } = registration;
-  if (!held || ownerHold || headSha === null || holdClassOf(holdReason) !== "g10-review") return undefined;
-  const heldWait = run.currentStep !== null && stepIdMatches("sh-held-wait", run.currentStep);
-  if (!(holding || heldWait) || holdSatisfied?.head === headSha || verdictAt(run, headSha) !== undefined) return undefined;
-  const elapsed = now.getTime() - Date.parse(since);
-  if (elapsed <= G10_UNREVIEWED_LIMIT_MS) return undefined;
-  return `g10-review hold at ${headSha.slice(0, 7)} has no reviewer verdict; ${Math.floor(elapsed / MINUTE)} min waiting, over the ${G10_UNREVIEWED_LIMIT_MS / MINUTE} min limit`;
 }
 
 /** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
