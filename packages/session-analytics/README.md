@@ -27,7 +27,9 @@ priceRequest(
   at a model-id boundary (the id, a `-YYYYMMDD` date, or a `[..]` suffix), so `claude-opus-5`
   never prices `claude-opus-5-5`.
 - `priceRequest(tokens, model, ts, prices?)` — the five cost components, `costUsd` and
-  `priced`.
+  `priced`. A row with a `longPrompt` tier (Haiku 5.5, above 100K prompt tokens) bills every
+  component, output included, at the long rates once input plus cache read plus cache write is
+  strictly above the threshold, as session-graph's `request_cost` view does.
 - `classifySession(facts)` — `agent_spawned`, `human_interactive`, `headless_sdk` or
   `other_headless`, plus `coordinator` or `adhoc` for human sessions.
 - `CONTEXT_BANDS`, `GAP_BANDS`, `bandOf`, `contextBand`, `gapBand`.

@@ -9,7 +9,7 @@ import { H1, REPO } from "../test-support/land.js";
 import { configuredRoutes, factoryRoutesFor, type FactoryRouteDeps } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
-import { AdvisoryRefused, advisoryGuard, advisoryPort, stickyAdvisory } from "./advisory.js";
+import { AdvisoryRefused, advisoryGuard, advisoryPort, stickyAdvisory, type AdvisoryMemory } from "./advisory.js";
 import type { ShepherdPhases } from "./phases.js";
 import { OWNER_GATE_POLICY, type EffectivePolicy } from "./policy.js";
 import { shepherdPrWorkflow } from "./pr.js";
@@ -166,7 +166,7 @@ function configHome(repos: object): { env: NodeJS.ProcessEnv; file: string } {
   mkdirSync(join(home, "titan-factory"));
   const file = join(home, "titan-factory", "config.json");
   writeFileSync(file, JSON.stringify({ shepherd: { repos } }));
-  return { env: { XDG_CONFIG_HOME: home }, file };
+  return { env: { XDG_CONFIG_HOME: home, XDG_STATE_HOME: join(home, "state") }, file };
 }
 
 describe("advisory read from shepherd.repos", () => {
@@ -199,9 +199,80 @@ describe("advisory read from shepherd.repos", () => {
     expect(w.fake.effects.merge).toBe(0);
     expect(w.writes).toEqual([]);
   });
+
+  it("keeps the held merge held for a serve started while the config file is missing", async () => {
+    const { env, file } = configHome({ [REPO]: { advisory: true } });
+    world({ env });
+    rmSync(file);
+
+    const w = world({ env });
+    const runId = shepherd(w);
+    await heldAt(w, runId, /^merge:/);
+
+    expect(w.fake.effects.merge).toBe(0);
+    expect(w.writes).toEqual([]);
+  });
+
+  it("remembers a clean read that clears the flag, so a later serve with no config file merges", async () => {
+    const { env, file } = configHome({ [REPO]: { advisory: true } });
+    world({ env });
+    writeFileSync(file, JSON.stringify({ shepherd: { repos: { [REPO]: {} } } }));
+    world({ env });
+    rmSync(file);
+
+    const w = world({ env });
+    shepherd(w);
+
+    await vi.waitFor(() => expect(w.fake.effects.merge).toBe(1), { timeout: 5_000 });
+    expect(w.writes).toEqual(["merge"]);
+  });
 });
 
+/** An in-memory stand-in for the state file that records every save. */
+function fakeMemory(initial: readonly string[] | undefined, save?: () => void): AdvisoryMemory & { saves: (readonly string[])[] } {
+  const saves: (readonly string[])[] = [];
+  return { saves, load: () => initial, save: (repos) => (save?.(), saves.push(repos), undefined) };
+}
+
 describe("stickyAdvisory", () => {
+  it("starts advisory from the remembered set when the first read finds no file", () => {
+    const isAdvisory = stickyAdvisory(() => undefined, fakeMemory([REPO]));
+
+    expect(isAdvisory(REPO)).toBe(true);
+  });
+
+  it("remembers a clean read that drops an entry", () => {
+    const memory = fakeMemory([REPO]);
+    const isAdvisory = stickyAdvisory(() => ({}), memory);
+
+    expect(isAdvisory(REPO)).toBe(false);
+    expect(memory.saves).toEqual([[]]);
+  });
+
+  it("saves only when the set changes", () => {
+    const memory = fakeMemory(undefined);
+    const isAdvisory = stickyAdvisory(() => ({ [REPO]: { advisory: true } }), memory);
+
+    isAdvisory(REPO);
+    isAdvisory(REPO);
+    isAdvisory(REPO);
+
+    expect(memory.saves).toEqual([[REPO]]);
+  });
+
+  it("keeps answering when the memory cannot load or save", () => {
+    const broken: AdvisoryMemory = { load: () => { throw new Error("EACCES"); }, save: () => { throw new Error("EACCES"); } };
+    const isAdvisory = stickyAdvisory(() => ({ [REPO]: { advisory: true } }), broken);
+
+    expect(isAdvisory(REPO)).toBe(true);
+  });
+
+  it("matches a remembered key in any case", () => {
+    const isAdvisory = stickyAdvisory(() => undefined, fakeMemory(["Octo/Demo"]));
+
+    expect(isAdvisory("octo/demo")).toBe(true);
+  });
+
   it("lets a successful read clear the flag, and keeps it through a read that throws or finds no file", () => {
     const reads: (() => Record<string, { advisory?: boolean }> | undefined)[] = [() => ({ [REPO]: { advisory: true } }), () => undefined, () => { throw new Error("invalid config"); }, () => ({})];
     const isAdvisory = stickyAdvisory(() => reads.shift()!());
