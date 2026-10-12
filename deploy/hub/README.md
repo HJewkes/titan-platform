@@ -28,7 +28,8 @@ Tuwunel knows the `@core-.*` and `#coord.*` namespaces even though nothing uses 
 - `core.Dockerfile` builds from the repo root: it installs with `--frozen-lockfile` against the
   root `pnpm-lock.yaml`, builds `@titan-design/matrix-bus` from the same commit, and ships only
   the `pnpm deploy --prod` output. `core.Dockerfile.dockerignore` limits the context to the files
-  that build needs, so the VPS needs the full checkout but not Node.
+  that build needs, so the VPS needs the full checkout but not Node. Its base image is pinned by
+  digest in the `NODE_IMAGE` ARG and CI caches it under that digest, so a bump is an edit to the ARG.
 
 ## Local run
 
