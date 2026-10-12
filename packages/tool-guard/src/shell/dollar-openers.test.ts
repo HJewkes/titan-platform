@@ -81,6 +81,10 @@ describe("a guarded command next to a $-opener", () => {
     expect(builtHookStdout(`true || : $[ #]; ${guarded}`)).toContain(DENY);
   });
 
+  it.each(GUARDED)("the built hook denies %s after a joined $[ ]", (_name, guarded) => {
+    expect(builtHookStdout(`true || : $${JOIN}[ #]; ${guarded}`)).toContain(DENY);
+  });
+
   it("names the unclosed expansion when $[ never closes", async () => {
     expect(await hookStdout(`: $[ 1 + ; ${PUSH}`)).toContain("`$[ ]`");
   });
