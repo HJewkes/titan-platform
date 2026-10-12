@@ -98,6 +98,13 @@ titan-console token rotate   # rewrites lan.token at 0600; every session and lin
 - **Logout** is `POST /auth/logout` with a JSON body. It clears that browser's cookie only;
   a copied cookie stays valid until a rotation.
 
+The console is the single owner origin. Shepherd (titan-factory on `TITAN_CONSOLE_FACTORY_PORT`)
+and the review rounds are reached from other devices only through this login: the console
+proxies three Shepherd reads, `shepherd.list`, `shepherd.timeline` and `shepherd.waiting`, to
+`127.0.0.1` server-side and no Shepherd write, and serves the rounds pages itself. The factory
+stays loopback-only with its own Host and Origin guards. There is no `tailscale serve` path
+router in front of the backends, and Funnel is never used.
+
 Nothing is exposed until the service unit sets `TITAN_CONSOLE_HOST`; installing that unit is an
 owner step. The unit and the tailscale certificate, install, login, renewal, rotate and rollback
 commands are in [docs/lan.md](docs/lan.md).
