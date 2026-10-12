@@ -356,18 +356,27 @@ export const reviewPhase: ShepherdPhases["review"] = async (ctx, request) => {
 
 type ExternalAwaiting = ReviewTarget & { external: string };
 
+/** A dispatched reviewer stopped by its account's usage limit holds `account` until the reset; any other result is not a limit. */
+function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: z.infer<typeof Awaited>, dispatchedReviewer: AgentIdentity | undefined, account: string): Promise<Verdict> | undefined {
+  if (!dispatchedReviewer || !isUsageLimit(result)) return undefined;
+  return accountHeld(ctx, target, { account, notice: String(result.notice), ...(typeof result.resetsAt === "number" && { resetsAt: result.resetsAt }) });
+}
+
 /**
  * An external reviewer is both the dispatched reviewer and the resolver, because Shepherd started nobody else. A dispatched
  * reviewer that missed the wait is read once more, so a late MERGE is a MERGE, not a no-facts gate, and a malformed final
- * message gets one correction turn. A reviewer stopped by its account's usage limit is neither read again nor corrected: `account` is held.
+ * message gets one correction turn. A reviewer stopped by its account's usage limit, read on time, late or as the
+ * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer.
  */
-
 async function takeVerdict(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account = DEFAULT_ACCOUNT): Promise<Verdict> {
   const onTime = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}`, awaiting, Awaited);
-  if (dispatchedReviewer && isUsageLimit(onTime)) return accountHeld(ctx, target, { account, notice: String(onTime.notice), ...(typeof onTime.resetsAt === "number" && { resetsAt: onTime.resetsAt }) });
+  const heldOnTime = limitHeld(ctx, target, onTime, dispatchedReviewer, account);
+  if (heldOnTime) return heldOnTime;
   const late = onTime.kind === "none" && dispatchedReviewer ? await step(ctx, `${LATE_VERDICT_STEP}:${target.head}`, awaiting, Awaited) : onTime;
   const correction = { ownerBrief: asksOwnerBrief(ctx), replyStep: `${AWAIT_VERDICT_STEP}:${target.head}:corrected` };
   const awaited = dispatchedReviewer && !("external" in awaiting) ? await correctOnce(ctx, awaiting, late, correction) : late;
+  const heldLate = limitHeld(ctx, target, awaited, dispatchedReviewer, account);
+  if (heldLate) return heldLate;
   if (awaited.kind !== "verdict") return dispatchedReviewer && !("external" in awaiting) ? dispatchedNone(ctx, target.head, awaiting.startedAt ?? awaiting.dispatchedAt, awaited.reason) : { kind: "none", cause: "external-hold", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   if (awaited.verdict === "FIX_FIRST") return { kind: "FIX_FIRST", headSha: target.head, text: awaited.text ?? "", ...(awaited.closer === "yes" || awaited.closer === "no" ? { closer: awaited.closer } : {}) };
   const verdict = { value: "MERGE" as const, head: awaited.head, locator: awaited.locator };
