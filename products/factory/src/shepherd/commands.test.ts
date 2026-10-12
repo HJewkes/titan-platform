@@ -2,11 +2,13 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
+import { openDatabase } from "@titan-design/store-sqlite";
 import type { StepResult } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { BRANCH, callCommand, shepherdFixture, shepherdRuns, type FixtureOptions, type ShepherdFixture } from "../test-support/shepherd.js";
+import { AccountLimitStore } from "./account-store.js";
 import type { MergeEvaluation, Registered } from "./commands.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { PrTimelineSchema, WatchRowSchema, type PrTimeline, type WatchRow } from "./view.js";
@@ -311,6 +313,26 @@ describe("shepherd.register after a failed run", () => {
     expect(store.authorsOf(again.runId).map((author) => author.name)).toEqual(["impl-a", "impl-a-2"]);
     expect(store.authorsOf(again.registration.runId).filter((author) => author.role === "successor").map((author) => author.name)).toEqual(["impl-a-2"]);
     expect(store.authorsOf(failedRunId)).toEqual([]);
+  });
+
+  it("the failed run's own account hold moves to the new run, which owns it", async () => {
+    const dbPath = join(mkdtempSync(join(tmpdir(), "tp-2385-")), "factory.db");
+    const w = world({ frozen: true, dbPath });
+    w.fake.addPr({ headSha: H1, headRef: BRANCH });
+    const failedRunId = await failedRegistration(w);
+    const db = openDatabase(dbPath);
+    const limits = new AccountLimitStore(db);
+    expect(limits.holdRun(failedRunId, "account-exhausted: /accounts/review; TP-2385")).toBe(true);
+
+    try {
+      const again = await registered(w, pr1);
+
+      expect(limits.holdsRun(again.runId)).toBe(true);
+      expect(limits.holdsRun(failedRunId)).toBe(false);
+      expect(db.prepare("SELECT run_id FROM shepherd_account_hold").all()).toEqual([{ run_id: again.runId }]);
+    } finally {
+      db.close();
+    }
   });
 
   it("two registers after one failure start exactly one new run", async () => {

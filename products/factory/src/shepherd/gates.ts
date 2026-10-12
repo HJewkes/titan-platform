@@ -2,7 +2,7 @@ import type { WorkflowContext } from "@titan-design/workflow";
 import type { RepoSlug } from "@titan-design/github";
 import { conflictDecision, sentBackDecision } from "../gate-brief.js";
 import { AwaitHeadResult } from "../workflows/await-head.js";
-import { step, type LandOutcome } from "../workflows/land.js";
+import { step, type CiSnapshot, type LandOutcome } from "../workflows/land.js";
 import { escalationReason, type Escalated } from "./route-table.js";
 import { askAtHead } from "./stale-gates.js";
 
@@ -18,6 +18,35 @@ export interface GateRun {
   state: { waits: number };
   /** An owner-gated escalation whose gate the head moved past; it gates every head until the owner answers an approve-merge gate. */
   carried?: Escalated;
+}
+
+/** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
+type CiRead = Pick<CiSnapshot, "headSha" | "mergeableState">;
+
+interface EscalationRun {
+  carried?: Escalated;
+  escalations: Map<string, Escalated>;
+  lastCi?: CiRead;
+}
+
+/**
+ * The escalation that gates `headSha`. A conflict row is dropped, and cleared, once that head reads mergeable: GitHub's
+ * mergeability is the evidence the owner was asked about, so a head that is not dirty has no conflict to ask about.
+ */
+export function liveEscalation(run: EscalationRun, headSha: string): Escalated | undefined {
+  if (resolvedAt(run.lastCi, headSha)) clearConflict(run, headSha);
+  return run.carried ?? run.escalations.get(headSha);
+}
+
+// Only conflict rows go: a no-progress or runaway row at the same head is not about mergeability and still gates the merge.
+function clearConflict(run: EscalationRun, headSha: string): void {
+  if (run.carried?.escalation === "conflict") run.carried = undefined;
+  if (run.escalations.get(headSha)?.escalation === "conflict") run.escalations.delete(headSha);
+}
+
+// An unknown or unread state keeps the conflict: GitHub computes mergeability lazily, so only a read state resolves it.
+function resolvedAt(lastCi: CiRead | undefined, headSha: string): boolean {
+  return lastCi?.headSha === headSha && lastCi.mergeableState !== "dirty" && lastCi.mergeableState !== "unknown";
 }
 
 /** Waits, with no gate, for the PR to show any other head; undefined lands the next round. */

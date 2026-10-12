@@ -1,3 +1,4 @@
+import { USAGE_LIMIT_REASON } from "@titan-design/review-panel";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { perRunExport } from "./per-run-export.js";
@@ -18,6 +19,10 @@ function runOf(id: string, steps: Step[], extra: Partial<WorkflowRun> = {}): Wor
 }
 
 const NO_KINDS = new Map<string, string>();
+const LIMIT = { kind: "none", reason: USAGE_LIMIT_REASON, notice: "You've hit your session limit · resets 1:30pm (UTC)" };
+const TIMEOUT = { kind: "none", reason: "no verdict before the wait ended" };
+const MERGE = { kind: "verdict", verdict: "MERGE" };
+const roundsOf = (steps: Step[]): number => perRunExport([runOf("r1", steps)], NO_KINDS)[0]!.reviewRounds;
 
 describe("perRunExport", () => {
   it("prints the run's identity and its minutes per stage from the stage spans", () => {
@@ -51,6 +56,26 @@ describe("perRunExport", () => {
     const run = runOf("r1", [["sh-await-verdict:abc", 10], ["sh-await-verdict:def", 20]]);
 
     expect(perRunExport([run], NO_KINDS)[0]!.reviewRounds).toBe(2);
+  });
+
+  it("counts no round for a head whose only review ended in a usage limit", () => {
+    expect(roundsOf([["sh-await-verdict:abc", 10, LIMIT]])).toBe(0);
+  });
+
+  it("counts one round for a usage limit and then a verdict at one head", () => {
+    expect(roundsOf([["sh-await-verdict:abc", 10, LIMIT], ["sh-await-verdict:abc", 300, MERGE]])).toBe(1);
+  });
+
+  it("counts only the moved head when the first head's review ended in a usage limit", () => {
+    expect(roundsOf([["sh-await-verdict:abc", 10, LIMIT], ["sh-await-verdict:def", 300, MERGE]])).toBe(1);
+  });
+
+  it("counts no round for an on-time timeout whose late read is a usage limit", () => {
+    expect(roundsOf([["sh-await-verdict:abc", 30, TIMEOUT], ["sh-late-verdict:abc", 60, LIMIT]])).toBe(0);
+  });
+
+  it("counts no round when the correction reply is a usage limit", () => {
+    expect(roundsOf([["sh-await-verdict:abc", 30, { kind: "none", malformed: { refusal: "no verdict line" } }], ["sh-await-verdict:abc:corrected", 35, LIMIT]])).toBe(0);
   });
 
   it("reads a run cancelled as merged outside Shepherd as an outside merge, and an unmerged run as no merge", () => {

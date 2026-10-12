@@ -28,6 +28,7 @@ import { FACTORY_PORT, serveFactoryUntilSignal } from "./serve.js";
 import { deployCheckoutFor, registerService } from "./cli-service.js";
 import { registerShepherdCoverage } from "./cli-coverage.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
+import { registerScorecard } from "./cli-scorecard.js";
 import { registerShepherdStats } from "./cli-stats.js";
 import { registerToolchain } from "./cli-toolchain.js";
 import type { CheckPorts } from "./service-check.js";
@@ -123,7 +124,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerToolchain, registerScorecard]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 
