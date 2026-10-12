@@ -22,12 +22,12 @@ const rowSpecSchema = z.object({ baseline: z.string().min(1), target: z.string()
 const specSchema = z
   .object({
     since: z.string().regex(DAY, "since must be YYYY-MM-DD"),
-    rows: z.object(Object.fromEntries(ROW_IDS.map((id) => [id, rowSpecSchema])) as Record<RowId, typeof rowSpecSchema>).strict(),
+    rows: z.record(z.enum(ROW_IDS), rowSpecSchema),
   })
   .strict();
 type ScorecardSpec = z.infer<typeof specSchema>;
 
-export interface ScorecardSpecRow extends ScorecardRow {
+interface ScorecardSpecRow extends ScorecardRow {
   baseline: string;
   target?: string;
 }
@@ -93,10 +93,11 @@ function openReadOnly(file: string, warn: (text: string) => void): Db | null {
   }
 }
 
-function query<T>(db: Db | null, sql: string): T[] {
+/** A missing table or a row of an unexpected shape reads as none, like an absent store. */
+function query<T extends z.ZodType>(db: Db | null, sql: string, schema: T): z.infer<T>[] {
   if (!db) return [];
   try {
-    return db.prepare(sql).all() as T[];
+    return z.array(schema).parse(db.prepare(sql).all());
   } catch {
     return [];
   }
@@ -146,7 +147,7 @@ function shepherdMerge(id: string, params: string, steps: string, win: Window): 
 
 /** Completed Shepherd runs whose merge step finished in the window, and whether a human approve-merge step was on the path. */
 function shepherdMerges(db: Db | null, win: Window): ShepherdMerge[] {
-  const runs = query<{ id: string; params: string; step_results: string }>(db, "SELECT id, params, step_results FROM workflow_run WHERE status = 'completed'");
+  const runs = query(db, "SELECT id, params, step_results FROM workflow_run WHERE status = 'completed'", z.object({ id: z.string(), params: z.string(), step_results: z.string() }));
   return runs.flatMap((r) => shepherdMerge(r.id, r.params, r.step_results, win) ?? []);
 }
 
@@ -187,7 +188,7 @@ function readyToMerged(shep: readonly ShepherdMerge[], tasksDir: string): string
 }
 
 function registerToMerge(db: Db | null, shep: readonly ShepherdMerge[]): string | null {
-  const created = new Map(query<{ run_id: string; created_at: string }>(db, "SELECT run_id, created_at FROM shepherd_registration").map((r) => [r.run_id, r.created_at]));
+  const created = new Map(query(db, "SELECT run_id, created_at FROM shepherd_registration", z.object({ run_id: z.string(), created_at: z.string() })).map((r) => [r.run_id, r.created_at]));
   const mins = shep.flatMap((m) => (created.has(m.run) ? [(m.at - parseTs(created.get(m.run)!)) / MINUTE_MS] : []));
   return mins.length ? `median ${median(mins).toFixed(1)} min (n=${mins.length})` : null;
 }
@@ -195,7 +196,7 @@ function registerToMerge(db: Db | null, shep: readonly ShepherdMerge[]): string 
 type Freeze = [frozen: number, thawed: number | null];
 
 function freezes(db: Db | null, win: Window): Freeze[] {
-  const rows = query<{ frozen_at: string; thawed_at: string | null }>(db, "SELECT frozen_at, thawed_at FROM shepherd_freeze");
+  const rows = query(db, "SELECT frozen_at, thawed_at FROM shepherd_freeze", z.object({ frozen_at: z.string(), thawed_at: z.string().nullable() }));
   return rows.flatMap((r): Freeze[] => {
     const frozen = parseTs(r.frozen_at);
     return frozen >= win.since && frozen <= win.now ? [[frozen, r.thawed_at ? parseTs(r.thawed_at) : null]] : [];
@@ -224,7 +225,7 @@ function seatShare(shep: readonly ShepherdMerge[], records: readonly DispatchRec
 
 /** Pending approve-merge gates, the whole backlog rather than the window, as an owner queue is read. */
 function waitingApproved(db: Db | null, now: number): string | null {
-  const gates = query<{ id: string; created_at: string }>(db, "SELECT id, created_at FROM hitl_gate WHERE status = 'pending'");
+  const gates = query(db, "SELECT id, created_at FROM hitl_gate WHERE status = 'pending'", z.object({ id: z.string(), created_at: z.string() }));
   const waiting = gates.filter((g) => stepIdMatches("approve-merge", g.id.slice(g.id.lastIndexOf("/") + 1))).map((g) => parseTs(g.created_at));
   if (!waiting.length) return null;
   const old = waiting.filter((c) => (now - c) / MINUTE_MS > WAIT_MIN);
@@ -250,7 +251,7 @@ function factoryRows(db: Db | null, records: readonly DispatchRecord[], tasksDir
 }
 
 /** Every row, in scripts/seat/scorecard's order, with its baseline and target from the spec. */
-export function scorecardRows(factoryDb: string, sources: Sources, spec: ScorecardSpec, since: string, now: number, warn: (text: string) => void): ScorecardSpecRow[] {
+function scorecardRows(factoryDb: string, sources: Sources, spec: ScorecardSpec, since: string, now: number, warn: (text: string) => void): ScorecardSpecRow[] {
   const fdb = openReadOnly(factoryDb, warn);
   const edb = openReadOnly(sources.eventsDb, warn);
   try {

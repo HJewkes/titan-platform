@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { runCli } from "./cli.js";
 
 // Fixtures equal to agent-chat scripts/seat/testdata/scorecard (factory.sql, events.sql, logs/, tasks/), from test-scorecard.sh.
@@ -153,7 +154,7 @@ describe("titan-factory scorecard", () => {
 
     const { code, out } = await scorecard(env, ["--db", db, "--spec", spec, "--json"]);
 
-    const report = JSON.parse(out) as { since: string; until: string; rows: { id: string; measured: boolean; baseline: string; coverage?: object }[] };
+    const report = z.object({ since: z.string(), until: z.string(), rows: z.array(z.object({ id: z.string(), measured: z.boolean() }).passthrough()) }).parse(JSON.parse(out));
     expect(code).toBe(0);
     expect(report.since).toBe("2026-10-03");
     expect(report.until).toBe("2026-10-04T12:00:00.000Z");
