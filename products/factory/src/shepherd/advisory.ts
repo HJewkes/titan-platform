@@ -18,19 +18,49 @@ export class AdvisoryRefused extends Error {
 const advisoryKeys = (repos: Readonly<Record<string, { advisory?: boolean }>>): Set<string> =>
   new Set(Object.entries(repos).flatMap(([repo, config]) => (config.advisory === true ? [repo.toLowerCase()] : [])));
 
+/** Where the last good advisory set outlives the process; `load` gives undefined when nothing usable is remembered. */
+export interface AdvisoryMemory {
+  load(): readonly string[] | undefined;
+  save(repos: readonly string[]): void;
+}
+
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => a.size === b.size && [...a].every((repo) => b.has(repo));
+
+function remembered(memory: AdvisoryMemory | undefined): Set<string> {
+  try {
+    return new Set((memory?.load() ?? []).map((repo) => repo.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * Fail closed: the advisory repos are those the last read that succeeded named, and the first read happens at once.
  * A config file that is absent, unreadable or invalid, as while it is moved or rewritten, keeps every flag it last set.
+ * With a memory, that last good set also outlives the process, so a serve started with no config file still holds;
+ * deleting the config on purpose therefore leaves its flags in force until a config without them is read.
  */
-export function stickyAdvisory(read: AdvisoryRead): IsAdvisory {
-  let advisory = new Set<string>();
-  const refresh = (): void => {
+export function stickyAdvisory(read: AdvisoryRead, memory?: AdvisoryMemory): IsAdvisory {
+  let advisory = remembered(memory);
+  let saved = advisory;
+  const remember = (): void => {
+    if (!memory || sameSet(advisory, saved)) return;
     try {
-      const repos = read();
-      if (repos !== undefined) advisory = advisoryKeys(repos);
+      memory.save([...advisory].sort());
+      saved = advisory;
     } catch {
       return;
     }
+  };
+  const refresh = (): void => {
+    try {
+      const repos = read();
+      if (repos === undefined) return;
+      advisory = advisoryKeys(repos);
+    } catch {
+      return;
+    }
+    remember();
   };
   refresh();
   return (repo) => {
