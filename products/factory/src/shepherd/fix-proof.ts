@@ -76,9 +76,35 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
 /** Only a run from GitHub Actions at this very head counts; a same-named check from any other app is ignored. */
 const isFixProofRun = (head: string) => (run: CheckRun) => run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head;
 
-/** Duplicate runs at one head (a re-run, a re-push) resolve to the newest, whatever order GitHub lists them in. */
-const newestFixProofRun = (runs: readonly CheckRun[], head: string): CheckRun | undefined =>
-  runs.filter(isFixProofRun(head)).reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
+const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
+  runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
+
+/** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
+type Binding = { pr: number; baseRef: string } | { unbound: string };
+
+async function bindingOf(port: GitHubPort, repo: RepoSlug, pr: number | null): Promise<Binding> {
+  if (pr === null) return { unbound: "the registration names no PR, so no run can be bound to it" };
+  try {
+    return { pr, baseRef: (await port.getPr(repo, pr)).baseRef };
+  } catch (error) {
+    return { unbound: `the PR's base branch could not be read: ${failureOf(error)}` };
+  }
+}
+
+const isBoundTo = (binding: Binding) => (run: CheckRun) => "pr" in binding && run.pullRequests.some((pr) => pr.number === binding.pr && pr.baseRef === binding.baseRef);
+
+/**
+ * Another PR opened from the same head sha onto a base of its own runs its own workflow file, whose run shares the name, app and head
+ * sha. Exactly one run bound to this PR is trusted; none or several are not, and the newest is still read so the reason is reported.
+ */
+function chooseRun(candidates: readonly CheckRun[], binding: Binding): { run: CheckRun; distrust?: string } | undefined {
+  const bound = candidates.filter(isBoundTo(binding));
+  if (bound.length === 1) return { run: bound[0]! };
+  const run = newestOf(candidates);
+  if (run === undefined) return undefined;
+  const why = "unbound" in binding ? binding.unbound : `${bound.length} ${FIX_PROOF_CHECK} runs at this head belong to PR #${binding.pr} on ${binding.baseRef}, not exactly one`;
+  return { run, distrust: why };
+}
 
 const actionsAt = (runs: readonly CheckRun[], head: string): CheckRun[] => runs.filter((run) => run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head);
 
@@ -88,17 +114,17 @@ const settledWithout = (runs: readonly CheckRun[], head: string): boolean => {
   return actions.length > 0 && actions.every((run) => run.status === "completed") && !actions.some(isFixProofRun(head));
 };
 
-type Polled = { run: CheckRun } | { missing: string };
+type Polled = { run: CheckRun; distrust?: string } | { missing: string };
 
 /** Absence is believed only on two polls in a row, since a job behind `needs:` is created after the runs it waits on finish. */
-async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
+async function completedRun(port: GitHubPort, repo: RepoSlug, head: string, binding: Binding, timing: PollTiming, signal: AbortSignal): Promise<Polled> {
   const clock = deadline({ ...timing, timeoutMs: timing.timeoutMs ?? DEFAULT_FIX_PROOF_WAIT_MS });
   const grace = deadline({ ...timing, timeoutMs: timing.noActionsGraceMs ?? DEFAULT_NO_ACTIONS_GRACE_MS });
   let settledBefore = false;
   for (;;) {
     const runs = await port.checkRuns(repo, head);
-    const run = newestFixProofRun(runs, head);
-    if (run?.status === "completed") return { run };
+    const chosen = chooseRun(runs.filter(isFixProofRun(head)), binding);
+    if (chosen?.run.status === "completed") return chosen;
     const settled = settledWithout(runs, head);
     if (settled && settledBefore) return { missing: `every GitHub Actions run at this head completed with no ${FIX_PROOF_CHECK} check run` };
     if (actionsAt(runs, head).length === 0 && grace.expired()) return { missing: "no GitHub Actions run at this head" };
@@ -138,13 +164,14 @@ async function distrustOf(port: GitHubPort, repo: RepoSlug, pr: number | null, r
 }
 
 async function readResult(port: GitHubPort, input: FixProofInput, pr: number | null, timing: PollTiming, signal: AbortSignal): Promise<FixProofRead> {
-  const polled = await completedRun(port, input.repo, input.head, timing, signal);
+  const binding = await bindingOf(port, input.repo, pr);
+  const polled = await completedRun(port, input.repo, input.head, binding, timing, signal);
   if ("missing" in polled) return { kind: "missing", reason: polled.missing };
   const line = lastResultLine(await port.jobLogTail(input.repo, polled.run.id, LOG_TAIL_LINES), input.head);
   if (line === undefined) return { kind: "missing", reason: `the ${FIX_PROOF_CHECK} job log has no result line for this head` };
   const parsed = parseResultLine(line);
   if (!parsed.ok) return { kind: "error", reason: parsed.error };
-  const distrust = await distrustOf(port, input.repo, pr, polled.run);
+  const distrust = polled.distrust ?? (await distrustOf(port, input.repo, pr, polled.run));
   const verdict = parsed.result.verdict;
   return distrust === undefined ? { kind: "result", line, verdict } : { kind: "untrusted", line, verdict, reason: distrust };
 }

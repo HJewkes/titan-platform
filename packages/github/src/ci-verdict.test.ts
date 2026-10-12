@@ -6,7 +6,7 @@ import { GITHUB_ACTIONS_APP_ID as A } from "./readiness.js";
 
 let nextId = 1;
 function cr(name: string, status: string, conclusion: string | null = null, appId = A, startedAt = "2026-01-01T00:00:00Z"): CheckRun {
-  return { id: nextId++, name, status, conclusion, startedAt, headSha: "", appId, workflowRunId: null, url: "" };
+  return { id: nextId++, name, status, conclusion, startedAt, headSha: "", appId, workflowRunId: null, pullRequests: [], url: "" };
 }
 const done = (name: string, conclusion: string, appId = A, startedAt?: string) => cr(name, "completed", conclusion, appId, startedAt);
 const st = (context: string, state: string): CommitStatus => ({ context, state });

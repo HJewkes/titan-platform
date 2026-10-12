@@ -61,7 +61,14 @@ export interface CheckRun {
   appId: number | null;
   /** The Actions run that owns this job, for `rerunFailed`; null for non-Actions checks. */
   workflowRunId: number | null;
+  /** The pull requests GitHub ties the run to, so a run can be bound to one PR and base branch; empty for a fork's PR. */
+  pullRequests: CheckRunPr[];
   url: string;
+}
+
+export interface CheckRunPr {
+  number: number;
+  baseRef: string;
 }
 
 /** A PR's head as GitHub reports it, so a delete can tell a same-named branch in a fork from its own. */

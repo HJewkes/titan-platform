@@ -48,7 +48,7 @@ const locatorIn = (nativeId: string): SourceTextLocator => ({
   selector: { kind: "subrecord-text", path: ["message", "content", 0, "text"] },
 });
 
-const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, ...overrides });
+const fixProofRun = (overrides: Partial<CheckRun> = {}): CheckRun => ({ ...successRun(FIX_PROOF_CHECK, FIX_PROOF_JOB), headSha: H, pullRequests: [{ number: 1, baseRef: "main" }], ...overrides });
 
 interface Scene {
   kind?: string;
@@ -205,6 +205,7 @@ describe("readFixProof", () => {
   interface Registered {
     branch?: string;
     headRef?: string;
+    unreadablePr?: boolean;
     timeoutMs?: number;
     logs?: Record<number, string>;
     files?: PrFile[];
@@ -213,7 +214,7 @@ describe("readFixProof", () => {
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
     const fake = fakeGitHub();
-    if (options.headRef !== undefined) fake.addPr({ headSha: H, headRef: options.headRef });
+    if (!options.unreadablePr) fake.addPr({ headSha: H, ...(options.headRef !== undefined && { headRef: options.headRef }) });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
     for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
@@ -244,7 +245,7 @@ describe("readFixProof", () => {
   });
 
   it("skips the gate with the reason recorded when the PR's head branch cannot be read", async () => {
-    const { read } = registered("feature", [fixProofRun()]);
+    const { read } = registered("feature", [fixProofRun()], { unreadablePr: true });
 
     expect(await read()).toEqual({ kind: "skipped", reason: expect.stringContaining("head branch unreadable") });
   });
@@ -287,14 +288,35 @@ describe("readFixProof", () => {
     expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("could not be read") });
   });
 
+  it("ignores a newer fix-proof run bound to a different PR at the same head and trusts the one bound to this PR", async () => {
+    const reproduced = resultLine(H, "reproduced");
+    const forged = fixProofRun({ id: 99, pullRequests: [{ number: 2, baseRef: "main" }] });
+    const { read } = registered("correctness", [fixProofRun(), forged], { logs: { 99: actionsLog(resultLine(H, "vacuous")), [FIX_PROOF_JOB]: actionsLog(reproduced) } });
+
+    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+  });
+
+  it("ignores a newer run for this PR number on another base branch", async () => {
+    const reproduced = resultLine(H, "reproduced");
+    const forged = fixProofRun({ id: 99, pullRequests: [{ number: 1, baseRef: "attacker" }] });
+    const { read } = registered("correctness", [fixProofRun(), forged], { logs: { 99: actionsLog(resultLine(H, "vacuous")), [FIX_PROOF_JOB]: actionsLog(reproduced) } });
+
+    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+  });
+
   it.each([
     ["newest last", [77, 78]],
     ["newest first", [78, 77]],
-  ])("reads the newest fix-proof run at the head whichever order they are listed (%s)", async (_order, ids) => {
-    const reproduced = resultLine(H, "reproduced");
-    const { read } = registered("correctness", ids.map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(reproduced) } });
+  ])("distrusts the line when two fix-proof runs at the head are bound to this PR (%s)", async (_order, ids) => {
+    const { read } = registered("correctness", ids.map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(resultLine(H, "reproduced")) } });
 
-    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+    expect(await read()).toMatchObject({ kind: "untrusted", verdict: "reproduced", reason: expect.stringContaining("2 fix-proof runs") });
+  });
+
+  it("distrusts the line when no fix-proof run at the head is bound to this PR", async () => {
+    const { read } = registered("correctness", [fixProofRun({ pullRequests: [] })]);
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("0 fix-proof runs") });
   });
 
   it("waits for the newest fix-proof run rather than read an older completed one", async () => {
