@@ -1,5 +1,5 @@
-import { SimpleCommand } from './shell/index.js';
-export { Chain, ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
+import { Chain, SimpleCommand } from './shell/index.js';
+export { ExtractOptions, GitInvocation, OpToken, ParseError, ReadingLimitError, RedirectToken, SplitArgs, SubsToken, Token, VarRef, WordToken, Wrapping, extractCommands, parseGit, resolvePath, splitArgs, tokenize } from './shell/index.js';
 import { ActorClass, PolicyTable } from '@titan-design/authority';
 
 interface EventMeta {
@@ -73,8 +73,21 @@ interface ClassifyContext {
     readHead(dir: string): string | null;
     /** Text of a script run by path, null when it cannot be read. */
     readScript(path: string): string | null;
+    /**
+     * Set by the classifier once a line writes a script: every text the script may then hold, the disk's included, or
+     * null once the line left more than the classifier tracks.
+     */
+    scriptReadings?(path: string): string[] | null;
     /** Whether a PATH lookup finds a program whatever the case of its name, so `GIT push` runs git. */
     foldCase?: boolean;
+    /**
+     * Set by the classifier inside an `&&` chain a branch switch guards: the chain, and the state every command outside it
+     * sees. A field rather than identity, so a step that copies the state keeps it.
+     */
+    chainTrust?: {
+        chain: Chain;
+        fallback: ClassifyContext;
+    };
 }
 type GuardedAction = "merge" | "release" | "secret-read" | "authority-config" | "private-egress";
 /** What an event would do, with no actor attached. */
@@ -305,4 +318,4 @@ declare const SETTINGS_ENTRY: {
     }];
 };
 
-export { AGENT_CANDIDATES, type ActorObservation, type ClassifiedAction, type ClassifyContext, type DecideFn, type DecisionLine, type ErrorClass, type ErrorLine, type Family, type FamilyName, GUARDED_PATHS, type GuardDecision, type GuardedAction, type GuardedList, type GuardedPath, type HookEvent, type HookPort, type HookResult, type MalformedEvent, type Matched, PREFERENCES, type PreferenceContext, type PreferenceHit, type PreferenceId, type ReadEvent, type ReadFs, SETTINGS_ENTRY, SPELLINGS, SimpleCommand, type SpellingId, type WriteEvent, checkPreferences, classify, decide, formatDecisionLine, formatErrorLine, handle, logPath, nodeContext, observeActor, parseHookEvent };
+export { AGENT_CANDIDATES, type ActorObservation, Chain, type ClassifiedAction, type ClassifyContext, type DecideFn, type DecisionLine, type ErrorClass, type ErrorLine, type Family, type FamilyName, GUARDED_PATHS, type GuardDecision, type GuardedAction, type GuardedList, type GuardedPath, type HookEvent, type HookPort, type HookResult, type MalformedEvent, type Matched, PREFERENCES, type PreferenceContext, type PreferenceHit, type PreferenceId, type ReadEvent, type ReadFs, SETTINGS_ENTRY, SPELLINGS, SimpleCommand, type SpellingId, type WriteEvent, checkPreferences, classify, decide, formatDecisionLine, formatErrorLine, handle, logPath, nodeContext, observeActor, parseHookEvent };

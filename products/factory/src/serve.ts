@@ -241,7 +241,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),
-    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, log }),
+    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, store: options.routes.shepherd?.store, log }),
     logger: options.logger,
   };
 }

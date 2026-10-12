@@ -21,7 +21,8 @@ import { MERGE_ON_GREEN_GRANT, runPolicyCeiling } from "./policy.js";
 import { PUBLISH_REVIEW_STEPS, publishReview, publishReviewRoute } from "./publish-review.js";
 import { DEFAULT_BUSY_WAIT_MS, busyWaits, clearReviewWait, notStarted, noteReviewWait, startedSession, whileBrokerBusy, whileBrokerDown, type BusyTiming, type BusyWaits, type NotStarted } from "./review-wait.js";
 import { CARRY_STEP, carryRoute, type CarryOptions } from "./tree-carry.js";
-import { prChangedLines, prTouchesDependency, reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { reviewerRoleFor, type ReviewerFacts, type ReviewerRoles } from "./reviewer-roles.js";
+import { spawnFacts } from "./spawn-facts.js";
 import { withReviewerProfile } from "./g10-release.js";
 import { chooseReviewer } from "./reviewer-choice.js";
 import { isRepoKey } from "./seats.js";
@@ -193,30 +194,6 @@ async function plannedPanel(deps: ShepherdDeps, { panel, panelPolicy, roles }: W
   if (panel === undefined || panel === "off") return undefined;
   const rules = classRulesFor(roles);
   return intentPlan(await panelFacts(deps, input, input.runId, rules), panelPolicy ?? panelPolicyFor(roles), undefined, rules);
-}
-
-/** A step with no run id, or a store that cannot be read, has no kind to go by, so it is classed with the stricter reviewers. */
-function reviewerFacts(deps: ShepherdDeps, runId: string | undefined): ReviewerFacts {
-  const read = runId === undefined ? { unread: "no run id" } : registeredKind(deps.store, runId);
-  return read.unread === undefined ? { ...(read.kind !== undefined && { kind: read.kind }) } : { unread: true };
-}
-
-/** A list that is truncated, unreadable or missing a count is no size, and an unread size takes the stricter class. */
-async function sizeFacts(deps: ShepherdDeps, { repo, pr }: ReviewTarget, limit: number | undefined): Promise<ReviewerFacts> {
-  try {
-    const files = await deps.port.listPrFiles(repo, pr);
-    const changedLines = prChangedLines(files, limit);
-    const dependency = prTouchesDependency(files) && { dependencyTouch: true };
-    return changedLines === undefined ? { sizeUnread: true, ...dependency } : { changedLines, ...dependency };
-  } catch {
-    return { sizeUnread: true };
-  }
-}
-
-/** Only a spawn picks a profile, so only a spawn reads the PR's size. */
-async function spawnFacts(deps: ShepherdDeps, runId: string | undefined, intent: ReviewIntent, target: ReviewTarget, roles: ReviewerRoles | undefined): Promise<ReviewerFacts> {
-  const facts = reviewerFacts(deps, runId);
-  return intent.mode === "spawn" ? { ...facts, intentAt: intent.at, ...(await sizeFacts(deps, target, roles?.g10ChangedLines)) } : facts;
 }
 
 const checkoutRootOf = (deps: ShepherdDeps): string => deps.reviewCheckouts?.root ?? reviewCheckoutRoot();

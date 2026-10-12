@@ -2,7 +2,7 @@ import type { PrFile } from "@titan-design/github";
 import { changedLineCount, touchesDependency, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES } from "@titan-design/review-panel";
 import type { ClassRoles, ReviewerFacts } from "@titan-design/review-panel";
 
-/** The charter's G10 rule picks the class: a registered `security` kind, or a diff over the changed-line limit. Everything else is `standard`. */
+/** The charter's G10 rule picks the class: a registered `security` kind, a G10 hold, or a diff over the changed-line limit. Everything else is `standard`. */
 type ReviewerClass = "g10" | "standard";
 
 export type { ReviewerFacts };
@@ -17,8 +17,8 @@ const G10_CHANGED_LINES = DEFAULT_CLASS_RULES.largeLines;
 
 export const DEFAULT_REVIEWER_ROLES: ReviewerRoles = DEFAULT_CLASS_ROLES;
 
-export function reviewerClassFor({ kind, unread, sizeUnread, changedLines, dependencyTouch }: ReviewerFacts, limit: number = G10_CHANGED_LINES): ReviewerClass {
-  return unread || sizeUnread || dependencyTouch === true || kind === "security" || (changedLines !== undefined && changedLines > limit) ? "g10" : "standard";
+export function reviewerClassFor({ kind, unread, sizeUnread, changedLines, dependencyTouch, g10Hold }: ReviewerFacts, limit: number = G10_CHANGED_LINES): ReviewerClass {
+  return unread || sizeUnread || dependencyTouch === true || g10Hold === true || kind === "security" || (changedLines !== undefined && changedLines > limit) ? "g10" : "standard";
 }
 
 export function reviewerRoleFor(facts: ReviewerFacts, roles: ReviewerRoles = DEFAULT_REVIEWER_ROLES): string {

@@ -592,6 +592,7 @@ declare class WorkflowRuntime {
     private readonly options;
     private readonly workflows;
     private readonly live;
+    private readonly held;
     private readonly store;
     private readonly runtimeId;
     private readonly leaseMs;

@@ -3,6 +3,7 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { codeRoute, step } from "../workflows/land.js";
 import type { ShepherdDeps } from "./phases.js";
+import { applyRegistrationHold } from "./registration-hold.js";
 
 export const SH_AWAIT_PR_POLL_MS = 30_000;
 
@@ -19,13 +20,17 @@ export async function awaitPrStep(ctx: WorkflowContext, repo: RepoSlug, branch: 
   return (await step(ctx, "sh-await-pr", { repo, branch, runId: ctx.runId }, AwaitPrResult)).pr;
 }
 
-/** No timeout, because a PR can take days to open; a failed read is polled again, and the step's signal aborts the wait. */
+/**
+ * No timeout, because a PR can take days to open; a failed read is polled again, and the step's signal aborts the wait.
+ * The registration hold is placed before the step returns, so the run reaches no merge with its G10 class unread.
+ */
 async function awaitPr(deps: ShepherdDeps, input: AwaitPrInput, signal: AbortSignal): Promise<object> {
   for (;;) {
     signal.throwIfAborted();
     const found = await deps.port.findPr(input.repo, input.branch).catch(() => null);
     if (found && (found.state === "open" || found.merged)) {
       deps.store.get().setPr(input.runId, found.number);
+      await applyRegistrationHold(deps.port, deps.store.get(), input.runId);
       return { pr: found.number, headSha: found.headSha };
     }
     await deps.sleep(deps.pollMs ?? SH_AWAIT_PR_POLL_MS, signal);

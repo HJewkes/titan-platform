@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { FixProofConfig } from "./config.js";
-import { call, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
+import { call, GIT_SAFETY, planDiff, RunError, withContext, type Context, type Shas } from "./context.js";
 import type { Exec } from "./exec.js";
 import { relativeToRoot } from "./paths.js";
 import type { FixProofPlan } from "./plan.js";
@@ -34,14 +34,14 @@ export interface ExecSideOptions {
 
 async function addTree(ctx: Context, name: string, sha: string): Promise<string> {
   const dir = path.join(ctx.tmp, name);
-  const result = await call(ctx, ctx.repo, "git", ["worktree", "add", "--detach", dir, sha]);
+  const result = await call(ctx, ctx.repo, "git", [...GIT_SAFETY, "worktree", "add", "--detach", dir, sha]);
   if (result.status !== 0) throw new RunError(`creating the ${name} worktree failed (exit ${result.status ?? "signal"})`);
   ctx.trees.push(dir);
   return dir;
 }
 
 async function overlay(ctx: Context, tree: string, head: string, plan: FixProofPlan): Promise<void> {
-  const result = await call(ctx, tree, "git", ["checkout", head, "--", ...plan.tests, ...plan.carried]);
+  const result = await call(ctx, tree, "git", [...GIT_SAFETY, "checkout", head, "--", ...plan.tests, ...plan.carried]);
   if (result.status !== 0) throw new RunError(`overlaying head files failed (exit ${result.status ?? "signal"})`);
   plan.overlayRemovals.forEach((file) => fs.rmSync(path.join(tree, file), { force: true }));
 }
@@ -105,6 +105,10 @@ export async function execSide(options: ExecSideOptions): Promise<void> {
     (ctx, shas) => runSide(ctx, shas, options.side),
     (_shas, error) => names.map(() => encodeError(error)),
   );
-  fs.mkdirSync(options.out, { recursive: true });
-  names.forEach((name, index) => fs.writeFileSync(path.join(options.out, `${name}.report`), reports[index] ?? ""));
+  try {
+    fs.mkdirSync(options.out, { recursive: true });
+    names.forEach((name, index) => fs.writeFileSync(path.join(options.out, `${name}.report`), reports[index] ?? ""));
+  } catch {
+    // The judge reads an absent report as a named error verdict, so swallowing a write failure still fails closed.
+  }
 }

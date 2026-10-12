@@ -16,6 +16,7 @@ import { G10_REHOLD_STEPS } from "./g10-rehold.js";
 import { SEAT_NOTICE_STEPS } from "./gate-route.js";
 import { HELD_REPAIR_STEPS } from "./held-repair.js";
 import { HEAD_ORIGIN_STEPS } from "./head-origin.js";
+import { REVIEW_REFUSED_STEPS } from "./merge-standing.js";
 
 /** Steps shared with land-pr are declared here too; their routes are registered once, in `factoryRoutes`. */
 export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
@@ -42,4 +43,5 @@ export const SHEPHERD_STEPS: readonly StepDeclaration[] = [
   ...SEAT_NOTICE_STEPS,
   ...HELD_REPAIR_STEPS,
   ...HEAD_ORIGIN_STEPS,
+  ...REVIEW_REFUSED_STEPS,
 ];
