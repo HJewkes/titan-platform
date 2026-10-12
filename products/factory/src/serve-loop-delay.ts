@@ -10,14 +10,14 @@ export interface LoopDelayHistogram {
   readonly max: number;
 }
 
-export interface LoopDelayWatchOptions {
+interface LoopDelayWatchOptions {
   log: Logger;
   thresholdMs?: number;
   windowMs?: number;
   histogram?: LoopDelayHistogram;
 }
 
-export interface LoopDelayWatch {
+interface LoopDelayWatch {
   stop(): void;
 }
 
