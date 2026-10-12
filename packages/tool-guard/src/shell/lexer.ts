@@ -40,7 +40,6 @@ function lex(s: LexState): void {
 const READERS: Record<string, (s: LexState) => void> = {
   " ": readBlank,
   "\t": readBlank,
-  "\r": readBlank,
   "\\": readEscape,
   "'": readSingle,
   '"': readDouble,
