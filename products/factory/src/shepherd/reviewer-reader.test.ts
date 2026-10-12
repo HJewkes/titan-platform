@@ -4,7 +4,7 @@ import path from "node:path";
 import { claudeSourceFromPath, readSessionObservations, readSessionSourceText, type NormalizedSessionObservation } from "@titan-design/session-read";
 import type * as SessionRead from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "@titan-design/review-panel";
+import { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, USAGE_LIMIT_REASON, isInvestigativeCall } from "@titan-design/review-panel";
 import { seatFixFirst } from "./external-review.js";
 import { acceptVerdict, type AwaitVerdictInput } from "./review.js";
 import { reviewerMessages, sentMessages, transcriptReviewerReader, type TranscriptRow } from "./reviewer-reader.js";
@@ -256,13 +256,13 @@ describe("a usage-limit line, by who wrote it", () => {
   const NOTICE = "You've hit your weekly limit \u00b7 resets Oct 10 at 6pm (America/Denver)";
   const RESETS_AT_S = 1_791_676_800;
   /** Claude Code's own record: its placeholder model, the API error and the quota it was refused under. */
-  const clientNotice = (sessionId: string): Json => ({
-    ...assistant(sessionId, [NOTICE]),
-    message: { id: "msg-limit", role: "assistant", model: "<synthetic>", content: [text(NOTICE)] },
+  const clientNotice = (sessionId: string, notice = NOTICE, rateLimitType = "seven_day"): Json => ({
+    ...assistant(sessionId, [notice]),
+    message: { id: "msg-limit", role: "assistant", model: "<synthetic>", content: [text(notice)] },
     isApiErrorMessage: true,
     error: "rate_limit",
     apiErrorStatus: 429,
-    quotaLimits: { status: "rejected", resetsAt: RESETS_AT_S, rateLimitType: "seven_day" },
+    quotaLimits: { status: "rejected", resetsAt: RESETS_AT_S, rateLimitType },
   });
 
   it("marks Claude Code's own limit record with its error and reset, which reads as a usage limit", async () => {
@@ -272,6 +272,16 @@ describe("a usage-limit line, by who wrote it", () => {
 
     expect(messages.at(-1)).toMatchObject({ text: NOTICE, synthetic: { apiError: "rate_limit", resetsAt: RESETS_AT_S * 1000 } });
     expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", resetsAt: RESETS_AT_S * 1000 });
+  });
+
+  it("reads Claude Code's five-hour session-limit record as a usage limit too", async () => {
+    const session = "You've hit your session limit \u00b7 resets 3pm (America/Denver)";
+    const transcript = writeTranscript(SESSION, [user(SESSION, "review it"), clientNotice(SESSION, session, "five_hour")]);
+
+    const messages = await read([row(transcript)]);
+
+    expect(messages.at(-1)).toMatchObject({ text: session, synthetic: { apiError: "rate_limit", resetsAt: RESETS_AT_S * 1000 } });
+    expect(acceptVerdict(input, messages)).toMatchObject({ kind: "none", reason: USAGE_LIMIT_REASON, resetsAt: RESETS_AT_S * 1000 });
   });
 
   it("leaves the same words written by the reviewer unmarked, so they read as a malformed verdict", async () => {

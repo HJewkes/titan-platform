@@ -1,5 +1,6 @@
 import { stepIdMatches } from "../definition.js";
 import type { FactoryHost } from "../host.js";
+import { RESYNC_CONCURRENCY, mapBounded, settledValue } from "./bounded.js";
 import { SHEPHERD_WORKFLOW, type ShepherdServices } from "./commands.js";
 import { openHead } from "./head-moved.js";
 import { AFTER_HOLD } from "./hold.js";
@@ -28,8 +29,10 @@ function activeMerges(host: FactoryHost): { runId: string; stepId: string; head:
  */
 export async function supersedeStaleMerges(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededMerge[]> {
   const superseded: SupersededMerge[] = [];
-  for (const { runId, stepId, head } of activeMerges(host)) {
-    const current = await openHead(services, runId);
+  const merges = activeMerges(host);
+  const heads = await mapBounded(merges, RESYNC_CONCURRENCY, ({ runId }) => openHead(services, runId));
+  for (const [index, { runId, stepId, head }] of merges.entries()) {
+    const current = settledValue(heads[index]!);
     if (!current || current === head) continue;
     if (dryRun || host.runtime.completeStep(runId, stepId, JSON.stringify({ result: AFTER_HOLD }))) superseded.push({ runId, stepId, from: head, to: current });
   }

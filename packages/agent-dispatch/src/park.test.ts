@@ -31,31 +31,41 @@ function fakeAgentChat(script: string): string {
 const recordedArgv = (): string[] => readFileSync(join(dir, "argv"), "utf8").split("\0").slice(0, -1);
 
 describe("parkAgent", () => {
-  it("runs agent park by name and returns the broker's report lines", () => {
+  it("runs agent park by name and returns the broker's report lines", async () => {
     const bin = fakeAgentChat(`echo "Parked impl-a."\necho "Bring it back with: agent-chat agent resume impl-a"\n`);
 
-    const parked = parkAgent(bin, "impl-a", 10_000);
+    const parked = await parkAgent(bin, "impl-a", 10_000);
 
     expect(recordedArgv()).toEqual(["agent", "park", "impl-a"]);
     expect(parked).toEqual({ name: "impl-a", lines: ["Parked impl-a.", "Bring it back with: agent-chat agent resume impl-a"] });
   });
 
-  it("throws the broker's refusal reason when the tree is not parkable", () => {
+  it("leaves the caller's event loop free while the broker works", async () => {
+    const bin = fakeAgentChat(`sleep 1\necho "Parked impl-a."\n`);
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 50);
+
+    await parkAgent(bin, "impl-a", 10_000).finally(() => clearInterval(timer));
+
+    expect(ticks).toBeGreaterThan(5);
+  });
+
+  it("throws the broker's refusal reason when the tree is not parkable", async () => {
     const bin = fakeAgentChat(`echo "Not parked: impl-a's worktree has uncommitted changes"\nexit 1\n`);
 
-    expect(() => parkAgent(bin, "impl-a", 10_000)).toThrow(/refused agent park: Not parked: impl-a's worktree has uncommitted changes/);
+    await expect(parkAgent(bin, "impl-a", 10_000)).rejects.toThrow(/refused agent park: Not parked: impl-a's worktree has uncommitted changes/);
   });
 
-  it("throws BrokerUnavailableError when the CLI cannot reach the broker", () => {
+  it("throws BrokerUnavailableError when the CLI cannot reach the broker", async () => {
     const bin = fakeAgentChat(`echo "could not reach or start the agent-chat broker" >&2\nexit 1\n`);
 
-    expect(() => parkAgent(bin, "impl-a", 10_000)).toThrow(BrokerUnavailableError);
+    await expect(parkAgent(bin, "impl-a", 10_000)).rejects.toThrow(BrokerUnavailableError);
   });
 
-  it("refuses a name outside agent-chat's shape before running anything", () => {
+  it("refuses a name outside agent-chat's shape before running anything", async () => {
     const bin = fakeAgentChat("exit 0\n");
 
-    expect(() => parkAgent(bin, "--force", 10_000)).toThrow(DispatchError);
+    await expect(parkAgent(bin, "--force", 10_000)).rejects.toThrow(DispatchError);
     expect(() => readFileSync(join(dir, "argv"))).toThrow();
   });
 });

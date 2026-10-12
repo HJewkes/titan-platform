@@ -6,9 +6,11 @@ import { routedRunner, type RoutedRunner, type WorkflowStatus } from "@titan-des
 import { behindMain, type BehindMain } from "./behind-main.js";
 import { buildSha } from "./build-info.js";
 import { factoryStateDir } from "./config.js";
+import { deployPendingHealth, startDeployPacer } from "./deploy-pacer-sweep.js";
 import { readLastDeploy } from "./deploy-ports.js";
 import { DEPLOY_WATCH_MS, type DeployWatch } from "./deploy-watch.js";
 import { githubHealth, type GithubHealth } from "./github-health.js";
+import type { DeployPacerOptions } from "./shepherd/deploy-pacer.js";
 import { busyRuns, heldSkipped, type HoldPredicate } from "./restart-drain.js";
 import { timestampConsole } from "./serve-log.js";
 import { recordServeStart, serveStartsHealth, type ServeStart } from "./serve-starts.js";
@@ -18,18 +20,18 @@ import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { createFactoryRegistry, factoryContext, type FactoryContext } from "./registry.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
-import { rowsWithRuns, type ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
-import { supersedeMovedGates } from "./shepherd/head-moved.js";
+import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
 import { FIXER_RETIRE_MS, retireEndedFixers, type FixerRetirePorts } from "./shepherd/fixer-retire.js";
 import { MAIN_WATCH_MS, openMainWatch, type MainWatchPorts } from "./shepherd/main-watch.js";
-import { SEAT_DIGEST_MS, fileSeatDigestMemory, sendSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
+import { SEAT_DIGEST_MS, fileSeatDigestMemory, sweepSeatDigests, type SeatDigestPorts } from "./shepherd/seat-digest.js";
 import { bindCarryStateDir } from "./shepherd/tree-carry.js";
 import { sweepReviewCheckouts, type ReviewCheckoutSweepDeps } from "./shepherd/review-checkout-sweep.js";
-import { RELEASE_SWEEP_MS, sweepVersionPackages } from "./shepherd/version-packages.js";
+import { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS, sweepReleases, sweepToolchains } from "./shepherd/package-sweeps.js";
 
 export type { FactoryContext } from "./registry.js";
 
@@ -42,7 +44,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export interface FactoryServerOptions extends FactoryHostOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -54,6 +56,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   goneSweepMs?: number;
   /** How often the Version Packages sweep runs; defaults to `RELEASE_SWEEP_MS`. */
   releaseSweepMs?: number;
+  /** How often the toolchain adoption sweep runs; defaults to `TOOLCHAIN_SWEEP_MS`. */
+  toolchainSweepMs?: number;
   /** Replaces the `gh api rate_limit` probe behind health's `github` field; tests stub it. */
   github?: GithubHealth;
   /** Replaces the baked-in build sha behind health's `build` field; tests inject it. */
@@ -64,6 +68,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   resyncOnStart?: boolean;
   /** Behind health's `deploy` block and the hub seat's deploy alarm; absent means neither. */
   deployWatch?: DeployWatch;
+  /** Spawns the deployer for Shepherd's queued merge sha once merges go quiet; absent means no sweep and no `deployPending` in health. */
+  deployPacer?: DeployPacerOptions;
   /** Where the main CI watch sends a red sha's one event; absent means main is watched only after a Shepherd run's own merge. */
   mainWatch?: MainWatchPorts;
   /** Reclaims a main-red fixer once its red main is over; absent means fixers stay until the owner retires them. */
@@ -107,14 +113,16 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
   const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
-  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
   thaws.onThaw(() => {
     void goneSweep?.tick();
     void fixerSweep?.tick();
   });
   await goneSweep?.tick();
+  const headMovedSweep = services && (await startHeadMovedSweep(host, services, options, log));
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
+  const toolchainSweep = services && startSweep(() => sweepToolchains(host, services, log), options.toolchainSweepMs ?? TOOLCHAIN_SWEEP_MS, "toolchain adoption sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
   await checkoutSweep?.tick();
   const deploySweep = startDeployWatch(options.deployWatch, log);
@@ -122,11 +130,13 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const mainSweep = mainWatch && startSweep(mainWatch.tick, MAIN_WATCH_MS, "main CI watch", log);
   void mainSweep?.tick();
   const digestSweep = startSeatDigest(host, services, options.seatDigest, stateDir, log);
+  const busy = () => busyRuns(host.runtime.list(["running"]), routedRunner(options.routes).routeFor, heldRun(services)).length;
+  const pacerSweep = startDeployPacer(options.deployPacer, { now: options.now ?? Date.now, runningSha: build.sha, busy }, log);
   let closing: Promise<void> | null = null;
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, checkoutSweep, deploySweep, mainSweep, digestSweep]) await later?.stop();
+    for (const later of [goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -227,10 +237,11 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
       build: { sha: build.sha, behindMain: build.status() },
       lastDeploy: readLastDeploy(options.deployStateDir ?? factoryStateDir(process.env)),
       ...(options.deployWatch && { deploy: options.deployWatch.status() }),
+      ...deployPendingHealth(options.deployPacer),
       ownerKeys: proofs.keys.ok ? { count: proofs.keys.ids.length, ids: proofs.keys.ids } : { count: 0, refusal: proofs.keys.refusal },
       ...startHealth(start(), options),
     }),
-    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, log }),
+    mountRoutes: (app) => mountResolveProof(app, { host, ...proofs, now: options.now ?? Date.now, port: options.routes.shepherd?.port, store: options.routes.shepherd?.store, log }),
     logger: options.logger,
   };
 }
@@ -245,10 +256,9 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. */
+/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Runs are counted, not listed, so a probe never parses every finished run (TP-2419). */
 export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
-  const runs = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<WorkflowStatus, number>;
-  for (const run of host.runtime.list([...STATUSES])) runs[run.status] += 1;
+  const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
@@ -266,7 +276,7 @@ function startSeatDigest(host: FactoryHost, services: ShepherdServices | undefin
   if (services === undefined || ports === undefined) return undefined;
   const memory = fileSeatDigestMemory(stateDir);
   const tickOnce = async (): Promise<void> => {
-    const { sent, failed } = await sendSeatDigests(rowsWithRuns(host, services), ports, memory);
+    const { sent, failed } = await sweepSeatDigests(host, services, ports, memory);
     if (sent.length > 0) log.info({ seats: sent }, "sent seat digests");
     for (const failure of failed) log.warn({ ...failure }, "could not send a seat digest; the next sweep tries again");
   };
@@ -293,7 +303,6 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
-  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
   for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
 }
 
@@ -346,10 +355,6 @@ async function resync(host: FactoryHost, services: ShepherdServices, log: Logger
   } catch (err) {
     log.error({ err }, "shepherd resync at start failed");
   }
-}
-
-async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
 }
 
 export async function sweepCheckouts(log: Logger, deps: ReviewCheckoutSweepDeps = {}): Promise<void> {

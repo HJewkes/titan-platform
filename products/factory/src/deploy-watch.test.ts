@@ -1,6 +1,9 @@
 import type { OwnerItemDeposit } from "@titan-design/owner-queue";
+import { rmSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { gitAncestry } from "./build-ancestry.js";
 import { deployWatch, type DeployWatchPorts } from "./deploy-watch.js";
+import { gitLine } from "./test-support/git-line.js";
 import type { IndexLock } from "./stale-lock.js";
 
 const SHA = "a".repeat(40);
@@ -110,6 +113,33 @@ describe("the deploy watch serve runs", () => {
 
     expect(cleared).toMatchObject({ alarm: false, consecutiveRefusals: 0, behind: 0, notice: null });
     expect(sent).toHaveLength(2);
+  });
+
+  it("reads behind 0 once a later commit is deployed by hand, though nothing asked for that commit", async () => {
+    const repo = gitLine();
+    const { older: wanted, newer: later } = repo;
+    const { ports, log, deployByHand } = fake();
+    const watch = deployWatch({ ...ports, isAncestor: gitAncestry(repo.dir) });
+
+    log.push(`2026-10-07T10:46:00Z service deploy --expect ${wanted}\n`);
+    await watch.tick();
+    const stalled = watch.status();
+    deployByHand(later);
+    await watch.tick();
+    rmSync(repo.dir, { recursive: true, force: true });
+
+    expect(stalled).toMatchObject({ alarm: true, behind: 1, behindMinutes: 74 });
+    expect(watch.status()).toMatchObject({ alarm: false, behind: 0, behindMinutes: 0, causes: [] });
+  });
+
+  it("keeps an ask behind, and says so, when git cannot tell whether the running build holds it", async () => {
+    const { ports, log } = fake();
+    const watch = deployWatch({ ...ports, isAncestor: async () => ({ unknown: "git merge-base exited 128: fatal: bad object" }) });
+
+    log.push(`2026-10-07T10:46:00Z service deploy --expect ${NEXT}\n`);
+    await watch.tick();
+
+    expect(watch.status()).toMatchObject({ alarm: true, behind: 1, unverified: `could not tell whether ${SHA} contains ${NEXT}: git merge-base exited 128: fatal: bad object; counted as not landed` });
   });
 
   it("names the stale index.lock by path and age in the refusal reason", async () => {

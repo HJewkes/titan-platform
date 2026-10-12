@@ -2,8 +2,9 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GateRecord } from "@titan-design/hitl";
 import { FACTORY_ANSWER_ALLOWANCES } from "./coordinator-allowances.js";
-import { coordinatorEvidencePolicy } from "./coordinator-evidence.js";
+import { coordinatorEvidencePolicy, stepOf } from "./coordinator-evidence.js";
 import { deviceGateAuthorize } from "./device-gates.js";
+import { GateAskStore, gateAskMigration } from "./gate-ask-store.js";
 import { GateBatchStore, gateBatchMigration } from "./gate-batch-store.js";
 import { SqliteGateStore, gateBriefMigration, gateEvidenceMigration, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db, type Migration } from "@titan-design/store-sqlite";
@@ -14,6 +15,7 @@ import {
   workflowMigration,
   workflowOwnershipMigration,
   type WorkflowRun,
+  WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
 import type { ShepherdServices } from "./shepherd/commands.js";
@@ -65,34 +67,44 @@ export interface ResumeReport {
 
 export interface FactoryHost {
   readonly runtime: WorkflowRuntime;
+  /** The stored runs for reads that need no live run: statuses alone, or a page of history. */
+  readonly runs: WorkflowRunStore;
   readonly gates: SqliteGateStore;
   /** Signed batches of merge-gate resolves (`gate resolve-batch`). */
   readonly batches: GateBatchStore;
+  /** Gates posted to agent-chat's human queue, so an answer resolves its gate at most once. */
+  readonly asks: GateAskStore;
   /** Hydrate every unfinished run, drive each until it ends or waits on a human, then release them. */
   resume(): Promise<ResumeReport>;
   /** Claim every unfinished run whose lease is free and keep driving it; the ids it claimed, never those in `exclude`. Leases stay held until `close()`. */
   adopt(options?: { exclude?: ReadonlySet<string> }): Promise<string[]>;
   pendingGates(): PendingGate[];
+  /** Runs per status from the status index, for callers that need totals and must not parse every run's step results. */
+  countRuns<S extends WorkflowRun["status"]>(statuses: readonly S[]): Map<S, number>;
   close(): void;
 }
 
 const SETTLED: ReadonlySet<WorkflowRun["status"]> = new Set(["completed", "failed", "cancelled", "recovery_required"]);
 
-/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, and the tenant's 16 follows them. */
+/** One SQLite file holds runs, gates and the routes' tenant; 1-3 match the codewatch triage host, 7 follows the shepherd tenant's 4-6, 13 to 15 follow the tenant's 12, the tenant's 16 follows them, and 20 follows the tenant's 19. */
 export function openFactoryHost(options: FactoryHostOptions): FactoryHost {
   if (options.dbPath !== ":memory:") mkdirSync(dirname(options.dbPath), { recursive: true });
   const db = openDatabase(options.dbPath);
   const tenant = options.routes.database;
-  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), ...(tenant?.extraMigrations ?? [])]);
+  runMigrations(db, [gateMigration(1), workflowMigration(2), workflowOwnershipMigration(3), gateResolverMigration(7), gateBriefMigration(13), gateEvidenceMigration(14), gateBatchMigration(15), gateAskMigration(20), ...(tenant?.extraMigrations ?? [])]);
   const gates = new SqliteGateStore(db, { migrate: false, requireBrief: true, allowances: FACTORY_ANSWER_ALLOWANCES, evidencePolicy: coordinatorEvidencePolicy, authorize: deviceGateAuthorize });
   const runtime = createRuntime(db, gates, options);
   const unbind = tenant?.bind(db);
   const pendingGates = (): PendingGate[] => listPendingGates(runtime, gates);
+  const runs = new WorkflowRunStore(db);
   const host: FactoryHost = {
     runtime,
+    runs: new WorkflowRunStore(db),
     gates,
     batches: new GateBatchStore(db, options.now),
+    asks: new GateAskStore(db, options.now),
     pendingGates,
+    countRuns: (statuses) => runs.countByStatus(statuses),
     resume: () => resume(runtime, pendingGates, options.gatePollMs ?? 250, options.now ?? Date.now),
     adopt: (adoptOptions) => runtime.hydrate(adoptOptions),
     close: () => {
@@ -153,7 +165,7 @@ function heldRuns(runtime: WorkflowRuntime, resumed: ReadonlySet<string>, nowMs:
   });
 }
 
-/** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; the run's current step names the waiting one. */
+/** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`; the gate's own id names its step, because the run's current step can still name an older one. */
 function listPendingGates(runtime: WorkflowRuntime, gates: SqliteGateStore): PendingGate[] {
   return gates.listPending().flatMap((gate) => {
     const slash = gate.id.indexOf("/");
@@ -161,6 +173,6 @@ function listPendingGates(runtime: WorkflowRuntime, gates: SqliteGateStore): Pen
     const runId = gate.id.slice(0, slash);
     const run = runtime.status(runId);
     if (!run) return [];
-    return [{ runId, stepId: run.currentStep ?? gate.id.slice(slash + 1), gate }];
+    return [{ runId, stepId: stepOf(gate.id), gate }];
   });
 }

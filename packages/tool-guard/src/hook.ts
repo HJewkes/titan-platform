@@ -9,7 +9,7 @@ import type { ErrorClass } from "./log.js";
 import { GUARDED_PATHS } from "./paths.js";
 import { ParseError } from "./shell/lexer.js";
 import { MAX_NESTING } from "./shell/nesting.js";
-import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplitReadingError, ValueWalkError } from "./shell/unsure-readings.js";
+import { ADDED_SCRIPT_WEIGHT, MAX_SCRIPT_BYTES, NestingReadingError, ReadingLimitError, ScriptBudgetError, SplicedReadingError, SplitReadingError, UntrackedWriteError, ValueWalkError } from "./shell/unsure-readings.js";
 import type { ScriptOverrun } from "./shell/unsure-readings.js";
 import type { Split } from "./shell/parse-error.js";
 import type { ClassifiedAction, ClassifyContext } from "./types.js";
@@ -60,6 +60,10 @@ const SPLIT_REASONS: Record<Split, string> = {
     "authority-guard does not check this Bash command: it cannot find where a `${ }`, `$(( ))` or `$[ ]` ends, and bash may close it elsewhere, fail only when expanding it, and run the rest of the line; close the expansion or move it into a variable.",
 };
 const NESTING_REASON = `authority-guard does not check a Bash command whose expansions or substitutions are nested more than ${MAX_NESTING} deep, so it refuses every one; flatten the nesting into variables or a script file.`;
+const SPLICED_REASON =
+  "authority-guard does not check this Bash command: its `eval` and `-c` texts, read again with what their substitutions print, add more text than it checks, as nested `eval \"$(…);…\"` doubles them at every level; flatten the nesting, or write the steps to a script file and run that.";
+const UNTRACKED_REASON =
+  "authority-guard does not check this Bash command: it writes a file the guard cannot follow (output it cannot reproduce, a target only known at run time, another fd, `>!`, `<>`), then runs a script, which may be that file; run the script in its own command, where the guard reads the file as it is.";
 const TABLE_REASON = "authority-guard could not load the authority table, so it refuses every guarded action. Report this to the owner.";
 const GUARDED_KEYWORDS = ["gh pr merge", "/merge", "publish", "deploy", "gist"];
 /**
@@ -124,6 +128,8 @@ function limitReason(error: ReadingLimitError): string {
   if (error instanceof ScriptBudgetError) return scriptsReason(error.overrun);
   if (error instanceof NestingReadingError) return NESTING_REASON;
   if (error instanceof ValueWalkError) return VALUE_REASON;
+  if (error instanceof SplicedReadingError) return SPLICED_REASON;
+  if (error instanceof UntrackedWriteError) return UNTRACKED_REASON;
   return error instanceof SplitReadingError ? SPLIT_REASONS[error.split] : READINGS_REASON;
 }
 

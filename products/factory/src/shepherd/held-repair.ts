@@ -19,7 +19,7 @@ export const HELD_REPAIR_STEPS: readonly StepDeclaration[] = [
 const DEFAULT_POLL_MS = 30_000;
 
 const HeldCheckResult = z.looseObject({ held: z.boolean(), reason: z.string().optional(), seat: z.string().optional() });
-const HeldWaitResult = z.looseObject({ moved: z.boolean() });
+const HeldWaitResult = z.looseObject({ moved: z.boolean(), headSha: z.string().optional() });
 const RedPayload = z.looseObject({ failing: z.array(z.looseObject({ name: z.string(), conclusion: z.string().nullish() })) });
 const VerdictPayload = z.looseObject({ kind: z.string() });
 
@@ -39,12 +39,16 @@ function heldCheck(registration: Registration | undefined): z.infer<typeof HeldC
   return { held: true, reason: registration.holdReason ?? "held", ...(seat && { seat }) };
 }
 
-/** Polls until the hold is released or replaced, or the PR leaves the held head; a failed read is polled again. */
+/**
+ * Polls until the hold is released or replaced, or the PR leaves the held head; a failed read is polled again.
+ * A move records the open PR's new head, because shepherd status reads its head from completed results and the
+ * next ci-wait has none while it runs.
+ */
 async function awaitRelease(deps: ShepherdDeps, input: HeldInput & { reason: string }, signal: AbortSignal): Promise<z.infer<typeof HeldWaitResult>> {
   for (;;) {
     signal.throwIfAborted();
     const pr = await deps.port.getPr(input.repo, input.pr).catch(() => undefined);
-    if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { moved: true };
+    if (pr && (pr.headSha !== input.headSha || pr.state !== "open")) return { moved: true, ...(pr.state === "open" && { headSha: pr.headSha }) };
     const now = heldCheck(deps.store.get().byRun(input.runId));
     if (!now.held || now.reason !== input.reason) return { moved: false };
     await deps.sleep(deps.pollMs ?? DEFAULT_POLL_MS, signal);

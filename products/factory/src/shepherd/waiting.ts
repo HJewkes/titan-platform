@@ -58,7 +58,7 @@ export function waitingGates(rows: readonly WatchRow[], now: Date = new Date(), 
 export const overdueOwnerGates = ({ owner }: Waiting): WaitingGate[] => owner.filter((gate) => gate.ageHours > OVERDUE_HOURS);
 
 /** `rowsOf` reads the watch rows; the command stays here so commands.ts holds only its registry entry. */
-export function waitingCommand(rowsOf: (ctx: FactoryContext) => WatchRow[]) {
+export function waitingCommand(rowsOf: (ctx: FactoryContext) => Promise<WatchRow[]>) {
   return defineCommand<Record<string, never>, Waiting, FactoryContext>({
     name: "shepherd.waiting",
     description: "Every pending gate, oldest first: the ones the owner answers, then the ones a seat answers. Reads the watch rows and writes nothing",
@@ -69,7 +69,7 @@ export function waitingCommand(rowsOf: (ctx: FactoryContext) => WatchRow[]) {
         const gate = ctx.host.gates.get(gateId);
         return gate && headGateAsks(gate);
       };
-      return waitingGates(rowsOf(ctx), new Date(), heads);
+      return waitingGates(await rowsOf(ctx), new Date(), heads);
     },
   });
 }

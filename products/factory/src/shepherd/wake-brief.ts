@@ -1,13 +1,16 @@
 import { PEER_NAME_PATTERN, dataFence } from "@titan-design/agent-dispatch";
 import { isPassing, type CheckRun, type GitHubPort, type PullRequest, type RepoSlug, type ReviewComment } from "@titan-design/github";
+import type { WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { failureOf } from "./error-class.js";
 import { BLOCK_LINE, DEFECT_CLASS_HEADING, findingsText } from "@titan-design/review-panel";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 
-/** Recorded once per FIX_FIRST wake, so the run's count of them survives a replay and a new head. */
+/** Recorded once per FIX_FIRST round, woken or not, so the run's count of them survives a replay and a new head. */
 export const FIX_FIRST_STEP = "sh-wake-fix-first";
+/** The run's FIX_FIRST rounds so far: the one count the runaway cap, the re-review brief and the wake all read. */
+export const fixFirstCount = (ctx: Pick<WorkflowContext, "iteration">): number => ctx.iteration(FIX_FIRST_STEP);
 /** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
 export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
@@ -53,10 +56,9 @@ async function failingRuns(port: GitHubPort, input: WakeFacts): Promise<CheckRun
  * Each entry names scripts, not commands; the appended test rule decides where and how they run.
  */
 const LOCAL_REPRO: Readonly<Record<string, string>> = {
-  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check` or `docs:build` script, or a missing changeset",
+  validate: "whichever step the log shows failing: the `typecheck`, `lint`, `test`, `capabilities:check`, `metrics:check`, `docs:build` or `egress:scan` (over the PR's commit range) script, or a missing changeset",
   "lint-types": "the `lint:types` script",
   "dag-check": "the `dag:check` and `dead:check` scripts",
-  "egress-scan": "the `egress:scan` script over the PR's commit range",
 };
 
 function failingJobsLine(failing: readonly CheckRun[]): string {
@@ -251,6 +253,9 @@ async function withReviewComments(port: GitHubPort, input: WakeFacts, wake: { re
   return { ...wake, payload: `${wake.payload}\n\n${COMMENTS_INTRO}\n${dataFence("review comments", section)}` };
 }
 
+/** Seats merged main into PRs to re-run flaky CI or stay current, resetting reviews; Shepherd owns the land-time merge-up (TP-2080). */
+const BASE_IS_SHEPHERDS = "Do not merge the base branch to re-run CI or to bring the PR up to date: Shepherd re-runs flaky checks and merges the base itself at land time. Push only your fix.";
+
 /** Why the agent is woken, and the data that shows it, fenced; `testRule` is the fixer rule for the host serve runs on. */
 export async function describeWake(port: GitHubPort, input: WakeFacts, pr: PullRequest, testRule: string = MAC_SUITE_RULES.fixer): Promise<{ reason: string; payload: string }> {
   const wake = await wakeBody(port, input, pr);
@@ -262,7 +267,7 @@ async function wakeBody(port: GitHubPort, input: WakeFacts, pr: PullRequest): Pr
   switch (input.kind) {
     case "ci-red": {
       const failing = await failingRuns(port, input);
-      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow.`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
+      return { reason: `CI failed at head ${head}.${failingJobsLine(failing)} The failing jobs' log tails follow. ${BASE_IS_SHEPHERDS}`, payload: dataFence("CI log", await ciLogs(port, input, failing)) };
     }
     case "review":
       return withReviewComments(port, input, reviewWake(input));

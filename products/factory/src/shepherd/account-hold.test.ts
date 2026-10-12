@@ -1,13 +1,14 @@
 import { fakeGitHub, fakeSha, githubPort } from "@titan-design/github";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { ACCOUNT_WAIT_LIMIT_MS, accountRoutes, accountWithHeadroom, type AccountsView } from "./account-hold.js";
 import { RECHECK_AFTER_MS } from "./account-limit.js";
 import { AccountLimitStore, accountLimitMigration, type AccountLimitStoreRef } from "./account-store.js";
 import type { ShepherdDeps } from "./phases.js";
 import { shepherdEventMigration } from "./events.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
+import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration, type ShepherdStoreRef } from "./store.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("account-hold-head");
@@ -18,7 +19,7 @@ const HELD = `account-exhausted: ${ACCOUNT} until 2026-10-11T00:00:00.000Z; TP-1
 
 function migrated(): Db {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), accountLimitMigration(17)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), accountLimitMigration(17)]);
   return db;
 }
 
@@ -256,6 +257,53 @@ describe("sh-account-wait", () => {
     expect(s.store().byRun("run-1")?.held).toBe(true);
   });
 
+  it("drops its own hold when the PR closes during the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.fake.pr(1).state = "closed";
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "head-moved" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: false, holdReason: null });
+    expect(s.limits().holdsRun("run-1")).toBe(false);
+    expect(s.db.prepare("SELECT run_id FROM shepherd_account_hold").all()).toEqual([]);
+  });
+
+  it("a PR read whose state is neither open nor closed keeps the run's own hold and waits on", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    Reflect.set(s.fake.pr(1), "state", "merged");
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: HELD });
+    expect(s.limits().holdsRun("run-1")).toBe(true);
+  });
+
+  it("a PR read that throws keeps the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.fake.onGetPr = () => {
+      throw new Error("the pull request answered state \"OPEN\", neither open nor closed");
+    };
+
+    expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: HELD });
+  });
+
+  it("leaves an owner's hold standing when the PR closes during the hold", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "owner: wait");
+    s.fake.pr(1).state = "closed";
+
+    expect(await s.wait("run-1", true)).toEqual({ resumed: "released" });
+    expect(await s.wait("run-1", false)).toEqual({ resumed: "head-moved" });
+    expect(s.store().byRun("run-1")).toMatchObject({ held: true, holdReason: "owner: wait" });
+  });
+
   it("keeps waiting while the store cannot be read, failing closed", async () => {
     const s = scene();
     s.register("run-1", 1);
@@ -263,5 +311,73 @@ describe("sh-account-wait", () => {
     s.db.exec("DROP TABLE shepherd_account_limit");
 
     expect(await s.wait("run-1")).toEqual({ resumed: "expired" });
+  });
+});
+
+describe("a repoint during an account hold", () => {
+  const ownRows = (s: ReturnType<typeof scene>) => s.db.prepare("SELECT run_id FROM shepherd_account_hold").all();
+
+  it("carries the run's own hold, so headroom after the reset lifts it for the new run", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+
+    s.store().repoint("run-1", "run-2");
+
+    expect(s.limits().holdsRun("run-2")).toBe(true);
+    expect(s.limits().holdsRun("run-1")).toBe(false);
+    s.clock.now = Date.parse("2026-10-11T00:01:00.000Z");
+    expect(s.pick("run-2")).toBe(ACCOUNT);
+    expect(s.store().byRun("run-2")).toMatchObject({ held: false, holdReason: null });
+    expect(ownRows(s)).toEqual([]);
+  });
+
+  it("leaves an owner's hold placed over the account hold standing after the reset", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "owner: wait");
+
+    s.store().repoint("run-1", "run-2");
+    s.clock.now = Date.parse("2026-10-11T00:01:00.000Z");
+    s.pick("run-2");
+
+    expect(s.store().byRun("run-2")).toMatchObject({ held: true, holdReason: "owner: wait" });
+  });
+
+  it("lets the new run re-hold the account as its own, so its wait can see the release", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+
+    s.store().repoint("run-1", "run-2");
+
+    expect(await s.hold("run-2")).toMatchObject({ held: true, own: true });
+  });
+
+  it("leaves an owner hold with no account hold under it owner-only after the reset", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    s.store().hold("run-1", "Account-exhausted: manual");
+
+    s.store().repoint("run-1", "run-2");
+    s.clock.now = Date.parse("2026-10-11T00:01:00.000Z");
+    s.pick("run-2");
+
+    expect(s.store().byRun("run-2")).toMatchObject({ held: true, holdReason: "Account-exhausted: manual" });
+    expect(s.limits().releaseRun("run-2")).toBe(false);
+    expect(ownRows(s)).toEqual([]);
+  });
+
+  it("moves a stale account row under an owner override without making the new run its owner", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "owner: wait");
+
+    s.store().repoint("run-1", "run-2");
+
+    expect(s.limits().holdsRun("run-2")).toBe(false);
+    expect(s.db.prepare("SELECT run_id, reason FROM shepherd_account_hold").all()).toEqual([{ run_id: "run-2", reason: HELD }]);
   });
 });

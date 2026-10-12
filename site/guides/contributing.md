@@ -45,8 +45,8 @@ list. A finding names only `file:line` and the rule, never the text.
   run `pnpm install` there; the hook fails closed rather than skip the scan. The hook is never
   installed in CI. If the install printed "pre-push hook not installed", run `pnpm build`,
   then `pnpm run prepare`.
-- **The CI job.** `egress-scan` scans every commit of a pull request, from its base sha to its
-  head sha, and every push to main. It is a merge gate, not an egress control: a branch is
+- **The CI step.** A step of the `validate` job scans every commit of a pull request, from its
+  base sha to its head sha, and every push to main. It is a merge gate, not an egress control: a branch is
   public as soon as it is pushed. CI does not have the private term list.
 - **The allow file.** `.egress-allow` at the root holds `<glob> <rule-id> <reason>` lines,
   one per file and rule. The reason names a task id. `private-term` hits are never
@@ -252,6 +252,11 @@ Both outputs are committed. `validate` runs `pnpm capabilities:check`, which reg
 memory and fails when either file differs, so edit the sources and rerun the script. The
 "Version Packages" pull request stays green because `pnpm version-packages` regenerates the
 catalog after bumping versions. The script fails when a unit has no `CAPABILITY.md`.
+
+The same script writes each public package's API snapshots, `packages/<dir>/api/<entry>.d.ts`,
+from the built `dist/`, so it exits 2 when a package is unbuilt. Callers that run before a
+build (`pnpm version-packages`, `pnpm new:package`) pass `--catalog-only`; after stamping a
+package, run `pnpm build && pnpm capabilities` to add its snapshot.
 
 Page bodies are hand-written on purpose. Generating them from type signatures produces a
 list of exports, not an explanation of when to reach for the package.

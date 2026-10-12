@@ -125,6 +125,12 @@ function touchesConfig(entries: DiffEntry[]): boolean {
   return entries.some((entry) => entry.path === CONFIG_PATH || entry.oldPath === CONFIG_PATH);
 }
 
+// vitest would read a path that starts with a dash as a flag, so such a test makes the plan an error instead.
+function rejectDashedTests(plan: FixProofPlan): PlanResult {
+  const unsafe = plan.tests.find((test) => test.startsWith("-"));
+  return unsafe === undefined ? { ok: true, plan } : { ok: false, error: `unsafe test path: ${unsafe}` };
+}
+
 /** Splits a merge-base-to-head diff into tests to run, carried support files and deleted tests, using globs from the base config only. */
 export function planFixProof(input: PlanInput): PlanResult {
   const parsed = parseFixProofConfig(input.baseConfig);
@@ -136,5 +142,5 @@ export function planFixProof(input: PlanInput): PlanResult {
     return { ok: false, error: (error as Error).message };
   }
   const headDiffers = input.headConfig !== undefined && (input.headConfig ?? null) !== (input.baseConfig ?? null);
-  return { ok: true, plan: buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries)) };
+  return rejectDashedTests(buildPlan(entries, parsed.config, headDiffers || touchesConfig(entries)));
 }

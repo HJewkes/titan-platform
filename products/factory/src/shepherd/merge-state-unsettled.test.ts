@@ -73,8 +73,8 @@ function world(evidenceState: EvidenceState, observeState: ObserveState = () => 
     store,
     now: () => clock.now,
     sleep: tick,
-    park: () => ({ lines: [] }),
-    registry: async () => true,
+    park: async () => ({ lines: [] }),
+    registry: async () => "trusted" as const,
     mergeTree: async (input) => (mergeTreeProbes.push(input.headSha), "clean"),
   });
   const during = (route: StepRoute, enter: (stepId: string) => void, leave: () => void): StepRoute => ({

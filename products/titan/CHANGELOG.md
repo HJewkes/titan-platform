@@ -1,5 +1,21 @@
 # @titan-design/titan
 
+## 0.3.0
+
+### Minor Changes
+
+- 6de2539: `titan host doctor` adds an `inventory` row group: a stat-only presence row for every path in
+  the coordination design's section 2 inventory on the current platform, so secrets are checked
+  without being read.
+
+## 0.2.0
+
+### Minor Changes
+
+- 2c309ee: Add `titan host doctor [--json]`: runs the active-work, agent-chat and titan-factory doctors and
+  reports presence and version for the product and tool CLIs, warning when a linked product CLI's
+  version differs from its checkout's package.json.
+
 ## 0.1.0
 
 ### Minor Changes

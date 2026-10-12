@@ -49,6 +49,7 @@ titan-miner insights cache-ttl --since 2026-09-01   # one of six questions; see 
 titan-miner serve --port 7400                # /health, /rpc, /mcp, /events on loopback
 titan-miner mcp                              # MCP over stdio
 titan-miner --graph <file> graph-refresh -- active-work miner refresh   # one scheduled pass
+titan-miner --graph <file> tool-gap-weekly --notify-command <path>     # weekly tool-gap tasks and digest
 ```
 
 Six options go before the command and apply to all of them:
@@ -81,19 +82,24 @@ list-price caveat. Each question is also an MCP tool, `miner__insights__<questio
 | `handoff-threshold` | when each role should hand over: boot cost, fill growth, best context threshold K | `--k`, `--reviewer-prs`, `--broker-log` |
 | `cache-ttl` | what a 5-minute cache TTL would save against 1h, per role and profile | none |
 | `wake-economics` | what wakes a coordinator, and the requests and cost of each wake episode | `--episode-role <role>` |
+| `tool-errors` | error tool results and classifier denials per local day, by error class and by tool | `--transcript` |
+| `round-trips` | a parent's follow-ups to the agents it spawned by class, and per-PR verdict rounds, per local day | none |
 | `blocked-flow` | per repo: verdict-to-merge minutes, PRs holding a MERGE, classifier denials, idle implementer slots | `--seat`, `--split-at`, `--transcript`, `--journal`, `--pulls` |
 | `liveness` | seats dark over 5 minutes, missed routes, unreported exits, agents stuck on a permission prompt | `--seat`, `--broker-log` |
 | `tool-gaps` | post-filters piped after our CLIs, by normalised pattern, each marked NEW or EXISTS-UNUSED against the CLI's `--help` | `--top` |
 | `tool-adoption` | per flag or verb in the adoption registry, weekly uses of the new form against the old pipelines, flagged unadopted or unused two weeks after ship; an unshipped baseline counts the old pipelines alone | none |
+| `probes` | each probe in a JSON file, a named `tool-errors` or `round-trips` measure, against its target per local day: HOLDING, REGRESSED or NO-DATA | `--probes` |
 
 The first four read the session graph and take the shared filters `--session`,
-`--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow` and `liveness` read
+`--agent-prefix`, `--role`, `--since` and `--until`. `blocked-flow`, `liveness` and `round-trips` read
 agent-chat's files instead (`TITAN_MINER_EVENTS_DB`, default `~/.agent-chat/events.db`, and
 `TITAN_MINER_BROKER_LOG`, default `~/.agent-chat/broker.log`), so they take only `--since`
-and `--until` and narrow with `--seat`. Options that name a local file (`--broker-log`,
-`--transcript`, `--journal`, `--pulls`) are accepted only on the CLI. `tool-gaps` reads each
+and `--until`, and the first two narrow with `--seat`. Options that name a local file (`--broker-log`,
+`--transcript`, `--journal`, `--pulls`, `--probes`) are accepted only on the CLI. `tool-gaps` reads each
 Bash command back from its transcript and runs `<cli> --help`; it takes every shared filter but `--role`.
 `tool-adoption` reads Bash commands back the same way and takes the same filters.
+`tool-errors` reads each error tool result back from its transcript to class it, and takes the same filters.
+`probes` runs only the `tool-errors` and `round-trips` measures its probe file names, over `--since` and `--until` alone.
 
 ### Where state lives
 
@@ -119,6 +125,8 @@ the FTS orphan ratio.
 | a name in `degraded` from `search` | one retriever failed; the others still answered |
 | `graph-refresh: another run holds …`, exit 75 | a second `graph-refresh` while one is running; nothing was done |
 | `graph-refresh: FAILED: …`, exit 70 | the owner's refresh failed, or the graph failed `quick_check` |
+| `tool-gap-weekly: another run holds …`, exit 75 | a second weekly pass while one is running; nothing was done |
+| `tool-gap-weekly: FAILED: …`, exit 70 | a task action or the notifier failed; last week's snapshot is kept |
 
 ## A refresh, package by package
 
@@ -306,7 +314,9 @@ playbook is exercised.
 - **No dashboard.** That waits on the UI package split.
 - **No built-in scheduler.** A systemd timer drives `graph-refresh`, which runs the
   graph owner's refresh under a lock and then quick_checks the file
-  (`ops/systemd/session-miner-refresh.timer`; install steps in the product README).
+  (`ops/systemd/session-miner-refresh.timer`; install steps in the product README). A
+  weekly timer drives `tool-gap-weekly`, which files or notes one active-work task per
+  tool-gap pattern and sends the owner one digest (`ops/systemd/session-miner-tool-gaps.timer`).
 - **Per-tool Drain partitions** wait on the fact table carrying tool names for results.
 
 The value of naming these is that each is a gap in a *product*, not in a package. The

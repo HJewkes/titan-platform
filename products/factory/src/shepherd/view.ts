@@ -1,6 +1,7 @@
 import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
@@ -46,8 +47,9 @@ export const WatchRowSchema = z.object({
   ownerGateReason: z.enum(OWNER_GATE_REASONS).optional(),
   /** Whole minutes from the run's registration to its end, or to now while it runs. */
   totalMinutes: z.number().int().optional(),
-  /** The registration's implementer; null when it names none. Absent in rows older than the field. */
+  /** The registration's implementer and slice label, each null when it names none (only a slice-less run closes its task). Absent in rows older than the fields. */
   implementer: z.string().nullable().optional(),
+  slice: z.string().nullable().optional(),
   /** The agent name the newest started `sh-review` dispatched; null before any reviewer started. Absent in rows older than the field. */
   reviewer: z.string().nullable().optional(),
 });
@@ -116,10 +118,8 @@ function completedSteps(run: WorkflowRun): StepResult[] {
 }
 
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
-  const terminal = TERMINAL_PHASE[run.status];
-  if (terminal) return terminal;
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current);
+  return TERMINAL_PHASE[run.status] ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -171,7 +171,8 @@ function waitsOnHold(run: WorkflowRun, held: WatchRow["held"], headSha: string |
   return merging && held !== null && (headSha === null || held.satisfiedAt !== headSha);
 }
 
-function holdWait({ holdReason, holdReviewer }: Registration, headSha: string | null): string {
+function holdWait({ holdReason, holdReviewer, ownerHold }: Registration, headSha: string | null): string {
+  if (ownerHold) return `waiting for the owner to release their hold (${ownerHold.reason})`;
   const verdict = holdReviewer ? `, or for a MERGE from ${holdReviewer}${headSha ? ` at ${headSha.slice(0, 7)}` : ""}` : "";
   return `waiting for the hold to be released (${holdReason ?? "held"})${verdict}`;
 }
@@ -219,8 +220,8 @@ function freezeWait(run: WorkflowRun, steps: readonly StepResult[]): string | un
 export interface RowInput {
   registration: Registration;
   run: WorkflowRun;
-  /** The gate the run waits on now, with the step it belongs to. */
-  pending?: { gate: GateRecord; stepId: string };
+  /** The gate the run waits on now; its step is read from the gate id, because the run's current step can name an older step. */
+  pending?: { gate: GateRecord };
   /** The run holding the repo's merge train, if any. */
   train?: TrainHolder;
   /** The clock the stall limits read; defaults to the wall clock. */
@@ -269,10 +270,10 @@ function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase,
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
 }
 
-/** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. */
-function heldView({ held, holdReason, holdSatisfied }: Registration): WatchRow["held"] {
+/** A satisfied hold names the head its reviewer sent MERGE at, and the session that wrote it. No satisfaction passes an owner hold, so it shows none. */
+function heldView({ held, holdReason, holdSatisfied, ownerHold }: Registration): WatchRow["held"] {
   if (!held) return null;
-  if (holdSatisfied === null) return { reason: holdReason ?? "held" };
+  if (ownerHold || holdSatisfied === null) return { reason: ownerHold?.reason ?? holdReason ?? "held" };
   const { reviewer, agentId, sessionId } = holdSatisfied.by;
   return { reason: holdReason ?? "held", satisfiedAt: holdSatisfied.head, satisfiedBy: `${reviewer} (${agentId}/${sessionId})` };
 }
@@ -296,14 +297,15 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     phase,
     headSha,
     phaseSince: since,
-    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending?.stepId, registration, train?.runId === run.id ? undefined : train)),
-    pendingGate: pending ? { gateId: pending.gate.id, stepId: pending.stepId, since: pending.gate.createdAt } : null,
+    nextAction: freezeWait(run, steps) ?? baseWait(run, steps) ?? heldWakeWait(run, steps) ?? (holding ? holdWait(registration, headSha) : nextAction(phase, headSha, pending?.gate, pending && stepOf(pending.gate.id), registration, train?.runId === run.id ? undefined : train)),
+    pendingGate: pending ? { gateId: pending.gate.id, stepId: stepOf(pending.gate.id), since: pending.gate.createdAt } : null,
     held,
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
     totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
     implementer: registration.implementer || null,
+    slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
   };
 }

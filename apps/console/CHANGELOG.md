@@ -1,5 +1,62 @@
 # titan-console
 
+## 0.3.13
+
+### Patch Changes
+
+- Updated dependencies [61511e7]
+  - @titan-design/github@0.10.0
+
+## 0.3.12
+
+### Patch Changes
+
+- Updated dependencies [cd830c1]
+  - @titan-design/github@0.9.0
+
+## 0.3.11
+
+### Patch Changes
+
+- b0fd912: Document the phone login-link flow, and that a console sign-in survives a daemon restart: the session cookie is signed with `lan.token`, so only an unspent login link dies with the process.
+
+## 0.3.10
+
+### Patch Changes
+
+- Updated dependencies [de21f12]
+- Updated dependencies [cd01cfa]
+  - @titan-design/session-analytics@0.16.0
+
+## 0.3.9
+
+### Patch Changes
+
+- Updated dependencies [7b9335c]
+  - @titan-design/session-read@0.14.0
+  - @titan-design/session-graph@0.16.2
+  - @titan-design/session-analytics@0.15.1
+
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [f640f72]
+- Updated dependencies [3ecb1c7]
+  - @titan-design/session-analytics@0.15.0
+  - @titan-design/session-graph@0.16.1
+  - @titan-design/session-read@0.13.2
+
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [11df74d]
+- Updated dependencies [662f42b]
+- Updated dependencies [b924847]
+  - @titan-design/session-analytics@0.14.0
+  - @titan-design/session-read@0.13.1
+
 ## 0.3.6
 
 ### Patch Changes

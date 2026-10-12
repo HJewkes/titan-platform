@@ -1,5 +1,20 @@
 # @titan-design/agent
 
+## 0.5.0
+
+### Minor Changes
+
+- c54c098: `createCodexExecAdapter` accepts an optional dated `prices` table and fills turn usage with an estimated USD cost when the run's model has a row in force; without one, cost stays `null`. Exports `CodexPriceRow` and `priceCodexUsage`. The package ships no rates.
+
+## 0.4.7
+
+### Patch Changes
+
+- ea3d34c: A failed `ExecutionTerminal` carries optional `usage`, and the durable dispatcher keeps the spend a harness reported before it failed, so budgets can count failed steps.
+- Updated dependencies [ea3d34c]
+  - @titan-design/agent-protocol@0.7.0
+  - @titan-design/agent-lifecycle@0.1.7
+
 ## 0.4.6
 
 ### Patch Changes

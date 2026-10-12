@@ -7,7 +7,7 @@ import { decideAutoMerge, isUnsettledGate, type MergeEvidence } from "./merge-fa
 import { refreshMergeEvidence } from "./merge-settle.js";
 import type { Verdict } from "./phases.js";
 import { escalationReason, type Escalated } from "./route-table.js";
-import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, type SeatLookup } from "./seats.js";
+import { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT, type SeatLookup } from "./seats.js";
 
 const MERGE_ORDER = ["never", "owner-gate", "auto"] as const;
 
@@ -52,6 +52,8 @@ export interface EffectivePolicy {
   visualPaths?: string[];
   /** The seat's `merge-into-feature-base` grant: the merge may land in a base other than the default branch; absent, it waits for a retarget. */
   featureBase?: true;
+  /** The seat's `release-merge` grant: a Version Packages PR may merge on its preflight; absent, the release waits for the owner. */
+  release?: "grant";
 }
 
 /** An `EffectivePolicy` read back from a run param or the store; unknown keys are refused. */
@@ -65,6 +67,7 @@ export const EffectivePolicySchema: z.ZodType<EffectivePolicy> = z.strictObject(
   seat: z.string(),
   visualPaths: z.array(z.string()).optional(),
   featureBase: z.literal(true).optional(),
+  release: z.literal("grant").optional(),
 });
 
 /** What a repo no seat lists resolves to: the owner gates every merge. */
@@ -79,7 +82,7 @@ export class RegistrationRefused extends Error {
   override readonly name = "RegistrationRefused";
 }
 
-export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT };
+export { FEATURE_BASE_GRANT, MERGE_ON_GREEN_GRANT, RELEASE_MERGE_GRANT };
 export const SHEPHERD_POLICY_TABLE = "shepherd-seat";
 
 function narrower(a: MergeMode, b: MergeMode): MergeMode {
@@ -89,7 +92,7 @@ function narrower(a: MergeMode, b: MergeMode): MergeMode {
 /**
  * The seat default narrowed by the per-PR request; a registration never widens its seat. A seat with visual paths
  * reaches `auto` without the merge grant, and its visual paths then gate each head that touches one. Only a seat's
- * grant allows a feature base; no request key does.
+ * grant allows a feature base or a release merge; no request key does.
  */
 export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}): EffectivePolicy {
   if (lookup.kind === "denied") throw new RegistrationRefused(lookup.reason);
@@ -106,16 +109,18 @@ export function resolveEffectivePolicy(lookup: SeatLookup, request: unknown = {}
     seat: seat?.name ?? "none",
     ...(seat?.visualPaths && { visualPaths: seat.visualPaths }),
     ...(seat?.grants.includes(FEATURE_BASE_GRANT) && { featureBase: true as const }),
+    ...(seat?.grants.includes(RELEASE_MERGE_GRANT) && { release: "grant" as const }),
   };
 }
 
-/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base, never loosen any. */
+/** `trusted` narrowed by `other`: an inherited or untrusted policy can tighten the merge mode, add visual paths or drop a feature base or release grant, never loosen any. */
 export function stricterPolicy(trusted: EffectivePolicy, other: EffectivePolicy): EffectivePolicy {
   const merge = narrower(trusted.merge, other.merge);
   const visualPaths = trusted.visualPaths || other.visualPaths ? [...new Set([...(trusted.visualPaths ?? []), ...(other.visualPaths ?? [])])] : undefined;
   const ownerGateReason = trusted.ownerGateReason ?? other.ownerGateReason;
   const stricter: EffectivePolicy = { ...trusted, merge, ...(ownerGateReason && { ownerGateReason }), fixer: trusted.fixer && other.fixer, seat: merge === trusted.merge ? trusted.seat : other.seat, ...(visualPaths && { visualPaths }) };
   if (!other.featureBase) delete stricter.featureBase;
+  if (other.release !== "grant") delete stricter.release;
   return stricter;
 }
 
@@ -188,7 +193,7 @@ function escalatedReason(escalated: Escalated, headSha: string | undefined, verd
 const routeRule = (rowId: string): PolicyRule => ({ table: "shepherd-route", rowId, version: 1 });
 
 /** The evidence a MERGE review carries; a malformed one reads as none, so the merge gates. */
-function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
+export function mergeEvidenceAt(headSha: string, verdictFor: (headSha: string) => Verdict | undefined): MergeEvidence | undefined {
   const verdict = verdictFor(headSha);
   if (verdict?.kind !== "MERGE") return undefined;
   const evidence = verdict.evidence as Partial<MergeEvidence> | null | undefined;

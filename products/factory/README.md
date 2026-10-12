@@ -213,7 +213,7 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
 - `hold` and `release` write the registration's hold, which every merge route checks.
   A hold's class is the text of its reason before the first colon (`--reason "g10-review: <detail>; <task>"`);
   `shepherd hold` refuses, with exit 65 and before anything is held, a reason whose class is not one of `serve-down`,
-  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review` or `g10-adversary`, and a reason in one of the
+  `stalled`, `no-reviewer`, `run-failed`, `visual-gate2`, `g10-review`, `g10-adversary` or `owner-asked`, and a reason in one of the
   first four (factory-defect) classes that cites no task ID (`src/shepherd/hold-reason.ts`). Two classes carry the G10 rule:
   - `g10-review` releases itself. When the run's `sh-await-verdict` at the PR's head, read fresh, is a MERGE from the
     configured opus reviewer (`shepherd.review.profile`; `bd-reviewer`, or a profile named for opus) and the required
@@ -221,9 +221,18 @@ answers and the database directly otherwise. The tool prefix is empty, so `facto
     ref (reviewer, session, locator). A FIX_FIRST, a head that moved, a verdict carried from another head, or a
     profile that is not an opus one keeps the hold.
   - `g10-adversary` never releases itself. Seats use it for authority, merge-policy and security PRs, which also
-    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release`.
+    need a seat's fail-open reviewer until Shepherd has one (TP-1931); release it with `shepherd release <pr> --head <sha>`.
 
-  Any other class waits for `shepherd release`.
+  Any other class waits for `shepherd release <pr> --head <sha>`. While a `g10-adversary` hold sits over a
+  hold of another class, `release` must name the hold it lifts with `--class <class>`.
+  - `owner-asked` is the owner saying "hold" or "discuss". It lives in its own slot on the registration, apart from
+    the gating hold, so no other hold replaces it and no other release lifts it: not `sh-g10-release`, not a
+    `--reviewer` MERGE (at the head or carried to a tree-equal one), and not `shepherd release`, which refuses
+    `--class owner-asked` with exit 65 and a bare release of a PR held by it alone. `shepherd hold` refuses it with
+    `--reviewer` (exit 65). Every merge route reads it first and holds whatever MERGE stands. Only the owner's own
+    release lifts it (`ShepherdStore.releaseOwnerHold`, and the forthcoming `shepherd owner-release` verb, TP-2408 b). A PR merged
+    outside Shepherd with one in force clears it at cleanup, with the release event `owner hold bypassed: merged
+    outside Shepherd`.
 - `merge` reports the policy decision for the current head and what the run waits on. It
   never signals the run and never resolves a gate.
 
@@ -684,7 +693,7 @@ read and no correction turn. `sh-account-hold` then:
 While the run is held, `sh-account-wait` waits inside the review, so the run never reaches
 approve-merge on this reason, and `sh-review-intent` starts no reviewer on an exhausted account.
 The wait ends when any account has headroom again (its reset passed); when the owner runs
-`titan-factory shepherd release`, which also clears the account's mark; when the PR's head moves;
+`titan-factory shepherd release <pr> --head <sha>`, which also clears the account's mark; when the PR's head moves;
 or after an hour. Each of these starts a new land round, which reads the PR's current head and
 reviews it again. The run's own hold follows the accounts in one place only, where a review picks
 its account (`sh-review-intent`, and the failover in `sh-account-hold`): an account with headroom

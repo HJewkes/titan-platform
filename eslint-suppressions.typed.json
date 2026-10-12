@@ -180,11 +180,6 @@
       "count": 4
     }
   },
-  "apps/console/src/pages/StatusPage.tsx": {
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    }
-  },
   "apps/console/src/sessions.test.tsx": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
@@ -1328,9 +1323,6 @@
   },
   "packages/github/src/gh-cli.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
     }
   },
@@ -2708,6 +2700,16 @@
       "count": 1
     }
   },
+  "products/factory/src/cli-shepherd-rpc.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 1
+    }
+  },
+  "products/factory/src/cli-shepherd.ts": {
+    "@typescript-eslint/no-unsafe-type-assertion": {
+      "count": 3
+    }
+  },
   "products/factory/src/cli-stats.test.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
       "count": 1
@@ -2721,9 +2723,6 @@
   "products/factory/src/cli.ts": {
     "@typescript-eslint/no-unnecessary-condition": {
       "count": 1
-    },
-    "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 5
     }
   },
   "products/factory/src/coordinator-evidence-read.ts": {
@@ -2769,7 +2768,7 @@
   },
   "products/factory/src/deploy.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/factory/src/digest/command.ts": {
@@ -2914,7 +2913,7 @@
   },
   "products/factory/src/serve.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "products/factory/src/service-check.ts": {
@@ -3193,7 +3192,7 @@
   },
   "products/factory/src/shepherd/release.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 1
     }
   },
   "products/factory/src/shepherd/release.ts": {

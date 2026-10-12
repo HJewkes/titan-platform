@@ -23,11 +23,15 @@ export interface CarryFact {
   /** For a remerge rule, the tree git's own remerge of the head's two parents writes, conflict markers and all. */
   mergeTree: string;
   /** Which probe carried the verdict; absent reads as `tree-equal`. */
-  rule?: "tree-equal" | "remerge-empty" | "remerge-generated-only";
+  rule?: "tree-equal" | "remerge-empty" | "remerge-generated-only" | "merge-up-disjoint";
   /** For a remerge rule: every path the head's remerge-diff or the remerge's conflicts touch. */
   remergePaths?: string[];
   /** For a remerge rule: the paths among `remergePaths` that the repo declares generated. */
   generatedPaths?: string[];
+  /** For `merge-up-disjoint`: every path the merge's base side (merge-base to second parent) changed. */
+  basePaths?: string[];
+  /** For `merge-up-disjoint`: the head's first parent, which the probe found on the reviewed line. */
+  firstParent?: string;
 }
 
 /** What the caller observed about a pull request it wants to merge. The evaluator re-derives every condition from these. */
@@ -113,6 +117,23 @@ function verdictMergeCarriedRemergeClean(facts: MergeFacts): boolean {
     isId(carry.headTree) && isId(carry.mergeTree) && remergeTouchesOnlyGenerated(carry);
 }
 
+// GitHub's file list is read independently of the probe, so the factory's own PR-side diff is never trusted here.
+function baseSideDisjoint(carry: CarryFact, changedPaths: unknown): boolean {
+  const { basePaths } = carry;
+  if (!isStringList(basePaths) || !isStringList(changedPaths) || changedPaths.length === 0) return false;
+  if (basePaths.some(isNonCanonical) || changedPaths.some(isNonCanonical)) return false;
+  const touched = new Set(basePaths.map((path) => path.toLowerCase()));
+  return !changedPaths.some((path) => touched.has(path.toLowerCase()));
+}
+
+function verdictMergeCarriedMergeUpDisjoint(facts: MergeFacts): boolean {
+  const { head, carry, verdict } = facts;
+  if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
+  return carry.rule === "merge-up-disjoint" && typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) &&
+    verdict.head === carry.fromHead && carry.head === head && isId(carry.headTree) && carry.headTree === carry.mergeTree &&
+    baseSideDisjoint(carry, facts.changedPaths);
+}
+
 // Only a known non-security kind passes, so an unregistered or unrecognised kind never carries.
 function prKindNotSecurity(facts: MergeFacts): boolean {
   return typeof facts.kind === "string" && CARRYING_KINDS.has(facts.kind);
@@ -184,6 +205,7 @@ const MERGE_CHECKS: Record<MergeConditionKind, (facts: MergeFacts) => boolean> =
   "verdict-merge-at-head": verdictMergeAtHead,
   "verdict-merge-carried-tree-equal": verdictMergeCarriedTreeEqual,
   "verdict-merge-carried-remerge-clean": verdictMergeCarriedRemergeClean,
+  "verdict-merge-carried-merge-up-disjoint": verdictMergeCarriedMergeUpDisjoint,
   "pr-kind-not-security": prKindNotSecurity,
   "required-contexts-green": requiredContextsGreen,
   "no-non-green-run": noNonGreenRun,

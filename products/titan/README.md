@@ -13,7 +13,15 @@ node products/titan/dist/bin.js health sample [--db <path>]
 node products/titan/dist/bin.js health uptime factory --window 24h [--min 0.99] [--json]
 node products/titan/dist/bin.js health cost --window 24h [--json]
 node products/titan/dist/bin.js health import <stopgap.jsonl> [--target factory]
+node products/titan/dist/bin.js host doctor [--json]
 ```
+
+`titan host doctor` runs `active-work doctor --json`, `agent-chat doctor` and `titan-factory
+service check --json`, then checks each product and tool CLI is on PATH and reports its version.
+A product CLI whose version differs from its checkout's `package.json` (under
+`$TITAN_PROJECTS_ROOT`, default `~/projects`) is a `warn` row. It then stats every path in the
+coordination design's inventory for this platform, secrets included, without reading any of
+them. Any `fail` or `missing` row exits 1.
 
 `titan health install [--dry-run]` writes `titan-health-sample.service` (a oneshot at
 `Nice=10`, idle IO, CPU and IO accounting on) and `titan-health-sample.timer` (every wall-clock
@@ -39,4 +47,8 @@ Reference: [titan](https://hjewkes.github.io/titan-platform/reference/titan).
 | `src/health/cli-uptime.ts` | `uptime`, plus the window options and read-only store shared with `cost` |
 | `src/health/cli-cost.ts` | `cost`: the self rows folded per tick, and the store size |
 | `src/health/import-stopgap.ts` | `import`: stopgap JSONL rows mapped to samples with a dedup key |
+| `src/host/cli-host.ts` | the `titan host` group and `doctor`, text and `--json` output |
+| `src/host/doctor.ts` | the doctor rows and the report's zod schema |
+| `src/host/inventory.ts` | the inventory paths, their categories and platforms, and the stat-only rows |
+| `src/host/ports.ts` | the exec, readFile, stat, list and which ports, and the real ones |
 | `src/health/self-cost.ts` | the `self` row from `process.cpuUsage()` and `process.resourceUsage()` |

@@ -25,7 +25,7 @@ export interface PrFacts extends ReviewTarget {
 export type ReviewClass = "g10" | "standard";
 
 /** `untested` is a source change with no test change; `perf` is a hot-path touch. */
-export type PrTouch = "authority" | "policy" | "migration" | "visual" | "security" | "perf" | "untested" | "large";
+export type PrTouch = "authority" | "policy" | "migration" | "visual" | "security" | "perf" | "dependency" | "untested" | "large";
 
 export interface PrClass {
   class: ReviewClass;

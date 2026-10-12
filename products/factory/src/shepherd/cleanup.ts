@@ -46,6 +46,8 @@ export interface CleanupDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs?: number;
   cleanup?: CleanupPorts;
+  /** An advisory repo's head ref is never deleted, even after a human merge. */
+  advisory?: (repo: RepoSlug) => boolean;
 }
 
 export interface CleanupInput {
@@ -75,7 +77,7 @@ interface Waiter {
 export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal: AbortSignal): Promise<Cleanup> {
   const caveats: string[] = [];
   const waiter = (): Waiter => ({ clock: deadline({ now: deps.now, sleep: deps.sleep, timeoutMs: SH_CLEANUP_GIVE_UP_MS }), pollMs: deps.pollMs ?? SH_CLEANUP_POLL_MS, signal, now: deps.now, caveats });
-  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps.port, input), waiter())) ?? "unread";
+  const ref = (await retrying(`head ref of #${input.pr}`, () => deleteHead(deps, input), waiter())) ?? "unread";
   await retrying(`hold on #${input.pr}`, () => releaseLanded(deps, input), waiter());
   const registration = deps.store.get().byRun(input.runId);
   if (registration === undefined || deps.cleanup === undefined) {
@@ -88,18 +90,36 @@ export async function runCleanup(deps: CleanupDeps, input: CleanupInput, signal:
 }
 
 /** The ref lives in the head repo, so a fork's same-named branch in the base repo is never touched; the port skips forks and the default branch. */
-async function deleteHead(port: GitHubPort, input: CleanupInput): Promise<string> {
+async function deleteHead({ port, advisory }: CleanupDeps, input: CleanupInput): Promise<string> {
+  if (advisory?.(input.repo)) return "advisory";
   const pr = await port.getPr(input.repo, input.pr);
   if (!pr.merged) return "not-merged";
   const result = await port.deleteRef(input.repo, { branch: pr.headRef, repo: pr.headRepo });
   return result.done ? "deleted" : result.skipped;
 }
 
-/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. */
+const CLEANUP_ACTOR = "shepherd:cleanup";
+
+/** No Shepherd merge passes an owner-asked hold, so a PR that merged with one in force merged around it; its release event says so. */
+const OWNER_HOLD_BYPASSED = "owner hold bypassed: merged outside Shepherd";
+
+/** A hold, satisfied or not, has nothing left to hold once the PR merged; an open PR keeps it. The release event keeps who satisfied it, since the release clears that from the row. */
 async function releaseLanded(deps: CleanupDeps, input: CleanupInput): Promise<void> {
   const store = deps.store.get();
-  if (store.byRun(input.runId)?.held !== true) return;
-  if ((await deps.port.getPr(input.repo, input.pr)).merged) store.release(input.runId);
+  const registration = store.byRun(input.runId);
+  if (registration?.held !== true) return;
+  const pr = await deps.port.getPr(input.repo, input.pr);
+  if (!pr.merged) return;
+  const by = { actor: CLEANUP_ACTOR, headSha: pr.headSha };
+  if (registration.ownerHold) store.releaseOwnerHold(input.runId, by, `${OWNER_HOLD_BYPASSED} (${registration.ownerHold.reason})`);
+  if (store.byRun(input.runId)?.held) store.release(input.runId, by, satisfiedReason(store.byRun(input.runId)));
+}
+
+function satisfiedReason(registration: Registration | undefined): string | undefined {
+  const holdSatisfied = registration?.holdSatisfied;
+  if (!holdSatisfied) return undefined;
+  const { head, by } = holdSatisfied;
+  return `merged on ${by.reviewer}'s MERGE at ${head} (${by.agentId}/${by.sessionId})`;
 }
 
 /**

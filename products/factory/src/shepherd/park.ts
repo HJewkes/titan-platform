@@ -16,7 +16,7 @@ export const PARK_STEP = "sh-park";
 export const PARK_STEPS: readonly StepDeclaration[] = [{ id: PARK_STEP, kind: "dispatch" }];
 
 /** Parks the named agent's worktree and keeps its branch; throws when the broker refuses or cannot be reached. */
-export type ParkPort = (name: string) => { lines: string[] };
+export type ParkPort = (name: string) => Promise<{ lines: string[] }>;
 
 export type ParkOutcome =
   | { kind: "parked"; agent: string; lines: string[]; alreadyGone?: true }
@@ -26,20 +26,23 @@ export type ParkOutcome =
 interface ParkInput {
   runId: string;
   headSha: string;
+  /** Reviewers an earlier park step recorded as gone; omitted when none, so a replayed record's input is unchanged. */
+  gone?: string[];
 }
 
 const NOT_ON_DISK = /is not on disk; nothing to park/;
+const NO_WORKTREE = /holds no worktree agent-chat allocated/;
 const NO_AGENT = /no agent named/;
 const LIVE = /park takes only an agent whose process has exited/;
 const AGENT_CHAT_BRANCH = "agent-chat/";
 
-/** A tree already removed is the state parking wants; a live agent is asked again once it exits. */
-function attemptPark(park: ParkPort, agent: string): ParkOutcome {
+/** A tree already removed, or one agent-chat never allocated, is the state parking wants; a live agent is asked again once it exits. */
+async function attemptPark(park: ParkPort, agent: string): Promise<ParkOutcome> {
   try {
-    return { kind: "parked", agent, lines: park(agent).lines };
+    return { kind: "parked", agent, lines: (await park(agent)).lines };
   } catch (error) {
     const reason = redactForEvidence(error instanceof Error ? error.message : String(error));
-    if (NOT_ON_DISK.test(reason)) return { kind: "parked", agent, lines: [reason], alreadyGone: true };
+    if (NOT_ON_DISK.test(reason) || NO_WORKTREE.test(reason)) return { kind: "parked", agent, lines: [reason], alreadyGone: true };
     return { kind: "not-parked", agent, reason, brokerDown: error instanceof BrokerUnavailableError, ...(LIVE.test(reason) && { retry: "at-exit" as const }) };
   }
 }
@@ -58,10 +61,10 @@ function parkCandidates(registration: Pick<Registration, "implementer" | "branch
 const unknownName = (outcome: ParkOutcome): boolean => outcome.kind === "not-parked" && NO_AGENT.test(outcome.reason);
 
 /** Parks each candidate until the broker is down; a refusal outranks a park, so the run records what still holds a tree. */
-function parkAll(park: ParkPort, names: readonly string[]): ParkOutcome[] {
+async function parkAll(park: ParkPort, names: readonly string[]): Promise<ParkOutcome[]> {
   const outcomes: ParkOutcome[] = [];
   for (const name of names) {
-    const outcome = attemptPark(park, name);
+    const outcome = await attemptPark(park, name);
     outcomes.push(outcome);
     if (outcome.kind === "not-parked" && outcome.brokerDown) break;
   }
@@ -78,12 +81,12 @@ function summarize(outcomes: readonly ParkOutcome[], names: readonly string[]): 
 }
 
 /** A refusal is an answer, not a failure: the tree stays and the run moves on to review. */
-export function parkImplementer(store: ShepherdStoreRef, park: ParkPort, input: ParkInput): ParkOutcome {
+export async function parkImplementer(store: ShepherdStoreRef, park: ParkPort, input: ParkInput): Promise<ParkOutcome> {
   const registration = store.get().byRun(input.runId);
   if (!registration?.implementer) return { kind: "skipped", reason: "no registration names the implementer" };
   const successors = store.get().authorsOf(input.runId).filter((author) => author.role === "successor").map((author) => author.name);
   const names = parkCandidates(registration, successors);
-  const outcomes = parkAll(park, names);
+  const outcomes = await parkAll(park, names);
   return summarize(outcomes, names);
 }
 
@@ -114,8 +117,12 @@ interface ParkWiring {
   retry?: LiveRetry;
 }
 
-const asAttempt = (outcome: ParkOutcome): ParkAttempt =>
-  outcome.kind === "not-parked" ? (outcome.retry ? { done: false } : { done: true, parked: false, detail: outcome.reason }) : { done: true, parked: true, detail: outcome.kind };
+/** An agent retired while the retry waited took its tree with it: nothing is left to park, so the seat is not told. */
+const asAttempt = (outcome: ParkOutcome): ParkAttempt => {
+  if (outcome.kind !== "not-parked") return { done: true, parked: true, detail: outcome.kind };
+  if (NO_AGENT.test(outcome.reason)) return { done: true, parked: true, detail: "already gone" };
+  return outcome.retry ? { done: false } : { done: true, parked: false, detail: outcome.reason };
+};
 
 /** Waits out a live agent in the background, and tells the seat only if the tree still stands at the end. */
 function armRetry(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, agent: string): void {
@@ -136,12 +143,18 @@ async function exitedReviewers(roster: RosterReader, registration: Registration)
   return [...new Set(exited.map((row) => row.name))];
 }
 
+/** A reviewer the broker no longer knows has no tree left to park, the same answer as a tree off disk. */
+function settleRetired(outcome: ParkOutcome): ParkOutcome {
+  return outcome.kind === "not-parked" && NO_AGENT.test(outcome.reason) ? { kind: "parked", agent: outcome.agent, lines: [outcome.reason], alreadyGone: true } : outcome;
+}
+
 /** A finished round leaves its reviewer's tree behind; a refusal is told to the seat loudly and asked again at the next round end. */
-async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string): Promise<ReviewerPark[]> {
+async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId: string, gone: readonly string[]): Promise<ReviewerPark[]> {
   const registration = store.get().byRun(runId);
   if (wiring.roster === undefined || registration === undefined) return [];
-  const names = await exitedReviewers(wiring.roster, registration).catch(() => []);
-  const outcomes = names.map((name) => attemptPark(wiring.park, name));
+  const names = (await exitedReviewers(wiring.roster, registration).catch(() => [])).filter((name) => !gone.includes(name));
+  const outcomes: ReviewerPark[] = [];
+  for (const name of names) outcomes.push(settleRetired(await attemptPark(wiring.park, name)));
   for (const outcome of outcomes) {
     if (outcome.kind !== "not-parked") continue;
     console.error(`shepherd: ${registration.repo}#${registration.pr}: reviewer ${outcome.agent}'s worktree was not parked: ${outcome.reason}`);
@@ -152,8 +165,8 @@ async function parkReviewers(store: ShepherdStoreRef, wiring: ParkWiring, runId:
 
 /** Parks, then either arms the exit retry or tells the seat; the step records which, with the round's reviewers. */
 export async function parkStep(store: ShepherdStoreRef, wiring: ParkWiring, input: ParkInput): Promise<ParkOutcome & { reviewers: ReviewerPark[] }> {
-  const reviewers = await parkReviewers(store, wiring, input.runId);
-  const outcome = parkImplementer(store, wiring.park, input);
+  const reviewers = await parkReviewers(store, wiring, input.runId, input.gone ?? []);
+  const outcome = await parkImplementer(store, wiring.park, input);
   if (outcome.kind !== "not-parked") return { ...outcome, reviewers };
   if (outcome.retry) return (armRetry(store, wiring, input.runId, outcome.agent), { ...outcome, reviewers });
   return { ...outcome, reviewers, notice: await tellParkRefusal(wiring.notice, store.get().byRun(input.runId), outcome.agent, outcome.reason) };
@@ -167,7 +180,7 @@ type ParkDeps = Pick<ShepherdDeps, "store" | "now" | "agentChatBin" | "roster" |
 
 function rosterRetry(deps: ParkDeps, park: ParkPort): LiveRetry {
   const roster = deps.roster ?? agentChatRoster(deps.agentChatBin);
-  return liveRetry({ attempt: (name) => asAttempt(attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
+  return liveRetry({ attempt: async (name) => asAttempt(await attemptPark(park, name)), presence: rosterPresence(roster), wait: unrefWait, now: deps.now });
 }
 
 export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(deps.agentChatBin, name), retry: LiveRetry = rosterRetry(deps, park)): readonly StepRoute[] => {
@@ -176,7 +189,8 @@ export const parkRoutes = (deps: ParkDeps, park: ParkPort = (name) => parkAgent(
   return [codeRoute(PARK_STEP, deps.now, async (input: ParkInput) => parkStep(deps.store, wiring, input))];
 };
 
-const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]) });
+const GoneReviewer = z.looseObject({ kind: z.literal("parked"), agent: z.string(), alreadyGone: z.literal(true) });
+const ParkOutcomeResult = z.looseObject({ kind: z.enum(["parked", "not-parked", "skipped"]), reviewers: z.array(z.unknown()).optional() });
 const LiveRefusal = z.looseObject({ kind: z.literal("not-parked"), agent: z.string(), retry: z.literal("at-exit") });
 
 /** A first run's refusal is already armed and ignored here; a replayed one is armed again, since the restart lost its wait. */
@@ -185,7 +199,26 @@ export function rearmRecorded(runId: string, recorded: unknown): void {
   if (live.success) rearm?.(runId, live.data.agent);
 }
 
+/**
+ * Reviewers a recorded park step found gone, per run context. A restart replays the run's steps and rebuilds this from
+ * their recorded results, so no round end after the first asks the broker about a reviewer again.
+ */
+const goneByContext = new WeakMap<object, Set<string>>();
+
+/** Runs one park step with the gone reviewers known so far and folds the ones its record adds back in. */
+export async function parkOnce(key: object, runStep: (gone: string[] | undefined) => Promise<z.infer<typeof ParkOutcomeResult>>): Promise<z.infer<typeof ParkOutcomeResult>> {
+  const gone = goneByContext.get(key) ?? new Set<string>();
+  goneByContext.set(key, gone);
+  const recorded = await runStep(gone.size > 0 ? [...gone] : undefined);
+  for (const reviewer of recorded.reviewers ?? []) {
+    const parsed = GoneReviewer.safeParse(reviewer);
+    if (parsed.success) gone.add(parsed.data.agent);
+  }
+  return recorded;
+}
+
 /** Once per green head, before its review: a fix round's resume re-creates the tree, so the next green head parks it again. */
 export async function parkAtGreen(ctx: WorkflowContext, headSha: string): Promise<void> {
-  rearmRecorded(ctx.runId, await step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha }, ParkOutcomeResult));
+  const run = (gone: string[] | undefined) => step(ctx, `${PARK_STEP}:${headSha}`, { runId: ctx.runId, headSha, ...(gone && { gone }) }, ParkOutcomeResult);
+  rearmRecorded(ctx.runId, await parkOnce(ctx, run));
 }

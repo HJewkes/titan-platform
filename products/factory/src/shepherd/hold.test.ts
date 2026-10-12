@@ -1,13 +1,19 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { seatTranscript, type SeatTranscript } from "../test-support/seat-transcript.js";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import type { CarryResult } from "./tree-carry.js";
 import { MergeHeldError, heldCheck, holdSatisfier, holdingPort, openHeadRead, waitWhileHeld } from "./hold.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { ReviewerAgent, ReviewerMessage } from "./review.js";
+import { transcriptReviewerReader } from "./reviewer-reader.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 
 const REPO = "octo/demo";
@@ -40,7 +46,7 @@ interface Rig {
 
 function rig(kind?: string): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db);
   const fake = fakeGitHub({ repo: REPO });
   const { number: pr } = fake.addPr({ headSha: H1 });
@@ -487,5 +493,115 @@ describe("a run held at registration whose seat sends the reviewed head back", (
     expect(result).toMatchObject({ ok: true });
     expect(step.probe.ran).toBe(false);
     expect(JSON.parse(result.output!).result).toEqual(AFTER_HOLD);
+  });
+});
+
+describe("a hold whose named reviewer is read from its real transcript", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "titan-hold-seat-"));
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** The rig's reviewer swapped for one whose verdicts are only in its transcript, read the way the factory service reads them. */
+  function seated(presence: "live" | "detached" | "exited"): { r: Rig; seat: SeatTranscript; port: GitHubPort } {
+    const r = rig();
+    const seat = seatTranscript(dir, REVIEWER, presence).user(`Review ${REPO}#${r.pr}.`);
+    r.roster = [...CREW.filter((row) => row.name !== REVIEWER), seat.row];
+    const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
+    const satisfy = holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader });
+    return { r, seat, port: holdingPort(r.port, () => r.store, undefined, satisfy) };
+  }
+
+  it("merges on a live reviewer's MERGE sent with chat_send at the head", async () => {
+    const { r, seat, port } = seated("live");
+    seat.send(verdictAt(H1));
+
+    const merged = await port.merge(REPO, r.pr, H1, "squash");
+
+    expect(merged.done).toBe(true);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toMatchObject({ head: H1, by: { reviewer: REVIEWER, agentId: seat.row.agentId, sessionId: seat.row.sessionId } });
+  });
+
+  it("keeps the hold when an exited reviewer sent MERGE and died writing its FIX_FIRST", async () => {
+    const { r, seat, port } = seated("exited");
+    seat.send(verdictAt(H1));
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("merges on a detached reviewer's MERGE written as its final text", async () => {
+    const { r, seat, port } = seated("detached");
+    seat.text(verdictAt(H1));
+
+    expect((await port.merge(REPO, r.pr, H1, "squash")).done).toBe(true);
+  });
+
+  it("withdraws the satisfaction when the live reviewer later sends FIX_FIRST at the same head", async () => {
+    const { r, seat, port } = seated("live");
+    seat.send(verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" }) }));
+    const first = await held(REPO, r.pr, H1);
+
+    seat.send(verdictAt(H1, "FIX_FIRST"));
+
+    expect(first).toBeUndefined();
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("withdraws a satisfaction when the reviewer dies mid-record after a poll satisfied the hold", async () => {
+    const { r, seat, port } = seated("live");
+    seat.send(verdictAt(H1));
+    const held = heldCheck(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" }) }));
+    await held(REPO, r.pr, H1);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toMatchObject({ head: H1 });
+
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+    seat.row.presence = "exited";
+
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
+  });
+
+  it("merges on a clean exited transcript that ends after a complete MERGE", async () => {
+    const { r, seat, port } = seated("exited");
+    seat.send(verdictAt(H1)).text("Sent.");
+
+    expect((await port.merge(REPO, r.pr, H1, "squash")).done).toBe(true);
+  });
+
+  it("is not satisfied by another agent's MERGE block delivered into the reviewer's transcript, only by the reviewer's own", async () => {
+    const { r, seat, port } = seated("live");
+    seat.user(verdictAt(H1));
+
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+
+    seat.send(verdictAt(H1));
+    expect((await port.merge(REPO, r.pr, H1, "squash")).done).toBe(true);
+  });
+
+  it("reads an unchanged transcript once across ten polls, so a rewrite keeping its size and mtime is never parsed", async () => {
+    const { r, seat } = seated("exited");
+    seat.send(verdictAt(H1)).text("Sent.");
+    const pinned = 1_700_000_000;
+    utimesSync(seat.file, pinned, pinned);
+    const held = heldCheck(r.port, () => r.store, undefined, holdSatisfier({ store: () => r.store, roster: async () => r.roster, reader: transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" }) }));
+
+    const reasons = [await held(REPO, r.pr, H1)];
+    const merged = readFileSync(seat.file, "utf8");
+    const sentBack = merged.replace("Reviewed.\\n\\nVerdict: MERGE", "Revie\\n\\nVerdict: FIX_FIRST");
+    writeFileSync(seat.file, sentBack, "utf8");
+    utimesSync(seat.file, pinned, pinned);
+    for (let poll = 1; poll < 10; poll += 1) reasons.push(await held(REPO, r.pr, H1));
+
+    expect(sentBack.length).toBe(merged.length);
+    expect(sentBack).not.toBe(merged);
+    expect(reasons).toEqual(Array(10).fill(undefined));
+    expect(r.store.byRun("run-1")?.holdSatisfied?.head).toBe(H1);
   });
 });

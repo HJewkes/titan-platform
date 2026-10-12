@@ -6,6 +6,7 @@ import { fakeGitHub, fakeSha, githubPort, successRun, type PrFile } from "@titan
 import { parseVerdictBlock, type SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { defineWorkflow } from "../definition.js";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import type { StepRoute } from "@titan-design/workflow";
@@ -47,9 +48,10 @@ import { DEPTH_FLOOR_REASON } from "@titan-design/review-panel";
 import { MAX_REVIEWER_QUESTIONS, reviewerBrief } from "@titan-design/review-panel";
 import { routeFor } from "./route-table.js";
 import type { ReviewerFacts, ReviewerRoles } from "./reviewer-roles.js";
-import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { shepherdMigration, shepherdStoreRef, sliceMigration, holdReviewerMigration, holdSatisfiedMigration, type RegistrationInput, type ShepherdStore, type ShepherdStoreRef } from "./store.js";
 import type { Presence } from "./presence.js";
 import { machineStopWatch, type MachineStopWatch } from "./machine-stop.js";
+import type { PanelMode } from "./review-panel-plan.js";
 
 const HEAD = "a".repeat(40);
 const OTHER_HEAD = "b".repeat(40);
@@ -488,7 +490,7 @@ const optIn = (reviewer: string): RegistrationInput => ({ ...registration, polic
 
 function boundStore(registered?: RegistrationInput): ShepherdStoreRef {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const ref = shepherdStoreRef();
   ref.bind(db);
   if (registered) ref.get().register(registered);
@@ -514,6 +516,8 @@ describe("sh-review", () => {
     changedFiles?: number;
     /** Collects the checkout dirs the steps remove; the steps never touch the real filesystem. */
     removals?: string[];
+    /** Acts on the bound store after the registration is written, before any step runs. */
+    prepare?: (store: ShepherdStore) => void;
   }
 
   /** The two steps over one wiring, each run alone; a first run is attempt 0 and a repeat after a crash is attempt 1. */
@@ -525,7 +529,9 @@ describe("sh-review", () => {
       options.onSleep?.(ms);
       signal.throwIfAborted();
     };
-    const deps = { now: () => clock.now, sleep, pollMs: 10, store: boundStore(options.registered ?? registration), reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
+    const store = boundStore(options.registered ?? registration);
+    options.prepare?.(store.get());
+    const deps = { now: () => clock.now, sleep, pollMs: 10, store, reviewCheckouts: { root: "/data/reviews", remove: async (path: string) => void options.removals?.push(path) }, ...(options.files && { port: portListing(options.files, options.changedFiles) }) } as unknown as ShepherdDeps;
     const wiring: ReviewWiring = { reader: { read: async () => [] }, sessionStartTimeoutMs: 100, ...(dispatch && { dispatch }), ...options.wiring };
     const routes = reviewRoutes(deps, wiring);
     const target = { repo: options.repo ?? "octo/demo", pr: 7, head: HEAD };
@@ -580,6 +586,15 @@ describe("sh-review", () => {
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
     });
 
+    it("gives a small correctness PR that changes the lockfile the g10 profile", async () => {
+      const sized = await spawnSized([
+        { path: "products/factory/src/a.ts", status: "modified", additions: 20, deletions: 10 },
+        { path: "pnpm-lock.yaml", status: "modified", additions: 4, deletions: 2 },
+      ]);
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 36, dependencyTouch: true }, profile: "bd-reviewer" });
+    });
+
     it("gives a 401-line PR that is mostly generated registry files the standard profile", async () => {
       const sized = await spawnSized([
         { path: "products/factory/src/a.ts", status: "modified", additions: 30, deletions: 10 },
@@ -605,6 +620,44 @@ describe("sh-review", () => {
       const sized = await spawnSized();
 
       expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", sizeUnread: true }, profile: "bd-reviewer" });
+    });
+
+    const smallMigration: PrFile[] = [{ path: "products/factory/src/shepherd/store-migrations.ts", status: "modified", additions: 20, deletions: 10 }];
+    const spawnHeld = async (prepare: (store: ShepherdStore) => void) => {
+      const dispatch = fakeDispatch();
+      const { result } = await reviewSteps(dispatch, { registered: correctness, files: smallMigration, prepare, wiring: { roles } }).review(spawnIntent, 0, "run-1");
+      return { facts: dispatch.spawns[0]?.facts, profile: result?.kind === "dispatched" ? result.profile : undefined };
+    };
+
+    it("gives a 30-line migration PR held g10-review the g10 profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "g10-review: store migration"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", g10Hold: true, changedLines: 30 }, profile: "bd-reviewer" });
+    });
+
+    it("gives a 30-line PR whose g10-review hold was released the g10 profile", async () => {
+      const sized = await spawnHeld((store) => {
+        store.hold("run-1", "g10-review: store migration");
+        store.release("run-1");
+      });
+
+      expect(sized.profile).toBe("bd-reviewer");
+    });
+
+    it("gives a 30-line PR under a non-G10 hold the standard profile", async () => {
+      const sized = await spawnHeld((store) => store.hold("run-1", "stalled: seat away"));
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, kind: "correctness", changedLines: 30 }, profile: "reviewer" });
+    });
+
+    it("gives the g10 profile when the run's hold events cannot be read", async () => {
+      const sized = await spawnHeld((store) => {
+        store.eventsOf = () => {
+          throw new Error("disk I/O error");
+        };
+      });
+
+      expect(sized).toEqual({ facts: { intentAt: 5000, unread: true, changedLines: 30 }, profile: "bd-reviewer" });
     });
   });
 
@@ -1224,7 +1277,7 @@ describe("reviewerBrief", () => {
   });
 
   it("tells the reviewer to remove exactly its own checkout dir after the verdict", () => {
-    expect(brief()).toMatch(/After you send your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
+    expect(brief()).toMatch(/After you write your verdict, remove your checkouts.*literal path.*not `\$dir`.*rm -rf "\/data\/reviews\/review-7-aaaaaaaaaaaa"`.*exactly that directory/);
   });
 
   it("keeps each question on one line and asks at most the cap", () => {
@@ -1261,6 +1314,8 @@ describe("reviewPhase", () => {
     /** Stands in for the sh-await-verdict step, to record an output the real step would refuse. */
     awaited?: (input: AwaitVerdictInput) => AwaitVerdictResult;
     heads?: string[];
+    /** The review requests of one run, in order; absent means one request per `heads` entry, each with `fresh`. */
+    requests?: { headSha: string; fresh?: boolean }[];
     registered?: Partial<RegistrationInput>;
     policy?: EffectivePolicy;
     /** A shepherd hold placed on the run with this reason, before the review starts. */
@@ -1274,6 +1329,7 @@ describe("reviewPhase", () => {
     /** Collects the checkout dirs removed; no scene touches the real filesystem. */
     removals?: string[];
     machineStop?: MachineStopWatch;
+    panel?: PanelMode;
   }
 
   async function review(scene: Scene) {
@@ -1288,14 +1344,15 @@ describe("reviewPhase", () => {
     const reader: ReviewerReader = { read: async (input) => (scene.read ? scene.read(input, scene.dispatch, clock) : own(input)) };
     const verdicts: Verdict[] = [];
     const run = async (ctx: Parameters<typeof reviewPhase>[0]) => {
-      for (const headSha of scene.heads ?? [H1]) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(scene.fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
+      const requests = scene.requests ?? (scene.heads ?? [H1]).map((headSha) => ({ headSha, fresh: scene.fresh }));
+      for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
-    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)], bind: store.bind } });
+    const routes = Object.assign(recorded, { database: { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "review-test", steps: REVIEW_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("review-test", scene.policy && { policy: JSON.stringify(scene.policy) });
@@ -1304,16 +1361,60 @@ describe("reviewPhase", () => {
     const done = await host.runtime.wait(runId);
     const results = Object.values(host.runtime.status(runId)!.stepResults);
     const resultOf = (stepId: string) => (results.find((result) => result.stepId === stepId)?.data as { result?: unknown } | undefined)?.result;
-    return { verdicts, fake, stepIds: results.map((result) => result.stepId), resultOf, inputs, status: done.status };
+    const steps = results.map((result) => ({ stepId: result.stepId, result: (result.data as { result?: unknown } | undefined)?.result }));
+    return { verdicts, fake, stepIds: results.map((result) => result.stepId), steps, resultOf, inputs, status: done.status };
   }
 
-  it("runs sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
+  it("runs sh-fix-proof, sh-review-intent and then sh-review at the head, and gives sh-review the recorded intent as its input", async () => {
     const { stepIds, resultOf, inputs } = await review({ dispatch: fakeDispatch(), policy: AUTO });
     const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
 
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
     expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+  });
+
+  describe("review.panel", () => {
+    const singleReviewerSteps = [`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`];
+    const intent = { kind: "intent", head: H1, reviewer: "rv-octo-demo-1", at: 10_000, mode: "spawn" };
+
+    it("off records today's intent and runs today's steps with one reviewer", async () => {
+      const dispatch = fakeDispatch();
+
+      const { stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "off" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual(intent);
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns).toHaveLength(1);
+    });
+
+    it("shadow records the head's class, touches and plan on the intent, and dispatches and awaits exactly as off does", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, resultOf, inputs } = await review({ dispatch, policy: AUTO, panel: "shadow" });
+
+      expect(stepIds).toEqual(singleReviewerSteps);
+      expect(resultOf(`sh-review-intent:${H1}`)).toEqual({
+        ...intent,
+        class: "g10",
+        touches: ["untested", "large"],
+        plan: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness", profile: "bd-reviewer" }), expect.objectContaining({ shape: "tests" }), expect.objectContaining({ shape: "perf" })] }),
+      });
+      expect(inputs[`sh-review:${H1}`]).toEqual({ repo: REPO, pr: 1, head: H1, intent, runId: expect.any(String) });
+      expect(dispatch.spawns.map((spawn) => spawn.name)).toEqual(["rv-octo-demo-1"]);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
+    });
+
+    it("shadow plans an external review's head with nothing, because Shepherd starts no reviewer for it", async () => {
+      const external = agent("sec-audit-review", { spawnedBy: "coord" });
+      const dispatch = fakeDispatch(crew(external));
+
+      const { resultOf } = await review({ dispatch, panel: "shadow", hold: "security: awaiting the audit", holdReviewer: external.name, awaited: () => ({ kind: "none" }) });
+
+      expect(resultOf(`sh-review-intent:${H1}`)).toMatchObject({ mode: "external" });
+      expect(resultOf(`sh-review-intent:${H1}`)).not.toHaveProperty("plan");
+    });
   });
 
   it("records the dispatch's cause on sh-review-intent, so the ledger says why the head was reviewed", async () => {
@@ -1328,6 +1429,22 @@ describe("reviewPhase", () => {
 
     expect(gated.inputs[`sh-review:${H1}`]).toMatchObject({ ownerBrief: true });
     expect(auto.inputs[`sh-review:${H1}`]).not.toHaveProperty("ownerBrief");
+  });
+
+  it("asks the reviewer for an owner brief on an auto run whose policy carries visual paths, since a visual-path gate may open", async () => {
+    const visual = await review({ dispatch: fakeDispatch(), policy: { ...AUTO, visualPaths: ["packages/ui/**"] } });
+
+    expect(visual.inputs[`sh-review:${H1}`]).toMatchObject({ ownerBrief: true });
+  });
+
+  it("carries the reviewer's owner brief on the MERGE verdict, so an approve-merge gate at that head can show it", async () => {
+    const ownerBrief = { what: "Restyle the button", why: "Contrast", pros: ["Passes contrast"], cons: ["Baselines move"], doorType: "two-way" as const };
+    const reviewer = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
+    const awaited: Scene["awaited"] = (input) => ({ kind: "verdict", verdict: "MERGE", head: input.head, locator: locatorIn(reviewer.sessionId), reviewer, ownerBrief });
+
+    const { verdicts } = await review({ dispatch: fakeDispatch(), awaited, policy: { ...AUTO, visualPaths: ["packages/ui/**"] } });
+
+    expect(verdicts[0]).toMatchObject({ kind: "MERGE", headSha: H1, ownerBrief });
   });
 
   it("hands the owner-brief request to the spawned reviewer's brief only under an owner-gate policy", async () => {
@@ -1349,7 +1466,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
     expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "dispatched", busyWaits: [expect.any(String), expect.any(String), expect.any(String)] });
     expect(dispatch.spawns).toHaveLength(1);
   });
@@ -1369,7 +1486,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, read });
 
     expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
   });
 
   it("answers not-started, not no-verdict, when the machine guard outlasts the busy wait, and starts nobody", async () => {
@@ -1379,7 +1496,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO });
 
     expect(verdicts).toEqual([{ kind: "none", cause: "not-started" }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`]);
     expect(resultOf(`sh-review:${H1}`)).toMatchObject({ kind: "none", notStarted: true, busyWaits: expect.arrayContaining([expect.stringContaining("ReviewerBrokerBusy")]) });
     expect(dispatch.agents).toEqual([]);
   });
@@ -1401,7 +1518,7 @@ describe("reviewPhase", () => {
     const { verdicts, stepIds, resultOf } = await review({ dispatch });
 
     expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict" }]);
-    expect(stepIds).toEqual([`sh-review-intent:${H1}`]);
+    expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`]);
     expect(resultOf(`sh-review-intent:${H1}`)).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: Error" });
   });
 
@@ -1651,7 +1768,7 @@ describe("reviewPhase", () => {
 
       const { verdicts, stepIds } = await review({ dispatch, read: lateReader(18_000), policy: AUTO });
 
-      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(dispatch.spawns).toHaveLength(1);
     });
@@ -1678,11 +1795,54 @@ describe("reviewPhase", () => {
         if (!who) return [];
         who.presence = "exited";
         firstAt ??= now + 1;
-        if (dispatch.resumes.length > 0 && reply) replyAt ??= now + 1;
+        if (dispatch.resumes.some((resumed) => resumed.name === who!.name) && reply) replyAt ??= now + 1;
         return [said(who, first, firstAt), ...(replyAt === undefined ? [] : [said(who, reply!(input.head), replyAt)])];
       };
     };
     const corrections = (stepIds: string[]) => stepIds.filter((id) => id.startsWith("sh-correct-verdict"));
+    /** Each reviewer, in the order the reader first meets it, answers through its own reader. */
+    const byReviewer = (...reads: NonNullable<Scene["read"]>[]): Scene["read"] => {
+      const seen: string[] = [];
+      return (input, dispatch, now) => {
+        if (!seen.includes(input.reviewerAgentId)) seen.push(input.reviewerAgentId);
+        const read = reads[seen.indexOf(input.reviewerAgentId)];
+        return read ? read(input, dispatch, now) : [];
+      };
+    };
+    const answers = (input: AwaitVerdictInput, dispatch: FakeDispatch, now: number) =>
+      dispatch.agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, verdictAt(input.head), now + 1));
+    const malformedTwice = () => correcting(MALFORMED, () => "Still fine, merge it.")!;
+    const TWICE = { kind: "none", cause: "timeout", reason: "the reviewer's verdict did not parse after one correction (no_block)" };
+    const identityOf = (name: string) => ({ agentId: `agent-${name}`, sessionId: `session-${name}` });
+    const evidenceAt = (steps: { stepId: string; result: unknown }[]) => steps.filter((each) => each.stepId === `sh-merge-evidence:${H1}`).map((each) => each.result);
+
+    it("hands a reviewer malformed twice to a fresh reviewer at the same head, whose MERGE counts", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, steps } = await review({ dispatch, read: byReviewer(malformedTwice(), answers), policy: AUTO, requests: [{ headSha: H1 }, { headSha: H1, fresh: true }] });
+      const [first, second] = dispatch.spawns.map((spawned) => spawned.name);
+
+      expect(verdicts[0]).toEqual(TWICE);
+      expect(routeFor("open", "clean", "timeout")).toBe("fresh-reviewer");
+      expect(dispatch.spawns).toHaveLength(2);
+      expect(second).not.toBe(first);
+      expect(dispatch.resumes.map((resumed) => resumed.name)).toEqual([first]);
+      expect(verdicts[1]).toMatchObject({ kind: "MERGE", headSha: H1 });
+      expect(evidenceAt(steps)).toMatchObject([{ merge: { resolver: identityOf(second!), dispatchedReviewer: identityOf(second!) } }]);
+    });
+
+    it("gives the fresh reviewer its own single correction", async () => {
+      const dispatch = fakeDispatch();
+
+      const { verdicts, stepIds, steps } = await review({ dispatch, read: byReviewer(malformedTwice(), correcting(MALFORMED, (head) => verdictAt(head))!), policy: AUTO, requests: [{ headSha: H1 }, { headSha: H1, fresh: true }] });
+      const [first, second] = dispatch.spawns.map((spawned) => spawned.name);
+
+      expect(second).not.toBe(first);
+      expect(dispatch.resumes.map((resumed) => resumed.name)).toEqual([first, second]);
+      expect(corrections(stepIds)).toEqual([`sh-correct-verdict:${H1}`, `sh-correct-verdict:${H1}`]);
+      expect(verdicts).toMatchObject([TWICE, { kind: "MERGE", headSha: H1 }]);
+      expect(evidenceAt(steps)).toMatchObject([{ merge: { resolver: identityOf(second!), dispatchedReviewer: identityOf(second!) } }]);
+    });
 
     it("resumes the same reviewer once and takes its corrected MERGE, resolved by the dispatched reviewer", async () => {
       const dispatch = fakeDispatch();
@@ -1690,7 +1850,7 @@ describe("reviewPhase", () => {
       const { verdicts, stepIds, resultOf } = await review({ dispatch, read: correcting(MALFORMED, (head) => verdictAt(head)), policy: AUTO });
       const identity = { agentId: "agent-rv-octo-demo-1", sessionId: "session-rv-octo-demo-1" };
 
-      expect(stepIds).toEqual([`sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-correct-verdict:${H1}`, `sh-await-verdict:${H1}:corrected`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
+      expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-await-verdict:${H1}`, `sh-late-verdict:${H1}`, `sh-correct-verdict:${H1}`, `sh-await-verdict:${H1}:corrected`, `sh-publish-review:${H1}`, `sh-merge-evidence:${H1}`]);
       expect(dispatch.resumes).toEqual([{ name: "rv-octo-demo-1", brief: expect.stringContaining("it had no Verdict line") }]);
       expect(verdicts).toMatchObject([{ kind: "MERGE", headSha: H1 }]);
       expect(resultOf(`sh-merge-evidence:${H1}`)).toMatchObject({ merge: { resolver: identity, dispatchedReviewer: identity } });

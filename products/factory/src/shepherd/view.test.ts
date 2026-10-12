@@ -1,10 +1,13 @@
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { resolveCommand } from "../registry.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
+
+const gateRecord = (id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
@@ -254,12 +257,24 @@ describe("shepherd view stalls", () => {
 
     it("does not stall a run parked on approve-merge for three days, and names the owner", () => {
       const run = pausedAt("approve-merge");
-      const gate = { id: "run-1/approve-merge", createdAt: "2026-01-01T00:00:00.000Z" } as never;
+      const gate = gateRecord("run-1/approve-merge");
 
-      const row = watchRow({ registration, run, pending: { gate, stepId: "approve-merge" }, now: new Date(started + minutes(3 * 24 * 60)) });
+      const row = watchRow({ registration, run, pending: { gate }, now: new Date(started + minutes(3 * 24 * 60)) });
 
       expect(row.stalled).toBeNull();
       expect(row.nextAction).toBe("owner: resolve approve-merge");
+    });
+
+    it("names the gate's own step when the run's current step is an older sh-fix-proof", () => {
+      const run = pausedAt("sh-fix-proof:abc1234");
+      run.stepResults["sh-fix-proof:def5678#0"] = { stepId: "sh-fix-proof:def5678", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:00:01.000Z", data: {} };
+      const gate = gateRecord("run-1/approve-merge:5");
+
+      const row = watchRow({ registration, run, pending: { gate } });
+
+      expect(row.pendingGate).toMatchObject({ gateId: "run-1/approve-merge:5", stepId: "approve-merge" });
+      expect(row.nextAction).toBe("owner: resolve approve-merge");
+      expect(resolveCommand(row.runId, row.pendingGate!.stepId)).toContain(" approve-merge ");
     });
 
     it("keeps a malformed sh-wake step as a plain step entry instead of throwing", () => {
@@ -276,7 +291,7 @@ describe("shepherd view stalls", () => {
     });
 
     it("gives every declared Shepherd step id an explicit phase, never the ci fallback", () => {
-      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait"].includes(id));
+      const unmapped = SHEPHERD_STEPS.map((declared) => declared.id).filter((id) => stepPhase(id) === "ci" && !["land-rules", "ci-wait", "update-branch", "update-backoff", "rerun", "sh-freeze-hold", "sh-freeze-wait", "sh-head-origin"].includes(id));
 
       expect(unmapped).toEqual([]);
     });
@@ -396,5 +411,21 @@ describe("shepherd timeline verdict and wake entries", () => {
     const timeline = { row: watchRow({ registration, run }), entries: [...entries, { ...entries[0], request: "fix-proof" }] };
 
     expect(PrTimelineSchema.parse(timeline).entries.map((e) => e.kind === "wake" && [e.request, e.mode])).toEqual([[null, "live"], [null, "successor"], ["fix-proof", "live"]]);
+  });
+});
+
+describe("a held run whose wait saw a pushed head", () => {
+  const H1 = "1".repeat(40);
+  const H2 = "2".repeat(40);
+
+  it("names the pushed head while CI runs at it", () => {
+    const run = { ...pausedAt("ci-wait:r1:0"), status: "running" } as WorkflowRun;
+    run.stepResults["ci-wait:0"] = { stepId: "ci-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:01:00.000Z", data: { result: { verdict: "red", headSha: H1 } } };
+    run.stepResults["sh-held-wait:0"] = { stepId: "sh-held-wait", iteration: 0, agentId: null, signal: null, completedAt: "2026-01-01T00:02:00.000Z", data: { result: { moved: true, headSha: H2 } } };
+
+    const row = watchRow({ registration: { ...registration, held: true, holdReason: "owner review", holdSatisfied: null }, run });
+
+    expect(row).toMatchObject({ phase: "ci", headSha: H2 });
+    expect(row.nextAction).toContain(H2.slice(0, 7));
   });
 });

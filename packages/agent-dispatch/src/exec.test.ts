@@ -8,6 +8,7 @@ import {
   ExecError,
   ExecTimeoutError,
   execSafe,
+  execSafeAsync,
   minimalEnv,
   resolveBinaryPath,
 } from "./exec.js";
@@ -119,5 +120,17 @@ describe("execSafe", () => {
     const result = execSafe(path, [], minimalEnv(), 5_000);
     delete process.env.RELAY_EXEC_TEST_CANARY;
     expect(result.stdout.trim()).toBe("[]");
+  });
+});
+
+describe("execSafeAsync", () => {
+  it("delivers input on the child's stdin", async () => {
+    const result = await execSafeAsync("/bin/cat", [], minimalEnv(), 5_000, "kept out of argv\n");
+    expect(result).toEqual({ stdout: "kept out of argv\n", stderr: "", status: 0 });
+  });
+
+  it("closes stdin when no input is given, so a reading child does not hang", async () => {
+    const result = await execSafeAsync("/bin/cat", [], minimalEnv(), 5_000);
+    expect(result.stdout).toBe("");
   });
 });

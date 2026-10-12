@@ -1,9 +1,14 @@
 import { fakeSha } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
-import { describe, expect, it, vi } from "vitest";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { seatTranscript, type SeatRow } from "../test-support/seat-transcript.js";
 import type { AwaitVerdictResult, ReviewerAgent, ReviewerMessage, ReviewerReader } from "./review.js";
 import { FINDINGS_SEPARATOR } from "@titan-design/review-panel";
-import { DamagedTranscriptError, acceptExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
+import { transcriptReviewerReader } from "./reviewer-reader.js";
+import { DamagedTranscriptError, acceptExternalVerdict, awaitExternalVerdict, SEAT_REVIEWER, newestAtHead, seatFixFirst, seatVetoed, unlessSeatFixFirst } from "./external-review.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("seat-verdict-head");
@@ -314,6 +319,71 @@ describe("unlessSeatFixFirst", () => {
   });
 });
 
+const SEAT_POLL_MS = 1_000;
+const SEAT_BOUND_MS = 30 * SEAT_POLL_MS;
+
+/** A clock that each sleep advances, and a reader whose seat says the next verdict in `answers` on every read. */
+function seatSaying(...answers: string[]) {
+  let clock = 0;
+  let reads = 0;
+  const reader: ReviewerReader = {
+    read: async (input) => {
+      const answer = answers[Math.min(reads, answers.length - 1)]!;
+      reads += 1;
+      return input.reviewerAgentId === SEAT.agentId ? [said(SEAT, verdictAt(answer), 5 + reads)] : [];
+    },
+  };
+  const timing = { now: () => clock, sleep: async (ms: number) => void (clock += ms), pollMs: SEAT_POLL_MS, timeoutMs: SEAT_BOUND_MS };
+  return { reader, seatWait: { timing, signal: new AbortController().signal }, reads: () => reads };
+}
+
+describe("Shepherd's MERGE meeting a seat WAIT", () => {
+  it("waits for the seat's MERGE and lets the own MERGE stand", async () => {
+    const seat = seatSaying("WAIT", "WAIT", "MERGE");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toBe(shepherdMerge);
+    expect(seat.reads()).toBe(3);
+  });
+
+  it("is a G10 disagreement when the seat answers FIX_FIRST after its WAIT", async () => {
+    const seat = seatSaying("WAIT", "FIX_FIRST");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, () => 91, seat.seatWait);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", reviewer: { agentId: SEAT.agentId }, ownerOverride: { trigger: "g10-disagree", head: HEAD, shepherd: "MERGE", other: "FIX_FIRST", at: 91 } });
+  });
+
+  it("holds the own MERGE as seatHeld when the WAIT outlasts the bound", async () => {
+    const seat = seatSaying("WAIT");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT"), seatHeld: shepherdMerge });
+    expect(seat.reads()).toBe(SEAT_BOUND_MS / SEAT_POLL_MS + 1);
+  });
+
+  it("vetoes at once with no seat-wait timing, as before", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+
+    const result = await unlessSeatFixFirst(rosterOf(SEAT), seat.reader, target, shepherdMerge);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("said WAIT") });
+    expect(seat.reads()).toBe(1);
+  });
+
+  it("blocks with the failed read's reason, not seatHeld, when a read fails during the wait", async () => {
+    const seat = seatSaying("WAIT");
+    let rosterReads = 0;
+    const roster = async () => (++rosterReads > 1 ? Promise.reject(new Error("broker down")) : [SEAT]);
+
+    const result = await unlessSeatFixFirst(roster, seat.reader, target, shepherdMerge, undefined, Date.now, seat.seatWait);
+
+    expect(result).toEqual({ kind: "none", reason: expect.stringContaining("roster could not be read") });
+  });
+});
+
 describe("seat and hold reviewers: the findings a FIX_FIRST hands over", () => {
   const POSTSCRIPT = `A background search timed out. The verdict stands.\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
   const textOf = (result: unknown) => (result as { text: string }).text;
@@ -354,5 +424,59 @@ describe("G10 disagreement between a seat reviewer and Shepherd", () => {
 
     expect(await merged(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
     expect(await sentBack(target, new AbortController().signal)).not.toHaveProperty("ownerOverride");
+  });
+
+  it("is waited out inside the verdict step when seatVetoed is given the timing", async () => {
+    const seat = seatSaying("WAIT", "MERGE");
+
+    const step = seatVetoed({ ...wiring(SEAT)!, reader: seat.reader }, async () => shepherdMerge, Date.now, seat.seatWait.timing);
+
+    expect(await step(target, new AbortController().signal)).toMatchObject({ kind: "verdict", verdict: "MERGE", reviewer: { agentId: SHEPHERD_RV.agentId } });
+    expect(seat.reads()).toBe(2);
+  });
+});
+
+describe("awaitExternalVerdict over a real transcript", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "titan-external-review-"));
+  });
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  /** One read, then the deadline: what the hold's reviewer said by the first poll. */
+  function awaitOnce(row: SeatRow) {
+    const reader = transcriptReviewerReader({ roster: async () => [row], namespace: "host-a" });
+    const timing = { now: () => 0, sleep: async () => undefined, pollMs: 1, timeoutMs: 0 };
+    return awaitExternalVerdict(async () => [row], reader, { ...target, external: row.name }, timing, new AbortController().signal);
+  }
+
+  it("returns MERGE for a live reviewer whose verdict went out in a chat_send", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "live").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+
+    expect(await awaitOnce(seat.row)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, reviewer: { agentId: seat.row.agentId, sessionId: seat.row.sessionId } });
+  });
+
+  it("returns no verdict for an exited reviewer whose transcript ended in a partial record", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE")).text("Sent.");
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+
+    expect(await awaitOnce(seat.row)).toEqual({ kind: "none" });
+  });
+
+  it("returns no verdict when the reviewer sent MERGE and died writing its FIX_FIRST", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+    appendFileSync(seat.file, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__plugin_agent-chat_agent-chat__chat_send","input":{"text":"Verdict: FIX_FIRST`, "utf8");
+
+    expect(await awaitOnce(seat.row)).toEqual({ kind: "none" });
+  });
+
+  it("still lets the seat veto read the FIX_FIRST an exited reviewer sent before its transcript ended in a partial record", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE")).send(verdictAt("FIX_FIRST"));
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+    const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
+
+    expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
   });
 });

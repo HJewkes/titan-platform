@@ -1,0 +1,248 @@
+import { z } from 'zod';
+
+declare const DELIVERABLE_ID_REGEX: RegExp;
+declare const TaskSchema: z.ZodObject<{
+    id: z.ZodString;
+    parent: z.ZodOptional<z.ZodString>;
+    dep: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    deliverables: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    title: z.ZodString;
+    priority: z.ZodNumber;
+    severity: z.ZodOptional<z.ZodEnum<{
+        critical: "critical";
+        high: "high";
+        medium: "medium";
+        low: "low";
+    }>>;
+    estimate: z.ZodOptional<z.ZodNumber>;
+    done_when: z.ZodOptional<z.ZodString>;
+    status: z.ZodString;
+    kind: z.ZodOptional<z.ZodString>;
+    cos: z.ZodOptional<z.ZodString>;
+    area: z.ZodOptional<z.ZodString>;
+    due: z.ZodOptional<z.ZodString>;
+    tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    notes: z.ZodOptional<z.ZodString>;
+    created: z.ZodUnion<readonly [z.ZodString, z.ZodString]>;
+    started_at: z.ZodOptional<z.ZodString>;
+    updated: z.ZodString;
+    done_at: z.ZodUnion<readonly [z.ZodUnion<readonly [z.ZodString, z.ZodString]>, z.ZodNull]>;
+    actual: z.ZodOptional<z.ZodObject<{
+        agentHours: z.ZodOptional<z.ZodNumber>;
+        reviewAgentHours: z.ZodOptional<z.ZodNumber>;
+        usd: z.ZodOptional<z.ZodNumber>;
+        serviceWallHours: z.ZodOptional<z.ZodNumber>;
+        peakContext: z.ZodOptional<z.ZodNumber>;
+        contextAtFirstDeliverable: z.ZodOptional<z.ZodNumber>;
+        at: z.ZodOptional<z.ZodString>;
+        model: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+    claimedHours: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        hours: z.ZodNumber;
+        by: z.ZodString;
+        at: z.ZodString;
+    }, z.core.$strip>>>;
+}, z.core.$strip>;
+type Task = z.infer<typeof TaskSchema>;
+
+declare const DELIVERABLE_STATUSES: readonly ["planned", "active", "shipped", "dropped"];
+/** One deliverable, stored at `<deliverablesDir>/<id>.yml`. */
+declare const DeliverableSchema: z.ZodObject<{
+    id: z.ZodString;
+    title: z.ZodString;
+    done_when: z.ZodString;
+    target: z.ZodUnion<readonly [z.ZodString, z.ZodNull]>;
+    status: z.ZodEnum<{
+        planned: "planned";
+        active: "active";
+        shipped: "shipped";
+        dropped: "dropped";
+    }>;
+    owner_seat: z.ZodString;
+    tags: z.ZodArray<z.ZodString>;
+    created: z.ZodString;
+    updated: z.ZodString;
+    shipped_at: z.ZodUnion<readonly [z.ZodString, z.ZodNull]>;
+}, z.core.$strip>;
+type Deliverable = z.infer<typeof DeliverableSchema>;
+type DeliverableStatus = (typeof DELIVERABLE_STATUSES)[number];
+/** One file read from the deliverables directory: its basename and its parsed YAML. */
+interface DeliverableEntry {
+    file: string;
+    parsed: unknown;
+}
+declare function deliverablesDir(activeRoot: string): string;
+declare function deliverablePath(activeRoot: string, id: string): string;
+/**
+ * Validates the `.yml` files of the deliverables directory, which the host has read and parsed.
+ * A missing directory is an empty registry, so the host passes `[]` and gets `[]` back. Each
+ * file must be named after the id it holds, which also makes ids unique. Throws on the first
+ * bad file, naming it.
+ */
+declare function parseDeliverableRegistry(entries: readonly DeliverableEntry[]): Deliverable[];
+
+interface Edges {
+    parent: string | null;
+    dep: string[];
+}
+type EdgeField = "parent" | "dep";
+/** A proposed edit to one task's edges. An omitted field keeps the task's current edges. */
+interface EdgeChange {
+    id: string;
+    parent?: string | null;
+    dep?: string[];
+}
+type EdgeError = {
+    kind: "unknown-id";
+    id: string;
+    field: EdgeField;
+    ref: string;
+} | {
+    kind: "cycle";
+    field: EdgeField;
+    ids: string[];
+};
+interface CrossInitiativeParentWarning {
+    kind: "cross-initiative-parent";
+    id: string;
+    parent: string;
+}
+interface EdgeCheck {
+    errors: EdgeError[];
+    warnings: CrossInitiativeParentWarning[];
+}
+/**
+ * Returns a task's parent and dep edges. A field, when present, wins outright. Without it the
+ * edge is read from `epic:`/`parent:` or `dep:`/`blocked-by:` tags whose value is a task id.
+ *
+ * The tag read is a migration fallback, not a lasting path: tags are for retrieval only
+ * (decisions item 90), and this fallback goes once the edge tags are migrated to fields.
+ * `blocks:` is not read here, because it names the inverse edge on the other task; only the
+ * migration can turn it into that task's `dep`.
+ */
+declare function readEdges(task: Task): Edges;
+/**
+ * Checks a proposed edge change against the current tasks. Errors are fatal: an edge to an id
+ * not in `tasks`, or a cycle through the changed task, listed as the ids on the cycle in edge
+ * order from the changed task. A dep may cross initiatives. A parent in another initiative is
+ * returned as a `cross-initiative-parent` warning, not an error, until the owner rules on it.
+ */
+declare function checkEdges(tasks: readonly Task[], change: EdgeChange): EdgeCheck;
+
+interface TaskTreeNode {
+    id: string;
+    title: string;
+    status: string;
+    estimate: number | null;
+    depth: number;
+    children: TaskTreeNode[];
+}
+interface TaskFloat {
+    id: string;
+    duration: number;
+    earlyStart: number;
+    earlyFinish: number;
+    lateStart: number;
+    lateFinish: number;
+    float: number;
+}
+interface ExternalDep {
+    task: string;
+    dep: string;
+}
+interface CriticalPathOptions {
+    deliverable?: string;
+}
+interface CriticalPathResult {
+    /** Every task outside a cycle, in input order. */
+    tasks: TaskFloat[];
+    /** The zero-float task ids, by early start then input order. */
+    criticalPath: string[];
+    /** Remaining critical path length in points: the latest early finish. */
+    length: number;
+    /** True when cycles exist: their tasks and the edges through them add nothing, so `length` may be short. */
+    lowerBound: boolean;
+    /** Each cycle's task ids in input order; cycles ordered by their first member. */
+    cycles: string[][];
+    externalDeps: ExternalDep[];
+    unestimated: string[];
+}
+/**
+ * The subtree under `rootId` by `parent` edges, children in input order, or null when no task
+ * has that id. A repeated id keeps its first task, and a parent cycle is cut where it would
+ * revisit a task, so the walk always ends.
+ */
+declare function taskTree(tasks: readonly Task[], rootId: string): TaskTreeNode | null;
+/**
+ * Total float per open task from a forward and backward pass over the dep edges, with the
+ * estimate in points as the duration. Float 0 means the task is on the critical path. Pure and
+ * total: bad input is reported, never thrown.
+ *
+ * - The set is the open tasks, narrowed to those listing `deliverable` when one is given. A dep
+ *   naming a task outside it (closed, another deliverable, unknown) is satisfied: it constrains
+ *   nothing and is listed in `externalDeps`.
+ * - A missing, NaN, infinite or negative estimate is duration 0 and is listed in `unestimated`.
+ * - Tasks in a dep cycle are listed in `cycles` and get no float; a dep on one constrains
+ *   nothing, so with any cycle `length` is only a lower bound (`lowerBound`).
+ * - A repeated id keeps its first task.
+ */
+declare function criticalPath(tasks: readonly Task[], options?: CriticalPathOptions): CriticalPathResult;
+
+declare const StatusEntrySchema: z.ZodObject<{
+    id: z.ZodString;
+    closed: z.ZodBoolean;
+    dispatchable: z.ZodBoolean;
+}, z.core.$strip>;
+declare const AreaEntrySchema: z.ZodObject<{
+    id: z.ZodString;
+    tier: z.ZodUnion<readonly [z.ZodLiteral<0>, z.ZodLiteral<1>, z.ZodLiteral<2>, z.ZodLiteral<"ui">, z.ZodLiteral<"product">]>;
+    path: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+/** The closed category axes, read from `<activeRoot>/titan-platform/categories.yml`. */
+declare const CategoryRegistrySchema: z.ZodObject<{
+    kind: z.ZodArray<z.ZodString>;
+    status: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        closed: z.ZodBoolean;
+        dispatchable: z.ZodBoolean;
+    }, z.core.$strip>>;
+    cos: z.ZodArray<z.ZodString>;
+    area: z.ZodArray<z.ZodObject<{
+        id: z.ZodString;
+        tier: z.ZodUnion<readonly [z.ZodLiteral<0>, z.ZodLiteral<1>, z.ZodLiteral<2>, z.ZodLiteral<"ui">, z.ZodLiteral<"product">]>;
+        path: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>>;
+}, z.core.$strip>;
+type CategoryRegistry = z.infer<typeof CategoryRegistrySchema>;
+type StatusEntry = z.infer<typeof StatusEntrySchema>;
+type AreaEntry = z.infer<typeof AreaEntrySchema>;
+type CategoryAxis = "kind" | "status" | "cos" | "area";
+/** The statuses a root with no registry accepts: the set tasks used before the registry existed. */
+declare const BUILT_IN_STATUSES: readonly StatusEntry[];
+declare function categoriesPath(activeRoot: string): string;
+/**
+ * Validates the parsed contents of categories.yml. Pass `undefined` when the file does not exist,
+ * which returns null: a root with no registry skips validation of kind, cos and area. An empty file
+ * parses to null, not undefined, and fails, so a registry cannot be switched off by emptying it.
+ */
+declare function parseCategoryRegistry(parsed: unknown): CategoryRegistry | null;
+type CategoryError = {
+    kind: "unknown-category";
+    id: string;
+    axis: CategoryAxis;
+    value: string;
+    allowed: string[];
+} | {
+    kind: "cos-fixed-without-due";
+    id: string;
+};
+type CategorizedTask = Pick<Task, "id" | "status" | "kind" | "cos" | "area" | "due">;
+/**
+ * Checks a task's category values against the registry, one error per unknown value. A null
+ * registry checks status against BUILT_IN_STATUSES and skips kind, cos and area. A task with
+ * cos `fixed` and no `due` is an error with or without a registry, because the date is what
+ * makes the class of service fixed.
+ */
+declare function checkCategories(task: CategorizedTask, registry: CategoryRegistry | null): CategoryError[];
+
+export { type AreaEntry, BUILT_IN_STATUSES, type CategorizedTask, type CategoryAxis, type CategoryError, type CategoryRegistry, CategoryRegistrySchema, type CriticalPathOptions, type CriticalPathResult, type CrossInitiativeParentWarning, DELIVERABLE_ID_REGEX, DELIVERABLE_STATUSES, type Deliverable, type DeliverableEntry, DeliverableSchema, type DeliverableStatus, type EdgeChange, type EdgeCheck, type EdgeError, type EdgeField, type Edges, type ExternalDep, type StatusEntry, type Task, type TaskFloat, TaskSchema, type TaskTreeNode, categoriesPath, checkCategories, checkEdges, criticalPath, deliverablePath, deliverablesDir, parseCategoryRegistry, parseDeliverableRegistry, readEdges, taskTree };

@@ -129,6 +129,22 @@ describe("WorkflowRunStore ownership", () => {
   });
 });
 
+describe("WorkflowRunStore countByStatus", () => {
+  it("counts each asked status, zero when no run has it, and leaves other statuses out", () => {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1)]);
+    const store = new WorkflowRunStore(db);
+    for (const id of ["a", "b", "c", "d"]) store.create(newRun(id, "demo", {}));
+    db.prepare("UPDATE workflow_run SET status = 'completed' WHERE id IN ('c', 'd')").run();
+    db.prepare("UPDATE workflow_run SET status = 'paused' WHERE id = 'b'").run();
+
+    const counts = store.countByStatus(["running", "completed", "failed"]);
+
+    expect(Object.fromEntries(counts)).toEqual({ running: 1, completed: 2, failed: 0 });
+    expect(counts.get("running")).toBe(store.listByStatus(["running"]).length);
+  });
+});
+
 function iso(milliseconds: number): string {
   return new Date(milliseconds).toISOString();
 }
@@ -158,5 +174,42 @@ describe("WorkflowRunStore annotate", () => {
 
     expect(store.annotate("run-1", "later", fact({ n: 1 }))).toBe(false);
     expect(store.get("run-1")!.stepResults).toEqual({});
+  });
+});
+
+describe("WorkflowRunStore narrow reads", () => {
+  function storeOf(runs: { id: string; status: string; completedAt?: string }[]): WorkflowRunStore {
+    const db = openDatabase(":memory:");
+    runMigrations(db, [workflowMigration(1)]);
+    const store = new WorkflowRunStore(db);
+    for (const { id, status, completedAt } of runs) {
+      store.create(newRun(id, "demo", {}));
+      db.prepare("UPDATE workflow_run SET status = ?, completed_at = ? WHERE id = ?").run(status, completedAt ?? null, id);
+    }
+    return store;
+  }
+
+  it("reports every run's status by id", () => {
+    const store = storeOf([{ id: "a", status: "running" }, { id: "b", status: "completed", completedAt: "2026-10-01T00:00:00.000Z" }]);
+
+    expect(Object.fromEntries(store.statuses())).toEqual({ a: "running", b: "completed" });
+  });
+
+  it("pages the asked statuses in id order from after the last id, finished no earlier than the cutoff", () => {
+    const store = storeOf([
+      { id: "d", status: "completed", completedAt: "2026-10-05T00:00:00.000Z" },
+      { id: "a", status: "completed", completedAt: "2026-10-04T00:00:00.000Z" },
+      { id: "c", status: "running" },
+      { id: "b", status: "completed", completedAt: "2026-10-01T00:00:00.000Z" },
+      { id: "e", status: "completed", completedAt: "2026-10-06T00:00:00.000Z" },
+    ]);
+    const options = { limit: 2, completedSince: "2026-10-02T00:00:00.000Z" };
+
+    const first = store.page(["completed"], options);
+    const second = store.page(["completed"], { ...options, after: first.at(-1)!.id });
+
+    expect(first.map((run) => run.id)).toEqual(["a", "d"]);
+    expect(second.map((run) => run.id)).toEqual(["e"]);
+    expect(store.page(["completed", "running"], { limit: 10 }).map((run) => run.id)).toEqual(["a", "b", "c", "d", "e"]);
   });
 });

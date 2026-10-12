@@ -165,14 +165,27 @@ teleport lines of the same log.
 
 ### events.db readers
 
-`readVerdicts`, `readSpawns` and `readLastPrompts` read agent-chat's `events.db` through a
+`readVerdicts`, `readSpawns`, `readLastPrompts` and `readHandoffs` read agent-chat's `events.db` through a
 connection the caller opened read-only; the package never opens the file or checks it exists.
-Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`), and the
+Each runs one exported SQL constant (`VERDICTS_SQL`, `SPAWNS_SQL`, `LAST_PROMPTS_SQL`, `HANDOFFS_SQL`), and the
 matching `*_SOURCES` command is `eventsDbCommand(sql)` over that same constant, so the printed
 re-read runs the reader's own query. `eventsDbCommand` binds each `@name` parameter with
 sqlite3's `.parameter set` to an epoch-millisecond placeholder such as `<asOf epoch ms>`.
 `EVENTS_TABLE_DDL` is agent-chat's events table as the readers expect it; a test fixture
 creates it with this rather than a copy.
+
+### seatGenerations
+
+`seatGenerations({ handoffs, broker, agentSessions, seat, since })` lists the agent processes
+that held one seat's name, in start order: `{ generation, agentId, agentName, sessionIds,
+start, end, endedBy }`. A committed `agent_handoff` row (`readHandoffs(db)`) or a
+`teleport_completed` broker line ends a generation and starts its successor; the row wins when
+both record the same handover. An `agent_exited` line ends one with `exit`, an `agent_spawned`
+line starts one, and a generation with neither end is `open`. An aborted handoff, one the
+predecessor never stood down after, ends nothing. `since` drops generations that ended before it
+and keeps the one running at it, so read handoffs without a bound. `sessionIds` comes from
+`readAgentSessions(db)` over the session graph and is empty, not dropped, when the graph has no
+session for the agent. `start` is null when the spawn line has rotated out of the broker log.
 
 ### reviewFillReport
 
@@ -182,6 +195,26 @@ miner fills from transcripts, and places each chat verdict in the context band o
 that sent it, per model. An approve counts as an error when the same PR later got
 `changes_requested`. GitHub-surface reviews have no issuing request and count as `unfilled`.
 It takes an open graph connection and never calls `gh`.
+
+### costPerOutcome
+
+`costPerOutcome(db, assignments, { since, until })` costs generic assignment records
+(`assignmentSchema`) against `request_cost` and reports `bySeat`, `byKind`, `byInitiative` and
+`byValue` buckets with `usdPerMerged` and `usdPerDone` (bucket cost over its merged or done
+count, null at zero). An agent joins by `agent_name`, then by `session_origin.task_ids`; one with
+neither lands in `unmatchedAgents`, and `joinSource` counts each route. An agent's window spend is
+split over its assignments, so it is costed once however many rounds it ran. Seat sessions are
+reported in `seatCostUsd` and kept out of every bucket. `renderCostPerOutcomeText` prints the
+tables with the list-price caveat.
+
+### scorecardJournalRows
+
+`scorecardJournalRows({ eventsDb, dispatchRecords, since, now })` returns the scorecard rows read
+from `events.db` verdicts and seat `dispatch.jsonl` journals: first-pass FIX_FIRST share,
+mechanical first-blocker share, coordinator spawns for milestone tasks and cost per merged PR.
+`readDispatchJournal(dir)` reads the journals. An absent or empty source gives `value: null`,
+which `scorecardRowText` prints as `not measured`; the cost row also stays unmeasured below the
+0.8 `usd_est` coverage floor (`MIN_COST_COVERAGE`). Baselines and targets are the caller's.
 
 ### taskActuals
 
@@ -197,6 +230,10 @@ capped, so a first request adds nothing. `usd` is `request_cost` at list price. 
 linked by `session_origin.task_ids`; a reviewer session is also picked up through a PR its
 task's implementer linked. `implSessions`, `firstImplAt` and `lastImplAt` describe the
 implementer sessions, and `prs` lists each linked PR with its `merged_at`.
+`peakContext` is the largest main-thread `context_tokens` over the implementer sessions.
+`contextAtFirstDeliverable` is the context of the first implementer request at or after the
+earliest `status_report` or `pr_create` signal, in that signal's session. Reviewer sessions count
+toward neither, and each is null when there is nothing to read.
 
 | Flag | Meaning |
 |---|---|

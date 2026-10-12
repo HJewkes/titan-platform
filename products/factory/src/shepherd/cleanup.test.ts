@@ -1,6 +1,7 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort, type HeadRef } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { holdSlotsMigration } from "./store-migrations.js";
 import { shepherdEventMigration } from "./events.js";
 import { freshReviewerBase, runCleanup, SH_CLEANUP_GIVE_UP_MS, SH_CLEANUP_RETRY_MS, type CleanupAgent, type CleanupAgents, type CleanupPorts, type CleanupTasks, type TaskState } from "./cleanup.js";
 import type { AgentRow } from "@titan-design/agent-dispatch";
@@ -18,7 +19,7 @@ const base: RegistrationInput = { repo: REPO, pr: 1, runId: RUN, task: "demo/TP-
 
 function storeRef(registration: RegistrationInput | undefined = base): { ref: ShepherdStoreRef; store: ShepherdStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19)]);
   const store = new ShepherdStore(db, () => 0);
   if (registration) store.register(registration);
   return { store, ref: { get: () => store, bind: () => () => undefined } };
@@ -53,14 +54,14 @@ function fakeTasks(state: TaskState): CleanupTasks & { closed: string[]; notes: 
   return { closed, notes, state: async () => state, done: async (initiative, id) => void closed.push(`${initiative}/${id}`), appendNote: async (initiative, id, line) => void notes.push(`${initiative}/${id}: ${line}`) };
 }
 
-function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput } = {}) {
+function world(options: { fake?: FakeGitHub; port?: GitHubPort; agents?: FakeAgent[]; task?: TaskState; registration?: RegistrationInput; advisory?: (repo: string) => boolean } = {}) {
   const fake = options.fake ?? mergedPr(fakeGitHub({ repo: REPO }), { headRef: "feat/x", headRepo: REPO });
   const clock = { now: 0 };
   const agents = fakeAgents(clock, options.agents ?? []);
   const tasks = fakeTasks(options.task ?? "open");
   const { ref, store } = storeRef(options.registration);
   const cleanup: CleanupPorts = { agents, tasks };
-  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup };
+  const deps = { port: options.port ?? githubPort(fake.wire), store: ref, now: () => clock.now, sleep: async (ms: number) => void (clock.now += ms), pollMs: 30_000, cleanup, ...(options.advisory && { advisory: options.advisory }) };
   const run = () => runCleanup(deps, { repo: REPO, pr: 1, runId: RUN }, new AbortController().signal);
   return { fake, clock, agents, tasks, store, run };
 }
@@ -116,6 +117,17 @@ describe("sh-cleanup task", () => {
 });
 
 describe("sh-cleanup head ref", () => {
+  it("leaves an advisory repo's head branch in place after a human merge, and still closes the task", async () => {
+    const w = world({ advisory: (repo) => repo === REPO });
+
+    const result = await w.run();
+
+    expect(result.ref).toBe("advisory");
+    expect(w.fake.refs.has("feat/x")).toBe(true);
+    expect(w.fake.effects.deleteRef).toBe(0);
+    expect(w.tasks.closed).toEqual(["demo/TP-1"]);
+  });
+
   it("deletes a same-repo head branch after the merge", async () => {
     const w = world();
 
@@ -167,6 +179,31 @@ describe("sh-cleanup hold", () => {
     await w.run();
 
     expect(w.store.byRun(RUN)).toMatchObject({ held: false, holdReviewer: null, holdSatisfied: null });
+  });
+
+  it("keeps who satisfied the hold, and the merged head, in the release event", async () => {
+    const w = world();
+    w.store.hold(RUN, "awaiting a named review", "rv-sec");
+    w.store.satisfyHold(RUN, "rv-sec", fakeSha("head"), { agentId: "agent-rv", sessionId: "session-rv", locator: {} });
+
+    await w.run();
+
+    const release = w.store.eventsOf(RUN).find((event) => event.kind === "release");
+    expect(release).toMatchObject({
+      actor: "shepherd:cleanup",
+      headSha: fakeSha("head"),
+      reason: `merged on rv-sec's MERGE at ${fakeSha("head")} (agent-rv/session-rv)`,
+    });
+  });
+
+  it("records the lifted hold's reason when no reviewer satisfied it", async () => {
+    const w = world();
+    w.store.hold(RUN, "owner review");
+
+    await w.run();
+
+    const release = w.store.eventsOf(RUN).find((event) => event.kind === "release");
+    expect(release).toMatchObject({ actor: "shepherd:cleanup", headSha: fakeSha("head"), reason: "owner review" });
   });
 
   it("keeps the hold on a PR that has not merged", async () => {

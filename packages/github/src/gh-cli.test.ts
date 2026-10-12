@@ -72,6 +72,22 @@ describe("gh api adapter", () => {
     expect(await ghCliWire(open.exec).getPr(REPO, 7)).toMatchObject({ merged: false, mergedAt: null });
   });
 
+  it("a pull request answering an unknown state fails the read rather than reading as closed", async () => {
+    const shouted = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: "OPEN" }) });
+    const missing = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: undefined }) });
+
+    await expect(ghCliWire(shouted.exec).getPr(REPO, 7)).rejects.toThrow(/state "OPEN", neither open nor closed/);
+    await expect(ghCliWire(missing.exec).getPr(REPO, 7)).rejects.toThrow(/neither open nor closed/);
+  });
+
+  it("an open and a closed pull request read as such", async () => {
+    const open = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": openPr });
+    const closed = scriptedGh({ "pulls/7": JSON.stringify({ ...JSON.parse(openPr), state: "closed" }) });
+
+    expect((await ghCliWire(open.exec).getPr(REPO, 7)).state).toBe("open");
+    expect((await ghCliWire(closed.exec).getPr(REPO, 7)).state).toBe("closed");
+  });
+
   it("reads an armed auto_merge as autoMerge true, and an absent or null one as false", async () => {
     const armed = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: { merge_method: "squash" } }) });
     const nulled = scriptedGh({ "compare/": JSON.stringify({ behind_by: 0 }), "pulls/7": JSON.stringify({ ...JSON.parse(openPr), auto_merge: null }) });
@@ -132,6 +148,55 @@ describe("gh api adapter", () => {
 
     expect(await ghCliWire(absent.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: [], strict: false });
     await expect(ghCliWire(broken.exec).getClassicRequiredChecks(REPO, "main")).rejects.toThrow(/502/);
+  });
+
+  it("reads a free-plan 403 on either rules read as no required checks, and any other 403 as an error", async () => {
+    const upgrade = included(403, {}, { message: "Upgrade to GitHub Pro or make this repository public to enable this feature.", status: "403" });
+    const forbidden = included(403, {}, { message: "Resource not accessible by integration", status: "403" });
+    const free = scriptedGh({ "rules/branches/main": upgrade, "protection/required_status_checks": upgrade });
+    const denied = scriptedGh({ "rules/branches/main": forbidden, "protection/required_status_checks": forbidden });
+
+    expect(await ghCliWire(free.exec).getBranchRules(REPO, "main")).toEqual({ contexts: [], strict: false });
+    expect(await ghCliWire(free.exec).getClassicRequiredChecks(REPO, "main")).toEqual({ contexts: [], strict: false });
+    await expect(ghCliWire(denied.exec).getBranchRules(REPO, "main")).rejects.toThrow(/403/);
+    await expect(ghCliWire(denied.exec).getClassicRequiredChecks(REPO, "main")).rejects.toThrow(/403/);
+  });
+
+  it("refuses rules of an unexpected shape rather than read them as none", async () => {
+    const gh = scriptedGh({ "rules/branches/main": JSON.stringify({ oops: 1 }) });
+
+    await expect(ghCliWire(gh.exec).getBranchRules(REPO, "main")).rejects.toThrow(/unexpected shape/);
+  });
+
+  it("reads every page of the combined status as context and state", async () => {
+    const statuses = (from: number, count: number) => Array.from({ length: count }, (_, i) => ({ context: `ok${from + i}`, state: "success", id: from + i }));
+    const gh = scriptedGhSequence([
+      included(200, { link: `<https://api.github.com/repositories/1/commits/${H1}/status?page=2>; rel="next"` }, { state: "pending", total_count: 40, statuses: statuses(1, 30) }),
+      included(200, {}, { state: "pending", total_count: 40, statuses: [...statuses(31, 9), { context: "slow", state: "pending", id: 99 }] }),
+    ]);
+
+    const read = await ghCliWire(gh.exec).listCommitStatuses(REPO, H1);
+
+    expect(read).toHaveLength(40);
+    expect(read.at(-1)).toEqual({ context: "slow", state: "pending" });
+    expect(gh.calls[0]?.args).toContain(`repos/${REPO}/commits/${H1}/status`);
+  });
+
+  it("refuses a combined status that lists fewer statuses than its total_count", async () => {
+    const gh = scriptedGh({ "/status": JSON.stringify({ total_count: 40, statuses: [{ context: "ok", state: "success" }] }) });
+
+    await expect(ghCliWire(gh.exec).listCommitStatuses(REPO, H1)).rejects.toThrow(/listed 1 of 40/);
+  });
+
+  it("expands an abbreviated sha through commits/{sha}, and reads GitHub's 422 for a missing commit as null", async () => {
+    const found = scriptedGh({ "commits/abc1234": JSON.stringify({ sha: H1 }) });
+    const missing = scriptedGh({ "commits/abc1234": { code: 1, stdout: "", stderr: "gh: No commit found for SHA: abc1234 (HTTP 422)\n" } });
+    const broken = scriptedGh({ "commits/abc1234": { code: 1, stdout: "", stderr: "gh: Server Error (HTTP 502)\n" } });
+
+    expect(await ghCliWire(found.exec).resolveCommit(REPO, "abc1234")).toBe(H1);
+    expect(found.calls[0]?.args).toContain(`repos/${REPO}/commits/abc1234`);
+    expect(await ghCliWire(missing.exec).resolveCommit(REPO, "abc1234")).toBeNull();
+    await expect(ghCliWire(broken.exec, { sleep: async () => {} }).resolveCommit(REPO, "abc1234")).rejects.toThrow(/502/);
   });
 
   it("reads the branch endpoint's protected flag and throws when it is not a boolean", async () => {
@@ -257,6 +322,8 @@ const ROUTES: [RegExp, unknown][] = [
   [/rules\/branches\//, []],
   [/branches\/main$/, { name: "main", protected: false }],
   [/check-runs$/, { check_runs: [] }],
+  [/commits\/[0-9a-f]+\/status$/, { total_count: 0, statuses: [] }],
+  [/^repos\/octo\/demo\/commits\/[0-9a-f]+$/, { sha: H1 }],
   [/git\/commits\//, { sha: H1, parents: [], tree: { sha: "t1" } }],
   [/git\/commits$/, { sha: H2 }],
   [/actions\/runs\/\d+$/, { status: "completed" }],
@@ -305,6 +372,8 @@ describe("gh api adapter, REST only", () => {
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
+      resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
+      commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
       updateBranch: () => port.updateBranch(REPO, 7, H1),
       pushEmptyCommit: () => port.pushEmptyCommit(REPO, "topic", H1, "m"),

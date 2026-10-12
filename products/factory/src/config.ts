@@ -42,9 +42,21 @@ export const ReviewConfigSchema = z.strictObject({
   minFreeInodesPct: z.number().min(0).max(100).optional(),
   /** No reviewer starts while this many run; absent means 3. */
   maxConcurrent: z.number().int().positive().optional(),
+  /** `shadow` records the review panel's plan on each intent and spawns nothing more; `on` reviews with the panel. Absent means `off`. */
+  panel: z.enum(["off", "shadow", "on"]).optional(),
 });
 
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
+
+/** A repo Shepherd works on with no seat behind it; strict, so a misspelt `path` fails the load instead of leaving no checkout. */
+export const ShepherdRepoConfigSchema = z.strictObject({
+  /** The repo's main checkout, used when no seat binds the repo; a seat's path wins. */
+  path: z.string().min(1).optional(),
+  /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
+  advisory: z.boolean().optional(),
+});
+
+export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
 export const FixerConfigSchema = z.strictObject({
@@ -109,6 +121,8 @@ export const ServiceConfigSchema = z.strictObject({
   deployCheckout: absolutePath.optional(),
   /** What deploy clones the checkout from when it is absent; absent means the origin of the checkout the CLI runs from. */
   deployRemote: noNul.min(1).optional(),
+  /** How long `service deploy` watches a restarted build before it counts as deployed; absent means 2 minutes. */
+  deployWatchMs: z.number().int().min(0).optional(),
 });
 
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
@@ -157,6 +171,7 @@ export const FactoryConfigSchema = z.object({
       fixer: FixerConfigSchema.optional(),
       spawnGate: SpawnGateConfigSchema.optional(),
       flakyChecks: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), FlakyChecksSchema).optional(),
+      repos: z.record(z.string().refine(isRepoKey, "must be an owner/name repo"), ShepherdRepoConfigSchema).optional(),
       reviewCheck: ReviewCheckConfigSchema.optional(),
       /** The agent-chat seat told when the deploy alarm goes up and while it stands; absent is warned about at serve start and fails `service check`. */
       hubSeat: z.string().min(1).optional(),
@@ -199,7 +214,12 @@ function parseJson(path: string): unknown {
 }
 
 export function loadConfig(path: string): FactoryConfig {
-  if (!existsSync(path)) return {};
+  return readConfig(path) ?? {};
+}
+
+/** Like `loadConfig`, but undefined when no file is there, so a caller can tell an absent file from one that sets nothing. */
+export function readConfig(path: string): FactoryConfig | undefined {
+  if (!existsSync(path)) return undefined;
   const raw = parseJson(path);
   const misspelt = raw && typeof raw === "object" ? Object.keys(raw).find(misspeltRemoteFactory) : undefined;
   if (misspelt) throw new Error(`invalid config ${path}: ${misspelt}: did you mean remoteFactory?`);

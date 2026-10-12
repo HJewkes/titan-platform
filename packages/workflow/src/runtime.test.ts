@@ -586,6 +586,31 @@ describe("WorkflowRuntime", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
+  it("does not re-adopt a run it parked because the workflow returned with a step unfinished", async () => {
+    const db = makeDb();
+    const first = runtime(db, pendingRecoverable(deferred<DurableStepOutcome>().promise), [], { executionId: () => "execution-held" });
+    first.register("durable", oneDispatch);
+    const runId = first.start("durable");
+    await vi.waitFor(() => expect(first.status(runId)?.activeSteps.work?.runnerRef).toBe("execution-held"));
+    first.shutdown();
+
+    const events: WorkflowEvent[] = [];
+    const second = runtime(db, {
+      dispatch: async () => { throw new Error("must not redispatch"); },
+      reconcile: async () => ({ kind: "running", runnerRef: "execution-held", completion: new Promise<never>(() => undefined), evidence: "still running" }),
+    }, events);
+    second.register("durable", async () => undefined);
+
+    expect(await second.hydrate()).toEqual([runId]);
+    await vi.waitFor(() => expect(second.status(runId)?.status).toBe("recovery_required"));
+    const parkedAt = new WorkflowRunStore(db).get(runId)?.revision;
+
+    expect(await second.hydrate()).toEqual([]);
+    expect(await second.hydrate()).toEqual([]);
+    expect(new WorkflowRunStore(db).get(runId)?.revision).toBe(parkedAt);
+    expect(events.filter((e) => e.type === "workflow_recovery_required")).toHaveLength(1);
+  });
+
   it("can reconcile a recovery_required execution on a later hydrate", async () => {
     const { db, runId } = await abandonedRecoverableRun();
     const unavailable = runtime(db, {

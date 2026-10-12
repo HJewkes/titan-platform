@@ -8,17 +8,17 @@ import { greenAfterRed, redOnlyFromCancels, type FreezeStore } from "./freeze.js
 import type { AgentChatAgents } from "./agents.js";
 import type { ShepherdDeps } from "./phases.js";
 import { failureOf } from "./error-class.js";
+import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { LOG_BUDGET_BYTES, LOG_TAIL_LINES, tailBytes } from "./wake-brief.js";
 import { GITHUB_READ_GIVE_UP_MS } from "./timeouts.js";
-import { FACTORY_IMPLEMENTER_PROFILE, seatCheckout } from "./wake.js";
+import { seatCheckout } from "./seat-checkout.js";
+import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
 export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
 export const SH_MAIN_RED_POLL_MS = 30_000;
-/** Where a fix task goes when the merged PR's registration names no `<initiative>/<id>` task. */
-export const DEFAULT_FIX_INITIATIVE = "titan-platform";
 
 export interface FixTaskFields {
   title: string;
@@ -141,12 +141,6 @@ export async function failingLogs(port: GitHubPort, repo: RepoSlug, sha: string)
   return { failing, log: sections.join("\n") };
 }
 
-/** `<initiative>/<id>` of the merged PR's registration; anything else files into the default initiative. */
-function initiativeOf(task: string | undefined): string | undefined {
-  const initiative = task?.split("/")[0];
-  return task !== undefined && task.includes("/") && /^[a-z0-9][a-z0-9-]*$/i.test(initiative ?? "") ? initiative : undefined;
-}
-
 async function fixTaskFields(deps: ShepherdDeps, input: RedInput, key: string, fallback: boolean): Promise<FixTaskFields> {
   const { failing, log } = await failingLogs(deps.port, input.repo, input.mergeSha);
   const short = input.mergeSha.slice(0, 7);
@@ -202,6 +196,7 @@ const noFixer = (detail: string, thawed = false): z.infer<typeof FixerResult> =>
 /** One fixer per episode: the freeze row's fixer is reused, and a name already on the roster is never spawned twice. */
 export async function spawnFixer(deps: ShepherdDeps, wiring: MainRedWiring | undefined, input: FixerInput, signal: AbortSignal): Promise<z.infer<typeof FixerResult>> {
   if (!input.fixer) return noFixer("notify only: the policy grants no fixer");
+  if (deps.advisory?.(input.repo)) return noFixer(`notify only: ${input.repo} is advisory, so Shepherd starts no fixer to push to it`);
   const live = wiring?.freezes().live(input.repo, input.episode);
   if (!wiring || !live) return noFixer(THAWED, true);
   if (live.fixer !== null) return { fixer: live.fixer, thawed: false, detail: "this episode already has its fixer" };

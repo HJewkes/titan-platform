@@ -5,11 +5,14 @@
  *
  * Package discovery is shared with gen-docs-reference.mjs. The "use this when" line lives in
  * each unit's CAPABILITY.md; runtime paths and known gaps live in scripts/capabilities-data.json.
- * `--check` regenerates in memory and exits 1 when a committed copy is stale.
+ * It also writes each public package's API snapshots (api-snapshots.mjs), which need a built dist/.
+ * `--check` regenerates in memory and exits 1 when a committed copy is stale. `--catalog-only`
+ * skips the snapshots, for version-packages, which runs in release.yml without a build.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MissingDistError, snapshotOutputs } from "./api-snapshots.mjs";
 import { TIER_LABELS, collect } from "./gen-docs-reference.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -226,15 +229,31 @@ function outputs() {
   ];
 }
 
-function main() {
-  const files = outputs();
-  if (process.argv.includes("--check")) {
-    const stale = files.filter((f) => !existsSync(f.path) || readFileSync(f.path, "utf8") !== f.text);
-    for (const f of stale) console.error(`stale: ${f.path.slice(root.length + 1)}. Run pnpm capabilities and commit the result.`);
-    process.exit(stale.length > 0 ? 1 : 0);
-  }
-  for (const f of files) writeFileSync(f.path, f.text);
-  console.log(`capabilities: ${files.length} files, ${collect().length} units`);
+function plannedFiles(argv, repoRoot, catalog) {
+  return argv.includes("--catalog-only") ? catalog() : [...catalog(), ...snapshotOutputs(repoRoot)];
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+/** Writes or checks the catalog and snapshots under `repoRoot`; returns the exit code. */
+export function run(argv, { repoRoot = root, catalog = outputs, log = console.log, error = console.error } = {}) {
+  let files;
+  try {
+    files = plannedFiles(argv, repoRoot, catalog);
+  } catch (err) {
+    if (!(err instanceof MissingDistError)) throw err;
+    error(err.message);
+    return 2;
+  }
+  if (argv.includes("--check")) {
+    const stale = files.filter((f) => !existsSync(f.path) || readFileSync(f.path, "utf8") !== f.text);
+    for (const f of stale) error(`stale: ${f.path.slice(repoRoot.length + 1)}. Run pnpm capabilities and commit the result.`);
+    return stale.length > 0 ? 1 : 0;
+  }
+  for (const f of files) {
+    mkdirSync(dirname(f.path), { recursive: true });
+    writeFileSync(f.path, f.text);
+  }
+  log(`capabilities: ${files.length} files`);
+  return 0;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) process.exitCode = run(process.argv.slice(2));

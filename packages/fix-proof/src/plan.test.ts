@@ -108,4 +108,14 @@ describe("planFixProof", () => {
   ])("refuses a base config with %s", (_label, baseConfig) => {
     expect(planFixProof({ nameStatus: "", baseConfig }).ok).toBe(false);
   });
+
+  it.each(["--reporter=x.test.ts", "-t.test.ts"])("rejects a selected test whose path %s would read as a vitest flag", (test) => {
+    const result = planFixProof({ nameStatus: diff(`A\t${test}`) });
+
+    expect(result).toEqual({ ok: false, error: `unsafe test path: ${test}` });
+  });
+
+  it("plans a test with a dash inside its path", () => {
+    expect(plan({ nameStatus: diff("A\tsrc/-ok.test.ts") }).tests).toEqual(["src/-ok.test.ts"]);
+  });
 });

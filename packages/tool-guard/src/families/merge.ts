@@ -1,4 +1,4 @@
-import type { Chain, SimpleCommand } from "../shell/commands.js";
+import type { SimpleCommand } from "../shell/commands.js";
 import { isCaseUnsure } from "../shell/case-attrs.js";
 import { parseGit } from "../shell/git.js";
 import type { GitInvocation } from "../shell/git.js";
@@ -178,12 +178,9 @@ function switchDir(cmd: SimpleCommand, ctx: ClassifyContext): { dir: string | nu
 
 type Switch = { dir: string | null; created: WordToken | null };
 
-/** Contexts that trust a created branch inside one `&&` chain, with the context every command outside it sees. */
-const chainTrust = new WeakMap<ClassifyContext, { chain: Chain; fallback: ClassifyContext }>();
-
 /** The context `cmd` sees: a created branch trusted for its `&&` chain is dropped once the chain ends. */
 function inChain(cmd: SimpleCommand, ctx: ClassifyContext): ClassifyContext {
-  const held = chainTrust.get(ctx);
+  const held = ctx.chainTrust;
   return held && held.chain !== cmd.chain ? held.fallback : ctx;
 }
 
@@ -217,12 +214,10 @@ function after(cmd: SimpleCommand, line: ClassifyContext): ClassifyContext | und
   const ctx = inChain(cmd, line);
   const sw = switchDir(cmd, ctx);
   if (!sw) return ctx === line ? undefined : ctx;
-  const base = chainTrust.get(ctx)?.fallback ?? ctx;
+  const base = ctx.chainTrust?.fallback ?? ctx;
   const fallback = switched(sw, switchedHead(sw, false, base), base);
   if (!guardsChain(cmd)) return fallback;
-  const trusted = switched(sw, switchedHead(sw, true, ctx), ctx);
-  chainTrust.set(trusted, { chain: cmd.chain, fallback });
-  return trusted;
+  return { ...switched(sw, switchedHead(sw, true, ctx), ctx), chainTrust: { chain: cmd.chain, fallback } };
 }
 
 /** Merging into a protected branch, by PR, API or git: the MRG rows of the authority table. */

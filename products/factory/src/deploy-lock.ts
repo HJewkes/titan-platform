@@ -1,3 +1,7 @@
+import { join } from "node:path";
+
+export const deployLockPath = (stateDir: string): string => join(stateDir, "deploy.lock");
+
 /** What the deploy lock reads and writes; `rename` is the one atomic step a steal relies on. */
 export interface LockPorts {
   pid: number;

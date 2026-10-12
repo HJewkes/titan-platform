@@ -149,13 +149,21 @@ function released(deps: ShepherdDeps, input: WaitInput): boolean {
   return true;
 }
 
-/** Headroom on any account ends the wait, as do a release and a PR that moved on; the next review intent recomputes the hold. */
+/**
+ * Headroom on any account ends the wait, as do a release and a PR that moved on; the next review intent recomputes the hold.
+ * A closed PR gets no next review intent, so it drops the run's own hold here; anyone else's hold stays.
+ * Only a read of state "closed" releases (a merged PR reads closed too); anything else keeps the hold.
+ */
 async function resumeReason(deps: ShepherdDeps, accounts: AccountsView, input: WaitInput): Promise<Waited["resumed"] | undefined> {
   if (released(deps, input)) return "released";
   const limits = accountLimitsOf(deps);
   if (usableAccount(limits, accounts.dirs) !== undefined) return "headroom";
   const pr = await deps.port.getPr(input.repo, input.pr);
-  return pr.headSha !== input.head || pr.state !== "open" ? "head-moved" : undefined;
+  if (pr.state === "closed") {
+    limits.releaseRun(input.runId);
+    return "head-moved";
+  }
+  return pr.headSha !== input.head ? "head-moved" : undefined;
 }
 
 /** Any read that fails keeps the hold and is polled again. */

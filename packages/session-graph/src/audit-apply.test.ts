@@ -11,6 +11,8 @@ import { EPISODE_TABLE, ORIGIN_MIGRATION_NAME } from "./origin-schema.js";
 import { EPISODE_TRANSCRIPT_MIGRATION_NAME } from "./episode-transcript-schema.js";
 import { ORIGIN_TASK_LINK_MIGRATION_NAME, applyOriginTaskLinkSchema } from "./origin-task-link-schema.js";
 import { ORIGIN_EXPERIMENT_MIGRATION_NAME } from "./origin-experiment-schema.js";
+import { INBOUND_BROADCAST_MIGRATION_NAME } from "./inbound-broadcast-schema.js";
+import { PRICE_LONG_PROMPT_MIGRATION_NAME } from "./price-long-prompt-schema.js";
 import { REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, applyReviewVerdictSchema } from "./review-schema.js";
 import { openSessionGraph, resetIndex, type SessionGraph } from "./graph.js";
 import { prsNeedingOutcome } from "./outcomes.js";
@@ -44,7 +46,7 @@ const richLines = (sessionId: string) => [
 function lateKinds(sessionId: string, byteOffset: number): TranscriptDelta {
   const base = { sessionId, ts: "2026-09-01T00:00:05Z", byteOffset, byteLength: 1, blockIndex: 0 };
   const events: SessionEvent[] = [
-    { ...base, kind: "inbound", cause: "tool_result", delivery: "tool_result", detail: null, originServer: null, fromName: null, msgId: null, toolUseId: `tu-${sessionId}`, isError: true, contentHash: "h", chars: 3, promptSource: null },
+    { ...base, kind: "inbound", cause: "tool_result", delivery: "tool_result", detail: null, originServer: null, fromName: null, msgId: null, broadcast: null, toolUseId: `tu-${sessionId}`, isError: true, contentHash: "h", chars: 3, promptSource: null },
     { ...base, kind: "context_block", source: "tool_result", toolUseId: `tu-${sessionId}`, attachmentType: null, chars: 3, isMedia: false },
     { ...base, kind: "signal", signal: "commit", detail: null, toolUseId: `tu-${sessionId}` },
   ];
@@ -113,7 +115,7 @@ describe("migration 4", () => {
 
     expect(afterFirst.map((r) => [r.version, r.name])).toEqual([
       [1, "kit tables"], [2, "session graph tables"], [3, "normalized conversations and source evidence"],
-      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME], [9, "stop storing bulk classes"], [10, "request_cost model-id boundary"], [11, ORIGIN_EXPERIMENT_MIGRATION_NAME],
+      [4, AUDIT_MIGRATION_NAME], [5, ORIGIN_MIGRATION_NAME], [6, EPISODE_TRANSCRIPT_MIGRATION_NAME], [7, ORIGIN_TASK_LINK_MIGRATION_NAME], [8, REVIEW_VERDICT_MIGRATION_NAME], [9, "stop storing bulk classes"], [10, "request_cost model-id boundary"], [11, ORIGIN_EXPERIMENT_MIGRATION_NAME], [12, INBOUND_BROADCAST_MIGRATION_NAME], [13, PRICE_LONG_PROMPT_MIGRATION_NAME],
       [1001, "active-work tables"], [1002, "active-work follow-up"],
     ]);
     expect(AUDIT_MIGRATION_NAME).toBe("audit tables");
@@ -245,6 +247,22 @@ describe("migration 8", () => {
   });
 });
 
+describe("migration 12", () => {
+  it("migration 12 adds inbound.broadcast as NULL to rows written before it", () => {
+    const file = path.join(dir, "v11-graph.sqlite3");
+    const db = openDatabase(file);
+    runMigrations(db, MIGRATIONS.filter((m) => m.version <= 11));
+    db.prepare("INSERT INTO inbound (transcript_id, byte_offset, block_index, session_id, ts, cause, delivery, msg_id, content_hash, chars) VALUES (1, 0, 0, 's1', '2026-09-01T00:00:00Z', 'channel_message', 'turn_start', 'm1', 'h', 1)").run();
+    db.close();
+
+    const migrated = openSessionGraph(file);
+
+    expect(INBOUND_BROADCAST_MIGRATION_NAME).toBe("inbound broadcast flag");
+    expect(migrated.db.prepare("SELECT msg_id, broadcast FROM inbound").all()).toEqual([{ msg_id: "m1", broadcast: null }]);
+    migrated.db.close();
+  });
+});
+
 describe("request rows", () => {
   const requests = () => graph.db.prepare("SELECT * FROM request ORDER BY transcript_id").all() as Record<string, unknown>[];
 
@@ -326,6 +344,20 @@ describe("audit apply, purge and reset", () => {
 
     const rows = graph.db.prepare("SELECT signal FROM session_signal WHERE transcript_id = ? ORDER BY signal").all(transcriptId) as { signal: string }[];
     expect(rows.map((r) => r.signal)).toEqual(["commit", "push"]);
+  });
+
+  it("an inbound row keeps its broadcast flag", async () => {
+    const channel = (ts: string, attributes: string) =>
+      line("s-wake", { type: "user", uuid: `u-${ts}`, timestamp: ts, message: { role: "user", content: `<channel source="agent-chat" from="seat-b" ${attributes}>hi</channel>` } });
+    const lines = [channel("2026-09-01T00:00:00Z", 'msg_id="m1" broadcast="true"'), channel("2026-09-01T00:00:01Z", 'msg_id="m2"'), prompt("s-wake", "2026-09-01T00:00:02Z")];
+
+    await refreshCorpus(graph, [writeTranscript("s-wake", lines)]);
+
+    expect(graph.db.prepare("SELECT msg_id, broadcast FROM inbound ORDER BY byte_offset").all()).toEqual([
+      { msg_id: "m1", broadcast: 1 },
+      { msg_id: "m2", broadcast: 0 },
+      { msg_id: null, broadcast: null },
+    ]);
   });
 
   it("session.account is written from discovery", async () => {

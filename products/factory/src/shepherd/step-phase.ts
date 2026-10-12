@@ -7,6 +7,9 @@ const PHASES = ["awaiting-pr", "ci", "fixing", "review", "awaiting-approval", "m
 export const PhaseSchema = z.enum(PHASES);
 export type Phase = z.infer<typeof PhaseSchema>;
 
+/** The phases a run ends in: nothing moves it on from one. */
+export const FINISHED_PHASES: ReadonlySet<Phase> = new Set(["done", "failed", "cancelled"]);
+
 /** A step family to its phase, matched the way `stepIdMatches` matches declarations; an undeclared id reads as `ci` so a new step never breaks a view. */
 const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-await-pr": "awaiting-pr",
@@ -16,6 +19,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   rerun: "ci",
   "sh-freeze-hold": "ci",
   "sh-freeze-wait": "ci",
+  "sh-head-origin": "ci",
   "sh-wake-implementer": "fixing",
   "sh-wake-fix-first": "fixing",
   "sh-repair": "fixing",
@@ -24,9 +28,11 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "await-new-head": "fixing",
   "sh-await-new-head": "fixing",
   "sh-park": "review",
+  "sh-fix-proof": "review",
   "sh-review-intent": "review",
   "sh-review": "review",
   "sh-review-request": "review",
+  "sh-review-refused": "review",
   "sh-review-stop": "review",
   "sh-late-verdict": "review",
   "sh-correct-verdict": "review",
@@ -46,6 +52,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-account-wait": "review",
   "sh-policy": "review",
   "sh-g10-release": "review",
+  "sh-g10-rehold": "review",
   "merge-policy": "awaiting-approval",
   "approve-merge": "awaiting-approval",
   "ci-failed": "awaiting-approval",
@@ -62,6 +69,7 @@ const STEP_PHASE: Readonly<Record<string, Phase>> = {
   "sh-train-leave": "merging",
   "sh-landed": "post-merge",
   "sh-main-ci": "post-merge",
+  "sh-release-follow": "post-merge",
   "sh-redeploy": "post-merge",
   "main-red": "post-merge",
   "main-ci-timeout": "post-merge",

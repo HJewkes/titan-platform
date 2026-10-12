@@ -66,14 +66,14 @@ marker but is already `deny`. A tainted session never resolves a gate.
 
 ## The table (version 1.0.0)
 
-44 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the four conditional
-allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM and ANS-DC-QA described below. Each rule also carries an optional `condition` that
+45 allow, 6 gate and 66 deny rows: one unconditional row per pair, plus the five conditional
+allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
 | Action | OT | OR | CO | WK | HD | AU | DC |
 |---|---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC or MRG-AU-RM | deny |
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC, MRG-AU-RM or MRG-AU-RS | deny |
 | `release` | allow | deny | gate (OT) | deny | deny | allow | deny |
 | `secret-read` | allow | deny | deny | deny | deny | allow | deny |
 | `untrusted-ingest` | allow | allow | allow | allow | allow | allow | deny |
@@ -137,6 +137,17 @@ protected path. The caller's remerge probe fills both lists; `generatedPaths` ho
 matched to the repo's declared generated files, so the declaration stays data on the caller's
 side. It is a separate row so that deleting it revokes the remerge carry alone.
 
+MRG-AU-RS allows the same automation merge for any kind, `security` included, when the head is a
+clean merge-up of the reviewed head whose base side touches none of the pull request's files. It
+keeps every MRG-AU-RC condition except `verdict-merge-carried-tree-equal` and
+`pr-kind-not-security`, and adds `verdict-merge-carried-merge-up-disjoint`: the `carry` fact names
+the verdict's head and `facts.head` as for MRG-AU-RC, its `rule` is `merge-up-disjoint`,
+`carry.headTree` equals `carry.mergeTree`, and `carry.basePaths` (every path the merge's base side,
+merge-base to second parent, changed) shares no path with `changedPaths` after case-folding.
+`changedPaths` is GitHub's own file list, read independently of the caller's probe; it must be
+non-empty, and a non-canonical path in either list fails the condition. A separate row, so
+deleting it revokes the disjoint carry alone. The owner decided it on 2026-10-11.
+
 ANS-DC-QA allows the decider to answer a question gate. It reads `facts.question` and checks
 `gate-rule-is-question` (`ruleKind` is exactly `question`) and `category-mode-auto` (`mode` is
 exactly `auto`). An unknown, missing or differently cased kind or mode fails closed, and ANS-DC
@@ -194,6 +205,6 @@ taint and agent classes are refused.
 
 ## Where it came from
 
-MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
+MRG-AU-RV was added in TP-461 for the Shepherd merge path, MRG-AU-RC in TP-778, MRG-AU-RM in TP-1907, MRG-AU-RS in TP-2392, and the `decider` class with the `answer-question` rows in TP-713. The rest is new in TP-400, the first slice of the software-factory authority policy (TP-380). The rows
 are the owner-approved table of 2026-09-28, including the change that makes spend
 monitor-only.

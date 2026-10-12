@@ -11,14 +11,16 @@ export function addUsage(total: StepUsage | undefined, next: StepUsage | undefin
     costUsd: total.costUsd + next.costUsd,
     ...(inputTokens === undefined ? {} : { inputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(total.costUnknown || next.costUnknown ? { costUnknown: true as const } : {}),
   };
 }
 
-/** Sums a harness's measurements; an unpriced measurement adds its tokens and no cost. */
+/** Sums a harness's measurements; an unpriced measurement adds its tokens and marks the sum `costUnknown`. */
 export function usageFromMeasurements(measurements: readonly UsageMeasurement[]): StepUsage | undefined {
   return foldUsage(measurements).measurements.reduce<StepUsage | undefined>((total, measurement) => addUsage(total, {
     costUsd: measurement.cost?.usd ?? 0,
     ...(measurement.tokens.input === null ? {} : { inputTokens: measurement.tokens.input }),
     ...(measurement.tokens.output === null ? {} : { outputTokens: measurement.tokens.output }),
+    ...(measurement.cost === null ? { costUnknown: true as const } : {}),
   }), undefined);
 }

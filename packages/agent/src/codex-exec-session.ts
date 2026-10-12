@@ -1,5 +1,6 @@
 import { conversationItemRef } from "@titan-design/agent-protocol";
 import type { ConversationIdentity, ExecutionIdentity, TokenCounts, UsageMeasurement } from "@titan-design/agent-protocol";
+import { priceCodexUsage, type CodexPriceRow } from "./codex-prices.js";
 import type { CodexProcessExit, SupervisedCodexProcess } from "./codex-process.js";
 import type { CodexRunRequest, HarnessRunFailure, HarnessRunProgress, HarnessRunResult } from "./harness-contracts.js";
 
@@ -13,14 +14,25 @@ export async function runCodexExecSession<T>(
   killGraceMs = DEFAULT_CODEX_KILL_GRACE_MS,
   processWallTimeMs = request.wallTimeMs,
   cleanup?: () => Promise<void>,
+  prices?: readonly CodexPriceRow[],
 ): Promise<HarnessRunResult<T, "codex">> {
-  return new CodexExecSession(request, processHandle, executionId, now, killGraceMs, processWallTimeMs, cleanup).run();
+  return new CodexExecSession(
+    request,
+    processHandle,
+    executionId,
+    now,
+    killGraceMs,
+    processWallTimeMs,
+    cleanup,
+    prices,
+  ).run();
 }
 
 class CodexExecSession<T> {
   private conversation: ConversationIdentity | undefined;
   private finalText: string | undefined;
   private usageRaw: unknown;
+  private usageAtMs = 0;
   private nativeTurnId: string | undefined;
   private turnCompleted = false;
   private nativeTerminalObserved = false;
@@ -39,6 +51,7 @@ class CodexExecSession<T> {
     private readonly killGraceMs: number,
     private readonly processWallTimeMs: number,
     private readonly cleanup: (() => Promise<void>) | undefined,
+    private readonly prices: readonly CodexPriceRow[] | undefined,
   ) {}
 
   async run(): Promise<HarnessRunResult<T, "codex">> {
@@ -94,6 +107,7 @@ class CodexExecSession<T> {
       this.nativeTerminalObserved = true;
       this.nativeTurnId = turnId(value) ?? this.nativeTurnId;
       this.usageRaw = value.usage;
+      this.usageAtMs = this.now();
     }
     if (value.type === "turn.failed") this.nativeTerminalObserved = true;
     if (value.type === "turn.failed" || value.type === "error") {
@@ -156,7 +170,8 @@ class CodexExecSession<T> {
       cost: null,
       source: "codex-exec.turn.completed.usage",
     };
-    return [measurement];
+    // Pricing here, before finish() emits progress, keeps live usage events and the result identical.
+    return this.prices ? priceCodexUsage([measurement], this.prices, this.usageAtMs) : [measurement];
   }
 
   private turnScopeId(): string {
