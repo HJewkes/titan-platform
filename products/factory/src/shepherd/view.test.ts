@@ -1,13 +1,15 @@
-import type { WorkflowRun } from "@titan-design/workflow";
+import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { resolveCommand } from "../registry.js";
+import { formatShepherd } from "./format.js";
 import { clearReviewWait, noteReviewWait } from "./review-wait.js";
 import { spawnGate } from "./spawn-gate.js";
 import type { Registration } from "./store.js";
 import { SHEPHERD_STEPS } from "./pr.js";
 import { PhaseSchema, PrTimelineSchema, TimelineEntrySchema, stepPhase, timelineEntries, watchRow } from "./view.js";
 
-const gateRecord = (id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
+const MINUTE_MS = 60_000;
+const gateRecord =(id: string) => ({ id, createdAt: "2026-01-01T00:00:00.000Z" }) as never;
 
 const registration = { repo: "acme/widgets", pr: 1, branch: "feat/x", runId: "run-1", task: "demo/T-1", held: false, policy: { merge: "owner-gate", mergeMethod: "squash", fixer: false, seat: "none" } } as unknown as Registration;
 
@@ -46,6 +48,43 @@ describe("shepherd view outcomes", () => {
 
   it("leaves the outcome unknown for a completed run with neither record", () => {
     expect(watchRow({ registration, run: completedWith("merge", {}) }).outcome).toBeNull();
+  });
+});
+
+describe("a run parked in recovery after it recorded its outcome", () => {
+  const RECONCILE = "workflow returned while step ci-wait:r3:17 still required reconciliation";
+  const ENDED = "2026-01-01T01:00:00.000Z";
+  const now = new Date(Date.parse(ENDED) + 140 * 60 * MINUTE_MS);
+
+  function parkedWith(status: WorkflowRun["status"], currentStep: string, steps: Record<string, object>): WorkflowRun {
+    const stepResults = Object.fromEntries(Object.entries(steps).map(([stepId, result]): [string, StepResult] => [stepId, { stepId, iteration: 0, agentId: null, completedAt: ENDED, signal: null, data: { result } }]));
+    return { ...pausedAt(currentStep), status, error: status === "recovery_required" ? RECONCILE : null, stepResults };
+  }
+
+  it("reads a merged run as done with its stall kept and its ages stopped at the merge", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row).toMatchObject({ phase: "done", outcome: { kind: "merged", reason: null }, stalled: { reason: RECONCILE }, phaseSince: ENDED, totalMinutes: 60, stage: null });
+    expect(formatShepherd("shepherd.status", [row])).toContain(` done - none (60m total) [stalled: ${RECONCILE}]`);
+  });
+
+  it("reads a stopped run as done with its stop reason", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", { "sh-stopped": { kind: "stopped", reason: "closed" } }), now });
+
+    expect(row).toMatchObject({ phase: "done", outcome: { kind: "stopped", reason: "closed" }, stalled: { reason: RECONCILE } });
+  });
+
+  it("keeps the step's phase for a run in recovery that recorded no outcome", () => {
+    const row = watchRow({ registration, run: parkedWith("recovery_required", "sh-review:abc1234", {}), now });
+
+    expect(row).toMatchObject({ phase: "review", outcome: null, stalled: { reason: RECONCILE } });
+  });
+
+  it("keeps a paused run watching main CI after its merge in post-merge", () => {
+    const row = watchRow({ registration, run: parkedWith("paused", "sh-main-ci:0", { "sh-landed": { mergeSha: "def5678" } }), now });
+
+    expect(row).toMatchObject({ phase: "post-merge", outcome: { kind: "merged" } });
+    expect(row.totalMinutes).toBeGreaterThan(60);
   });
 });
 
