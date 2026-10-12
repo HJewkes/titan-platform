@@ -1,5 +1,5 @@
 import { formatResultLine, type FixProofResult } from "@titan-design/fix-proof";
-import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun } from "@titan-design/github";
+import { fakeGitHub, fakeSha, githubPort, successRun, type CheckRun, type PrFile } from "@titan-design/github";
 import type { SourceTextLocator } from "@titan-design/session-read";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -20,6 +20,7 @@ const BASE = fakeSha("fix-proof-base");
 const AUTO: EffectivePolicy = { merge: "auto", mergeMethod: "squash", fixer: true, seat: "trusted-seat" };
 const FIX_PROOF_JOB = 77;
 const OTHER_APP = 424242;
+const WORKFLOW_EDIT: PrFile = { path: ".github/workflows/fix-proof.yml", status: "modified" };
 
 function resultLine(head: string, verdict: FixProofResult["verdict"]): string {
   const counts: FixProofResult["counts"] = { reproduces: verdict === "reproduced" ? 1 : 0, "passes-on-base": 0, "new-api": 0, "fails-on-head": 0, "not-run": 0 };
@@ -55,6 +56,7 @@ interface Scene {
   headRef?: string;
   runs?: CheckRun[];
   log?: string;
+  files?: PrFile[];
 }
 
 function fakeDispatch(): ReviewerDispatch & { agents: ReviewerAgent[]; spawns: { name: string; brief: string }[] } {
@@ -80,7 +82,7 @@ describe("sh-fix-proof in reviewPhase", () => {
     fake.addPr({ headSha: H, mergeSha: fakeSha("fix-proof-merge"), ...(scene.headRef && { headRef: scene.headRef }) });
     fake.setRuns(H, [successRun("validate", 1), successRun("dag-check", 2), ...(scene.runs ?? [])]);
     if (scene.log !== undefined) fake.jobLogs.set(FIX_PROOF_JOB, scene.log);
-    fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
+    fake.prFiles.set(1, scene.files ?? [{ path: "src/a.ts", status: "modified" }]);
     let clock = 10_000;
     const store = shepherdStoreRef();
     const deps: ShepherdDeps = { port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined } };
@@ -175,6 +177,25 @@ describe("sh-fix-proof in reviewPhase", () => {
 
     expect(inputs[`sh-review:${H}`]).toMatchObject({ fixProof: line });
     expect(spawns[0]?.brief).toContain("fix-proof/v1 verdict for this head: reproduced");
+    expect(spawns[0]?.brief).toContain("Do not rerun");
+  });
+
+  it("withholds a reproduced line from the reviewer brief when the PR edits the fix-proof workflow", async () => {
+    const line = resultLine(H, "reproduced");
+
+    const { spawns, inputs, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(line), files: [WORKFLOW_EDIT] });
+
+    expect(proof).toEqual({ kind: "untrusted", line, verdict: "reproduced", reason: expect.stringContaining(WORKFLOW_EDIT.path) });
+    expect(inputs[`sh-review:${H}`]).not.toHaveProperty("fixProof");
+    expect(spawns[0]?.brief).not.toContain("Do not rerun");
+  });
+
+  it("reviews a PR whose vacuous line is untrusted instead of ending it as NO_REPRO", async () => {
+    const { verdicts, spawns, proof } = await review({ kind: "correctness", runs: [fixProofRun()], log: actionsLog(resultLine(H, "vacuous")), files: [WORKFLOW_EDIT] });
+
+    expect(proof).toMatchObject({ kind: "untrusted", verdict: "vacuous" });
+    expect(verdicts).toMatchObject([{ kind: "MERGE" }]);
+    expect(spawns).toHaveLength(1);
   });
 });
 
@@ -185,6 +206,9 @@ describe("readFixProof", () => {
     branch?: string;
     headRef?: string;
     timeoutMs?: number;
+    logs?: Record<number, string>;
+    files?: PrFile[];
+    changedFiles?: number;
   }
 
   function registered(kind: string, runs: CheckRun[], options: Registered = {}) {
@@ -192,6 +216,9 @@ describe("readFixProof", () => {
     if (options.headRef !== undefined) fake.addPr({ headSha: H, headRef: options.headRef });
     fake.setRuns(H, runs);
     fake.jobLogs.set(FIX_PROOF_JOB, actionsLog(resultLine(H, "vacuous")));
+    for (const [job, log] of Object.entries(options.logs ?? {})) fake.jobLogs.set(Number(job), log);
+    if (options.files !== undefined) fake.prFiles.set(1, options.files);
+    if (options.changedFiles !== undefined) fake.prChangedFiles.set(1, options.changedFiles);
     const db = openDatabase(":memory:");
     runMigrations(db, [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16)]);
     const store = shepherdStoreRef();
@@ -234,6 +261,47 @@ describe("readFixProof", () => {
 
     expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
     expect(elapsed()).toBeGreaterThanOrEqual(1_500_000);
+  });
+
+  it("trusts a successful run's line when the PR leaves the harness alone", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "src/a.ts", status: "modified" }] });
+
+    expect(await read()).toEqual({ kind: "result", line: resultLine(H, "vacuous"), verdict: "vacuous" });
+  });
+
+  it("distrusts the line when the PR renames the fix-proof run script away", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "scripts/other.sh", previousPath: "scripts/fix-proof-run.sh", status: "renamed" }] });
+
+    expect(await read()).toEqual({ kind: "untrusted", line: resultLine(H, "vacuous"), verdict: "vacuous", reason: expect.stringContaining("scripts/fix-proof-run.sh") });
+  });
+
+  it("distrusts the line from a fix-proof run that did not conclude success", async () => {
+    const { read } = registered("correctness", [fixProofRun({ conclusion: "failure" })]);
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("failure") });
+  });
+
+  it("distrusts the line when the PR's changed files cannot be read in full", async () => {
+    const { read } = registered("correctness", [fixProofRun()], { files: [{ path: "src/a.ts", status: "modified" }], changedFiles: 5_000 });
+
+    expect(await read()).toMatchObject({ kind: "untrusted", reason: expect.stringContaining("could not be read") });
+  });
+
+  it.each([
+    ["newest last", [77, 78]],
+    ["newest first", [78, 77]],
+  ])("reads the newest fix-proof run at the head whichever order they are listed (%s)", async (_order, ids) => {
+    const reproduced = resultLine(H, "reproduced");
+    const { read } = registered("correctness", ids.map((id) => fixProofRun({ id })), { logs: { 78: actionsLog(reproduced) } });
+
+    expect(await read()).toEqual({ kind: "result", line: reproduced, verdict: "reproduced" });
+  });
+
+  it("waits for the newest fix-proof run rather than read an older completed one", async () => {
+    const { read, elapsed } = registered("correctness", [fixProofRun(), fixProofRun({ id: 78, status: "in_progress", conclusion: null })]);
+
+    expect(await read()).toEqual({ kind: "missing", reason: expect.stringContaining("before the deadline") });
+    expect(elapsed()).toBeGreaterThanOrEqual(10_000);
   });
 
   it("gives up as missing at the deadline while the fix-proof run is still in progress", async () => {
