@@ -1,6 +1,8 @@
 import { fakeSha } from "@titan-design/github";
 import type { DispatchOptions, StepResult, WorkflowContext } from "@titan-design/workflow";
+import { partialFake } from "@titan-design/test-kit";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { followingApprovals } from "./approval-carry.js";
 import type { FixCarryResult } from "./fix-carry.js";
 import type { OwnMergeUpResult } from "./own-merge-up.js";
@@ -17,6 +19,8 @@ const smallFix = (paths: string[]): FixCarryResult => ({ carries: true, rule: "s
 const landPrompt = (head: string, table = "authority", row = "MRG-AU"): string =>
   `Merge PR #1 in ${REPO} at head ${head}? CI is green. Policy ${table}/${row}: the authority policy did not allow an automated merge`;
 
+const StepInput = z.record(z.string(), z.unknown());
+
 interface CarryRig {
   ask: WorkflowContext["assisted"];
   /** Heads the owner was asked about. */
@@ -32,11 +36,11 @@ function rig(probes: { kind?: string; remerge?: RemergeResult; fix?: FixCarryRes
     if (stepId.startsWith("sh-approval-carry:own:")) return probes.own ?? { carries: false, reason: "refused" };
     return input;
   };
-  const dispatch = async (stepId: string, _template: string, options?: DispatchOptions): Promise<StepResult> => {
-    const input = JSON.parse(Object.values(options?.vars ?? {})[0]!) as Record<string, unknown>;
-    return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { result: respond(stepId, input) } };
-  };
-  const ctx = { runId: "run-1", dispatch } as WorkflowContext;
+  async function dispatch<T extends Record<string, unknown>>(stepId: string, _template: string, options: DispatchOptions<T> = {}): Promise<StepResult<T>> {
+    const input = StepInput.parse(JSON.parse(Object.values(options.vars ?? {})[0] ?? "{}"));
+    return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: options.schema?.parse({ result: respond(stepId, input) }) };
+  }
+  const ctx = partialFake<WorkflowContext>({ runId: "run-1", dispatch });
   const owner: WorkflowContext["assisted"] = async (_stepId, prompt) => {
     const head = /at head ([0-9a-f]{40})/.exec(prompt)?.[1] ?? "";
     gates.push(head);
