@@ -103,6 +103,7 @@ export class RunContext implements WorkflowContext {
       output: completed.output,
       ...(data ? { data } : {}),
       ...(completed.usage ? { usage: completed.usage } : {}),
+      attempt: completed.attempt,
     };
     delete this.run.activeSteps[stepId];
     this.record(iterKey, result);
@@ -252,7 +253,7 @@ export class RunContext implements WorkflowContext {
       }
       const outcome = await this.awaitOutcome(active!, pending);
       pending = undefined;
-      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage) };
+      if (outcome.kind === "succeeded") return { output: outcome.output, runnerRef: active!.runnerRef ?? null, usage: addUsage(failedUsage, outcome.usage), attempt };
       if (outcome.kind === "cancelled") {
         this.consumeActive(active!);
         throw new WorkflowCancelledError(this.runId, outcome.reason);
