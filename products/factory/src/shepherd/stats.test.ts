@@ -158,6 +158,18 @@ describe("shepherdStats slow owner-gated merges", () => {
   });
 });
 
+describe("shepherdStats foreign merge-ups", () => {
+  it("counts the heads others made by merging the base, and not a plain push", () => {
+    const run = stepsRun("a", [
+      ["sh-head-origin", 0, { head: "h2", kind: "merge-of-base" }],
+      ["sh-head-origin:1", 5, { head: "h3", kind: "push" }],
+      ["sh-head-origin:2", 10, { head: "h4", kind: "merge-of-base" }],
+    ]);
+
+    expect(shepherdStats([run])).toEqual([row({ foreignMergeUps: 2 })]);
+  });
+});
+
 describe("isoWeek", () => {
   it("puts early January in the previous year's last week when its Thursday is still there", () => {
     expect(isoWeek(Date.parse("2027-01-01T12:00:00Z"))).toBe("2026-W53");

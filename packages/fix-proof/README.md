@@ -12,9 +12,20 @@ the `fix-proof` bin does the git and vitest work.
 - `toResult`, `formatResultLine` and `parseResultLine`: one `fix-proof/v1 <json>` line of at
   most 4 KB, parsed strictly.
 
-- `fix-proof run --base <mergeBase> --head <sha> [--repo <dir>] [--budget-ms <n>]`: overlays
-  the head's tests and carried files on a merge-base worktree, builds and runs vitest there and
-  at head, and prints one result line. It always exits 0; `run()` is the same as a function.
+- `fix-proof exec --side base|head --out <dir> --base <mergeBase> --head <sha>` builds and tests
+  one side and writes encoded reports (`base.report` and `base-rerun.report`, or `head.report`)
+  to `<dir>`. The base side installs and builds before any head file is overlaid.
+- `fix-proof judge --base-report <file> --head-report <file> [--base-rerun-report <file>] --base
+  <mergeBase> --head <sha>` derives the plan from git, decodes the reports under a byte cap and
+  prints one result line. It spawns nothing but git. `dist/judge.js` is the same command on its
+  own; it cannot run `exec` or `run`.
+- `fix-proof run --base <mergeBase> --head <sha>` runs both sides and the judge in one process,
+  for local use. `execSide()`, `judge()` and `run()` are the same as functions.
+
+Every subcommand takes `[--repo <dir>] [--budget-ms <n>]`, always exits 0 and turns any
+failure into an `error` result line. In CI each side is its own job and the judge, the only job
+Shepherd reads, runs merge-base code alone. A head test that detects the base and fails on purpose
+can still fake `reproduces`; that is test content, left to review.
 
 Tier 0 of the titan-platform DAG, with no dependencies. Tracked by TP-541 (TP-538 S1) and TP-542 (S2).
 Full reference: `site/reference/fix-proof.md`.
