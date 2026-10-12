@@ -1,7 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
+import { openDatabase } from "@titan-design/store-sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { H1, REPO, gateId, gateOpened, spaceUpdates } from "../test-support/land.js";
+import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
 import type { ExitNoticePorts } from "./exit-notice.js";
@@ -48,13 +54,18 @@ interface HeldWorld {
   runId: string;
 }
 
-function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, policy: EffectivePolicy = SEATED): HeldWorld {
+function factoryHost(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, store: ShepherdStoreRef, dbPath = ":memory:"): FactoryHost {
   let clock = 0;
   spaceUpdates(fake, (ms) => void (clock += ms));
-  const store = shepherdStoreRef();
   const routes = factoryRoutesFor({ port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)), exitNotice: ports, park: async () => ({ lines: [] }) });
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
+  const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(shepherd)], routes, gatePollMs: 5 });
   hosts.push(host);
+  return host;
+}
+
+function heldWorld(fake: FakeGitHub, ports: ExitNoticePorts, shepherd: ShepherdPhases, policy: EffectivePolicy = SEATED, dbPath?: string): HeldWorld {
+  const store = shepherdStoreRef();
+  const host = factoryHost(fake, ports, shepherd, store, dbPath);
   fake.addPr({ headSha: H1 });
   const runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
   store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy });
@@ -194,3 +205,81 @@ describe("a head pushed while the run is held runs CI and review at it, with the
     expect(heldWaitResult(world)).toEqual({ moved: true });
   });
 });
+
+const StoredStepResults = z.record(z.string(), z.object({ stepId: z.string() }).loose());
+
+/** Rewrites a stored run's step results; `edit` sees and returns them in recording order. Returns the rewritten keys. */
+function rewriteRecord(dbPath: string, runId: string, edit: (entries: Array<[string, { stepId: string }]>) => Array<[string, { stepId: string }]>): string[] {
+  const db = openDatabase(dbPath);
+  const row = z.object({ step_results: z.string() }).parse(db.prepare("SELECT step_results FROM workflow_run WHERE id = ?").get(runId));
+  const entries = edit(Object.entries(StoredStepResults.parse(JSON.parse(row.step_results))));
+  db.prepare("UPDATE workflow_run SET step_results = ? WHERE id = ?").run(JSON.stringify(Object.fromEntries(entries)), runId);
+  db.close();
+  return entries.map(([key]) => key);
+}
+
+/** The 10-10 restart burst: a replay that predates the replay guard ran the bare check live and recorded `{held:false}`. */
+function backfilledMemo(key: string): [string, { stepId: string }] {
+  return [key, { stepId: "sh-held-check", iteration: Number(key.split(":")[1]), agentId: null, signal: null, operation: "dispatch", completedAt: "2026-10-10T05:29:00.000Z", data: { result: { held: false } } } as { stepId: string }];
+}
+
+/** The record as the run-wide counter wrote it: every held check under the bare id, numbered in recording order. */
+function bareHeldChecks(entries: Array<[string, { stepId: string }]>): Array<[string, { stepId: string }]> {
+  let calls = 0;
+  return entries.map(([key, result]) => (result.stepId.startsWith("sh-held-check:") ? [`sh-held-check:${calls}`, { ...result, stepId: "sh-held-check", iteration: calls++ }] : [key, result]));
+}
+
+const recordedKeys = (host: FactoryHost, runId: string): string[] => Object.keys(host.runtime.status(runId)!.stepResults);
+const tempDb = (): string => join(mkdtempSync(join(tmpdir(), "tp2452-")), "factory.db");
+
+describe("the held check is keyed by round and head, so a back-filled memo never answers a live wake (TP-2452)", () => {
+  it("a held run whose record carries back-filled {held:false} memos wakes no fixer on a live red round", async () => {
+    const dbPath = tempDb();
+    const fake = fakeGitHub();
+    fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1, undefined, "failure"), successRun("dag-check", 2)]);
+    const wakes: WakeRequest[] = [];
+    const first = heldWorld(fake, seatPorts().ports, phases(fake, wakes), SEATED, dbPath);
+    await waitingOnHold(first);
+    first.host.close();
+    rewriteRecord(dbPath, first.runId, (entries) => [...entries, ...["sh-held-check:1", "sh-held-check:2", "sh-held-check:3"].map(backfilledMemo)]);
+
+    const { sent, ports } = seatPorts();
+    const second = { ...first, host: factoryHost(fake, ports, phases(fake, wakes), first.store, dbPath) };
+    await second.host.adopt();
+    await waitingOnHold(second);
+    fake.pushHead(1, H2);
+    await vi.waitFor(() => expect(sent.some((notice) => notice.text.includes(`head ${H2}`))).toBe(true), { timeout: 5_000 });
+    await waitingOnHold(second);
+
+    expect(wakes).toEqual([]);
+    expect(stepResultAt(second, `sh-held-check:r1:${H2}:0`)).toMatchObject({ result: { held: true, reason: HOLD } });
+  });
+
+  it("a record that went on with the bare check replays its route and records no keyed check", async () => {
+    const dbPath = tempDb();
+    const fake = fakeGitHub();
+    redAtH1(fake);
+    const wakes: WakeRequest[] = [];
+    const store = shepherdStoreRef();
+    const first = factoryHost(fake, seatPorts().ports, phases(fake, wakes), store, dbPath);
+    fake.addPr({ headSha: H1 });
+    const runId = first.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(OWNER_GATE_POLICY) });
+    store.get().register({ repo: REPO, pr: 1, runId, task: "demo/1", implementer: "impl-a", policy: SEATED });
+    await gateOpened(first, gateId(runId, "approve-merge"));
+    first.close();
+    const legacyKeys = rewriteRecord(dbPath, runId, bareHeldChecks);
+
+    const second = factoryHost(fake, seatPorts().ports, phases(fake, wakes), store, dbPath);
+    await second.adopt();
+    second.runtime.signal(runId, "approve-merge", { decision: "merge", headSha: H2 }, OWNER);
+    await vi.waitFor(() => expect(fake.pr(1).merged).toBe(true), { timeout: 5_000 });
+
+    expect(legacyKeys).toContain("sh-held-check:0");
+    expect(recordedKeys(second, runId).slice(0, legacyKeys.length)).toEqual(legacyKeys);
+    expect(recordedKeys(second, runId).filter((key) => key.startsWith("sh-held-check:r"))).toEqual([]);
+  });
+});
+
+function stepResultAt({ host, runId }: HeldWorld, key: string): unknown {
+  return host.runtime.status(runId)!.stepResults[key]?.data;
+}

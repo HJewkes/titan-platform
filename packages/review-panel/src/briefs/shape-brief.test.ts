@@ -78,6 +78,12 @@ describe("the tests brief and fix-proof", () => {
     expect(brief).toMatch(/blocking/);
   });
 
+  it("the tests member reads an errored proof as blocking", () => {
+    const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ verdict: "error" }) });
+
+    expect(brief).toContain("fix-proof/v1 verdict for this head: error. fix-proof could not finish, so nothing proves the change. That is blocking");
+  });
+
   it("never copies test names or paths from the result into the brief", () => {
     const brief = shapeBrief("tests", { ...target, fixProof: fixProof({ deletedTests: ["src/old.test.ts"] }) });
 

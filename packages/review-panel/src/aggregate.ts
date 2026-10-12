@@ -20,8 +20,8 @@ export interface AggregateInput {
   /** File text at the head; advisory findings whose citations it cannot confirm are dropped. */
   source: LineSource;
   /**
-   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, a line naming another head,
-   * or anything unreadable makes the tests member blocking.
+   * fix-proof's verdict word or its `fix-proof/v1` line, when one ran. `vacuous`, `no-tests`, `error`, a line naming
+   * another head, or anything unreadable makes the tests member blocking.
    */
   fixProof?: string;
   /** The opus profiles, as `planPanel`'s policy lists them; satisfiesG10 needs the correctness member at one. */
@@ -38,7 +38,7 @@ interface Seat {
 }
 
 const SHAPE_ORDER: readonly ReviewShape[] = ["correctness", "adversary", "tests", "visual", "perf"];
-const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests"]);
+const BAD_FIX_PROOF = new Set<string>(["vacuous", "no-tests", "error"]);
 const KNOWN_FIX_PROOF = new Set<string>(VERDICTS);
 const CITATION = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):(\d+)(?:-(\d+))?/g;
 const FINDING_START = /^\s*(?:[-*+]|\d+[.)])\s/;
