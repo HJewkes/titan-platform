@@ -82,24 +82,41 @@ function readSince(path: string, cursor: PushCursor): { entries: ReflogEntry[]; 
   return { entries, cursor: { offset: read.size + end, ...(last && { last }) } };
 }
 
-/** `clones` is the seat book's repo-to-clone map; a repo with no clone, or one that cannot be read, never signals. */
+const watchedParts = (branch: string): string[] | undefined => {
+  const parts = branch.split("/");
+  return branch.startsWith(WATCHED_PREFIX) && !parts.some((part) => part === ".." || part === "") ? parts : undefined;
+};
+
+function trackingLogsOf(clones: (repo: RepoSlug) => string | undefined, repo: RepoSlug): string | undefined {
+  try {
+    const clone = clones(repo);
+    return clone === undefined ? undefined : join(gitCommonDir(clone), ...TRACKING_LOGS);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `clones` is the seat book's repo-to-clone map; a repo with no clone, or one that cannot be read, never signals. Each
+ * mark looks the clone up afresh and every tick after it reuses that, so a tick reads the reflog and nothing else.
+ */
 export function pushSignal(clones: (repo: RepoSlug) => string | undefined): PushWatch {
-  const pathOf = (repo: RepoSlug, branch: string): string | undefined => {
-    if (!branch.startsWith(WATCHED_PREFIX) || branch.split("/").some((part) => part === ".." || part === "")) return undefined;
-    try {
-      const clone = clones(repo);
-      return clone === undefined ? undefined : join(gitCommonDir(clone), ...TRACKING_LOGS, ...branch.split("/"));
-    } catch {
-      return undefined;
-    }
+  const logRoots = new Map<string, string | undefined>();
+  const pathOf = (repo: RepoSlug, branch: string, fresh: boolean): string | undefined => {
+    const parts = watchedParts(branch);
+    if (parts === undefined) return undefined;
+    const key = repo.toLowerCase();
+    if (fresh || !logRoots.has(key)) logRoots.set(key, trackingLogsOf(clones, repo));
+    const root = logRoots.get(key);
+    return root === undefined ? undefined : join(root, ...parts);
   };
   return {
     mark: (repo, branch) => {
-      const path = pathOf(repo, branch);
+      const path = pathOf(repo, branch, true);
       return path === undefined ? { offset: 0 } : readSince(path, { offset: 0 }).cursor;
     },
     since: (repo, branch, cursor) => {
-      const path = pathOf(repo, branch);
+      const path = pathOf(repo, branch, false);
       if (path === undefined) return { shas: [], cursor };
       const read = readSince(path, cursor);
       return { shas: read.entries.map((entry) => entry.newSha), cursor: read.cursor };
@@ -111,12 +128,15 @@ export interface HeadPollOptions {
   /** Absent means no reflog is watched, so every tick is a backstop. */
   pushes?: PushWatch;
   repo: RepoSlug;
-  /** The head the wait is for the PR to leave. */
-  headSha: string;
+  /** The head the wait is for the PR to leave; absent means any push counts. */
+  headSha?: string;
+  /** Watched from the start when known; otherwise learned from the first read that names it. */
+  branch?: string;
   /** The read made first and then once per backstop; undefined is a failed read. */
   read: () => Promise<PullRequest | undefined>;
   /** The read made when the reflog shows a push; defaults to `read`. */
   confirm?: () => Promise<PullRequest | undefined>;
+  /** Defaults to the watch tick with a reflog watched and to the backstop without; a caller that also reads local state each tick names its own. */
   tickMs?: number;
   backstopMs?: number;
 }
@@ -130,43 +150,51 @@ export interface HeadPoll {
   next(): Promise<HeadPollRead>;
 }
 
-const leftHead = (pr: PullRequest | undefined, headSha: string): boolean => pr !== undefined && (pr.headSha !== headSha || pr.state !== "open");
+/** The PR read shows another head than `headSha`, or is no longer open. */
+export const leftHead = (pr: PullRequest | undefined, headSha: string | undefined): pr is PullRequest => pr !== undefined && (pr.headSha !== headSha || pr.state !== "open");
 
 /**
- * The branch is learned from the first read. A push that landed before the mark but after GitHub answered that read
- * shows as a reflog ending on another sha, so it is confirmed once rather than left to the backstop.
+ * One branch's reflog from a mark on. A push that landed before the mark but after GitHub answered the read that named
+ * the branch shows as a reflog ending on another sha, so `watch` reports it to be confirmed rather than left to the backstop.
  */
+function branchWatch(options: Pick<HeadPollOptions, "pushes" | "repo" | "headSha">) {
+  let watched: { branch: string; cursor: PushCursor } | undefined;
+  return {
+    watch(branch: string | undefined): boolean {
+      if (watched !== undefined || branch === undefined || options.pushes === undefined) return false;
+      watched = { branch, cursor: options.pushes.mark(options.repo, branch) };
+      return options.headSha !== undefined && watched.cursor.last !== undefined && watched.cursor.last !== options.headSha;
+    },
+    pushedAway(): boolean {
+      if (watched === undefined || options.pushes === undefined) return false;
+      const moved = options.pushes.since(options.repo, watched.branch, watched.cursor);
+      watched.cursor = moved.cursor;
+      return moved.shas.length > 0 && moved.shas.at(-1) !== options.headSha;
+    },
+  };
+}
+
+/** The branch is watched from the start when the caller names it, else from the first read that names it. */
 export function headPoll(options: HeadPollOptions): HeadPoll {
   const backstopMs = options.backstopMs ?? AWAIT_HEAD_BACKSTOP_MS;
-  const tickMs = options.pushes ? Math.min(options.tickMs ?? PUSH_WATCH_TICK_MS, backstopMs) : backstopMs;
+  const tickMs = Math.min(options.tickMs ?? (options.pushes ? PUSH_WATCH_TICK_MS : backstopMs), backstopMs);
   const confirmRead = options.confirm ?? options.read;
+  const branch = branchWatch(options);
   let sinceRead: number | undefined;
-  let watched: { branch: string; cursor: PushCursor } | undefined;
-  let confirms = 0;
-  const learn = (pr: PullRequest | undefined): void => {
-    if (watched !== undefined || pr === undefined || options.pushes === undefined) return;
-    watched = { branch: pr.headRef, cursor: options.pushes.mark(options.repo, pr.headRef) };
-    if (watched.cursor.last !== undefined && watched.cursor.last !== options.headSha) confirms = 1;
-  };
+  let confirms = branch.watch(options.branch) ? 1 : 0;
   const readWith = async (reader: () => Promise<PullRequest | undefined>): Promise<HeadPollRead> => {
     const pr = await reader();
     sinceRead = 0;
-    learn(pr);
+    if (branch.watch(pr?.headRef)) confirms = 1;
     confirms = leftHead(pr, options.headSha) ? 0 : confirms;
     return { read: true, pr };
-  };
-  const pushedAway = (): boolean => {
-    if (watched === undefined || options.pushes === undefined) return false;
-    const moved = options.pushes.since(options.repo, watched.branch, watched.cursor);
-    watched.cursor = moved.cursor;
-    return moved.shas.length > 0 && moved.shas.at(-1) !== options.headSha;
   };
   return {
     tickMs,
     next: async () => {
       if (sinceRead === undefined) return readWith(options.read);
       sinceRead += tickMs;
-      if (pushedAway()) confirms = CONFIRM_TRIES;
+      if (branch.pushedAway()) confirms = CONFIRM_TRIES;
       if (confirms > 0) return (confirms--, readWith(confirmRead));
       return sinceRead >= backstopMs ? readWith(options.read) : { read: false };
     },

@@ -12,6 +12,7 @@ import { deadline } from "./deadline.js";
 import { taskIdOf } from "./land-merge-message.js";
 import { LAND_STEPS, afterWrite, codeRoute, land, landRoutes, sleep, step, type FailingCheck, type LandDeps, type LandOptions, type LandOutcome, type Timing } from "./land.js";
 import { POST_MERGE_STEPS, postMerge, postMergeRoute, type PostMergeDeps } from "./post-merge.js";
+import type { PushWatch } from "../shepherd/push-signal.js";
 
 /** Conclusions a runner outage or a superseded run produces, which a rerun of the same head can clear. */
 const TRANSIENT_CONCLUSIONS = new Set(["cancelled", "timed_out"]);
@@ -110,6 +111,8 @@ const RerunResult = z.looseObject({ reruns: z.array(z.looseObject({ runId: z.num
 export interface LandPrDeps extends LandDeps, PostMergeDeps {
   /** How long a rerun step waits for GitHub to replace the failed checks before land polls CI again. */
   rerunSettleMs?: number;
+  /** The seat clones' push reflogs `await-new-head` watches; absent means it reads the PR once per backstop. */
+  pushes?: PushWatch;
 }
 
 /** Every route `land-pr` dispatches to; each reads before it writes, so each repeats safely after a crash. */
@@ -118,7 +121,7 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000 };
   return [
     ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal }), ...deps }),
-    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pollMs: deps.pollMs, snapshot: deps.snapshot }),
+    awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),
     postMergeRoute(deps),

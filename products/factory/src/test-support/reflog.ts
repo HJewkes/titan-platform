@@ -11,6 +11,7 @@ export const reflogPath = (clone: string, branch: string): string => join(clone,
 export function fixtureClone(): { clone: string; push: (branch: string, from: string, to: string) => void } {
   const clone = mkdtempSync(join(tmpdir(), "push-signal-"));
   onTestFinished(() => rmSync(clone, { recursive: true, force: true }));
+  mkdirSync(join(clone, ".git"));
   const push = (branch: string, from: string, to: string): void => {
     const path = reflogPath(clone, branch);
     mkdirSync(dirname(path), { recursive: true });
