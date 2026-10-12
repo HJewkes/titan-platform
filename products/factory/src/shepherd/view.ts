@@ -2,8 +2,10 @@ import type { GateRecord } from "@titan-design/hitl";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
+import { verdictAt } from "../coordinator-evidence-read.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import { holdClassOf } from "./g10-release.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
@@ -245,12 +247,32 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
   return limit !== undefined && elapsed > limit ? `${Math.floor(elapsed / MINUTE)} min in ${phase}, over the ${limit / MINUTE} min limit` : undefined;
 }
 
+/** Longest a g10-review hold may wait with no reviewer verdict at its head: nothing else releases it, so past this it is stuck, not waiting. */
+export const G10_UNREVIEWED_LIMIT_MS = 60 * MINUTE;
+
+interface HoldWait {
+  registration: Registration;
+  headSha: string | null;
+  holding: boolean;
+}
+
+/** A g10-review hold releases only on a reviewer's MERGE at the head; with none recorded, waiting past the limit is a stall (TP-2455). */
+function g10UnreviewedStall(run: WorkflowRun, { registration, headSha, holding }: HoldWait, since: string, now: Date): string | undefined {
+  const { held, holdReason, holdSatisfied, ownerHold } = registration;
+  if (!held || ownerHold || headSha === null || holdClassOf(holdReason) !== "g10-review") return undefined;
+  const heldWait = run.currentStep !== null && stepIdMatches("sh-held-wait", run.currentStep);
+  if (!(holding || heldWait) || holdSatisfied?.head === headSha || verdictAt(run, headSha) !== undefined) return undefined;
+  const elapsed = now.getTime() - Date.parse(since);
+  if (elapsed <= G10_UNREVIEWED_LIMIT_MS) return undefined;
+  return `g10-review hold at ${headSha.slice(0, 7)} has no reviewer verdict; ${Math.floor(elapsed / MINUTE)} min waiting, over the ${G10_UNREVIEWED_LIMIT_MS / MINUTE} min limit`;
+}
+
 /** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, wait: HoldWait): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
   if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
-  return holding ? undefined : overstayReason(phase, since, now);
+  return g10UnreviewedStall(run, wait, since, now) ?? (wait.holding ? undefined : overstayReason(phase, since, now));
 }
 
 /** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
@@ -277,7 +299,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now, holding);
+  const stalled = stallReason(run, steps, phase, since, now, { registration, headSha, holding });
   return {
     repo: registration.repo,
     pr: registration.pr,
