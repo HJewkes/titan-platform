@@ -61,7 +61,7 @@ source answers for the same absolute paths a checkout would, so node ids do not 
 
 Each file and module node gets a `role` from `ALL_ROLES`. `generated` wins outright, then any
 glob in `.codewatch/roles.json`, then the built-in filename and directory heuristics: `test`,
-`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` and `*.fixture.*`),
+`story` (`*.stories.tsx` and kin, `*.mdx`), `fixture` (`fixtures/` `*.fixture.*` and `*.fixtures.*`),
 `script`, `entry`, `barrel`, `types`, `config`, else `source`. `lab` has no built-in rule; a repo assigns it with globs in
 `.gitattributes` syntax:
 
