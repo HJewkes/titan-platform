@@ -1,7 +1,7 @@
 import type { Logger } from "@titan-design/daemon";
 import type { FactoryHost } from "../host.js";
 import { startSweep, type Sweep } from "../sweep.js";
-import type { ShepherdServices } from "./commands.js";
+import type { ShepherdServices } from "./services.js";
 import { supersedeMovedGates } from "./head-moved.js";
 
 /** Matches the PR snapshot's tick, so a quiet sweep reads only the shared, ETag'd open list and an owner never sees a gate stale for more than a minute. */

@@ -18,7 +18,7 @@ import {
   WorkflowRunStore,
   WorkflowRuntime,
 } from "@titan-design/workflow";
-import type { ShepherdServices } from "./shepherd/commands.js";
+import type { ShepherdServices } from "./shepherd/services.js";
 import { assertDistinctStepIds, dispatchStepIds, guardedContext, type WorkflowDefinition } from "./definition.js";
 
 /** State a route set keeps in the factory database: the host runs its migrations after its own and binds it while open. */

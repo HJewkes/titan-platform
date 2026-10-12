@@ -265,6 +265,11 @@ type WorkflowEvent = {
     stepId: string;
     error: string;
 } | {
+    type: "step_abandoned";
+    runId: string;
+    stepId: string;
+    reason: string;
+} | {
     type: "workflow_recovery_required";
     runId: string;
     stepId: string;
@@ -588,8 +593,16 @@ interface WorkflowRuntimeOptions {
 
 /** The `StepResult.data` key the F3 trace projection reads gate-decision records from. */
 declare const TRACE_GATES_KEY = "titan.trace.gates";
+/** The `StepResult.data` key the F3 trace projection reads artifact records (commits, PRs, files) from. */
+declare const TRACE_ARTIFACTS_KEY = "titan.trace.artifacts";
 /** The name every authorize gate records as its rule's table. */
 declare const AUTHORITY_TABLE_NAME = "F5";
+
+/**
+ * Asked, when a workflow returns, about each recovered step its replay never reached: true drops the step with a
+ * `step_abandoned` event, false parks the run. A registration without one parks on every such orphan.
+ */
+type AbandonsOrphan = (stepId: string) => boolean;
 
 /** Durable workflow driver with fenced row ownership and explicit execution reconciliation. */
 declare class WorkflowRuntime {
@@ -607,6 +620,7 @@ declare class WorkflowRuntime {
     /** `version` pins each new run to this definition; hydrate parks a run pinned to another one instead of replaying it. */
     register(name: string, fn: WorkflowFn, options?: {
         version?: string;
+        abandonsOrphan?: AbandonsOrphan;
     }): void;
     registered(): string[];
     /** `options.onStart` commits with the run row, or its throw rolls the run back and nothing launches. */
@@ -668,7 +682,10 @@ interface RunTraceSources {
     /** Hex sha256 of the text; injected so the projection stays pure. */
     digest(text: string): string;
 }
-/** Projects a stored run into strict trace records: the run first, then each recorded step's attempts, then in-flight steps. */
+/**
+ * Projects a stored run into strict trace records: the run first, then each recorded step's attempts, gates and
+ * artifacts in recording order, then in-flight steps and the gate a paused run waits on.
+ */
 declare function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[];
 
-export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };
+export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };

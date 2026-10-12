@@ -10,7 +10,7 @@ import { REPO, gateId, spaceUpdates } from "../test-support/land.js";
 import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { sleep } from "../workflows/land.js";
-import { SHEPHERD_WORKFLOW } from "./commands.js";
+import { SHEPHERD_WORKFLOW } from "./services.js";
 import { supersedeMovedGates } from "./head-moved.js";
 import type { ShepherdPhases } from "./phases.js";
 import { shepherdPrWorkflow } from "./pr.js";
