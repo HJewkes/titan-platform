@@ -1,6 +1,7 @@
 import { parseVerdictBlock, type CiPolicy, type SourceTextLocator } from "@titan-design/session-read";
 import { DEPTH_FLOOR_REASON } from "./depth-floor.js";
 import { fixFirstFindings } from "./fix-first-findings.js";
+import { followUpsFields, type FollowUp, type FollowUpsWarning } from "./follow-ups.js";
 import type { AwaitVerdictInput, ReviewerMessage } from "./ports.js";
 import { parseOwnerBrief, type Malformed, type OwnerBrief } from "./verdict-schemas.js";
 import { namesTarget } from "./verdict-target.js";
@@ -13,6 +14,10 @@ export interface AcceptedVerdict {
   reviewer: { agentId: string; sessionId: string };
   /** The reviewer's OWNER-BRIEF block, or null when it wrote none or it did not parse; never read by the verdict. */
   ownerBrief?: OwnerBrief | null;
+  /** Tasks the reviewer proposed for later, on MERGE and FIX_FIRST alike; never read by the verdict. */
+  followUps?: FollowUp[];
+  /** Why the reviewer's Follow-ups block was dropped whole; the verdict still counts. */
+  followUpsWarning?: FollowUpsWarning;
   /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
   reviewerProfile?: string;
 }
@@ -64,6 +69,6 @@ export function acceptVerdict(input: AwaitVerdictInput, messages: readonly Revie
   if (!namesTarget(block, input)) return malformedNone("wrong_target", final.writtenAt);
   if (!block.ok) return { kind: "none", reason: "wait" };
   if (final.investigativeCalls === 0) return { kind: "none", reason: DEPTH_FLOOR_REASON };
-  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text) };
+  const accepted: AcceptedVerdict = { kind: "verdict", head: block.head, locator: final.locator, reviewer: { agentId: final.agentId, sessionId: final.sessionId }, ownerBrief: parseOwnerBrief(final.text), ...followUpsFields(final.text) };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, messages.filter((message) => fromDispatch(input, message)), final.text), ...(block.closer && { closer: block.closer }) };
 }
