@@ -1,5 +1,5 @@
 import { fakeGitHub, fakeSha, githubPort, type FakeGitHub, type GitHubPort } from "@titan-design/github";
-import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { SourceTextLocator } from "@titan-design/session-read";
@@ -523,6 +523,15 @@ describe("a hold whose named reviewer is read from its real transcript", () => {
 
     expect(merged.done).toBe(true);
     expect(r.store.byRun("run-1")?.holdSatisfied).toMatchObject({ head: H1, by: { reviewer: REVIEWER, agentId: seat.row.agentId, sessionId: seat.row.sessionId } });
+  });
+
+  it("keeps the hold when an exited reviewer sent MERGE and died writing its FIX_FIRST", async () => {
+    const { r, seat, port } = seated("exited");
+    seat.send(verdictAt(H1));
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+
+    await expect(port.merge(REPO, r.pr, H1, "squash")).rejects.toBeInstanceOf(MergeHeldError);
+    expect(r.store.byRun("run-1")?.holdSatisfied).toBeNull();
   });
 
   it("merges on a detached reviewer's MERGE written as its final text", async () => {

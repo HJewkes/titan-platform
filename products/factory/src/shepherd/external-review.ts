@@ -66,9 +66,9 @@ function readNamedReviewer(reader: ReviewerReader, input: AwaitVerdictInput): Pr
   return reader.readSeat ? reader.readSeat(input) : reader.read(input);
 }
 
-/** A named reviewer's messages where a failed read only means no verdict yet: a damaged transcript gives its complete records, any other failure none. */
+/** The release-side read: any failure, a damaged transcript included, is no messages. A damaged transcript's complete records can hold a MERGE written before a cut-off FIX_FIRST, so they may only block a merge (the seat read), never release one. */
 export function readNamedReviewerOrNone(reader: ReviewerReader, input: AwaitVerdictInput): Promise<readonly ReviewerMessage[]> {
-  return readNamedReviewer(reader, input).catch((error: unknown) => (error instanceof DamagedTranscriptError ? error.readable : []));
+  return readNamedReviewer(reader, input).catch((): readonly ReviewerMessage[] => []);
 }
 
 /** Polls the hold's reviewer for a verdict at this head; Shepherd starts nobody, and the deadline ends the wait with `none`. */

@@ -384,10 +384,25 @@ describe("awaitExternalVerdict over a real transcript", () => {
     expect(await awaitOnce(seat.row)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD, reviewer: { agentId: seat.row.agentId, sessionId: seat.row.sessionId } });
   });
 
-  it("returns the MERGE an exited reviewer sent before its transcript ended in a partial record", async () => {
+  it("returns no verdict for an exited reviewer whose transcript ended in a partial record", async () => {
     const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE")).text("Sent.");
     appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
 
-    expect(await awaitOnce(seat.row)).toMatchObject({ kind: "verdict", verdict: "MERGE", head: HEAD });
+    expect(await awaitOnce(seat.row)).toEqual({ kind: "none" });
+  });
+
+  it("returns no verdict when the reviewer sent MERGE and died writing its FIX_FIRST", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE"));
+    appendFileSync(seat.file, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"mcp__plugin_agent-chat_agent-chat__chat_send","input":{"text":"Verdict: FIX_FIRST`, "utf8");
+
+    expect(await awaitOnce(seat.row)).toEqual({ kind: "none" });
+  });
+
+  it("still lets the seat veto read the FIX_FIRST an exited reviewer sent before its transcript ended in a partial record", async () => {
+    const seat = seatTranscript(dir, "seat-c-9-review", "exited").user("Review octo/demo#4.").send(verdictAt("MERGE")).send(verdictAt("FIX_FIRST"));
+    appendFileSync(seat.file, '{"type":"assistant","message":{"role":', "utf8");
+    const reader = transcriptReviewerReader({ roster: async () => [seat.row], namespace: "host-a" });
+
+    expect(await seatFixFirst(rosterOf(seat.row), reader, target)).toMatchObject({ verdict: "FIX_FIRST" });
   });
 });
