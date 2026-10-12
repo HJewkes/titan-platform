@@ -34,17 +34,23 @@ export interface ApproveMergeFacts {
   skillPathsAt?: (headSha: string) => readonly string[];
 }
 
+/** The approve-merge gate's prompt, answer schema and brief at the head `question` names, each fact read at that head. */
+export function approveMergeAsk(rule: PolicyRule, facts: ApproveMergeFacts, { repo, pr, headSha, reason, base }: ApprovalQuestion) {
+  const ownerBrief = facts.ownerBriefAt?.(headSha);
+  const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
+  const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths });
+  const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
+  const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
+  const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
+  return { prompt: [asked, ...skillLines, ...briefLines].join("\n"), schema, brief };
+}
+
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
 export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}): AskApproval {
-  return async (ctx, { repo, pr, headSha, reason, base }) => {
-    const ownerBrief = facts.ownerBriefAt?.(headSha);
-    const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
-    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths });
-    const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
-    const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
-    const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
-    const answer = schema.safeParse((await ctx.assisted("approve-merge", [asked, ...skillLines, ...briefLines].join("\n"), { schema, brief })).data);
-    if (!answer.success) throw new Error(`approve-merge answer does not approve head ${headSha}: ${answer.error.message}`);
+  return async (ctx, question) => {
+    const { prompt, schema, brief } = approveMergeAsk(rule, facts, question);
+    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
+    if (!answer.success) throw new Error(`approve-merge answer does not approve head ${question.headSha}: ${answer.error.message}`);
     return answer.data.decision;
   };
 }

@@ -1,8 +1,8 @@
 import { fakeSha } from "@titan-design/github";
-import { snapshotBrief, type GateBrief } from "@titan-design/hitl";
-import { describe, expect, it, vi } from "vitest";
+import { snapshotBrief } from "@titan-design/hitl";
+import { describe, expect, it } from "vitest";
 import { approveMergeDecision } from "../gate-brief.js";
-import { approveMergeGate } from "../workflows/land-approval.js";
+import { approveMergeAsk } from "../workflows/land-approval.js";
 import type { Verdict } from "./phases.js";
 import { shepherdGatePolicy, shepherdLandOptions, type EffectivePolicy } from "./policy.js";
 
@@ -53,14 +53,11 @@ describe("the approve-merge brief at a head that changes repo skills", () => {
     expect(without.brief.evidenceRef).toBe(`https://github.com/${REPO}/pull/7`);
   });
 
-  it("lists the skill paths and the files URL in the gate prompt land opens from Shepherd's options", async () => {
+  it("lists the skill paths and the files URL in the gate prompt land opens from Shepherd's options", () => {
     const options = shepherdLandOptions(() => OWNER_GATE, mergeAt(["src/x.ts", ...SKILLS]));
-    const assisted = vi.fn(async (_stepId: string, _prompt: string, _options: { brief: GateBrief }) => ({ data: { decision: "abandon", headSha: HEAD } }));
-    const ask = approveMergeGate({ table: "shepherd-seat", rowId: "gated-seat", version: 1 }, { ...options, reviewedMerge: () => true });
 
-    await ask({ assisted } as never, { repo: REPO, pr: 7, headSha: HEAD, round: 0, reason: "policy" });
+    const { prompt, brief } = approveMergeAsk({ table: "shepherd-seat", rowId: "gated-seat", version: 1 }, { ...options, reviewedMerge: () => true }, { repo: REPO, pr: 7, headSha: HEAD, round: 0, reason: "policy" });
 
-    const [, prompt, { brief }] = assisted.mock.calls[0]!;
     for (const path of SKILLS) expect(prompt).toContain(path);
     expect(prompt).toContain(FILES_URL);
     expect(prompt).not.toContain("src/x.ts");
