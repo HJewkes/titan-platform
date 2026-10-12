@@ -12,8 +12,9 @@ export function advisoryFile(stateDir: string): AdvisoryMemory {
   return {
     load: () => {
       try {
-        const parsed = JSON.parse(readFileSync(path, "utf8")) as { advisory?: unknown } | null;
-        return isRepoList(parsed?.advisory) ? parsed.advisory : undefined;
+        const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+        const advisory: unknown = parsed !== null && typeof parsed === "object" && "advisory" in parsed ? parsed.advisory : undefined;
+        return isRepoList(advisory) ? advisory : undefined;
       } catch {
         return undefined;
       }
