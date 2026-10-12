@@ -91,6 +91,7 @@ function consoleConfig(activeWorkPort: number, agentChatPort: number): ConsoleCo
     stateDir: path.join(dir, "state"),
     activeWorkPort,
     agentChatPort,
+    factoryPort: 1,
     agentChatTokenPath: tokenPath,
     agentChatEventsDbPath: path.join(dir, "events.db"),
     seatPrefixes: [],
