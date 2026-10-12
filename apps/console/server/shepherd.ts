@@ -43,10 +43,10 @@ const waiting = z.object({ owner: z.array(waitingGate), seat: z.array(waitingGat
 
 const LIST_STATES = ["active", "finished", "all"] as const;
 
-export type WatchRow = z.infer<typeof watchRow>;
-export type PrTimeline = z.infer<typeof prTimeline>;
-export type Waiting = z.infer<typeof waiting>;
-export type ListState = (typeof LIST_STATES)[number];
+type WatchRow = z.infer<typeof watchRow>;
+type PrTimeline = z.infer<typeof prTimeline>;
+type Waiting = z.infer<typeof waiting>;
+type ListState = (typeof LIST_STATES)[number];
 
 /** Each read rejects with an error that carries a sysexits `code` when Shepherd is down, refuses, or answers another shape. */
 export interface ShepherdSource {

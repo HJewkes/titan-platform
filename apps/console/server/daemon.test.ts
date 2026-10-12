@@ -368,7 +368,9 @@ describe.skipIf(process.platform !== "linux")("the console in LAN mode (127.0.0.
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    config.factoryPort = (server.address() as { port: number }).port;
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("fake factory bound no TCP port");
+    config.factoryPort = address.port;
     onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
     return { hosts };
   }
