@@ -119,7 +119,7 @@ describe("resolving a skill-path gate", () => {
   function coordinatorMerge(rule: string, reason: string): boolean {
     const { schema, brief } = approveMergeDecision({ repo: "o/r", pr: 1, headSha: HEAD, reason, reviewedMerge: true });
     const record: GateRecord = {
-      ...{ id: "run-1/approve-merge", prompt: `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: ${reason}`, schema: toJSONSchema(schema) as Record<string, unknown>, ...brief },
+      ...{ id: "run-1/approve-merge", prompt: `Merge PR #1 in o/r at head ${HEAD}? CI is green. Policy ${rule}: ${reason}`, schema: toJSONSchema(schema), ...brief },
       ...{ status: "pending", payload: undefined, reason: undefined, createdAt: "2026-10-12T00:00:00.000Z", resolvedAt: undefined, expiresAt: undefined },
       ...{ resolvedBy: undefined, resolvedEvidence: undefined, rule: undefined, summary: undefined, evidenceRef: undefined, questions: undefined },
     };
