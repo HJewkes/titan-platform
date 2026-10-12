@@ -208,10 +208,10 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
   return failed ?? { kind: "clear", ...(merged !== undefined && { merged }) };
 }
 
-export type SeatWaitTiming = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs" | "timeoutMs">;
+type SeatWaitTiming = Pick<AwaitVerdictTiming, "now" | "sleep" | "pollMs" | "timeoutMs">;
 
 /** How long Shepherd's own MERGE waits on a seat WAIT, and the step's signal that ends the wait early. */
-export interface SeatWait {
+interface SeatWait {
   timing: SeatWaitTiming;
   signal: AbortSignal;
 }
@@ -219,14 +219,14 @@ export interface SeatWait {
 type OwnMerge = Extract<AwaitVerdictResult, { verdict: "MERGE" }>;
 
 /** Shepherd's own MERGE that a seat WAIT still held when the seat wait ran out; the next round re-checks the seat against it instead of reviewing again. */
-export interface SeatHeldNone {
+interface SeatHeldNone {
   kind: "none";
   reason: string;
   seatHeld: OwnMerge;
 }
 
 /** Re-reads the seat check while it answers WAIT, so a seat waiting on CI settles into its verdict; the deadline returns the standing WAIT. */
-export async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
+async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: ReviewTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
   const clock = deadline(timing);
   for (;;) {
     const check = await seatFixFirst(roster, reader, target, warn);
