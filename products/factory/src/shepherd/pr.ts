@@ -45,6 +45,7 @@ import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
+import type { FixFirstEntry } from "./fix-first-trail.js";
 
 export { SHEPHERD_STEPS };
 
@@ -111,6 +112,8 @@ interface ShepherdRun extends WakeRun {
   escalations: Map<string, Escalated>;
   /** What names the next review's cause. */
   trail: CauseTrail;
+  /** Every FIX_FIRST of the run, oldest first, which a fix round's brief carries. */
+  fixFirstTrail: FixFirstEntry[];
 }
 
 /**
@@ -121,7 +124,7 @@ export async function shepherdPr(ctx: WorkflowContext, params: ShepherdPrParams,
   const pr = params.pr ?? (await awaitPrStep(ctx, params.repo, params.branch));
   const run: ShepherdRun = {
     ...{ ctx, phases, target: { repo: params.repo, pr }, state: { round: 0, reruns: 0, waits: 0 }, reviews: new Map(), merged: new Map(), policy: params.policy, policyReads: 0, carryScopeReads: 0, release: params.release, task: params.task },
-    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail() },
+    ...{ failedRounds: 0, throttledRounds: 0, closer: { streak: 0 }, conflictWakes: 0, conflictChecks: 0, freezeChecks: 0, fresh: new Set(), updateBound: newUpdateBound(), settleHold: {}, escalations: new Map(), wokenPast: new Set(), trail: newCauseTrail(), fixFirstTrail: [] },
   };
   const verdictFor = (headSha: string) => run.reviews.get(headSha);
   const options: LandOptions = run.release ? releaseLandOptions(() => run.policy, verdictFor) : { ...shepherdLandOptions(() => run.policy, verdictFor, (headSha) => liveEscalation(run, headSha)), reviewedMerge: (headSha) => verdictIsMergeAt(verdictFor(headSha), headSha), ownerBriefAt: (headSha) => ownerBriefAt(verdictFor(headSha), headSha) };
@@ -301,11 +304,17 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
 /** Where each verdict sends the PR back to. */
 const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_FIRST: "review", NO_REPRO: "fix-proof" };
 
+/** The verdict plus the trail before it, which `countRound` has just appended at this head; a first FIX_FIRST's payload is the verdict alone, as before the trail. */
+function withEarlier(verdict: Verdict, trail: readonly FixFirstEntry[], headSha: string): Verdict & { earlier?: FixFirstEntry[] } {
+  const earlier = trail.at(-1)?.headSha === headSha ? trail.slice(0, -1) : [...trail];
+  return earlier.length === 0 ? verdict : { ...verdict, earlier };
+}
+
 /** Never returns: a woken agent starts the next round, and an unhandled wake asks a human. */
 async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<never> {
   const wake = SEND_BACK[verdict.kind];
   if (!wake) throw new Error(`shepherd-pr: a ${verdict.kind} verdict has no send-back`);
-  if (await woken(run, wake, headSha, verdict)) throw new LeaveLand();
+  if (await woken(run, wake, headSha, wake === "review" ? withEarlier(verdict, run.fixFirstTrail, headSha) : verdict)) throw new LeaveLand();
   throw new LeaveLand(await unhandledSendBack(run, verdict.kind, headSha));
 }
 
