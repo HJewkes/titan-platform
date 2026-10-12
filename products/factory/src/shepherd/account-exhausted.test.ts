@@ -115,7 +115,7 @@ function shepherdWith(dirs: string[], limited: (account: string, now: number) =>
   hooks.seed?.(accountLimits.get(), store.get(), runId);
   const stepIds = () => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
   const intents = () => Object.values(host.runtime.status(runId)!.stepResults).flatMap((result) => (result.stepId.startsWith("sh-review-intent") ? [result.data?.["result"]] : []));
-  return { runId, store, reviewers, holds, stepIds, intents, approveAtSpawn, fake };
+  return { runId, store, accountLimits, host, reviewers, holds, stepIds, intents, approveAtSpawn, fake };
 }
 
 describe("a reviewer account out of usage", () => {
@@ -194,6 +194,18 @@ describe("a reviewer account out of usage", () => {
       expect(scene.stepIds().filter((id) => id.startsWith("sh-account-hold"))).toHaveLength(1);
       expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`);
       expect(scene.store.get().byRun(scene.runId)?.held).toBe(false);
+    });
+
+    it("merges with no owner release when the run is repointed during the hold and the reset passes", async () => {
+      const scene = shepherdWith([PRIMARY], limitedUntilReset);
+      await vi.waitFor(() => expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`), { timeout: 20_000 });
+      scene.host.runtime.cancel(scene.runId, "replaced in this test");
+
+      const next = scene.host.runtime.start("shepherd-pr", { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) }, { onStart: (id) => void scene.store.get().repoint(scene.runId, id) });
+
+      expect(scene.accountLimits.get().holdsRun(next)).toBe(true);
+      await vi.waitFor(() => expect(scene.fake.calls).toContain("merge"), { timeout: 20_000 });
+      expect(scene.store.get().byRun(next)?.held).toBe(false);
     });
 
     it("leaves no hold when the PR closes during the hold", async () => {
