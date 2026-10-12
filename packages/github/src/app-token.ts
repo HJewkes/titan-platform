@@ -1,4 +1,5 @@
 import { createPrivateKey, createSign } from "node:crypto";
+import { rateBudget } from "./budget.js";
 import { execGh, type GhExec } from "./exec.js";
 import { GitHubRequestError, octokitClient, type OctokitClientOptions } from "./octokit-client.js";
 import { GitHubInputError } from "./validate.js";
@@ -58,7 +59,7 @@ export async function appInstallationToken(credentials: AppCredentials, exec: Gh
 /** The same exchange over Octokit, with the JWT as this one client's bearer token; no `gh` process and no child env. */
 export async function appInstallationTokenOverHttp(credentials: AppCredentials, clientOptions: Omit<OctokitClientOptions, "token" | "reauthOn401"> = {}): Promise<InstallationToken> {
   const { jwt, nowMs, secrets } = signedExchange(credentials);
-  const client = octokitClient({ throttleId: "app-jwt", ...clientOptions, token: async () => jwt, reauthOn401: false });
+  const client = octokitClient({ throttleId: "app-jwt", budget: rateBudget(), ...clientOptions, token: async () => jwt, reauthOn401: false });
   let data: unknown;
   try {
     ({ data } = await client.request("POST /app/installations/{installation_id}/access_tokens", { installation_id: credentials.installationId }));

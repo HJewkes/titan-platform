@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RATE_FLOOR, backoffMs, rateBudget } from "./budget.js";
 import { fakeFetch, rejectionOf, secondaryLimit, type FakeAnswer } from "./fetch-fake.test-helpers.js";
 import { octokitClient } from "./octokit-client.js";
+import { octokitWire } from "./octokit-wire.js";
+import { githubPort } from "./port.js";
 
 const TOKEN = "ghp_synthetic_test_token_0000000000";
 const NOW = Date.parse("2026-03-01T12:00:00Z");
@@ -137,5 +140,41 @@ describe("octokitClient", () => {
     await vi.advanceTimersByTimeAsync(6_000);
 
     expect(client.budget().cooldowns).toEqual([]);
+  });
+
+  it("fails a hung GraphQL call over the Octokit wire at 30 s, as restCaller's exec timeout does", async () => {
+    const hung = (async (_input: string | URL | Request, init: RequestInit = {}) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      })) as typeof globalThis.fetch;
+    const client = octokitClient({ fetch: hung, token: async () => TOKEN, throttleId: `test-${++clients}` });
+    let settled = false;
+
+    const pending = githubPort(octokitWire({ client })).listReviewComments("octo/demo", 7).finally(() => (settled = true));
+    const rejection = rejectionOf(pending, Error);
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect((await rejection).message).toMatch(/graphql timed out after 30000 ms/);
+  });
+
+  it("waits per backoffMs before a call once the shared floor is crossed, and records the headers it sees", async () => {
+    const reset = Math.floor(NOW / 1000) + 200;
+    const sleeps: number[] = [];
+    const budget = rateBudget({ now: Date.now, sleep: async (ms) => void sleeps.push(ms) });
+    const low = { "x-ratelimit-resource": "core", "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "100", "x-ratelimit-used": "4900", "x-ratelimit-reset": String(reset) };
+    const fake = fakeFetch(() => ({ ...ok, headers: low }));
+    const client = octokitClient({ fetch: fake.fetch, token: async () => TOKEN, throttleId: `test-${++clients}`, budget });
+
+    await settle(client.request("GET /repos/octo/demo"));
+    const secondAt = Date.now();
+    await settle(client.request("GET /repos/octo/demo"));
+
+    expect(sleeps).toEqual([backoffMs(100, reset * 1000, RATE_FLOOR, secondAt)]);
+    expect(sleeps[0]).toBeGreaterThan(1_000);
+    expect(budget.remaining).toBe(100);
+    expect(client.budget().lanes.rest).toMatchObject({ remaining: 100 });
+    expect(fake.calls).toHaveLength(2);
   });
 });

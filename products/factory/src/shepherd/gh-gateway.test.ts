@@ -19,7 +19,7 @@ interface Answer {
 
 let clients = 0;
 
-function gatewayWith(answer: (url: string, headers: Record<string, string>) => Answer, extra: { snapshot?: PrSnapshot; now?: () => number } = {}) {
+function gatewayWith(answer: (url: string, headers: Record<string, string>) => Answer, extra: { snapshot?: PrSnapshot; now?: () => number; memoryPaths?: number } = {}) {
   const urls: string[] = [];
   const lines: GhCallLine[] = [];
   const fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -29,7 +29,7 @@ function gatewayWith(answer: (url: string, headers: Record<string, string>) => A
     return new Response(body === undefined || status === 304 ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json", ...headers } });
   }) as typeof globalThis.fetch;
   const client = octokitClient({ fetch, token: async () => TOKEN, throttleId: `gateway-${++clients}` });
-  const gateway = ghGateway({ client, now: extra.now ?? (() => NOW), onCall: (line) => lines.push(line), ...(extra.snapshot && { snapshot: extra.snapshot }) });
+  const gateway = ghGateway({ client, now: extra.now ?? (() => NOW), onCall: (line) => lines.push(line), ...(extra.snapshot && { snapshot: extra.snapshot }), ...(extra.memoryPaths !== undefined && { memoryPaths: extra.memoryPaths }) });
   return { gateway, urls, lines };
 }
 
@@ -93,6 +93,17 @@ describe("shepherd.ghRead", () => {
 
     expect(cached).toMatchObject({ body: { n: 1 }, at: new Date(NOW).toISOString(), source: "memory", stale: false });
     expect(urls).toHaveLength(1);
+  });
+
+  it("forgets the oldest path past its memory cap, so memory stays bounded", async () => {
+    const { gateway, urls } = gatewayWith(() => ({ status: 200, body: {} }), { memoryPaths: 2 });
+    const path = (id: number) => `repos/octo/demo/actions/runs/${id}`;
+
+    for (const id of [1, 2, 3]) await gateway.read({ path: path(id) });
+    await gateway.read({ path: path(3), maxAgeMs: 60_000 });
+    await gateway.read({ path: path(1), maxAgeMs: 60_000 });
+
+    expect(urls.map((url) => url.split("/").pop())).toEqual(["1", "2", "3", "1"]);
   });
 
   it("makes one request for two concurrent reads of one path", async () => {

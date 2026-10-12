@@ -1,8 +1,10 @@
 import { Octokit } from "@octokit/core";
 import { retry } from "@octokit/plugin-retry";
 import { throttling } from "@octokit/plugin-throttling";
+import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { execGh } from "./exec.js";
 import { redact } from "./redact.js";
+import { GRAPHQL_TIMEOUT_MS } from "./rest.js";
 
 export type RateLane = "rest" | "graphql";
 
@@ -38,6 +40,11 @@ export interface OctokitClientOptions {
   now?: () => number;
   /** Keys the throttle's limiters, so a second identity (an App installation) never waits behind the user's writes. */
   throttleId?: string;
+  /**
+   * The proactive floor every call acquires before it goes out, as `restCaller` does: below `RATE_FLOOR` remaining, calls
+   * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
+   */
+  budget?: RateBudget;
 }
 
 export interface GitHubClient {
@@ -79,8 +86,41 @@ export function octokitClient(options: OctokitClientOptions = {}): GitHubClient 
     // A write that may have landed is never sent twice.
     if (!isRead(request.method)) request.request = { ...request.request, retries: 0 };
   });
-  authenticate(octokit, options.token ?? ghAuthToken, options.reauthOn401 ?? true, state.observe);
+  const budget = options.budget ?? sharedRateBudget;
+  const observe = (headers: Headers) => {
+    state.observe(headers);
+    budget.observe(new Map(Object.entries(headers).flatMap(([key, value]) => (value === undefined ? [] : [[key.toLowerCase(), String(value)]]))));
+  };
+  authenticate(octokit, options.token ?? ghAuthToken, options.reauthOn401 ?? true, observe);
+  guard(octokit, budget);
   return { request: octokit.request, budget: state.read };
+}
+
+/** Outermost hook, with `restCaller`'s two guards: the rate floor before every call, and a hung GraphQL call failing at 30 s. */
+function guard(octokit: InstanceType<typeof ThrottledOctokit>, budget: RateBudget): void {
+  octokit.hook.wrap("request", async (request, options) => {
+    const lane = laneOf(options.url);
+    await budget.acquire(lane === "graphql" ? "graphql" : "core");
+    if (lane !== "graphql") return request(options);
+    return withDeadline(`${options.method} graphql`, GRAPHQL_TIMEOUT_MS, (signal) => {
+      options.request = { ...options.request, signal };
+      return request(options);
+    });
+  });
+}
+
+/** The timer is a plain `setTimeout`, so the deadline is the caller's clock, fake or real. */
+async function withDeadline<T>(what: string, ms: number, run: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await run(controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`${what} timed out after ${ms} ms`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 let shared: GitHubClient | undefined;

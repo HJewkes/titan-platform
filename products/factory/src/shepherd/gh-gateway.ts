@@ -46,7 +46,11 @@ interface GhGatewayDeps {
   snapshot?: PrSnapshot;
   now?: () => number;
   onCall?: (line: GhCallLine) => void;
+  /** Last answers kept, oldest dropped first: callers name the paths, so without a cap the map grows for as long as serve runs. */
+  memoryPaths?: number;
 }
+
+const MEMORY_PATHS = 500;
 
 const SEGMENT = "[A-Za-z0-9][A-Za-z0-9_.-]{0,99}";
 const PAGING = ["per_page", "page"];
@@ -144,7 +148,9 @@ async function fetchFresh({ deps, now, rest, memory }: GatewayState, path: strin
   });
   if (answer.stale) return answer;
   log(answer.status);
+  memory.delete(path);
   memory.set(path, { answer, readAt: now() });
+  if (memory.size > (deps.memoryPaths ?? MEMORY_PATHS)) memory.delete(memory.keys().next().value!);
   return answer;
 }
 

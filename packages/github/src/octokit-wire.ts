@@ -1,3 +1,4 @@
+import { rateBudget } from "./budget.js";
 import { checkRunBody, type CreateCheckRunRequest } from "./check-run-create.js";
 import { redactedError, wireOver } from "./gh-cli.js";
 import { octokitClient, sharedOctokit, type GitHubClient, type OctokitClientOptions } from "./octokit-client.js";
@@ -28,7 +29,7 @@ async function postCheckRunAsApp(options: OctokitWireOptions, repo: string, requ
   try {
     token = await options.appToken();
     const minted = token;
-    const client = octokitClient({ throttleId: "app-installation", ...options.appClientOptions, token: async () => minted, reauthOn401: false });
+    const client = octokitClient({ throttleId: "app-installation", budget: rateBudget(), ...options.appClientOptions, token: async () => minted, reauthOn401: false });
     return { id: (await octokitRest(client, 0).send<{ id: number }>("POST", `repos/${repo}/check-runs`, {}, checkRunBody(request))).id };
   } catch (error) {
     throw redactedError(error, [token]);

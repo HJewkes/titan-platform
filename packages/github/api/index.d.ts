@@ -623,6 +623,11 @@ interface OctokitClientOptions {
     now?: () => number;
     /** Keys the throttle's limiters, so a second identity (an App installation) never waits behind the user's writes. */
     throttleId?: string;
+    /**
+     * The proactive floor every call acquires before it goes out, as `restCaller` does: below `RATE_FLOOR` remaining, calls
+     * spread over the time left. Defaults to `sharedRateBudget`, the user login's; another identity passes its own.
+     */
+    budget?: RateBudget;
 }
 interface GitHubClient {
     request: Octokit["request"];
