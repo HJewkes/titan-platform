@@ -60,6 +60,27 @@ describe("parseCharterPolicy", () => {
     expect(result).toMatchObject({ ok: false, errors: [{ code: "invalid", path: "defaults.teleport_k" }] });
   });
 
+  it("parses a charter that leaves out worktrees_per_repo_per_seat", () => {
+    expect("worktrees_per_repo_per_seat" in charter.defaults).toBe(false);
+
+    const result = parseCharterPolicy(charter);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.policy.defaults.worktrees_per_repo_per_seat).toBeUndefined();
+  });
+
+  it("still refuses a non-numeric worktrees_per_repo_per_seat when present", () => {
+    const defaults = { ...charter.defaults, worktrees_per_repo_per_seat: "12" };
+
+    const result = parseCharterPolicy({ ...charter, defaults });
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "invalid", path: "defaults.worktrees_per_repo_per_seat" }],
+    });
+  });
+
   it("refuses an unknown schema version", () => {
     const result = parseCharterPolicy({ ...charter, schema: "autonomy-charter/v2" });
 
