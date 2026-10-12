@@ -49,10 +49,21 @@ describe("ownerGatesReport", () => {
 
     expect(result.flagged).toEqual([expect.objectContaining({ class: "D4", held: ["audit found reverted"] })]);
     expect(formatOwnerGatesReport(result)).toContain("flag D4  20/20 approved (100%)  held: audit found reverted");
+    expect(formatOwnerGatesReport(result)).not.toContain("propose demotion");
   });
 
-  it("proposes a demotion for an unheld flag", () => {
-    expect(formatOwnerGatesReport(report(answered(20, 20)))).toContain("flag D4  20/20 approved (100%)  propose demotion to a (rule), b (reviewer) or c (decider)");
+  it("proposes a demotion for a flag the audit cleared", () => {
+    const result = report(answered(20, 20), new Map([["D16", ["main red"]]]));
+
+    expect(result.flagged).toEqual([expect.objectContaining({ class: "D4", held: [], audited: true })]);
+    expect(formatOwnerGatesReport(result)).toContain("flag D4  20/20 approved (100%)  propose demotion to a (rule), b (reviewer) or c (decider)\n");
+  });
+
+  it("says no audit was consulted when the report ran without an audit result", () => {
+    const result = report(answered(20, 20));
+
+    expect(result.flagged).toEqual([expect.objectContaining({ class: "D4", audited: false })]);
+    expect(formatOwnerGatesReport(result)).toContain("propose demotion to a (rule), b (reviewer) or c (decider); no audit consulted");
   });
 
   it("leaves a resolve made under a grant out of the class rate and lists it under its grant", () => {

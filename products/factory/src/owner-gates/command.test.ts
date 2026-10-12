@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteGateStore } from "@titan-design/hitl/sqlite";
@@ -62,5 +62,15 @@ describe("titan-factory owner-gates report", () => {
     expect(readdirSync(inbox)).toHaveLength(1);
     expect(first.out.join("")).toMatch(/deposited D4 /);
     expect(again.out.join("")).toMatch(/already filed D4 /);
+  });
+
+  it("files a card that claims no audit, since the report verb consults none", async () => {
+    const inbox = mkdtempSync(join(tmpdir(), "inbox-"));
+
+    await runCli(["--db", seededStore(), "owner-gates", "report", "--deposit"], capture(inbox).io);
+
+    const card = readFileSync(join(inbox, readdirSync(inbox)[0]!), "utf8");
+    expect(card).not.toMatch(/audit sample found no/);
+    expect(card).toContain("No audit result was consulted");
   });
 });

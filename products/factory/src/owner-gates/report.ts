@@ -28,6 +28,8 @@ export interface FlaggedClass {
   rate: number;
   /** Why no demotion is proposed: the audit's bad outcomes in this class, or that it has no D-row; empty proposes one. */
   held: string[];
+  /** Whether an audit result was consulted; without one, nothing says the class's approvals turned out well. */
+  audited: boolean;
 }
 
 export interface OwnerGatesReport {
@@ -46,7 +48,7 @@ interface ReportOptions {
   windowDays?: number;
   minItems?: number;
   threshold?: number;
-  /** Per class, the bad outcomes the same window's audit found (`badByClass`); a class listed here is held. */
+  /** Per class, the bad outcomes the same window's audit found (`badByClass`); a class listed here is held. Absent means no audit was consulted. */
   auditBad?: ReadonlyMap<string, readonly string[]>;
 }
 
@@ -81,10 +83,10 @@ function classRow(cls: string, gates: readonly GateRecord[], now: number, sinceM
   };
 }
 
-function flagOf(row: ClassRow, auditBad: ReadonlyMap<string, readonly string[]>): FlaggedClass {
-  const bad = auditBad.get(row.class) ?? [];
+function flagOf(row: ClassRow, auditBad: ReadonlyMap<string, readonly string[]> | undefined): FlaggedClass {
+  const bad = auditBad?.get(row.class) ?? [];
   const held = row.class === NO_CLASS ? ["no D-row to demote"] : bad.length > 0 ? [`audit found ${bad.join(", ")}`] : [];
-  return { class: row.class, answered: row.answered, approved: row.approved, rate: row.rate, held };
+  return { class: row.class, answered: row.answered, approved: row.approved, rate: row.rate, held, audited: auditBad !== undefined };
 }
 
 function provenanceFrom(gates: readonly GateRecord[], from: number): string | undefined {
@@ -97,7 +99,7 @@ function provenanceFrom(gates: readonly GateRecord[], from: number): string | un
  * A class at or above `threshold` over at least `minItems` answered is flagged for demotion unless the audit holds it.
  */
 export function ownerGatesReport(gates: readonly GateRecord[], options: ReportOptions): OwnerGatesReport {
-  const { now, seats, windowDays = 14, minItems = 20, threshold = 0.95, auditBad = new Map() } = options;
+  const { now, seats, windowDays = 14, minItems = 20, threshold = 0.95, auditBad } = options;
   const from = now - windowDays * DAY_MS;
   const inWindow = gates.filter((gate) => Date.parse(gate.createdAt) >= from);
   const metered = inWindow.filter((gate) => isOwnerResolved(gate) || closedUnanswered(gate));
@@ -117,7 +119,7 @@ const percent = (rate: number): string => `${Math.round(rate * 100)}%`;
 
 function flagLine(flag: FlaggedClass): string {
   const head = `flag ${flag.class}  ${flag.approved}/${flag.answered} approved (${percent(flag.rate)})`;
-  return flag.held.length > 0 ? `${head}  held: ${flag.held.join("; ")}` : `${head}  propose demotion to a (rule), b (reviewer) or c (decider)`;
+  return flag.held.length > 0 ? `${head}  held: ${flag.held.join("; ")}` : `${head}  propose demotion to a (rule), b (reviewer) or c (decider)${flag.audited ? "" : "; no audit consulted"}`;
 }
 
 function grantLine(grant: StandingGrant): string {
