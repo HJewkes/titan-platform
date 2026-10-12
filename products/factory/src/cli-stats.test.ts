@@ -47,6 +47,31 @@ describe("shepherd stats verb", () => {
     });
   });
 
+  it("reports merge-up classes, strict rounds, slow owner-gated merges and foreign merge-ups in JSON and in the text line", async () => {
+    const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
+    openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();
+    const store = openDatabase(db);
+    const result = (stepId: string, completedAt: string, data: Record<string, unknown>) => ({ [stepId]: { stepId, iteration: 0, agentId: null, signal: null, completedAt, data: { result: data } } });
+    const stepResults = {
+      ...result("land-rules", "2026-10-07T08:59:00.000Z", { base: "main", contexts: [], strict: true }),
+      ...result("sh-await-verdict:h1", "2026-10-07T09:00:00.000Z", { kind: "verdict", verdict: "MERGE" }),
+      ...result("ci-wait:0", "2026-10-07T09:01:00.000Z", { verdict: "behind", headSha: "h1", baseMoved: true }),
+      ...result("update-branch:0", "2026-10-07T09:02:00.000Z", { headSha: "h2", own: true }),
+      ...result("approve-merge:0", "2026-10-07T10:20:00.000Z", { approved: true }),
+      ...result("merge:0", "2026-10-07T10:30:00.000Z", { done: true }),
+    };
+    new WorkflowRunStore(store).create({ id: "run-1", workflowName: "shepherd-pr", params: { repo: "acme/widgets", pr: "3" }, status: "completed", currentStep: null, stepResults, activeSteps: {}, revision: 0, ownerGeneration: 0, startedAt: "2026-10-07T08:58:00.000Z", completedAt: "2026-10-07T10:31:00.000Z", error: null });
+    store.close();
+    const json = capture();
+    const text = capture();
+
+    await runCli(["--db", db, "shepherd", "stats", "--json"], json.io);
+    await runCli(["--db", db, "shepherd", "stats"], text.io);
+
+    expect(JSON.parse(json.out.join("")).merges[0]).toMatchObject({ mergeUps: { landTime: 1, strictChase: 0, freezeHold: 0, retry: 0 }, strictRounds: 1, slowOwnerGated: 1, foreignMergeUps: 0 });
+    expect(text.out.join("")).toContain("slow owner-gated 1  outside Shepherd 0  merge-ups land/strict/freeze/retry 1/0/0/0  strict rounds 1  foreign merge-ups 0\n");
+  });
+
   it("refuses --per-run without --json", async () => {
     const db = join(mkdtempSync(join(tmpdir(), "stats-")), "factory.db");
     openFactoryHost({ dbPath: db, workflows: factoryWorkflows, routes: factoryRoutes() }).close();

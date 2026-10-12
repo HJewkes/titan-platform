@@ -18,6 +18,21 @@ export interface StatsRow {
   slowMerges: number;
   slowHours: number;
   outsideMerges: number;
+  /** Shepherd's own update-branch steps, by why each ran. */
+  mergeUps: MergeUps;
+  /** `land-rules` reads that found the repo requiring up-to-date heads: each one starts the strict chase. */
+  strictRounds: number;
+  /** Slow merges whose wait held an owner `approve-merge` gate. */
+  slowOwnerGated: number;
+  /** Merges of the base pushed by someone other than Shepherd. */
+  foreignMergeUps: number;
+}
+
+interface MergeUps {
+  landTime: number;
+  strictChase: number;
+  freezeHold: number;
+  retry: number;
 }
 
 /** A dispatch step's answer sits under `data.result` in the ledger. */
@@ -64,7 +79,16 @@ interface Event {
   repo: string;
   at: number;
   waitMs?: number;
+  ownerGated: boolean;
   outside: boolean;
+}
+
+/** True when an owner `approve-merge` gate resolved inside the MERGE-to-merged wait, so the owner held the merge. */
+function ownerGatedBetween(run: WorkflowRun, verdictAt: number, merged: number): boolean {
+  return Object.entries(run.stepResults).some(([key, result]) => {
+    const at = Date.parse(result.completedAt);
+    return stepName(key) === "approve-merge" && at > verdictAt && at <= merged;
+  });
 }
 
 function eventOf(run: WorkflowRun): Event | undefined {
@@ -73,10 +97,53 @@ function eventOf(run: WorkflowRun): Event | undefined {
   const merged = mergedAt(run);
   if (merged !== undefined) {
     const verdict = mergeVerdictAt(run, merged);
-    return { repo, at: merged, waitMs: verdict === undefined ? undefined : merged - verdict, outside: false };
+    const ownerGated = verdict !== undefined && ownerGatedBetween(run, verdict, merged);
+    return { repo, at: merged, waitMs: verdict === undefined ? undefined : merged - verdict, ownerGated, outside: false };
   }
   const outside = outsideAt(run);
-  return outside === undefined ? undefined : { repo, at: outside, outside: true };
+  return outside === undefined ? undefined : { repo, at: outside, ownerGated: false, outside: true };
+}
+
+type MergeUpClass = keyof MergeUps;
+
+interface Ordered {
+  key: string;
+  result: StepResult;
+}
+
+const inStepOrder = (run: WorkflowRun): Ordered[] =>
+  Object.entries(run.stepResults)
+    .map(([key, result]) => ({ key, result }))
+    .sort((a, b) => a.result.completedAt.localeCompare(b.result.completedAt));
+
+/**
+ * Classifies one update-branch step by what preceded it. A refresh after a `ci-wait` read that saw the base move past
+ * a green is the land-time merge-up; any other update off a behind read is the strict chase.
+ */
+function classOf(key: string, previous: string | undefined, lastCi: Record<string, unknown> | undefined): MergeUpClass {
+  if (key.startsWith("update-branch:sh-freeze-hold:")) return "freezeHold";
+  if (previous !== undefined && stepName(previous) === "update-backoff") return "retry";
+  return lastCi?.baseMoved === true ? "landTime" : "strictChase";
+}
+
+/** Each of Shepherd's own update-branch steps in step order, with its class and when it completed. */
+function mergeUpsOf(run: WorkflowRun): { kind: MergeUpClass; at: number }[] {
+  const ups: { kind: MergeUpClass; at: number }[] = [];
+  let previous: string | undefined;
+  let lastCi: Record<string, unknown> | undefined;
+  for (const { key, result } of inStepOrder(run)) {
+    if (stepName(key) === "ci-wait") lastCi = payloadOf(result);
+    if (stepName(key) === "update-branch") ups.push({ kind: classOf(key, previous, lastCi), at: Date.parse(result.completedAt) });
+    previous = key;
+  }
+  return ups;
+}
+
+/** When each `land-rules` read that found the repo strict completed. */
+function strictRoundsOf(run: WorkflowRun): number[] {
+  return Object.entries(run.stepResults)
+    .filter(([key, result]) => stepName(key) === "land-rules" && payloadOf(result).strict === true)
+    .map(([, result]) => Date.parse(result.completedAt));
 }
 
 export function inRange(at: number, { from, to }: StatsRange): boolean {
@@ -84,20 +151,73 @@ export function inRange(at: number, { from, to }: StatsRange): boolean {
   return to === undefined || at < Date.parse(`${to}T00:00:00Z`) + MS_PER_DAY;
 }
 
-/** Per repo and ISO week: merges, those whose MERGE-to-merged wait exceeded an hour with their total hours, and merges made outside Shepherd. */
-export function shepherdStats(runs: readonly WorkflowRun[], range: StatsRange = {}): StatsRow[] {
-  const rows = new Map<string, StatsRow>();
-  for (const event of runs.flatMap((run) => eventOf(run) ?? [])) {
-    if (!inRange(event.at, range)) continue;
-    const week = isoWeek(event.at);
-    const row = rows.get(`${event.repo} ${week}`) ?? { repo: event.repo, week, merges: 0, slowMerges: 0, slowHours: 0, outsideMerges: 0 };
-    rows.set(`${event.repo} ${week}`, row);
-    if (event.outside) row.outsideMerges++;
-    else row.merges++;
-    if (event.waitMs !== undefined && event.waitMs > SLOW_WAIT_MS) {
-      row.slowMerges++;
-      row.slowHours += event.waitMs / 3_600_000;
-    }
+const emptyRow = (repo: string, week: string): StatsRow => ({
+  repo,
+  week,
+  merges: 0,
+  slowMerges: 0,
+  slowHours: 0,
+  outsideMerges: 0,
+  mergeUps: { landTime: 0, strictChase: 0, freezeHold: 0, retry: 0 },
+  strictRounds: 0,
+  slowOwnerGated: 0,
+  foreignMergeUps: 0,
+});
+
+class Rows {
+  private readonly rows = new Map<string, StatsRow>();
+  constructor(private readonly range: StatsRange) {}
+
+  /** The row an instant counts toward, or undefined when it falls outside the range. */
+  at(repo: string, at: number): StatsRow | undefined {
+    if (!inRange(at, this.range)) return undefined;
+    const week = isoWeek(at);
+    const row = this.rows.get(`${repo} ${week}`) ?? emptyRow(repo, week);
+    this.rows.set(`${repo} ${week}`, row);
+    return row;
   }
-  return [...rows.values()].map((row) => ({ ...row, slowHours: Math.round(row.slowHours * 100) / 100 })).sort((a, b) => a.repo.localeCompare(b.repo) || a.week.localeCompare(b.week));
+
+  sorted(): StatsRow[] {
+    return [...this.rows.values()].map((row) => ({ ...row, slowHours: Math.round(row.slowHours * 100) / 100 })).sort((a, b) => a.repo.localeCompare(b.repo) || a.week.localeCompare(b.week));
+  }
+}
+
+function addEvent(rows: Rows, event: Event): void {
+  const row = rows.at(event.repo, event.at);
+  if (!row) return;
+  if (event.outside) row.outsideMerges++;
+  else row.merges++;
+  if (event.waitMs === undefined || event.waitMs <= SLOW_WAIT_MS) return;
+  row.slowMerges++;
+  row.slowHours += event.waitMs / 3_600_000;
+  if (event.ownerGated) row.slowOwnerGated++;
+}
+
+/** A merged run's merge-ups count in its merge week, so they sit beside the wait they caused; others in their own week. */
+function addMergeUps(rows: Rows, run: WorkflowRun): void {
+  const repo = run.params.repo?.toLowerCase();
+  if (!repo) return;
+  const merged = mergedAt(run);
+  for (const up of mergeUpsOf(run)) {
+    const row = rows.at(repo, merged ?? up.at);
+    if (row) row.mergeUps[up.kind]++;
+  }
+  for (const at of strictRoundsOf(run)) {
+    const row = rows.at(repo, merged ?? at);
+    if (row) row.strictRounds++;
+  }
+}
+
+/**
+ * Per repo and ISO week: merges, those whose MERGE-to-merged wait exceeded an hour with their total hours and how many
+ * an owner gate held, merges made outside Shepherd, and Shepherd's merge-ups by class with the strict rounds behind them.
+ */
+export function shepherdStats(runs: readonly WorkflowRun[], range: StatsRange = {}): StatsRow[] {
+  const rows = new Rows(range);
+  for (const run of runs) {
+    const event = eventOf(run);
+    if (event) addEvent(rows, event);
+    addMergeUps(rows, run);
+  }
+  return rows.sorted();
 }
