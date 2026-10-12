@@ -256,10 +256,9 @@ function buildHealth(options: FactoryServerOptions): BuildHealth {
   return { sha, status: probe.status, refresh: probe.refresh };
 }
 
-/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. */
+/** Without `routeFor`, `busy` cannot see park-routed steps and lists only review and merging steps. Runs are counted, not listed, so a probe never parses every finished run (TP-2419). */
 export function factoryHealth(host: FactoryHost, routeFor: RoutedRunner["routeFor"] = () => undefined, isHeld?: HoldPredicate): Record<string, unknown> {
-  const runs = Object.fromEntries(STATUSES.map((status) => [status, 0])) as Record<WorkflowStatus, number>;
-  for (const run of host.runtime.list([...STATUSES])) runs[run.status] += 1;
+  const runs = Object.fromEntries(host.countRuns(STATUSES));
   const running = host.runtime.list(["running"]);
   const held = isHeld ? heldSkipped(running, routeFor, isHeld) : [];
   return { runs, pendingGates: host.pendingGates().length, busy: busyRuns(running, routeFor, isHeld), heldSkipped: held };
