@@ -2,7 +2,7 @@ import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import type { ShepherdServices } from "./services.js";
 import type { Registration } from "./store.js";
-import { runOutcome } from "./view.js";
+import { runOutcome } from "./run-end.js";
 
 /**
  * Stops a new register can clear: a pushed fix may let a new head merge, and an owner abandon

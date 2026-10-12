@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { SqliteGateStore, gateMigration, gateResolverMigration } from "@titan-design/hitl/sqlite";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
-import { routedRunner, workflowMigration, workflowOwnershipMigration, WorkflowRuntime, type StepRunner, type WorkflowFn } from "@titan-design/workflow";
+import { routedRunner, workflowMigration, workflowOwnershipMigration, WorkflowRuntime, type StepRunner, type WorkflowFn, type WorkflowRun } from "@titan-design/workflow";
 import type { TrialRecord, VariantSpec } from "../spec/index.js";
 import { emptyCost, finalOutput, outcomeOf, type TrialObservations, type TrialRunRecord } from "./record.js";
 import { manifestRoutes, type CodeStep, type TrialLaunch } from "./routes.js";
@@ -36,6 +36,11 @@ export interface TrialHost {
   readonly runtime: WorkflowRuntime;
   /** Runs the trial once to a settled record; a host runs one trial. */
   run(trial: TrialStartInput): Promise<TrialRunRecord>;
+  /**
+   * Settles the run already in the trial's file, or starts one when the file has none. Only attempts made by this host
+   * are recorded: steps that finished before the crash replay from the file without a dispatch.
+   */
+  resume(trial: TrialStartInput): Promise<TrialRunRecord>;
   close(): void;
 }
 
@@ -49,26 +54,51 @@ export function createTrialHost(options: TrialHostOptions): TrialHost {
   const { db, runtime } = openRuntime(options, runner, now);
 
   let started = false;
+  const claim = (): void => {
+    if (started) throw new Error(`trial host for ${variant.id} already ran a trial; open one host per trial`);
+    started = true;
+  };
+  const settle = (trial: TrialStartInput, runId: string) => settledRecord(runtime, observations, trial, runId);
   return {
     runtime,
     async run(trial) {
-      if (started) throw new Error(`trial host for ${variant.id} already ran a trial; open one host per trial`);
-      started = true;
-      const run = await runtime.wait(runtime.start(variant.id, trial.params ?? {}));
-      return {
-        trialId: trial.trialId,
-        identity: trial.identity,
-        ...observations,
-        outcome: outcomeOf(run.status, observations.attempts),
-        output: finalOutput(run),
-        ...(run.error ? { error: run.error } : {}),
-      };
+      claim();
+      return settle(trial, runtime.start(variant.id, trial.params ?? {}));
+    },
+    async resume(trial) {
+      claim();
+      const runId = await resumableRun(runtime, variant.id);
+      return settle(trial, runId ?? runtime.start(variant.id, trial.params ?? {}));
     },
     close() {
       runtime.shutdown();
       db.close();
     },
   };
+}
+
+async function settledRecord(runtime: WorkflowRuntime, observations: TrialObservations, trial: TrialStartInput, runId: string): Promise<TrialRunRecord> {
+  const run = await runtime.wait(runId);
+  return {
+    trialId: trial.trialId,
+    identity: trial.identity,
+    ...observations,
+    outcome: outcomeOf(run.status, observations.attempts),
+    output: finalOutput(run),
+    ...(run.error ? { error: run.error } : {}),
+  };
+}
+
+const ALL_STATUSES: readonly WorkflowRun["status"][] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
+const HELD_STATUSES: ReadonlySet<WorkflowRun["status"]> = new Set(["running", "paused", "cancelling"]);
+
+/** The trial file's one run, hydrated so its finished steps replay from the file and its active ones follow `onRestart`. */
+async function resumableRun(runtime: WorkflowRuntime, variantId: string): Promise<string | undefined> {
+  const [hydrated] = await runtime.hydrate();
+  if (hydrated) return hydrated;
+  const [run] = runtime.list(ALL_STATUSES);
+  if (run && HELD_STATUSES.has(run.status)) throw new Error(`trial run ${run.id} of ${variantId} is still leased by another runtime; resume it after the lease expires`);
+  return run?.id;
 }
 
 function openRuntime(options: TrialHostOptions, runner: StepRunner, now: () => number): { db: Db; runtime: WorkflowRuntime } {

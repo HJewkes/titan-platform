@@ -66,9 +66,18 @@ every caller plans, briefs and aggregates the same way:
   with `DEPTH_FLOOR_REASON`. A FIX_FIRST keeps its findings (`fixFirstFindings`, bounded
   by `boundedFindings`), and a verdict keeps the reviewer's OWNER-BRIEF block
   (`parseOwnerBrief`). A MERGE carries the reviewer's `CI-policy:` line as `ciPolicy` when
-  `parseVerdictBlock` reads one. A short usage-limit notice the client wrote itself (a `synthetic`
+  `parseVerdictBlock` reads one. A verdict of either kind carries the reviewer's proposed
+  `Follow-ups:` tasks as `followUps`, or `followUpsWarning` when the block was dropped; neither
+  changes the verdict (`parseFollowUps` below). A short usage-limit notice the client wrote itself (a `synthetic`
   message) is `none` with `USAGE_LIMIT_REASON`, the notice and any recorded `resetsAt`;
   `isUsageLimit` tells that result apart. The same words from the reviewer are malformed.
+- `parseFollowUps(text)`: the optional `Follow-ups:` section, one `- <title> | <done_when> | <severity>`
+  line per task directly under the heading, severity `low`, `medium` or `high`, at most `MAX_FOLLOW_UPS`.
+  It may sit before or after the verdict lines; fenced or commented lines are not read (session-read's
+  `visibleLines`). `Follow-ups: none` proposes nothing. Any fault drops the whole block with one warning
+  from `FOLLOW_UPS_WARNINGS` (`multiple_blocks`, `bad_item`, `bad_severity`, `too_many`, `too_long`,
+  `placeholder`), so a block is never filed in part. `followUpsFields` gives the two optional fields
+  `acceptVerdict` adds, and `FOLLOW_UPS_RULE` is the sentence `reviewerBrief` places before the verdict lines.
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
   (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
   a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other

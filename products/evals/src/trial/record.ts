@@ -98,8 +98,10 @@ export function callObserver(stepId: string, calls: TrialCall[]): (message: unkn
   };
 }
 
+/** A run parked for recovery left a step in an unknown state after a crash, which says nothing about the variant. */
 export function outcomeOf(status: WorkflowRun["status"], attempts: readonly TrialAttempt[]): TrialOutcome {
   if (status === "completed") return "passed-run";
+  if (status === "recovery_required") return "infra";
   return attempts.some((attempt) => attempt.failure !== undefined && INFRA_FAILURES.has(attempt.failure)) ? "infra" : "failed";
 }
 
