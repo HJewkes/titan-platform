@@ -344,4 +344,40 @@ describe("a repoint during an account hold", () => {
 
     expect(s.store().byRun("run-2")).toMatchObject({ held: true, holdReason: "owner: wait" });
   });
+
+  it("lets the new run re-hold the account as its own, so its wait can see the release", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+
+    s.store().repoint("run-1", "run-2");
+
+    expect(await s.hold("run-2")).toMatchObject({ held: true, own: true });
+  });
+
+  it("leaves an owner hold with no account hold under it owner-only after the reset", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    s.store().hold("run-1", "Account-exhausted: manual");
+
+    s.store().repoint("run-1", "run-2");
+    s.clock.now = Date.parse("2026-10-11T00:01:00.000Z");
+    s.pick("run-2");
+
+    expect(s.store().byRun("run-2")).toMatchObject({ held: true, holdReason: "Account-exhausted: manual" });
+    expect(s.limits().releaseRun("run-2")).toBe(false);
+    expect(ownRows(s)).toEqual([]);
+  });
+
+  it("moves a stale account row under an owner override without making the new run its owner", async () => {
+    const s = scene();
+    s.register("run-1", 1);
+    await s.hold("run-1");
+    s.store().hold("run-1", "owner: wait");
+
+    s.store().repoint("run-1", "run-2");
+
+    expect(s.limits().holdsRun("run-2")).toBe(false);
+    expect(s.db.prepare("SELECT run_id, reason FROM shepherd_account_hold").all()).toEqual([{ run_id: "run-2", reason: HELD }]);
+  });
 });
