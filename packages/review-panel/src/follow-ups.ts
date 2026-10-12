@@ -34,8 +34,8 @@ function parseItem(line: string): FollowUp | FollowUpsWarning {
   const fields = line.slice(2).split(" | ").map((field) => field.trim());
   if (fields.length !== 3 || fields.some((field) => field === "")) return "bad_item";
   if (fields.some((field) => PLACEHOLDER.test(field))) return "placeholder";
-  const [title, doneWhen, severity] = fields as [string, string, string];
-  const parsed = FollowUpSchema.safeParse({ title, doneWhen, severity: severity.toLowerCase() });
+  const [title, doneWhen, severity] = fields;
+  const parsed = FollowUpSchema.safeParse({ title, doneWhen, severity: severity?.toLowerCase() });
   if (parsed.success) return parsed.data;
   return parsed.error.issues.some((issue) => issue.path[0] === "severity") ? "bad_severity" : "too_long";
 }
