@@ -45,7 +45,7 @@ import { heldRepair, heldRepairRoutes } from "./held-repair.js";
 import { headOriginRoute, recordHeadOrigin } from "./head-origin.js";
 import { taskIdOf } from "../workflows/land-merge-message.js";
 import { SHEPHERD_STEPS } from "./shepherd-steps.js";
-import type { FixFirstEntry } from "./fix-first-trail.js";
+import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 
 export { SHEPHERD_STEPS };
 
@@ -75,7 +75,7 @@ export function shepherdPrParams(ctx: WorkflowContext): ShepherdPrParams {
   return { repo, ...(pr === undefined ? { branch: branch! } : { pr }), policy, ...(ctx.param("task") ? { task: ctx.param("task") } : {}), after: afterStages(ctx), release: branch === VERSION_PACKAGES_BRANCH };
 }
 
-interface ShepherdRun extends WakeRun {
+interface ShepherdRun extends WakeRun, FixFirstTrail {
   ctx: WorkflowContext;
   phases: ShepherdPhases;
   target: PrTarget;
@@ -112,8 +112,6 @@ interface ShepherdRun extends WakeRun {
   escalations: Map<string, Escalated>;
   /** What names the next review's cause. */
   trail: CauseTrail;
-  /** Every FIX_FIRST of the run, oldest first, which a fix round's brief carries. */
-  fixFirstTrail: FixFirstEntry[];
 }
 
 /**
@@ -303,12 +301,6 @@ async function reviewHead(run: ShepherdRun, headSha: string): Promise<Verdict> {
 
 /** Where each verdict sends the PR back to. */
 const SEND_BACK: Partial<Record<Verdict["kind"], WakeRequest["kind"]>> = { FIX_FIRST: "review", NO_REPRO: "fix-proof" };
-
-/** The verdict plus the trail before it, which `countRound` has just appended at this head; a first FIX_FIRST's payload is the verdict alone, as before the trail. */
-function withEarlier(verdict: Verdict, trail: readonly FixFirstEntry[], headSha: string): Verdict & { earlier?: FixFirstEntry[] } {
-  const earlier = trail.at(-1)?.headSha === headSha ? trail.slice(0, -1) : [...trail];
-  return earlier.length === 0 ? verdict : { ...verdict, earlier };
-}
 
 /** Never returns: a woken agent starts the next round, and an unhandled wake asks a human. */
 async function sendBack(run: ShepherdRun, headSha: string, verdict: Verdict): Promise<never> {

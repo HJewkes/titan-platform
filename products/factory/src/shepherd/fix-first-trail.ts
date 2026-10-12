@@ -8,6 +8,11 @@ export interface FixFirstEntry {
   defectClass?: string;
 }
 
+/** A run's FIX_FIRSTs, oldest first; `countRound` builds it as verdicts replay, so a restart rebuilds it without a step of its own. */
+export interface FixFirstTrail {
+  fixFirstTrail: FixFirstEntry[];
+}
+
 export const FixFirstEntrySchema = z.looseObject({ headSha: z.string(), text: z.string(), defectClass: z.string().optional() });
 
 const isDefectHeading = (line: string): boolean => line.replace(/^[\s#*]+/, "").toLowerCase().startsWith(DEFECT_CLASS_HEADING.toLowerCase());
@@ -43,4 +48,10 @@ export function sameClassAsEarlier(earlier: readonly FixFirstEntry[], current: F
 export function fixFirstEntry(headSha: string, text: string): FixFirstEntry {
   const defectClass = defectClassSection(text);
   return defectClass === undefined ? { headSha, text } : { headSha, text, defectClass };
+}
+
+/** The verdict plus the trail before it, which `countRound` has just appended at this head; a first FIX_FIRST's payload is the verdict alone, as before the trail. */
+export function withEarlier<T extends object>(verdict: T, trail: readonly FixFirstEntry[], headSha: string): T & { earlier?: FixFirstEntry[] } {
+  const earlier = trail.at(-1)?.headSha === headSha ? trail.slice(0, -1) : [...trail];
+  return earlier.length === 0 ? verdict : { ...verdict, earlier };
 }

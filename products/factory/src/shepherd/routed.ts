@@ -5,7 +5,7 @@ import { step, type LandOutcome } from "../workflows/land.js";
 import type { ObservedPr } from "./observe.js";
 import type { Verdict } from "./phases.js";
 import { FAILED_ROUND_WORDS, MAX_FAILED_ROUNDS, MAX_THROTTLED_ROUNDS, fixFirstEscalation, nextCloserStreak, roundKind, type CloserStreak, type Escalated, type ReviewOutcome, type Route } from "./route-table.js";
-import { fixFirstEntry, type FixFirstEntry } from "./fix-first-trail.js";
+import { fixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
 import { FIX_FIRST_STEP, fixFirstCount } from "./wake-brief.js";
 
 export interface Routed {
@@ -17,14 +17,12 @@ export interface Routed {
 }
 
 /** The run's round counters `countRound` advances; its FIX_FIRST count is the run's recorded `FIX_FIRST_STEP`s. */
-interface RoundCounts {
+interface RoundCounts extends FixFirstTrail {
   ctx: WorkflowContext;
   target: { repo: RepoSlug; pr: number };
   failedRounds: number;
   throttledRounds: number;
   closer: CloserStreak;
-  /** Every FIX_FIRST of the run, oldest first; built here as verdicts replay, so a restart rebuilds it without a step of its own. */
-  fixFirstTrail: FixFirstEntry[];
 }
 
 const FixFirstRecord = z.looseObject({ fixFirst: z.number().int().positive() });

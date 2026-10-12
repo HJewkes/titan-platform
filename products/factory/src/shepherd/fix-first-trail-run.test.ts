@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { openFactoryHost, type FactoryHost } from "../host.js";
 import { REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
@@ -12,6 +13,7 @@ import { shepherdPrWorkflow } from "./pr.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { shepherdStoreRef } from "./store.js";
 import { describeWake } from "./wake-brief.js";
+import { FixFirstEntrySchema } from "./fix-first-trail.js";
 
 /** Synthetic heads: FIX_FIRST at A, the fixer's push to B, FIX_FIRST at B, the fixer's push to C, MERGE at C. */
 const A = fakeSha("trail-run-a");
@@ -46,7 +48,7 @@ function openHost(fake: FakeGitHub, dbPath: string, reviewAt: (head: string) => 
   return { host, store, wakes };
 }
 
-const earlierOf = (request: WakeRequest | undefined) => (request?.payload as { earlier?: { headSha: string; text: string }[] } | undefined)?.earlier;
+const earlierOf = (request: WakeRequest | undefined) => z.looseObject({ earlier: z.array(FixFirstEntrySchema).optional() }).parse(request?.payload).earlier;
 
 describe("a run restarted between its first and second FIX_FIRST", () => {
   it("hands the second fix round the first round's findings and class exactly once", async () => {
