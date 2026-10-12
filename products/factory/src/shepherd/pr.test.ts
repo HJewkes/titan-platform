@@ -703,6 +703,8 @@ describe("the route table in a run", () => {
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-route/fix-first-runaway: 6 FIX_FIRST reviews at this task");
   });
 
+  const resultOf = (data: unknown) => (typeof data === "object" && data !== null && "result" in data ? data.result : undefined);
+
   it("records each FIX_FIRST verdict, such as a seat reviewer's, once at its head, and the wake that follows reads that count", async () => {
     const heads: string[] = [];
     const { w, read, recorded } = fixFirstEveryHead((headSha) => heads.push(headSha));
@@ -710,7 +712,7 @@ describe("the route table in a run", () => {
 
     await gateOpened(w.host, gateId(runId, "approve-merge"));
 
-    expect(recorded(runId).map((result) => (result.data as { result: unknown }).result)).toEqual(heads.map((headSha, n) => ({ repo: REPO, pr: 1, headSha, fixFirst: n + 1 })));
+    expect(recorded(runId).map((result) => resultOf(result.data))).toEqual(heads.map((headSha, n) => ({ repo: REPO, pr: 1, headSha, fixFirst: n + 1 })));
     expect(read.wakes).toEqual([1, 2, 3, 4, 5]);
   });
 
