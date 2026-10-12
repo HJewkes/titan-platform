@@ -94,6 +94,95 @@ describe("fix-proof-run.sh", () => {
     it("refuses a side other than base or head", () => {
       expect(exec("other").status).toBe(64);
     });
+
+    describe("base side sandbox", () => {
+      let shims;
+      let sudoLog;
+      // sudo shim: logs each call and exits with the code an env var names, so a test can fail one step.
+      const sudoShim = `#!/usr/bin/env bash
+echo "$*" >>"$SUDO_LOG"
+case "$*" in
+  "-n true") exit "\${SUDO_TRUE_EXIT:-0}" ;;
+  "-n useradd "*) exit "\${USERADD_EXIT:-0}" ;;
+  "-n -u fix-proof-sandbox sudo -n true") exit "\${SANDBOX_SUDO_EXIT:-1}" ;;
+esac
+exit 0
+`;
+      beforeEach(() => {
+        shims = path.join(tmp, "shims");
+        sudoLog = path.join(tmp, "sudo.log");
+        mkdirSync(shims);
+        writeFileSync(path.join(shims, "sudo"), sudoShim, { mode: 0o755 });
+        for (const tool of ["unshare", "setpriv", "timeout"]) writeFileSync(path.join(shims, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        writeFileSync(path.join(dist, "bin.js"), echoArgs);
+        writeFileSync(path.join(dist, "judge.js"), echoArgs);
+      });
+      const withSandboxSupport = () => writeFileSync(path.join(dist, "chunk-ABC.js"), 'var SANDBOX_FLAG = "sandbox-user";\n');
+      const execWith = (side, env = {}) =>
+        sh(["exec", side, runner, path.join(tmp, "repo"), base, head, out()], { PATH: `${shims}:${process.env.PATH}`, SUDO_LOG: sudoLog, ...env });
+      const expectBaseMarkers = (error) => {
+        for (const name of ["base", "base-rerun"]) {
+          const decoded = decodeReport(readFileSync(path.join(out(), `${name}.report`), "utf8"));
+          expect(decoded).toEqual({ ok: false, error, reported: true });
+        }
+      };
+
+      it("exec base on a runner with sandbox support passes --sandbox-user fix-proof-sandbox", () => {
+        withSandboxSupport();
+
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(
+          `exec --side base --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000 --sandbox-user fix-proof-sandbox`,
+        );
+        expect(readFileSync(sudoLog, "utf8")).toContain("-n -u fix-proof-sandbox sudo -n true");
+      });
+
+      it("exec base on a merge-base runner without sandbox support writes error markers for both base reports", () => {
+        const result = execWith("base");
+
+        expect(result.status).toBe(0);
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: the merge-base runner has no sandbox support");
+      });
+
+      it("exec base writes error markers when the sandbox user can sudo", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SANDBOX_SUDO_EXIT: "0" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: fix-proof-sandbox can sudo");
+      });
+
+      it("exec base writes error markers when the job cannot sudo, rather than reading a failed sudo check as safe", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { SUDO_TRUE_EXIT: "1" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: the job cannot sudo");
+      });
+
+      it("exec base writes error markers when the sandbox user cannot be created", () => {
+        withSandboxSupport();
+
+        const result = execWith("base", { USERADD_EXIT: "1" });
+
+        expect(result.stdout).toBe("");
+        expectBaseMarkers("base: sandbox unavailable: useradd failed");
+      });
+
+      it("exec head never passes --sandbox-user and never touches sudo", () => {
+        withSandboxSupport();
+
+        const result = execWith("head");
+
+        expect(result.stdout.trim()).not.toContain("sandbox-user");
+        expect(existsSync(sudoLog)).toBe(false);
+      });
+    });
   });
 
   describe("emit and receive", () => {
