@@ -6,7 +6,7 @@
  * `resumeAgent`, the text is in argv, where `ps` shows it.
  */
 
-import { refusal, runAgentChat } from "./agents.js";
+import { refusal, runAgentChatAsync } from "./agents.js";
 import { DispatchError, PEER_NAME_PATTERN } from "./dispatch.js";
 
 /** `--` ends the options, so a text that begins with a dash stays one operand. */
@@ -14,19 +14,19 @@ export function buildMessageArgs(name: string, text: string): string[] {
   return ["debug", "send", "--", name, text];
 }
 
-/** Deliver `text` to the live agent `name`; throws `DispatchError` when the broker has no live session by that name. */
-export function messageAgent(
+/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
+export async function messageAgent(
   agentChatBinPath: string,
   name: string,
   text: string,
   timeoutMs: number,
-): void {
+): Promise<void> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
   if (text.trim() === "") {
     throw new DispatchError("a message needs non-empty text");
   }
-  const result = runAgentChat(agentChatBinPath, buildMessageArgs(name, text), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildMessageArgs(name, text), timeoutMs);
   if (result.status !== 0) throw refusal("send", result);
 }

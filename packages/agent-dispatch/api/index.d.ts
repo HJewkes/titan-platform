@@ -87,9 +87,10 @@ declare function execSafe(bin: string, args: string[], env: Record<string, strin
 /**
  * `execSafe` without blocking the event loop: same timeout, no-shell and
  * error mapping, for callers (a long-lived server) that cannot afford to
- * stall while a slow child answers. `input` follows `execSafe`'s rule.
+ * stall while a slow child answers. `input` and `cwd` follow `execSafe`'s
+ * opt-in rule; `cwd` is last so existing `input` callers keep their order.
  */
-declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string): Promise<SafeExecResult>;
+declare function execSafeAsync(bin: string, args: string[], env: Record<string, string>, timeoutMs: number, input?: string, cwd?: string): Promise<SafeExecResult>;
 
 /**
  * R-61: hand a claimed item to agent-chat's own agent machinery instead of
@@ -106,7 +107,7 @@ declare function execSafeAsync(bin: string, args: string[], env: Record<string, 
  * programmatic surface is the CLI, which forwards a `{t:'spawn'}` frame over
  * the broker's 0600 unix socket.
  *
- * So: `execSafe` against an absolute `agent-chat` path, argv array, minimal
+ * So: `execSafeAsync` against an absolute `agent-chat` path, argv array, minimal
  * env, exactly like `initiative.ts` already shells out to `active-work`.
  *
  * ## M8, and why the brief is not in argv (R-68)
@@ -115,13 +116,13 @@ declare function execSafeAsync(bin: string, args: string[], env: Record<string, 
  * reaches argv, and it closes T7 STRUCTURALLY. R-61 briefly downgraded that to
  * "practically safe": agent-chat's CLI took the brief as variadic argv, so a
  * body was world-readable via `ps` to any local process — a disclosure surface,
- * never an injection one, since `execFileSync` with `shell: false` and an argv
+ * never an injection one, since `execFile` with `shell: false` and an argv
  * ARRAY never lets body content become a token another program parses.
  *
  * R-68 restored the structural version rather than leaving it a practice. The
  * brief goes to the child on stdin under `--brief-stdin`, added to agent-chat's
  * CLI following R-59's resume primitive; `buildSpawnArgs` returns an argv
- * carrying no item BODY, and `execSafe`'s `input` carries it instead. The
+ * carrying no item BODY, and `execSafeAsync`'s `input` carries it instead. The
  * remaining hops were already clean: the CLI sends the brief to the broker over
  * a 0600 unix socket, and `launch-plan.ts` gives a HEADLESS agent its brief on
  * stdin rather than in `claude`'s argv.
@@ -220,7 +221,7 @@ declare function buildSpawnArgs(req: {
  * `run_progress` rather than a terminal event — the run stays open for R-62 to
  * close from agent-chat's own event stream.
  */
-declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): DispatchResult;
+declare function dispatchToAgentChat(req: DispatchRequest, timeoutMs: number, allowedProfiles: readonly string[]): Promise<DispatchResult>;
 
 /**
  * Refuse a dispatch unless the profile agent-chat is about to load says
@@ -251,7 +252,7 @@ declare function assertInstalledHeadless(profile: string, dir?: string): void;
  * session id. Ported from relay's `daemon/src/session.ts`.
  *
  * The message text is never interpolated into a shell or a flag: this returns
- * an argv array, `execSafe` runs it with `shell: false`, and the words stay one
+ * an argv array, `execSafeAsync` runs it with `shell: false`, and the words stay one
  * opaque argument. Unlike a spawn brief, the message IS in argv and so is
  * visible via `ps`; see dispatch.ts's M8 note for that cost.
  *
@@ -278,8 +279,8 @@ interface ResumeAgentResult {
  */
 declare function resumeArgs(sessionId: string, message: string): string[];
 declare function buildResumeAgentArgs(name: string, message: string): string[];
-/** Resume an ended agent on its own conversation, with `message` as its next turn. */
-declare function resumeAgent(agentChatBinPath: string, name: string, message: string, timeoutMs: number): ResumeAgentResult;
+/** Resume an ended agent on its own conversation, with `message` as its next turn; rejects with `DispatchError` on a refusal. */
+declare function resumeAgent(agentChatBinPath: string, name: string, message: string, timeoutMs: number): Promise<ResumeAgentResult>;
 
 /**
  * Park an exited agent's worktree through `agent-chat agent park` (CC-282): the
@@ -311,8 +312,8 @@ declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs?: n
  */
 /** `--` ends the options, so a text that begins with a dash stays one operand. */
 declare function buildMessageArgs(name: string, text: string): string[];
-/** Deliver `text` to the live agent `name`; throws `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): void;
+/** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number): Promise<void>;
 
 /**
  * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
@@ -323,7 +324,7 @@ declare function dataFence(label: string, text: string): string;
 
 /**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
- * and `execSafe` discipline as dispatch.ts: absolute binary, argv array,
+ * and `execSafeAsync` discipline as dispatch.ts: absolute binary, argv array,
  * minimal env, no shell.
  *
  * The roster comes from `agent-chat agent ls --json`, a fold over the broker's
@@ -371,11 +372,12 @@ declare function buildRetireArgs(name: string, force?: boolean): string[];
 declare function listAgents(agentChatBinPath: string, timeoutMs: number): Promise<AgentRow[]>;
 /**
  * Release the agent's isolation, end its process and free its name. `force`
- * discards uncommitted or unmerged work its worktree holds.
+ * discards uncommitted or unmerged work its worktree holds. Rejects with
+ * `DispatchError` when the broker refuses.
  */
 declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: {
     force?: boolean;
-}): RetireResult;
+}): Promise<RetireResult>;
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
 

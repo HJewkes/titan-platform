@@ -93,10 +93,10 @@ describe("dataFence", () => {
 });
 
 describe("resumeAgent", () => {
-  it("asks agent-chat to resume the named agent with the message", () => {
+  it("asks agent-chat to resume the named agent with the message", async () => {
     const bin = fakeAgentChat(`echo 'Resumed impl-7 on its existing conversation.'\n`);
 
-    const result = resumeAgent(bin, "impl-7", "CI is red; see the log", 5_000);
+    const result = await resumeAgent(bin, "impl-7", "CI is red; see the log", 5_000);
 
     expect(recordedArgv()).toEqual([
       "agent",
@@ -110,29 +110,40 @@ describe("resumeAgent", () => {
 
   it.each(["--force", "-x", "Impl", "a b", ""])(
     "refuses the name '%s' before running anything",
-    (name) => {
+    async (name) => {
       const bin = fakeAgentChat();
 
-      expect(() => resumeAgent(bin, name, "msg", 5_000)).toThrow(DispatchError);
+      await expect(resumeAgent(bin, name, "msg", 5_000)).rejects.toThrow(DispatchError);
       expect(existsSync(join(dir, "argv"))).toBe(false);
     },
   );
 
-  it("reports agent-chat's refusal as a plain DispatchError", () => {
+  it("reports agent-chat's refusal as a plain DispatchError", async () => {
     const bin = fakeAgentChat(`echo 'Not resumed: impl-7 is live'\nexit 1\n`);
 
-    const call = () => resumeAgent(bin, "impl-7", "msg", 5_000);
+    const refused = resumeAgent(bin, "impl-7", "msg", 5_000);
 
-    expect(call).toThrow(/Not resumed: impl-7 is live/);
-    expect(call).not.toThrow(BrokerUnavailableError);
+    await expect(refused).rejects.toThrow(/Not resumed: impl-7 is live/);
+    await expect(refused).rejects.toBeInstanceOf(DispatchError);
+    await expect(refused).rejects.not.toBeInstanceOf(BrokerUnavailableError);
+  });
+
+  it("leaves the caller's event loop free while the broker works", async () => {
+    const bin = fakeAgentChat(`sleep 1\necho 'Resumed impl-7.'\n`);
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 50);
+
+    await resumeAgent(bin, "impl-7", "msg", 5_000).finally(() => clearInterval(timer));
+
+    expect(ticks).toBeGreaterThan(5);
   });
 });
 
 describe("spawn with configDir", () => {
-  it("passes --config-dir and keeps the brief out of argv", () => {
+  it("passes --config-dir and keeps the brief out of argv", async () => {
     const bin = fakeAgentChat();
 
-    spawn(bin, { configDir: "/accounts/second" });
+    await spawn(bin, { configDir: "/accounts/second" });
 
     const argv = recordedArgv();
     expect(argv.slice(argv.indexOf("--config-dir"), argv.indexOf("--config-dir") + 2))
@@ -141,10 +152,10 @@ describe("spawn with configDir", () => {
     expect(recorded("stdin")).toContain("BRIEF-SENTINEL-4f2a");
   });
 
-  it("omits --config-dir when none is given", () => {
+  it("omits --config-dir when none is given", async () => {
     const bin = fakeAgentChat();
 
-    spawn(bin);
+    await spawn(bin);
 
     expect(recordedArgv()).not.toContain("--config-dir");
   });
@@ -159,16 +170,16 @@ describe("broker unavailable", () => {
   ])("%s raises BrokerUnavailableError on the CLI's unreachable text", async (_, call) => {
     const bin = fakeAgentChat(BROKER_DOWN);
 
-    await expect((async () => call(bin))()).rejects.toThrow(BrokerUnavailableError);
+    await expect(call(bin)).rejects.toThrow(BrokerUnavailableError);
   });
 
   it.each([
     ["ECONNREFUSED", "connect ECONNREFUSED /tmp/home/chat.sock"],
     ["ENOENT", "Error: connect ENOENT /tmp/home/chat.sock"],
-  ])("a socket %s is broker-down", (_, line) => {
+  ])("a socket %s is broker-down", async (_, line) => {
     const bin = fakeAgentChat(`echo '${line}' >&2\nexit 1\n`);
 
-    expect(() => spawn(bin)).toThrow(BrokerUnavailableError);
+    await expect(spawn(bin)).rejects.toThrow(BrokerUnavailableError);
   });
 
   it.each([
@@ -176,15 +187,10 @@ describe("broker unavailable", () => {
     ["a usage error", `echo "error: unknown option '--config-dir'" >&2\nexit 1\n`],
     ["a refusal quoting the broker text", `echo 'denied: could not reach or start the agent-chat broker' >&2\nexit 1\n`],
     ["a missing socket named in stdout", `echo 'connect ENOENT /tmp/home/chat.sock'\nexit 1\n`],
-  ])("%s stays a plain DispatchError", (_, script) => {
+  ])("%s stays a plain DispatchError", async (_, script) => {
     const bin = fakeAgentChat(script);
 
-    let caught: unknown;
-    try {
-      spawn(bin);
-    } catch (err) {
-      caught = err;
-    }
+    const caught = await spawn(bin).catch((err: unknown) => err);
 
     expect(caught).toBeInstanceOf(DispatchError);
     expect(caught).not.toBeInstanceOf(BrokerUnavailableError);
