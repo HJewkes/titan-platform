@@ -30,6 +30,8 @@ interface Live {
 export class WorkflowRuntime {
   private readonly workflows = new Map<string, Registration>();
   private readonly live = new Map<string, Live>();
+  /** Revision each run was left at when this runtime parked it with work it cannot finish; replaying it again only repeats the park. */
+  private readonly heldAt = new Map<string, number>();
   private readonly store: WorkflowRunStore;
   private readonly runtimeId: string;
   private readonly leaseMs: number;
@@ -84,9 +86,15 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id));
+    const candidates = this.store.listByStatus(ACTIVE_STATUSES)
+      .filter((run) => !options.exclude?.has(run.id) && !this.stillHeld(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
+  }
+
+  /** A row someone else changed since this runtime parked it (revision moved) is worth another look. */
+  private stillHeld(run: WorkflowRun): boolean {
+    return run.status === "recovery_required" && this.heldAt.get(run.id) === run.revision;
   }
 
   private async hydrateOne(snapshot: WorkflowRun): Promise<string | null> {
@@ -174,7 +182,9 @@ export class WorkflowRuntime {
       const evidence = `workflow returned while step ${unfinished.stepId} still required reconciliation`;
       this.markRecovery(run, unfinished, "unknown", evidence);
       this.save(run);
-      return this.park(run);
+      this.park(run);
+      this.heldAt.set(run.id, run.revision);
+      return;
     }
     if (run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError || run.status === "cancelling") {
