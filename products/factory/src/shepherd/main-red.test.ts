@@ -9,7 +9,7 @@ import { bindAll } from "../workflows.js";
 import { LEAKY_MESSAGE, expectNoLeak } from "../test-support/leak.js";
 import { shepherdEventMigration } from "./events.js";
 import { activeWorkFixTasks } from "./cleanup-ports.js";
-import { FreezeStore, freezeCancelOnlyMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
+import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, freezeStoreRef } from "./freeze.js";
 import { SpawnDeferred } from "./spawn-gate.js";
 import { fileFixTask, fixerName, freezeStep, mainRedKey, spawnFixer, unfreezeStep, type FixTaskFields, type FixerAgents, type FixTasks, type EpisodeInput, type MainRedWiring } from "./main-red.js";
 import type { ShepherdDeps } from "./phases.js";
@@ -47,7 +47,7 @@ function memoryFixers(spawned: Rig["spawned"]): FixerAgents {
 
 function rig(): Rig {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16)]);
+  runMigrations(db, [shepherdMigration(4), lineageMigration(5), freezeMigration(6), sliceMigration(8), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23)]);
   const store = shepherdStoreRef();
   store.bind(db);
   store.get().register({ repo: REPO, pr: 1, runId: RUN, task: "demo/TP-1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
