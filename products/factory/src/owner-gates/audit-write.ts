@@ -37,7 +37,7 @@ export function writeAuditFile(path: string, markdown: string, { force = false }
   }
 }
 
-export interface AuditInputs {
+interface AuditInputs {
   week: string;
   gates: readonly GateRecord[];
   runs: readonly WorkflowRun[];

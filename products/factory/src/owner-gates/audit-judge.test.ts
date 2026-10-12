@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { JudgeUnavailable, judgeOrUnavailable, type AuditJudge, type JudgeInput } from "./audit-judge.js";
+import { describe, expect, it, vi } from "vitest";
+import { claudeJudge, JudgeUnavailable, judgeOrUnavailable, type AuditJudge, type JudgeInput } from "./audit-judge.js";
+
+const usage = { totalCostUsd: 0.01, modelUsage: {}, turns: 1, durationMs: 900 };
+const init = { apiKeySource: undefined, model: "sonnet", tools: [], permissionMode: undefined, claudeCodeVersion: undefined };
 
 const input: JudgeInput = {
   gateId: "run-1/approve-merge:0",
@@ -34,5 +37,22 @@ describe("judgeOrUnavailable", () => {
 
   it("says the judge was disabled when none is given", async () => {
     expect(await judgeOrUnavailable(undefined, input)).toEqual({ unavailable: "disabled" });
+  });
+});
+
+describe("claudeJudge", () => {
+  it("asks sonnet for one turn through claude -p and returns its note", async () => {
+    const run = vi.fn().mockResolvedValue({ ok: true, output: { stamp: "did-work", note: "read the diff" }, sessionId: "s1", usage, init });
+
+    const note = await claudeJudge("/tmp", run)(input);
+
+    expect(note).toEqual({ stamp: "did-work", note: "read the diff" });
+    expect(run.mock.calls[0]![0]).toMatchObject({ harness: "claude-print", model: "sonnet", maxTurns: 1, cwd: "/tmp" });
+  });
+
+  it("throws the agent's failure kind, which the report names as unavailable", async () => {
+    const run = vi.fn().mockResolvedValue({ ok: false, failure: { kind: "rate_limited", reason: "quota" } });
+
+    expect(await judgeOrUnavailable(claudeJudge("/tmp", run), input)).toEqual({ unavailable: "rate_limited" });
   });
 });

@@ -14,12 +14,12 @@ export interface JudgeInput {
   facts: OutcomeFacts;
 }
 
-export const judgeNoteSchema = z.object({
+const judgeNoteSchema = z.object({
   stamp: z.enum(["did-work", "stamp", "unclear"]),
   note: z.string().min(1).max(280),
 });
 
-export type JudgeNote = z.infer<typeof judgeNoteSchema>;
+type JudgeNote = z.infer<typeof judgeNoteSchema>;
 
 /** One note per sampled decision; throws when no note could be had, and the caller records why. */
 export type AuditJudge = (input: JudgeInput) => Promise<JudgeNote>;
@@ -50,9 +50,9 @@ function judgePrompt(input: JudgeInput): string {
 }
 
 /** Sonnet through `claude -p` on the CLI login of the running `CLAUDE_CONFIG_DIR`: one turn, no tools. */
-export function claudeJudge(cwd: string): AuditJudge {
+export function claudeJudge(cwd: string, run: typeof runAgent = runAgent): AuditJudge {
   return async (input) => {
-    const result = await runAgent({
+    const result = await run({
       harness: "claude-print",
       prompt: judgePrompt(input),
       cwd,

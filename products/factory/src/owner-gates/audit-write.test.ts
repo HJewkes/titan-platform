@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { auditGate, auditRun, HOUR, step } from "../test-support/owner-gate-audit.js";
 import { JudgeUnavailable, type AuditJudge } from "./audit-judge.js";
+import { badByClass } from "./audit-render.js";
 import { AuditExists, auditPath, buildAudit, writeAuditFile } from "./audit-write.js";
 
 const W41 = Date.parse("2026-10-05T00:00:00Z");
@@ -31,6 +32,7 @@ describe("buildAudit", () => {
     expect(markdown).toContain("judge: did-work: looked at run-2/approve-merge:0");
     expect(markdown).toContain("PR: https://github.com/HJewkes/titan-platform/pull/12");
     expect(markdown).toContain("- unclassed: revert");
+    expect([...badByClass(items)]).toEqual([["unclassed", ["revert"]]]);
   });
 
   it("still renders every item's facts when the judge throws, naming the failure kind", async () => {

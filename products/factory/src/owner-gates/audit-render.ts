@@ -12,7 +12,7 @@ export interface AuditItem {
   judge: JudgeVerdict;
 }
 
-export interface AuditHeader {
+interface AuditHeader {
   week: string;
   seed: number;
   /** Owner-resolved gates in the week, before sampling. */
