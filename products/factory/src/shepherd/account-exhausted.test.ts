@@ -121,6 +121,11 @@ interface SceneHooks {
   onTick?: (now: number, scene: { fake: FakeGitHub; ci: { greenFrom: number } }) => void;
   /** Runs once the run is registered and before its first step, with the account marks and the registration to seed. */
   seed?: (limits: AccountLimitStore, store: ShepherdStore, runId: string) => void;
+  /**
+   * Real milliseconds each simulated tick lasts. Ticks only yield to the event loop unless named, which keeps a run of a thousand
+   * 15 s head polls under a second even on a loaded runner; a test that acts on the run between ticks names it.
+   */
+  realTickMs?: number;
   /** When the limited reviewer meets the limit; on time unless named. */
   limitAt?: LimitAt;
   /** The reset recorded on a notice from a reviewer spawned at `at`; RESET unless named. */
@@ -151,7 +156,10 @@ function shepherdWith(dirs: string[], limited: Limited, writer: Writer = "client
     hooks.onTick?.(clock, { fake, ci });
     const reason = runId === "" ? undefined : store.get().byRun(runId)?.holdReason;
     if (reason) holds.add(reason);
-    await sleep(1, signal);
+    if (hooks.realTickMs === undefined) {
+      signal.throwIfAborted();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } else await sleep(hooks.realTickMs, signal);
   };
   const review = { reader: reviewers.reader, dispatch: reviewers.dispatch, accounts: reviewers.accounts, timeoutMs: 5 * 60_000 };
   const accountLimits = accountLimitStoreRef(() => clock);
@@ -277,7 +285,7 @@ describe("a reviewer account out of usage", () => {
     });
 
     it("merges with no owner release when the run is repointed during the hold and the reset passes", async () => {
-      const scene = shepherdWith([PRIMARY], limitedUntilReset);
+      const scene = shepherdWith([PRIMARY], limitedUntilReset, "client", { realTickMs: 1 });
       await vi.waitFor(() => expect(scene.stepIds()).toContain(`sh-account-wait:${H1}`), { timeout: 20_000 });
       scene.host.runtime.cancel(scene.runId, "replaced in this test");
 

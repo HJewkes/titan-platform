@@ -216,6 +216,42 @@ jobs:
       - name: Report a no-op
         if: steps.changes.outputs.run != 'true'
         run: echo "No hub input changed; compose checks skipped." >> "$GITHUB_STEP_SUMMARY"
+      # The base image is cached under its pinned digest so a hit makes no registry request: ECR Public's anonymous quota 429s too.
+      - name: Read the pinned base image
+        id: base
+        if: steps.changes.outputs.run == 'true'
+        run: |
+          image=$(sed -n 's/^ARG NODE_IMAGE=//p' core.Dockerfile)
+          if [[ "$image" != *@sha256:* ]]; then echo "::error::core.Dockerfile NODE_IMAGE is not pinned by digest"; exit 1; fi
+          digest=${image##*@}
+          name=${image%@*}
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "pull=${name%:*}@$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore base image
+        id: restore
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/node-base.tar
+          key: hub-node-base-${{ steps.base.outputs.digest }}
+      - name: Load or pull base image
+        if: steps.changes.outputs.run == 'true'
+        env:
+          CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+          PULL: ${{ steps.base.outputs.pull }}
+          DIGEST: ${{ steps.base.outputs.digest }}
+        run: |
+          tar="$RUNNER_TEMP/node-base.tar"
+          if [ "$CACHE_HIT" = true ]; then
+            docker load -i "$tar"
+            echo "Loaded base from cache key hub-node-base-$DIGEST" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          source="$PULL"
+          docker pull "$source" || { source="mirror.gcr.io/library/node@$DIGEST"; docker pull "$source"; }
+          docker tag "$source" titan-hub-node-base:ci
+          docker save titan-hub-node-base:ci -o "$tar"
+          echo "Pulled base from $source" | tee -a "$GITHUB_STEP_SUMMARY"
       # setup.sh writes the sample .env and data/run that the compose file interpolates and mounts.
       - if: steps.changes.outputs.run == 'true'
         run: printf 'SERVER_NAME=tp301.local\nPUBLIC_BASE_URL=https://tp301.local\n' > .env && ./scripts/setup.sh
@@ -224,4 +260,10 @@ jobs:
       - if: steps.changes.outputs.run == 'true'
         run: docker compose --profile remote --profile core config --quiet
       - if: steps.changes.outputs.run == 'true'
-        run: docker compose --profile core build core
+        run: docker compose --profile core build --build-arg NODE_IMAGE=titan-hub-node-base:ci core
+      - name: Save base image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.changes.outputs.run == 'true' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/node-base.tar
+          key: hub-node-base-${{ steps.base.outputs.digest }}

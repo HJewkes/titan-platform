@@ -284,6 +284,30 @@ describe("a hold of another class beside a g10-adversary hold", () => {
     expect(store.releaseIfHeld("run-1", STALL)).toBe(false);
     expect(store.heldReason("octo/demo", 7)).toBe(ADVERSARY);
   });
+
+  it("writes nothing and records no event on a hold-unless-adversary over a seat's adversary hold", () => {
+    const store = openStore();
+    store.register(base);
+    store.hold("run-1", ADVERSARY, "sec-audit-review", { actor: "seat" });
+    const mark = store.changeMark("run-1");
+
+    const placed = store.holdUnlessAdversary("run-1", "g10-adversary: fail closed");
+
+    expect(placed).toBe(false);
+    expect(store.changeMark("run-1")).toBe(mark);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: ADVERSARY, holdReviewer: "sec-audit-review" });
+  });
+
+  it("places a hold-unless-adversary on an unheld run", () => {
+    const store = openStore();
+    store.register(base);
+
+    const placed = store.holdUnlessAdversary("run-1", ADVERSARY);
+
+    expect(placed).toBe(true);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: ADVERSARY, holdReviewer: null });
+    expect(store.eventsOf("run-1").map((event) => event.kind)).toEqual(["hold"]);
+  });
 });
 
 describe("a hold satisfied by its reviewer's MERGE", () => {

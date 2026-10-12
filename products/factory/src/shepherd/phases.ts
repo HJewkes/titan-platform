@@ -1,3 +1,4 @@
+import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
@@ -60,11 +61,19 @@ export interface PanelMerge {
   members: readonly { shape: ReviewShape; agentId: string; sessionId: string; locator: unknown }[];
 }
 
+/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT still held when the seat wait ran out. */
+export interface SeatHeld {
+  head: string;
+  locator: unknown;
+  reviewer: AgentIdentity;
+  dispatchedReviewer: AgentIdentity;
+}
+
 export type Verdict =
   | { kind: "MERGE"; /** Set only when `review.panel` is `on` and the head's intent recorded a plan. */ panel?: PanelMerge; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none"; cause?: NoVerdictCause; reason?: string };
+  | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
 
 /** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
