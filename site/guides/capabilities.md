@@ -324,7 +324,7 @@ Key exports:
 - `cli`: `runCli`
 - `exec`: `spawnExec`
 - `run`: `errorLine`, `run`
-- +30 more in the [reference page](/reference/fix-proof)
+- +45 more in the [reference page](/reference/fix-proof)
 
 <a id="cap-locator"></a>
 
