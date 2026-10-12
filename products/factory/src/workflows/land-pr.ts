@@ -111,6 +111,8 @@ const RerunResult = z.looseObject({ reruns: z.array(z.looseObject({ runId: z.num
 export interface LandPrDeps extends LandDeps, PostMergeDeps {
   /** How long a rerun step waits for GitHub to replace the failed checks before land polls CI again. */
   rerunSettleMs?: number;
+  /** How long a rerun step waits for a still-running Actions run to finish so GitHub accepts its rerun. */
+  rerunQueueMs?: number;
   /** The seat clones' push reflogs `await-new-head` watches; absent means it reads the PR once per backstop. */
   pushes?: PushWatch;
 }
@@ -118,7 +120,7 @@ export interface LandPrDeps extends LandDeps, PostMergeDeps {
 /** Every route `land-pr` dispatches to; each reads before it writes, so each repeats safely after a crash. */
 export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const now = deps.now ?? Date.now;
-  const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000 };
+  const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000, queueMs: deps.rerunQueueMs ?? 20 * 60_000 };
   return [
     ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal }), ...deps }),
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot }),
@@ -148,12 +150,34 @@ const NOT_RERUNNABLE = /cannot be retried|already running/i;
 type RerunOutcome = WriteResult | { done: false; skipped: "not-rerunnable" };
 
 /** One rerun per distinct Actions run, then a bounded wait so the next ci-wait does not read the failed checks again. */
-async function rerunFailed(port: GitHubPort, input: RerunInput, timing: Timing, signal: AbortSignal): Promise<object> {
+async function rerunFailed(port: GitHubPort, input: RerunInput, timing: RerunTiming, signal: AbortSignal): Promise<object> {
   const runIds = [...new Set(input.failing.flatMap((check) => (check.workflowRunId === null ? [] : [check.workflowRunId])))];
   const reruns: (RerunOutcome & { runId: number })[] = [];
-  for (const runId of runIds) reruns.push({ runId, ...(await rerunOne(port, input.repo, runId)) });
-  if (reruns.length > 0 && reruns.every((result) => !result.done && result.skipped === "not-rerunnable")) return { reruns, settled: false };
+  for (const runId of runIds) {
+    const outcome = await rerunWhenComplete(port, input, runId, timing, signal);
+    if (outcome === "superseded") return { reruns, settled: true };
+    reruns.push({ runId, ...outcome });
+  }
+  if (reruns.length > 0 && reruns.every((result) => !result.done)) return { reruns, settled: false };
   return { reruns, settled: await waitSuperseded(port, input, timing, signal) };
+}
+
+type RerunTiming = Timing & { queueMs: number };
+
+/**
+ * GitHub refuses to rerun a run that has not finished, so a failed job read while its run's other jobs still run is
+ * retried once the run completes, within the queue bound. Another actor's rerun that already replaced the failure ends
+ * the wait with no rerun of ours.
+ */
+async function rerunWhenComplete(port: GitHubPort, input: RerunInput, runId: number, timing: RerunTiming, signal: AbortSignal): Promise<RerunOutcome | "superseded"> {
+  const clock = deadline({ ...timing, timeoutMs: timing.queueMs });
+  for (;;) {
+    const outcome = await rerunOne(port, input.repo, runId);
+    if (outcome.done || outcome.skipped !== "in-progress") return outcome;
+    if (await superseded(port, input).catch(() => false)) return "superseded";
+    if (clock.expired()) return outcome;
+    await clock.sleep(Math.min(timing.pollMs, 5_000), signal);
+  }
 }
 
 /** A run GitHub refuses to retry is recorded as not rerunnable, so the round goes on to the wake instead of failing the run. */

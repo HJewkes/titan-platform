@@ -10,7 +10,7 @@ export { RELATIONS, agentRef, artifactRef, branchRef, fileRef, parseFileRef, prR
 export type { ReviewVerdictMatch, Verdict } from "./review-verdict.js";
 export { parseReviewVerdicts } from "./review-verdict.js";
 export type { CiPolicy, CiPolicyKey, VerdictBlockRefusal, VerdictBlockResult, VerdictBlockVerdict } from "./verdict-block.js";
-export { CI_POLICY_KEYS, parseVerdictBlock } from "./verdict-block.js";
+export { CI_POLICY_KEYS, parseVerdictBlock, visibleLines } from "./verdict-block.js";
 export type { RepoIdentity } from "./repo-root.js";
 export { clearRepoCache, parseOriginUrl, repoNameFromRemoteUrl, resolveRepo } from "./repo-root.js";
 export type { GitIntent, TaskIntent } from "./bash-parse.js";
