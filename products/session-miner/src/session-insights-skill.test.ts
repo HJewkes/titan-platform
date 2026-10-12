@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { findingSchema } from "./insights/citations.js";
 import { createMinerRegistry } from "./registry.js";
 
@@ -51,7 +52,7 @@ describe("the session-insights skill", () => {
   });
 
   it("ships with the package", () => {
-    const pkg = createRequire(import.meta.url)("../package.json") as { files: string[] };
+    const pkg = z.object({ files: z.array(z.string()) }).parse(createRequire(import.meta.url)("../package.json"));
 
     expect(pkg.files).toContain("skills");
   });
@@ -60,7 +61,7 @@ describe("the session-insights skill", () => {
 describe("the analyst brief's example", () => {
   it("parses as findings under the citation contract", () => {
     const example = /```json\n([\s\S]*?)```/.exec(brief)?.[1];
-    const findings = JSON.parse(example ?? "null") as unknown[];
+    const findings = z.array(z.unknown()).parse(JSON.parse(example ?? "null"));
 
     expect(findings.length).toBeGreaterThan(0);
     for (const finding of findings) expect(findingSchema.safeParse(finding).success).toBe(true);
