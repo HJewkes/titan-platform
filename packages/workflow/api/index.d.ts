@@ -423,6 +423,8 @@ declare class WorkflowRunStore {
     create(run: WorkflowRun): void;
     get(id: string): WorkflowRun | undefined;
     listByStatus(statuses: readonly WorkflowStatus[]): WorkflowRun[];
+    /** Counts from the status index alone: a caller that only needs totals never loads or parses a run's step results. */
+    countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined;
     save(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
     renew(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
@@ -608,6 +610,8 @@ declare class WorkflowRuntime {
     private finish;
     status(runId: string): WorkflowRun | undefined;
     list(statuses?: readonly WorkflowRun["status"][]): WorkflowRun[];
+    /** What `list(statuses)` would return, counted per status without loading a run. */
+    count<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     wait(runId: string): Promise<WorkflowRun>;
     /** Resolves the waiting gate as `resolvedBy`; a store that refuses the resolver throws and the run stays paused. */
     signal(runId: string, stepId: string, payload: Record<string, unknown>, resolvedBy: GateResolver): void;
