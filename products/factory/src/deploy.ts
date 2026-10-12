@@ -5,8 +5,8 @@ import { closureDirs, FACTORY_PACKAGE, nativeBuildChanges, readWorkspace, touche
 import type { DeployIncident } from "./deploy-incident.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "./deploy-lock.js";
 import { describePause, readDeployPause, writeDeployPause, type DeployPause } from "./deploy-pause.js";
+import { buildLog, detail, writeBuildLog } from "./deploy-output.js";
 import { buildShaOf, DEFAULT_WATCH_WINDOW, watchServe, type WatchWindow } from "./deploy-watch-window.js";
-import { redactCredentials } from "./redact.js";
 import { restartService, type CommandResult, type RestartDrain, type ServiceIo, type ServicePorts } from "./service-control.js";
 
 /** Every effect the deployer has beyond the service verbs'; tests pass fakes, so none of them reaches git, pnpm or launchd. */
@@ -78,10 +78,6 @@ type Plan = { kind: "go"; go: Go } | Stop;
 const UNKNOWN = "unknown";
 const MAIN = "main";
 const ORIGIN_MAIN = "origin/main";
-const OUTPUT_TAIL_LINES = 20;
-const OUTPUT_TAIL_CHARS = 2_000;
-const BUILD_LOG_TAIL_LINES = 200;
-const BUILD_LOG_STREAM_CHARS = 64_000;
 const FAILURE = 1;
 const SHA_POLLS = 10;
 const SHA_POLL_MS = 1_000;
@@ -89,27 +85,7 @@ const SHA_PROBE_TIMEOUT_MS = 5_000;
 const LOCKFILE = "pnpm-lock.yaml";
 
 export const deployRecordPath = (stateDir: string): string => join(stateDir, "deploy.json");
-/** Holds the newest failed install or build's output, longer than the `why` can carry. */
-export const deployBuildLogPath = (stateDir: string): string => join(stateDir, "deploy-build.log");
 const backupRoot = (stateDir: string): string => join(stateDir, "deploy-backup");
-/** Redacted before the cut, so a cut can never leave a token without the prefix that marks it. */
-function lastLines(text: string, lines: number, chars: number): string {
-  const kept = redactCredentials(text.trim()).split("\n").slice(-lines).join("\n");
-  return kept.length <= chars ? kept : `…${kept.slice(-chars)}`;
-}
-
-function tail(name: string, text: string): string[] {
-  const kept = lastLines(text, OUTPUT_TAIL_LINES, OUTPUT_TAIL_CHARS);
-  return kept === "" ? [] : [`${name}:\n${kept}`];
-}
-
-function buildLog(command: string, target: string, at: string, result: CommandResult): string {
-  const stream = (text: string) => lastLines(text, BUILD_LOG_TAIL_LINES, BUILD_LOG_STREAM_CHARS);
-  return [`command: ${command}`, `target: ${target}`, `at: ${at}`, `exit ${result.code}`, "stderr:", stream(result.stderr), "stdout:", stream(result.stdout), ""].join("\n");
-}
-
-/** Both streams, since pnpm prints a failing script's output on stdout and leaves stderr empty. */
-const detail = (result: CommandResult): string => [`exit ${result.code}`, ...tail("stderr", result.stderr), ...tail("stdout", result.stdout)].join("\n");
 
 export function parseDeployRecord(text: string | undefined): DeployRecord | undefined {
   if (text === undefined) return undefined;
@@ -334,20 +310,9 @@ async function installAndBuild(deploy: Deploy, target: string): Promise<string |
     const result = await deploy.ports.pnpm(args);
     if (result.code === 0) continue;
     const command = `pnpm ${args.join(" ")}`;
-    return `${command} failed: ${detail(result)}\n${writeBuildLog(deploy, buildLog(command, target, new Date(deploy.ports.now()).toISOString(), result))}`;
+    return `${command} failed: ${detail(result)}\n${writeBuildLog(deploy.ports, deploy.options.stateDir, buildLog(command, target, new Date(deploy.ports.now()).toISOString(), result))}`;
   }
   return undefined;
-}
-
-/** A transient failure may never recur, so its output is kept; a failed write must not stop the rollback that follows. */
-function writeBuildLog({ ports, options }: Deploy, text: string): string {
-  const path = deployBuildLogPath(options.stateDir);
-  try {
-    ports.writeFile(path, text);
-    return `full output: ${path}`;
-  } catch (error) {
-    return `full output not written: ${error instanceof Error ? error.message : String(error)}`;
-  }
 }
 
 /** restartService confirms launchd's pid and github ok; the sha check proves the new build is the one answering, and the watch that it stays up without new step errors. */
