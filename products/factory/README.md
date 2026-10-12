@@ -268,11 +268,14 @@ Shepherd opens `approve-merge` for the owner for five reasons only, listed in `E
   owner can approve this one.
 - `failed-rounds`: `MAX_FAILED_ROUNDS` review rounds at one task ended with no verdict, a
   timeout or an unanswered hold. Retrying again would only repeat the stall.
-- `fix-first-runaway`: `MAX_FIX_FIRSTS` FIX_FIRST reviews at one task. Each one counts as
-  progress, so this cap only stops a loop between the reviewer and the fixer.
+- `fix-first-runaway`: the third FIX_FIRST review at one run (`MAX_FIX_FIRSTS` is 3, for every
+  kind of PR). Two fix rounds that did not converge mean point fixes are not working, so
+  Shepherd wakes no third fixer. The gate reason routes the task to the planner to redesign or
+  split it; coord or the owner acts on that, and Shepherd files no planner task itself
+  (TP-2394). It is checked before `no-progress`, so a third FIX_FIRST always names this route.
 - `no-progress`: two FIX_FIRST reviews in a row ended with `Closer: no`, meaning the head is no
   closer to MERGE than the last one. A FIX_FIRST with `Closer: yes` or no Closer line, and any
-  other round, resets the count. It is checked before `fix-first-runaway`.
+  other round, resets the count. Under the cap of 3 it can only fire at the second FIX_FIRST.
 - `repair-budget`: `MAX_REPAIRS` fixer wakes of any kind at one run, counted across heads. This
   caps what one PR can spend on agents before a human looks at it.
 
