@@ -2750,7 +2750,7 @@
   },
   "products/factory/src/deploy-ports.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "products/factory/src/deploy.test.ts": {
