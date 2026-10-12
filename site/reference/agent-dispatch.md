@@ -35,7 +35,7 @@ import { BrokerUnavailableError, assertInstalledHeadless, dataFence, dispatchToA
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 
-dispatchToAgentChat(
+await dispatchToAgentChat(
   {
     agentChatBinPath: "/opt/homebrew/bin/agent-chat",
     peerName: "item-42",
@@ -51,13 +51,13 @@ dispatchToAgentChat(
 
 assertInstalledHeadless("headless-reviewer"); // throws DispatchError unless ~/.agent-chat/profiles/headless-reviewer.json is headless
 
-const ended = listAgents("/opt/homebrew/bin/agent-chat", 15_000).filter((a) => a.presence === "exited");
-retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
-parkAgent("/opt/homebrew/bin/agent-chat", "item-7"); // { name: "item-7", lines: ["Parked item-7.", ...] }
-messageAgent("/opt/homebrew/bin/agent-chat", "item-9", "CI is red; the log tail follows", 15_000); // a live agent's next turn
+const ended = (await listAgents("/opt/homebrew/bin/agent-chat", 15_000)).filter((a) => a.presence === "exited");
+await retire("/opt/homebrew/bin/agent-chat", "item-42", 15_000); // { name: "item-42", caveats: [] }
+await parkAgent("/opt/homebrew/bin/agent-chat", "item-7"); // { name: "item-7", lines: ["Parked item-7.", ...] }
+await messageAgent("/opt/homebrew/bin/agent-chat", "item-9", "CI is red; the log tail follows", 15_000); // a live agent's next turn
 
 try {
-  resumeAgent("/opt/homebrew/bin/agent-chat", "item-42", dataFence("CI log", logTail), 15_000);
+  await resumeAgent("/opt/homebrew/bin/agent-chat", "item-42", dataFence("CI log", logTail), 15_000);
   // { name: "item-42", lines: ["Resumed item-42 on its existing conversation, ...", ...] }
 } catch (err) {
   if (!(err instanceof BrokerUnavailableError)) throw err;

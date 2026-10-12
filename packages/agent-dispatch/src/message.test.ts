@@ -31,31 +31,41 @@ function fakeAgentChat(script: string): string {
 const recordedArgv = (): string[] => readFileSync(join(dir, "argv"), "utf8").split("\0").slice(0, -1);
 
 describe("messageAgent", () => {
-  it("sends the whole text as one operand after --, so a leading dash is not an option", () => {
+  it("sends the whole text as one operand after --, so a leading dash is not an option", async () => {
     const bin = fakeAgentChat(`echo "Delivered to impl-a (msg_id m1)."\n`);
 
-    messageAgent(bin, "impl-a", "--fix the parser\nthen push", 10_000);
+    await messageAgent(bin, "impl-a", "--fix the parser\nthen push", 10_000);
 
     expect(recordedArgv()).toEqual(["debug", "send", "--", "impl-a", "--fix the parser\nthen push"]);
   });
 
-  it("throws the broker's reason when no live session holds the name", () => {
+  it("leaves the caller's event loop free while the broker works", async () => {
+    const bin = fakeAgentChat(`sleep 1\necho "Delivered to impl-a (msg_id m1)."\n`);
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 50);
+
+    await messageAgent(bin, "impl-a", "wake up", 10_000).finally(() => clearInterval(timer));
+
+    expect(ticks).toBeGreaterThan(5);
+  });
+
+  it("rejects with the broker's reason when no live session holds the name", async () => {
     const bin = fakeAgentChat(`echo 'Not delivered: no active session named "impl-a"'\nexit 1\n`);
 
-    expect(() => messageAgent(bin, "impl-a", "wake up", 10_000)).toThrow(/refused send: Not delivered: no active session named "impl-a"/);
+    await expect(messageAgent(bin, "impl-a", "wake up", 10_000)).rejects.toThrow(/refused send: Not delivered: no active session named "impl-a"/);
   });
 
-  it("throws BrokerUnavailableError when the CLI cannot reach the broker", () => {
+  it("rejects with BrokerUnavailableError when the CLI cannot reach the broker", async () => {
     const bin = fakeAgentChat(`echo "could not reach or start the agent-chat broker" >&2\nexit 1\n`);
 
-    expect(() => messageAgent(bin, "impl-a", "wake up", 10_000)).toThrow(BrokerUnavailableError);
+    await expect(messageAgent(bin, "impl-a", "wake up", 10_000)).rejects.toThrow(BrokerUnavailableError);
   });
 
-  it("refuses a bad name or empty text before running anything", () => {
+  it("refuses a bad name or empty text before running anything", async () => {
     const bin = fakeAgentChat("exit 0\n");
 
-    expect(() => messageAgent(bin, "--force", "wake up", 10_000)).toThrow(DispatchError);
-    expect(() => messageAgent(bin, "impl-a", "  ", 10_000)).toThrow(DispatchError);
+    await expect(messageAgent(bin, "--force", "wake up", 10_000)).rejects.toThrow(DispatchError);
+    await expect(messageAgent(bin, "impl-a", "  ", 10_000)).rejects.toThrow(DispatchError);
     expect(() => readFileSync(join(dir, "argv"))).toThrow();
   });
 });

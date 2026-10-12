@@ -13,7 +13,7 @@
  * programmatic surface is the CLI, which forwards a `{t:'spawn'}` frame over
  * the broker's 0600 unix socket.
  *
- * So: `execSafe` against an absolute `agent-chat` path, argv array, minimal
+ * So: `execSafeAsync` against an absolute `agent-chat` path, argv array, minimal
  * env, exactly like `initiative.ts` already shells out to `active-work`.
  *
  * ## M8, and why the brief is not in argv (R-68)
@@ -22,13 +22,13 @@
  * reaches argv, and it closes T7 STRUCTURALLY. R-61 briefly downgraded that to
  * "practically safe": agent-chat's CLI took the brief as variadic argv, so a
  * body was world-readable via `ps` to any local process — a disclosure surface,
- * never an injection one, since `execFileSync` with `shell: false` and an argv
+ * never an injection one, since `execFile` with `shell: false` and an argv
  * ARRAY never lets body content become a token another program parses.
  *
  * R-68 restored the structural version rather than leaving it a practice. The
  * brief goes to the child on stdin under `--brief-stdin`, added to agent-chat's
  * CLI following R-59's resume primitive; `buildSpawnArgs` returns an argv
- * carrying no item BODY, and `execSafe`'s `input` carries it instead. The
+ * carrying no item BODY, and `execSafeAsync`'s `input` carries it instead. The
  * remaining hops were already clean: the CLI sends the brief to the broker over
  * a 0600 unix socket, and `launch-plan.ts` gives a HEADLESS agent its brief on
  * stdin rather than in `claude`'s argv.
@@ -64,7 +64,7 @@
 import {
   ExecError,
   ExecTimeoutError,
-  execSafe,
+  execSafeAsync,
   minimalEnv,
   resolveBinaryPath,
   type SafeExecResult,
@@ -177,11 +177,11 @@ export function buildSpawnArgs(req: {
  * `run_progress` rather than a terminal event — the run stays open for R-62 to
  * close from agent-chat's own event stream.
  */
-export function dispatchToAgentChat(
+export async function dispatchToAgentChat(
   req: DispatchRequest,
   timeoutMs: number,
   allowedProfiles: readonly string[],
-): DispatchResult {
+): Promise<DispatchResult> {
   if (!PEER_NAME_PATTERN.test(req.peerName)) {
     throw new DispatchError(`invalid peer name: '${req.peerName}'`);
   }
@@ -200,13 +200,13 @@ export function dispatchToAgentChat(
   let result;
   try {
     const bin = resolveBinaryPath(req.agentChatBinPath, "agent-chat");
-    result = execSafe(
+    result = await execSafeAsync(
       bin,
       buildSpawnArgs(req),
       agentChatEnv(),
       timeoutMs,
-      req.cwd,
       req.brief,
+      req.cwd,
     );
   } catch (err) {
     if (err instanceof ExecTimeoutError) throw new DispatchTimeoutError(err.message);

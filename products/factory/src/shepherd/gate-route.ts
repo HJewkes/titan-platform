@@ -16,8 +16,8 @@ import { awaitNewHead, sentBackGate, type GateRun } from "./gates.js";
  */
 const SEAT_GATES = ["ci-failed", "sh-sent-back", "stuck-behind"] as const;
 type SeatGate = (typeof SEAT_GATES)[number];
-/** Seat work that is no gate's: a held run's fix round, which waits on the seat instead of waking a fixer. */
-const SEAT_NOTICES = [...SEAT_GATES, "held"] as const;
+/** Seat work that is no gate's: a held run's fix round, or a red head that only repeats its base's red, which waits on the seat instead of waking a fixer. */
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -29,6 +29,7 @@ const NEXT: Record<SeatNotice, string> = {
   "sh-sent-back": `${WAITS} Next: start a fix round (resume the implementer, or start a successor on the PR's branch), push a fix yourself, or close the PR to end the run.`,
   "stuck-behind": "Shepherd runs update-branch again now, with no owner gate. If the PR keeps falling behind, land it in a quieter window or close it to end the run.",
   held: "Nothing pushes while the run is held. Push a fix to the PR and Shepherd runs CI and review at the new head while the hold stays; no release is needed. Release the hold to let Shepherd resume the fix round at this head itself, or close the PR to end the run.",
+  "base-red": "Shepherd woke no fixer and spent no repair: the PR only repeats its base's red. The run waits for the base or the PR's head to move, then reads CI again. Fix the base, push a fix to the PR, or close the PR to end the run.",
 };
 
 const SeatNoticeInput = z.object({ repo: z.string().min(1), pr: z.number().int().positive(), headSha: z.string().min(1), gate: z.enum(SEAT_NOTICES), why: z.string(), seat: z.string().min(1).optional() });
@@ -102,10 +103,10 @@ export async function noticeGate(run: GateRun, gate: SeatGate, headSha: string, 
  * One recorded message per run and `key` to the seat a held run names, or the hub seat; seat work that is no gate's,
  * so a run recorded before the step has nothing to keep. A replay of the run's notice steps rebuilds the set.
  */
-export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string }): Promise<Told> {
+export async function noticeHeldSeat(run: GateRun, key: string, notice: { headSha: string; why: string; seat?: string; gate?: "held" | "base-red" }): Promise<Told> {
   const told = noticed.get(run.ctx) ?? noticed.set(run.ctx, new Set()).get(run.ctx)!;
   if (told.has(key)) return undefined;
-  const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, ...notice, gate: "held" }, SeatNoticeResult);
+  const result = await step(run.ctx, SEAT_NOTICE_STEP, { ...run.target, gate: "held", ...notice }, SeatNoticeResult);
   if (result.sent) told.add(key);
   return result;
 }
