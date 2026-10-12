@@ -196,7 +196,7 @@ declare function workingTreeSource(): IndexSource;
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-declare const INDEX_VERSION = "0.27.0";
+declare const INDEX_VERSION = "0.28.0";
 interface IndexOptions {
     /** Roots to walk. Node ids are still rooted at the git toplevel, so importers across roots share an id space. */
     paths: string[];
@@ -331,6 +331,14 @@ declare class TsMorphGraphExtractor implements Extractor<GraphFragment> {
      */
     private recordSymbolReferences;
     /**
+     * Credit the exports a namespace import actually touches (TP-2474 c). A
+     * whole-object use credits every export of the target, which is only
+     * enumerable when ts-morph linked the target; otherwise only the named
+     * members are credited, through the on-disk re-export walk. The export map is
+     * read once per import, and never for an out-of-repo target.
+     */
+    private recordNamespaceReferences;
+    /**
      * Resolve an imported name to the id of the `symbol` node for the export that
      * actually *declares* it — following re-exports through barrels via ts-morph's
      * own `getExportedDeclarations`, so `import { x } from "./barrel"` credits the
@@ -343,6 +351,8 @@ declare class TsMorphGraphExtractor implements Extractor<GraphFragment> {
      * assembly (`pruneDanglingReferences`).
      */
     private resolveSymbolTarget;
+    private originSymbolId;
+    private resolveReExportedSymbol;
     private recordReExportEdge;
     /**
      * Resolve an import/export specifier to a graph node id (an in-repo file id or
