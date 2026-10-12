@@ -5,7 +5,7 @@ import { decide } from "../decide.js";
 import type { HookPort } from "../hook.js";
 import { handle } from "../hook.js";
 import { extractCommands } from "./commands.js";
-import { ParseError } from "./lexer.js";
+import { ParseError, tokenize } from "./lexer.js";
 
 const HOME = "/home/you";
 const noFs: ReadFs = {
@@ -135,8 +135,45 @@ describe("backquote spans in a subscript bash may join", () => {
   });
 });
 
-/** Past this a hook timeout would let the command through; reading each span opener once takes milliseconds. */
-const BUDGET_MS = 1000;
+/**
+ * Past this a hook timeout would let the command through. It is a backstop a loaded runner stays far under; the work
+ * ratio below is what tells linear from quadratic.
+ */
+const BUDGET_MS = 2500;
+
+/** Far above the characters a linear scan reads per opener, far below the source length a quadratic one reads. */
+const WORK_PER_OPENER = 200;
+
+class WorkCapExceeded extends Error {}
+
+/** Calls `read` with `String.prototype.charAt`, which the span scan reads each character through, counted and capped. */
+function countCharAt(read: () => unknown, cap: number): number {
+  const original = String.prototype.charAt;
+  let calls = 0;
+  String.prototype.charAt = function (this: string, pos: number) {
+    if (++calls > cap) throw new WorkCapExceeded(`more than ${cap} charAt calls`);
+    return original.call(this, pos);
+  };
+  try {
+    read();
+  } catch (error) {
+    // A refusal ends the read as it would in the hook; only the cap means the work ran away.
+    if (error instanceof WorkCapExceeded) throw error;
+  } finally {
+    String.prototype.charAt = original;
+  }
+  return calls;
+}
+
+/** Each shape's span, repeated inside one argument-position subscript. */
+const SPAN_SHAPES: Array<[string, string]> = [
+  ["$${ openers, each a bare { to bash", "$${x["],
+  ["nested ${ openers", "${x["],
+  ["closed ${ spans", "${x[0]}"],
+  ["backquote spans", "`[]`"],
+];
+
+const spanScript = (span: string, count: number) => `echo a[ ${span.repeat(count)} ]\n`;
 
 async function timedScriptDecision(script: string): Promise<{ decision: string | null; ms: number }> {
   const context = { ...nodeContext(HOME, noFs), foldCase: true, readScript: (p: string) => (p === `${HOME}/app/a.sh` ? script : null) };
@@ -148,15 +185,24 @@ async function timedScriptDecision(script: string): Promise<{ decision: string |
 }
 
 describe("a subscript holding many span openers", () => {
-  it.each([
-    ["$${ openers, each a bare { to bash", `echo a[ ${"$${x[".repeat(12_800)} ]\n`],
-    ["nested ${ openers", `echo a[ ${"${x[".repeat(16_000)} ]\n`],
-    ["closed ${ spans", `echo a[ ${"${x[0]}".repeat(8_000)} ]\n`],
-    ["backquote spans", `echo a[ ${"`[]`".repeat(16_000)} ]\n`],
-  ])("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, script) => {
+  it.each(SPAN_SHAPES)("the hook denies a push after a 64 KB script of %s, within the budget", async (_name, span) => {
+    const script = spanScript(span, Math.floor(64_000 / span.length));
+
     const { decision, ms } = await timedScriptDecision(script);
 
     expect(decision).toBe("deny");
     expect(ms).toBeLessThan(BUDGET_MS);
+  });
+
+  it.each(SPAN_SHAPES)("tokenizes %s with work linear in the openers", (_name, span) => {
+    // A count of characters read measures work without a clock a loaded runner skews.
+    const work = (openers: number) => countCharAt(() => tokenize(spanScript(span, openers)), openers * WORK_PER_OPENER);
+
+    // Sizes no other row uses, since each source's bracket scan is cached and a cached one costs nothing.
+    const ratio = work(12_000) / work(3_000);
+
+    // Four times the openers is about four times the work when linear and sixteen times when quadratic.
+    expect(ratio).toBeGreaterThan(3);
+    expect(ratio).toBeLessThan(6);
   });
 });
