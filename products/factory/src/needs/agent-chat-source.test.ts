@@ -139,8 +139,8 @@ describe("agentChatSource resolve", () => {
     const guard = createRequestGuard({}, () => 7600);
     expect(fetchFake.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(["/api/answer", "/api/dismiss"]);
     for (const [url, init] of fetchFake.mock.calls) {
-      const headers = init!.headers as Record<string, string>;
-      const request = { method: init!.method!, host: new URL(String(url)).host, origin: undefined, client: headers[CLIENT_HEADER], contentType: headers["content-type"] };
+      const headers = new Headers(init!.headers);
+      const request = { method: init!.method!, host: new URL(String(url)).host, origin: undefined, client: headers.get(CLIENT_HEADER), contentType: headers.get("content-type") };
       expect(guard(request)).toBeNull();
     }
   });
