@@ -4,11 +4,27 @@
  * so `$(\<NL>(`, `(\<NL>(`, `&\<NL>&` and `<\<NL><` read as bash reads them.
  */
 
-/** The first index at or after `at` that does not start a backslash-newline. */
+/** Sources whose join runs were measured; bounded, since nested readers lex slices of one command. */
+const RUN_ENDS = new Map<string, Int32Array>();
+const MAX_SOURCES = 64;
+
+/** The first index at or after `at` that does not start a backslash-newline, in constant time once `src` is measured. */
 export function pastJoins(src: string, at: number): number {
-  let past = at;
-  while (src.startsWith("\\\n", past)) past += 2;
-  return past;
+  if (!src.startsWith("\\\n", at)) return at;
+  return runEnds(src)[at] ?? at;
+}
+
+/** For every index, where the run of backslash-newlines starting there ends: one backward pass, so lookaheads stay linear. */
+function runEnds(src: string): Int32Array {
+  const known = RUN_ENDS.get(src);
+  if (known) return known;
+  const ends = new Int32Array(src.length + 2);
+  ends[src.length] = src.length;
+  ends[src.length + 1] = src.length + 1;
+  for (let i = src.length - 1; i >= 0; i--) ends[i] = src.startsWith("\\\n", i) ? (ends[i + 2] ?? i) : i;
+  if (RUN_ENDS.size >= MAX_SOURCES) RUN_ENDS.clear();
+  RUN_ENDS.set(src, ends);
+  return ends;
 }
 
 /** Index of the character bash reads after the one at `at`. */
@@ -37,7 +53,9 @@ export function dropJoins(text: string): string {
   return text.replace(/\\([\s\S])/g, (pair, next: string) => (next === "\n" ? "" : pair));
 }
 
-/** A line ending in a backslash that no other backslash escapes continues on the next line. */
-export function endsInJoin(line: string): boolean {
-  return /(?:^|[^\\])(?:\\\\)*\\$/.test(line);
+/** How many backslashes end `text`; an odd count leaves the last one unescaped, so the line continues. */
+export function trailingBackslashes(text: string): number {
+  let count = 0;
+  while (count < text.length && text[text.length - 1 - count] === "\\") count++;
+  return count;
 }

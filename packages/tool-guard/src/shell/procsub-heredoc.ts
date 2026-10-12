@@ -1,5 +1,5 @@
 import { sameSpend } from "./arith-trials.js";
-import { endsInJoin } from "./joins.js";
+import { trailingBackslashes } from "./joins.js";
 import { type LexState, scanSubstitutions, SplitParseError } from "./lexer.js";
 
 /**
@@ -36,14 +36,19 @@ function bodyLine(s: LexState, stripTabs: boolean, joins: boolean): string {
   return stripTabs ? line.replace(/^\t+/, "") : line;
 }
 
+/** Counts the trailing backslashes part by part, so a body of many joined lines is read in linear time. */
 function joinedLine(s: LexState, joins: boolean): string {
-  let line = "";
+  const parts: string[] = [];
+  let trailing = 0;
   for (;;) {
     const newline = s.src.indexOf("\n", s.i);
     const end = newline === -1 ? s.src.length : newline;
-    line += s.src.slice(s.i, end);
+    const part = s.src.slice(s.i, end);
+    const own = trailingBackslashes(part);
+    trailing = own === part.length ? trailing + own : own;
     s.i = end + 1;
-    if (!joins || newline === -1 || !endsInJoin(line)) return line;
-    line = line.slice(0, -1);
+    if (!joins || newline === -1 || trailing % 2 === 0) return parts.join("") + part;
+    parts.push(part.slice(0, -1));
+    trailing--;
   }
 }
