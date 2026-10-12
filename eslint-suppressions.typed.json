@@ -192,7 +192,7 @@
   },
   "packages/agent-dispatch/src/exec.ts": {
     "@typescript-eslint/no-unsafe-type-assertion": {
-      "count": 2
+      "count": 1
     }
   },
   "packages/agent-dispatch/src/limits/check.ts": {

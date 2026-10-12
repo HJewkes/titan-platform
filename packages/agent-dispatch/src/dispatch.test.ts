@@ -73,16 +73,14 @@ const request = (bin: string, over: Record<string, unknown> = {}) => ({
 });
 
 describe("profile allowlist", () => {
-  it("refuses a profile that is neither the implementer nor the reviewer", () => {
+  it("refuses a profile that is neither the implementer nor the reviewer", async () => {
     const bin = fakeAgentChat();
-    expect(() =>
-      dispatchToAgentChat(request(bin, { profile: "implementer" }), 10_000),
-    ).toThrow(DispatchError);
+    await expect(dispatchToAgentChat(request(bin, { profile: "implementer" }), 10_000)).rejects.toThrow(DispatchError);
   });
 });
 
 describe("buildSpawnArgs", () => {
-  it("asks for the brief on stdin instead of putting it in argv", () => {
+  it("asks for the brief on stdin instead of putting it in argv", async () => {
     const args = buildSpawnArgs({
       peerName: "relay-item-42",
       profile: DISPATCH_PROFILE,
@@ -99,7 +97,7 @@ describe("buildSpawnArgs", () => {
     ]);
   });
 
-  it("omits --briefing entirely when there is none, rather than passing an empty slug", () => {
+  it("omits --briefing entirely when there is none, rather than passing an empty slug", async () => {
     expect(
       buildSpawnArgs({
         peerName: "relay-item-42-review",
@@ -116,9 +114,9 @@ describe("buildSpawnArgs", () => {
 });
 
 describe("dispatchToAgentChat", () => {
-  it("invokes the CLI with the spawn argv, in the initiative's directory", () => {
+  it("invokes the CLI with the spawn argv, in the initiative's directory", async () => {
     const bin = fakeAgentChat();
-    const result = dispatchToAgentChat(request(bin), 10_000);
+    const result = await dispatchToAgentChat(request(bin), 10_000);
 
     expect(result.peerName).toBe("relay-item-42");
     expect(recordedArgv()).toEqual([
@@ -144,27 +142,27 @@ describe("dispatchToAgentChat", () => {
    * inert argument — is now the weaker of the two claims, so this asserts the
    * stronger one and keeps re-parsing under test on the channel it moved to.
    */
-  it("keeps a shell-metacharacter brief out of argv entirely, intact on stdin", () => {
+  it("keeps a shell-metacharacter brief out of argv entirely, intact on stdin", async () => {
     const bin = fakeAgentChat();
     const brief = "'; curl http://127.0.0.1:9999/pwn; #";
-    dispatchToAgentChat(request(bin, { brief }), 10_000);
+    await dispatchToAgentChat(request(bin, { brief }), 10_000);
 
     expect(recordedArgv()).not.toContain(brief);
     expect(recordedArgv().join(" ")).not.toContain("curl");
     expect(recordedStdin()).toBe(brief);
   });
 
-  it("passes a brief beginning with -- on stdin, where no parser can read it as a flag", () => {
+  it("passes a brief beginning with -- on stdin, where no parser can read it as a flag", async () => {
     const bin = fakeAgentChat();
-    dispatchToAgentChat(request(bin, { brief: "--briefing evil" }), 10_000);
+    await dispatchToAgentChat(request(bin, { brief: "--briefing evil" }), 10_000);
     expect(recordedArgv().at(-1)).toBe("--brief-stdin");
     expect(recordedStdin()).toBe("--briefing evil");
   });
 
-  it("delivers a multi-line brief whole, newlines and blank lines intact", () => {
+  it("delivers a multi-line brief whole, newlines and blank lines intact", async () => {
     const bin = fakeAgentChat();
     const brief = "Fix the floor.\n\nIt squeaks near the door.\n- check joists";
-    dispatchToAgentChat(request(bin, { brief }), 10_000);
+    await dispatchToAgentChat(request(bin, { brief }), 10_000);
     expect(recordedStdin()).toBe(brief);
   });
 
@@ -174,95 +172,103 @@ describe("dispatchToAgentChat", () => {
    * reading only stdout reported this as an unexplained "exited 1", with the
    * actual reason reachable nowhere but the daemon's launchd log.
    */
-  it("reports a usage error from stderr, not as a bare exit code", () => {
+  it("reports a usage error from stderr, not as a bare exit code", async () => {
     const bin = fakeAgentChat(
       `echo "error: unknown option '--brief-stdin'" >&2\nexit 1\n`,
     );
-    expect(() => dispatchToAgentChat(request(bin), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin), 10_000)).rejects.toThrow(
       /unknown option '--brief-stdin'/,
     );
   });
 
-  it("prefers the broker's stdout reason when both streams have something", () => {
+  it("prefers the broker's stdout reason when both streams have something", async () => {
     const bin = fakeAgentChat(
       `echo 'Not spawned: the name is held by a live agent'\necho 'incidental warning' >&2\nexit 1\n`,
     );
-    expect(() => dispatchToAgentChat(request(bin), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin), 10_000)).rejects.toThrow(
       /held by a live agent/,
     );
   });
 
-  it("reports a name collision verbatim as a refusal", () => {
+  it("reports a name collision verbatim as a refusal", async () => {
     // What agent-chat's supervisor.ts preflight actually prints before exit 1.
     const bin = fakeAgentChat(
       `echo 'Not spawned: the name "relay-item-42" is held by a live agent; retire it or choose another'\nexit 1\n`,
     );
-    expect(() => dispatchToAgentChat(request(bin), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin), 10_000)).rejects.toThrow(
       /held by a live agent/,
     );
   });
 
-  it("refuses when the CLI exits non-zero with nothing to say", () => {
+  it("refuses when the CLI exits non-zero with nothing to say", async () => {
     const bin = fakeAgentChat("exit 1\n");
-    expect(() => dispatchToAgentChat(request(bin), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin), 10_000)).rejects.toThrow(
       DispatchError,
     );
   });
 
-  it("refuses a binary path that is not absolute", () => {
-    expect(() => dispatchToAgentChat(request("agent-chat"), 10_000)).toThrow();
+  it("refuses a binary path that is not absolute", async () => {
+    await expect(dispatchToAgentChat(request("agent-chat"), 10_000)).rejects.toThrow();
   });
 
-  it("refuses a peer name that is not the derived shape", () => {
+  it("refuses a peer name that is not the derived shape", async () => {
     const bin = fakeAgentChat();
-    expect(() =>
-      dispatchToAgentChat(request(bin, { peerName: "Relay Item 42" }), 10_000),
-    ).toThrow(DispatchError);
+    await expect(dispatchToAgentChat(request(bin, { peerName: "Relay Item 42" }), 10_000)).rejects.toThrow(DispatchError);
   });
 
-  it("marks a hung CLI as a timeout, apart from a CLI that refused", () => {
+  it("leaves the caller's event loop free while the broker works", async () => {
+    const bin = fakeAgentChat("sleep 1\n");
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 50);
+
+    await dispatchToAgentChat(request(bin), 10_000).finally(() => clearInterval(timer));
+
+    expect(ticks).toBeGreaterThan(5);
+  });
+
+  it("marks a hung CLI as a timeout, apart from a CLI that refused", async () => {
     const bin = fakeAgentChat("sleep 3\n");
-    expect(() => dispatchToAgentChat(request(bin), 200)).toThrow(DispatchTimeoutError);
+    await expect(dispatchToAgentChat(request(bin), 200)).rejects.toThrow(DispatchTimeoutError);
   });
 
-  it("keeps the refusal wording factory's reviewer dispatch matches", () => {
+  it("keeps the refusal wording factory's reviewer dispatch matches", async () => {
     const bin = fakeAgentChat(`echo "the name relay-item-42 is held"\nexit 1\n`);
-    const refused = catchError(() => dispatchToAgentChat(request(bin), 10_000));
+    const refused = await catchError(dispatchToAgentChat(request(bin), 10_000));
     expect(refused).not.toBeInstanceOf(DispatchTimeoutError);
     expect(refused.message).toMatch(/^agent-chat refused the \w+: /);
   });
 });
 
 describe("installed profile guard", () => {
-  it("refuses an interactive installed profile without starting the CLI", () => {
+  it("refuses an interactive installed profile without starting the CLI", async () => {
     const bin = fakeAgentChat();
     const profilesDir = installProfiles(join(dir, "other"), {
       [DISPATCH_PROFILE]: "interactive",
     });
 
-    expect(() => dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).rejects.toThrow(
       /installed profile 'relay-implementer' .*surface "interactive", not "headless"/,
     );
     expect(existsSync(join(dir, "argv"))).toBe(false);
   });
 
-  it("refuses a profile that is allowed but not installed", () => {
+  it("refuses a profile that is allowed but not installed", async () => {
     const bin = fakeAgentChat();
     const profilesDir = installProfiles(join(dir, "other"), {});
 
-    expect(() => dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).toThrow(
+    await expect(dispatchToAgentChat(request(bin, { profilesDir }), 10_000)).rejects.toThrow(
       /installed profile 'relay-implementer' is unreadable/,
     );
     expect(existsSync(join(dir, "argv"))).toBe(false);
   });
 });
 
-function catchError(run: () => unknown): Error {
+async function catchError(run: Promise<unknown>): Promise<Error> {
   try {
-    run();
+    await run;
   } catch (err) {
     if (err instanceof Error) return err;
     throw err;
   }
-  throw new Error("expected a throw");
+  throw new Error("expected a rejection");
 }

@@ -67,7 +67,7 @@ async function awaitExit(agentChat, name, timeoutMs) {
 
 async function run(opts, spawn) {
   if (!spawn.agentChat) throw new Error("agent-chat is not on PATH; pass --agent-chat <absolute path>");
-  dispatchToAgentChat({ agentChatBinPath: spawn.agentChat, peerName: spawn.name, profile: spawn.profile, brief: spawn.brief, cwd: spawn.cwd }, SPAWN_TIMEOUT_MS, PROFILES);
+  await dispatchToAgentChat({ agentChatBinPath: spawn.agentChat, peerName: spawn.name, profile: spawn.profile, brief: spawn.brief, cwd: spawn.cwd }, SPAWN_TIMEOUT_MS, PROFILES);
   const row = await awaitExit(spawn.agentChat, spawn.name, spawn.timeoutMs);
   const lines = readFileSync(row.transcriptPath, "utf8").split("\n").filter(Boolean);
   const report = checkReviewerTranscript(lines, { repo: opts.repo, pr: opts.pr, head: opts.head });
