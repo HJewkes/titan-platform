@@ -61,7 +61,7 @@ export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
 export const DEFAULT_LATE_VERDICT_MS = 10 * 60_000;
 export const DEFAULT_SESSION_START_TIMEOUT_MS = 5 * 60_000;
 /** How long Shepherd's own MERGE waits on a seat reviewer's WAIT at the same head before the round is held. */
-export const DEFAULT_SEAT_WAIT_MS = 30 * 60_000;
+const DEFAULT_SEAT_WAIT_MS = 30 * 60_000;
 export { MAX_RESUME_FILL_TOKENS } from "./reviewer-choice.js";
 const DEFAULT_POLL_MS = 30_000;
 export { BUSY_FIRST_WAIT_MS, BUSY_LONGEST_WAIT_MS, DEFAULT_BUSY_WAIT_MS, ReviewerBrokerBusy, ReviewerBrokerDown } from "./review-wait.js";
