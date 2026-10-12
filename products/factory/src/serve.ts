@@ -41,6 +41,8 @@ export const TOOL_PREFIX = "";
 const DEFAULT_LEASE_MS = 30_000;
 const IN_MEMORY_DB = ":memory:";
 const CHECKOUT_SWEEP_MS = 3_600_000;
+/** Matches the PR snapshot's tick, so a quiet sweep reads only the shared, ETag'd open list and an owner never sees a gate stale for more than a minute. */
+const HEAD_MOVED_SWEEP_MS = 60_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -54,6 +56,8 @@ export interface FactoryServerOptions extends FactoryHostOptions {
   logger?: Logger;
   /** How often runs waiting on a gate have their PR checked for a merge or close elsewhere; defaults to 5 minutes. */
   goneSweepMs?: number;
+  /** How often head-bound gates are checked for a PR head that moved under them; defaults to 1 minute. */
+  headMovedSweepMs?: number;
   /** How often the Version Packages sweep runs; defaults to `RELEASE_SWEEP_MS`. */
   releaseSweepMs?: number;
   /** How often the toolchain adoption sweep runs; defaults to `TOOLCHAIN_SWEEP_MS`. */
@@ -113,13 +117,15 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
   const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
-  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
   thaws.onThaw(() => {
     void goneSweep?.tick();
     void fixerSweep?.tick();
   });
   await goneSweep?.tick();
+  const headMovedSweep = services && startSweep(() => supersedeMoved(host, services, log), options.headMovedSweepMs ?? HEAD_MOVED_SWEEP_MS, "head-moved sweep", log);
+  await headMovedSweep?.tick();
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const toolchainSweep = services && startSweep(() => sweepToolchains(host, services, log), options.toolchainSweepMs ?? TOOLCHAIN_SWEEP_MS, "toolchain adoption sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
@@ -135,7 +141,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
+    for (const later of [goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -303,8 +309,12 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
-  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
   for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
+}
+
+/** Its own sweep, so a merged-elsewhere read that throws never skips it. */
+async function supersedeMoved(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
+  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
 }
 
 /** Dequeued before the sweep, so a thaw that lands during it queues the repo again; a PR head that cannot be read, or a sweep that throws, requeues it for the next tick. */
