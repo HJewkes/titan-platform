@@ -59,7 +59,7 @@ export interface Freeze {
 }
 
 /** `already` re-marks the same PR and writes nothing; `taken` means another PR is this episode's fix. */
-export type FixPrMark = "marked" | "already" | "taken" | "not-live";
+type FixPrMark = "marked" | "already" | "taken" | "not-live";
 
 const Row = z.object({
   repo: z.string(),
@@ -295,7 +295,7 @@ export async function redOnlyFromCancels(port: GitHubPort, repo: RepoSlug, sha: 
 }
 
 /** `pr` is the registration's own PR number, so only a registered PR can match a marked fix PR. */
-export interface FreezeRegistration {
+interface FreezeRegistration {
   task: string;
   implementer: string;
   pr?: number | null;
