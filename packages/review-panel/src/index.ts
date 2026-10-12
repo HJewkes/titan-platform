@@ -31,6 +31,7 @@ export {
   EARLIER_FINDINGS_END,
   EARLIER_FINDINGS_HEADING,
   EARLIER_FINDINGS_START,
+  FOLLOW_UPS_RULE,
   MAX_CORRECTION_PROMPT_CHARS,
   MAX_OWNER_BRIEF_CHARS,
   MAX_REVIEWER_QUESTIONS,
@@ -48,6 +49,18 @@ export { DEPTH_FLOOR_REASON, INVESTIGATIVE_CALLS, isInvestigativeCall } from "./
 export { BLOCK_LINE, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, MAX_FIX_FIRST_TEXT_CHARS, boundedFindings, findingsText, fixFirstFindings } from "./fix-first-findings.js";
 export { MALFORMED_REFUSALS, MalformedSchema, OwnerBriefSchema, parseOwnerBrief, readMalformed } from "./verdict-schemas.js";
 export type { Malformed, OwnerBrief } from "./verdict-schemas.js";
+export {
+  FOLLOW_UP_SEVERITIES,
+  FOLLOW_UPS_HEADING,
+  FOLLOW_UPS_WARNINGS,
+  FollowUpSchema,
+  MAX_FOLLOW_UP_DONE_WHEN_CHARS,
+  MAX_FOLLOW_UP_TITLE_CHARS,
+  MAX_FOLLOW_UPS,
+  followUpsFields,
+  parseFollowUps,
+} from "./follow-ups.js";
+export type { FollowUp, FollowUpsWarning, ParsedFollowUps } from "./follow-ups.js";
 export { namesPr, namesTarget } from "./verdict-target.js";
 export { aggregate } from "./aggregate.js";
 export type { AggregateInput, MemberResult } from "./aggregate.js";

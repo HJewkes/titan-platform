@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "README.md"
   ],
   "author": "Henry Jewkes",
@@ -32,18 +33,21 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@titan-design/app-paths": "workspace:^",
     "@titan-design/cluster": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/embed": "workspace:^",
     "@titan-design/github": "workspace:^",
     "@titan-design/locator": "workspace:^",
     "@titan-design/memory": "workspace:^",
+    "@titan-design/pm": "workspace:^",
     "@titan-design/registry": "workspace:^",
     "@titan-design/retrieval": "workspace:^",
     "@titan-design/session-analytics": "workspace:^",
     "@titan-design/session-graph": "workspace:^",
     "@titan-design/session-read": "workspace:^",
     "@titan-design/store-sqlite": "workspace:^",
+    "@titan-design/throughput": "workspace:^",
     "commander": "^14.0.3",
     "yaml": "^2.9.1",
     "zod": "^4.4.3"

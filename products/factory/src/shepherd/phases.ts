@@ -1,3 +1,4 @@
+import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
@@ -12,6 +13,7 @@ import type { ShepherdStoreRef } from "./store.js";
 import type { SuiteRules } from "./suite-host.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
+import type { PushWatch } from "./push-signal.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
 export interface PhaseTarget {
@@ -60,11 +62,19 @@ export interface PanelMerge {
   members: readonly { shape: ReviewShape; agentId: string; sessionId: string; locator: unknown }[];
 }
 
+/** Shepherd's own MERGE at `head` that a seat reviewer's WAIT still held when the seat wait ran out. */
+export interface SeatHeld {
+  head: string;
+  locator: unknown;
+  reviewer: AgentIdentity;
+  dispatchedReviewer: AgentIdentity;
+}
+
 export type Verdict =
   | { kind: "MERGE"; /** Set only when `review.panel` is `on` and the head's intent recorded a plan. */ panel?: PanelMerge; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none"; cause?: NoVerdictCause; reason?: string };
+  | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
 
 /** The route table decides what a `none` verdict or an `unhandled` wake leads to. */
 export interface ShepherdPhases {
@@ -90,6 +100,8 @@ export interface ShepherdDeps {
   cleanup?: CleanupPorts;
   /** The per-repo PR snapshot `sh-observe` reads; absent means it reads the port. */
   snapshot?: PrSnapshot;
+  /** The seat clones' push reflogs a head wait watches; absent means it reads the PR once per backstop. */
+  pushes?: PushWatch;
   /** The App-token port `sh-publish-review` posts `shepherd/review` through; absent means it records `published: false`. */
   reviewCheck?: GitHubPort;
   /** Which reviewer accounts are out of usage; absent reads as a store that cannot be read, so a usage limit fails closed. */

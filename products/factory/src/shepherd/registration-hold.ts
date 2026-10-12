@@ -115,19 +115,21 @@ function holdToPlace(store: ShepherdStore, runId: string, wanted: string): strin
  * Called at each registration and when a branch registration learns its PR, so a diff that grows is classed again. A
  * G10 hold as strong as the one wanted, placed or released before, decided the class already, so a released one stays
  * released; a weaker one does not stop an escalation. The file read is slow, so the hold is a compare-and-swap retried
- * on a fresh read of the run.
+ * on a fresh read of the run. A history that cannot be read holds `g10-adversary`, keeping an adversary hold in force.
  */
 export async function applyRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles = {}): Promise<string | undefined> {
   try {
     return await placeRegistrationHold(port, store, runId, files);
   } catch (error) {
     const reason = `g10-adversary: hold history unread at registration (${error instanceof Error ? error.name : "error"})`;
-    store.hold(runId, reason, undefined, { actor: SHEPHERD_ACTOR });
-    return reason;
+    return store.holdUnlessAdversary(runId, reason, { actor: SHEPHERD_ACTOR }) ? reason : undefined;
   }
 }
 
-/** A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead. */
+/**
+ * A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead,
+ * unless an adversary hold already gates it: that hold, often a seat's with its reviewer, is kept as it stands.
+ */
 async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, runId: string, files: HoldFiles): Promise<string | undefined> {
   const registration = store.byRun(runId);
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
