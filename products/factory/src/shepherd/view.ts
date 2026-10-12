@@ -4,6 +4,7 @@ import { z } from "zod";
 import { stepOf } from "../coordinator-evidence.js";
 import { stepIdMatches } from "../definition.js";
 import { EVENT_KINDS, type ShepherdEvent } from "./events.js";
+import { g10UnreviewedStall, type HoldWait } from "./g10-unreviewed-stall.js";
 import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
@@ -246,11 +247,11 @@ function overstayReason(phase: Phase, since: string, now: Date): string | undefi
 }
 
 /** A merge waiting on a hold waits on a person by design, so only the phase limit is skipped for it. */
-function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, holding: boolean): string | undefined {
+function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, since: string, now: Date, wait: HoldWait): string | undefined {
   if (run.status === "failed" || run.status === "recovery_required") return run.error ?? run.status;
   const streak = notStartedStreak(steps);
   if (streak >= MAX_NOT_STARTED_REVIEWS) return `${streak} review dispatches in a row started no reviewer`;
-  return holding ? undefined : overstayReason(phase, since, now);
+  return g10UnreviewedStall(run, wait, since, now) ?? (wait.holding ? undefined : overstayReason(phase, since, now));
 }
 
 /** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
@@ -277,7 +278,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
   const held = heldView(registration);
   const holding = phase === "merging" && waitsOnHold(run, held, headSha);
   const since = phaseSince(run, steps, phase);
-  const stalled = stallReason(run, steps, phase, since, now, holding);
+  const stalled = stallReason(run, steps, phase, since, now, { registration, headSha, holding });
   return {
     repo: registration.repo,
     pr: registration.pr,
