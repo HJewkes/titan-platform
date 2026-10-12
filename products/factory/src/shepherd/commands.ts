@@ -213,9 +213,9 @@ function toolchainTask(repo: RepoSlug): string {
   return `${repo.split("/")[1] ?? repo}/toolchain`;
 }
 
-/** Registers a toolchain adoption PR with no fixer: the factory sweep wrote it from a plan, so no agent can fix it. */
+/** Registers a toolchain adoption PR with no fixer, since no agent can fix a plan the sweep wrote, and owner-gated, since it edits other repos' release workflows. */
 export async function registerToolchainAdoption(ctx: FactoryContext, repo: RepoSlug, pr: number): Promise<Registered> {
-  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false } }, ctx);
+  return register({ repo, pr, task: toolchainTask(repo), implementer: TOOLCHAIN_IMPLEMENTER, kind: "unknown", policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } }, ctx);
 }
 
 /** `repo#pr` directly, or through its head branch when a branch registration has not seen the PR yet. */

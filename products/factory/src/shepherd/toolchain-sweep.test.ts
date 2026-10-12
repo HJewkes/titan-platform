@@ -36,9 +36,10 @@ describe("sweepToolchain", () => {
     const registration = w.services.store.get().byPr(DRIFTED, pr.number);
     expect(notes).toEqual([{ repo: DRIFTED, pr: pr.number, registered: registration?.runId }]);
     expect(pr).toMatchObject({ headRef: ADOPTION_BRANCH, baseRef: "main" });
+    expect(drifted(w).effects).toMatchObject({ createRef: 1, createPr: 1 });
     expect(drifted(w).files.get(`${ADOPTION_BRANCH}:.node-version`)?.content).toBe("24.21.0\n");
     expect(drifted(w).files.get(`${ADOPTION_BRANCH}:.github/workflows/ci.yml`)?.content).toContain("node-version-file: .node-version");
-    expect(registration).toMatchObject({ task: "codewatch/toolchain", implementer: TOOLCHAIN_IMPLEMENTER, branch: ADOPTION_BRANCH, policy: { fixer: false } });
+    expect(registration).toMatchObject({ task: "codewatch/toolchain", implementer: TOOLCHAIN_IMPLEMENTER, branch: ADOPTION_BRANCH, policy: { fixer: false, merge: "owner-gate", ownerGateReason: "owner-asked" } });
     const aligned = TOOLCHAIN_CONSUMERS.filter(({ repo }) => repo !== DRIFTED).map(({ repo }) => w.fakes.get(repo)!.effects.createPr);
     expect(aligned.every((count) => count === 0)).toBe(true);
   });
@@ -63,6 +64,38 @@ describe("sweepToolchain", () => {
 
     expect(notes).toEqual([{ repo: DRIFTED, pr, skipped: "open", registered: w.services.store.get().byPr(DRIFTED, pr)?.runId }]);
     expect(drifted(w).effects).toMatchObject({ createRef: 0, putContent: 0, createPr: 0 });
+  });
+
+  it("skips a closed PR on the toolchain branch with no write at all", async () => {
+    const w = world();
+    const pr = drifted(w).addPr({ headSha: fakeSha("closed"), headRef: ADOPTION_BRANCH, state: "closed" }).number;
+
+    const notes = await sweepToolchain(w.host, w.services);
+
+    expect(notes).toEqual([{ repo: DRIFTED, pr, skipped: "closed" }]);
+    expect(drifted(w).effects).toMatchObject({ createRef: 0, updateRef: 0, putContent: 0, createPr: 0 });
+    expect(shepherdRuns(w.host)).toHaveLength(0);
+  });
+
+  it("leaves an existing toolchain branch with no PR where it is, then opens the PR on it", async () => {
+    const w = world();
+    drifted(w).refs.set(ADOPTION_BRANCH, fakeSha("existing-branch"));
+
+    const notes = await sweepToolchain(w.host, w.services);
+
+    expect(drifted(w).effects).toMatchObject({ createRef: 0, createPr: 1 });
+    expect(notes).toEqual([{ repo: DRIFTED, pr: 1, registered: expect.any(String) }]);
+    expect(drifted(w).pr(1)).toMatchObject({ headRef: ADOPTION_BRANCH });
+  });
+
+  it("creates the toolchain branch when it does not exist", async () => {
+    const w = world();
+    expect(drifted(w).refs.has(ADOPTION_BRANCH)).toBe(false);
+
+    await sweepToolchain(w.host, w.services);
+
+    expect(drifted(w).effects.createRef).toBe(1);
+    expect(drifted(w).refs.has(ADOPTION_BRANCH)).toBe(true);
   });
 
   it("notes a consumer it could not read, by status only, and still opens the drifted consumer's PR", async () => {
