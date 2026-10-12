@@ -117,9 +117,24 @@ function completedSteps(run: WorkflowRun): StepResult[] {
   return Object.values(run.stepResults).sort((a, b) => a.completedAt.localeCompare(b.completedAt));
 }
 
+/** The step that recorded how the run ended: sh-landed first, then sh-stopped. */
+function outcomeStep(steps: readonly StepResult[]): StepResult | undefined {
+  return steps.find((result) => result.stepId.startsWith("sh-landed")) ?? steps.find((result) => result.stepId.startsWith("sh-stopped"));
+}
+
+/**
+ * When the run ended, or undefined while it runs. A run the runtime parked in recovery after it recorded its outcome
+ * has ended at that outcome; a paused or running run with one may still watch main CI after the merge.
+ */
+function endedAt(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
+  if (TERMINAL_PHASE[run.status]) return run.completedAt ?? run.startedAt;
+  return run.status === "recovery_required" ? outcomeStep(steps)?.completedAt : undefined;
+}
+
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
+  const terminal = TERMINAL_PHASE[run.status] ?? (endedAt(run, steps) === undefined ? undefined : "done");
   const current = run.currentStep ?? steps.at(-1)?.stepId;
-  return TERMINAL_PHASE[run.status] ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
+  return terminal ?? (current === undefined ? (run.params.pr === undefined ? "awaiting-pr" : "ci") : stepPhase(current));
 }
 
 function headOf(result: StepResult): string | undefined {
@@ -129,7 +144,8 @@ function headOf(result: StepResult): string | undefined {
 }
 
 function phaseSince(run: WorkflowRun, steps: readonly StepResult[], phase: Phase): string {
-  if (TERMINAL_PHASE[run.status]) return run.completedAt ?? run.startedAt;
+  const ended = endedAt(run, steps);
+  if (ended !== undefined) return ended;
   const previous = steps.filter((result) => stepPhase(result.stepId) !== phase).at(-1);
   return previous?.completedAt ?? run.startedAt;
 }
@@ -232,9 +248,9 @@ const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
 
 /** How a finished run ended, from its sh-landed or sh-stopped step; null while neither is recorded. */
 export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
-  if (steps.some((result) => result.stepId.startsWith("sh-landed"))) return { kind: "merged", reason: null };
-  const stopped = steps.find((result) => result.stepId.startsWith("sh-stopped"));
-  const parsed = stopped && StoppedData.safeParse(stopped.data);
+  const step = outcomeStep(steps);
+  if (step?.stepId.startsWith("sh-landed")) return { kind: "merged", reason: null };
+  const parsed = step && StoppedData.safeParse(step.data);
   return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
 }
 
@@ -264,7 +280,7 @@ function stallReason(run: WorkflowRun, steps: readonly StepResult[], phase: Phas
 
 /** The stage of the phase the run is in now and its age; a merge waiting on a hold is in `hold`, not `land`. */
 function liveStage(run: WorkflowRun, steps: readonly StepResult[], phase: Phase, holding: boolean, now: Date): WatchRow["stage"] {
-  if (TERMINAL_PHASE[run.status]) return null;
+  if (endedAt(run, steps) !== undefined) return null;
   const open = stageSpans(steps, run.startedAt, { phase, at: now.getTime() }).find((span) => span.open);
   if (open === undefined) return null;
   return { name: holding ? "hold" : open.stage, minutes: Math.floor((open.endedAt - open.startedAt) / MINUTE) };
@@ -303,7 +319,7 @@ export function watchRow({ registration, run, pending, train, now = new Date() }
     stalled: stalled === undefined ? null : { reason: stalled },
     outcome: runOutcome(steps),
     stage: liveStage(run, steps, phase, holding, now),
-    totalMinutes: Math.floor(((TERMINAL_PHASE[run.status] ? Date.parse(since) : now.getTime()) - Date.parse(run.startedAt)) / MINUTE),
+    totalMinutes: Math.floor(((endedAt(run, steps) === undefined ? now.getTime() : Date.parse(since)) - Date.parse(run.startedAt)) / MINUTE),
     implementer: registration.implementer || null,
     slice: registration.slice ?? null,
     reviewer: reviewerName(steps),
