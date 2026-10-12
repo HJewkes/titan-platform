@@ -1,7 +1,7 @@
 import type { Db } from "@titan-design/store-sqlite";
 
 /** One refused park: the run, the head it was refused at, and the agent whose tree stayed. */
-export interface ParkKey {
+interface ParkKey {
   runId: string;
   headSha: string;
   agent: string;
