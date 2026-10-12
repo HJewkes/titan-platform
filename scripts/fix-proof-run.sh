@@ -4,10 +4,10 @@
 # fix-proof/v1 line Shepherd reads. A head process cannot reach another job's VM, outputs or log, so the judge's line
 # cannot be forged from the head the way a single job's could.
 #
-#   exec <base|head> <runner> <base> <head> <out>       run one side, writing <name>.report files into <out>
-#   emit <base|head> <out>                              copy those files into $GITHUB_OUTPUT as report (and rerun)
-#   receive <dir>                                       write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD into <dir>
-#   judge <runner> <repo> <base> <head> <dir>           print the verdict from the reports in <dir>
+#   exec <base|head> <runner> <repo> <base> <head> <out>  run one side, writing <name>.report files into <out>
+#   emit <base|head> <out>                                copy those files into $GITHUB_OUTPUT as report (and rerun)
+#   receive <dir>                                         write REPORT_BASE, REPORT_BASE_RERUN, REPORT_HEAD into <dir>
+#   judge <runner> <repo> <base> <head> <dir>             print the verdict from the reports in <dir>
 #
 # The runner always comes from the merge base. A merge base that predates the split has no dist/judge.js, so every
 # mode treats it as "nothing to prove with": exec writes skipped markers and judge prints a skipped line.
@@ -43,7 +43,7 @@ has_judge() {
 }
 
 exec_side() {
-  local side=$1 runner=$2 base=$3 head=$4 out=$5 name
+  local side=$1 runner=$2 repo=$3 base=$4 head=$5 out=$6 name
   local names
   names=$(side_reports "$side")
   if ! has_judge "$runner"; then
@@ -52,7 +52,7 @@ exec_side() {
     for name in $names; do marker "$SKIPPED" >"$out/$name.report"; done
     return 0
   fi
-  node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --base "$base" --head "$head" --out "$out" \
+  node "$runner/packages/fix-proof/dist/bin.js" exec --side "$side" --repo "$repo" --base "$base" --head "$head" --out "$out" \
     --budget-ms "$EXEC_BUDGET_MS"
 }
 
@@ -109,7 +109,7 @@ judge() {
 mode=${1:-}
 [ $# -gt 0 ] && shift
 case $mode in
-  exec) [ $# -eq 5 ] || usage; exec_side "$@" ;;
+  exec) [ $# -eq 6 ] || usage; exec_side "$@" ;;
   emit) [ $# -eq 2 ] || usage; emit "$@" ;;
   receive) [ $# -eq 1 ] || usage; receive "$@" ;;
   judge) [ $# -eq 5 ] || usage; judge "$@" ;;

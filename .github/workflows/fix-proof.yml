@@ -17,6 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Laid out like the judge: the head goes to src/ and every tool comes from the merge-base tree in runner/. With the
+  # head at the workspace root, pnpm/action-setup would install the head's packageManager and copy its .npmrc, and
+  # that pnpm would build the runner and run the base side's vitest.
   fix-proof-base:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -28,6 +31,7 @@ jobs:
         with:
           # The PR head, not GitHub's synthetic merge commit; full history so the merge base is reachable.
           ref: ${{ github.event.pull_request.head.sha }}
+          path: src
           fetch-depth: 0
           persist-credentials: false
       # The script comes from the workflow's own commit (the PR merge ref), not the PR head: a head branched before
@@ -39,26 +43,29 @@ jobs:
           sparse-checkout: scripts/fix-proof-run.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      # No cache: fix-proof-head shares the key and can save a store its install tampered with, which a later base
-      # run would restore into the merge-base runner and vitest.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
       # The event's base sha, not the moving base branch, so all three jobs agree on the merge base.
-      - name: Find the merge base
+      - name: Check out the merge base
         id: merge-base
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: echo "sha=$(git merge-base "$BASE_SHA" "$HEAD_SHA")" >> "$GITHUB_OUTPUT"
+        run: |
+          sha=$(git -C src merge-base "$BASE_SHA" "$HEAD_SHA")
+          git -C src worktree add --detach "$GITHUB_WORKSPACE/runner" "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: runner/package.json
+      # No cache: fix-proof-head shares the key and can save a store its install tampered with, which a later base
+      # run would restore into the merge-base runner and vitest.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: runner/.node-version
       - name: Build the runner at the merge base
+        working-directory: runner
         env:
-          MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
           TURBO_TELEMETRY_DISABLED: 1
         run: |
-          git worktree add --detach "$RUNNER_TEMP/runner" "$MERGE_BASE"
-          cd "$RUNNER_TEMP/runner"
           pnpm install --frozen-lockfile
           pnpm --filter @titan-design/fix-proof... run build
       # The runner builds the merge base before it overlays any head file, then runs the head's tests on it twice.
@@ -67,7 +74,7 @@ jobs:
           MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TURBO_TELEMETRY_DISABLED: 1
-        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec base "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec base "$GITHUB_WORKSPACE/runner" "$GITHUB_WORKSPACE/src" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
       - name: Pass the reports to the judge
         id: emit
         if: ${{ !cancelled() }}
@@ -117,7 +124,7 @@ jobs:
           MERGE_BASE: ${{ steps.merge-base.outputs.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           TURBO_TELEMETRY_DISABLED: 1
-        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec head "$RUNNER_TEMP/runner" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
+        run: bash .fix-proof-workflow/scripts/fix-proof-run.sh exec head "$RUNNER_TEMP/runner" "$GITHUB_WORKSPACE" "$MERGE_BASE" "$HEAD_SHA" "$RUNNER_TEMP/fix-proof-out"
       - name: Pass the report to the judge
         id: emit
         if: ${{ !cancelled() }}

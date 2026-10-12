@@ -68,7 +68,7 @@ describe("fix-proof-run.sh", () => {
 
   describe("exec", () => {
     const out = () => path.join(tmp, "out");
-    const exec = (side) => sh(["exec", side, runner, base, head, out()]);
+    const exec = (side) => sh(["exec", side, runner, path.join(tmp, "repo"), base, head, out()]);
 
     it("writes a skipped marker for each base report when the merge base has no judge.js", () => {
       writeFileSync(path.join(dist, "bin.js"), echoArgs);
@@ -88,7 +88,7 @@ describe("fix-proof-run.sh", () => {
 
       const result = exec("head");
 
-      expect(result.stdout.trim()).toBe(`exec --side head --base ${base} --head ${head} --out ${out()} --budget-ms 780000`);
+      expect(result.stdout.trim()).toBe(`exec --side head --repo ${path.join(tmp, "repo")} --base ${base} --head ${head} --out ${out()} --budget-ms 780000`);
     });
 
     it("refuses a side other than base or head", () => {
@@ -165,11 +165,30 @@ describe("fix-proof workflow", () => {
   });
 
   it("only the head exec job restores or saves a cache, so a store its install tampered with reaches no base-side or judge job", () => {
-    const caches = (job) => job.steps.some((step) => (step.with !== undefined && "cache" in step.with) || /^actions\/cache\b/.test(step.uses ?? ""));
+    const caches = (job) => job.steps.some((step) => Object.keys(step.with ?? {}).some((key) => /cache/.test(key)) || /cache/.test(step.uses ?? ""));
 
     const cached = Object.entries(workflow.jobs).filter(([, job]) => caches(job));
 
     expect(cached.map(([id]) => id)).toEqual(["fix-proof-head"]);
+  });
+
+  it.each(["fix-proof-base", "fix-proof"])("%s takes pnpm, node and their config only from the merge-base runner tree", (id) => {
+    const steps = workflow.jobs[id].steps;
+    const index = (match) => steps.findIndex(match);
+
+    const headCheckout = steps.find((step) => step.with?.ref === "${{ github.event.pull_request.head.sha }}");
+    const pnpmSetup = index((step) => step.uses?.startsWith("pnpm/action-setup@"));
+    const nodeSetup = index((step) => step.uses?.startsWith("actions/setup-node@"));
+    const runnerTree = index((step) => /worktree add --detach "\$GITHUB_WORKSPACE\/runner"/.test(step.run ?? ""));
+
+    expect(headCheckout.with.path).toBe("src");
+    expect(steps[pnpmSetup].with).toEqual({ package_json_file: "runner/package.json" });
+    expect(steps[nodeSetup].with).toEqual({ "node-version-file": "runner/.node-version" });
+    expect(runnerTree).toBeGreaterThan(-1);
+    expect(runnerTree).toBeLessThan(Math.min(pnpmSetup, nodeSetup));
+    expect(steps.filter((step) => step.uses?.startsWith("actions/checkout@")).every((step) => step.with?.path !== undefined)).toBe(true);
+    expect(steps.every((step) => step["working-directory"] === undefined || step["working-directory"] === "runner")).toBe(true);
+    expect(steps.some((step) => /\bcorepack\b/.test(step.run ?? ""))).toBe(false);
   });
 
   it("the judge job has no cache and installs only from the runner tree", () => {
