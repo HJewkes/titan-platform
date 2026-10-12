@@ -35,13 +35,16 @@ export function assignmentSubscriptEnd(src: string, open: number, tokens: Token[
 /**
  * Index of the `]` matching the `[` at `open` when bash may read `NAME[...]` as one word but `assignmentSubscriptEnd`
  * did not take the join: after an unplaceable form, where bash may join or split, or at an assignment position with no
- * `=` after the `]`, where bash joins on position alone. -1 when bash splits for sure or the `[` never closes.
+ * `=` after the `]`, where bash joins on position alone. -1 when bash splits for sure. Bash skips `$( )`, `${ }` and
+ * backquotes whole while the scan here cannot, so when the scan never closes or crossed such an unsure span, bash
+ * may close later: the span then runs to the end of the source.
  */
 export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): number {
   const scan = scanOf(src);
   const mayJoin = open >= scan.unplaceableFrom || atAssignmentPosition(tokens);
   if (!mayJoin || assignmentSubscriptEnd(src, open, tokens) !== -1) return -1;
-  return matchingBracket(src, open, scan);
+  const close = matchingBracket(src, open, scan);
+  return close === -1 || scan.unsurePairs.has(open) ? src.length : close;
 }
 
 /**
@@ -51,6 +54,8 @@ export function looseSubscriptEnd(src: string, open: number, tokens: Token[]): n
 interface SourceScan {
   unplaceableFrom: number;
   brackets: Map<number, number>;
+  /** Each `[` whose pairing crossed a `$( )`, `${ }` or backquote span the scan read one character at a time. */
+  unsurePairs: Set<number>;
   spans: SpanEnds;
 }
 
@@ -61,7 +66,7 @@ const MAX_SOURCES = 64;
 function scanOf(src: string): SourceScan {
   const known = SCANS.get(src);
   if (known) return known;
-  const scan = { unplaceableFrom: unplaceableFrom(src), brackets: new Map<number, number>(), spans: new Map<number, number>() };
+  const scan = { unplaceableFrom: unplaceableFrom(src), brackets: new Map<number, number>(), unsurePairs: new Set<number>(), spans: new Map<number, number>() };
   if (SCANS.size >= MAX_SOURCES) SCANS.clear();
   SCANS.set(src, scan);
   return scan;
@@ -157,13 +162,16 @@ function matchingBracket(src: string, open: number, scan: SourceScan): number {
   const known = scan.brackets.get(open);
   if (known !== undefined) return known;
   const pending: number[] = [];
+  let lastUnsure = -1;
   for (let j = open; j < src.length; j++) {
     const end = skipQuoted(src, j, scan.spans);
     if (end === -1) break;
+    if (end === j && opensUnsureSpan(src, j)) lastUnsure = j;
     const c = end === j ? src[j] : "";
     if (c === "[") pending.push(j);
     const paired = c === "]" ? pending.pop() : undefined;
     if (paired !== undefined) scan.brackets.set(paired, j);
+    if (paired !== undefined && lastUnsure > paired) scan.unsurePairs.add(paired);
     if (paired === open) return j;
     j = end;
   }
@@ -180,6 +188,14 @@ function skipQuoted(src: string, j: number, spans: SpanEnds): number {
   if (c === "`") return skippedSpan(j, closingBacktick(src, j));
   if (c === "$") return skipDollar(src, j, spans);
   return j;
+}
+
+/** A backquote or `$( )`/`${ }` opener `skipQuoted` left in place, since it could not find where the span ends. */
+function opensUnsureSpan(src: string, j: number): boolean {
+  if (src[j] === "`") return true;
+  if (src[j] !== "$") return false;
+  const opener = dollarOpener(src, joinedDollar(src, j));
+  return opener === "paren" || opener === "braced";
 }
 
 /** Skips the `$'…'`, `$( )` or `${ }` the shared table finds after the `$` at `j`; a `$[` is left to the bracket count, which nests it. */

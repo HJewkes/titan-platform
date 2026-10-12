@@ -44,6 +44,12 @@ describe("a subscript bash may join but the guard splits", () => {
     ["split by bash, a heredoc opener in the span", "((1)); echo a[ <<E ${\ngit push origin HEAD:main\n}]\nE"],
     ["joined by bash, a ${ funsub after the #", "x[ # ${\ngit push origin HEAD:main\n}]"],
     ["joined by bash, a ${ funsub after a heredoc opener", "x[ <<E ${\ngit push origin HEAD:main\n}]\nE"],
+    ["after ((, a [ inside ${ } in the subscript", "((1)); a[ ${x:-[} # ]; git push origin HEAD:main"],
+    ["after [[ ]], a [ inside $( ) in the subscript", "[[ 1 ]]; a[ $(echo [) # ]; git push origin HEAD:main"],
+    ["after a heredoc, a [ inside backquotes in the subscript", "cat <<E >/dev/null\nE\na[ `echo [` # ]; git push origin HEAD:main"],
+    ["with no prefix, a [ inside $( ) in the subscript", "a[ $(echo [) # ]; git push origin HEAD:main"],
+    ["after an assignment, a [ inside $( ) before a heredoc opener", "b=1 a[ $(echo [) <<E ]=1\ngit push origin HEAD:main\nE"],
+    ["after ((, a [ inside $( ) before a heredoc opener", "((1)); a[ $(echo [) <<E ]=1\ngit push origin HEAD:main\nE"],
     ["split by bash, a backquote in the comment", "((1)); echo a[ # x `\ngit push origin HEAD:main\n`]"],
   ])("denies a push hidden behind # %s", async (_scenario, command) => {
     expect(await decisionOf(command)).toBe("deny");
@@ -54,6 +60,7 @@ describe("a subscript bash may join but the guard splits", () => {
     ["a test then a subscript", "[[ -n $x ]] && a[0]=y"],
     ["a real comment after a command", "((1)); echo hi # git push origin HEAD:main"],
     ["a comment in a subscript bash splits as an argument", "echo a[ # git push origin HEAD:main ]"],
+    ["arithmetic then a substituted subscript and a comment", "((i++)); a[$(f)]=x # git push origin HEAD:main"],
     ["arithmetic then an append by length", "((n++)); a[${#a[@]}]=x; echo ok"],
     ["arithmetic then a comment after a closed subscript", "((1)); echo a[0] # git push origin HEAD:main"],
     ["a test then a spaced subscript argument", "[[ -n $x ]]; echo a[ $x ]"],
