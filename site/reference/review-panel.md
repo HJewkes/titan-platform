@@ -26,12 +26,17 @@ every caller plans, briefs and aggregates the same way:
   shapes.
 - `changedLineCount(files, rules?)`: additions plus deletions with the `generated` globs
   (CAPABILITIES.md, site reference pages, the reference sidebar, the capabilities guide,
-  `.codewatch/check.json` and `dead-exports.json`, changesets, `api/` reports, snapshots,
-  `pnpm-lock.yaml`) left out; undefined when any file has no line counts. A rename
+  `.codewatch/check.json` and `dead-exports.json`, changesets, `packages/*/api/*.d.ts` reports)
+  left out; the lockfile and snapshots still count; undefined when any file has no line counts. A rename
   counts as generated only when it came from a generated path too, and generated lines that
   alone pass `largeLines` (400) count in full, since that is a hand edit. A PR is large past
   `largeLines` of it. Shepherd sizes its reviewer the same way, and an unread size there
   takes the g10 class.
+- `touchesDependency(files, rules?)`: true when a changed file, or the path it was renamed
+  from, matches `ClassRules.dependency` (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, any
+  `package.json`). `classifyPr` adds the `dependency` touch, which is strict, so such a PR is
+  `g10` at any size. `ReviewerFacts.dependencyTouch` carries the same fact to Shepherd's
+  reviewer sizing.
 - `securitySliceFlag({ kind?, changedFiles }, rules?)`: `{ lines, cap, guardPaths }` when a
   slice is past `SECURITY_SLICE_LINES` (400) non-generated lines and is kind `security` or
   touches a non-generated `security` or `authority` path; undefined otherwise, including an
