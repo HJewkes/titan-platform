@@ -452,6 +452,8 @@ function snapshotAt(services: Services, fake: FakeGitHub, rowHead: string): { se
   const reads: number[] = [];
   const snapshot: PrSnapshot = {
     openPrs: async () => [{ ...fake.pr(1), headSha: rowHead }],
+    openList: async () => ({ prs: [{ ...fake.pr(1), headSha: rowHead }], at: 0 }),
+    cachedRuns: () => undefined,
     getPr: async () => Promise.reject(new Error("the sweep reads PRs through the port")),
     checkRuns: async () => [],
     invalidate: () => undefined,

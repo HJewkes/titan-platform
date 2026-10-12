@@ -69,6 +69,10 @@ export interface LexState {
   redirect: { token: RedirectToken; stripTabs: boolean } | null;
   /** Index of the `]` closing an assignment's subscript; blanks and operators before it stay in the word. */
   subscriptEnd: number;
+  /** Index of the `]` of a subscript bash may join but this lexer splits; before it a comment or heredoc opener is refused. */
+  looseSubscriptEnd: number;
+  /** Whether the arithmetic command `arithEnd` closes began outside every loose span; a trial lex starts inside one. */
+  arithOutsideLoose: boolean;
   /** Index of the `))` closing an arithmetic command; before it `<<` is a shift and `#` no comment. */
   arithEnd: number;
   trials: ArithTrials;

@@ -8,6 +8,12 @@ import { gateHead } from "./stale-gates.js";
 /** A submit older than this resolves nothing; the owner's click and the dialog it leads to are seconds apart. */
 const ROUND_SUBMIT_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+/** How long a Ship stands as the owner's merge approval before the gate it answers opens (TP-1842 Q2 default, item 88). */
+const SHIP_APPROVAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** A Ship stamped further ahead of the reader's clock than this is not believed: a future time would never go stale. */
+const SUBMIT_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 /**
  * What round.json must carry per pick-one question that decides a merge. The review harness (TP-1844) writes it:
  * `ship` lists the options consistent with merging `repo#pr` at `headSha`, never the revision option.
@@ -25,14 +31,16 @@ const RoundManifest = z.object({
   questions: z.array(z.object({ id: z.string(), merge: MergeBinding.optional() })),
 });
 
-/** The parts of feedback.json this decision reads. */
-export interface RoundFeedback {
-  unit: string;
-  round: number;
-  manifestSha256: string;
-  submittedAt: string;
-  answers: { questionId: string; pick?: string; revisionRequested?: boolean }[];
-}
+/** The parts of feedback.json this decision reads; other keys are dropped. */
+export const RoundFeedbackSchema = z.object({
+  unit: z.string(),
+  round: z.number().int(),
+  manifestSha256: z.string(),
+  submittedAt: z.string(),
+  answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional() })),
+});
+
+export type RoundFeedback = z.infer<typeof RoundFeedbackSchema>;
 
 type RoundMergeOutcome =
   | { kind: "resolve"; runId: string; stepId: string; payload: { decision: "merge"; headSha: string } }
@@ -141,4 +149,36 @@ export function roundMergeDecisions(
   const byRun = new Map(runs.map((run) => [run.id, run]));
   const decisions = bindings(round).map((bound) => ({ repo: bound.repo, pr: bound.pr, headSha: bound.headSha, ...decide(round, bound, feedback, pendingGates, byRun) }));
   return { refused: undefined, decisions };
+}
+
+type ShipAtHead =
+  | { shipped: true; unit: string; round: number; questionIds: string[]; submittedAt: string }
+  | { shipped: false; reason: string };
+
+const notShipped = (reason: string): ShipAtHead => ({ shipped: false, reason });
+
+/**
+ * Whether a submitted round is the owner's merge approval for one PR at one head (decisions item 97): every question bound to the
+ * PR is picked from its ship list at exactly `target.headSha`. A Ship at any other head never counts (item 95 rule 1). Unlike
+ * `roundMergeDecisions` this needs no open gate, so it can answer before the gate opens. Pure: the caller supplies the clock.
+ */
+export function shipAtHead(
+  roundBytes: string | Uint8Array,
+  feedback: RoundFeedback,
+  target: { repo: string; pr: number; headSha: string },
+  now: Date,
+  maxAgeMs: number = SHIP_APPROVAL_MAX_AGE_MS,
+): ShipAtHead {
+  const round = parseRound(roundBytes);
+  if (!round) return notShipped("round.json does not read as a round");
+  const refused = refusal(round, roundBytes, feedback, now, maxAgeMs);
+  if (refused) return notShipped(refused);
+  if (Date.parse(feedback.submittedAt) - now.getTime() > SUBMIT_CLOCK_SKEW_MS) return notShipped("the submit is stamped in the future");
+  const bound = bindings(round).find((candidate) => candidate.repo === target.repo && candidate.pr === target.pr);
+  if (!bound) return notShipped(`no question binds ${target.repo}#${target.pr}`);
+  if (bound.headSha !== target.headSha) return notShipped(`the round binds ${target.repo}#${target.pr} at ${bound.headSha}, the PR is at ${target.headSha}`);
+  const blocked = blockingQuestion(round, bound, feedback);
+  if (blocked) return notShipped(`question ${blocked} is not answered with a ship option at head ${bound.headSha}`);
+  const questionIds = round.questions.filter((q) => q.merge?.repo === bound.repo && q.merge.pr === bound.pr).map((q) => q.id);
+  return { shipped: true, unit: round.unit, round: round.round, questionIds, submittedAt: feedback.submittedAt };
 }

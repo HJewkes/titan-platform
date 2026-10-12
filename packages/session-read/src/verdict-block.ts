@@ -67,8 +67,8 @@ export function parseVerdictBlock(text: string): VerdictBlockResult {
   return readBlock(lines, starts[0]!);
 }
 
-/** One entry per line: its trimmed text, or null when fenced, commented out or indented as code. */
-function visibleLines(text: string): (string | null)[] {
+/** One entry per line: its trimmed text, or null when fenced, commented out or indented as code; shared so every reviewer-message parser agrees on what is visible. */
+export function visibleLines(text: string): (string | null)[] {
   let fence: { char: string; length: number } | null = null;
   let inComment = false;
   return text.split("\n").map((raw) => {

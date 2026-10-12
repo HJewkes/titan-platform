@@ -8,6 +8,10 @@ export interface WatchWindow {
   missLimit: number;
 }
 
+/**
+ * No start-up grace: the sha poll already waited for a first answer, and three live-pid misses take about 3 × 45 s,
+ * longer than this window and the 17–32 s Shepherd resync after a restart (TP-2433). A grace would only hide a serve hung from the start.
+ */
 export const DEFAULT_WATCH_WINDOW: WatchWindow = { windowMs: 120_000, intervalMs: 10_000, missLimit: 3 };
 
 /** The first probe of a tick waits this long; a timeout from a live pid is then retried for `SLOW_PROBE_TIMEOUT_MS`. */
