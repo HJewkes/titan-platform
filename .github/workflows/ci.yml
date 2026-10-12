@@ -75,6 +75,9 @@ jobs:
           path: node_modules/.vite/vitest
           key: vitest-results-${{ runner.os }}-${{ github.sha }}
           restore-keys: vitest-results-${{ runner.os }}-
+      # redirect-corpus.test.ts runs every redirect form under real bash and zsh; it fails on CI without both.
+      - name: Install zsh for the redirect corpus
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh
       - run: pnpm test
       - name: Save vitest results
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
