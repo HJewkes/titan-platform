@@ -136,7 +136,7 @@ function signalPid(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
   try {
     process.kill(pid, signal);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ESRCH") throw err;
+    if (!(err instanceof Error && "code" in err && err.code === "ESRCH")) throw err;
   }
 }
 
