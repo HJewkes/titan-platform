@@ -284,6 +284,17 @@ describe("sh-cleanup retire", () => {
     expect(w.agents.retires.map((retire) => retire.name)).not.toContain(STANDING);
   });
 
+  it("retires a fresh reviewer's panel members, and no name that only looks like one", async () => {
+    const names = ["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2", "rv-octo-demo-1-2-review", "rv-octo-demo-1-2-adversary-x"];
+    const w = world({ registration: { ...base, policy }, agents: names.map((name) => ({ name, exitAt: 0 })) });
+
+    const result = await w.run();
+
+    expect(result.retired).toEqual(expect.arrayContaining(["rv-octo-demo-1-2-adversary", "rv-octo-demo-1-2-perf-2"]));
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-review");
+    expect(result.retired).not.toContain("rv-octo-demo-1-2-adversary-x");
+  });
+
   it("retires no sooner than 3 minutes after the agent is seen exited", async () => {
     const exitAt = 7 * 60_000;
     const w = world({ agents: [{ name: IMPLEMENTER, exitAt }] });
