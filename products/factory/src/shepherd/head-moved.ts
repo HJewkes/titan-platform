@@ -9,6 +9,7 @@ import { SUPERSEDED, cancelUnlessSettled, gateHead } from "./stale-gates.js";
 
 const MERGE_GUARD_TABLE = "shepherd-merge-guard";
 const ROUTE_TABLE = "shepherd-route";
+const RELEASE_TABLE = "shepherd-release";
 const FAILED_ROUNDS: Escalation = "failed-rounds";
 const CONFLICT: Escalation = "conflict";
 const ROUTE_GATE = new RegExp(`Policy ${ROUTE_TABLE}/([a-z-]+):`);
@@ -108,6 +109,12 @@ function guardGateHead(run: WorkflowRun, prompt: string): string | undefined {
   return decision?.rule?.table === MERGE_GUARD_TABLE ? decision.headSha : undefined;
 }
 
+/** The head a Version Packages release gate asks about, under any release row: each row is a fact about one head's preflight. */
+function releaseGateHead(run: WorkflowRun, prompt: string): string | undefined {
+  const decision = gatingDecision(run, prompt);
+  return decision?.rule?.table === RELEASE_TABLE ? decision.headSha : undefined;
+}
+
 interface AuthorityGate {
   head: string;
   reason: string;
@@ -159,17 +166,17 @@ function stuckBehindHead(host: FactoryHost, { runId, gate }: PendingGate): strin
   return run?.workflowName === SHEPHERD_WORKFLOW ? lastReadHead(run) : undefined;
 }
 
-/** A release gate shares the approve-merge step id but stays with the owner; a send-back, red head or stuck-behind head only ever waits for a new head. */
+/** An approve-merge gate, release gates included, is pinned to one head; a send-back, red head or stuck-behind head only ever waits for a new head. */
 function supersedableHead(host: FactoryHost, pending: PendingGate): string | undefined {
   const { runId, gate } = pending;
   if (waitsForNewHead(pending)) return host.runtime.status(runId)?.workflowName === SHEPHERD_WORKFLOW ? gateHead(gate.prompt) : undefined;
   if (pending.stepId === "stuck-behind") return stuckBehindHead(host, pending);
   const run = approveMergeRun(host, pending);
-  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate));
+  return run && (seatPolicyHead(run, gate.prompt) ?? guardGateHead(run, gate.prompt) ?? authorityGate(run, gate.prompt)?.head ?? routeGateHead(run, gate) ?? releaseGateHead(run, gate.prompt));
 }
 
 /**
- * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
+ * Cancels each shepherd-pr seat-policy, merge-guard, authority MRG-AU, shepherd-release or route-table (failed-rounds, fix-first-runaway, no-progress, conflict) approve-merge gate, sh-sent-back, ci-failed or stuck-behind gate, whose PR moved past the
  * head it asks about; the run then takes the new head. `dryRun` reports those gates and cancels none.
  */
 export async function supersedeMovedGates(host: FactoryHost, services: ShepherdServices, { dryRun = false } = {}): Promise<SupersededGate[]> {

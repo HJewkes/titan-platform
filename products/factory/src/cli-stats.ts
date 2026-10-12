@@ -4,6 +4,8 @@ import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
 import type { Command } from "commander";
 import type { CliIo } from "./cli.js";
+import { parseSinceOption } from "./digest/command.js";
+import { gateStats, type GateStatsRow } from "./shepherd/gate-stats.js";
 import { SHEPHERD_WORKFLOW } from "./shepherd/commands.js";
 import { eventsSince } from "./shepherd/events.js";
 import { readAllGates } from "./shepherd/owner-friction-read.js";
@@ -32,6 +34,9 @@ interface StatsOpts {
   slo?: boolean;
   registry?: string;
   perRun?: boolean;
+  gates?: boolean;
+  /** Minutes, parsed from `90m`, `6h` or `7d`. */
+  since?: number;
 }
 
 /** This checkout's registry entry: the factory runs from its own checkout, and src/ and dist/ sit at the same depth. */
@@ -77,6 +82,28 @@ function perRunReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts): str
   return `${JSON.stringify({ perRun: perRunExport(shepherdRuns(db), kinds, { from: opts.from, to: opts.to }) }, null, 2)}\n`;
 }
 
+function gateLine(r: GateStatsRow): string {
+  const decisions = Object.entries(r.decisions).map(([decision, n]) => `${decision} ${n}`).join(" ");
+  return `${r.policyRow}  ${r.resolver}  gates ${r.count}  decisions ${decisions || "-"}  cancelled-unanswered ${r.cancelledUnanswered}  pending ${r.pending}  median ${r.medianHours}h  max ${r.maxHours}h`;
+}
+
+function gatesReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): string {
+  const rows = gateStats(readAllGates(db), now, opts.since!);
+  if (opts.json) return `${JSON.stringify({ gates: rows }, null, 2)}\n`;
+  return `${(rows.length === 0 ? ["no gates in window"] : rows.map(gateLine)).join("\n")}\n`;
+}
+
+/** `--since` is the meter's own window, so it pairs only with `--gates` and never with the day range. */
+function usageError(opts: StatsOpts): string | undefined {
+  const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
+  if (bad !== undefined) return `expected YYYY-MM-DD, got ${JSON.stringify(bad)}`;
+  if (opts.perRun && !opts.json) return "--per-run prints JSON only; add --json";
+  if (opts.gates && opts.since === undefined) return "--gates needs --since, e.g. --since 7d";
+  if (opts.since !== undefined && !opts.gates) return "--since applies only to --gates";
+  if (opts.gates && (opts.from !== undefined || opts.to !== undefined)) return "--gates takes --since, not --from/--to";
+  return undefined;
+}
+
 /** Reads the ledger synchronously, before the caller closes it; only the cost query awaits, and it reads transcripts. */
 function sloReport(entry: MetricsEntryRead, db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: number): Promise<string> {
   const runs = shepherdRuns(db);
@@ -112,9 +139,8 @@ function sloOrExit(db: ReturnType<typeof openDatabase>, opts: StatsOpts, now: nu
 }
 
 function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number): Promise<void> | void {
-  const bad = [opts.from, opts.to].find((date) => date !== undefined && !DATE.test(date));
-  if (bad !== undefined) return (io.stderr(`error: expected YYYY-MM-DD, got ${JSON.stringify(bad)}\n`), setExit(2));
-  if (opts.perRun && !opts.json) return (io.stderr("error: --per-run prints JSON only; add --json\n"), setExit(2));
+  const usage = usageError(opts);
+  if (usage !== undefined) return (io.stderr(`error: ${usage}\n`), setExit(2));
   let db: ReturnType<typeof openDatabase>;
   try {
     db = openDatabase(dbPath(), { readonly: true });
@@ -122,6 +148,7 @@ function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: 
     return (io.stderr(`error: cannot read the store at ${dbPath()}: ${error instanceof Error ? error.message : String(error)}\n`), setExit(2));
   }
   try {
+    if (opts.gates) return io.stdout(gatesReport(db, opts, now()));
     if (opts.slo) return sloOrExit(db, opts, now(), io, setExit);
     if (opts.perRun) return io.stdout(perRunReport(db, opts));
     if (opts.cost) return costReport(shepherdRuns(db), opts).then((report) => io.stdout(report));
@@ -135,7 +162,7 @@ function statsAction(opts: StatsOpts, io: CliIo, dbPath: () => string, setExit: 
 export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () => string, setExit: (code: number) => void, now: () => number = Date.now): void {
   shepherd
     .command("stats")
-    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes and how many an owner approve-merge gate held, merges made outside Shepherd, Shepherd's merge-ups by class (land time, strict chase, freeze hold, retry), strict land-rules rounds, and merges of the base pushed by others; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched")
+    .description("per repo and ISO week: PRs whose reviewer MERGE-to-merged wait exceeded 60 minutes and how many an owner approve-merge gate held, merges made outside Shepherd, Shepherd's merge-ups by class (land time, strict chase, freeze hold, retry), strict land-rules rounds, and merges of the base pushed by others; per day: owner touches and the hours each gate kind waited on the owner; per repo and ISO week: median, p90 and max minutes per stage (queued, ci, review, re-review, hold, land); per repo and ISO week: merged runs whose main CI went red, and those since reverted; per repo and ISO week: review dispatches counted by why each was dispatched; with --gates --since: gates per policy row and resolver class")
     .option("--from <date>", "first day, YYYY-MM-DD (UTC)")
     .option("--to <date>", "last day, YYYY-MM-DD (UTC), inclusive")
     .option("--json", "print the rows as JSON")
@@ -145,5 +172,7 @@ export function registerShepherdStats(shepherd: Command, io: CliIo, dbPath: () =
     .option("--registry <file>", "the titan.metrics/v1 entry --slo reads (default: this checkout's metrics/shepherd.yml)")
     .option("--per-run", "instead, with --json: one record per shepherd-pr run started in range, with its stage minutes, review rounds and merge path")
     .option("--failures", "also count failed runs per repo and ISO week by failure class (ci-timeout, gh-api-5xx, land-rules, update-branch, other)")
+    .option("--gates", "instead, with --since: gates opened in the window per policy row and resolver (owner-terminal, owner-remote, coordinator, delegate, unanswered), with decisions by value, cancelled-unanswered, pending, and median and max wait hours")
+    .option("--since <window>", "the --gates window back from now: 90m, 6h or 7d", parseSinceOption)
     .action((opts: StatsOpts) => statsAction(opts, io, dbPath, setExit, now));
 }

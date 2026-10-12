@@ -22,7 +22,7 @@ import { mountResolveProof } from "./resolve-proof.js";
 import { startSweep, type Sweep } from "./sweep.js";
 import { rowsWithRuns, type ShepherdServices } from "./shepherd/commands.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
-import { supersedeMovedGates } from "./shepherd/head-moved.js";
+import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
 import { markRevertedRuns } from "./shepherd/reverts.js";
 import type { FreezeStoreRef } from "./shepherd/freeze.js";
@@ -44,7 +44,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const STATUSES: readonly WorkflowStatus[] = ["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"];
 const { version: FACTORY_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export interface FactoryServerOptions extends FactoryHostOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -113,13 +113,14 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   if (services && options.resyncOnStart !== false) await resync(host, services, log, held);
   const sweep = startSweep(() => adopt(host, services, held, log), options.leaseMs ?? DEFAULT_LEASE_MS, "adoption sweep", log);
   await sweep.tick();
-  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere and head-moved sweep", log);
+  const goneSweep = services && startSweep(() => endGone(host, services, log, thaws.thawed), options.goneSweepMs ?? GONE_SWEEP_MS, "merged-elsewhere sweep", log);
   const fixerSweep = services?.freeze && options.fixerRetire && startSweep(() => sweepFixers(options.fixerRetire!, services.freeze!, log), FIXER_RETIRE_MS, "ended main-red fixer sweep", log);
   thaws.onThaw(() => {
     void goneSweep?.tick();
     void fixerSweep?.tick();
   });
   await goneSweep?.tick();
+  const headMovedSweep = services && (await startHeadMovedSweep(host, services, options, log));
   const releaseSweep = services && startSweep(() => sweepReleases(host, services, log), options.releaseSweepMs ?? RELEASE_SWEEP_MS, "version packages sweep", log);
   const toolchainSweep = services && startSweep(() => sweepToolchains(host, services, log), options.toolchainSweepMs ?? TOOLCHAIN_SWEEP_MS, "toolchain adoption sweep", log);
   const checkoutSweep = services && startSweep(() => sweepCheckouts(log), CHECKOUT_SWEEP_MS, "review checkout sweep", log);
@@ -135,7 +136,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   const close = async (): Promise<void> => {
     await sweep.stop();
     thaws.stop();
-    for (const later of [goneSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
+    for (const later of [goneSweep, headMovedSweep, fixerSweep, releaseSweep, toolchainSweep, checkoutSweep, deploySweep, mainSweep, digestSweep, pacerSweep]) await later?.stop();
     mainWatch?.close();
     await daemon.close();
     unbindCarry();
@@ -303,7 +304,6 @@ async function recheckBeforeAdopt(host: FactoryHost, services: ShepherdServices,
 async function endGone(host: FactoryHost, services: ShepherdServices, log: Logger, thawed: Set<string>): Promise<void> {
   const onCancelFailed = (runId: string, cause: string) => log.warn({ runId, cause }, "could not cancel a run whose PR left Shepherd");
   for (const ended of await endRunsGoneElsewhere(host, services, { onCancelFailed })) log.info({ ...ended }, "ended a run whose PR left Shepherd");
-  for (const moved of await supersedeMovedGates(host, services)) log.info({ ...moved }, "superseded a head gate whose PR head moved");
   for (const repo of [...thawed]) await sweepThawed(host, services, log, thawed, repo);
 }
 

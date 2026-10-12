@@ -598,9 +598,10 @@ function evidenceAt(head: string, unmet: object): object {
   return { head, merge: { ...merge, mergeTreeClean: true, repoFrozen: false, changedPaths: ["src/a.ts"], seatGrants: ["merge-on-green-approve"], kind: "correctness", ...unmet }, record: { repo: REPO, pr: 1 } };
 }
 
-async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number): Promise<FactoryHost> {
+async function servedHost(routes: FactoryRoutes, workflows: WorkflowDefinition[], goneSweepMs?: number, headMovedSweepMs?: number): Promise<FactoryHost> {
   const server = await startFactoryServer({
     goneSweepMs,
+    headMovedSweepMs,
     dbPath: ":memory:",
     stateDir: dirname(dbFile()),
     workflows,
@@ -628,12 +629,13 @@ interface AuthorityOptions {
   unmetReviews?: number;
   wokenAgent?: boolean;
   goneSweepMs?: number;
+  headMovedSweepMs?: number;
   /** getPr rejects while `value` is set. */
   unreadable?: { value: boolean };
 }
 
 /** A merge:auto run gated by authority/MRG-AU at REVIEWED: its first `unmetReviews` reviews read `unmet`, every later review reads clean facts. */
-async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
+async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, wokenAgent = false, goneSweepMs, headMovedSweepMs, unreadable }: AuthorityOptions = {}): Promise<AuthorityRun> {
   const fake = fakeGitHub();
   fake.onGetPr = (pr) => fake.setRuns(pr.headSha, [successRun("validate", 1), successRun("dag-check", 2)]);
   const reviewed: string[] = [];
@@ -646,7 +648,7 @@ async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, 
   const getPr = port.getPr.bind(port);
   const flaky = { ...port, getPr: async (repo: string, pr: number) => (unreadable?.value ? Promise.reject(new Error("rate limited")) : getPr(repo, pr)) };
   const routes = factoryRoutesFor({ port: flaky, store, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
-  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)], goneSweepMs) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
+  const host = serve ? await servedHost(routes, [shepherdPrWorkflow(phases)], goneSweepMs, headMovedSweepMs) : openFactoryHost({ dbPath: ":memory:", workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   if (!serve) cleanups.push(() => host.close());
   fake.addPr({ headSha: REVIEWED });
   const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", policy: JSON.stringify(AUTO) });
@@ -654,6 +656,21 @@ async function authorityGated(unmet: object, { serve = false, unmetReviews = 1, 
   await gateOpened(host, gateId(runId, "approve-merge"));
   return { host, fake, services: routes.shepherd!, runId, reviewed };
 }
+
+describe("serve's head-moved sweep", () => {
+  it("supersedes a paused authority/MRG-AU approve-merge gate once the PR head moves, with the merged-elsewhere sweep idle, and the run waits on CI at the new head", async () => {
+    const { host, fake, runId, reviewed } = await authorityGated({ verdict: { value: "MERGE", head: PUSHED } }, { serve: true, goneSweepMs: 3_600_000, headMovedSweepMs: 20 });
+
+    fake.pushHead(1, PUSHED);
+
+    await vi.waitFor(() => expect(host.gates.get(gateId(runId, "approve-merge"))?.status).toBe("cancelled"), { timeout: 2_000 });
+    expect(host.gates.get(gateId(runId, "approve-merge"))?.reason).toMatch(/^superseded: /);
+    await vi.waitFor(() => expect(fake.pr(1)).toMatchObject({ merged: true, headSha: PUSHED }), { timeout: 2_000 });
+    expect(reviewed).toEqual([REVIEWED, PUSHED]);
+    const ciWaits = Object.values(host.runtime.status(runId)!.stepResults).filter((result) => result.stepId.startsWith("ci-wait"));
+    expect(ciWaits.map((result) => [result.stepId, result.output])).toContainEqual(["ci-wait:r1:0", expect.stringContaining(`"headSha":"${PUSHED}"`)]);
+  });
+});
 
 describe("resyncShepherd on a pending authority/MRG-AU approve-merge gate", () => {
   it("cancels a gate whose head is no longer the PR head, and the run reviews and merges the new head", async () => {
