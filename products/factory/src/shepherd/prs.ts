@@ -13,9 +13,9 @@ import type { ShepherdServices } from "./commands.js";
 export const MERGED_WINDOW_MS = 24 * 60 * 60_000;
 
 /** `push` and `gh-write` name the writers that will feed rows in later slices; today only the first two are produced. */
-export type PrRowSource = "snapshot" | "merge-step" | "push" | "gh-write";
+type PrRowSource = "snapshot" | "merge-step" | "push" | "gh-write";
 
-export interface PrRowCi {
+interface PrRowCi {
   head: string;
   state: "pending" | "green" | "red" | "none";
   /** Required contexts with no run on the head; empty when the run recorded no required list. */

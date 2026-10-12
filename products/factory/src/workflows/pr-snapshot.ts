@@ -22,7 +22,7 @@ export interface PrSnapshot extends PrReads {
   cachedRuns(repo: RepoSlug, sha: string): CachedRuns | undefined;
 }
 
-export interface OpenList {
+interface OpenList {
   prs: PullRequest[];
   at: number;
 }
