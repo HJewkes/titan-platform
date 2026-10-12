@@ -27,16 +27,16 @@ export function policyRow(gate: GateRecord): string {
   return match ? `${match[1]}/${match[2]}` : `step/${stepOf(gate.id)}`;
 }
 
-export function resolverBucket(gate: GateRecord): string {
+function resolverBucket(gate: GateRecord): string {
   if (gate.status !== "resolved") return "unanswered";
   if (gate.resolvedEvidence?.kind === "delegate") return "delegate";
   return gate.resolvedBy?.class ?? "unrecorded";
 }
 
-export function decisionOf(payload: unknown): string {
-  const answer = (payload ?? {}) as Record<string, unknown>;
-  if (typeof answer.decision === "string") return answer.decision;
-  if (typeof answer.approve === "boolean") return answer.approve ? "approve" : "decline";
+function decisionOf(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null) return "other";
+  if ("decision" in payload && typeof payload.decision === "string") return payload.decision;
+  if ("approve" in payload && typeof payload.approve === "boolean") return payload.approve ? "approve" : "decline";
   return "other";
 }
 
@@ -52,12 +52,12 @@ function countBy(values: readonly string[]): Record<string, number> {
   return counts;
 }
 
-function row(key: string, gates: readonly GateRecord[], now: number): GateStatsRow {
-  const [policy, resolver] = key.split("\n") as [string, string];
+/** Every gate in `gates` shares one policy row and resolver bucket, so the first names the row. */
+function row(gates: readonly GateRecord[], now: number): GateStatsRow {
   const hours = gates.map((gate) => waitHours(gate, now)).sort((a, b) => a - b);
   return {
-    policyRow: policy,
-    resolver,
+    policyRow: policyRow(gates[0]!),
+    resolver: resolverBucket(gates[0]!),
     count: gates.length,
     decisions: countBy(gates.filter((gate) => gate.status === "resolved").map((gate) => decisionOf(gate.payload))),
     cancelledUnanswered: gates.filter((gate) => gate.status === "cancelled" || gate.status === "expired").length,
@@ -72,6 +72,6 @@ export function gateStats(gates: readonly GateRecord[], now: number, sinceMinute
   const start = now - sinceMinutes * 60_000;
   const recent = gates.filter((gate) => Date.parse(gate.createdAt) >= start);
   return [...groupBy(recent, (gate) => `${policyRow(gate)}\n${resolverBucket(gate)}`)]
-    .map(([key, items]) => row(key, items, now))
+    .map(([, items]) => row(items, now))
     .sort((a, b) => a.policyRow.localeCompare(b.policyRow) || a.resolver.localeCompare(b.resolver));
 }
