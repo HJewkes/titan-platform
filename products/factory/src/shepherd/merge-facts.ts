@@ -175,7 +175,7 @@ function decideOnFacts(headSha: string, evidence: DecidableEvidence | undefined,
 
 const SHOWN_VISUAL_PATHS = 10;
 
-function shownPaths(paths: readonly string[]): string {
+export function shownPaths(paths: readonly string[]): string {
   return paths.slice(0, SHOWN_VISUAL_PATHS).join(", ") + (paths.length > SHOWN_VISUAL_PATHS ? ` and ${paths.length - SHOWN_VISUAL_PATHS} more` : "");
 }
 

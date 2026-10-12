@@ -1,7 +1,7 @@
 import type { RepoSlug } from "@titan-design/github";
 import type { OwnerBrief } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
-import { approveMergeDecision, ownerBriefLines } from "../gate-brief.js";
+import { approveMergeDecision, ownerBriefLines, skillChangeNote } from "../gate-brief.js";
 import type { PolicyRule } from "../gate-policy.js";
 import type { FailingCheck } from "./land-ci.js";
 
@@ -26,14 +26,24 @@ export type ApprovalAnswer = "merge" | "abandon" | { failed: string };
  */
 export type AskApproval = (ctx: WorkflowContext, question: ApprovalQuestion) => Promise<ApprovalAnswer>;
 
+/** What the approve-merge gate shows beside the policy's reason, each read at the head it asks about. */
+export interface ApproveMergeFacts {
+  reviewedMerge?: (headSha: string) => boolean;
+  ownerBriefAt?: (headSha: string) => OwnerBrief | undefined;
+  /** Repo skill paths the PR changes at this head; any one drops the merge recommendation and links the diff. */
+  skillPathsAt?: (headSha: string) => readonly string[];
+}
+
 /** The default question: the owner's approve-merge gate, whose payload must name the head shown. */
-export function approveMergeGate(rule: PolicyRule, reviewedMerge?: (headSha: string) => boolean, ownerBriefAt?: (headSha: string) => OwnerBrief | undefined): AskApproval {
+export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}): AskApproval {
   return async (ctx, { repo, pr, headSha, reason, base }) => {
-    const ownerBrief = ownerBriefAt?.(headSha);
-    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: reviewedMerge?.(headSha) ?? false, ownerBrief });
+    const ownerBrief = facts.ownerBriefAt?.(headSha);
+    const skillPaths = facts.skillPathsAt?.(headSha) ?? [];
+    const { schema, brief } = approveMergeDecision({ repo, pr, headSha, reason, reviewedMerge: facts.reviewedMerge?.(headSha) ?? false, ownerBrief, skillPaths });
     const asked = `Merge PR #${pr} in ${repo} at head ${headSha}${base ? ` into ${base}` : ""}? CI is green. Policy ${rule.table}/${rule.rowId}: ${reason}`;
-    const prompt = ownerBrief ? [asked, "", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)].join("\n") : asked;
-    const answer = schema.safeParse((await ctx.assisted("approve-merge", prompt, { schema, brief })).data);
+    const skillLines = skillPaths.length > 0 ? ["", skillChangeNote(repo, pr, skillPaths)] : [];
+    const briefLines = ownerBrief ? ["", "Reviewer's owner brief:", ...ownerBriefLines(ownerBrief)] : [];
+    const answer = schema.safeParse((await ctx.assisted("approve-merge", [asked, ...skillLines, ...briefLines].join("\n"), { schema, brief })).data);
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${headSha}: ${answer.error.message}`);
     return answer.data.decision;
   };
