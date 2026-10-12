@@ -8,6 +8,7 @@ import { CiSnapshotResult } from "../workflows/land-steps.js";
 import { OWNER_GATE_REASONS } from "./policy.js";
 import { MAX_NOT_STARTED_REVIEWS, notStartedStreak, reviewerName } from "./review-steps.js";
 import { reviewWait } from "./review-wait.js";
+import { TERMINAL_PHASE, endedAt, runOutcome } from "./run-end.js";
 import { STAGES, stageSpans } from "./stage-times.js";
 import { PhaseSchema, stepPhase, type Phase } from "./step-phase.js";
 import { spawnQueuePosition } from "./spawn-gate.js";
@@ -110,25 +111,9 @@ export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
 export const PrTimelineSchema = z.object({ row: WatchRowSchema, entries: z.array(TimelineEntrySchema) });
 export type PrTimeline = z.infer<typeof PrTimelineSchema>;
 
-const TERMINAL_PHASE: Partial<Record<WorkflowRun["status"], Phase>> = { completed: "done", failed: "failed", cancelled: "cancelled" };
-
 /** Completed step results, oldest first. */
 function completedSteps(run: WorkflowRun): StepResult[] {
   return Object.values(run.stepResults).sort((a, b) => a.completedAt.localeCompare(b.completedAt));
-}
-
-/** The step that recorded how the run ended: sh-landed first, then sh-stopped. */
-function outcomeStep(steps: readonly StepResult[]): StepResult | undefined {
-  return steps.find((result) => result.stepId.startsWith("sh-landed")) ?? steps.find((result) => result.stepId.startsWith("sh-stopped"));
-}
-
-/**
- * When the run ended, or undefined while it runs. A run the runtime parked in recovery after it recorded its outcome
- * has ended at that outcome; a paused or running run with one may still watch main CI after the merge.
- */
-function endedAt(run: WorkflowRun, steps: readonly StepResult[]): string | undefined {
-  if (TERMINAL_PHASE[run.status]) return run.completedAt ?? run.startedAt;
-  return run.status === "recovery_required" ? outcomeStep(steps)?.completedAt : undefined;
 }
 
 function runPhase(run: WorkflowRun, steps: readonly StepResult[]): Phase {
@@ -242,16 +227,6 @@ export interface RowInput {
   train?: TrainHolder;
   /** The clock the stall limits read; defaults to the wall clock. */
   now?: Date;
-}
-
-const StoppedData = z.object({ result: z.object({ reason: z.string() }) });
-
-/** How a finished run ended, from its sh-landed or sh-stopped step; null while neither is recorded. */
-export function runOutcome(steps: readonly StepResult[]): WatchRow["outcome"] {
-  const step = outcomeStep(steps);
-  if (step?.stepId.startsWith("sh-landed")) return { kind: "merged", reason: null };
-  const parsed = step && StoppedData.safeParse(step.data);
-  return parsed ? { kind: "stopped", reason: parsed.success ? parsed.data.result.reason : null } : null;
 }
 
 const MINUTE = 60_000;
