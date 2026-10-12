@@ -11,17 +11,16 @@ const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "tool-guard-built-"));
 afterAll(() => rmSync(home, { recursive: true, force: true }));
 
-const event = JSON.stringify({
-  tool_name: "Bash",
-  session_id: "s",
-  tool_use_id: "t",
-  cwd: home,
-  tool_input: { command: "git push origin HEAD:main" },
-});
+function event(command: string): string {
+  return JSON.stringify({ tool_name: "Bash", session_id: "s", tool_use_id: "t", cwd: home, tool_input: { command } });
+}
 
 describe("the built tool-guard", () => {
-  it("denies a push to main through the hook with exit 0", () => {
-    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event, env: { ...process.env, HOME: home }, encoding: "utf-8" });
+  it.each([
+    ["a push to main", "git push origin HEAD:main"],
+    ["a push after a CR and a #", "echo x\r#; git push origin HEAD:main"],
+  ])("denies %s through the hook with exit 0", (_form, command) => {
+    const run = spawnSync(process.execPath, [join(dist, "bin.js"), "hook"], { input: event(command), env: { ...process.env, HOME: home }, encoding: "utf-8" });
 
     expect(run.stderr).not.toContain("TypeError");
     expect(run.status).toBe(0);
