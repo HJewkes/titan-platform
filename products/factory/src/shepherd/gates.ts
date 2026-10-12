@@ -21,10 +21,12 @@ export interface GateRun {
 }
 
 /** What `liveEscalation` reads: the carried row, the per-head rows, and the last CI read. */
+type CiRead = Pick<CiSnapshot, "headSha" | "mergeableState">;
+
 interface EscalationRun {
   carried?: Escalated;
   escalations: Map<string, Escalated>;
-  lastCi?: CiSnapshot;
+  lastCi?: CiRead;
 }
 
 /**
@@ -32,15 +34,18 @@ interface EscalationRun {
  * mergeability is the evidence the owner was asked about, so a head that is not dirty has no conflict to ask about.
  */
 export function liveEscalation(run: EscalationRun, headSha: string): Escalated | undefined {
-  const escalated = run.carried ?? run.escalations.get(headSha);
-  if (escalated?.escalation !== "conflict" || !resolvedAt(run.lastCi, headSha)) return escalated;
-  run.carried = undefined;
-  run.escalations.delete(headSha);
-  return undefined;
+  if (resolvedAt(run.lastCi, headSha)) clearConflict(run, headSha);
+  return run.carried ?? run.escalations.get(headSha);
+}
+
+// Only conflict rows go: a no-progress or runaway row at the same head is not about mergeability and still gates the merge.
+function clearConflict(run: EscalationRun, headSha: string): void {
+  if (run.carried?.escalation === "conflict") run.carried = undefined;
+  if (run.escalations.get(headSha)?.escalation === "conflict") run.escalations.delete(headSha);
 }
 
 // An unknown or unread state keeps the conflict: GitHub computes mergeability lazily, so only a read state resolves it.
-function resolvedAt(lastCi: CiSnapshot | undefined, headSha: string): boolean {
+function resolvedAt(lastCi: CiRead | undefined, headSha: string): boolean {
   return lastCi?.headSha === headSha && lastCi.mergeableState !== "dirty" && lastCi.mergeableState !== "unknown";
 }
 
